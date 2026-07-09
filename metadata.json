@@ -1,0 +1,6 @@
+{
+  "name": "Kora",
+  "description": "Next-gen ebook reader with multi-source discover, secure cloud sync, and AI-powered reading assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

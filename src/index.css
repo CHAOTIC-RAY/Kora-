@@ -1,0 +1,147 @@
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Use Lora as the primary body font — matching the Kora wordmark's serif personality */
+  --font-sans: "Lora", "Inter", ui-serif, Georgia, serif;
+  --font-serif: "Lora", ui-serif, Georgia, serif;
+  --font-display: "Lexend", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-lexend: "Lexend", sans-serif;
+
+  --color-kindle-bg: var(--theme-bg);
+  --color-kindle-text: var(--theme-text);
+  --color-kindle-text-muted: var(--theme-text-muted);
+  --color-kindle-border: var(--theme-border);
+  --color-kindle-accent: var(--theme-accent);
+  --color-kindle-card: var(--theme-card);
+}
+
+/* ── Light White (Default) ── */
+:root, .theme-light-white {
+  --theme-bg: #FAFAFA;
+  --theme-text: #1A1A1A;
+  --theme-text-muted: #6B6B6B;
+  --theme-border: #E4E4E7;
+  --theme-accent: #2D2D2D;
+  --theme-card: #FFFFFF;
+
+  --color-kindle-bg: #FAFAFA;
+  --color-kindle-text: #1A1A1A;
+  --color-kindle-text-muted: #6B6B6B;
+  --color-kindle-border: #E4E4E7;
+  --color-kindle-accent: #2D2D2D;
+  --color-kindle-card: #FFFFFF;
+}
+
+/* ── Light Yellow (Sepia/Warm) ── */
+.theme-light-yellow, .light-yellow {
+  --theme-bg: #F7F3E3;
+  --theme-text: #3D3B36;
+  --theme-text-muted: #8A8479;
+  --theme-border: #D6D2C3;
+  --theme-accent: #6B6459;
+  --theme-card: #ECE8D4;
+
+  --color-kindle-bg: #F7F3E3;
+  --color-kindle-text: #3D3B36;
+  --color-kindle-text-muted: #8A8479;
+  --color-kindle-border: #D6D2C3;
+  --color-kindle-accent: #6B6459;
+  --color-kindle-card: #ECE8D4;
+}
+
+/* ── Dark Grey — clean dark mode with warm neutrals ── */
+.theme-dark-grey, .dark-grey {
+  --theme-bg: #18181B;
+  --theme-text: #F4F4F5;
+  --theme-text-muted: #A1A1AA;
+  --theme-border: #3F3F46;
+  --theme-accent: #E4E4E7;
+  --theme-card: #27272A;
+
+  --color-kindle-bg: #18181B;
+  --color-kindle-text: #F4F4F5;
+  --color-kindle-text-muted: #A1A1AA;
+  --color-kindle-border: #3F3F46;
+  --color-kindle-accent: #E4E4E7;
+  --color-kindle-card: #27272A;
+}
+
+/* ── Dark Blue — deep navy blue mode ── */
+.theme-dark-blue, .dark-blue {
+  --theme-bg: #0B1120;
+  --theme-text: #E2E8F0;
+  --theme-text-muted: #94A3B8;
+  --theme-border: #1E3A5F;
+  --theme-accent: #38BDF8;
+  --theme-card: #0F1F38;
+
+  --color-kindle-bg: #0B1120;
+  --color-kindle-text: #E2E8F0;
+  --color-kindle-text-muted: #94A3B8;
+  --color-kindle-border: #1E3A5F;
+  --color-kindle-accent: #38BDF8;
+  --color-kindle-card: #0F1F38;
+}
+
+/* ── Grayscale mode ── */
+.grayscale-app {
+  filter: grayscale(100%);
+}
+
+.grayscale-app img {
+  filter: grayscale(100%) contrast(1.1);
+}
+
+/* ── Base body ── */
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-x: hidden;
+  background-color: var(--theme-bg);
+  color: var(--theme-text);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Headings use Lexend for display contrast */
+h1, h2, h3, h4 {
+  font-family: var(--font-lexend);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Wordmark / brand text should always be Lexend */
+.font-display { font-family: var(--font-lexend); }
+
+/* Custom fine scrollbar matching minimalism */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-kindle-border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-kindle-text-muted);
+}
+
+.kindle-card {
+  background-color: var(--color-kindle-card);
+  border-color: var(--color-kindle-border);
+  color: var(--color-kindle-text);
+  border-radius: 1rem;
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
