@@ -1,6 +1,8 @@
 name = "kora"
 main = "src/worker.ts"
 compatibility_date = "2024-04-03"
+compatibility_flags = [ "nodejs_compat" ]
+workers_dev = true
 
 [assets]
 directory = "./dist"
