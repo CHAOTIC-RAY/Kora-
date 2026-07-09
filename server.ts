@@ -145,10 +145,6 @@ async function fetchFromRaveBookSearch(query: string, mode: string = "ebooks", s
         score += 350;
       }
 
-      // Prioritize direct links, especially those with keys
-      if (downloadUrl.includes("key=")) score += 100;
-      else if (r.directUrl) score += 50;
-
       // Extract potential ISBN for better cover matching
       const isbnMatch = (r.title || "").match(/(\d{10,13})/);
       const isbn = isbnMatch ? isbnMatch[1] : null;
@@ -205,7 +201,7 @@ async function fetchFromRaveBookSearch(query: string, mode: string = "ebooks", s
         topic: r.topic || r.category || "",
         coverUrl,
         coverSource,
-        source: r.source || "Rave",
+        source: r.source || (isLibgen ? "Library Genesis" : "Rave"),
         downloadUrl: downloadUrl,
         iaId: r.source === "Internet Archive" ? (downloadUrl?.split("/details/")[1]?.split("/")[0] || "") : "",
         score,
@@ -343,6 +339,19 @@ let nytBooksCache: { title: string; author: string; coverUrl: string; isbn: stri
 let nytCacheTime = 0;
 const NYT_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
 
+let lastNytRequestTime = 0;
+async function fetchNytWithDelay(url: string): Promise<Response> {
+  const now = Date.now();
+  const diff = now - lastNytRequestTime;
+  if (diff < 12000) {
+    const delay = 12000 - diff;
+    console.log(`[NYT Delay] Sleep delay of ${delay}ms before sequential NYT API call to prevent rate limiting`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  lastNytRequestTime = Date.now();
+  return await fetch(url);
+}
+
 async function getNytBooks(): Promise<{ title: string; author: string; coverUrl: string; isbn: string }[]> {
   const now = Date.now();
   if (nytBooksCache.length > 0 && now - nytCacheTime < NYT_CACHE_TTL) {
@@ -355,7 +364,7 @@ async function getNytBooks(): Promise<{ title: string; author: string; coverUrl:
   }
 
   try {
-    const response = await fetch(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
+    const response = await fetchNytWithDelay(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
     if (!response.ok) return [];
 
     const data = await response.json();
@@ -406,6 +415,115 @@ async function findNytCover(title: string, author: string): Promise<string | nul
   return null;
 }
 
+// NYT Best Sellers Recommendations (Curated & Rule-Based Matching)
+app.post("/api/nytimes/recommendations", express.json(), async (req, res) => {
+  try {
+    const { library = [], recentSearches = [] } = req.body;
+    const apiKey = process.env.NYT_BOOKS_API_KEY;
+
+    // First fetch NYT Best Sellers to have context for recommendations
+    let allNytBooks: any[] = [];
+    if (apiKey && apiKey.trim() !== "") {
+      try {
+        const response = await fetchNytWithDelay(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === "OK") {
+            const lists = data.results?.lists || [];
+            allNytBooks = lists.flatMap((list: any) =>
+              (list.books || []).map((b: any) => ({
+                title: b.title,
+                author: b.author,
+                coverUrl: b.book_image,
+                description: b.description,
+                primary_isbn13: b.primary_isbn13,
+                list_name: list.display_name,
+                list_id: list.list_name_encoded
+              }))
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch NYT Best Sellers for recommendations:", err);
+      }
+    }
+
+    const recommendations: any[] = [];
+    const usedNyt = new Set<string>();
+
+    // Build search keywords from library and recent searches
+    const searchTerms = [
+      ...recentSearches.map(s => s.toLowerCase()),
+      ...library.map((b: any) => (b.title || "").toLowerCase()),
+      ...library.map((b: any) => (b.author || "").toLowerCase())
+    ];
+
+    // Try to find matching NYT Best Sellers
+    for (const b of allNytBooks) {
+      if (recommendations.length >= 5) break;
+      const titleLower = b.title.toLowerCase();
+      const authorLower = b.author.toLowerCase();
+
+      const isMatch = searchTerms.some(term => 
+        term.length > 2 && (titleLower.includes(term) || authorLower.includes(term) || term.includes(titleLower) || term.includes(authorLower))
+      );
+
+      if (isMatch) {
+        recommendations.push({
+          title: b.title,
+          author: b.author,
+          reason: `Highly matching your interest in ${b.author || "this genre"}. This current NYT Best Seller in ${b.list_name} aligns with your library and recent searches!`,
+          matchingNytBook: true,
+          isbn: b.primary_isbn13,
+          coverUrl: b.coverUrl
+        });
+        usedNyt.add(b.title.toUpperCase());
+      }
+    }
+
+    // Fill in remaining with top NYT books if we don't have enough
+    if (allNytBooks.length > 0) {
+      for (const b of allNytBooks) {
+        if (recommendations.length >= 5) break;
+        if (usedNyt.has(b.title.toUpperCase())) continue;
+
+        recommendations.push({
+          title: b.title,
+          author: b.author,
+          reason: `A trending literary masterpiece! Recommended from the latest NYT Bestseller List for ${b.list_name}.`,
+          matchingNytBook: true,
+          isbn: b.primary_isbn13,
+          coverUrl: b.coverUrl
+        });
+        usedNyt.add(b.title.toUpperCase());
+      }
+    }
+
+    // If still empty (e.g. no NYT key configured), provide curated best sellers
+    if (recommendations.length === 0) {
+      const defaultCurated = [
+        { title: "Project Hail Mary", author: "Andy Weir", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
+        { title: "Atomic Habits", author: "James Clear", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
+        { title: "Educated", author: "Tara Westover", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
+        { title: "Dune", author: "Frank Herbert", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
+        { title: "The Midnight Library", author: "Matt Haig", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
+      ];
+
+      recommendations.push(...defaultCurated.map(b => ({
+        ...b,
+        matchingNytBook: false,
+        isbn: null,
+        coverUrl: null
+      })));
+    }
+
+    res.json({ recommendations });
+  } catch (err: any) {
+    console.error("Recommendations API failed:", err);
+    res.status(500).json({ error: "Failed to generate recommendations", details: err.message });
+  }
+});
+
 // NYT Best Sellers API
 app.get("/api/nytimes/overview", async (req, res) => {
   try {
@@ -418,7 +536,7 @@ app.get("/api/nytimes/overview", async (req, res) => {
     }
 
     console.log("Fetching NYT Books overview...");
-    const response = await fetch(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
+    const response = await fetchNytWithDelay(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1134,20 +1252,39 @@ app.get("/api/annas-archive/search", async (req, res) => {
     let { results: raveResults, meta } = await fetchFromRaveBookSearch(q as string, "ebooks", searchSource, searchPage);
     
     // Smart Retry / Pre-fetch wait logic for first-time searches:
-    // If we're on page 1, and we have fewer than 25 results, or we don't have Libgen results,
-    // let's wait 2000ms to allow the cloudflare background worker tasks to populate the DB, then retry.
+    // We poll the Rave API up to 4 times (with 1.5s delay) to wait for the worker's background scraper to finish.
+    // We break early if we get at least 25 results AND we have LibGen present, OR if the result count stops growing.
     if (searchPage === 1) {
-      const hasLibgen = raveResults.some(r => r.source === "Library Genesis" || (r.source && r.source.toLowerCase().includes("libgen")) || (r.downloadUrl && r.downloadUrl.toLowerCase().includes("libgen")));
-      if (raveResults.length < 25 || !hasLibgen) {
-        console.log(`[Search Delay Bypass] Query "${q}" has only ${raveResults.length} results (LibGen present: ${hasLibgen}). Waiting 2000ms for background scraper to populate...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+      let attempts = 0;
+      const maxAttempts = 4;
+      
+      while (attempts < maxAttempts) {
+        const hasLibgen = raveResults.some(r => 
+          r.source === "Library Genesis" || 
+          (r.source && r.source.toLowerCase().includes("libgen")) || 
+          (r.downloadUrl && r.downloadUrl.toLowerCase().includes("libgen")) ||
+          (r.downloadUrl && r.downloadUrl.toLowerCase().includes("library.lol"))
+        );
+
+        if (raveResults.length >= 25 && hasLibgen) {
+          break;
+        }
+
+        attempts++;
+        console.log(`[Search Delay Bypass] Query "${q}" has ${raveResults.length} results (LibGen present: ${hasLibgen}). Attempt ${attempts}/${maxAttempts}: Waiting 1500ms for background scraper to populate...`);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
         const retryResult = await fetchFromRaveBookSearch(q as string, "ebooks", searchSource, searchPage);
         if (retryResult.results.length > raveResults.length) {
-          console.log(`[Search Delay Bypass] Retry succeeded! Got ${retryResult.results.length} results (previously ${raveResults.length}).`);
+          console.log(`[Search Delay Bypass] Attempt ${attempts} succeeded! Got ${retryResult.results.length} results (previously ${raveResults.length}).`);
           raveResults = retryResult.results;
           meta = retryResult.meta;
         } else {
-          console.log(`[Search Delay Bypass] Retry finished, result count remained at ${raveResults.length}.`);
+          console.log(`[Search Delay Bypass] Attempt ${attempts} finished, result count stayed at ${raveResults.length}.`);
+          // If we already have Libgen and the count didn't increase, we can stop early
+          if (hasLibgen) {
+            break;
+          }
         }
       }
     }

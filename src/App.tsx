@@ -372,6 +372,7 @@ export default function App() {
         {activeTab === "discover" && (
           <DiscoverView
             userId={user?.uid || ""}
+            books={books}
             connectors={connectors}
             zlibConfig={zlibConfig}
             selectedBook={selectedBookForDownload}
@@ -407,10 +408,6 @@ export default function App() {
             onChangeTheme={changeTheme}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}
-            connectors={connectors}
-            onConnectorsChange={setConnectors}
-            zlibConfig={zlibConfig}
-            onZlibConfigChange={setZlibConfig}
           />
         )}
       </main>

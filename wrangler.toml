@@ -10,3 +10,7 @@ directory = "./dist"
 [browser]
 binding = "BROWSER"
 
+[[services]]
+binding = "RAVE_BOOK_SEARCH"
+service = "ravebooksearch"
+

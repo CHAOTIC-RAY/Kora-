@@ -9,6 +9,7 @@ export default function Quote() {
         const res = await fetch("https://api.api-ninjas.com/v1/quotes?category=wisdom", {
           headers: { "X-Api-Key": "gM7NAKrnJDAGWNzi56pElQtCm5MLOBWscpgbl3qk" }
         });
+        if (!res.ok) throw new Error("API-Ninjas request failed");
         const data = await res.json();
         if (data && data.length > 0) {
           setQuote(data[0]);

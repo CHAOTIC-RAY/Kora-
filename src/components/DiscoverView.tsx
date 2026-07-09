@@ -9,6 +9,7 @@ import KoraLoading from "./KoraLoading";
 
 interface DiscoverViewProps {
   userId: string;
+  books: BookMetadata[];
   onBookAdded: (book: BookMetadata) => void;
   cachedBookIds: Set<string>;
   selectedBook: any | null;
@@ -35,6 +36,7 @@ const ALL_CATEGORIES = [
 
 export default function DiscoverView({ 
   userId, 
+  books = [],
   onBookAdded, 
   cachedBookIds, 
   selectedBook,
@@ -76,6 +78,16 @@ export default function DiscoverView({
   const [mirrors, setMirrors] = useState<any[]>([]);
   const [mirrorError, setMirrorError] = useState<string | null>(null);
 
+  // Recent Searches state
+  const [recentSearches, setRecentSearches] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("kora_recent_searches");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   useEffect(() => {
     loadFeaturedContent();
   }, []);
@@ -99,9 +111,24 @@ export default function DiscoverView({
     setLoadingFeatured(true);
     setError(null);
     try {
-      const res = await fetch("/api/nytimes/overview");
-      if (!res.ok) throw new Error("Failed to fetch NYT overview");
-      const json = await res.json();
+      const todayString = new Date().toDateString();
+      const cachedDate = localStorage.getItem("kora_nyt_featured_date");
+      const cachedFeed = localStorage.getItem("kora_nyt_featured_feed");
+
+      let json: any;
+      if (cachedDate === todayString && cachedFeed) {
+        console.log("[NYT Cache] Loaded daily discover feed from localStorage");
+        json = JSON.parse(cachedFeed);
+      } else {
+        console.log("[NYT Cache] Daily cache expired or missing. Fetching fresh NYT overview...");
+        const res = await fetch("/api/nytimes/overview");
+        if (!res.ok) throw new Error("Failed to fetch NYT overview");
+        json = await res.json();
+        
+        // Save to cache for today
+        localStorage.setItem("kora_nyt_featured_date", todayString);
+        localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(json));
+      }
       
       const data: Record<string, any[]> = {};
       const lists = json.results?.lists || [];
@@ -167,6 +194,14 @@ export default function DiscoverView({
 
     const term = typeof e === "string" ? e : query;
     if (!term.trim()) return;
+
+    // Save to search history
+    setRecentSearches(prev => {
+      const filtered = prev.filter(q => q.toLowerCase() !== term.toLowerCase().trim());
+      const updated = [term.trim(), ...filtered].slice(0, 10);
+      localStorage.setItem("kora_recent_searches", JSON.stringify(updated));
+      return updated;
+    });
 
     // Reset page if it's a new search term
     const isNewTerm = typeof e === "string" && e !== query;
@@ -1069,7 +1104,7 @@ export default function DiscoverView({
 
                 <div className="space-y-2">
                   {mirrors.map((m, i) => (
-                    <button
+                    <div
                       key={i}
                       onClick={() => handleMirrorClick(m)}
                       className={`w-full p-4 rounded-2xl border transition text-left group flex items-center justify-between cursor-pointer ${
@@ -1077,9 +1112,9 @@ export default function DiscoverView({
                           ? "border-kindle-border hover:border-kindle-accent bg-kindle-bg hover:bg-kindle-card" 
                           : "border-kindle-border/60 hover:border-amber-500/60 bg-kindle-bg/40 hover:bg-kindle-card/60"
                       }`}
-                      title={m.isDirect ? "Download via Server" : "Open Mirror in New Tab"}
+                      title={m.isDirect ? "Download and Import via App Server" : "Open Mirror"}
                     >
-                      <div className="overflow-hidden flex-1">
+                      <div className="overflow-hidden flex-1 min-w-0 pr-2">
                         <div className="flex items-center gap-2">
                           <p className="text-xs font-bold font-sans truncate pr-2">{m.label}</p>
                           {m.isDirect ? (
@@ -1090,12 +1125,41 @@ export default function DiscoverView({
                         </div>
                         <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5">{m.url}</p>
                       </div>
-                      {m.isDirect ? (
-                        <Download className="w-4 h-4 text-kindle-text-muted group-hover:text-kindle-accent transition shrink-0 ml-2" />
-                      ) : (
-                        <ExternalLink className="w-4 h-4 text-kindle-text-muted group-hover:text-amber-500 transition shrink-0 ml-2" />
-                      )}
-                    </button>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Primary action: Download or open in app browser */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMirrorClick(m);
+                          }}
+                          className={`p-2 rounded-xl border transition cursor-pointer ${
+                            m.isDirect
+                              ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"
+                              : "bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white border-amber-500/20"
+                          }`}
+                          title={m.isDirect ? "Download via Server Proxy" : "Open in App Browser"}
+                        >
+                          {m.isDirect ? (
+                            <Download className="w-3.5 h-3.5" />
+                          ) : (
+                            <BookOpen className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {/* Open in New Tab action */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(m.url, '_blank');
+                          }}
+                          className="p-2 rounded-xl border border-kindle-border bg-kindle-bg hover:bg-kindle-accent/15 text-kindle-text-muted hover:text-kindle-accent transition cursor-pointer"
+                          title="Open Link in New Tab (Bypass Server Proxy)"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>

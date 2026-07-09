@@ -5,7 +5,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { 
   BookOpen, UploadCloud, Tag, Star, Trash2, ListFilter,
   CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, HelpCircle, HardDrive, Search, Cloud,
-  Edit2, ImageIcon
+  Edit2, ImageIcon, AlertTriangle, RefreshCw
 } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
@@ -55,6 +55,71 @@ export default function LibraryManager({
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Personalized Recommendations (Daily Refresh Cache)
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState<boolean>(true);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
+
+  async function loadRecommendations(force = false) {
+    setLoadingRecommendations(true);
+    setRecommendationError(null);
+    try {
+      const todayString = new Date().toDateString();
+      const cachedDate = localStorage.getItem("kora_nyt_recommendations_date");
+      const cachedRecs = localStorage.getItem("kora_nyt_recommendations");
+
+      if (!force && cachedDate === todayString && cachedRecs) {
+        console.log("[NYT Cache] Loaded daily recommendations from localStorage");
+        setRecommendations(JSON.parse(cachedRecs));
+        setLoadingRecommendations(false);
+        return;
+      }
+
+      console.log("[NYT Cache] Daily recommendations cache expired, missing, or forced refresh. Querying...");
+      let recentSearches: string[] = [];
+      try {
+        const saved = localStorage.getItem("kora_recent_searches");
+        recentSearches = saved ? JSON.parse(saved) : [];
+      } catch {
+        // ignore
+      }
+
+      const simplifiedLibrary = (books || []).map(b => ({
+        title: b.title,
+        author: b.author
+      }));
+
+      const res = await fetch("/api/nytimes/recommendations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          library: simplifiedLibrary,
+          recentSearches: recentSearches
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to load suggestions");
+      const data = await res.json();
+      const recs = data.recommendations || [];
+      setRecommendations(recs);
+
+      // Save to cache
+      localStorage.setItem("kora_nyt_recommendations_date", todayString);
+      localStorage.setItem("kora_nyt_recommendations", JSON.stringify(recs));
+    } catch (err: any) {
+      console.error("Failed to load recommendations:", err);
+      setRecommendationError(err.message || "Could not load recommendations");
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  }
+
+  useEffect(() => {
+    loadRecommendations();
+  }, [books.length]);
 
   useEffect(() => {
     loadTags();
@@ -374,40 +439,102 @@ export default function LibraryManager({
         </section>
       )}
 
-      {/* 2. Kindle Home: Recommendations (Mock) */}
+      {/* 2. Kindle Home: Recommendations (Dynamic recommendations with daily refresh cache) */}
       <section className="space-y-4">
         <div className="flex items-center justify-between px-1 border-t border-kindle-border pt-8">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Recommended For You</h2>
-          <button 
-            onClick={() => onSearchTrigger?.("")}
-            className="text-[10px] font-bold text-kindle-accent uppercase tracking-widest hover:underline cursor-pointer"
-          >
-            Discover More
-          </button>
+          <div className="flex items-center gap-2">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Recommended For You</h2>
+            <span className="px-1.5 py-0.5 bg-kindle-accent/10 text-kindle-accent rounded text-[8px] font-bold uppercase tracking-widest border border-kindle-accent/20">
+              Daily Refresh
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => loadRecommendations(true)}
+              disabled={loadingRecommendations}
+              className="p-1 rounded-full text-kindle-text-muted hover:text-kindle-text transition disabled:opacity-50 cursor-pointer"
+              title="Refresh Recommendations"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingRecommendations ? "animate-spin" : ""}`} />
+            </button>
+            <button 
+              onClick={() => onSearchTrigger?.("")}
+              className="text-[10px] font-bold text-kindle-accent uppercase tracking-widest hover:underline cursor-pointer"
+            >
+              Discover More
+            </button>
+          </div>
         </div>
         
-        <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide snap-x flex-nowrap items-start">
-          {[
-            { id: 'rec1', title: "Project Hail Mary", author: "Andy Weir", cover: "https://images-na.ssl-images-amazon.com/images/S/compressed.photo.goodreads.com/books/1597695864i/54493401.jpg" },
-            { id: 'rec2', title: "The 7 Habits", author: "Stephen Covey", cover: "https://images-na.ssl-images-amazon.com/images/S/compressed.photo.goodreads.com/books/1421842784i/36072.jpg" },
-            { id: 'rec3', title: "Deep Work", author: "Cal Newport", cover: "https://images-na.ssl-images-amazon.com/images/S/compressed.photo.goodreads.com/books/1447957962i/25744928.jpg" },
-            { id: 'rec4', title: "Atomic Habits", author: "James Clear", cover: "https://images-na.ssl-images-amazon.com/images/S/compressed.photo.goodreads.com/books/1655988385i/40121378.jpg" }
-          ].map((rec) => (
-            <div 
-              key={rec.id} 
-              onClick={() => onSearchTrigger?.(`${rec.title} ${rec.author}`)}
-              className="w-[140px] sm:w-[160px] flex-shrink-0 snap-start group cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all"
+        {loadingRecommendations ? (
+          <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide snap-x flex-nowrap items-start">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="w-[140px] sm:w-[160px] flex-shrink-0 snap-start space-y-2 animate-pulse">
+                <div className="aspect-[3/4] bg-kindle-card rounded-sm border border-kindle-border" />
+                <div className="h-3 bg-kindle-card rounded w-3/4" />
+                <div className="h-2.5 bg-kindle-card rounded w-1/2" />
+              </div>
+            ))}
+          </div>
+        ) : recommendationError ? (
+          <div className="py-6 flex flex-col items-center justify-center text-center gap-2 bg-kindle-card/20 border border-dashed border-kindle-border rounded-xl p-4">
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+            <p className="text-[10px] font-bold text-kindle-text-muted">Could not load custom recommendations</p>
+            <button
+              onClick={() => loadRecommendations(true)}
+              className="px-3 py-1 bg-kindle-card border border-kindle-border rounded text-[9px] font-bold uppercase tracking-widest hover:bg-kindle-bg transition cursor-pointer"
             >
-              <div className="aspect-[3/4] bg-kindle-bg rounded-sm overflow-hidden shadow-sm border border-kindle-border group-hover:border-kindle-accent transition">
-                <img src={rec.cover} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale-filter" : ""}`} referrerPolicy="no-referrer" />
+              Retry
+            </button>
+          </div>
+        ) : recommendations.length === 0 ? (
+          <div className="py-8 flex flex-col items-center justify-center text-center gap-2 bg-kindle-card/20 border border-dashed border-kindle-border rounded-xl p-4">
+            <BookMarked className="w-6 h-6 text-kindle-text-muted/40" />
+            <p className="text-[10px] font-bold text-kindle-text">Your bookshelf is empty</p>
+            <p className="text-[9px] text-kindle-text-muted max-w-xs">Add books to your Library or search to activate AI-powered daily recommendations.</p>
+          </div>
+        ) : (
+          <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide snap-x flex-nowrap items-start">
+            {recommendations.map((rec, idx) => (
+              <div 
+                key={idx} 
+                onClick={() => onSearchTrigger?.(`${rec.title} ${rec.author}`)}
+                className="w-[140px] sm:w-[160px] flex-shrink-0 snap-start group cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all flex flex-col justify-between"
+              >
+                <div>
+                  <div className="aspect-[3/4] bg-kindle-bg rounded-sm overflow-hidden shadow-sm border border-kindle-border group-hover:border-kindle-accent transition relative">
+                    {rec.coverUrl ? (
+                      <img src={rec.coverUrl} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale-filter" : ""}`} referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-kindle-card relative">
+                        <span className="text-[8px] font-bold uppercase tracking-tighter text-kindle-text-muted mb-2 truncate max-w-full">
+                          {rec.author || "Author"}
+                        </span>
+                        <span className="text-[10px] font-bold font-serif leading-snug line-clamp-3 text-kindle-text">
+                          {rec.title}
+                        </span>
+                      </div>
+                    )}
+                    {rec.matchingNytBook && (
+                      <div className="absolute top-1.5 right-1.5 bg-amber-500 text-white px-1.5 py-0.5 rounded text-[6px] font-bold uppercase tracking-widest shadow-md z-10">
+                        BEST SELLER
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 px-1">
+                    <h4 className="text-[10px] font-bold line-clamp-1 group-hover:text-kindle-accent transition">{rec.title}</h4>
+                    <p className="text-[9px] text-kindle-text-muted mt-0.5">{rec.author}</p>
+                  </div>
+                </div>
+                {rec.reason && (
+                  <p className="mt-2 text-[8px] text-kindle-text-muted font-sans leading-relaxed line-clamp-2 italic opacity-80 group-hover:opacity-100 transition px-1 border-t border-kindle-border/40 pt-1.5">
+                    "{rec.reason}"
+                  </p>
+                )}
               </div>
-              <div className="mt-2 px-1">
-                <h4 className="text-[10px] font-bold line-clamp-1">{rec.title}</h4>
-                <p className="text-[9px] text-kindle-text-muted mt-0.5">{rec.author}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 3. Full Library Section with Search/Filter */}
