@@ -7,3 +7,10 @@ coverage/
 .env*
 !.env.example
 .env
+do.json
+do2.json
+final.html
+land.html
+pf2.json
+rave.json
+rave_md5.json
