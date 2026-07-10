@@ -283,10 +283,17 @@ export default function App() {
       {/* 1. Global Navigation Header - Kora Style */}
       <header className="border-b border-kindle-border bg-kindle-bg sticky top-0 z-40 px-4 md:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <KoraIcon className="w-7 h-7 text-kindle-text" />
-          <div className="hidden sm:block pr-4 border-r border-kindle-border">
-            <KoraWordmark className="h-4 text-kindle-text" />
-          </div>
+          <button 
+            id="kora-logo-home"
+            onClick={() => setActiveTab("library")}
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none cursor-pointer"
+            aria-label="Kora Library Home"
+          >
+            <KoraIcon className="w-7 h-7 text-kindle-text" />
+            <div className="hidden sm:block pr-4 border-r border-kindle-border">
+              <KoraWordmark className="h-4 text-kindle-text" />
+            </div>
+          </button>
           <Quote />
         </div>
 
