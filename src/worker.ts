@@ -960,23 +960,44 @@ export default {
     if (path === "/api/download" || path === "/api/download-options" || path === "/api/annas-archive/download") {
       const md5 = url.searchParams.get("md5");
       const iaId = url.searchParams.get("iaId") || "";
-      if (!md5) {
-        return new Response(JSON.stringify({ error: "MD5 is required" }), {
+      const raveDirect = url.searchParams.get("url"); // Rave's signed direct URL from search results
+
+      if (!md5 && !raveDirect) {
+        return new Response(JSON.stringify({ error: "MD5 or direct URL is required" }), {
           status: 400,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }
 
       // Check if this is a real 32-char MD5 or a SHA-256 pseudo-ID (64-char, from IA results)
-      const isRealMd5 = /^[a-f0-9]{32}$/i.test(md5);
+      const isRealMd5 = !!md5 && /^[a-f0-9]{32}$/i.test(md5);
 
       let downloadLinks: any[] = [];
 
+      // PRIMARY: use Rave Book Search's real direct-download link (same method as ravebooksearch.com).
+      // LibGen -> signed get.php?md5=<hash>&key=<token> that 307-redirects to the booksdl.lc CDN.
+      // Internet Archive -> /details/ page (resolved to the actual file by /api/proxy-file).
+      if (raveDirect) {
+        try {
+          const parsed = new URL(raveDirect);
+          const isDirectLink = /get\.php\?md5=.+&key=/.test(parsed.pathname + parsed.search) ||
+                              parsed.hostname.includes("archive.org");
+          if (isDirectLink) {
+            downloadLinks.push({
+              label: "Rave Direct (LibGen CDN)",
+              url: parsed.toString(),
+              isDirect: true,
+              sourceId: "rave"
+            });
+          }
+        } catch (_) { /* ignore malformed url */ }
+      }
+
       if (isRealMd5) {
-        // Real MD5 — libgen/library.lol links work
-        downloadLinks = [
+        // Real MD5 — libgen/library.lol links work (fallbacks after the Rave direct link)
+        downloadLinks.push(
           {
-            label: "Direct Mirror (library.lol) - Recommended",
+            label: "Direct Mirror (library.lol)",
             url: `https://library.lol/main/${md5}`,
             isDirect: true
           },
@@ -990,8 +1011,8 @@ export default {
             url: `https://annas-archive.gl/md5/${md5}`,
             isDirect: false
           }
-        ];
-      } else if (iaId) {
+        );
+      } else if (iaId && downloadLinks.length === 0) {
         // Internet Archive item with known iaId — proxy through /api/proxy-file
         downloadLinks = [
           {

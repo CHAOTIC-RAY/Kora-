@@ -345,7 +345,10 @@ export default function DiscoverView({
         }
       } else {
         const iaParam = book.iaId ? `&iaId=${encodeURIComponent(book.iaId)}` : "";
-        const res = await fetch(`/api/annas-archive/download?md5=${book.md5}${iaParam}`);
+        // Pass Rave's real signed direct URL through so the worker uses the same
+        // direct-download method as ravebooksearch.com (get.php?md5&key -> CDN).
+        const directParam = book.downloadUrl ? `&url=${encodeURIComponent(book.downloadUrl)}` : "";
+        const res = await fetch(`/api/annas-archive/download?md5=${book.md5}${iaParam}${directParam}`);
         const data = await res.json(); console.log("DATA:", data);
         if (data.error) throw new Error(data.error);
 
