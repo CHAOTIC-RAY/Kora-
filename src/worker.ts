@@ -125,7 +125,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
       }
       if (!coverUrl) {
-        coverUrl = `https://annas-archive.gl/covers/${md5}.jpg`;
+        coverUrl = `/api/cover-redirect?md5=${md5}`;
       }
 
       mapped.push({
@@ -930,18 +930,20 @@ export default {
 
         if (recommendations.length === 0) {
           const defaultCurated = [
-            { title: "Project Hail Mary", author: "Andy Weir", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
-            { title: "Atomic Habits", author: "James Clear", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
-            { title: "Educated", author: "Tara Westover", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
-            { title: "Dune", author: "Frank Herbert", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
-            { title: "The Midnight Library", author: "Matt Haig", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
+            { title: "Project Hail Mary", author: "Andy Weir", isbn: "9780593135204", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
+            { title: "Atomic Habits", author: "James Clear", isbn: "9780735211292", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
+            { title: "Educated", author: "Tara Westover", isbn: "9780399590504", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
+            { title: "Dune", author: "Frank Herbert", isbn: "9780441172719", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
+            { title: "The Midnight Library", author: "Matt Haig", isbn: "9780525559474", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
           ];
 
           recommendations.push(...defaultCurated.map(b => ({
-            ...b,
+            title: b.title,
+            author: b.author,
+            reason: b.reason,
             matchingNytBook: false,
-            isbn: null,
-            coverUrl: null
+            isbn: b.isbn,
+            coverUrl: `/api/cover-redirect?isbn=${b.isbn}`
           })));
         }
 
@@ -1008,7 +1010,7 @@ export default {
           },
           {
             label: "Anna's Archive",
-            url: `https://annas-archive.gl/md5/${md5}`,
+            url: `https://annas-archive.org/md5/${md5}`,
             isDirect: false
           }
         );
@@ -1031,7 +1033,7 @@ export default {
         downloadLinks = [
           {
             label: "Search Anna's Archive",
-            url: `https://annas-archive.gl/search`,
+            url: `https://annas-archive.org/search`,
             isDirect: false
           }
         ];
@@ -1100,18 +1102,56 @@ export default {
       }
     }
 
-    // 6. Cover Redirect API
-    if (path === "/api/cover-redirect") {
-      const title = url.searchParams.get("title");
+    // 6. Cover Redirect/Proxy API (Proxies requests to bypass hotlinking and SSL restrictions)
+    if (path === "/api/cover-redirect" || path === "/api/cover-proxy") {
       const isbn = url.searchParams.get("isbn");
       const md5 = url.searchParams.get("md5");
 
       if (isbn && /^\d{10,13}$/.test(isbn)) {
-        return Response.redirect(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`, 302);
+        try {
+          const openLibraryUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
+          const olRes = await fetch(openLibraryUrl, {
+            headers: { "User-Agent": "Mozilla/5.0" }
+          });
+          if (olRes.ok) {
+            const body = await olRes.arrayBuffer();
+            return new Response(body, {
+              headers: {
+                "Content-Type": olRes.headers.get("Content-Type") || "image/jpeg",
+                "Cache-Control": "public, max-age=604800, immutable",
+                "Access-Control-Allow-Origin": "*"
+              }
+            });
+          }
+        } catch (_) {}
       }
+
       if (md5) {
-        return Response.redirect(`https://annas-archive.gl/covers/${md5}.jpg`, 302);
+        const domains = ["annas-archive.org", "annas-archive.se", "annas-archive.li", "annas-archive.gl"];
+        for (const domain of domains) {
+          try {
+            const coverUrl = `https://${domain}/covers/${md5}.jpg`;
+            const res = await fetch(coverUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "Referer": `https://${domain}/`
+              }
+            });
+            if (res.ok) {
+              const body = await res.arrayBuffer();
+              return new Response(body, {
+                headers: {
+                  "Content-Type": res.headers.get("Content-Type") || "image/jpeg",
+                  "Cache-Control": "public, max-age=604800, immutable",
+                  "Access-Control-Allow-Origin": "*"
+                }
+              });
+            }
+          } catch (_) {}
+        }
       }
+
+      // If all fails, return a 404
       return new Response("No cover found", { status: 404 });
     }
 
@@ -1521,7 +1561,7 @@ export default {
         if (!response) {
           const finalHeaders: Record<string, string> = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Referer": "https://annas-archive.gl/",
+            "Referer": "https://annas-archive.org/",
             "Accept": "application/octet-stream,application/epub+zip,application/pdf,*/*",
           };
           if (userId && userKey) {
@@ -1549,18 +1589,67 @@ export default {
         }
 
         if (!response.ok) {
-          throw new Error(`Proxy target responded with status ${response.status}`);
+          if (response.status === 403) {
+            throw new Error(`Access Forbidden (403) by mirror host. This mirror may be temporarily blocking proxy requests or requires a direct browser visit.`);
+          }
+          throw new Error(`Remote host returned status ${response.status}: ${response.statusText}`);
         }
 
-        // To prevent compression or chunking mismatches, let Cloudflare handle encoding/transfer headers naturally.
-        // We stream the body directly using the standard Response constructor for optimal memory and speed.
-        const responseClone = new Response(response.body, {
+        const contentType = response.headers.get("content-type") || "application/octet-stream";
+        if (contentType.toLowerCase().includes("text/html")) {
+          const text = await response.clone().text();
+          if (text.includes("Cloudflare") || text.includes("captcha")) {
+            throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like Library.lol or IPFS).");
+          }
+          throw new Error("This mirror URL returned an HTML webpage instead of a binary book file. This usually happens when the mirror requires manual verification (like resolving a CAPTCHA), wait countdowns, or the link has expired.");
+        }
+
+        const resHeaders = new Headers(response.headers);
+        resHeaders.set("Access-Control-Allow-Origin", "*");
+        resHeaders.delete("content-encoding");
+        resHeaders.delete("transfer-encoding");
+        resHeaders.delete("content-security-policy");
+
+        const buffer = await response.arrayBuffer();
+        const uint8 = new Uint8Array(buffer);
+
+        // Detect if the buffer is actually HTML text
+        let isHtml = false;
+        let textSample = "";
+        try {
+          textSample = new TextDecoder("utf-8").decode(uint8.subarray(0, 500)).trim().toLowerCase();
+          isHtml = textSample.startsWith("<!doctype html") || 
+                   textSample.startsWith("<html") || 
+                   textSample.includes("<head") || 
+                   textSample.includes("<body") ||
+                   textSample.includes("<div") ||
+                   textSample.includes("cloudflare") ||
+                   textSample.includes("captcha");
+        } catch (decodeErr) {}
+
+        if (isHtml) {
+          if (textSample.includes("cloudflare") || textSample.includes("captcha") || textSample.includes("challenge-running") || textSample.includes("ray id")) {
+            throw new Error("This mirror is blocked by a CAPTCHA, Cloudflare DDOS protection, or require human interaction. Please try a different mirror or solve any verification.");
+          }
+          throw new Error("This mirror URL returned an HTML landing page instead of the actual ebook file. Try a direct download mirror (like Library.lol or IPFS).");
+        }
+
+        resHeaders.set("Content-Length", String(buffer.byteLength));
+
+        const contentDisposition = response.headers.get("content-disposition");
+        if (!contentDisposition) {
+          try {
+            const filename = targetUrl.split("/").pop()?.split("?")[0] || "download.epub";
+            resHeaders.set("Content-Disposition", `attachment; filename="${filename}"`);
+          } catch (_) {
+            resHeaders.set("Content-Disposition", `attachment; filename="download.epub"`);
+          }
+        }
+
+        return new Response(buffer, {
           status: response.status,
-          statusText: response.statusText,
-          headers: response.headers
+          headers: resHeaders
         });
-        responseClone.headers.set("Access-Control-Allow-Origin", "*");
-        return responseClone;
       } catch (err: any) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
