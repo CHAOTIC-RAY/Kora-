@@ -20,6 +20,31 @@ const bookCache = new Map<string, any>();
 
 
 
+function safeMD5(str: string): string {
+  try {
+    if (crypto && typeof crypto.createHash === "function") {
+      return crypto.createHash("md5").update(str).digest("hex");
+    }
+  } catch (e) {
+    // Fail-safe to pure-JS fallback
+  }
+  // Pure JS DJB2/FNV hash combination to yield a stable 32-char hex string
+  let hash1 = 5381;
+  let hash2 = 12345;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash1 = ((hash1 << 5) + hash1) + char;
+    hash1 = hash1 & hash1;
+    hash2 = ((hash2 << 7) ^ hash2) + char;
+    hash2 = hash2 & hash2;
+  }
+  const h1 = Math.abs(hash1).toString(16).padStart(8, "0");
+  const h2 = Math.abs(hash2).toString(16).padStart(8, "0");
+  const h3 = Math.abs(hash1 * 31).toString(16).padStart(8, "0");
+  const h4 = Math.abs(hash2 * 17).toString(16).padStart(8, "0");
+  return (h1 + h2 + h3 + h4).slice(0, 32);
+}
+
 // List of resilient Library Genesis mirrors
 const LIBGEN_MIRRORS = [
   "https://libgen.be",
@@ -68,12 +93,13 @@ async function fetchFromRaveBookSearch(query: string, mode: string = "ebooks", s
     const nytBooks = await getNytBooks();
 
     const mapped = rawResults.map((r: any) => {
+      if (!r || typeof r !== "object") return null;
       // Clean up title: remove ISBNs and trailing numbers/identifiers
-      let title = (r.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim();
+      let title = String(r.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim();
       title = title.replace(/ b [fl] \d+$/i, "").trim(); // Remove Libgen specific "b f 123" suffix
 
       // Clean up author: remove trailing commas, semicolons
-      let author = (r.author || "Unknown Author")
+      let author = String(r.author || "Unknown Author")
         .replace(/[,;]$/, "")
         .trim();
 
@@ -90,11 +116,11 @@ async function fetchFromRaveBookSearch(query: string, mode: string = "ebooks", s
       }
       if (!extension) extension = "epub";
 
-      // Handle MD5 / ID - use crypto for stable unique hashes
+      // Handle MD5 / ID - use safeMD5 for stable unique hashes
       let md5 = r.md5 || "";
       if (!md5) {
         const uniqueString = r.directUrl || r.downloadUrl || (r.title + r.author + extension);
-        md5 = crypto.createHash("md5").update(uniqueString).digest("hex");
+        md5 = safeMD5(uniqueString);
       }
 
       // Format filesize
@@ -210,7 +236,8 @@ async function fetchFromRaveBookSearch(query: string, mode: string = "ebooks", s
     });
 
     // Final deduplication by ID and sort by score
-    const unique = Array.from(new Map(mapped.map(item => [item.id, item])).values());
+    const validMapped = mapped.filter((item): item is any => item !== null);
+    const unique = Array.from(new Map(validMapped.map(item => [item.id, item])).values());
     unique.sort((a: any, b: any) => b.score - a.score);
     
     console.log(`Rave Worker returned ${unique.length} unique results sorted by relevance`);
@@ -1249,21 +1276,32 @@ app.get("/api/annas-archive/search", async (req, res) => {
     console.log(`Executing Rave Book Search for query: "${q}", source: ${searchSource}, page: ${searchPage}`);
     
     // Run Rave Search directly with a smart retry if results are initially scarce
-    let { results: raveResults, meta } = await fetchFromRaveBookSearch(q as string, "ebooks", searchSource, searchPage);
+    let raveResults: any[] = [];
+    let meta: any = {};
+    
+    try {
+      const initial = await fetchFromRaveBookSearch(q as string, "ebooks", searchSource, searchPage);
+      raveResults = initial?.results || [];
+      meta = initial?.meta || {};
+    } catch (e) {
+      console.error("Initial fetchFromRaveBookSearch failed:", e);
+    }
     
     // Smart Retry / Pre-fetch wait logic for first-time searches:
     // We poll the Rave API up to 4 times (with 1.5s delay) to wait for the worker's background scraper to finish.
     // We break early if we get at least 25 results AND we have LibGen present, OR if the result count stops growing.
-    if (searchPage === 1) {
+    if (searchPage === 1 && Array.isArray(raveResults)) {
       let attempts = 0;
       const maxAttempts = 4;
       
       while (attempts < maxAttempts) {
         const hasLibgen = raveResults.some(r => 
-          r.source === "Library Genesis" || 
-          (r.source && r.source.toLowerCase().includes("libgen")) || 
-          (r.downloadUrl && r.downloadUrl.toLowerCase().includes("libgen")) ||
-          (r.downloadUrl && r.downloadUrl.toLowerCase().includes("library.lol"))
+          r && (
+            r.source === "Library Genesis" || 
+            (r.source && typeof r.source === "string" && r.source.toLowerCase().includes("libgen")) || 
+            (r.downloadUrl && typeof r.downloadUrl === "string" && r.downloadUrl.toLowerCase().includes("libgen")) ||
+            (r.downloadUrl && typeof r.downloadUrl === "string" && r.downloadUrl.toLowerCase().includes("library.lol"))
+          )
         );
 
         if (raveResults.length >= 25 && hasLibgen) {
@@ -1274,25 +1312,35 @@ app.get("/api/annas-archive/search", async (req, res) => {
         console.log(`[Search Delay Bypass] Query "${q}" has ${raveResults.length} results (LibGen present: ${hasLibgen}). Attempt ${attempts}/${maxAttempts}: Waiting 1500ms for background scraper to populate...`);
         await new Promise(resolve => setTimeout(resolve, 1500));
 
-        const retryResult = await fetchFromRaveBookSearch(q as string, "ebooks", searchSource, searchPage);
-        if (retryResult.results.length > raveResults.length) {
-          console.log(`[Search Delay Bypass] Attempt ${attempts} succeeded! Got ${retryResult.results.length} results (previously ${raveResults.length}).`);
-          raveResults = retryResult.results;
-          meta = retryResult.meta;
-        } else {
-          console.log(`[Search Delay Bypass] Attempt ${attempts} finished, result count stayed at ${raveResults.length}.`);
-          // If we already have Libgen and the count didn't increase, we can stop early
-          if (hasLibgen) {
-            break;
+        try {
+          const retryResult = await fetchFromRaveBookSearch(q as string, "ebooks", searchSource, searchPage);
+          const retryResultsList = retryResult?.results || [];
+          if (retryResultsList.length > raveResults.length) {
+            console.log(`[Search Delay Bypass] Attempt ${attempts} succeeded! Got ${retryResultsList.length} results (previously ${raveResults.length}).`);
+            raveResults = retryResultsList;
+            meta = retryResult?.meta || {};
+          } else {
+            console.log(`[Search Delay Bypass] Attempt ${attempts} finished, result count stayed at ${raveResults.length}.`);
+            // If we already have Libgen and the count didn't increase, we can stop early
+            if (hasLibgen) {
+              break;
+            }
           }
+        } catch (retryErr) {
+          console.error(`[Search Delay Bypass] Retry attempt ${attempts} failed:`, retryErr);
         }
       }
     }
     
-    // Populate global bookCache
-    raveResults.forEach(b => {
-      if (b.md5) bookCache.set(b.md5, b);
-    });
+    // Ensure raveResults is indeed an array before mapping/forEach
+    if (Array.isArray(raveResults)) {
+      // Populate global bookCache
+      raveResults.forEach(b => {
+        if (b && b.md5) bookCache.set(b.md5, b);
+      });
+    } else {
+      raveResults = [];
+    }
 
     const RESULTS_PER_PAGE = 25;
     // Use exact total from meta if available; otherwise infer from page count
