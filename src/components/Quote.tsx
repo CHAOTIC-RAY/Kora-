@@ -14,6 +14,15 @@ export default function Quote() {
     return FALLBACK_QUOTES[randomIndex];
   });
 
+  const handleQuoteClick = () => {
+    const currentIndex = FALLBACK_QUOTES.findIndex(q => q.quote === quote.quote);
+    let nextIndex = Math.floor(Math.random() * FALLBACK_QUOTES.length);
+    if (nextIndex === currentIndex && FALLBACK_QUOTES.length > 1) {
+      nextIndex = (nextIndex + 1) % FALLBACK_QUOTES.length;
+    }
+    setQuote(FALLBACK_QUOTES[nextIndex]);
+  };
+
   useEffect(() => {
     const fetchQuote = async () => {
       try {
@@ -33,15 +42,18 @@ export default function Quote() {
   }, []);
 
   return (
-    <div className="hidden sm:flex flex-1 items-center gap-2 min-w-0 max-w-xs md:max-w-sm lg:max-w-md xl:max-w-lg px-3 overflow-hidden">
+    <div 
+      onClick={handleQuoteClick}
+      className="flex flex-1 items-center gap-2 min-w-0 max-w-xs md:max-w-sm lg:max-w-md xl:max-w-lg px-3 overflow-hidden cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all select-none group"
+      title="Click to get a new quote"
+    >
       <div className="w-px h-8 bg-kindle-border shrink-0 opacity-60" />
       <p
         className="text-[11px] leading-snug text-kindle-text-muted font-serif italic truncate"
-        title={`"${quote.quote}" — ${quote.author}`}
       >
         <span className="opacity-70">"</span>{quote.quote}<span className="opacity-70">"</span>
         {" "}
-        <span className="font-sans font-semibold not-italic opacity-60 text-[10px]">— {quote.author}</span>
+        <span className="font-sans font-semibold not-italic opacity-60 text-[10px] group-hover:text-kindle-accent transition-colors">— {quote.author}</span>
       </p>
     </div>
   );

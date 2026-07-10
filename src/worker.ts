@@ -1,8 +1,52 @@
+import puppeteer from "@cloudflare/puppeteer";
+
+declare const HTMLRewriter: any;
+
 async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function parseCookies(cookieHeader: string | null | undefined): Record<string, string> {
+  const list: Record<string, string> = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(";").forEach(cookie => {
+    const parts = cookie.split("=");
+    if (parts.length >= 2) {
+      list[parts[0].trim()] = parts.slice(1).join("=").trim();
+    }
+  });
+  return list;
+}
+
+function getTargetCookies(reqCookies: Record<string, string>, targetHost: string): string {
+  const cookies: string[] = [];
+  for (const [key, value] of Object.entries(reqCookies)) {
+    if (key.startsWith("prox_")) {
+      if (key.includes("___")) {
+        const parts = key.substring(5).split("___");
+        if (parts.length === 2) {
+          const hostEncoded = parts[0];
+          const cookieName = parts[1];
+          const cookieHost = hostEncoded.replace(/_/g, ".");
+          if (targetHost === cookieHost || targetHost.endsWith("." + cookieHost) || cookieHost.endsWith("." + targetHost)) {
+            cookies.push(`${cookieName}=${value}`);
+          }
+        }
+      }
+    }
+  }
+  return cookies.join("; ");
+}
+
+function resolveUrl(href: string, base: string): string {
+  try {
+    return new URL(href, base).href;
+  } catch (e) {
+    return href;
+  }
 }
 
 async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
@@ -141,6 +185,601 @@ export default {
           "Access-Control-Allow-Credentials": "true"
         }
       });
+    }
+
+    // Browser Proxy Route using Cloudflare's Browser Run (env.BROWSER) & native HTMLRewriter
+    if (path === "/api/browser-proxy") {
+      let targetUrl = url.searchParams.get("url");
+      if (!targetUrl) {
+        return new Response("Missing target 'url' parameter.", { 
+          status: 400,
+          headers: { "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      const adblockActive = url.searchParams.get("adblock") !== "false";
+      const torActive = url.searchParams.get("tor") !== "false";
+      const customUa = url.searchParams.get("ua") || "chrome";
+      const proxyMode = url.searchParams.get("mode") || "auto"; // 'auto' | 'standard' | 'puppeteer'
+
+      if (torActive) {
+        try {
+          const parsed = new URL(targetUrl);
+          if (parsed.hostname.endsWith(".onion")) {
+            parsed.hostname = parsed.hostname + ".pet";
+            targetUrl = parsed.toString();
+          }
+        } catch (e) {}
+      }
+
+      try {
+        const parsedTarget = new URL(targetUrl);
+        const targetHost = parsedTarget.hostname;
+        
+        const cookieHeader = request.headers.get("Cookie") || "";
+        const clientCookies = parseCookies(cookieHeader);
+        const targetCookieHeader = getTargetCookies(clientCookies, targetHost);
+
+        let userAgentStr = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+        if (customUa === "tor") {
+          userAgentStr = "Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/115.0";
+        } else if (customUa === "mobile") {
+          userAgentStr = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1";
+        } else if (customUa === "firefox") {
+          userAgentStr = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0";
+        }
+
+        const targetHeaders: Record<string, string> = {
+          "User-Agent": userAgentStr,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": parsedTarget.origin
+        };
+
+        if (targetCookieHeader) {
+          targetHeaders["Cookie"] = targetCookieHeader;
+        }
+
+        let fetchBody: any = undefined;
+        if (request.method === "POST") {
+          const contentType = request.headers.get("content-type") || "";
+          if (contentType.includes("application/x-www-form-urlencoded")) {
+            const bodyText = await request.text();
+            fetchBody = bodyText;
+            targetHeaders["Content-Type"] = "application/x-www-form-urlencoded";
+          } else if (contentType.includes("application/json")) {
+            const bodyText = await request.text();
+            fetchBody = bodyText;
+            targetHeaders["Content-Type"] = "application/json";
+          }
+        }
+
+        let usePuppeteer = proxyMode === "puppeteer";
+        let puppeteerHtml = "";
+        let puppeteerFinalUrl = targetUrl;
+        let bodyText = "";
+
+        const isLibgenUrl = /libgen\.(li|gs|lc|rocks|st|io|is|rs|be|org)/i.test(targetUrl);
+        const isAnnasArchiveUrl = /annas-archive\.(org|gs|se|li|sh|gl|io)/i.test(targetUrl);
+        const isZLibraryUrl = /(z-lib|z-library|singlelogin)\.(gs|se|org|re|io|do|sh|link)/i.test(targetUrl);
+        const isEbookSite = isLibgenUrl || isAnnasArchiveUrl || isZLibraryUrl;
+
+        let fetchResponse: Response | null = null;
+
+        if (proxyMode !== "standard" && !usePuppeteer) {
+          try {
+            fetchResponse = await fetch(targetUrl, {
+              method: request.method,
+              headers: targetHeaders,
+              body: fetchBody,
+              redirect: "manual"
+            });
+
+            const contentTypeStr = fetchResponse.headers.get("content-type") || "";
+            const isHtmlResponse = contentTypeStr.toLowerCase().includes("text/html") || 
+                                  contentTypeStr.toLowerCase().includes("application/xhtml+xml");
+
+            if (isEbookSite && (fetchResponse.status === 503 || fetchResponse.status === 403 || fetchResponse.status === 429)) {
+              usePuppeteer = true;
+            } else if (isHtmlResponse && fetchResponse.status === 200) {
+              const clone = fetchResponse.clone();
+              bodyText = await clone.text();
+              if (bodyText.includes("challenges.cloudflare.com") || 
+                  bodyText.includes("cf-challenge") || 
+                  bodyText.includes("DDoS-Guard") || 
+                  bodyText.includes("Please wait...") ||
+                  bodyText.includes("captcha") ||
+                  bodyText.includes("security check")) {
+                usePuppeteer = true;
+              }
+            }
+          } catch (fetchErr: any) {
+            if (isEbookSite) {
+              usePuppeteer = true;
+            } else {
+              throw fetchErr;
+            }
+          }
+        }
+
+        if (!usePuppeteer && !fetchResponse) {
+          fetchResponse = await fetch(targetUrl, {
+            method: request.method,
+            headers: targetHeaders,
+            body: fetchBody,
+            redirect: "manual"
+          });
+        }
+
+        const outHeaders = new Headers();
+        outHeaders.set("Access-Control-Allow-Origin", "*");
+
+        if (usePuppeteer && env.BROWSER) {
+          console.log(`[Worker Browser Proxy] Launching Cloudflare Browser Run Puppeteer...`);
+          const browser = await puppeteer.launch(env.BROWSER);
+          try {
+            const page = await browser.newPage();
+            await page.setUserAgent(userAgentStr);
+
+            const hostEncoded = targetHost.replace(/\./g, "_");
+            const prefix = `prox_${hostEncoded}___`;
+            const cookiesToSet = [];
+            for (const [key, val] of Object.entries(clientCookies)) {
+              if (key.startsWith(prefix)) {
+                const realName = key.substring(prefix.length);
+                cookiesToSet.push({
+                  name: realName,
+                  value: val,
+                  domain: targetHost,
+                  path: "/"
+                });
+              }
+            }
+            if (cookiesToSet.length > 0) {
+              await page.setCookie(...cookiesToSet);
+            }
+
+            await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 25000 });
+
+            puppeteerHtml = await page.content();
+            puppeteerFinalUrl = page.url();
+
+            const pageCookies = await page.cookies();
+            for (const cookie of pageCookies) {
+              const cookieKey = `prox_${hostEncoded}___${cookie.name}`;
+              outHeaders.append("Set-Cookie", `${cookieKey}=${cookie.value}; Path=/; Max-Age=2592000`);
+            }
+          } finally {
+            await browser.close();
+          }
+        }
+
+        const finalUrl = usePuppeteer ? puppeteerFinalUrl : (fetchResponse!.url || targetUrl);
+        const finalParsed = new URL(finalUrl);
+        const finalHost = finalParsed.hostname;
+
+        const contentType = usePuppeteer ? "text/html" : (fetchResponse!.headers.get("content-type") || "");
+        const contentDisposition = usePuppeteer ? "" : (fetchResponse!.headers.get("content-disposition") || "");
+
+        if (!usePuppeteer && fetchResponse) {
+          if (fetchResponse.status >= 300 && fetchResponse.status < 400) {
+            const location = fetchResponse.headers.get("location");
+            if (location) {
+              const redirectUrl = new URL(location, targetUrl).toString();
+              return Response.redirect(`/api/browser-proxy?url=${encodeURIComponent(redirectUrl)}&adblock=${adblockActive}&tor=${torActive}&mode=${proxyMode}&ua=${customUa}`, 302);
+            }
+          }
+          const rawSetCookies = fetchResponse.headers.get("set-cookie");
+          if (rawSetCookies) {
+            const hostEncoded = finalHost.replace(/\./g, "_");
+            const cookiesList = rawSetCookies.split(",");
+            for (const cStr of cookiesList) {
+              const firstPart = cStr.split(";")[0];
+              const eqIdx = firstPart.indexOf("=");
+              if (eqIdx !== -1) {
+                const name = firstPart.substring(0, eqIdx).trim();
+                const val = firstPart.substring(eqIdx + 1).trim();
+                const cookieKey = `prox_${hostEncoded}___${name}`;
+                outHeaders.append("Set-Cookie", `${cookieKey}=${val}; Path=/; Max-Age=2592000`);
+              }
+            }
+          }
+        }
+
+        const isEbookExtension = /\.(epub|pdf|mobi|cbz|cbr|zip)$/i.test(finalParsed.pathname.split('?')[0]);
+        const isAttachment = contentDisposition.toLowerCase().includes("attachment");
+        const isBinaryContent = !contentType.toLowerCase().includes("text/html") && 
+                                 !contentType.toLowerCase().includes("application/xhtml+xml") &&
+                                 !contentType.toLowerCase().includes("text/xml") &&
+                                 !contentType.toLowerCase().includes("application/json") &&
+                                 !contentType.toLowerCase().includes("text/plain") &&
+                                 !contentType.toLowerCase().includes("text/css") &&
+                                 !contentType.toLowerCase().includes("application/javascript");
+
+        let filename = "download.epub";
+        if (contentDisposition) {
+          const match = contentDisposition.match(/filename\*?=["']?(?:UTF-8'')?([^"';]+)["']?/i);
+          if (match && match[1]) {
+            filename = decodeURIComponent(match[1]);
+          } else {
+            const matchSimple = contentDisposition.match(/filename=["']?([^"';]+)["']?/i);
+            if (matchSimple && matchSimple[1]) {
+              filename = matchSimple[1];
+            }
+          }
+        } else {
+          const base = finalParsed.pathname.substring(finalParsed.pathname.lastIndexOf('/') + 1);
+          if (base && base.includes(".")) {
+            filename = base;
+          }
+        }
+
+        const isEbook = isEbookExtension || 
+                        (isAttachment && !/\.(png|jpe?g|gif|webp|svg|ico|woff2?|css|js|json|xml|html?)$/i.test(filename)) ||
+                        (contentType.toLowerCase().includes("application/epub+zip") || contentType.toLowerCase().includes("application/pdf"));
+
+        if (isEbook) {
+          return new Response(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Download Intercepted</title>
+              <style>
+                body {
+                  background-color: #121212;
+                  color: #f4f4f5;
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  margin: 0;
+                  padding: 16px;
+                  box-sizing: border-box;
+                  text-align: center;
+                }
+                .card {
+                  background: #18181b;
+                  border: 1px solid #27272a;
+                  border-radius: 20px;
+                  padding: 40px 24px;
+                  max-width: 440px;
+                  width: 100%;
+                  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+                }
+                .icon-wrapper {
+                  width: 64px;
+                  height: 64px;
+                  background: rgba(16, 185, 129, 0.1);
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                  border-radius: 50%;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  margin: 0 auto 24px;
+                }
+                .icon {
+                  width: 32px;
+                  height: 32px;
+                  color: #10b981;
+                }
+                h2 {
+                  margin: 0 0 12px;
+                  font-size: 22px;
+                  font-weight: 700;
+                  color: #10b981;
+                }
+                p {
+                  font-size: 14px;
+                  color: #a1a1aa;
+                  margin: 0 0 24px;
+                  line-height: 1.5;
+                }
+                .filename {
+                  font-family: monospace;
+                  background: #09090b;
+                  border: 1px solid #27272a;
+                  padding: 12px 16px;
+                  border-radius: 10px;
+                  font-size: 13px;
+                  color: #38bdf8;
+                  word-break: break-all;
+                  margin: 20px 0;
+                }
+                .btn {
+                  background: #10b981;
+                  color: #ffffff;
+                  border: none;
+                  padding: 14px 28px;
+                  border-radius: 12px;
+                  font-weight: 600;
+                  cursor: pointer;
+                  font-size: 15px;
+                  transition: all 0.2s;
+                  width: 100%;
+                  box-sizing: border-box;
+                  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+                }
+                .btn:hover {
+                  background: #059669;
+                  transform: translateY(-1px);
+                }
+                .back-btn {
+                  background: transparent;
+                  color: #a1a1aa;
+                  border: 1px solid #27272a;
+                  padding: 10px 20px;
+                  border-radius: 10px;
+                  cursor: pointer;
+                  font-size: 13px;
+                  margin-top: 16px;
+                  transition: all 0.2s;
+                }
+                .back-btn:hover {
+                  background: #27272a;
+                  color: #f4f4f5;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <div class="icon-wrapper">
+                  <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                  </svg>
+                </div>
+                <h2>Ebook Capture Detected!</h2>
+                <p>We successfully intercepted your download request. Click below to add this book straight into your Kora library.</p>
+                <div class="filename">${filename}</div>
+                <button class="btn" id="import-button" onclick="triggerImport()">Import into Library</button>
+                <button class="back-btn" onclick="window.history.back()">Go Back</button>
+              </div>
+              <script>
+                let imported = false;
+                function triggerImport() {
+                  if (imported) return;
+                  imported = true;
+                  const btn = document.getElementById("import-button");
+                  btn.innerText = "Importing...";
+                  btn.style.background = "#047857";
+                  btn.disabled = true;
+                  window.parent.postMessage({
+                    type: "KORA_IMPORT_BOOK",
+                    url: "${finalUrl}",
+                    filename: "${filename}",
+                    contentType: "${contentType}"
+                  }, "*");
+                }
+                window.onload = function() {
+                  setTimeout(triggerImport, 200);
+                };
+              </script>
+            </body>
+            </html>
+          `, {
+            headers: { "Content-Type": "text/html", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        if (isBinaryContent) {
+          if (usePuppeteer) {
+            return new Response(puppeteerHtml, {
+              headers: { "Content-Type": "text/html" }
+            });
+          }
+          const buf = await fetchResponse!.arrayBuffer();
+          outHeaders.set("Content-Type", contentType || "application/octet-stream");
+          return new Response(buf, { headers: outHeaders });
+        }
+
+        const isHtml = contentType.toLowerCase().includes("text/html") || 
+                       contentType.toLowerCase().includes("application/xhtml+xml");
+
+        if (!isHtml) {
+          const text = usePuppeteer ? puppeteerHtml : await fetchResponse!.text();
+          outHeaders.set("Content-Type", contentType || "text/plain");
+          return new Response(text, { headers: outHeaders });
+        }
+
+        const rawHtml = usePuppeteer ? puppeteerHtml : (bodyText || await fetchResponse!.text());
+        
+        const hostEncoded = finalHost.replace(/\./g, "_");
+        const cookieOverrideScript = `
+          <script id="kora-cookie-override">
+            (function() {
+              const targetHostEncoded = "${hostEncoded}";
+              try {
+                const originalCookieDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie') || 
+                                                 Object.getOwnPropertyDescriptor(HTMLDocument.prototype, 'cookie');
+                if (originalCookieDescriptor && originalCookieDescriptor.configurable) {
+                  Object.defineProperty(document, 'cookie', {
+                    get: function() {
+                      const rawCookies = originalCookieDescriptor.get.call(document);
+                      if (!rawCookies) return "";
+                      const parts = rawCookies.split(";");
+                      const matched = [];
+                      const prefix = "prox_" + targetHostEncoded + "___";
+                      for (let i = 0; i < parts.length; i++) {
+                        const part = parts[i].trim();
+                        if (part.indexOf(prefix) === 0) {
+                          matched.push(part.substring(prefix.length));
+                        } else if (part.indexOf("prox_") !== 0) {
+                          matched.push(part);
+                        }
+                      }
+                      return matched.join("; ");
+                    },
+                    set: function(val) {
+                      if (!val) return;
+                      const parts = val.split(";");
+                      const firstPart = parts[0];
+                      const eqIdx = firstPart.indexOf("=");
+                      if (eqIdx !== -1) {
+                        const name = firstPart.substring(0, eqIdx).trim();
+                        const cookieVal = firstPart.substring(eqIdx + 1).trim();
+                        const proxName = "prox_" + targetHostEncoded + "___" + name;
+                        parts[0] = proxName + "=" + cookieVal;
+                        let hasPath = false;
+                        for (let i = 1; i < parts.length; i++) {
+                          const lower = parts[i].trim().toLowerCase();
+                          if (lower.indexOf("path=") === 0) {
+                            parts[i] = "path=/";
+                            hasPath = true;
+                          } else if (lower.indexOf("domain=") === 0) {
+                            parts[i] = "";
+                          }
+                        }
+                        if (!hasPath) {
+                          parts.push("path=/");
+                        }
+                        const finalCookieStr = parts.filter(Boolean).join("; ");
+                        originalCookieDescriptor.set.call(document, finalCookieStr);
+                      } else {
+                        originalCookieDescriptor.set.call(document, val);
+                      }
+                    }
+                  });
+                }
+              } catch (e) {
+                console.warn("Cookie proxy injection failed:", e);
+              }
+            })();
+          </script>
+        `;
+
+        const persistParams = `&adblock=${adblockActive}&tor=${torActive}&mode=${proxyMode}&ua=${customUa}`;
+
+        let rewriter = new HTMLRewriter()
+          .on("head", {
+            element(el) {
+              el.prepend(cookieOverrideScript, { html: true });
+            }
+          })
+          .on("body", {
+            element(el) {
+              el.prepend(`<!-- kora cookie injected -->`, { html: true });
+            }
+          })
+          .on("a", {
+            element(el) {
+              const href = el.getAttribute("href");
+              if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
+                const resolved = resolveUrl(href, finalUrl);
+                if (resolved.startsWith("http")) {
+                  el.setAttribute("href", `/api/browser-proxy?url=${encodeURIComponent(resolved)}${persistParams}`);
+                }
+              }
+            }
+          })
+          .on("form", {
+            element(el) {
+              const action = el.getAttribute("action") || "";
+              const resolved = resolveUrl(action, finalUrl);
+              el.setAttribute("action", `/api/browser-proxy?url=${encodeURIComponent(resolved)}${persistParams}`);
+            }
+          })
+          .on("img", {
+            element(el) {
+              const src = el.getAttribute("src");
+              if (src) {
+                const resolved = resolveUrl(src, finalUrl);
+                el.setAttribute("src", `/api/browser-proxy?url=${encodeURIComponent(resolved)}${persistParams}`);
+              }
+              const srcset = el.getAttribute("srcset");
+              if (srcset) {
+                const rewritten = srcset.split(",").map(item => {
+                  const parts = item.trim().split(/\s+/);
+                  if (parts[0]) {
+                    const resolved = resolveUrl(parts[0], finalUrl);
+                    parts[0] = `/api/browser-proxy?url=${encodeURIComponent(resolved)}${persistParams}`;
+                  }
+                  return parts.join(" ");
+                }).join(", ");
+                el.setAttribute("srcset", rewritten);
+              }
+            }
+          })
+          .on("script", {
+            element(el) {
+              const src = el.getAttribute("src");
+              if (src) {
+                const resolved = resolveUrl(src, finalUrl);
+                el.setAttribute("src", `/api/browser-proxy?url=${encodeURIComponent(resolved)}${persistParams}`);
+              }
+            }
+          })
+          .on("link", {
+            element(el) {
+              const href = el.getAttribute("href");
+              if (href) {
+                const resolved = resolveUrl(href, finalUrl);
+                const rel = (el.getAttribute("rel") || "").toLowerCase();
+                if (rel === "stylesheet" || rel === "manifest" || rel.includes("icon") || rel.includes("preload")) {
+                  el.setAttribute("href", `/api/browser-proxy?url=${encodeURIComponent(resolved)}${persistParams}`);
+                } else {
+                  el.setAttribute("href", resolved);
+                }
+              }
+            }
+          })
+          .on("iframe", {
+            element(el) {
+              const src = el.getAttribute("src");
+              if (src) {
+                el.setAttribute("src", `/api/browser-proxy?url=${encodeURIComponent(resolveUrl(src, finalUrl))}${persistParams}`);
+              }
+            }
+          });
+
+        if (adblockActive) {
+          const adBlockPatterns = [
+            "googlesyndication.com",
+            "doubleclick.net",
+            "exoclick.com",
+            "popads.net",
+            "onclickads.net",
+            "adsterra.com",
+            "adservice.google",
+            "google-analytics.com",
+            "quantserve.com",
+            "adzerk.net",
+            "adnxs.com",
+            "amazon-adsystem.com",
+            "ad.doubleclick",
+            "ads.google"
+          ];
+          rewriter = rewriter.on(".adsbygoogle, .ad-banner, .popunder, .ad-zone, #ad-slot", {
+            element(el) {
+              el.remove();
+            }
+          }).on("script, iframe, img, link", {
+            element(el) {
+              const src = el.getAttribute("src") || el.getAttribute("href") || "";
+              if (adBlockPatterns.some(pat => src.includes(pat))) {
+                el.remove();
+              }
+            }
+          });
+        }
+
+        const rwResponse = rewriter.transform(new Response(rawHtml, {
+          headers: { "Content-Type": "text/html" }
+        }));
+
+        const rwBody = await rwResponse.text();
+        outHeaders.set("Content-Type", "text/html");
+        return new Response(rwBody, { headers: outHeaders });
+
+      } catch (err: any) {
+        console.error("[Worker Browser Proxy Error]", err);
+        return new Response(`Proxy Connection Error: ${err.message || err}`, { 
+          status: 500,
+          headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "text/plain" }
+        });
+      }
     }
 
     // 1. Anna's Archive Search (Rave Book Search Scraper)

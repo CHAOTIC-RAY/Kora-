@@ -1,18 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default-deny catch-all rule
+    // Allow read, write for all paths in sandbox
     match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Match users documents and sub-collections to allow smooth sync for all clients
-    match /users/{userId} {
       allow read, write: if true;
-
-      match /{document=**} {
-        allow read, write: if true;
-      }
     }
   }
 }

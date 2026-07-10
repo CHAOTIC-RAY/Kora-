@@ -312,29 +312,27 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-1">
-            {isRealFirebase && (
-              <div className="flex items-center gap-1">
-                {loadingAuth ? (
-                  <div className="w-4 h-4 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-                ) : user && !user.isAnonymous ? (
-                  <button
-                    onClick={handleSignOut}
-                    className="p-2 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition"
-                    title="Sign Out"
-                  >
-                    <LogOut className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setShowAuthModal(true)}
-                    className="p-2 text-kindle-text-muted hover:text-kindle-text hover:bg-neutral-100 rounded-xl transition"
-                    title="Sign In"
-                  >
-                    <UserIcon className="w-4.5 h-4.5" />
-                  </button>
-                )}
-              </div>
-            )}
+            <div className="flex items-center gap-1">
+              {loadingAuth ? (
+                <div className="w-4 h-4 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
+              ) : user && !user.isAnonymous ? (
+                <button
+                  onClick={handleSignOut}
+                  className="p-2 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer relative z-40"
+                  title="Sign Out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="p-2 text-kindle-text-muted hover:text-kindle-text hover:bg-neutral-100 rounded-xl transition cursor-pointer relative z-40"
+                  title="Sign In"
+                >
+                  <UserIcon className="w-5 h-5" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
