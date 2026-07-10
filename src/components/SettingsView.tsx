@@ -2,7 +2,8 @@ import React from "react";
 import { User } from "firebase/auth";
 import { 
   Moon, Sun, Monitor, 
-  User as UserIcon, ShieldCheck, BookOpen
+  User as UserIcon, ShieldCheck, BookOpen,
+  Clock, LogIn
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -13,6 +14,20 @@ interface SettingsViewProps {
   onChangeTheme: (theme: string) => void;
   onSignOut: () => void;
   onSignIn: () => void;
+}
+
+function getRemainingGuestDays(user: User | null): number {
+  if (!user || !user.metadata.creationTime) return 30;
+  try {
+    const creationTime = new Date(user.metadata.creationTime).getTime();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const elapsedMs = Date.now() - creationTime;
+    const remainingMs = Math.max(0, thirtyDaysMs - elapsedMs);
+    const remainingDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+    return Math.min(30, remainingDays);
+  } catch (e) {
+    return 30;
+  }
 }
 
 export default function SettingsView({ 
@@ -127,13 +142,25 @@ export default function SettingsView({
             </div>
           ) : (
             <div className="space-y-4">
+              {user && user.isAnonymous && (
+                <div className="p-3 bg-amber-50/50 border border-amber-200/50 dark:bg-amber-950/10 dark:border-amber-900/35 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-400">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest">Guest Account Active</span>
+                  </div>
+                  <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 leading-relaxed font-sans font-medium">
+                    Your guest workspace is saved locally. It will automatically reset in {getRemainingGuestDays(user)} days.
+                  </p>
+                </div>
+              )}
               <p className="text-xs text-kindle-text-muted leading-relaxed">
-                Sign in to Kora Cloud to sync your library, progress, and highlights across all your devices.
+                Sign in with Google or create an account to secure your library forever and sync across all your devices.
               </p>
               <button 
                 onClick={onSignIn}
-                className="w-full py-2.5 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition shadow-xs cursor-pointer"
+                className="w-full py-2.5 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition shadow-xs cursor-pointer flex items-center justify-center gap-2"
               >
+                <LogIn className="w-3.5 h-3.5" />
                 Sign In / Create Account
               </button>
             </div>

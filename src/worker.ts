@@ -1255,11 +1255,26 @@ export default {
         if (isLibgenLanding) {
           try {
             console.log(`Resolving Libgen landing page in Worker: ${targetUrl}`);
-            const htmlRes = await fetch(targetUrl, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+            let htmlRes;
+            try {
+              htmlRes = await fetch(targetUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                }
+              });
+            } catch (err) {
+              if (targetUrl.startsWith("https://")) {
+                const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
+                console.log(`Resolving Libgen landing page failed, retrying over HTTP: ${fallbackUrl}`);
+                htmlRes = await fetch(fallbackUrl, {
+                  headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                  }
+                });
+              } else {
+                throw err;
               }
-            });
+            }
             if (htmlRes.ok) {
               const html = await htmlRes.text();
               const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
@@ -1399,10 +1414,24 @@ export default {
             finalHeaders["Cookie"] = `remix_userid=${userId}; remix_userkey=${userKey}`;
           }
 
-          response = await fetch(targetUrl, {
-            headers: finalHeaders,
-            redirect: 'follow'
-          });
+          try {
+            response = await fetch(targetUrl, {
+              headers: finalHeaders,
+              redirect: 'follow'
+            });
+          } catch (fetchErr: any) {
+            // Fallback to http:// if https:// failed (extremely common on libgen/library mirrors with broken SSL)
+            if (targetUrl.startsWith("https://")) {
+              const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
+              console.log(`Worker HTTPS fetch failed, retrying over HTTP: ${fallbackUrl}`);
+              response = await fetch(fallbackUrl, {
+                headers: finalHeaders,
+                redirect: 'follow'
+              });
+            } else {
+              throw fetchErr;
+            }
+          }
         }
 
         if (!response.ok) {
@@ -1411,8 +1440,15 @@ export default {
 
         const resHeaders = new Headers(response.headers);
         resHeaders.set("Access-Control-Allow-Origin", "*");
+        
+        // Clean potentially problematic headers that may cause compression or sizing mismatches
+        resHeaders.delete("content-encoding");
+        resHeaders.delete("transfer-encoding");
 
-        return new Response(response.body, {
+        const buffer = await response.arrayBuffer();
+        resHeaders.set("Content-Length", String(buffer.byteLength));
+
+        return new Response(buffer, {
           status: response.status,
           headers: resHeaders
         });
