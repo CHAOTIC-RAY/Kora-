@@ -1569,6 +1569,49 @@ export default {
       }
     }
 
+    // 12. Image Proxy (covers) — serve third-party cover hosts same-origin
+    // so they load on *.workers.dev despite hotlink/referrer protection & no-CSP.
+    if (path === "/api/proxy-image") {
+      const target = url.searchParams.get("url");
+      if (!target) {
+        return new Response("Missing url", { status: 400 });
+      }
+      // Only allow image hosts; block everything else (no open proxy).
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo)$/i;
+      let parsed: URL;
+      try {
+        parsed = new URL(target);
+      } catch {
+        return new Response("Bad url", { status: 400 });
+      }
+      if (!/^https?:$/i.test(parsed.protocol) || !ALLOWED_IMG.test(parsed.hostname)) {
+        return new Response("Host not allowed", { status: 403 });
+      }
+      try {
+        const upstream = await fetch(parsed.toString(), {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*,*/*",
+            "Referer": `${parsed.protocol}//${parsed.hostname}/`
+          },
+          redirect: "follow"
+        });
+        if (!upstream.ok) {
+          return new Response("Upstream error", { status: upstream.status });
+        }
+        const outHeaders = new Headers();
+        outHeaders.set("Content-Type", upstream.headers.get("content-type") || "image/jpeg");
+        outHeaders.set("Cache-Control", "public, max-age=86400");
+        outHeaders.set("Access-Control-Allow-Origin", "*");
+        return new Response(upstream.body, { status: 200, headers: outHeaders });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     return new Response("Not Found", { status: 404 });
   }
 };

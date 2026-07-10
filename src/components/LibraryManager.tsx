@@ -408,9 +408,9 @@ export default function LibraryManager({
                 >
                   <div className="aspect-[3/4] bg-kindle-bg rounded-sm overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-300 relative border border-kindle-border">
                     {book.coverUrl ? (
-                      <img 
-                        src={book.coverUrl} 
-                        className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ${grayscaleCovers ? "grayscale-filter" : ""}`}
+                      <img
+                        src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
+                        className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                         referrerPolicy="no-referrer"
                       />
                     ) : (
@@ -601,9 +601,8 @@ export default function LibraryManager({
                 >
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
                     {book.coverUrl ? (
-                      <img 
-                        src={book.coverUrl} 
-                        alt={book.title} 
+                      <img
+                        src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
                         className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
                         referrerPolicy="no-referrer"
                       />

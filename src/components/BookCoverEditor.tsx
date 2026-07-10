@@ -27,7 +27,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
       
       const covers = (data.docs || [])
         .filter((doc: any) => doc.cover_i)
-        .map((doc: any) => `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)
+        .map((doc: any) => `/api/proxy-image?url=${encodeURIComponent(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)}`)
         .slice(0, 12);
         
       setResults(covers);

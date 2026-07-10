@@ -771,7 +771,7 @@ export default function DiscoverView({
                   <div className={`aspect-[3/4] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
                     {book.coverUrl ? (
                       <img
-                        src={book.coverUrl}
+                        src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                         referrerPolicy="no-referrer"
@@ -975,7 +975,7 @@ export default function DiscoverView({
                         <div className="aspect-[3/4] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
                           {book.coverUrl ? (
                             <img
-                              src={book.coverUrl}
+                              src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
                               alt={book.title}
                               className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                               referrerPolicy="no-referrer"
