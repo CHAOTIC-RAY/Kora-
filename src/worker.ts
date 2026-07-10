@@ -9,6 +9,27 @@ async function sha256(message: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Resolve a keyless LibGen landing page (get.php?md5= or ads.php?md5=) to its
+// signed CDN download link (get.php?md5=<h>&key=<t>). LibGen 307-redirects the
+// keyless link to an ads page that embeds the signed link in an <a href>.
+// Returns "" if it cannot be resolved.
+async function resolveLibgenSigned(md5: string): Promise<string> {
+  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+  for (const host of ["libgen.li", "libgen.is", "libgen.rs"]) {
+    try {
+      const res = await fetch(`https://${host}/get.php?md5=${md5}`, {
+        headers: { "User-Agent": ua },
+        redirect: "follow"
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
+      if (m) return `https://${host}/${m[0]}`;
+    } catch (_) { /* try next host */ }
+  }
+  return "";
+}
+
 function parseCookies(cookieHeader: string | null | undefined): Record<string, string> {
   const list: Record<string, string> = {};
   if (!cookieHeader) return list;
@@ -996,13 +1017,25 @@ export default {
       }
 
       if (isRealMd5) {
-        // Real MD5 — libgen/library.lol links work (fallbacks after the Rave direct link)
+        // Prefer the signed LibGen CDN link (get.php?md5&key) resolved server-side,
+        // so downloads work even when the frontend has no Rave directUrl.
+        let signed = "";
+        if (raveDirect && /get\.php\?md5=.+&key=/.test(raveDirect)) {
+          signed = raveDirect;
+        } else {
+          signed = await resolveLibgenSigned(md5);
+        }
+        if (signed) {
+          downloadLinks.push({
+            label: "Direct Mirror (LibGen CDN)",
+            url: signed,
+            isDirect: true,
+            sourceId: "libgen"
+          });
+        }
+        // Reliable fallbacks (kept last; library.lol is often unreachable, so
+        // it is intentionally deprioritized behind the signed CDN link).
         downloadLinks.push(
-          {
-            label: "Direct Mirror (library.lol)",
-            url: `https://library.lol/main/${md5}`,
-            isDirect: true
-          },
           {
             label: "Libgen Mirror (libgen.li)",
             url: `https://libgen.li/get.php?md5=${md5.toLowerCase()}`,
@@ -1292,9 +1325,10 @@ export default {
         }
 
         // Pre-resolve: Libgen landing pages (like get.php?md5=) can be extremely difficult to fetch in Cloudflare Workers 
-        // due to strict TLS, DDOS protection, or IP blocks. We automatically rewrite them to library.lol/main/ MD5 pages,
-        // which use the same files but have highly reliable, unblocked, open landing pages.
-        if (targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=")) {
+        // due to strict TLS, DDOS protection, or IP blocks. We DO NOT rewrite to library.lol here because library.lol
+        // is frequently unreachable (Cloudflare 522). Instead libgen.li resolves its own signed CDN link in the
+        // LibGen resolver block below (get.php?md5= -> 307 -> ads.php -> signed get.php?md5&key).
+        if (targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=") && !targetUrl.includes("libgen")) {
           const md5Match = targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
           if (md5Match) {
             const md5 = md5Match[1];
@@ -1410,7 +1444,8 @@ export default {
               htmlRes = await fetch(targetUrl, {
                 headers: {
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                }
+                },
+                redirect: "follow"
               });
             } catch (err) {
               if (targetUrl.startsWith("https://")) {

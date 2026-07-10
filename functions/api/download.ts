@@ -16,6 +16,24 @@ export const onRequest = async (context) => {
 
   let downloadLinks: any[] = [];
 
+  // Resolve a keyless LibGen landing page to its signed CDN link (get.php?md5&key).
+  async function resolveLibgenSigned(m: string): Promise<string> {
+    const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+    for (const host of ["libgen.li", "libgen.is", "libgen.rs"]) {
+      try {
+        const res = await fetch(`https://${host}/get.php?md5=${m}`, {
+          headers: { "User-Agent": ua },
+          redirect: "follow"
+        });
+        if (!res.ok) continue;
+        const html = await res.text();
+        const mm = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
+        if (mm) return `https://${host}/${mm[0]}`;
+      } catch (_) { /* try next host */ }
+    }
+    return "";
+  }
+
   // PRIMARY: use Rave Book Search's real direct-download link (same method as ravebooksearch.com).
   // LibGen -> signed get.php?md5=<hash>&key=<token> that 307-redirects to the booksdl.lc CDN.
   // Internet Archive -> /details/ page (resolved to the actual file by /api/proxy-file).
@@ -37,13 +55,24 @@ export const onRequest = async (context) => {
   }
 
   if (isRealMd5) {
-    // Real MD5 — libgen/library.lol links work (fallbacks after the Rave direct link)
+    // Prefer the signed LibGen CDN link resolved server-side so downloads work
+    // even when the frontend has no Rave directUrl.
+    let signed = "";
+    if (raveDirect && /get\.php\?md5=.+&key=/.test(raveDirect)) {
+      signed = raveDirect;
+    } else {
+      signed = await resolveLibgenSigned(md5);
+    }
+    if (signed) {
+      downloadLinks.push({
+        label: "Direct Mirror (LibGen CDN)",
+        url: signed,
+        isDirect: true,
+        sourceId: "libgen"
+      });
+    }
+    // Reliable fallbacks (kept last; library.lol is often unreachable).
     downloadLinks.push(
-      {
-        label: "Direct Mirror (library.lol)",
-        url: `https://library.lol/main/${md5}`,
-        isDirect: true
-      },
       {
         label: "Libgen Mirror (libgen.li)",
         url: `https://libgen.li/get.php?md5=${md5.toLowerCase()}`,

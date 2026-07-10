@@ -66,6 +66,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const contentRef = useRef<HTMLDivElement>(null);
   const zipRef = useRef<JSZip | null>(null);
   const rootDirRef = useRef<string>("");
+  const blobUrlsRef = useRef<string[]>([]);
+  // Maps an EPUB internal href (normalized) -> spine chapter index, so in-book
+  // Table-of-Contents links (e.g. <a href="chapter1.xhtml">) navigate correctly.
+  const hrefToIndexRef = useRef<Map<string, number>>(new Map());
 
   // Font choices
   const fontFamilies = [
@@ -123,6 +127,41 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       document.removeEventListener("dblclick", handleDoubleClick);
     };
   }, []);
+
+  // Keyboard navigation: arrows flip chapters / scroll, Space scrolls, Esc closes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const viewer = contentRef.current;
+      switch (e.key) {
+        case "ArrowRight":
+          e.preventDefault();
+          if (currentChapterIdx < chapters.length - 1) updateProgress(currentChapterIdx + 1);
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          if (currentChapterIdx > 0) updateProgress(currentChapterIdx - 1);
+          break;
+        case "ArrowDown":
+          if (viewer) { e.preventDefault(); viewer.scrollBy({ top: 120, behavior: "smooth" }); }
+          break;
+        case "ArrowUp":
+          if (viewer) { e.preventDefault(); viewer.scrollBy({ top: -120, behavior: "smooth" }); }
+          break;
+        case " ":
+          if (viewer) { e.preventDefault(); viewer.scrollBy({ top: 240, behavior: "smooth" }); }
+          break;
+        case "Escape":
+          e.preventDefault();
+          stopSpeech();
+          onClose();
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentChapterIdx, chapters.length]);
 
   async function lookupDictionary(word: string) {
     try {
@@ -287,7 +326,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
           // Process chapter document images and style links in-memory
           // Find all images, retrieve binary blobs, and map to local blob URLs
-          const processedContent = await resolveInternalAssets(chapterDoc, zip, rootDir);
+          const processedContent = await resolveInternalAssets(chapterDoc, zip, rootDir, relativeHref);
 
           parsedChapters.push({
             id: `ch-${i}`,
@@ -296,6 +335,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             content: processedContent,
             fullPath: fullChapterPath
           });
+          // Register spine href (and its basename) -> chapter index for in-book TOC links.
+          const norm = pathResolve(rootDir, relativeHref).toLowerCase();
+          hrefToIndexRef.current.set(norm, i);
+          hrefToIndexRef.current.set(relativeHref.toLowerCase(), i);
         }
       }
 
@@ -312,31 +355,86 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     }
   }
 
-  // Rewrite all relative images inside the EPUB chapter HTML into local base64/blob URLs
-  async function resolveInternalAssets(chapterDoc: Document, zip: JSZip, rootDir: string): Promise<string> {
-    // Resolve standard <img> tags
+  // Rewrite all relative images inside the EPUB chapter HTML into local blob URLs.
+  // Falls back to a basename search across the whole zip (EPUB3 often nests images
+  // in /images or /OEBPS/images), and drops any image that still can't be found so a
+  // broken <img> never 404s against the site origin.
+  async function resolveInternalAssets(chapterDoc: Document, zip: JSZip, rootDir: string, chapterHref: string): Promise<string> {
+
+    // Pre-cache basename -> zip path for every image-like entry (cheap, ~1 pass).
+    const imageMap = new Map<string, string>();
+    for (const path of Object.keys(zip.files)) {
+      if (zip.files[path].dir) continue;
+      if (/\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(path)) {
+        const base = path.split("/").pop()!.toLowerCase();
+        if (!imageMap.has(base)) imageMap.set(base, path);
+      }
+    }
+
+    const resolvePath = (relativeSrc: string): string | null => {
+      // 1. Path relative to the OPF directory.
+      const normalized = pathResolve(rootDir, relativeSrc);
+      if (zip.file(normalized)) return normalized;
+      // 2. Path relative to the current chapter file's directory.
+      const alt = pathResolve(rootDir + relativeSrc.split("/").slice(0, -1).join("/") + "/", relativeSrc);
+      if (zip.file(alt)) return alt;
+      // 3. Basename anywhere in the zip.
+      const base = relativeSrc.split("/").pop()!.toLowerCase();
+      return imageMap.get(base) || null;
+    };
+
     const images = chapterDoc.querySelectorAll("img, image");
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
       let relativeSrc = img.getAttribute("src") || img.getAttribute("xlink:href") || "";
-      if (relativeSrc) {
-        // Build path relative to the OPF directory
-        const normalizedPath = pathResolve(rootDir, relativeSrc);
-        const imgFile = zip.file(normalizedPath);
-        if (imgFile) {
-          try {
-            const imgBlob = await imgFile.async("blob");
-            const localUrl = URL.createObjectURL(imgBlob);
-            img.setAttribute("src", localUrl);
-            img.removeAttribute("xlink:href");
-            // Set styles for high-fidelity rendering
-            img.setAttribute("class", "max-w-full h-auto my-4 mx-auto block rounded shadow-sm");
-          } catch (e) {
-            console.warn("Failed unzipping chapter image:", normalizedPath, e);
-          }
+      if (!relativeSrc || relativeSrc.startsWith("data:") || relativeSrc.startsWith("http")) continue;
+
+      const zipPath = resolvePath(relativeSrc);
+      if (zipPath) {
+        try {
+          const imgFile = zip.file(zipPath)!;
+          const imgBlob = await imgFile.async("blob");
+          const localUrl = URL.createObjectURL(imgBlob);
+          blobUrlsRef.current.push(localUrl);
+          img.setAttribute("src", localUrl);
+          img.removeAttribute("xlink:href");
+          img.setAttribute("class", "max-w-full h-auto my-4 mx-auto block rounded shadow-sm");
+        } catch (e) {
+          console.warn("Failed unzipping chapter image:", zipPath, e);
+          img.remove();
         }
+      } else {
+        // Not in the zip — drop it rather than letting the browser 404 on the site origin.
+        console.warn("EPUB image not found, dropping:", relativeSrc);
+        img.remove();
       }
     }
+
+    // Rewrite in-book internal links (e.g. EPUB Table-of-Contents entries) so they
+    // navigate to the correct chapter instead of reloading the site. External/anchor
+    // links are left alone; internal doc links become data-epub-href and are handled
+    // by the click interceptor below.
+    const anchors = chapterDoc.querySelectorAll("a[href]");
+    anchors.forEach((el) => {
+      const a = el as HTMLAnchorElement;
+      const href = a.getAttribute("href") || "";
+      if (href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("#")) return;
+      // Drop any fragment; resolve relative to the current chapter, then to OPF dir.
+      const target = href.split("#")[0];
+      if (!target) return;
+      const candidates = [
+        pathResolve(rootDir, target).toLowerCase(),
+        pathResolve(pathResolve(rootDir, chapterHref), target).toLowerCase(),
+        target.toLowerCase(),
+        target.split("/").pop()!.toLowerCase()
+      ];
+      const idx = candidates.map(c => hrefToIndexRef.current.get(c)).find(v => v !== undefined);
+      if (idx !== undefined) {
+        a.setAttribute("data-epub-href", String(idx));
+        a.removeAttribute("href");
+        a.style.cursor = "pointer";
+      }
+    });
 
     // Strip unneeded javascript or style tags that override user customizations
     chapterDoc.querySelectorAll("script, style, link[rel='stylesheet']").forEach(el => el.remove());
@@ -594,8 +692,17 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   }
 
   const handleTextViewerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!showAudiobook) return;
     const target = e.target as HTMLElement;
+    // In-book TOC links: data-epub-href holds the target chapter index.
+    const epubLink = target.closest("[data-epub-href]") as HTMLElement | null;
+    if (epubLink) {
+      const idx = parseInt(epubLink.getAttribute("data-epub-href") || "", 10);
+      if (!isNaN(idx) && idx >= 0 && idx < chapters.length) {
+        updateProgress(idx);
+        return;
+      }
+    }
+    if (!showAudiobook) return;
     const readableEl = target.closest("p, h1, h2, h3, h4, li");
     if (!readableEl) return;
 
