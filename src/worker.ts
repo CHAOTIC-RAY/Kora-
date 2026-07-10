@@ -1218,11 +1218,26 @@ export default {
         if (targetUrl.includes("library.lol")) {
           try {
             console.log(`Resolving library.lol landing page in Worker: ${targetUrl}`);
-            const htmlRes = await fetch(targetUrl, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+            let htmlRes;
+            try {
+              htmlRes = await fetch(targetUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                }
+              });
+            } catch (err) {
+              if (targetUrl.startsWith("https://")) {
+                const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
+                console.log(`Resolving library.lol landing page failed, retrying over HTTP: ${fallbackUrl}`);
+                htmlRes = await fetch(fallbackUrl, {
+                  headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                  }
+                });
+              } else {
+                throw err;
               }
-            });
+            }
             if (htmlRes.ok) {
               const html = await htmlRes.text();
               const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
@@ -1329,10 +1344,14 @@ export default {
         if (ipfsMatch) {
           const cid = ipfsMatch[1];
           const gateways = [
-            `https://cloudflare-ipfs.com/ipfs/${cid}`,
             `https://ipfs.io/ipfs/${cid}`,
             `https://dweb.link/ipfs/${cid}`,
-            `https://gateway.pinata.cloud/ipfs/${cid}`
+            `https://gateway.pinata.cloud/ipfs/${cid}`,
+            `https://nftstorage.link/ipfs/${cid}`,
+            `https://w3s.link/ipfs/${cid}`,
+            `https://storry.tv/ipfs/${cid}`,
+            `https://ipfs.run/ipfs/${cid}`,
+            `https://cloudflare-ipfs.com/ipfs/${cid}`
           ];
 
           console.log(`[IPFS] CID detected in Worker: ${cid}. Querying public gateways in parallel...`);
@@ -1450,20 +1469,15 @@ export default {
           throw new Error(`Proxy target responded with status ${response.status}`);
         }
 
-        const resHeaders = new Headers(response.headers);
-        resHeaders.set("Access-Control-Allow-Origin", "*");
-        
-        // Clean potentially problematic headers that may cause compression or sizing mismatches
-        resHeaders.delete("content-encoding");
-        resHeaders.delete("transfer-encoding");
-
-        const buffer = await response.arrayBuffer();
-        resHeaders.set("Content-Length", String(buffer.byteLength));
-
-        return new Response(buffer, {
+        // To prevent compression or chunking mismatches, let Cloudflare handle encoding/transfer headers naturally.
+        // We stream the body directly using the standard Response constructor for optimal memory and speed.
+        const responseClone = new Response(response.body, {
           status: response.status,
-          headers: resHeaders
+          statusText: response.statusText,
+          headers: response.headers
         });
+        responseClone.headers.set("Access-Control-Allow-Origin", "*");
+        return responseClone;
       } catch (err: any) {
         return new Response(JSON.stringify({ error: err.message }), {
           status: 500,

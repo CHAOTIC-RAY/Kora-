@@ -509,8 +509,21 @@ export default function App() {
 
             <form onSubmit={handleAuthSubmit} className="space-y-4">
               {authError && (
-                <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl border border-red-100 font-sans">
-                  {authError}
+                <div className="p-3 bg-red-50 text-red-600 text-xs rounded-xl border border-red-100 font-sans space-y-2">
+                  <p>{authError}</p>
+                  {authError.toLowerCase().includes("unauthorized-domain") && (
+                    <div className="mt-2 p-3 bg-amber-50/80 border border-amber-200/60 text-amber-900 rounded-xl text-[10px] space-y-1 text-left">
+                      <p className="font-bold text-amber-800">⚠️ Action Required in Firebase Console:</p>
+                      <p>Firebase requires adding your custom domain to its authorized list for Google Sign-In to work. Follow these steps:</p>
+                      <ol className="list-decimal pl-4 space-y-1 mt-1 font-medium text-amber-800">
+                        <li>Go to your <strong>Firebase Console</strong>.</li>
+                        <li>Select <strong>Authentication</strong> &gt; <strong>Settings</strong> &gt; <strong>Authorized domains</strong>.</li>
+                        <li>Click <strong>Add domain</strong>.</li>
+                        <li>Enter <code className="bg-white/80 px-1 py-0.5 rounded border border-amber-200 font-mono">kora.chaoticstudio.workers.dev</code> (or your current active domain).</li>
+                        <li>Click <strong>Add</strong> and try logging in again!</li>
+                      </ol>
+                    </div>
+                  )}
                 </div>
               )}
 
