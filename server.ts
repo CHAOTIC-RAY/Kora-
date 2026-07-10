@@ -915,6 +915,41 @@ app.get("/api/proxy-file", async (req, res) => {
       }
     }
 
+    // Resolve Internet Archive /details/ landing pages to actual file download URLs
+    if (targetUrl.includes("archive.org/details/")) {
+      try {
+        const iaId = targetUrl.split("/details/")[1]?.split("/")[0]?.split("?")[0];
+        if (iaId) {
+          console.log(`[IA] Resolving archive.org details page for item: ${iaId}`);
+          const metaRes = await fetch(`https://archive.org/metadata/${iaId}`, {
+            headers: { "User-Agent": "Mozilla/5.0" },
+            signal: AbortSignal.timeout(8000)
+          });
+          if (metaRes.ok) {
+            const meta = await metaRes.json();
+            const files: any[] = meta.files || [];
+            // Prefer EPUB, then PDF, then MOBI
+            const bookFile = files.find((f: any) => f.name?.endsWith(".epub")) ||
+                             files.find((f: any) => f.name?.endsWith(".pdf")) ||
+                             files.find((f: any) => f.name?.endsWith(".mobi"));
+            if (bookFile) {
+              const directUrl = `https://archive.org/download/${iaId}/${encodeURIComponent(bookFile.name)}`;
+              console.log(`[IA] Resolved to direct download: ${directUrl}`);
+              targetUrl = directUrl;
+            } else {
+              throw new Error("No downloadable book file found in this Internet Archive item.");
+            }
+          }
+        }
+      } catch (err: any) {
+        if (err.message && !err.message.includes("No downloadable")) {
+          console.warn("[IA] Failed to resolve archive.org details:", err.message);
+        } else {
+          throw err;
+        }
+      }
+    }
+
     console.log(`Proxying download from URL: ${targetUrl}`);
 
     // 1. Resolve library.lol to its actual direct file download link
@@ -1377,24 +1412,122 @@ app.get("/api/annas-archive/search", async (req, res) => {
 
 
 
-// 7. API: Anna's Archive Download - Simplified
+// 7. API: Anna's Archive Download
 app.get("/api/annas-archive/download", async (req, res) => {
   try {
-    const { md5 } = req.query;
+    const { md5, iaId: iaIdParam } = req.query;
     if (!md5) return res.status(400).json({ error: "md5 is required." });
 
     const cachedBook = bookCache.get(md5 as string);
     let downloadLinks: any[] = [];
 
-    if (cachedBook && cachedBook.downloadUrl) {
-      downloadLinks.push({
-        label: "Direct Download Mirror",
-        url: cachedBook.downloadUrl,
-        isDirect: true
-      });
+    // If iaId is passed (either from cache or from frontend), handle IA resolution first
+    const iaIdFromParam = iaIdParam as string || "";
+    if (iaIdFromParam && !cachedBook?.downloadUrl?.includes("archive.org")) {
+      try {
+        const metaRes = await fetch(`https://archive.org/metadata/${iaIdFromParam}`, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          const files: any[] = meta.files || [];
+          const epubFile = files.find((f: any) => f.name?.endsWith(".epub"));
+          const pdfFile = files.find((f: any) => f.name?.endsWith(".pdf"));
+          if (epubFile) {
+            downloadLinks.push({
+              label: "Internet Archive (EPUB)",
+              url: `https://archive.org/download/${iaIdFromParam}/${encodeURIComponent(epubFile.name)}`,
+              isDirect: true
+            });
+          }
+          if (pdfFile) {
+            downloadLinks.push({
+              label: "Internet Archive (PDF)",
+              url: `https://archive.org/download/${iaIdFromParam}/${encodeURIComponent(pdfFile.name)}`,
+              isDirect: true
+            });
+          }
+        }
+      } catch (e: any) {
+        console.warn("Failed to resolve archive.org item by iaId param:", e.message);
+      }
     }
 
-    // Return what we have or a manual search fallback
+    if (cachedBook && cachedBook.downloadUrl) {
+      const downloadUrl: string = cachedBook.downloadUrl;
+
+      // For Internet Archive items, resolve the /details/ page to actual file URL
+      if (downloadUrl.includes("archive.org/details/")) {
+        try {
+          const iaId = downloadUrl.split("/details/")[1]?.split("/")[0]?.split("?")[0];
+          if (iaId) {
+            const metaRes = await fetch(`https://archive.org/metadata/${iaId}`, {
+              headers: { "User-Agent": "Mozilla/5.0" },
+              signal: AbortSignal.timeout(8000)
+            });
+            if (metaRes.ok) {
+              const meta = await metaRes.json();
+              const files: any[] = meta.files || [];
+              const epubFile = files.find((f: any) => f.name?.endsWith(".epub"));
+              const pdfFile = files.find((f: any) => f.name?.endsWith(".pdf"));
+              if (epubFile) {
+                downloadLinks.push({
+                  label: "Internet Archive (EPUB)",
+                  url: `https://archive.org/download/${iaId}/${encodeURIComponent(epubFile.name)}`,
+                  isDirect: true
+                });
+              }
+              if (pdfFile) {
+                downloadLinks.push({
+                  label: "Internet Archive (PDF)",
+                  url: `https://archive.org/download/${iaId}/${encodeURIComponent(pdfFile.name)}`,
+                  isDirect: true
+                });
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn("Failed to resolve archive.org item:", e.message);
+        }
+        // Also include the landing page as a fallback
+        if (downloadLinks.length === 0) {
+          downloadLinks.push({
+            label: "Internet Archive (Manual)",
+            url: downloadUrl,
+            isDirect: false
+          });
+        }
+      } else {
+        // LibGen, library.lol, or other direct link
+        downloadLinks.push({
+          label: "Direct Download Mirror",
+          url: downloadUrl,
+          isDirect: true
+        });
+      }
+    }
+
+    // Supplement with libgen + library.lol mirrors if md5 looks like a real MD5 (32 hex chars)
+    const md5Str = md5 as string;
+    if (/^[a-f0-9]{32}$/i.test(md5Str)) {
+      // Avoid duplicating if we already have a libgen link
+      const hasLibgen = downloadLinks.some(l => l.url.includes("libgen") || l.url.includes("library.lol"));
+      if (!hasLibgen) {
+        downloadLinks.push({
+          label: "Library.lol (Recommended)",
+          url: `https://library.lol/main/${md5Str}`,
+          isDirect: true
+        });
+        downloadLinks.push({
+          label: "Libgen Mirror",
+          url: `https://libgen.li/get.php?md5=${md5Str.toLowerCase()}`,
+          isDirect: true
+        });
+      }
+    }
+
+    // Final fallback if nothing
     if (downloadLinks.length === 0) {
       const workingMirror = LIBGEN_MIRRORS.find(m => !m.includes("libgen.li")) || "https://libgen.be";
       downloadLinks.push({

@@ -344,7 +344,8 @@ export default function DiscoverView({
           setMirrorError("No download link found for this book.");
         }
       } else {
-        const res = await fetch(`/api/annas-archive/download?md5=${book.md5}`);
+        const iaParam = book.iaId ? `&iaId=${encodeURIComponent(book.iaId)}` : "";
+        const res = await fetch(`/api/annas-archive/download?md5=${book.md5}${iaParam}`);
         const data = await res.json(); console.log("DATA:", data);
         if (data.error) throw new Error(data.error);
 

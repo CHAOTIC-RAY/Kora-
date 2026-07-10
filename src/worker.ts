@@ -138,6 +138,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         size: size,
         source: r.source || "Rave",
         downloadUrl: r.directUrl || r.downloadUrl || "",
+        iaId: r.source === "Internet Archive" ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
         coverUrl
       });
     }
@@ -958,6 +959,7 @@ export default {
     // 3. Download Options / Mirrors API
     if (path === "/api/download" || path === "/api/download-options" || path === "/api/annas-archive/download") {
       const md5 = url.searchParams.get("md5");
+      const iaId = url.searchParams.get("iaId") || "";
       if (!md5) {
         return new Response(JSON.stringify({ error: "MD5 is required" }), {
           status: 400,
@@ -965,28 +967,54 @@ export default {
         });
       }
 
-      const downloadLinks = [
-        {
-          label: "Direct Mirror (library.lol) - Recommended",
-          url: `https://library.lol/main/${md5}`,
-          isDirect: true
-        },
-        {
-          label: "Anna's Archive Mirror",
-          url: `https://annas-archive.gl/md5/${md5}`,
-          isDirect: false
-        },
-        {
-          label: "Libgen Mirror (libgen.rs)",
-          url: `http://libgen.rs/get.php?md5=${md5}`,
-          isDirect: true
-        },
-        {
-          label: "IPFS Gateway Proxy",
-          url: `https://ipfs.io/ipfs/${md5}`,
-          isDirect: false
-        }
-      ];
+      // Check if this is a real 32-char MD5 or a SHA-256 pseudo-ID (64-char, from IA results)
+      const isRealMd5 = /^[a-f0-9]{32}$/i.test(md5);
+
+      let downloadLinks: any[] = [];
+
+      if (isRealMd5) {
+        // Real MD5 — libgen/library.lol links work
+        downloadLinks = [
+          {
+            label: "Direct Mirror (library.lol) - Recommended",
+            url: `https://library.lol/main/${md5}`,
+            isDirect: true
+          },
+          {
+            label: "Libgen Mirror (libgen.li)",
+            url: `https://libgen.li/get.php?md5=${md5.toLowerCase()}`,
+            isDirect: true
+          },
+          {
+            label: "Anna's Archive",
+            url: `https://annas-archive.gl/md5/${md5}`,
+            isDirect: false
+          }
+        ];
+      } else if (iaId) {
+        // Internet Archive item with known iaId — proxy through /api/proxy-file
+        downloadLinks = [
+          {
+            label: "Internet Archive (Direct Download)",
+            url: `/api/proxy-file?url=${encodeURIComponent(`https://archive.org/details/${iaId}`)}`,
+            isDirect: true
+          },
+          {
+            label: "Internet Archive (Browse Page)",
+            url: `https://archive.org/details/${iaId}`,
+            isDirect: false
+          }
+        ];
+      } else {
+        // SHA-256 pseudo-ID with no iaId — generic fallback
+        downloadLinks = [
+          {
+            label: "Search Anna's Archive",
+            url: `https://annas-archive.gl/search`,
+            isDirect: false
+          }
+        ];
+      }
 
       return new Response(JSON.stringify({ 
         options: downloadLinks,
@@ -1213,6 +1241,40 @@ export default {
             console.log(`Rewrote Libgen landing page to Library.lol for robust worker resolution: ${targetUrl}`);
           }
         }
+
+        // Pre-resolve: Internet Archive /details/ pages to actual file download URLs via metadata API
+        if (targetUrl.includes("archive.org/details/")) {
+          try {
+            const iaId = targetUrl.split("/details/")[1]?.split("/")[0]?.split("?")[0];
+            if (iaId) {
+              console.log(`[IA Worker] Resolving archive.org details for item: ${iaId}`);
+              const metaRes = await fetch(`https://archive.org/metadata/${iaId}`, {
+                headers: { "User-Agent": "Mozilla/5.0" },
+                signal: AbortSignal.timeout(8000)
+              });
+              if (metaRes.ok) {
+                const meta = await metaRes.json() as any;
+                const files: any[] = meta.files || [];
+                const bookFile = files.find((f: any) => f.name?.endsWith(".epub")) ||
+                                 files.find((f: any) => f.name?.endsWith(".pdf")) ||
+                                 files.find((f: any) => f.name?.endsWith(".mobi"));
+                if (bookFile) {
+                  const directUrl = `https://archive.org/download/${iaId}/${encodeURIComponent(bookFile.name)}`;
+                  console.log(`[IA Worker] Resolved to direct download: ${directUrl}`);
+                  targetUrl = directUrl;
+                } else {
+                  return new Response(JSON.stringify({ error: "No downloadable book file found in this Internet Archive item." }), {
+                    status: 404,
+                    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+                  });
+                }
+              }
+            }
+          } catch (err: any) {
+            console.warn("[IA Worker] Failed to resolve archive.org details:", err.message || err);
+          }
+        }
+
 
         // 1. Resolve library.lol to its actual direct file download link
         if (targetUrl.includes("library.lol")) {
