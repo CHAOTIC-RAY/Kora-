@@ -930,18 +930,20 @@ export default {
 
         if (recommendations.length === 0) {
           const defaultCurated = [
-            { title: "Project Hail Mary", author: "Andy Weir", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
-            { title: "Atomic Habits", author: "James Clear", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
-            { title: "Educated", author: "Tara Westover", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
-            { title: "Dune", author: "Frank Herbert", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
-            { title: "The Midnight Library", author: "Matt Haig", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
+            { title: "Project Hail Mary", author: "Andy Weir", isbn: "9780593135204", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
+            { title: "Atomic Habits", author: "James Clear", isbn: "9780735211292", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
+            { title: "Educated", author: "Tara Westover", isbn: "9780399590504", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
+            { title: "Dune", author: "Frank Herbert", isbn: "9780441172719", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
+            { title: "The Midnight Library", author: "Matt Haig", isbn: "9780525559474", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
           ];
 
           recommendations.push(...defaultCurated.map(b => ({
-            ...b,
+            title: b.title,
+            author: b.author,
+            reason: b.reason,
             matchingNytBook: false,
-            isbn: null,
-            coverUrl: null
+            isbn: b.isbn,
+            coverUrl: `/api/cover-redirect?isbn=${b.isbn}`
           })));
         }
 

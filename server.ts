@@ -526,21 +526,23 @@ app.post("/api/nytimes/recommendations", express.json(), async (req, res) => {
       }
     }
 
-    // If still empty (e.g. no NYT key configured), provide curated best sellers
+    // If still empty (e.g. no NYT key configured), provide curated best sellers with high-quality cover proxies
     if (recommendations.length === 0) {
       const defaultCurated = [
-        { title: "Project Hail Mary", author: "Andy Weir", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
-        { title: "Atomic Habits", author: "James Clear", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
-        { title: "Educated", author: "Tara Westover", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
-        { title: "Dune", author: "Frank Herbert", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
-        { title: "The Midnight Library", author: "Matt Haig", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
+        { title: "Project Hail Mary", author: "Andy Weir", isbn: "9780593135204", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
+        { title: "Atomic Habits", author: "James Clear", isbn: "9780735211292", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
+        { title: "Educated", author: "Tara Westover", isbn: "9780399590504", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
+        { title: "Dune", author: "Frank Herbert", isbn: "9780441172719", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
+        { title: "The Midnight Library", author: "Matt Haig", isbn: "9780525559474", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
       ];
 
       recommendations.push(...defaultCurated.map(b => ({
-        ...b,
+        title: b.title,
+        author: b.author,
+        reason: b.reason,
         matchingNytBook: false,
-        isbn: null,
-        coverUrl: null
+        isbn: b.isbn,
+        coverUrl: `/api/cover-redirect?isbn=${b.isbn}`
       })));
     }
 
@@ -1438,109 +1440,90 @@ app.get("/api/annas-archive/download", async (req, res) => {
     const cachedBook = bookCache.get(md5 as string);
     let downloadLinks: any[] = [];
 
-    // If iaId is passed (either from cache or from frontend), handle IA resolution first
-    const iaIdFromParam = iaIdParam as string || "";
-    if (iaIdFromParam && !cachedBook?.downloadUrl?.includes("archive.org")) {
-      try {
-        const metaRes = await fetch(`https://archive.org/metadata/${iaIdFromParam}`, {
-          headers: { "User-Agent": "Mozilla/5.0" },
-          signal: AbortSignal.timeout(8000)
-        });
-        if (metaRes.ok) {
-          const meta = await metaRes.json();
-          const files: any[] = meta.files || [];
-          const epubFile = files.find((f: any) => f.name?.endsWith(".epub"));
-          const pdfFile = files.find((f: any) => f.name?.endsWith(".pdf"));
-          if (epubFile) {
-            downloadLinks.push({
-              label: "Internet Archive (EPUB)",
-              url: `https://archive.org/download/${iaIdFromParam}/${encodeURIComponent(epubFile.name)}`,
-              isDirect: true
-            });
-          }
-          if (pdfFile) {
-            downloadLinks.push({
-              label: "Internet Archive (PDF)",
-              url: `https://archive.org/download/${iaIdFromParam}/${encodeURIComponent(pdfFile.name)}`,
-              isDirect: true
-            });
-          }
+    const md5Str = md5 as string;
+    const isRealMd5 = /^[a-f0-9]{32}$/i.test(md5Str);
+
+    if (isRealMd5) {
+      // 1. Prioritize Direct Mirror (library.lol) - Recommended because proxy-file handles it programmatically
+      downloadLinks.push({
+        label: "Library.lol (Recommended)",
+        url: `https://library.lol/main/${md5Str}`,
+        isDirect: true
+      });
+
+      // 2. Add Libgen Mirror (libgen.li)
+      downloadLinks.push({
+        label: "Libgen Mirror",
+        url: `https://libgen.li/get.php?md5=${md5Str.toLowerCase()}`,
+        isDirect: true
+      });
+
+      // 3. Add cached direct links if they exist and are not slow links
+      if (cachedBook && cachedBook.downloadUrl) {
+        const urlLower = cachedBook.downloadUrl.toLowerCase();
+        const isSlow = urlLower.includes("/slow_download/") || urlLower.includes("annas-archive");
+        const alreadyHas = downloadLinks.some(l => l.url === cachedBook.downloadUrl);
+        if (!alreadyHas) {
+          downloadLinks.push({
+            label: isSlow ? "Anna's Archive (Slow/Manual)" : "Direct Download Mirror",
+            url: cachedBook.downloadUrl,
+            isDirect: !isSlow
+          });
         }
-      } catch (e: any) {
-        console.warn("Failed to resolve archive.org item by iaId param:", e.message);
       }
-    }
 
-    if (cachedBook && cachedBook.downloadUrl) {
-      const downloadUrl: string = cachedBook.downloadUrl;
+      // 4. Add Anna's Archive lookup page as manual backup
+      downloadLinks.push({
+        label: "Anna's Archive (Manual)",
+        url: `https://annas-archive.org/md5/${md5Str}`,
+        isDirect: false
+      });
+    } else {
+      // Not a real 32-character hex MD5 - likely an Internet Archive SHA-256 or pseudo-id
+      const iaId = iaIdParam as string || cachedBook?.iaId || "";
+      const downloadUrl = cachedBook?.downloadUrl || "";
 
-      // For Internet Archive items, resolve the /details/ page to actual file URL
-      if (downloadUrl.includes("archive.org/details/")) {
+      if (iaId) {
         try {
-          const iaId = downloadUrl.split("/details/")[1]?.split("/")[0]?.split("?")[0];
-          if (iaId) {
-            const metaRes = await fetch(`https://archive.org/metadata/${iaId}`, {
-              headers: { "User-Agent": "Mozilla/5.0" },
-              signal: AbortSignal.timeout(8000)
-            });
-            if (metaRes.ok) {
-              const meta = await metaRes.json();
-              const files: any[] = meta.files || [];
-              const epubFile = files.find((f: any) => f.name?.endsWith(".epub"));
-              const pdfFile = files.find((f: any) => f.name?.endsWith(".pdf"));
-              if (epubFile) {
-                downloadLinks.push({
-                  label: "Internet Archive (EPUB)",
-                  url: `https://archive.org/download/${iaId}/${encodeURIComponent(epubFile.name)}`,
-                  isDirect: true
-                });
-              }
-              if (pdfFile) {
-                downloadLinks.push({
-                  label: "Internet Archive (PDF)",
-                  url: `https://archive.org/download/${iaId}/${encodeURIComponent(pdfFile.name)}`,
-                  isDirect: true
-                });
-              }
+          const metaRes = await fetch(`https://archive.org/metadata/${iaId}`, {
+            headers: { "User-Agent": "Mozilla/5.0" },
+            signal: AbortSignal.timeout(8000)
+          });
+          if (metaRes.ok) {
+            const meta = await metaRes.json();
+            const files: any[] = meta.files || [];
+            const epubFile = files.find((f: any) => f.name?.endsWith(".epub"));
+            const pdfFile = files.find((f: any) => f.name?.endsWith(".pdf"));
+            if (epubFile) {
+              downloadLinks.push({
+                label: "Internet Archive (EPUB)",
+                url: `https://archive.org/download/${iaId}/${encodeURIComponent(epubFile.name)}`,
+                isDirect: true
+              });
+            }
+            if (pdfFile) {
+              downloadLinks.push({
+                label: "Internet Archive (PDF)",
+                url: `https://archive.org/download/${iaId}/${encodeURIComponent(pdfFile.name)}`,
+                isDirect: true
+              });
             }
           }
         } catch (e: any) {
           console.warn("Failed to resolve archive.org item:", e.message);
         }
-        // Also include the landing page as a fallback
-        if (downloadLinks.length === 0) {
+      }
+
+      if (downloadUrl) {
+        const alreadyHas = downloadLinks.some(l => l.url === downloadUrl);
+        if (!alreadyHas) {
+          const isIaDetails = downloadUrl.includes("archive.org/details/");
           downloadLinks.push({
-            label: "Internet Archive (Manual)",
+            label: isIaDetails ? "Internet Archive (Manual)" : "Source Mirror",
             url: downloadUrl,
-            isDirect: false
+            isDirect: !isIaDetails
           });
         }
-      } else {
-        // LibGen, library.lol, or other direct link
-        downloadLinks.push({
-          label: "Direct Download Mirror",
-          url: downloadUrl,
-          isDirect: true
-        });
-      }
-    }
-
-    // Supplement with libgen + library.lol mirrors if md5 looks like a real MD5 (32 hex chars)
-    const md5Str = md5 as string;
-    if (/^[a-f0-9]{32}$/i.test(md5Str)) {
-      // Avoid duplicating if we already have a libgen link
-      const hasLibgen = downloadLinks.some(l => l.url.includes("libgen") || l.url.includes("library.lol"));
-      if (!hasLibgen) {
-        downloadLinks.push({
-          label: "Library.lol (Recommended)",
-          url: `https://library.lol/main/${md5Str}`,
-          isDirect: true
-        });
-        downloadLinks.push({
-          label: "Libgen Mirror",
-          url: `https://libgen.li/get.php?md5=${md5Str.toLowerCase()}`,
-          isDirect: true
-        });
       }
     }
 
