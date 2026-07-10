@@ -1,7 +1,18 @@
 import React, { useState, useEffect } from "react";
 
+const FALLBACK_QUOTES = [
+  { quote: "A room without books is like a body without a soul.", author: "Marcus Tullius Cicero" },
+  { quote: "Reading is to the mind what exercise is to the body.", author: "Richard Steele" },
+  { quote: "I have always imagined that Paradise will be a kind of library.", author: "Jorge Luis Borges" },
+  { quote: "There is no friend as loyal as a book.", author: "Ernest Hemingway" },
+  { quote: "Books are a uniquely portable magic.", author: "Stephen King" }
+];
+
 export default function Quote() {
-  const [quote, setQuote] = useState<{ quote: string; author: string } | null>(null);
+  const [quote, setQuote] = useState<{ quote: string; author: string }>(() => {
+    const randomIndex = Math.floor(Math.random() * FALLBACK_QUOTES.length);
+    return FALLBACK_QUOTES[randomIndex];
+  });
 
   useEffect(() => {
     const fetchQuote = async () => {
@@ -13,17 +24,13 @@ export default function Quote() {
         const data = await res.json();
         if (data && data.length > 0) {
           setQuote(data[0]);
-        } else {
-          setQuote({ quote: "Reading is to the mind what exercise is to the body.", author: "Richard Steele" });
         }
       } catch (e) {
-        setQuote({ quote: "A room without books is like a body without a soul.", author: "Marcus Tullius Cicero" });
+        // Fallback is already initialized in state
       }
     };
     fetchQuote();
   }, []);
-
-  if (!quote) return null;
 
   return (
     <div className="hidden sm:flex flex-1 items-center gap-2 min-w-0 max-w-xs md:max-w-sm lg:max-w-md xl:max-w-lg px-3 overflow-hidden">

@@ -850,28 +850,6 @@ app.get("/api/download-options", async (req, res) => {
   }
 });
 
-// 3. API: Proxy Download to bypass CORS & SSL blocks
-app.get("/api/proxy-file", async (req, res) => {
-  const fileUrl = req.query.url as string;
-  if (!fileUrl) {
-    return res.status(400).json({ error: "Mirror file 'url' is required." });
-  }
-
-  try {
-    let targetUrl = fileUrl;
-
-    if (targetUrl.includes(".onion")) {
-      throw new Error("Onion links are not supported by the proxy. Please use a standard HTTPS mirror.");
-    }
-
-    if (targetUrl.startsWith("ipfs://")) {
-      targetUrl = targetUrl.replace("ipfs://", "https://ipfs.io/ipfs/");
-    }
-
-    console.log(`Proxying download from URL: ${targetUrl}`);
-    
-    // ... existing implementation continues ...
-    
 // 4. API: Send book via Email (Kindle integration)
 app.post("/api/send-email", async (req, res) => {
   const { to, subject, attachmentUrl, attachmentName } = req.body;
@@ -910,6 +888,34 @@ app.post("/api/send-email", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// 3. API: Proxy Download to bypass CORS & SSL blocks
+app.get("/api/proxy-file", async (req, res) => {
+  const fileUrl = req.query.url as string;
+  if (!fileUrl) {
+    return res.status(400).json({ error: "Mirror file 'url' is required." });
+  }
+
+  try {
+    let targetUrl = fileUrl;
+
+    if (targetUrl.includes(".onion")) {
+      throw new Error("Onion links are not supported by the proxy. Please use a standard HTTPS mirror.");
+    }
+
+    if (targetUrl.startsWith("ipfs://")) {
+      targetUrl = targetUrl.replace("ipfs://", "https://ipfs.io/ipfs/");
+    }
+
+    // Force https for public search/downloads to avoid block/mixed content issues
+    if (targetUrl.startsWith("http://")) {
+      const parsedUrl = new URL(targetUrl);
+      if (parsedUrl.host.includes("libgen") || parsedUrl.host.includes("library") || parsedUrl.host.includes("archive")) {
+        targetUrl = targetUrl.replace(/^http:\/\//i, "https://");
+      }
+    }
+
+    console.log(`Proxying download from URL: ${targetUrl}`);
 
     // 1. Resolve library.lol to its actual direct file download link
     if (targetUrl.includes("library.lol")) {

@@ -205,6 +205,117 @@ export default {
       }
     }
 
+    if (path === "/api/nytimes/recommendations" && request.method === "POST") {
+      try {
+        let body: any = {};
+        try {
+          body = await request.json();
+        } catch (_) {}
+        const { library = [], recentSearches = [] } = body;
+        const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
+
+        let allNytBooks: any[] = [];
+        if (apiKey && apiKey.trim() !== "") {
+          try {
+            const response = await fetch(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
+            if (response.ok) {
+              const data: any = await response.json();
+              if (data.status === "OK") {
+                const lists = data.results?.lists || [];
+                allNytBooks = lists.flatMap((list: any) =>
+                  (list.books || []).map((b: any) => ({
+                    title: b.title,
+                    author: b.author,
+                    coverUrl: b.book_image,
+                    description: b.description,
+                    primary_isbn13: b.primary_isbn13,
+                    list_name: list.display_name,
+                    list_id: list.list_name_encoded
+                  }))
+                );
+              }
+            }
+          } catch (err) {
+            console.error("Failed to fetch NYT Best Sellers for recommendations in Worker:", err);
+          }
+        }
+
+        const recommendations: any[] = [];
+        const usedNyt = new Set<string>();
+
+        const searchTerms = [
+          ...recentSearches.map((s: any) => String(s || "").toLowerCase()),
+          ...library.map((b: any) => String(b?.title || "").toLowerCase()),
+          ...library.map((b: any) => String(b?.author || "").toLowerCase())
+        ].filter(Boolean);
+
+        for (const b of allNytBooks) {
+          if (recommendations.length >= 5) break;
+          const titleLower = String(b.title || "").toLowerCase();
+          const authorLower = String(b.author || "").toLowerCase();
+
+          const isMatch = searchTerms.some(term => 
+            term.length > 2 && (titleLower.includes(term) || authorLower.includes(term) || term.includes(titleLower) || term.includes(authorLower))
+          );
+
+          if (isMatch) {
+            recommendations.push({
+              title: b.title,
+              author: b.author,
+              reason: `Highly matching your interest in ${b.author || "this genre"}. This current NYT Best Seller in ${b.list_name} aligns with your library and recent searches!`,
+              matchingNytBook: true,
+              isbn: b.primary_isbn13,
+              coverUrl: b.coverUrl
+            });
+            usedNyt.add(b.title.toUpperCase());
+          }
+        }
+
+        if (allNytBooks.length > 0) {
+          for (const b of allNytBooks) {
+            if (recommendations.length >= 5) break;
+            if (usedNyt.has(b.title.toUpperCase())) continue;
+
+            recommendations.push({
+              title: b.title,
+              author: b.author,
+              reason: `A trending literary masterpiece! Recommended from the latest NYT Bestseller List for ${b.list_name}.`,
+              matchingNytBook: true,
+              isbn: b.primary_isbn13,
+              coverUrl: b.coverUrl
+            });
+            usedNyt.add(b.title.toUpperCase());
+          }
+        }
+
+        if (recommendations.length === 0) {
+          const defaultCurated = [
+            { title: "Project Hail Mary", author: "Andy Weir", reason: "An incredible sci-fi thriller about a lone astronaut trying to save humanity, matching high-tech literature." },
+            { title: "Atomic Habits", author: "James Clear", reason: "An extremely practical guide to building good habits and breaking bad ones, perfect for personal development." },
+            { title: "Educated", author: "Tara Westover", reason: "A gripping memoir about a young woman's struggle for education and self-reinvention." },
+            { title: "Dune", author: "Frank Herbert", reason: "A timeless sci-fi masterpiece with unparalleled world-building and political intrigue." },
+            { title: "The Midnight Library", author: "Matt Haig", reason: "A beautiful, thought-provoking novel exploring choices, regrets, and what truly makes life worth living." }
+          ];
+
+          recommendations.push(...defaultCurated.map(b => ({
+            ...b,
+            matchingNytBook: false,
+            isbn: null,
+            coverUrl: null
+          })));
+        }
+
+        return new Response(JSON.stringify({ recommendations }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to generate recommendations", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // 3. Download Options / Mirrors API
     if (path === "/api/download" || path === "/api/download-options" || path === "/api/annas-archive/download") {
       const md5 = url.searchParams.get("md5");
@@ -440,6 +551,17 @@ export default {
         }
 
         let targetUrl = downloadUrl;
+        let libraryLolResolved = false;
+
+        // Force https for public search/downloads to avoid block/mixed content issues in Cloudflare Workers
+        if (targetUrl.startsWith("http://")) {
+          try {
+            const parsedUrl = new URL(targetUrl);
+            if (parsedUrl.host.includes("libgen") || parsedUrl.host.includes("library") || parsedUrl.host.includes("archive")) {
+              targetUrl = targetUrl.replace(/^http:\/\//i, "https://");
+            }
+          } catch (_) {}
+        }
 
         // 1. Resolve library.lol to its actual direct file download link
         if (targetUrl.includes("library.lol")) {
@@ -458,7 +580,7 @@ export default {
               while ((match = aTagRegex.exec(html)) !== null) {
                 const href = match[1];
                 const attrs = match[2];
-                const text = match[3].replace(/<[^>]*>/g, "").trim().toLowerCase();
+                const text = (match[3] || "").replace(/<[^>]*>/g, "").trim().toLowerCase();
                 if (text === "get" || href.includes("/ipfs/") || href.includes("gateway") || attrs.includes("download")) {
                   directLink = href;
                   break;
@@ -470,10 +592,22 @@ export default {
                 }
                 console.log(`Successfully resolved library.lol direct link in Worker: ${directLink}`);
                 targetUrl = directLink;
+                libraryLolResolved = true;
               }
             }
           } catch (err) {
             console.warn("Failed to resolve library.lol direct link in Worker:", err);
+          }
+
+          // Fallback to Libgen RS if library.lol landing page couldn't be resolved or fetched
+          if (!libraryLolResolved) {
+            console.log("library.lol resolution failed. Attempting automatic fallback to libgen.rs...");
+            const md5Match = targetUrl.match(/\/main\/([a-fA-F0-9]{32})/i) || targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
+            if (md5Match) {
+              const md5 = md5Match[1];
+              targetUrl = `https://libgen.rs/get.php?md5=${md5}`;
+              console.log(`Rewrote target URL to libgen.rs fallback: ${targetUrl}`);
+            }
           }
         }
 
@@ -494,7 +628,7 @@ export default {
               let directLink = "";
               while ((match = aTagRegex.exec(html)) !== null) {
                 const href = match[1];
-                const text = match[3].replace(/<[^>]*>/g, "").trim().toLowerCase();
+                const text = (match[3] || "").replace(/<[^>]*>/g, "").trim().toLowerCase();
                 if (href.includes("get.php?md5=") && href.includes("&key=")) {
                   directLink = href;
                   break;
