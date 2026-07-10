@@ -1202,6 +1202,18 @@ export default {
           } catch (_) {}
         }
 
+        // Pre-resolve: Libgen landing pages (like get.php?md5=) can be extremely difficult to fetch in Cloudflare Workers 
+        // due to strict TLS, DDOS protection, or IP blocks. We automatically rewrite them to library.lol/main/ MD5 pages,
+        // which use the same files but have highly reliable, unblocked, open landing pages.
+        if (targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=")) {
+          const md5Match = targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
+          if (md5Match) {
+            const md5 = md5Match[1];
+            targetUrl = `https://library.lol/main/${md5}`;
+            console.log(`Rewrote Libgen landing page to Library.lol for robust worker resolution: ${targetUrl}`);
+          }
+        }
+
         // 1. Resolve library.lol to its actual direct file download link
         if (targetUrl.includes("library.lol")) {
           try {
