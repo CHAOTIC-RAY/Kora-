@@ -208,7 +208,7 @@ async function fetchFromRaveBookSearch(query: string, mode: string = "ebooks", s
 
       // Final fallback to Anna's Archive by MD5
       if (!coverUrl) {
-        coverUrl = `https://annas-archive.gl/covers/${md5}.jpg`;
+        coverUrl = `/api/cover-redirect?md5=${md5}`;
         coverSource = "annas-archive";
       }
 
@@ -625,9 +625,26 @@ app.get("/api/cover-redirect", async (req, res) => {
       }
     }
 
-    // 4. Fallback to Anna's Archive by MD5
+    // 4. Fallback to Anna's Archive by MD5 (proxied to bypass hotlinking/SSL issues)
     if (md5) {
-      return res.redirect(`https://annas-archive.gl/covers/${md5}.jpg`);
+      const domains = ["annas-archive.org", "annas-archive.se", "annas-archive.li", "annas-archive.gl"];
+      for (const domain of domains) {
+        try {
+          const coverUrl = `https://${domain}/covers/${md5}.jpg`;
+          const fetchRes = await fetch(coverUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+              "Referer": `https://${domain}/`
+            }
+          });
+          if (fetchRes.ok) {
+            res.setHeader("Content-Type", fetchRes.headers.get("content-type") || "image/jpeg");
+            res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+            const arrayBuffer = await fetchRes.arrayBuffer();
+            return res.send(Buffer.from(arrayBuffer));
+          }
+        } catch (_) {}
+      }
     }
 
     // Return 404 placeholder
@@ -683,7 +700,7 @@ app.get("/api/cover-lookup", async (req, res) => {
 
     // 4. Fallback to Anna's Archive by MD5
     if (md5) {
-      return res.json({ coverUrl: `https://annas-archive.gl/covers/${md5}.jpg`, source: "annas-archive" });
+      return res.json({ coverUrl: `/api/cover-redirect?md5=${md5}`, source: "annas-archive" });
     }
 
     res.json({ coverUrl: null, source: null });
@@ -1160,7 +1177,7 @@ app.get("/api/proxy-file", async (req, res) => {
 
       const finalHeaders: Record<string, string> = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Referer": "https://annas-archive.gl/",
+        "Referer": "https://annas-archive.org/",
         "Accept": "application/octet-stream,application/epub+zip,application/pdf,*/*",
       };
 
