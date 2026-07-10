@@ -950,7 +950,7 @@ app.post("/api/send-email", async (req, res) => {
     }
 
     // 1b. Resolve Libgen (libgen.li, libgen.gs, etc.) landing page to its actual direct file download link
-    const isLibgenLanding = (targetUrl.includes("libgen.li") || targetUrl.includes("libgen.be") || targetUrl.includes("libgen.gs") || targetUrl.includes("libgen.rocks") || targetUrl.includes("libgen.lc") || targetUrl.includes("libgen.st") || targetUrl.includes("libgen.io")) && targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=");
+    const isLibgenLanding = targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=");
     
     if (isLibgenLanding) {
       try {

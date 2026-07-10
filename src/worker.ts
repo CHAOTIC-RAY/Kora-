@@ -439,14 +439,199 @@ export default {
           return new Response(JSON.stringify({ error: "Missing download url" }), { status: 400 });
         }
 
-        const headers: any = {
-          "User-Agent": "Z-Library plugin KOReader"
-        };
-        if (userId && userKey) {
-          headers["Cookie"] = `remix_userid=${userId}; remix_userkey=${userKey}`;
+        let targetUrl = downloadUrl;
+
+        // 1. Resolve library.lol to its actual direct file download link
+        if (targetUrl.includes("library.lol")) {
+          try {
+            console.log(`Resolving library.lol landing page in Worker: ${targetUrl}`);
+            const htmlRes = await fetch(targetUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+              }
+            });
+            if (htmlRes.ok) {
+              const html = await htmlRes.text();
+              const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
+              let match;
+              let directLink = "";
+              while ((match = aTagRegex.exec(html)) !== null) {
+                const href = match[1];
+                const attrs = match[2];
+                const text = match[3].replace(/<[^>]*>/g, "").trim().toLowerCase();
+                if (text === "get" || href.includes("/ipfs/") || href.includes("gateway") || attrs.includes("download")) {
+                  directLink = href;
+                  break;
+                }
+              }
+              if (directLink) {
+                if (directLink.startsWith("/")) {
+                  directLink = "https://library.lol" + directLink;
+                }
+                console.log(`Successfully resolved library.lol direct link in Worker: ${directLink}`);
+                targetUrl = directLink;
+              }
+            }
+          } catch (err) {
+            console.warn("Failed to resolve library.lol direct link in Worker:", err);
+          }
         }
 
-        const response = await fetch(downloadUrl, { headers });
+        // 2. Resolve Libgen landing page to its actual direct file download link
+        const isLibgenLanding = targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=");
+        if (isLibgenLanding) {
+          try {
+            console.log(`Resolving Libgen landing page in Worker: ${targetUrl}`);
+            const htmlRes = await fetch(targetUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+              }
+            });
+            if (htmlRes.ok) {
+              const html = await htmlRes.text();
+              const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
+              let match;
+              let directLink = "";
+              while ((match = aTagRegex.exec(html)) !== null) {
+                const href = match[1];
+                const text = match[3].replace(/<[^>]*>/g, "").trim().toLowerCase();
+                if (href.includes("get.php?md5=") && href.includes("&key=")) {
+                  directLink = href;
+                  break;
+                }
+                if (text === "get" || text.includes("get")) {
+                  directLink = href;
+                }
+              }
+              if (directLink) {
+                const parsedUrl = new URL(targetUrl);
+                if (directLink.startsWith("/")) {
+                  directLink = `${parsedUrl.protocol}//${parsedUrl.host}${directLink}`;
+                } else if (!directLink.startsWith("http")) {
+                  const pathname = parsedUrl.pathname;
+                  const baseDir = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+                  directLink = `${parsedUrl.protocol}//${parsedUrl.host}${baseDir}${directLink}`;
+                }
+                console.log(`Successfully resolved Libgen direct link in Worker: ${directLink}`);
+                targetUrl = directLink;
+              }
+            }
+          } catch (err) {
+            console.warn("Failed to resolve Libgen direct link in Worker:", err);
+          }
+        }
+
+        // 3. IPFS Gateway Fallbacks (Raced Parallel Resolving for maximal speed)
+        const ipfsMatch = targetUrl.match(/\/ipfs\/([a-zA-Z0-9]+)/i);
+        let response: any = null;
+        let resolvedFinalUrl = targetUrl;
+
+        if (ipfsMatch) {
+          const cid = ipfsMatch[1];
+          const gateways = [
+            `https://cloudflare-ipfs.com/ipfs/${cid}`,
+            `https://ipfs.io/ipfs/${cid}`,
+            `https://dweb.link/ipfs/${cid}`,
+            `https://gateway.pinata.cloud/ipfs/${cid}`
+          ];
+
+          console.log(`[IPFS] CID detected in Worker: ${cid}. Querying public gateways in parallel...`);
+
+          const controllers: AbortController[] = [];
+          const gatewayPromises = gateways.map(async (gatewayUrl) => {
+            const controller = new AbortController();
+            controllers.push(controller);
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+            try {
+              const resIpfs = await fetch(gatewayUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                },
+                signal: controller.signal,
+                redirect: 'follow'
+              });
+
+              clearTimeout(timeoutId);
+
+              if (resIpfs.ok) {
+                const contentType = resIpfs.headers.get("content-type") || "";
+                if (!contentType.toLowerCase().includes("text/html")) {
+                  return { res: resIpfs, url: gatewayUrl };
+                }
+              }
+              throw new Error(`HTTP ${resIpfs.status}`);
+            } catch (err: any) {
+              clearTimeout(timeoutId);
+              throw err;
+            }
+          });
+
+          try {
+            const winner = await new Promise<{ res: any, url: string }>((resolve, reject) => {
+              let failedCount = 0;
+              if (gatewayPromises.length === 0) {
+                reject(new Error("No gateways configured"));
+                return;
+              }
+
+              gatewayPromises.forEach(p => {
+                p.then((val) => {
+                  resolve(val);
+                }).catch(() => {
+                  failedCount++;
+                  if (failedCount === gatewayPromises.length) {
+                    reject(new Error("All parallel gateways failed or timed out"));
+                  }
+                });
+              });
+            });
+
+            response = winner.res;
+            resolvedFinalUrl = winner.url;
+            console.log(`[IPFS] Fast parallel gateway succeeded in Worker: ${resolvedFinalUrl}`);
+
+            controllers.forEach(c => {
+              try { c.abort(); } catch (_) {}
+            });
+
+          } catch (err: any) {
+            console.log(`[IPFS] All parallel gateways failed in Worker. Trying original fallback URL: ${targetUrl}`);
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 8000);
+              const resOriginal = await fetch(targetUrl, {
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                },
+                signal: controller.signal,
+                redirect: 'follow'
+              });
+              clearTimeout(timeoutId);
+              if (resOriginal.ok) {
+                response = resOriginal;
+                resolvedFinalUrl = targetUrl;
+              }
+            } catch (origErr: any) {}
+          }
+        }
+
+        if (!response) {
+          const finalHeaders: Record<string, string> = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Referer": "https://annas-archive.gl/",
+            "Accept": "application/octet-stream,application/epub+zip,application/pdf,*/*",
+          };
+          if (userId && userKey) {
+            finalHeaders["Cookie"] = `remix_userid=${userId}; remix_userkey=${userKey}`;
+          }
+
+          response = await fetch(targetUrl, {
+            headers: finalHeaders,
+            redirect: 'follow'
+          });
+        }
+
         if (!response.ok) {
           throw new Error(`Proxy target responded with status ${response.status}`);
         }
