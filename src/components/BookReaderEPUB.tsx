@@ -339,8 +339,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               if (sel) {
                 sel.removeAllRanges();
                 sel.addRange(newRange);
+                setSelectedText(word);
               }
-              lookupDictionary(word);
+              // lookupDictionary(word); // Removed automatic lookup
             }
           }
         }
