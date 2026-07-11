@@ -298,9 +298,86 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
     document.addEventListener("dblclick", handleDoubleClick);
 
+    // Dictionary lookup on long press
+    let pressTimer: NodeJS.Timeout | null = null;
+    let pressStartX = 0;
+    let pressStartY = 0;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      pressStartX = e.clientX;
+      pressStartY = e.clientY;
+      pressTimer = setTimeout(() => {
+        let range: Range | null = null;
+        if (document.caretRangeFromPoint) {
+          range = document.caretRangeFromPoint(e.clientX, e.clientY);
+        } else if ((document as any).caretPositionFromPoint) {
+          const pos = (document as any).caretPositionFromPoint(e.clientX, e.clientY);
+          if (pos && pos.offsetNode) {
+            range = document.createRange();
+            range.setStart(pos.offsetNode, pos.offset);
+            range.collapse(true);
+          }
+        }
+
+        if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
+          const textNode = range.startContainer;
+          const offset = range.startOffset;
+          const text = textNode.textContent || "";
+          
+          let start = offset;
+          while (start > 0 && /[\w\-]/.test(text[start - 1])) start--;
+          let end = offset;
+          while (end < text.length && /[\w\-]/.test(text[end])) end++;
+          
+          if (end > start) {
+            const word = text.slice(start, end).replace(/^[^a-zA-Z0-9\-]+|[^a-zA-Z0-9\-]+$/g, "");
+            if (word && word.length > 1) {
+              const newRange = document.createRange();
+              newRange.setStart(textNode, start);
+              newRange.setEnd(textNode, end);
+              const sel = window.getSelection();
+              if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(newRange);
+              }
+              lookupDictionary(word);
+            }
+          }
+        }
+      }, 500);
+    };
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (pressTimer) {
+        const dx = Math.abs(e.clientX - pressStartX);
+        const dy = Math.abs(e.clientY - pressStartY);
+        if (dx > 10 || dy > 10) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+      }
+    };
+
+    const handlePointerUp = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerUp);
+
     return () => {
       document.removeEventListener("selectionchange", handleSelection);
       document.removeEventListener("dblclick", handleDoubleClick);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerUp);
+      if (pressTimer) clearTimeout(pressTimer);
     };
   }, []);
 
