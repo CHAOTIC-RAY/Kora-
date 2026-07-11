@@ -341,11 +341,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 sel.addRange(newRange);
                 setSelectedText(word);
               }
-              // lookupDictionary(word); // Removed automatic lookup
+              lookupDictionary(word); // Uncommented for automatic lookup on long press
             }
           }
         }
-      }, 500);
+      }, 800);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -444,10 +444,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       return;
     }
     
-    // If text is highlighted, don't trigger page turn
-    const sel = window.getSelection()?.toString();
-    if (sel && sel.trim().length > 0) return;
-
+    // If text is highlighted, clear it and continue to allow page turn
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) {
+      sel.removeAllRanges();
+    }
+    
     const container = contentRef.current;
     if (!container) return;
     
