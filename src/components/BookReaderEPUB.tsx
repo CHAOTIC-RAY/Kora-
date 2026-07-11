@@ -56,7 +56,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18); // px
   const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-serif");
   const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light"); // light, dark, sepia, green
-  const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl px-6");
+  const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
   const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
   const [isContinuous, setIsContinuous] = useState<boolean>(readerPrefs?.isContinuous ?? false);
   const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
@@ -138,19 +138,23 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setTimeout(() => {
       const container = contentRef.current;
       if (!container) return;
-      const width = container.getBoundingClientRect().width;
+      
+      // Get the actual width available for text (excluding article's own padding if any)
+      const rect = container.getBoundingClientRect();
+      const width = rect.width;
       if (width <= 0) return;
       
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
+      // If double columns, one page is half the width minus half the gap
       const colWidth = doubleColumns ? (width - gapWidth) / 2 : width;
       const step = colWidth + gapWidth;
       
-      // Calculate total pages
+      // Calculate total pages based on scrollWidth and step
       const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
       setTotalPages(calculatedPages);
       setContainerWidth(width);
-    }, 120);
+    }, 150);
   };
 
   // Recalculate layout on resize or preference change
@@ -450,11 +454,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       sel.removeAllRanges();
     }
     
-    const container = contentRef.current;
-    if (!container) return;
-    
-    const rect = container.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
+    
+    // Zone-based clicking: 
+    // Left 30% -> Prev
+    // Right 30% -> Next
+    // Middle 40% -> Toggle Menu (handled by parent or other click listeners if needed)
+    // But user asked for left/right screen tap, so we'll do 40/20/40 or just 50/50.
+    // Let's stick to 50/50 but ensure it works on the currentTarget's rect.
     const isLeftSide = clickX < rect.width / 2;
     
     if (isLeftSide) {
@@ -1373,9 +1381,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               <label className="text-xs opacity-75 font-sans block mb-2">Margins</label>
               <div className="grid grid-cols-3 gap-1.5">
                 {[
-                  { label: "None", val: "max-w-full px-4" },
-                  { label: "Narrow", val: "max-w-2xl px-6" },
-                  { label: "Wide", val: "max-w-xl px-12" }
+                  { label: "None", val: "max-w-full" },
+                  { label: "Narrow", val: "max-w-2xl" },
+                  { label: "Wide", val: "max-w-xl" }
                 ].map((m) => (
                   <button
                     key={m.val}
@@ -1726,9 +1734,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               {/* The Chapter Text Container */}
               <div 
-                ref={contentRef}
                 onPointerUp={handleContainerClick}
-                className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start select-none cursor-default"
+                className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start justify-center select-none cursor-default"
                 style={{ height: "calc(100vh - 185px)" }}
               >
                 {/* Visual page slide feedback */}
@@ -1752,9 +1759,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 </AnimatePresence>
 
                 <motion.article 
+                  ref={contentRef}
                   animate={{ x: -(currentPageNum - 1) * (containerWidth + 40) }}
                   transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
-                  className={`w-full ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
+                  className={`w-full mx-auto ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
                   style={{
                     fontSize: `${fontSize}px`,
                     lineHeight: lineSpacing,
