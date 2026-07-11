@@ -361,12 +361,12 @@ export default function App() {
     <div id="app-root-container" className="min-h-screen flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300">
       {/* 1. Global Navigation Header - Kora Style */}
       <header className="border-b border-kindle-border bg-kindle-bg sticky top-0 z-40 h-16">
-        <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
             id="kora-logo-home"
             onClick={() => setActiveTab("library")}
-            className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none cursor-pointer"
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none cursor-pointer shrink-0"
             aria-label="Kora Library Home"
           >
             <KoraIcon className="w-7 h-7 text-kindle-text" />
@@ -374,13 +374,13 @@ export default function App() {
               <KoraWordmark className="h-4 text-kindle-text" />
             </div>
           </button>
-          <div className="hidden md:block">
+          <div className="flex flex-1 min-w-0 max-w-[130px] xs:max-w-[200px] sm:max-w-xs md:max-w-md lg:max-w-lg">
             <Quote />
           </div>
         </div>
 
         {/* Tab Controls & Cloud Auth Sync Info */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <nav className="hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border">
             <button
               id="library-tab"
