@@ -406,7 +406,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     }
   };
 
-  const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleContainerClick = (e: React.PointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
 
     // Handle internal TOC links (data-epub-href)
@@ -1727,7 +1727,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               {/* The Chapter Text Container */}
               <div 
                 ref={contentRef}
-                onClick={handleContainerClick}
+                onPointerUp={handleContainerClick}
                 className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start select-none cursor-default"
                 style={{ height: "calc(100vh - 185px)" }}
               >
@@ -1740,7 +1740,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       animate={{ opacity: 0.15, x: 0 }}
                       exit={{ opacity: 0, x: tapFeedback === "next" ? -60 : 60 }}
                       transition={{ duration: 0.35, ease: "easeOut" }}
-                      className={`absolute inset-y-0 ${
+                      className={`absolute inset-y-0 pointer-events-none ${
                         tapFeedback === "next" ? "right-0" : "left-0"
                       } w-1/4 pointer-events-none z-10 bg-gradient-to-r ${
                         tapFeedback === "next" 
