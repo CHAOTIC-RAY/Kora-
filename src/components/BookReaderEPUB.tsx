@@ -14,6 +14,15 @@ interface BookReaderEPUBProps {
   userId: string;
   onClose: () => void;
   onProgressUpdate: (updatedBook: BookMetadata) => void;
+  readerPrefs?: {
+    fontSize: number;
+    lineSpacing: number;
+    fontFamily: string;
+    theme: string;
+    marginSize: string;
+    isContinuous: boolean;
+    brightness: number;
+  };
 }
 
 interface EpubChapter {
@@ -24,20 +33,20 @@ interface EpubChapter {
   fullPath: string;
 }
 
-export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate }: BookReaderEPUBProps) {
+export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs }: BookReaderEPUBProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chapters, setChapters] = useState<EpubChapter[]>([]);
   const [currentChapterIdx, setCurrentChapterIdx] = useState<number>(0);
   
-  // Customization states
-  const [fontSize, setFontSize] = useState<number>(18); // px
-  const [fontFamily, setFontFamily] = useState<string>("font-serif");
-  const [theme, setTheme] = useState<string>("light"); // light, dark, sepia, green
-  const [marginSize, setMarginSize] = useState<string>("max-w-2xl px-6");
-  const [lineSpacing, setLineSpacing] = useState<number>(1.6);
-  const [isContinuous, setIsContinuous] = useState<boolean>(false);
-  const [brightness, setBrightness] = useState<number>(100);
+  // Customization states (seeded from persisted settings, fallback to defaults)
+  const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18); // px
+  const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-serif");
+  const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light"); // light, dark, sepia, green
+  const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl px-6");
+  const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
+  const [isContinuous, setIsContinuous] = useState<boolean>(readerPrefs?.isContinuous ?? false);
+  const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
   
   // Dictionary states
   const [dictionaryWord, setDictionaryWord] = useState<string | null>(null);

@@ -16,7 +16,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { getBookFile } from "./db/indexedDB";
+import { getBookFile, clearAllCachedBooks } from "./db/indexedDB";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
@@ -48,17 +48,31 @@ export default function App() {
   const [displayTheme, setDisplayTheme] = useState<string>(() => {
     return localStorage.getItem("kora_display_theme") || "theme-light-white";
   });
-  const [connectors, setConnectors] = useState(() => {
-    const saved = localStorage.getItem("kora_connectors");
+
+  // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
+  const [readerPrefs, setReaderPrefs] = useState(() => {
+    const saved = localStorage.getItem("kora_reader_prefs");
     return saved ? JSON.parse(saved) : {
-      annas: true,
-      zlib: true,
-      openslum: true,
-      mangadex: true,
-      comicvine: true
+      fontSize: 18,
+      lineSpacing: 1.6,
+      fontFamily: "font-serif",
+      theme: "light",
+      marginSize: "max-w-2xl px-6",
+      isContinuous: false,
+      brightness: 100,
     };
   });
-  
+
+  // Search / discovery preferences
+  const [searchPrefs, setSearchPrefs] = useState(() => {
+    const saved = localStorage.getItem("kora_search_prefs");
+    return saved ? JSON.parse(saved) : {
+      defaultSource: "all",
+      autoCacheDownloads: true,
+      openInNewTab: false,
+    };
+  });
+
   const [zlibConfig, setZlibConfig] = useState(() => {
     const saved = localStorage.getItem("kora_zlib_config");
     return saved ? JSON.parse(saved) : {
@@ -139,12 +153,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("kora_connectors", JSON.stringify(connectors));
-  }, [connectors]);
-
-  useEffect(() => {
     localStorage.setItem("kora_zlib_config", JSON.stringify(zlibConfig));
   }, [zlibConfig]);
+
+  useEffect(() => {
+    localStorage.setItem("kora_reader_prefs", JSON.stringify(readerPrefs));
+  }, [readerPrefs]);
+
+  useEffect(() => {
+    localStorage.setItem("kora_search_prefs", JSON.stringify(searchPrefs));
+  }, [searchPrefs]);
 
   // ZLib Auto-discover Base URL
   useEffect(() => {
@@ -257,6 +275,21 @@ export default function App() {
   function changeTheme(newTheme: string) {
     setDisplayTheme(newTheme);
     localStorage.setItem("kora_display_theme", newTheme);
+  }
+
+  // Clear locally cached book files from IndexedDB
+  async function handleClearDeviceCache() {
+    try {
+      await clearAllCachedBooks();
+      await updateCachedBookIndex();
+    } catch (err) {
+      console.error("Failed to clear device cache:", err);
+    }
+  }
+
+  // Clear recent searches
+  function handleClearRecentSearches() {
+    localStorage.removeItem("kora_recent_searches");
   }
 
   // Handle book selection for reading
@@ -410,7 +443,6 @@ export default function App() {
           <DiscoverView
             userId={user?.uid || ""}
             books={books}
-            connectors={connectors}
             zlibConfig={zlibConfig}
             selectedBook={selectedBookForDownload}
             onSelectedBookChange={setSelectedBookForDownload}
@@ -445,6 +477,14 @@ export default function App() {
             onChangeTheme={changeTheme}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}
+            readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
+            searchPrefs={searchPrefs}
+            onSearchPrefsChange={setSearchPrefs}
+            bookCount={books.length}
+            cachedCount={cachedBookIds.size}
+            onClearDeviceCache={handleClearDeviceCache}
+            onClearRecentSearches={handleClearRecentSearches}
           />
         )}
       </main>
@@ -482,6 +522,7 @@ export default function App() {
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
+            readerPrefs={readerPrefs}
             onClose={() => {
               setActiveBook(null);
               refreshLibrary();

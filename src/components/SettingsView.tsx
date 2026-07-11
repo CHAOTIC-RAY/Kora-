@@ -1,10 +1,28 @@
 import React from "react";
 import { User } from "firebase/auth";
-import { 
-  Moon, Sun, Monitor, 
+import {
+  Moon, Sun, Monitor,
   User as UserIcon, ShieldCheck, BookOpen,
-  Clock, LogIn
+  Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
+  Database, Trash2, Search as SearchIcon, Globe, Layout,
+  Sparkles, Info, Download, HardDrive, Bell, Volume2
 } from "lucide-react";
+
+interface ReaderPrefs {
+  fontSize: number;
+  lineSpacing: number;
+  fontFamily: string;
+  theme: string;
+  marginSize: string;
+  isContinuous: boolean;
+  brightness: number;
+}
+
+interface SearchPrefs {
+  defaultSource: string;
+  autoCacheDownloads: boolean;
+  openInNewTab: boolean;
+}
 
 interface SettingsViewProps {
   user: User | null;
@@ -14,6 +32,14 @@ interface SettingsViewProps {
   onChangeTheme: (theme: string) => void;
   onSignOut: () => void;
   onSignIn: () => void;
+  readerPrefs: ReaderPrefs;
+  onReaderPrefsChange: (prefs: ReaderPrefs) => void;
+  searchPrefs: SearchPrefs;
+  onSearchPrefsChange: (prefs: SearchPrefs) => void;
+  bookCount: number;
+  cachedCount: number;
+  onClearDeviceCache: () => void;
+  onClearRecentSearches: () => void;
 }
 
 function getRemainingGuestDays(user: User | null): number {
@@ -30,24 +56,86 @@ function getRemainingGuestDays(user: User | null): number {
   }
 }
 
-export default function SettingsView({ 
-  user, 
+// Reusable toggle switch
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${on ? "bg-kindle-accent" : "bg-neutral-300"}`}
+      aria-pressed={on}
+    >
+      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${on ? "translate-x-5.5" : "translate-x-0.5"}`} />
+    </button>
+  );
+}
+
+// Reusable setting row
+function Row({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0">
+        <h4 className="text-xs font-bold">{title}</h4>
+        {desc && <p className="text-[10px] text-kindle-text-muted">{desc}</p>}
+      </div>
+      <div className="shrink-0 flex items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
+export default function SettingsView({
+  user,
   grayscaleCovers,
   displayTheme,
-  onToggleGrayscale, 
+  onToggleGrayscale,
   onChangeTheme,
-  onSignOut, 
-  onSignIn
+  onSignOut,
+  onSignIn,
+  readerPrefs,
+  onReaderPrefsChange,
+  searchPrefs,
+  onSearchPrefsChange,
+  bookCount,
+  cachedCount,
+  onClearDeviceCache,
+  onClearRecentSearches
 }: SettingsViewProps) {
+  const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
+  const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
+
+  const fontOptions = [
+    { id: "font-serif", label: "Serif" },
+    { id: "font-sans", label: "Sans" },
+    { id: "font-mono", label: "Mono" }
+  ];
+  const readerThemes = [
+    { id: "light", label: "Light", bg: "bg-white", ring: "ring-neutral-300" },
+    { id: "sepia", label: "Sepia", bg: "bg-[#f4ecd8]", ring: "ring-[#cbb994]" },
+    { id: "dark", label: "Dark", bg: "bg-[#1a1a1a]", ring: "ring-neutral-600" },
+    { id: "green", label: "Green", bg: "bg-[#c7edcc]", ring: "ring-[#7fb987]" }
+  ];
+  const marginOptions = [
+    { id: "max-w-xl px-4", label: "Narrow" },
+    { id: "max-w-2xl px-6", label: "Medium" },
+    { id: "max-w-4xl px-8", label: "Wide" }
+  ];
+  const sources = [
+    { id: "all", label: "All Sources" },
+    { id: "annas", label: "Anna's Archive" },
+    { id: "libgen", label: "LibGen" },
+    { id: "zlib", label: "Z-Library" },
+    { id: "ia", label: "Archive.org" },
+    { id: "openlibrary", label: "Open Library" }
+  ];
+
   return (
-    <div className="max-w-xl mx-auto space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="max-w-xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="space-y-1.5 text-center">
         <h2 className="text-2xl font-bold font-lexend tracking-tight text-kindle-text">Settings</h2>
         <p className="text-[10px] text-kindle-text-muted uppercase tracking-widest font-bold">Preferences & Cloud Sync</p>
       </header>
 
       <div className="space-y-6">
-        {/* Appearance Section */}
+        {/* Appearance */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
             <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
@@ -55,62 +143,197 @@ export default function SettingsView({
             </div>
             <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Appearance</h3>
           </div>
-          
-          <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold">Grayscale Covers</h4>
-                <p className="text-[10px] text-kindle-text-muted">Classic e-ink aesthetic for book covers</p>
-              </div>
-              <button 
-                onClick={onToggleGrayscale}
-                className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${grayscaleCovers ? "bg-kindle-accent" : "bg-neutral-300"}`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${grayscaleCovers ? "translate-x-5.5" : "translate-x-0.5"}`} />
-              </button>
-            </div>
 
-            <div className="space-y-2.5">
-              <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
-              <div className="grid grid-cols-2 gap-2">
-                {/* White / Light */}
-                <button 
-                  onClick={() => onChangeTheme("theme-light-white")}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-white' ? 'bg-kindle-card border-kindle-accent shadow-xs ring-1 ring-kindle-accent/30' : 'border-kindle-border hover:bg-kindle-card opacity-65'}`}
-                >
-                  <Sun className="w-4 h-4" />
-                  <span className="text-[9px] font-bold uppercase tracking-widest">White</span>
-                </button>
-                {/* Yellow / Sepia */}
-                <button 
-                  onClick={() => onChangeTheme("theme-light-yellow")}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-yellow' ? 'bg-[#f7f3e3] border-[#6b6459] shadow-xs ring-1 ring-[#6b6459]/30' : 'border-[#d6d2c3] hover:bg-[#f7f3e3] opacity-65'}`}
-                >
-                  <Sun className="w-4 h-4 text-yellow-700" />
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-yellow-900">Yellow</span>
-                </button>
-                {/* Dark Grey */}
-                <button 
-                  onClick={() => onChangeTheme("theme-dark-grey")}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#18181b] cursor-pointer ${displayTheme === 'theme-dark-grey' ? 'border-[#f4f4f5] shadow-xs ring-1 ring-[#f4f4f5]/30' : 'border-[#3f3f46] hover:bg-[#27272a] opacity-65'}`}
-                >
-                  <Moon className="w-4 h-4 text-[#f4f4f5]" />
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#f4f4f5]">Grey</span>
-                </button>
-                {/* Dark Blue */}
-                <button 
-                  onClick={() => onChangeTheme("theme-dark-blue")}
-                  className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#0b1120] cursor-pointer ${displayTheme === 'theme-dark-blue' ? 'border-[#38bdf8] shadow-xs ring-1 ring-[#38bdf8]/30' : 'border-[#1e3a5f] hover:bg-[#0f1f38] opacity-65'}`}
-                >
-                  <Moon className="w-4 h-4 text-[#38bdf8]" />
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-[#38bdf8]">Blue</span>
-                </button>
-              </div>
+          <Row title="Grayscale Covers" desc="Classic e-ink aesthetic for book covers">
+            <Toggle on={grayscaleCovers} onClick={onToggleGrayscale} />
+          </Row>
+
+          <div className="space-y-2.5">
+            <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onChangeTheme("theme-light-white")}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-white' ? 'bg-kindle-card border-kindle-accent shadow-xs ring-1 ring-kindle-accent/30' : 'border-kindle-border hover:bg-kindle-card opacity-65'}`}
+              >
+                <Sun className="w-4 h-4" />
+                <span className="text-[9px] font-bold uppercase tracking-widest">White</span>
+              </button>
+              <button
+                onClick={() => onChangeTheme("theme-light-yellow")}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-yellow' ? 'bg-[#f7f3e3] border-[#6b6459] shadow-xs ring-1 ring-[#6b6459]/30' : 'border-[#d6d2c3] hover:bg-[#f7f3e3] opacity-65'}`}
+              >
+                <Sun className="w-4 h-4 text-yellow-700" />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-yellow-900">Yellow</span>
+              </button>
+              <button
+                onClick={() => onChangeTheme("theme-dark-grey")}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#18181b] cursor-pointer ${displayTheme === 'theme-dark-grey' ? 'border-[#f4f4f5] shadow-xs ring-1 ring-[#f4f4f5]/30' : 'border-[#3f3f46] hover:bg-[#27272a] opacity-65'}`}
+              >
+                <Moon className="w-4 h-4 text-[#f4f4f5]" />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-[#f4f4f5]">Grey</span>
+              </button>
+              <button
+                onClick={() => onChangeTheme("theme-dark-blue")}
+                className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#0b1120] cursor-pointer ${displayTheme === 'theme-dark-blue' ? 'border-[#38bdf8] shadow-xs ring-1 ring-[#38bdf8]/30' : 'border-[#1e3a5f] hover:bg-[#0f1f38] opacity-65'}`}
+              >
+                <Moon className="w-4 h-4 text-[#38bdf8]" />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-[#38bdf8]">Blue</span>
+              </button>
             </div>
           </div>
         </section>
 
-        {/* Account & Sync Section */}
+        {/* Reading */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
+            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+              <Type className="w-4 h-4 text-kindle-text" />
+            </div>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Reading</h3>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold">Font Size</h4>
+              <span className="text-[10px] font-mono text-kindle-text-muted">{readerPrefs.fontSize}px</span>
+            </div>
+            <input
+              type="range" min={12} max={32} step={1} value={readerPrefs.fontSize}
+              onChange={(e) => setRP({ fontSize: Number(e.target.value) })}
+              className="w-full accent-kindle-accent cursor-pointer"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold">Line Spacing</h4>
+              <span className="text-[10px] font-mono text-kindle-text-muted">{readerPrefs.lineSpacing.toFixed(1)}</span>
+            </div>
+            <input
+              type="range" min={1.2} max={2.4} step={0.1} value={readerPrefs.lineSpacing}
+              onChange={(e) => setRP({ lineSpacing: Number(e.target.value) })}
+              className="w-full accent-kindle-accent cursor-pointer"
+            />
+          </div>
+
+          <div className="space-y-2.5">
+            <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Font Family</h4>
+            <div className="flex gap-2">
+              {fontOptions.map(f => (
+                <button key={f.id} onClick={() => setRP({ fontFamily: f.id })}
+                  className={`flex-1 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${readerPrefs.fontFamily === f.id ? 'bg-kindle-text text-kindle-bg border-kindle-text' : 'border-kindle-border text-kindle-text-muted hover:bg-kindle-bg'}`}>
+                  <span className={f.id}>{f.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Reader Theme</h4>
+            <div className="grid grid-cols-4 gap-2">
+              {readerThemes.map(t => (
+                <button key={t.id} onClick={() => setRP({ theme: t.id })}
+                  className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition ${readerPrefs.theme === t.id ? 'border-kindle-accent ring-1 ring-kindle-accent/30' : 'border-kindle-border hover:bg-kindle-bg'}`}>
+                  <div className={`w-6 h-6 rounded-md ${t.bg} ring-1 ${t.ring}`} />
+                  <span className="text-[8px] font-bold uppercase tracking-widest">{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2.5">
+            <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Page Width</h4>
+            <div className="flex gap-2">
+              {marginOptions.map(m => (
+                <button key={m.id} onClick={() => setRP({ marginSize: m.id })}
+                  className={`flex-1 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${readerPrefs.marginSize === m.id ? 'bg-kindle-text text-kindle-bg border-kindle-text' : 'border-kindle-border text-kindle-text-muted hover:bg-kindle-bg'}`}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Row title="Continuous Scroll" desc="Scroll chapters as one long page">
+            <Toggle on={readerPrefs.isContinuous} onClick={() => setRP({ isContinuous: !readerPrefs.isContinuous })} />
+          </Row>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold">Brightness</h4>
+              <span className="text-[10px] font-mono text-kindle-text-muted">{readerPrefs.brightness}%</span>
+            </div>
+            <input
+              type="range" min={40} max={100} step={5} value={readerPrefs.brightness}
+              onChange={(e) => setRP({ brightness: Number(e.target.value) })}
+              className="w-full accent-kindle-accent cursor-pointer"
+            />
+          </div>
+        </section>
+
+        {/* Search & Discovery */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
+            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+              <SearchIcon className="w-4 h-4 text-kindle-text" />
+            </div>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Search & Discovery</h3>
+          </div>
+
+          <div className="space-y-2.5">
+            <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Default Source</h4>
+            <div className="grid grid-cols-2 gap-2">
+              {sources.map(s => (
+                <button key={s.id} onClick={() => setSP({ defaultSource: s.id })}
+                  className={`py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${searchPrefs.defaultSource === s.id ? 'bg-kindle-text text-kindle-bg border-kindle-text' : 'border-kindle-border text-kindle-text-muted hover:bg-kindle-bg'}`}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Row title="Auto-cache Downloads" desc="Save opened books to this device automatically">
+            <Toggle on={searchPrefs.autoCacheDownloads} onClick={() => setSP({ autoCacheDownloads: !searchPrefs.autoCacheDownloads })} />
+          </Row>
+          <Row title="Open Results in New Tab" desc="Open the in-app browser in a separate tab">
+            <Toggle on={searchPrefs.openInNewTab} onClick={() => setSP({ openInNewTab: !searchPrefs.openInNewTab })} />
+          </Row>
+        </section>
+
+        {/* Data & Storage */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
+            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+              <Database className="w-4 h-4 text-kindle-text" />
+            </div>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Data & Storage</h3>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-center">
+            <div className="p-3 rounded-xl bg-kindle-bg border border-kindle-border">
+              <p className="text-lg font-bold font-lexend">{bookCount}</p>
+              <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">Books in Library</p>
+            </div>
+            <div className="p-3 rounded-xl bg-kindle-bg border border-kindle-border">
+              <p className="text-lg font-bold font-lexend text-kindle-accent">{cachedCount}</p>
+              <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">Cached On Device</p>
+            </div>
+          </div>
+
+          <button
+            onClick={onClearDeviceCache}
+            className="w-full flex items-center justify-center gap-2 py-2.5 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+          >
+            <HardDrive className="w-3.5 h-3.5" /> Clear Cached Book Files
+          </button>
+          <button
+            onClick={onClearRecentSearches}
+            className="w-full flex items-center justify-center gap-2 py-2.5 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Clear Recent Searches
+          </button>
+        </section>
+
+        {/* Account & Sync */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
             <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
@@ -133,7 +356,7 @@ export default function SettingsView({
                   </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={onSignOut}
                 className="w-full py-2 border border-red-200 text-red-600 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-950/10 transition cursor-pointer"
               >
@@ -156,7 +379,7 @@ export default function SettingsView({
               <p className="text-xs text-kindle-text-muted leading-relaxed">
                 Sign in with Google or create an account to secure your library forever and sync across all your devices.
               </p>
-              <button 
+              <button
                 onClick={onSignIn}
                 className="w-full py-2.5 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition shadow-xs cursor-pointer flex items-center justify-center gap-2"
               >
@@ -165,6 +388,24 @@ export default function SettingsView({
               </button>
             </div>
           )}
+        </section>
+
+        {/* About */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-3">
+          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
+            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+              <Info className="w-4 h-4 text-kindle-text" />
+            </div>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">About</h3>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-kindle-text-muted">Version</span>
+            <span className="font-mono font-bold">Kora 1.0.0</span>
+          </div>
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-kindle-text-muted">Powered by</span>
+            <span className="font-bold flex items-center gap-1"><Sparkles className="w-3 h-3 text-kindle-accent" /> Rave Engine</span>
+          </div>
         </section>
       </div>
 

@@ -15,7 +15,6 @@ interface DiscoverViewProps {
   selectedBook: any | null;
   onSelectedBookChange: (book: any | null) => void;
   grayscaleCovers?: boolean;
-  connectors?: Record<string, boolean>;
   zlibConfig?: any;
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
@@ -42,7 +41,6 @@ export default function DiscoverView({
   selectedBook,
   onSelectedBookChange,
   grayscaleCovers = false, 
-  connectors = {},
   zlibConfig,
   initialQuery = null,
   onClearInitialQuery,
