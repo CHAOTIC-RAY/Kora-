@@ -5,7 +5,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { 
   BookOpen, UploadCloud, Tag, Star, Trash2, ListFilter,
   CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, HelpCircle, HardDrive, Search, Cloud,
-  Edit2, ImageIcon, AlertTriangle, RefreshCw
+  Edit2, ImageIcon, AlertTriangle, RefreshCw, MoreVertical, Flame, TrendingUp, Calendar
 } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
@@ -20,6 +20,41 @@ interface LibraryManagerProps {
   onCachedIdsChanged: () => void;
   grayscaleCovers?: boolean;
   onSearchTrigger?: (query: string) => void;
+}
+
+function calculateStreak(stats: Record<string, { minutes: number }>): number {
+  let streak = 0;
+  let checkDate = new Date();
+  
+  const getCleanDateString = (d: Date) => d.toDateString();
+  
+  const todayStr = getCleanDateString(checkDate);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = getCleanDateString(yesterday);
+  
+  const hasReadToday = stats[todayStr] && stats[todayStr].minutes > 0;
+  const hasReadYesterday = stats[yesterdayStr] && stats[yesterdayStr].minutes > 0;
+  
+  if (!hasReadToday && !hasReadYesterday) {
+    return 0;
+  }
+  
+  if (!hasReadToday) {
+    checkDate = yesterday;
+  }
+  
+  while (true) {
+    const dateStr = getCleanDateString(checkDate);
+    if (stats[dateStr] && stats[dateStr].minutes > 0) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+  
+  return streak;
 }
 
 export default function LibraryManager({ 
@@ -50,6 +85,94 @@ export default function LibraryManager({
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
   const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
+
+  // Reading Goals & Stats States
+  const [dailyMinutesTarget, setDailyMinutesTarget] = useState<number>(() => {
+    const saved = localStorage.getItem("kora_daily_minutes_target");
+    return saved ? parseInt(saved) : 20; // default 20 mins
+  });
+  const [annualBooksTarget, setAnnualBooksTarget] = useState<number>(() => {
+    const saved = localStorage.getItem("kora_annual_books_target");
+    return saved ? parseInt(saved) : 12; // default 12 books
+  });
+  const [todayMinutes, setTodayMinutes] = useState<number>(0);
+  const [weeklyStats, setWeeklyStats] = useState<{ day: string; minutes: number }[]>([]);
+  const [calculatedStreak, setCalculatedStreak] = useState<number>(0);
+  const [showGoalEditor, setShowGoalEditor] = useState<boolean>(false);
+  const [showLogModal, setShowLogModal] = useState<boolean>(false);
+  const [manualLogMinutes, setManualLogMinutes] = useState<string>("15");
+
+  useEffect(() => {
+    const loadStats = () => {
+      const todayStr = new Date().toDateString();
+      const savedStats = localStorage.getItem("kora_reading_stats");
+      const stats = savedStats ? JSON.parse(savedStats) : {};
+      
+      // Calculate today's minutes
+      setTodayMinutes(stats[todayStr]?.minutes || 0);
+      
+      // Calculate last 7 days for the activity bar chart
+      const days = [];
+      const getCleanDateString = (d: Date) => d.toDateString();
+      const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = getCleanDateString(d);
+        const mins = stats[dateStr]?.minutes || 0;
+        days.push({
+          day: `${weekdays[d.getDay()]} ${d.getDate()}`,
+          minutes: mins
+        });
+      }
+      setWeeklyStats(days);
+      
+      // Calculate streak
+      const streak = calculateStreak(stats);
+      setCalculatedStreak(streak);
+    };
+
+    loadStats();
+    
+    // Add event listener for localstorage changes so if they read and close, stats are in sync
+    window.addEventListener("storage", loadStats);
+    return () => window.removeEventListener("storage", loadStats);
+  }, [books]);
+
+  const handleLogReadingMinutes = (mins: number) => {
+    const todayStr = new Date().toDateString();
+    const savedStats = localStorage.getItem("kora_reading_stats");
+    let stats = savedStats ? JSON.parse(savedStats) : {};
+    
+    if (!stats[todayStr]) {
+      stats[todayStr] = { minutes: 0, date: todayStr };
+    }
+    stats[todayStr].minutes = (stats[todayStr].minutes || 0) + mins;
+    
+    localStorage.setItem("kora_reading_stats", JSON.stringify(stats));
+    
+    // Refresh stats
+    setTodayMinutes(stats[todayStr].minutes);
+    
+    // Recalculate weekly stats and streak
+    const days = [];
+    const getCleanDateString = (d: Date) => d.toDateString();
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = getCleanDateString(d);
+      const m = stats[dateStr]?.minutes || 0;
+      days.push({
+        day: `${weekdays[d.getDay()]} ${d.getDate()}`,
+        minutes: m
+      });
+    }
+    setWeeklyStats(days);
+    setCalculatedStreak(calculateStreak(stats));
+    setShowLogModal(false);
+  };
 
   // Long press refs & helpers
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -430,6 +553,155 @@ export default function LibraryManager({
           </button>
         </div>
       </section>
+
+      {/* Reading Goals & Streaks Section */}
+      <section className="grid grid-cols-1 md:grid-cols-12 gap-5 p-1 font-sans">
+        {/* Today's Goal Ring & Streak */}
+        <div className="md:col-span-5 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between shadow-xs">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-kindle-text-muted" /> Daily Focus Goal
+              </span>
+              <button 
+                onClick={() => setShowGoalEditor(true)}
+                className="text-[9px] font-bold text-kindle-accent uppercase tracking-widest hover:underline"
+              >
+                Set Goal
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-5">
+              {/* Circular percentage display */}
+              <div className="relative w-16 h-16 flex items-center justify-center rounded-full border-4 border-kindle-border">
+                <div 
+                  className="absolute inset-0 rounded-full border-4 border-kindle-text" 
+                  style={{ 
+                    clipPath: todayMinutes >= dailyMinutesTarget 
+                      ? "none" 
+                      : `polygon(50% 50%, 50% 0%, ${todayMinutes / dailyMinutesTarget >= 0.25 ? "100% 0%," : ""} ${todayMinutes / dailyMinutesTarget >= 0.5 ? "100% 100%," : ""} ${todayMinutes / dailyMinutesTarget >= 0.75 ? "0% 100%," : ""} 0% 0%)`,
+                    transform: "rotate(-90deg)"
+                  }} 
+                />
+                <span className="text-xs font-bold font-mono">{Math.round(Math.min(100, (todayMinutes / dailyMinutesTarget) * 100))}%</span>
+              </div>
+              <div>
+                <p className="text-sm font-bold">{todayMinutes} / {dailyMinutesTarget} mins</p>
+                <p className="text-[10px] text-kindle-text-muted mt-0.5">Keep reading in-app to automatically log time!</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between pt-4 border-t border-kindle-border/40 mt-4">
+            <div className="flex items-center gap-1.5">
+              <span className="p-1.5 bg-amber-500/10 text-amber-600 rounded-lg">
+                <Flame className="w-4 h-4 fill-current" />
+              </span>
+              <div>
+                <span className="text-[8px] font-bold uppercase tracking-wider text-kindle-text-muted block">Current Streak</span>
+                <span className="text-xs font-bold text-kindle-text block mt-0.5">{calculatedStreak} {calculatedStreak === 1 ? "day" : "days"}</span>
+              </div>
+            </div>
+            
+            <button
+              onClick={() => setShowLogModal(true)}
+              className="px-3 py-1.5 bg-kindle-text text-kindle-bg text-[9px] font-bold uppercase tracking-widest rounded-lg hover:opacity-90 transition"
+            >
+              Log Offline Session
+            </button>
+          </div>
+        </div>
+
+        {/* Weekly Activity Bar Chart */}
+        <div className="md:col-span-4 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between shadow-xs">
+          <div className="space-y-3">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-kindle-text-muted" /> Weekly Focus (mins)
+            </span>
+            
+            <div className="flex items-end justify-between h-20 pt-4 px-1">
+              {weeklyStats.map((dayStat, idx) => {
+                const maxVal = Math.max(1, ...weeklyStats.map(d => d.minutes), dailyMinutesTarget);
+                const heightPercent = Math.min(100, (dayStat.minutes / maxVal) * 100);
+                const isGoalMet = dayStat.minutes >= dailyMinutesTarget;
+                return (
+                  <div key={idx} className="flex flex-col items-center gap-2 flex-1 group">
+                    <div className="w-full px-1 relative flex items-end justify-center h-full">
+                      {/* Tooltip on hover */}
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-kindle-text text-kindle-bg px-1.5 py-0.5 rounded text-[8px] font-bold opacity-0 group-hover:opacity-100 transition duration-150 pointer-events-none whitespace-nowrap z-20 shadow-sm">
+                        {dayStat.minutes} min
+                      </div>
+                      <div 
+                        className={`w-2.5 rounded-xs transition-all duration-300 ${
+                          isGoalMet ? "bg-emerald-600 dark:bg-emerald-500" : "bg-kindle-text/40 dark:bg-neutral-600"
+                        }`}
+                        style={{ height: `${Math.max(4, Math.round(heightPercent))}%` }}
+                      />
+                    </div>
+                    <span className="text-[8px] font-bold text-kindle-text-muted uppercase tracking-tight">{dayStat.day.split(" ")[0]}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Annual Reading Challenge */}
+        <div className="md:col-span-3 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between shadow-xs">
+          <div className="space-y-3">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-kindle-text-muted" /> {new Date().getFullYear()} Reading Challenge
+            </span>
+            
+            <div className="space-y-1.5 pt-1">
+              <div className="flex justify-between items-end">
+                <span className="text-xl font-bold">{books.filter(b => {
+                  if (b.status !== "completed") return false;
+                  const lastRead = b.progress?.lastReadTime;
+                  if (lastRead) {
+                    return new Date(lastRead).getFullYear() === new Date().getFullYear();
+                  }
+                  return true;
+                }).length} / {annualBooksTarget}</span>
+                <span className="text-[9px] text-kindle-text-muted font-bold tracking-tight">BOOKS READ</span>
+              </div>
+              <div className="w-full bg-kindle-border h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-kindle-text rounded-full transition-all duration-500" 
+                  style={{ 
+                    width: `${Math.min(100, (books.filter(b => {
+                      if (b.status !== "completed") return false;
+                      const lastRead = b.progress?.lastReadTime;
+                      if (lastRead) {
+                        return new Date(lastRead).getFullYear() === new Date().getFullYear();
+                      }
+                      return true;
+                    }).length / annualBooksTarget) * 100)}%` 
+                  }}
+                />
+              </div>
+              <p className="text-[9px] text-kindle-text-muted italic">
+                {books.filter(b => {
+                  if (b.status !== "completed") return false;
+                  const lastRead = b.progress?.lastReadTime;
+                  if (lastRead) {
+                    return new Date(lastRead).getFullYear() === new Date().getFullYear();
+                  }
+                  return true;
+                }).length >= annualBooksTarget ? "Congratulations, challenge complete! 🎉" : `${annualBooksTarget - books.filter(b => {
+                  if (b.status !== "completed") return false;
+                  const lastRead = b.progress?.lastReadTime;
+                  if (lastRead) {
+                    return new Date(lastRead).getFullYear() === new Date().getFullYear();
+                  }
+                  return true;
+                }).length} more to reach goal.`}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {books.length > 0 && (
         <section className="space-y-4">
           <div className="flex items-center justify-between px-1">
@@ -650,6 +922,7 @@ export default function LibraryManager({
                   }}
                   onMouseUp={endLongPress}
                   onMouseLeave={endLongPress}
+                  onContextMenu={(e) => e.preventDefault()}
                   onClick={(e) => {
                     if (isLongPressedRef.current) {
                       e.preventDefault();
@@ -667,6 +940,7 @@ export default function LibraryManager({
                         src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
                         className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
                         referrerPolicy="no-referrer"
+                        onContextMenu={(e) => e.preventDefault()}
                       />
                     ) : (
                       <div className="w-full aspect-[3/4] bg-kindle-card flex flex-col items-center justify-center p-4 text-center">
@@ -678,6 +952,20 @@ export default function LibraryManager({
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-kindle-border">
                       <div className="h-full bg-kindle-text" style={{ width: `${progressPercent}%` }} />
                     </div>
+
+                    {/* Mobile-only Three-Dot Button (always visible on mobile, hidden on desktop via md:hidden) */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setLongPressedBook(book);
+                      }}
+                      onContextMenu={(e) => e.preventDefault()}
+                      className="absolute top-2 right-2 p-1.5 bg-kindle-card/95 border border-kindle-border text-kindle-text rounded-full shadow-md z-20 md:hidden flex items-center justify-center hover:bg-kindle-bg active:scale-90 transition"
+                      title="Options"
+                    >
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </button>
 
                     <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       {isCached && <DownloadBookBtn book={book} />}
@@ -991,6 +1279,114 @@ export default function LibraryManager({
           onClose={() => setEditingMetadataBook(null)}
           onSave={onRefreshLibrary}
         />
+      )}
+
+      {/* Goal Editor Modal */}
+      {showGoalEditor && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xl text-kindle-text font-sans">
+            <h3 className="font-bold text-sm uppercase tracking-wider mb-4">Set Reading Goals</h3>
+            
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider block">Daily Focus Goal (Minutes)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="480"
+                  value={dailyMinutesTarget}
+                  onChange={(e) => {
+                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                    setDailyMinutesTarget(val);
+                    localStorage.setItem("kora_daily_minutes_target", val.toString());
+                  }}
+                  className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-3 py-2 text-xs text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider block">Yearly Book Challenge (Books)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1000"
+                  value={annualBooksTarget}
+                  onChange={(e) => {
+                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                    setAnnualBooksTarget(val);
+                    localStorage.setItem("kora_annual_books_target", val.toString());
+                  }}
+                  className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-3 py-2 text-xs text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                onClick={() => setShowGoalEditor(false)}
+                className="px-4 py-2 bg-kindle-text text-kindle-bg rounded-xl text-xs font-semibold hover:opacity-90 transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Log Reading Session Modal */}
+      {showLogModal && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xl text-kindle-text font-sans">
+            <h3 className="font-bold text-sm uppercase tracking-wider mb-2">Log Reading Session</h3>
+            <p className="text-[10px] text-kindle-text-muted mb-4">Did you read physical books, or read on another device? Log your minutes below to keep your streak alive!</p>
+            
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider block">Minutes Read</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="1440"
+                  value={manualLogMinutes}
+                  onChange={(e) => setManualLogMinutes(e.target.value)}
+                  placeholder="e.g. 15"
+                  className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-3 py-2 text-xs text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {["5", "15", "30", "45", "60"].map((mins) => (
+                  <button
+                    key={mins}
+                    onClick={() => setManualLogMinutes(mins)}
+                    className={`text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition ${
+                      manualLogMinutes === mins
+                        ? "bg-kindle-text border-transparent text-kindle-bg"
+                        : "border-kindle-border text-kindle-text hover:bg-kindle-bg"
+                    }`}
+                  >
+                    +{mins}m
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                onClick={() => setShowLogModal(false)}
+                className="px-4 py-2 border border-kindle-border text-kindle-text-muted rounded-xl text-xs font-semibold hover:bg-kindle-bg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleLogReadingMinutes(parseInt(manualLogMinutes) || 0)}
+                className="px-4 py-2 bg-kindle-text text-kindle-bg hover:opacity-90 rounded-xl text-xs font-semibold transition"
+              >
+                Save Progress
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 7. Mobile Long Press Action Sheet */}

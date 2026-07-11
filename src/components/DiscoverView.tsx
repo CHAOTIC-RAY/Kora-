@@ -86,6 +86,11 @@ export default function DiscoverView({
     pageCount?: number;
     publishYear?: string;
     publisher?: string;
+    isBestseller?: boolean;
+    bestsellerRank?: string;
+    weeksOnList?: number;
+    bestsellerCategory?: string;
+    nytReviewSnippet?: string;
     source: string;
   } | null>(null);
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
@@ -375,6 +380,27 @@ export default function DiscoverView({
     setVerifiedDetails(null);
     setReadMoreExpanded(false);
     try {
+      // 1. Try NYT API
+      const nytRes = await fetch(`/api/nyt/book-details?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
+      if (nytRes.ok) {
+        const data = await nytRes.json();
+        setVerifiedDetails({
+          description: data.description,
+          subjects: data.subjects || [],
+          pageCount: data.pageCount,
+          publishYear: data.publishYear,
+          publisher: data.publisher,
+          isBestseller: data.isBestseller,
+          bestsellerRank: data.bestsellerRank,
+          weeksOnList: data.weeksOnList,
+          bestsellerCategory: data.bestsellerCategory,
+          nytReviewSnippet: data.nytReviewSnippet,
+          source: "New York Times Bestsellers & Reviews"
+        });
+        return;
+      }
+
+      // 2. Fall back to Open Library
       const searchRes = await fetch(`/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
       if (searchRes.ok) {
         const data = await searchRes.json();
@@ -1350,30 +1376,56 @@ export default function DiscoverView({
                 <div className="space-y-4">
                   {/* Book Title & Author */}
                   <div className="space-y-1">
-                    <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">
+                    <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest font-sans">
                       Verified Library Copy
                     </span>
-                    <h3 className="text-2xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
-                    <p className="text-sm text-kindle-text-muted font-sans font-medium">{selectedBook.author}</p>
+                    <h3 className="text-2xl md:text-3xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
+                    <p className="text-sm md:text-base text-kindle-text-muted font-sans font-medium">{selectedBook.author}</p>
                   </div>
+
+                  {/* NYT Bestseller Information Badge */}
+                  {verifiedDetails?.isBestseller && (
+                    <div className="bg-amber-500/5 border border-amber-500/20 p-3 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-1">
+                      <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5 text-left">
+                        <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest block font-sans">New York Times Best Seller</span>
+                        <p className="text-xs font-semibold text-kindle-text leading-tight font-sans">
+                          {verifiedDetails.bestsellerRank || "Featured NYT Bestseller"}
+                          {verifiedDetails.weeksOnList ? ` · ${verifiedDetails.weeksOnList} weeks on list` : ""}
+                        </p>
+                        {verifiedDetails.bestsellerCategory && (
+                          <span className="text-[10px] text-kindle-text-muted font-medium block font-sans">Category: {verifiedDetails.bestsellerCategory}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* NYT Review Snip Quote */}
+                  {verifiedDetails?.nytReviewSnippet && (
+                    <div className="border-l-2 border-amber-500/30 pl-3 py-1.5 bg-amber-500/[0.02] rounded-r-xl text-left">
+                      <p className="text-xs md:text-sm italic leading-relaxed text-kindle-text-muted font-serif">
+                        "{verifiedDetails.nytReviewSnippet}"
+                      </p>
+                    </div>
+                  )}
 
                   {/* Horizontal Stats Row */}
                   <div className="grid grid-cols-3 gap-3 p-3 bg-kindle-bg border border-kindle-border rounded-2xl text-center">
                     <div>
-                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block">Published</span>
-                      <span className="text-xs font-semibold text-kindle-text mt-0.5 block">
+                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block font-sans">Published</span>
+                      <span className="text-xs md:text-sm font-semibold text-kindle-text mt-0.5 block font-sans">
                         {verifiedDetails?.publishYear || (selectedVariant || selectedBook).year || "N/A"}
                       </span>
                     </div>
                     <div className="border-x border-kindle-border">
-                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block">Length</span>
-                      <span className="text-xs font-semibold text-kindle-text mt-0.5 block">
+                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block font-sans">Length</span>
+                      <span className="text-xs md:text-sm font-semibold text-kindle-text mt-0.5 block font-sans">
                         {verifiedDetails?.pageCount ? `${verifiedDetails.pageCount} pp` : (selectedVariant || selectedBook).pages && (selectedVariant || selectedBook).pages !== "0" ? `${(selectedVariant || selectedBook).pages} pp` : "N/A"}
                       </span>
                     </div>
                     <div>
-                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block">Language</span>
-                      <span className="text-xs font-semibold text-kindle-text mt-0.5 block truncate">
+                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block font-sans">Language</span>
+                      <span className="text-xs md:text-sm font-semibold text-kindle-text mt-0.5 block truncate font-sans font-sans">
                         {(selectedVariant || selectedBook).language || "English"}
                       </span>
                     </div>
@@ -1381,7 +1433,7 @@ export default function DiscoverView({
 
                   {/* Synopsis / Description from Verified Source */}
                   <div className="space-y-1.5">
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Synopsis & Book Summary</h4>
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted font-sans">Synopsis & Book Summary</h4>
                     {loadingDetails ? (
                       <div className="space-y-2 animate-pulse py-1">
                         <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-full" />
@@ -1389,7 +1441,7 @@ export default function DiscoverView({
                         <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-4/5" />
                       </div>
                     ) : verifiedDetails?.description ? (
-                      <div className="text-xs text-kindle-text-muted leading-relaxed font-sans">
+                      <div className="text-xs md:text-sm text-kindle-text-muted leading-relaxed font-sans text-left">
                         <p className="inline">
                           {readMoreExpanded 
                             ? verifiedDetails.description 
@@ -1408,7 +1460,7 @@ export default function DiscoverView({
                         )}
                       </div>
                     ) : (
-                      <p className="text-xs text-kindle-text-muted/60 leading-relaxed font-sans italic">
+                      <p className="text-xs md:text-sm text-kindle-text-muted/60 leading-relaxed font-sans italic text-left">
                         No official synopsis available in digital archives. This is a verified {(selectedVariant || selectedBook).extension || "epub"} copy provided by the {(selectedVariant || selectedBook).source || "global storage libraries"}.
                       </p>
                     )}

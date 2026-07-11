@@ -374,7 +374,9 @@ export default function App() {
               <KoraWordmark className="h-4 text-kindle-text" />
             </div>
           </button>
-          <Quote />
+          <div className="hidden md:block">
+            <Quote />
+          </div>
         </div>
 
         {/* Tab Controls & Cloud Auth Sync Info */}

@@ -43,6 +43,28 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
     };
   }, [book.id]);
 
+  // Auto-track reading focus session time (Reading Goals)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const todayStr = new Date().toDateString();
+        const savedStats = localStorage.getItem("kora_reading_stats");
+        let stats = savedStats ? JSON.parse(savedStats) : {};
+        
+        if (!stats[todayStr]) {
+          stats[todayStr] = { minutes: 0, date: todayStr };
+        }
+        stats[todayStr].minutes = (stats[todayStr].minutes || 0) + 1;
+        
+        localStorage.setItem("kora_reading_stats", JSON.stringify(stats));
+      } catch (e) {
+        console.error("Failed to log reading timer progress:", e);
+      }
+    }, 60000); // every minute
+    
+    return () => clearInterval(interval);
+  }, []);
+
   async function loadPdfBlob() {
     try {
       setLoading(true);

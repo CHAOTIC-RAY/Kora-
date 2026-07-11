@@ -6,6 +6,7 @@ import { JSDOM } from "jsdom";
 import dotenv from "dotenv";
 import puppeteer from "puppeteer";
 import crypto from "crypto";
+import { GoogleGenAI, Type } from "@google/genai";
 import zlibRouter from "./zlib-proxy";
 
 dotenv.config();
@@ -13,7 +14,212 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
+// Lazy-initialized Gemini API client
+let aiInstance: any = null;
+function getGeminiClient() {
+  if (!aiInstance) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error("GEMINI_API_KEY environment variable is missing.");
+    }
+    aiInstance = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
+  }
+  return aiInstance;
+}
+
 app.use("/api/zlib", zlibRouter);
+
+// Full Oxford English Dictionary Endpoint powered by Gemini
+app.get("/api/oxford-dictionary", async (req, res) => {
+  const word = req.query.word as string;
+  if (!word) {
+    return res.status(400).json({ error: "Missing word parameter" });
+  }
+
+  try {
+    const wordClean = word.trim().replace(/[^a-zA-Z\s-]/g, "").toLowerCase();
+    if (!wordClean) {
+      return res.status(400).json({ error: "Invalid word parameter" });
+    }
+    
+    // Check free dictionary API as a baseline
+    let freeData: any = null;
+    try {
+      const apiRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordClean)}`);
+      if (apiRes.ok) {
+        const data = await apiRes.json();
+        if (data && data[0]) {
+          freeData = data[0];
+        }
+      }
+    } catch (apiErr) {
+      console.warn("Free dictionary baseline call failed:", apiErr);
+    }
+
+    const ai = getGeminiClient();
+    const systemPrompt = `You are the Oxford English Dictionary (OED) lookup engine. 
+Provide an extremely authoritative, detailed, academic, and comprehensive OED dictionary entry for the word. 
+Include phonetic spelling, origin/etymology (historical development of the word), grammatical classifications (parts of speech), definitions, and elegant usage example sentences.`;
+
+    const userPrompt = `Return a comprehensive Oxford English Dictionary entry for the word: "${wordClean}".
+Baseline data (optional): ${freeData ? JSON.stringify(freeData) : "None"}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          required: ["word", "phonetic", "meanings"],
+          properties: {
+            word: { type: Type.STRING },
+            phonetic: { type: Type.STRING, description: "Phonetics IPA guide, e.g., /əˈbʌndəns/" },
+            origin: { type: Type.STRING, description: "Etymology / word origin history, e.g., 'From Old French abondance...'" },
+            meanings: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["partOfSpeech", "definitions"],
+                properties: {
+                  partOfSpeech: { type: Type.STRING, description: "noun, verb, adjective, adverb, etc." },
+                  definitions: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      required: ["definition"],
+                      properties: {
+                        definition: { type: Type.STRING },
+                        example: { type: Type.STRING, description: "An elegant example sentence showing usage." }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            synonyms: { type: Type.ARRAY, items: { type: Type.STRING } },
+            antonyms: { type: Type.ARRAY, items: { type: Type.STRING } }
+          }
+        }
+      }
+    });
+
+    const resultText = response.text;
+    if (resultText) {
+      const dictionaryEntry = JSON.parse(resultText);
+      return res.json(dictionaryEntry);
+    } else if (freeData) {
+      // Fallback
+      return res.json(freeData);
+    } else {
+      return res.status(404).json({ error: "Word definition could not be located or generated." });
+    }
+  } catch (err: any) {
+    console.error("Oxford Dictionary API Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to search Oxford dictionary" });
+  }
+});
+
+// NYT Book Details Endpoint powered by Gemini & NYT Books API
+app.get("/api/nyt/book-details", async (req, res) => {
+  const title = req.query.title as string;
+  const author = req.query.author as string;
+  if (!title) {
+    return res.status(400).json({ error: "Missing title parameter" });
+  }
+
+  try {
+    const titleClean = title.trim();
+    const authorClean = author ? author.trim() : "";
+
+    const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
+    let nytBestsellerData: any = null;
+    let nytReviewsData: any = null;
+
+    if (apiKey) {
+      try {
+        // Query NYT Bestseller History
+        const bsUrl = `https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?title=${encodeURIComponent(titleClean)}&author=${encodeURIComponent(authorClean)}&api-key=${apiKey}`;
+        const bsRes = await fetch(bsUrl);
+        if (bsRes.ok) {
+          const bsJson = await bsRes.json();
+          nytBestsellerData = bsJson.results?.[0] || null;
+        }
+
+        // Query NYT Book Reviews
+        const revUrl = `https://api.nytimes.com/svc/books/v3/reviews.json?title=${encodeURIComponent(titleClean)}&author=${encodeURIComponent(authorClean)}&api-key=${apiKey}`;
+        const revRes = await fetch(revUrl);
+        if (revRes.ok) {
+          const revJson = await revRes.json();
+          nytReviewsData = revJson.results?.[0] || null;
+        }
+      } catch (nytErr) {
+        console.warn("NYT Books API call failed, will proceed with Gemini enrichment:", nytErr);
+      }
+    }
+
+    // Call Gemini to generate/enrich NYT book details
+    const ai = getGeminiClient();
+    const systemPrompt = `You are the New York Times Book Review & Bestseller database engine.
+Generate a comprehensive, authoritative, and elegant New York Times style book details view.
+Provide NYT bestseller history (ranking details, weeks on list, category, or peak status), editorial reviews, NYT review snippets, detailed summary, page count, publication details, and list subjects.
+Be extremely accurate and detailed. Return only clean JSON.`;
+
+    const userPrompt = `Provide the detailed NYT Book details for:
+Title: "${titleClean}"
+Author: "${authorClean}"
+
+Optional baseline NYT API responses:
+Bestseller history: ${nytBestsellerData ? JSON.stringify(nytBestsellerData) : "None found"}
+Reviews history: ${nytReviewsData ? JSON.stringify(nytReviewsData) : "None found"}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          required: ["title", "author", "description", "isBestseller"],
+          properties: {
+            title: { type: Type.STRING },
+            author: { type: Type.STRING },
+            isBestseller: { type: Type.BOOLEAN },
+            bestsellerRank: { type: Type.STRING, description: "e.g., '#1 Bestseller', '#3 on NYT list', etc." },
+            weeksOnList: { type: Type.INTEGER, description: "Number of weeks on the NYT Bestseller list" },
+            bestsellerCategory: { type: Type.STRING, description: "e.g., 'Hardcover Fiction', 'Paperback Nonfiction'" },
+            nytReviewSnippet: { type: Type.STRING, description: "A review quote or style consensus snippet, e.g., 'An extraordinary, luminous novel...' — The New York Times" },
+            description: { type: Type.STRING, description: "Detailed, beautiful book synopsis/summary" },
+            pageCount: { type: Type.INTEGER },
+            publishYear: { type: Type.STRING },
+            publisher: { type: Type.STRING },
+            subjects: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Up to 5 genre tags or subjects" }
+          }
+        }
+      }
+    });
+
+    const resultText = response.text;
+    if (resultText) {
+      const bookDetails = JSON.parse(resultText);
+      return res.json(bookDetails);
+    } else {
+      return res.status(404).json({ error: "Book details could not be generated." });
+    }
+  } catch (err: any) {
+    console.error("NYT Book Details API Error:", err);
+    return res.status(500).json({ error: err.message || "Failed to fetch NYT book details" });
+  }
+});
 
 // In-memory book cache to store metadata and direct download URLs from search results
 const bookCache = new Map<string, any>();

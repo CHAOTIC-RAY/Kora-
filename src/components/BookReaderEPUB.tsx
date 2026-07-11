@@ -63,6 +63,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [doubleColumns, setDoubleColumns] = useState<boolean>(false); // Dual page mode
   const [letterSpacing, setLetterSpacing] = useState<string>("tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
   const [hyphenation, setHyphenation] = useState<boolean>(true);
+  const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
+
+  // Disable animation temporarily during visual style changes
+  useEffect(() => {
+    setShouldAnimate(false);
+    const t = setTimeout(() => setShouldAnimate(true), 250);
+    return () => clearTimeout(t);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, doubleColumns, letterSpacing, hyphenation]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
@@ -147,6 +155,28 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     window.addEventListener("resize", recalculateLayout);
     return () => window.removeEventListener("resize", recalculateLayout);
   }, [doubleColumns]);
+
+  // Auto-track reading focus session time (Reading Goals)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const todayStr = new Date().toDateString();
+        const savedStats = localStorage.getItem("kora_reading_stats");
+        let stats = savedStats ? JSON.parse(savedStats) : {};
+        
+        if (!stats[todayStr]) {
+          stats[todayStr] = { minutes: 0, date: todayStr };
+        }
+        stats[todayStr].minutes = (stats[todayStr].minutes || 0) + 1;
+        
+        localStorage.setItem("kora_reading_stats", JSON.stringify(stats));
+      } catch (e) {
+        console.error("Failed to log reading timer progress:", e);
+      }
+    }, 60000); // every minute
+    
+    return () => clearInterval(interval);
+  }, []);
 
   // Persist customized reader preferences on change
   useEffect(() => {
@@ -317,10 +347,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       }
 
       // 2. Fall back to online dictionary
-      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`);
+      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(word)}`);
       if (res.ok) {
         const data = await res.json();
-        setDictionaryData(data[0]);
+        setDictionaryData(data);
       } else {
         setDictionaryData(null);
       }
@@ -611,6 +641,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   // Trigger progress updates and firestore syncs
   async function updateProgress(newChapterIdx: number, goToLastPage = false) {
     if (newChapterIdx < 0 || newChapterIdx >= chapters.length) return;
+    
+    // Disable transition temporarily and reset page index synchronously
+    setShouldAnimate(false);
+    setCurrentPageNum(goToLastPage ? 999 : 1);
     setCurrentChapterIdx(newChapterIdx);
     
     // Save scroll position at top of new chapter
@@ -632,6 +666,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setTotalPages(calculatedPages);
       setContainerWidth(width);
       setCurrentPageNum(goToLastPage ? calculatedPages : 1);
+      
+      // Re-enable animation after layout settles
+      setTimeout(() => setShouldAnimate(true), 150);
     }, 150);
 
     const percent = Math.round((newChapterIdx / chapters.length) * 100);
@@ -1348,9 +1385,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             <div className="absolute inset-0 z-[70] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
               <div className="absolute inset-0 bg-black/40" onClick={() => setDictionaryWord(null)} />
               <div className={`relative w-full max-w-sm ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-6 overflow-hidden`}>
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-lg font-bold font-serif">{dictionaryWord}</h3>
-                  <button onClick={() => setDictionaryWord(null)} className="p-1 hover:bg-black/5 rounded">
+                <div className="flex justify-between items-center mb-3">
+                  <div>
+                    <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Oxford Dictionary</span>
+                    <h3 className="text-xl font-extrabold font-serif leading-tight mt-0.5">{dictionaryWord}</h3>
+                  </div>
+                  <button onClick={() => setDictionaryWord(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -1361,32 +1401,55 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     <span className="text-xs font-sans">Looking up...</span>
                   </div>
                 ) : dictionaryData ? (
-                  <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-2 custom-scrollbar">
                     {dictionaryData.phonetic && (
-                      <p className="text-xs font-mono opacity-60">{dictionaryData.phonetic}</p>
+                      <p className="text-xs font-mono opacity-60 bg-current/5 px-2 py-1 rounded inline-block">{dictionaryData.phonetic}</p>
                     )}
+
+                    {dictionaryData.origin && (
+                      <div className="bg-neutral-500/5 p-3 rounded-xl border border-current/5">
+                        <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 mb-1 font-sans">Etymology / Origin</p>
+                        <p className="text-xs leading-relaxed font-sans italic opacity-85">{dictionaryData.origin}</p>
+                      </div>
+                    )}
+
                     {dictionaryData.meanings.map((meaning: any, i: number) => (
                       <div key={i} className="space-y-2">
-                        <p className="text-[10px] uppercase font-bold tracking-widest opacity-40">{meaning.partOfSpeech}</p>
-                        <ul className="space-y-2">
-                          {meaning.definitions.slice(0, 2).map((def: any, j: number) => (
+                        <p className="text-[9px] uppercase font-bold tracking-widest text-amber-600 dark:text-amber-400 font-sans">{meaning.partOfSpeech}</p>
+                        <ul className="space-y-3">
+                          {meaning.definitions.slice(0, 3).map((def: any, j: number) => (
                             <li key={j} className="text-xs leading-relaxed">
+                              <span className="font-semibold opacity-40 mr-1.5 font-sans">{j + 1}.</span>
                               {def.definition}
                               {def.example && (
-                                <p className="italic opacity-60 mt-1">"{def.example}"</p>
+                                <p className="italic opacity-60 mt-1 pl-3 border-l border-current/15">"{def.example}"</p>
                               )}
                             </li>
                           ))}
                         </ul>
                       </div>
                     ))}
+
+                    {dictionaryData.synonyms && dictionaryData.synonyms.length > 0 && (
+                      <div className="pt-2 border-t border-current/5">
+                        <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 mb-1 font-sans">Synonyms</p>
+                        <p className="text-xs font-sans opacity-80 leading-relaxed">{dictionaryData.synonyms.slice(0, 5).join(", ")}</p>
+                      </div>
+                    )}
+
+                    {dictionaryData.antonyms && dictionaryData.antonyms.length > 0 && (
+                      <div className="pt-2 border-t border-current/5">
+                        <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 mb-1 font-sans">Antonyms</p>
+                        <p className="text-xs font-sans opacity-80 leading-relaxed">{dictionaryData.antonyms.slice(0, 5).join(", ")}</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-xs opacity-60 py-4">No definition found for "{dictionaryWord}".</p>
+                  <p className="text-xs opacity-60 py-4 font-sans">No definition found for "{dictionaryWord}".</p>
                 )}
                 
-                <div className="mt-6 pt-4 border-t border-current/10">
-                  <p className="text-[9px] opacity-40 uppercase tracking-widest text-center">Tap outside to close</p>
+                <div className="mt-5 pt-3 border-t border-current/10">
+                  <p className="text-[8px] opacity-40 uppercase tracking-widest text-center font-sans">Tap outside or press ESC to close</p>
                 </div>
               </div>
             </div>
@@ -1505,7 +1568,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
                 <motion.article 
                   animate={{ x: -(currentPageNum - 1) * (containerWidth + 40) }}
-                  transition={{ type: "spring", stiffness: 220, damping: 28, mass: 0.8 }}
+                  transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
                   className={`w-full ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
                   style={{
                     fontSize: `${fontSize}px`,
