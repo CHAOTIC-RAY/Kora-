@@ -407,6 +407,30 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // Handle internal TOC links (data-epub-href)
+    const epubLink = target.closest("[data-epub-href]") as HTMLElement | null;
+    if (epubLink) {
+      const idx = parseInt(epubLink.getAttribute("data-epub-href") || "", 10);
+      if (!isNaN(idx) && idx >= 0 && idx < chapters.length) {
+        updateProgress(idx);
+        return;
+      }
+    }
+    
+    // Audiobook audio logic (if enabled)
+    if (showAudiobook) {
+      const readableEl = target.closest("p, h1, h2, h3, h4, li");
+      if (readableEl) {
+        const elements = getDOMElementsToRead();
+        const idx = elements.indexOf(readableEl);
+        if (idx !== -1) {
+          speakParagraph(idx);
+          return; // Don't turn page when speaking
+        }
+      }
+    }
+
     if (
       target.closest("button") || 
       target.closest("a") || 
@@ -1058,28 +1082,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setAiLoading(false);
     }
   }
-
-  const handleTextViewerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    // In-book TOC links: data-epub-href holds the target chapter index.
-    const epubLink = target.closest("[data-epub-href]") as HTMLElement | null;
-    if (epubLink) {
-      const idx = parseInt(epubLink.getAttribute("data-epub-href") || "", 10);
-      if (!isNaN(idx) && idx >= 0 && idx < chapters.length) {
-        updateProgress(idx);
-        return;
-      }
-    }
-    if (!showAudiobook) return;
-    const readableEl = target.closest("p, h1, h2, h3, h4, li");
-    if (!readableEl) return;
-
-    const elements = getDOMElementsToRead();
-    const idx = elements.indexOf(readableEl);
-    if (idx !== -1) {
-      speakParagraph(idx);
-    }
-  };
 
   const activeTheme = themes[theme] || themes.sepia;
 
@@ -1772,7 +1774,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   {/* EPUB HTML Content Injection */}
                   <div 
                     id="epub-text-viewer"
-                    onClick={handleTextViewerClick}
                     className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
                     dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
                   />
