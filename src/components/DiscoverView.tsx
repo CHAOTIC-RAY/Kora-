@@ -67,6 +67,7 @@ export default function DiscoverView({
   // Background prefetch cache: page number → results
   const prefetchCache = React.useRef(new Map<number, any[]>());
   const prefetchingPage = React.useRef<number | null>(null);
+  const [feedNotice, setFeedNotice] = useState<string | null>(null);
 
   // Download states
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -124,15 +125,23 @@ export default function DiscoverView({
         const res = await fetch("/api/nytimes/overview");
         if (!res.ok) throw new Error("Failed to fetch NYT overview");
         json = await res.json();
-        
+
+        // Detect an upstream NYT fault (bad key, quota, outage) and tell the user.
+        if (json?.fault || (json?.error && !json?.results?.lists?.length)) {
+          setError(`The NYT Best Sellers API rejected the configured key (${json?.fault?.faultstring || "invalid"}). Discover is showing popular picks via the Rave Engine instead. Check NYT_BOOKS_API_KEY in Cloudflare.`);
+        } else {
+          setError(null);
+        }
+        setFeedNotice(json?.notice || (json?.source === "rave-fallback" ? "NYT Best Sellers API unavailable — showing popular picks via Rave Engine." : null));
+
         // Save to cache for today
         localStorage.setItem("kora_nyt_featured_date", todayString);
         localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(json));
       }
-      
+
       const data: Record<string, any[]> = {};
       const lists = json.results?.lists || [];
-      
+
       ALL_CATEGORIES.forEach(cat => {
         const nytList = lists.find((l: any) => l.list_name_encoded === cat.query);
         if (nytList) {
@@ -919,6 +928,12 @@ export default function DiscoverView({
 
       {!searchMode && (
         <div className="space-y-14">
+          {feedNotice && !error && (
+            <div className="flex items-center gap-3 p-3.5 bg-kindle-accent/[0.06] border border-kindle-accent/20 rounded-2xl">
+              <Sparkles className="w-4 h-4 text-kindle-accent shrink-0" />
+              <p className="text-[11px] font-medium text-kindle-text-muted leading-snug">{feedNotice}</p>
+            </div>
+          )}
           {error && (
             <div className="p-8 bg-amber-500/5 border border-amber-500/20 rounded-3xl flex flex-col items-center gap-4 text-center">
               <AlertTriangle className="w-8 h-8 text-amber-500" />
@@ -945,18 +960,35 @@ export default function DiscoverView({
               ))}
             </div>
           ) : (
-            ALL_CATEGORIES.map((cat) => {
-              const books = featuredData[cat.id] || [];
-              if (books.length === 0) return null;
-              return (
-                <section key={cat.id} className="space-y-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-kindle-card rounded-xl border border-kindle-border">
-                        {cat.id.includes("fiction") ? <BookMarked className="w-4 h-4 text-kindle-accent" /> : <Sparkles className="w-4 h-4 text-kindle-accent" />}
+            (() => {
+              const totalBooks = ALL_CATEGORIES.reduce((n, c) => n + (featuredData[c.id]?.length || 0), 0);
+              if (totalBooks === 0) {
+                return (
+                  <div className="py-20 flex flex-col items-center gap-4 text-center">
+                    <Compass className="w-10 h-10 text-kindle-text-muted opacity-40" />
+                    <p className="text-sm font-bold text-kindle-text-muted">No trending titles right now</p>
+                    <p className="text-xs text-kindle-text-muted/70 max-w-sm">Use the search above to find any book across the global archives.</p>
+                    <button
+                      onClick={loadFeaturedContent}
+                      className="flex items-center gap-2 px-4 py-2 border border-kindle-border rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Refresh
+                    </button>
+                  </div>
+                );
+              }
+              return ALL_CATEGORIES.map((cat) => {
+                const books = featuredData[cat.id] || [];
+                if (books.length === 0) return null;
+                return (
+                  <section key={cat.id} className="space-y-5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-kindle-card rounded-xl border border-kindle-border">
+                          {cat.id.includes("fiction") ? <BookMarked className="w-4 h-4 text-kindle-accent" /> : <Sparkles className="w-4 h-4 text-kindle-accent" />}
+                        </div>
+                        <h3 className="text-lg font-lexend font-bold tracking-tight">{cat.title}</h3>
                       </div>
-                      <h3 className="text-lg font-lexend font-bold tracking-tight">{cat.title}</h3>
-                    </div>
                     <button
                       onClick={() => handleSearch(cat.query)}
                       className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-kindle-card border border-transparent hover:border-kindle-border"
@@ -997,7 +1029,8 @@ export default function DiscoverView({
                   </div>
                 </section>
               );
-            })
+            });
+            })()
           )}
 
           {/* Quick Categories & Info */}

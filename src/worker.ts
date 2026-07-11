@@ -9,7 +9,45 @@ async function sha256(message: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Resolve a keyless LibGen landing page (get.php?md5= or ads.php?md5=) to its
+// Build an NYT-shaped "overview" feed from the Rave engine so the Discover page
+// always has real content even when the NYT Books API key is missing/invalid.
+async function buildRaveFallbackFeed(): Promise<any> {
+  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+  const topics = [
+    { key: "hardcover-fiction", name: "Hardcover Fiction", q: "bestselling fiction" },
+    { key: "hardcover-nonfiction", name: "Hardcover Nonfiction", q: "bestselling nonfiction" },
+    { key: "e-book-fiction", name: "E-Book Fiction", q: "popular fantasy novels" },
+    { key: "advice-how-to", name: "Advice & How-To", q: "self help books" },
+    { key: "young-adult-hardcover", name: "Young Adult", q: "young adult novels" },
+    { key: "childrens-middle-grade-hardcover", name: "Middle Grade", q: "children chapter books" }
+  ];
+  const lists: any[] = [];
+  for (const t of topics) {
+    try {
+      const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(t.q)}&mode=ebooks&source=all&page=1`;
+      const r = await fetch(url, { headers: { "User-Agent": ua } });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const books = (j.results || []).slice(0, 8).map((b: any) => ({
+        title: (b.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim(),
+        author: (b.author || "Unknown").replace(/[,;]$/, "").trim(),
+        book_image: b.coverUrl || "",
+        description: b.publisher || "",
+        primary_isbn13: b.md5 || ""
+      }));
+      if (books.length) {
+        lists.push({
+          list_name: t.name,
+          display_name: t.name,
+          list_name_encoded: t.key,
+          books
+        });
+      }
+    } catch (_) { /* try next topic */ }
+  }
+  return { status: "OK", results: { lists } };
+}
+
 // signed CDN download link (get.php?md5=<h>&key=<t>). LibGen 307-redirects the
 // keyless link to an ads page that embeds the signed link in an <a href>.
 // Returns "" if it cannot be resolved.
@@ -854,15 +892,45 @@ export default {
       try {
         const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
         const res = await fetch(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
-        const data = await res.json();
-        return new Response(JSON.stringify(data), {
+        const data: any = await res.json().catch(() => ({}));
+
+        // NYT rejects bad/expired keys with a 401 + { fault: { faultstring: "Invalid ApiKey" } }
+        // but the body still comes back 200 in many cases. Detect and fall back to a
+        // Rave-powered popular feed so Discover is never blank.
+        const nytBroken = !res.ok || data?.fault || data?.status !== "OK" || !data?.results?.lists?.length;
+
+        if (!nytBroken) {
+          return new Response(JSON.stringify(data), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        console.warn("[NYT] overview unavailable (key invalid or API down). Serving Rave fallback feed.");
+        const fallback = await buildRaveFallbackFeed();
+        return new Response(JSON.stringify({
+          ...fallback,
+          source: "rave-fallback",
+          notice: "NYT Best Sellers API unavailable — showing popular picks via Rave Engine."
+        }), {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: "Failed to fetch NYT data", details: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
+        console.warn("[NYT] overview fetch failed, serving Rave fallback feed:", err.message);
+        try {
+          const fallback = await buildRaveFallbackFeed();
+          return new Response(JSON.stringify({
+            ...fallback,
+            source: "rave-fallback",
+            notice: "NYT Best Sellers API unavailable — showing popular picks via Rave Engine."
+          }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        } catch (_) {
+          return new Response(JSON.stringify({ error: "Failed to fetch NYT data", details: err.message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
       }
     }
 
