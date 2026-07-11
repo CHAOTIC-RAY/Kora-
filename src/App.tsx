@@ -314,7 +314,8 @@ export default function App() {
   return (
     <div id="app-root-container" className="min-h-screen flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300">
       {/* 1. Global Navigation Header - Kora Style */}
-      <header className="border-b border-kindle-border bg-kindle-bg sticky top-0 z-40 px-4 md:px-8 h-16 flex items-center justify-between">
+      <header className="border-b border-kindle-border bg-kindle-bg sticky top-0 z-40 h-16">
+        <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between">
         <div className="flex items-center gap-4">
           <button 
             id="kora-logo-home"
@@ -406,6 +407,7 @@ export default function App() {
               )}
             </div>
           </div>
+        </div>
         </div>
       </header>
 

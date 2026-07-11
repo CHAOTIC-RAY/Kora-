@@ -1,12 +1,13 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { User } from "firebase/auth";
 import {
   Moon, Sun, Monitor,
   User as UserIcon, ShieldCheck, BookOpen,
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
-  Sparkles, Info, Download, HardDrive, Bell, Volume2
+  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle
 } from "lucide-react";
+import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -101,6 +102,41 @@ export default function SettingsView({
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
+
+  const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
+  const [dictSearch, setDictSearch] = useState<string>("");
+  const [showAddWordForm, setShowAddWordForm] = useState<boolean>(false);
+  const [newWord, setNewWord] = useState<string>("");
+  const [newDef, setNewDef] = useState<string>("");
+  const [newPos, setNewPos] = useState<string>("noun");
+  const [newEx, setNewEx] = useState<string>("");
+
+  useEffect(() => {
+    setDictEntries(getAllDictionaryEntries());
+  }, []);
+
+  const handleAddWord = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newWord.trim() || !newDef.trim()) return;
+    addDictionaryEntry({
+      word: newWord.trim(),
+      definition: newDef.trim(),
+      partOfSpeech: newPos,
+      example: newEx.trim() || undefined,
+      isCustom: true
+    });
+    setDictEntries(getAllDictionaryEntries());
+    setNewWord("");
+    setNewDef("");
+    setNewPos("noun");
+    setNewEx("");
+    setShowAddWordForm(false);
+  };
+
+  const handleDeleteWord = (word: string) => {
+    deleteDictionaryEntry(word);
+    setDictEntries(getAllDictionaryEntries());
+  };
 
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
@@ -297,6 +333,147 @@ export default function SettingsView({
           <Row title="Open Results in New Tab" desc="Open the in-app browser in a separate tab">
             <Toggle on={searchPrefs.openInNewTab} onClick={() => setSP({ openInNewTab: !searchPrefs.openInNewTab })} />
           </Row>
+        </section>
+
+        {/* Personal Dictionary Section */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
+          <div className="flex items-center justify-between border-b border-kindle-border pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+                <BookMarked className="w-4 h-4 text-kindle-text" />
+              </div>
+              <div>
+                <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Personal Dictionary</h3>
+                <p className="text-[10px] text-kindle-text-muted">Definitions used inside book readers</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowAddWordForm(!showAddWordForm)}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-xl text-[9px] font-bold uppercase tracking-widest transition"
+            >
+              <Plus className="w-3 h-3" /> {showAddWordForm ? "Cancel" : "Add Word"}
+            </button>
+          </div>
+
+          {showAddWordForm && (
+            <form onSubmit={handleAddWord} className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3.5 animate-in slide-in-from-top duration-200">
+              <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Define Custom Word</h4>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Word</label>
+                  <input
+                    type="text"
+                    required
+                    value={newWord}
+                    onChange={(e) => setNewWord(e.target.value)}
+                    placeholder="e.g. Ephemeral"
+                    className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Part of Speech</label>
+                  <select
+                    value={newPos}
+                    onChange={(e) => setNewPos(e.target.value)}
+                    className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none"
+                  >
+                    <option value="noun">Noun</option>
+                    <option value="verb">Verb</option>
+                    <option value="adjective">Adjective</option>
+                    <option value="adverb">Adverb</option>
+                    <option value="other">Other/Mix</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Definition</label>
+                <textarea
+                  required
+                  rows={2}
+                  value={newDef}
+                  onChange={(e) => setNewDef(e.target.value)}
+                  placeholder="The meaning of the word..."
+                  className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Example Usage (Optional)</label>
+                <input
+                  type="text"
+                  value={newEx}
+                  onChange={(e) => setNewEx(e.target.value)}
+                  placeholder="Sentence using the word..."
+                  className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[10px] font-bold uppercase tracking-widest transition"
+              >
+                Save Word Definition
+              </button>
+            </form>
+          )}
+
+          <div className="space-y-3">
+            <div className="relative">
+              <SearchIcon className="w-3.5 h-3.5 text-kindle-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search words in dictionary..."
+                value={dictSearch}
+                onChange={(e) => setDictSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs outline-none"
+              />
+            </div>
+
+            <div className="max-h-60 overflow-y-auto border border-kindle-border rounded-xl divide-y divide-kindle-border bg-kindle-bg scrollbar-hide">
+              {dictEntries
+                .filter(entry => entry.word.toLowerCase().includes(dictSearch.toLowerCase()))
+                .map((entry) => (
+                  <div key={entry.word} className="p-3.5 flex items-start justify-between gap-3 bg-kindle-card">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold font-serif text-sm">{entry.word}</span>
+                        {entry.partOfSpeech && (
+                          <span className="text-[8px] uppercase tracking-wider font-mono font-bold text-kindle-text-muted/70 bg-neutral-150 px-1 py-0.5 rounded">
+                            {entry.partOfSpeech}
+                          </span>
+                        )}
+                        {entry.isCustom && (
+                          <span className="text-[7px] uppercase tracking-widest font-bold bg-kindle-accent/15 text-kindle-accent px-1.5 py-0.5 rounded-full">
+                            Personal
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-kindle-text leading-relaxed font-sans">{entry.definition}</p>
+                      {entry.example && (
+                        <p className="text-[10px] italic text-kindle-text-muted font-sans font-medium">"{entry.example}"</p>
+                      )}
+                    </div>
+                    {entry.isCustom && (
+                      <button
+                        onClick={() => handleDeleteWord(entry.word)}
+                        className="p-1.5 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                        title="Delete Definition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+              {dictEntries.filter(entry => entry.word.toLowerCase().includes(dictSearch.toLowerCase())).length === 0 && (
+                <div className="p-8 text-center text-xs text-kindle-text-muted italic">
+                  No words matching your search
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
         {/* Data & Storage */}

@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import JSZip from "jszip";
+import { motion, AnimatePresence } from "motion/react";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
 import { 
   X, ChevronLeft, ChevronRight, Menu, Settings, 
   BookOpen, Sparkles, AlertCircle, Type, Layout, Info,
-  Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind
+  Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind,
+  BookMarked, Copy, Check, FileText
 } from "lucide-react";
+import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 
 interface BookReaderEPUBProps {
   book: BookMetadata;
@@ -53,6 +56,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [dictionaryData, setDictionaryData] = useState<any>(null);
   const [dictLoading, setDictLoading] = useState<boolean>(false);
   
+  // Pagination & Layout States
+  const [currentPageNum, setCurrentPageNum] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(1);
+  const [containerWidth, setContainerWidth] = useState<number>(600);
+  const [doubleColumns, setDoubleColumns] = useState<boolean>(false); // Dual page mode
+  const [letterSpacing, setLetterSpacing] = useState<string>("tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
+  const [hyphenation, setHyphenation] = useState<boolean>(true);
+  
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
@@ -63,6 +74,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [aiLoading, setAiLoading] = useState<boolean>(false);
   const [customAiQuery, setCustomAiQuery] = useState<string>("");
   const [selectedText, setSelectedText] = useState<string>("");
+  const [dictFeedback, setDictFeedback] = useState<string | null>(null);
+  const [tapFeedback, setTapFeedback] = useState<"next" | "prev" | null>(null);
 
   // Audiobook / Speech states
   const [showAudiobook, setShowAudiobook] = useState<boolean>(false);
@@ -95,6 +108,62 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     green: { bg: "bg-[#E3EDD3]", text: "text-[#2D3E1E]", card: "bg-[#D9E6C3]", border: "border-[#C5D6A8]" },
     dark: { bg: "bg-[#1A1A1A]", text: "text-[#E5E5E5]", card: "bg-[#262626]", border: "border-[#333333]" }
   };
+
+  const recalculateLayout = () => {
+    setTimeout(() => {
+      const container = contentRef.current;
+      if (!container) return;
+      const width = container.getBoundingClientRect().width;
+      if (width <= 0) return;
+      
+      const scrollWidth = container.scrollWidth;
+      const gapWidth = 40;
+      const colWidth = doubleColumns ? (width - gapWidth) / 2 : width;
+      const step = colWidth + gapWidth;
+      
+      // Calculate total pages
+      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
+      setTotalPages(calculatedPages);
+      setContainerWidth(width);
+    }, 120);
+  };
+
+  // Recalculate layout on resize or preference change
+  useEffect(() => {
+    recalculateLayout();
+  }, [
+    currentChapterIdx,
+    chapters,
+    fontSize,
+    fontFamily,
+    lineSpacing,
+    marginSize,
+    doubleColumns,
+    letterSpacing,
+    hyphenation
+  ]);
+
+  useEffect(() => {
+    window.addEventListener("resize", recalculateLayout);
+    return () => window.removeEventListener("resize", recalculateLayout);
+  }, [doubleColumns]);
+
+  // Persist customized reader preferences on change
+  useEffect(() => {
+    const prefs = {
+      fontSize,
+      fontFamily,
+      theme,
+      marginSize,
+      lineSpacing,
+      isContinuous,
+      brightness,
+      doubleColumns,
+      letterSpacing,
+      hyphenation
+    };
+    localStorage.setItem("kora_reader_prefs", JSON.stringify(prefs));
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, letterSpacing, hyphenation]);
 
   useEffect(() => {
     loadEpubFile();
@@ -137,29 +206,78 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
   }, []);
 
-  // Keyboard navigation: arrows flip chapters / scroll, Space scrolls, Esc closes.
+  const handleNextPage = () => {
+    setTapFeedback("next");
+    setTimeout(() => setTapFeedback(null), 350);
+    if (currentPageNum < totalPages) {
+      setCurrentPageNum(prev => prev + 1);
+    } else {
+      if (currentChapterIdx < chapters.length - 1) {
+        updateProgress(currentChapterIdx + 1, false);
+      }
+    }
+  };
+
+  const handlePrevPage = () => {
+    setTapFeedback("prev");
+    setTimeout(() => setTapFeedback(null), 350);
+    if (currentPageNum > 1) {
+      setCurrentPageNum(prev => prev - 1);
+    } else {
+      if (currentChapterIdx > 0) {
+        updateProgress(currentChapterIdx - 1, true);
+      }
+    }
+  };
+
+  const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (
+      target.closest("button") || 
+      target.closest("a") || 
+      target.closest("aside") || 
+      target.closest("input") || 
+      target.closest("select") || 
+      target.closest("textarea") || 
+      target.closest(".tts-highlight")
+    ) {
+      return;
+    }
+    
+    // If text is highlighted, don't trigger page turn
+    const sel = window.getSelection()?.toString();
+    if (sel && sel.trim().length > 0) return;
+
+    const container = contentRef.current;
+    if (!container) return;
+    
+    const rect = container.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const isLeftSide = clickX < rect.width / 2;
+    
+    if (isLeftSide) {
+      handlePrevPage();
+    } else {
+      handleNextPage();
+    }
+  };
+
+  // Keyboard navigation: arrows and space flip pages, Esc closes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      const viewer = contentRef.current;
       switch (e.key) {
         case "ArrowRight":
+        case "ArrowDown":
+        case " ":
           e.preventDefault();
-          if (currentChapterIdx < chapters.length - 1) updateProgress(currentChapterIdx + 1);
+          handleNextPage();
           break;
         case "ArrowLeft":
-          e.preventDefault();
-          if (currentChapterIdx > 0) updateProgress(currentChapterIdx - 1);
-          break;
-        case "ArrowDown":
-          if (viewer) { e.preventDefault(); viewer.scrollBy({ top: 120, behavior: "smooth" }); }
-          break;
         case "ArrowUp":
-          if (viewer) { e.preventDefault(); viewer.scrollBy({ top: -120, behavior: "smooth" }); }
-          break;
-        case " ":
-          if (viewer) { e.preventDefault(); viewer.scrollBy({ top: 240, behavior: "smooth" }); }
+          e.preventDefault();
+          handlePrevPage();
           break;
         case "Escape":
           e.preventDefault();
@@ -170,12 +288,35 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [currentChapterIdx, chapters.length]);
+  }, [currentChapterIdx, chapters.length, currentPageNum, totalPages]);
 
   async function lookupDictionary(word: string) {
     try {
       setDictLoading(true);
       setDictionaryWord(word);
+      
+      // 1. Check custom dictionary first
+      const localDef = lookupWord(word);
+      if (localDef) {
+        setDictionaryData({
+          word: localDef.word,
+          phonetic: localDef.isCustom ? "Personal Definition" : "Kora System Definition",
+          meanings: [
+            {
+              partOfSpeech: localDef.partOfSpeech || "noun",
+              definitions: [
+                {
+                  definition: localDef.definition,
+                  example: localDef.example
+                }
+              ]
+            }
+          ]
+        });
+        return;
+      }
+
+      // 2. Fall back to online dictionary
       const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word.toLowerCase()}`);
       if (res.ok) {
         const data = await res.json();
@@ -468,7 +609,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   }
 
   // Trigger progress updates and firestore syncs
-  async function updateProgress(newChapterIdx: number) {
+  async function updateProgress(newChapterIdx: number, goToLastPage = false) {
     if (newChapterIdx < 0 || newChapterIdx >= chapters.length) return;
     setCurrentChapterIdx(newChapterIdx);
     
@@ -476,6 +617,22 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
+
+    // Recalculate pages for the new chapter and set target page index
+    setTimeout(() => {
+      const container = contentRef.current;
+      if (!container) return;
+      const width = container.getBoundingClientRect().width;
+      const scrollWidth = container.scrollWidth;
+      const gapWidth = 40;
+      const colWidth = doubleColumns ? (width - gapWidth) / 2 : width;
+      const step = colWidth + gapWidth;
+      
+      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
+      setTotalPages(calculatedPages);
+      setContainerWidth(width);
+      setCurrentPageNum(goToLastPage ? calculatedPages : 1);
+    }, 150);
 
     const percent = Math.round((newChapterIdx / chapters.length) * 100);
     const updated: BookMetadata = {
@@ -943,17 +1100,55 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               />
             </div>
 
-            {/* Continuous Scrolling Toggle */}
+            {/* Double Column Spread Toggle */}
             <div className="mb-5 flex items-center justify-between">
               <div>
-                <h4 className="text-xs font-bold">Continuous Scrolling</h4>
-                <p className="text-[10px] text-kindle-text-muted">Vertical layout instead of pages</p>
+                <h4 className="text-xs font-bold">Dual Page Spread</h4>
+                <p className="text-[10px] text-kindle-text-muted">Show 2 pages side-by-side</p>
               </div>
               <button 
-                onClick={() => setIsContinuous(!isContinuous)}
-                className={`w-10 h-5 rounded-full transition-colors relative ${isContinuous ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                onClick={() => setDoubleColumns(!doubleColumns)}
+                className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-neutral-300"}`}
               >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isContinuous ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${doubleColumns ? "translate-x-5.5" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+
+            {/* Letter Spacing Selection */}
+            <div className="mb-5">
+              <label className="text-xs opacity-75 font-sans block mb-2">Letter Spacing</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { label: "Normal", val: "tracking-normal" },
+                  { label: "Wide", val: "tracking-wide" },
+                  { label: "Wider", val: "tracking-wider" }
+                ].map((ls) => (
+                  <button
+                    key={ls.val}
+                    onClick={() => setLetterSpacing(ls.val)}
+                    className={`p-2 text-[10px] rounded-lg border text-center font-sans transition ${
+                      letterSpacing === ls.val
+                        ? "bg-kindle-text text-kindle-bg border-transparent"
+                        : "border-neutral-500/20 hover:border-neutral-500/50"
+                    }`}
+                  >
+                    {ls.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Hyphenation Toggle */}
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold">Auto Hyphenation</h4>
+                <p className="text-[10px] text-kindle-text-muted font-sans">Improve alignment with hyphens</p>
+              </div>
+              <button 
+                onClick={() => setHyphenation(!hyphenation)}
+                className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-kindle-accent" : "bg-neutral-300"}`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hyphenation ? "translate-x-5.5" : "translate-x-0.5"}`} />
               </button>
             </div>
 
@@ -1234,37 +1429,95 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden relative">
               {/* Floating highlighted text helper tip */}
               {selectedText && (
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 bg-[#5c5346] text-white px-4 py-2 rounded-full shadow-md text-xs font-sans flex items-center gap-2 border border-[#e8e4de] animate-fade-in">
-                  <span>Selected text! Ask companion:</span>
-                  <button 
-                    onClick={() => { setShowAiAssistant(true); requestAiAssistant("explain"); }}
-                    className="bg-black/30 hover:bg-black/50 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition"
-                  >
-                    Explain
-                  </button>
-                  <button 
-                    onClick={() => { setShowAiAssistant(true); requestAiAssistant("summarize"); }}
-                    className="bg-black/30 hover:bg-black/50 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition"
-                  >
-                    Summarize
-                  </button>
-                  <button onClick={() => setSelectedText("")} className="text-neutral-200 hover:text-white ml-1">✕</button>
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-[#1e1c19] text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-sans flex items-center gap-3 border border-[#3e3933] animate-fade-in max-w-[90vw] md:max-w-xl">
+                  <span className="font-medium truncate max-w-[120px] md:max-w-xs">Selected: "{selectedText}"</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button 
+                      onClick={() => { setShowAiAssistant(true); requestAiAssistant("explain"); }}
+                      className="bg-amber-500 hover:bg-amber-600 text-neutral-950 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                    >
+                      Explain
+                    </button>
+                    <button 
+                      onClick={() => { setShowAiAssistant(true); requestAiAssistant("summarize"); }}
+                      className="bg-neutral-800 hover:bg-neutral-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                    >
+                      Summarize
+                    </button>
+                    <button 
+                      onClick={() => {
+                        addDictionaryEntry({
+                          word: selectedText.length > 30 ? selectedText.slice(0, 30) + "..." : selectedText,
+                          definition: `Passage highlighted from '${book.title}': "${selectedText}"`,
+                          partOfSpeech: "excerpt",
+                          isCustom: true
+                        });
+                        setDictFeedback(`Saved excerpt to personal dictionary!`);
+                        setTimeout(() => setDictFeedback(null), 2500);
+                        setSelectedText("");
+                      }}
+                      className="bg-[#2c3e2b] hover:bg-[#3d5c3b] text-emerald-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border border-emerald-500/20"
+                    >
+                      <BookMarked className="w-3 h-3 text-emerald-400" /> Save Word
+                    </button>
+                    <button onClick={() => setSelectedText("")} className="text-neutral-400 hover:text-white pl-1.5 text-sm font-semibold">✕</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Dict Saved Feedback Indicator */}
+              {dictFeedback && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-emerald-950 text-emerald-100 border border-emerald-500/40 px-4 py-2 rounded-full text-xs font-sans flex items-center gap-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-250">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>{dictFeedback}</span>
                 </div>
               )}
 
               {/* The Chapter Text Container */}
               <div 
                 ref={contentRef}
-                className="flex-1 overflow-y-auto overflow-x-hidden py-12 px-4 md:px-12 flex justify-center"
+                onClick={handleContainerClick}
+                className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start select-none cursor-default"
+                style={{ height: "calc(100vh - 185px)" }}
               >
-                <article 
-                  className={`w-full ${marginSize} ${fontFamily} selection:bg-kindle-accent/20 selection:text-kindle-text transition-all duration-300`}
-                  style={{ fontSize: `${fontSize}px`, lineHeight: lineSpacing }}
+                {/* Visual page slide feedback */}
+                <AnimatePresence mode="popLayout">
+                  {tapFeedback && (
+                    <motion.div
+                      key={tapFeedback}
+                      initial={{ opacity: 0, x: tapFeedback === "next" ? 120 : -120 }}
+                      animate={{ opacity: 0.15, x: 0 }}
+                      exit={{ opacity: 0, x: tapFeedback === "next" ? -60 : 60 }}
+                      transition={{ duration: 0.35, ease: "easeOut" }}
+                      className={`absolute inset-y-0 ${
+                        tapFeedback === "next" ? "right-0" : "left-0"
+                      } w-1/4 pointer-events-none z-10 bg-gradient-to-r ${
+                        tapFeedback === "next" 
+                          ? "from-transparent to-amber-500/40" 
+                          : "from-amber-500/40 to-transparent"
+                      }`}
+                    />
+                  )}
+                </AnimatePresence>
+
+                <motion.article 
+                  animate={{ x: -(currentPageNum - 1) * (containerWidth + 40) }}
+                  transition={{ type: "spring", stiffness: 220, damping: 28, mass: 0.8 }}
+                  className={`w-full ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
+                  style={{
+                    fontSize: `${fontSize}px`,
+                    lineHeight: lineSpacing,
+                    columnWidth: `${doubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
+                    columnGap: '40px',
+                    height: '100%',
+                    columnFill: 'auto',
+                    overflow: 'visible'
+                  }}
                 >
-                  <div className={`mb-8 border-b ${activeTheme.border} pb-4`}>
+                  <div className={`mb-6 border-b ${activeTheme.border} pb-4`} style={{ columnSpan: "all" }}>
                     <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">
                       Chapter {currentChapterIdx + 1} of {chapters.length}
                     </span>
@@ -1282,44 +1535,44 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   />
 
                   {/* Bottom Controls */}
-                  <div className={`mt-16 pt-6 border-t ${activeTheme.border} flex justify-between items-center text-xs font-sans opacity-70`}>
+                  <div className={`mt-12 pt-6 border-t ${activeTheme.border} flex justify-between items-center text-xs font-sans opacity-70`} style={{ columnSpan: "all" }}>
                     <span>End of {chapters[currentChapterIdx]?.title}</span>
                     <span>{Math.round((currentChapterIdx / chapters.length) * 100)}% read</span>
                   </div>
-                </article>
+                </motion.article>
               </div>
 
               {/* Footer Chapter Navigate Buttons */}
-              <footer className={`px-6 py-4 border-t ${activeTheme.border} flex items-center justify-between font-sans`}>
+              <footer className={`px-6 py-4 border-t ${activeTheme.border} flex items-center justify-between font-sans shrink-0`}>
                 <button
                   id="prev-chapter-btn"
-                  disabled={currentChapterIdx === 0}
-                  onClick={() => updateProgress(currentChapterIdx - 1)}
+                  disabled={currentChapterIdx === 0 && currentPageNum === 1}
+                  onClick={handlePrevPage}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-neutral-500/10 transition"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Prev</span>
+                  <span>Prev Page</span>
                 </button>
 
                 <div className="flex flex-col items-center">
                   <div className="w-48 bg-neutral-200 h-1 rounded-full overflow-hidden mb-1.5">
                     <div 
                       className="bg-kindle-text h-full transition-all duration-500" 
-                      style={{ width: `${Math.round((currentChapterIdx / chapters.length) * 100)}%` }}
+                      style={{ width: `${Math.round(((currentChapterIdx * totalPages + (currentPageNum - 1)) / (chapters.length * totalPages || 1)) * 100)}%` }}
                     />
                   </div>
-                  <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-widest">
-                    {currentChapterIdx + 1} of {chapters.length} • {Math.round((currentChapterIdx / chapters.length) * 100)}%
+                  <span className="text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90">
+                    page {currentChapterIdx + 1}.{currentPageNum} of {totalPages} • {Math.round(((currentChapterIdx * totalPages + (currentPageNum - 1)) / (chapters.length * totalPages || 1)) * 100)}%
                   </span>
                 </div>
 
                 <button
                   id="next-chapter-btn"
-                  disabled={currentChapterIdx === chapters.length - 1}
-                  onClick={() => updateProgress(currentChapterIdx + 1)}
+                  disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
+                  onClick={handleNextPage}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-kindle-accent transition shadow-sm"
                 >
-                  <span>Next</span>
+                  <span>Next Page</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </footer>
@@ -1329,37 +1582,37 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
         {/* Sidebar: Gemini AI Assistant */}
         {showAiAssistant && (
-          <aside className={`w-80 md:w-96 border-l ${activeTheme.border} ${activeTheme.card} flex flex-col z-10 animate-in slide-in-from-right duration-200`}>
+          <aside className={`w-80 md:w-96 border-l ${activeTheme.border} ${activeTheme.card} flex flex-col z-10 animate-in slide-in-from-right duration-250`}>
             <div className={`p-5 border-b ${activeTheme.border} flex justify-between items-center`}>
-              <span className="font-sans font-bold text-xs uppercase tracking-widest flex items-center gap-2 text-kindle-text">
-                <Sparkles className="w-4 h-4 text-kindle-accent" />
-                AI Reader Helper
+              <span className="font-serif font-bold text-sm tracking-tight flex items-center gap-2 text-kindle-text">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                Kora Companion
               </span>
               <button 
                 onClick={() => setShowAiAssistant(false)} 
-                className="p-1.5 rounded-lg hover:bg-neutral-500/10 text-xs"
+                className="p-1.5 rounded-lg hover:bg-neutral-500/10 text-xs text-kindle-text font-medium"
               >
                 ✕
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 space-y-5">
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
               {/* Context helper */}
-              <div className="bg-neutral-100 rounded-xl p-4 border border-kindle-border text-[11px] font-sans leading-relaxed text-kindle-text-muted">
+              <div className="bg-[#fcfbf9] dark:bg-neutral-900 rounded-2xl p-4 border border-kindle-border text-[11px] font-sans leading-relaxed text-kindle-text-muted shadow-sm">
                 <div className="font-bold text-kindle-text mb-1.5 flex items-center gap-2 uppercase tracking-widest text-[9px]">
-                  <Info className="w-3.5 h-3.5 text-kindle-accent" />
-                  Offline AI Companion
+                  <Info className="w-3.5 h-3.5 text-amber-500" />
+                  E-Ink Intelligent Engine
                 </div>
-                Highlight text inside the book to explain or summarize specific passages. Or ask questions below about motifs, characters, and plot.
+                Highlight any word or passage in the text to prompt instant explanation, definition, or summarization. You can also converse directly with Kora below.
               </div>
 
               {selectedText && (
-                <div className={`p-4 rounded-xl border border-kindle-border text-xs font-sans space-y-2 bg-white/50`}>
-                  <div className="font-bold uppercase tracking-widest text-[9px] opacity-60">Selected passage</div>
+                <div className="p-4 rounded-xl border border-amber-500/20 text-xs font-sans space-y-2 bg-amber-500/5">
+                  <div className="font-bold uppercase tracking-widest text-[9px] text-amber-600 dark:text-amber-400">Target Passage</div>
                   <p className="italic line-clamp-3 text-kindle-text">"{selectedText}"</p>
                   <button 
                     onClick={() => setSelectedText("")} 
-                    className="text-[10px] font-bold text-red-600 hover:underline block pt-1"
+                    className="text-[10px] font-semibold text-neutral-500 hover:text-kindle-text underline block pt-1"
                   >
                     Clear selection
                   </button>
@@ -1371,34 +1624,34 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 <button
                   onClick={() => requestAiAssistant("explain")}
                   disabled={aiLoading}
-                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-100 transition disabled:opacity-30"
+                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-500/5 active:bg-neutral-500/10 transition disabled:opacity-30 text-kindle-text"
                 >
                   Explain
                 </button>
                 <button
                   onClick={() => requestAiAssistant("summarize")}
                   disabled={aiLoading}
-                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-100 transition disabled:opacity-30"
+                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-500/5 active:bg-neutral-500/10 transition disabled:opacity-30 text-kindle-text"
                 >
                   Summarize
                 </button>
               </div>
 
               {/* Core AI Output */}
-              <div className={`p-5 rounded-2xl border border-kindle-border min-h-[180px] relative font-sans text-xs flex flex-col justify-between bg-white shadow-sm`}>
+              <div className={`p-5 rounded-2xl border border-kindle-border min-h-[220px] relative font-sans text-xs flex flex-col justify-between bg-white dark:bg-neutral-950 shadow-inner overflow-hidden`}>
                 {aiLoading ? (
-                  <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center gap-3 z-10 rounded-2xl">
-                    <div className="w-6 h-6 border-3 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest animate-pulse text-kindle-text-muted">Consulting AI...</span>
+                  <div className="absolute inset-0 bg-white/95 dark:bg-neutral-950/95 flex flex-col items-center justify-center gap-3 z-10 rounded-2xl animate-fade-in">
+                    <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest animate-pulse text-kindle-text-muted">Analyzing Text...</span>
                   </div>
                 ) : null}
 
                 <div className="prose prose-sm dark:prose-invert space-y-3 max-w-full leading-relaxed overflow-x-hidden text-kindle-text">
                   {aiResponse ? (
-                    <div className="whitespace-pre-wrap">{aiResponse}</div>
+                    <div className="whitespace-pre-wrap leading-relaxed select-text font-serif text-[13px]">{aiResponse}</div>
                   ) : (
-                    <div className="text-center py-10 text-kindle-text-muted font-medium opacity-60 italic">
-                      Select text or ask a question to generate analysis
+                    <div className="text-center py-12 text-kindle-text-muted font-medium opacity-60 italic text-xs">
+                      Highlight book content or use the input below to trigger Kora insights.
                     </div>
                   )}
                 </div>
@@ -1415,21 +1668,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 }}
                 className="space-y-3 pt-2"
               >
-                <label className="text-[10px] font-bold uppercase tracking-widest block text-kindle-text-muted">Ask a question</label>
+                <label className="text-[10px] font-bold uppercase tracking-widest block text-kindle-text-muted">Direct Query</label>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={customAiQuery}
                     onChange={(e) => setCustomAiQuery(e.target.value)}
-                    placeholder="Search motifs, plot..."
-                    className="flex-1 p-3 rounded-xl text-xs border border-kindle-border focus:outline-none focus:ring-1 focus:ring-kindle-accent bg-white text-kindle-text"
+                    placeholder="Search characters, themes, style..."
+                    className="flex-1 p-3 rounded-xl text-xs border border-kindle-border focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white dark:bg-neutral-900 text-kindle-text"
                   />
                   <button
                     type="submit"
                     disabled={aiLoading || !customAiQuery.trim()}
-                    className="bg-kindle-text hover:bg-kindle-accent disabled:opacity-40 text-kindle-bg px-5 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-sm transition"
+                    className="bg-kindle-text hover:bg-[#2c2a26] disabled:opacity-40 text-kindle-bg px-5 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-sm transition"
                   >
-                    Ask
+                    Send
                   </button>
                 </div>
               </form>

@@ -428,9 +428,14 @@ export default function LibraryManager({
                       </div>
                     )}
                   </div>
-                  <div className="px-1">
+                  <div className="px-1 space-y-1 font-sans">
                     <h3 className="text-[11px] font-bold text-kindle-text line-clamp-1 group-hover:text-kindle-accent transition">{book.title}</h3>
-                    <p className="text-[9px] text-kindle-text-muted font-medium mt-0.5">{progressPercent}% read</p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden">
+                        <div className="h-full bg-kindle-text" style={{ width: `${progressPercent}%` }} />
+                      </div>
+                      <span className="text-[8px] text-kindle-text-muted font-bold tracking-tight shrink-0">{progressPercent}%</span>
+                    </div>
                   </div>
                 </div>
               );
@@ -648,11 +653,32 @@ export default function LibraryManager({
                     </div>
                   </div>
 
-                  <div className="p-3">
-                    <h4 className="text-[10px] font-bold text-kindle-text leading-tight line-clamp-2" title={book.title}>
-                      {book.title}
-                    </h4>
-                    <div className="flex justify-between items-center mt-2">
+                  <div className="p-3 flex flex-col justify-between flex-1">
+                    <div className="space-y-1.5">
+                      <h4 className="text-[10px] font-bold text-kindle-text leading-tight line-clamp-2 font-sans" title={book.title}>
+                        {book.title}
+                      </h4>
+                      
+                      {/* Visual progress bar and reading percentage indicator */}
+                      <div className="space-y-1 pt-0.5 font-sans">
+                        <div className="flex justify-between items-center text-[8px] text-kindle-text-muted font-bold tracking-tight">
+                          <span>{progressPercent}% READ</span>
+                          <span className="uppercase text-[7px] bg-neutral-200 dark:bg-neutral-800 px-1 py-0.5 rounded-sm">
+                            {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
+                          </span>
+                        </div>
+                        <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              book.status === "completed" ? "bg-emerald-600 dark:bg-emerald-500" : "bg-kindle-text"
+                            }`} 
+                            style={{ width: `${progressPercent}%` }} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-3 pt-2 border-t border-kindle-border/30 font-sans">
                       <span className="text-[8px] font-bold text-kindle-text-muted uppercase tracking-widest">{book.extension}</span>
                       {isCached ? (
                         <CheckCircle className="w-3 h-3 text-emerald-600" />
