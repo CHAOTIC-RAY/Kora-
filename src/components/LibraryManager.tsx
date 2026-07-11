@@ -5,7 +5,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { 
   BookOpen, UploadCloud, Tag, Star, Trash2, ListFilter,
   CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, HelpCircle, HardDrive, Search, Cloud,
-  Edit2, ImageIcon, AlertTriangle, RefreshCw, MoreVertical, Flame, TrendingUp, Calendar
+  Edit2, ImageIcon, AlertTriangle, RefreshCw, MoreVertical, Flame, TrendingUp, Calendar, FileText
 } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
@@ -568,7 +568,7 @@ export default function LibraryManager({
               {shelf}
             </button>
           ))}
-          <button className="px-3 py-2 rounded-full border border-kindle-border text-kindle-text-muted hover:text-kindle-text transition">
+          <button onClick={() => setShowTagConfig(true)} className="px-3 py-2 rounded-full border border-kindle-border text-kindle-text-muted hover:text-kindle-text transition" title="Manage Collections">
             <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -1265,6 +1265,66 @@ export default function LibraryManager({
 
       {/* 6. Custom Delete Confirmation Modal */}
       {/* 5. Modals */}
+      {showTagConfig && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xl text-kindle-text animate-fade-in space-y-6">
+            <div className="flex justify-between items-center">
+              <h3 className="font-sans font-bold text-base flex items-center gap-2"><Tag className="w-4 h-4 text-kindle-accent" /> Manage Collections</h3>
+              <button onClick={() => setShowTagConfig(false)} className="text-kindle-text-muted hover:text-kindle-text transition">
+                <Trash2 className="w-4 h-4 opacity-0" /> {/* Spacer */}
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <input 
+                  type="text" 
+                  value={newTagInput} 
+                  onChange={(e) => setNewTagInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateCustomTag(); }}
+                  placeholder="New collection name..." 
+                  className="flex-1 bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-kindle-accent font-sans"
+                />
+                <button 
+                  onClick={handleCreateCustomTag}
+                  className="bg-kindle-text text-kindle-bg px-4 py-2 rounded-xl text-xs font-bold transition hover:bg-kindle-accent"
+                >
+                  Add
+                </button>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto space-y-2">
+                {availableTags.length === 0 && <p className="text-xs text-kindle-text-muted text-center italic py-4">No custom collections yet.</p>}
+                {availableTags.map(tag => (
+                  <div key={tag} className="flex justify-between items-center p-3 bg-kindle-bg border border-kindle-border rounded-xl">
+                    <span className="text-sm font-semibold">{tag}</span>
+                    <button 
+                      onClick={() => {
+                        const updated = availableTags.filter(t => t !== tag);
+                        setAvailableTags(updated);
+                        saveCustomTags(userId, updated);
+                      }}
+                      className="text-red-400 hover:text-red-500 hover:bg-red-500/10 p-1.5 rounded-lg transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button 
+                onClick={() => setShowTagConfig(false)}
+                className="px-6 py-2 bg-kindle-border hover:bg-kindle-border/80 text-kindle-text rounded-xl text-xs font-bold transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingCoverBook && (
         <BookCoverEditor 
           book={editingCoverBook}

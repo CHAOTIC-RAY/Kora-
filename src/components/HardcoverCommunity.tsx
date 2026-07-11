@@ -83,7 +83,10 @@ export default function HardcoverCommunity({ book }: HardcoverCommunityProps) {
       <div className="py-12 text-center text-kindle-text-muted space-y-3">
         <Users className="w-8 h-8 mx-auto opacity-50" />
         <p className="text-xs">No reviews found on Hardcover for this book yet.</p>
-        <button className="px-4 py-2 border border-kindle-border rounded-full text-xs font-bold uppercase tracking-widest hover:bg-neutral-50 transition">
+        <button 
+          onClick={() => window.open(`https://hardcover.app/books/${book.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, "_blank")}
+          className="px-4 py-2 border border-kindle-border rounded-full text-xs font-bold uppercase tracking-widest hover:bg-neutral-50 transition"
+        >
           Write a Review
         </button>
       </div>
@@ -92,11 +95,17 @@ export default function HardcoverCommunity({ book }: HardcoverCommunityProps) {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center justify-between border-b border-kindle-border pb-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-kindle-border pb-4 gap-4">
         <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted flex items-center gap-2">
           <MessageSquare className="w-3.5 h-3.5" />
           Hardcover Community Reviews
         </h3>
+        <button 
+          onClick={() => window.open(`https://hardcover.app/books/${book.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, "_blank")}
+          className="px-3 py-1.5 border border-kindle-border rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-50 transition"
+        >
+          Write a Review
+        </button>
       </div>
       
       <div className="space-y-6">

@@ -27,6 +27,7 @@ import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
 import NotesView from "./components/NotesView";
+import HardcoverCommunityTab from "./components/HardcoverCommunityTab";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
@@ -36,7 +37,7 @@ import {
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings" | "notes">("library");
+  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings" | "notes" | "community">("library");
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
     const saved = localStorage.getItem("kindle_last_read");
@@ -424,6 +425,18 @@ export default function App() {
               <span>Downloads</span>
             </button>
             <button
+              id="community-tab"
+              onClick={() => setActiveTab("community")}
+              className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
+                activeTab === "community" 
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
+                  : "text-kindle-text-muted hover:text-kindle-text"
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Community</span>
+            </button>
+            <button
               id="settings-tab"
               onClick={() => setActiveTab("settings")}
               className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
@@ -494,6 +507,7 @@ export default function App() {
 
         {activeTab === "downloads" && <DownloadsManager />}
         {activeTab === "notes" && <NotesView books={books} userId={user?.uid || ""} onBack={() => setActiveTab("library")} />}
+        {activeTab === "community" && <HardcoverCommunityTab />}
         
         {activeTab === "discover" && (
           <DiscoverView
@@ -796,6 +810,15 @@ export default function App() {
           >
             <Download className={`w-5 h-5 transition-transform duration-150 ${activeTab === "downloads" ? "scale-110" : ""}`} />
             <span className="text-[9px] font-sans font-bold mt-1 uppercase tracking-widest">Downloads</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("community")}
+            className={`flex flex-col items-center justify-center w-20 h-full transition ${
+              activeTab === "community" ? "text-kindle-text" : "text-kindle-text-muted"
+            }`}
+          >
+            <MessageSquare className={`w-5 h-5 transition-transform duration-150 ${activeTab === "community" ? "scale-110" : ""}`} />
+            <span className="text-[9px] font-sans font-bold mt-1 uppercase tracking-widest">Community</span>
           </button>
 
           <button

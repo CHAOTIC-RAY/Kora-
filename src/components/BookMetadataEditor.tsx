@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { X, Save, BookOpen, Star, RefreshCw } from "lucide-react";
+import HardcoverCommunity from "./HardcoverCommunity";
 
 interface BookMetadataEditorProps {
   userId: string;
@@ -94,6 +95,9 @@ export default function BookMetadataEditor({ userId, book, onClose, onSave }: Bo
 
         </div>
 
+        <div className="mt-8 pt-6 border-t border-kindle-border">
+          <HardcoverCommunity book={book} />
+        </div>
         <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-kindle-border">
           <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-widest hover:bg-kindle-bg transition">
             Cancel
