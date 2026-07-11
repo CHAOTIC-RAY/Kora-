@@ -713,6 +713,58 @@ app.get("/api/cover-lookup", async (req, res) => {
 });
 
 
+// Image proxy endpoint to secure external cover URLs and force high quality
+app.get("/api/proxy-image", async (req, res) => {
+  try {
+    let imageUrl = req.query.url as string;
+    if (!imageUrl) {
+      return res.status(400).send("Missing image URL");
+    }
+
+    // Fix book cover quality: automatically upgrade Open Library medium covers to large
+    if (imageUrl.includes("openlibrary.org") && imageUrl.includes("-M.jpg")) {
+      imageUrl = imageUrl.replace("-M.jpg", "-L.jpg");
+    }
+
+    if (imageUrl.startsWith("//")) {
+      imageUrl = "https:" + imageUrl;
+    }
+
+    console.log(`[Proxy Image] Fetching image: ${imageUrl}`);
+    const imgRes = await fetch(imageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*"
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+
+    if (!imgRes.ok) {
+      // Fallback if the large cover doesn't exist
+      if (imageUrl.includes("-L.jpg")) {
+        const fallbackUrl = imageUrl.replace("-L.jpg", "-M.jpg");
+        const fallbackRes = await fetch(fallbackUrl);
+        if (fallbackRes.ok) {
+          res.setHeader("Content-Type", fallbackRes.headers.get("content-type") || "image/jpeg");
+          res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+          const buffer = await fallbackRes.arrayBuffer();
+          return res.send(Buffer.from(buffer));
+        }
+      }
+      return res.status(404).send("Image not found");
+    }
+
+    res.setHeader("Content-Type", imgRes.headers.get("content-type") || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    const buffer = await imgRes.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (err: any) {
+    console.error("Proxy image failed:", err);
+    res.status(500).send("Proxy image error");
+  }
+});
+
+
 
 
 function getOptionScore(opt: { label: string; url: string; isDirect: boolean }): number {

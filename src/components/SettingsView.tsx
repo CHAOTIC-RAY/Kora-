@@ -8,6 +8,11 @@ import {
   Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
+import { 
+  getSavedDirectoryHandle, saveDirectoryHandle, clearDirectoryHandle, scanDirectoryForNewBooks,
+  getVirtualDirectoryPath, setVirtualDirectoryPath, getVirtualDirectoryFiles, addVirtualDirectoryFile,
+  removeVirtualDirectoryFile, scanVirtualDirectory, VirtualBookFile
+} from "../lib/directoryHelper";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -41,6 +46,8 @@ interface SettingsViewProps {
   cachedCount: number;
   onClearDeviceCache: () => void;
   onClearRecentSearches: () => void;
+  books?: any[];
+  onRefreshLibrary?: (uid?: string) => void;
 }
 
 function getRemainingGuestDays(user: User | null): number {
@@ -98,7 +105,9 @@ export default function SettingsView({
   bookCount,
   cachedCount,
   onClearDeviceCache,
-  onClearRecentSearches
+  onClearRecentSearches,
+  books = [],
+  onRefreshLibrary
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -111,9 +120,109 @@ export default function SettingsView({
   const [newPos, setNewPos] = useState<string>("noun");
   const [newEx, setNewEx] = useState<string>("");
 
+  // Download directory settings states
+  const [realDirHandle, setRealDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [useVirtualDir, setUseVirtualDir] = useState<boolean>(() => localStorage.getItem("kora_use_virtual_dir") === "true");
+  const [virtualPath, setVirtualPath] = useState<string>(getVirtualDirectoryPath());
+  const [virtualFiles, setVirtualFiles] = useState<VirtualBookFile[]>([]);
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [scanResultText, setScanResultText] = useState<string | null>(null);
+
+  // Virtual file creation inputs
+  const [newVirtualFileName, setNewVirtualFileName] = useState<string>("");
+  const [newVirtualAuthor, setNewVirtualAuthor] = useState<string>("");
+  const [newVirtualExt, setNewVirtualExt] = useState<"epub" | "pdf">("epub");
+
   useEffect(() => {
     setDictEntries(getAllDictionaryEntries());
+    async function initDir() {
+      const handle = await getSavedDirectoryHandle();
+      setRealDirHandle(handle);
+      setVirtualFiles(getVirtualDirectoryFiles());
+    }
+    initDir();
   }, []);
+
+  const handleSelectRealDir = async () => {
+    try {
+      if (!(window as any).showDirectoryPicker) {
+        alert("Directory Selection is not natively supported by your browser or inside this iframe sandbox. Please enable the 'Virtual Folder Simulator' below to simulate a local downloads folder!");
+        return;
+      }
+      const handle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
+      await saveDirectoryHandle(handle);
+      setRealDirHandle(handle);
+      setScanResultText(`Connected to "${handle.name}". Kora will now scan this folder on load.`);
+    } catch (err: any) {
+      console.warn("Directory Picker error:", err);
+    }
+  };
+
+  const handleDisconnectRealDir = async () => {
+    await clearDirectoryHandle();
+    setRealDirHandle(null);
+    setScanResultText("Disconnected from system folder.");
+  };
+
+  const handleToggleVirtualDir = () => {
+    const newValue = !useVirtualDir;
+    setUseVirtualDir(newValue);
+    localStorage.setItem("kora_use_virtual_dir", String(newValue));
+  };
+
+  const handleUpdateVirtualPath = (path: string) => {
+    setVirtualPath(path);
+    setVirtualDirectoryPath(path);
+  };
+
+  const handleAddVirtualFile = () => {
+    if (!newVirtualFileName.trim()) return;
+    const newFile: VirtualBookFile = {
+      name: newVirtualFileName.trim(),
+      author: newVirtualAuthor.trim() || "Local Author",
+      size: `${(0.5 + Math.random() * 2).toFixed(1)} MB`,
+      extension: newVirtualExt
+    };
+    addVirtualDirectoryFile(newFile);
+    setVirtualFiles(getVirtualDirectoryFiles());
+    setNewVirtualFileName("");
+    setNewVirtualAuthor("");
+  };
+
+  const handleRemoveVirtualFile = (idx: number) => {
+    removeVirtualDirectoryFile(idx);
+    setVirtualFiles(getVirtualDirectoryFiles());
+  };
+
+  const handleScanNow = async () => {
+    setIsScanning(true);
+    setScanResultText(null);
+    try {
+      if (realDirHandle) {
+        const count = await scanDirectoryForNewBooks(
+          realDirHandle,
+          books,
+          user?.uid || "",
+          () => { if (onRefreshLibrary) onRefreshLibrary(); }
+        );
+        setScanResultText(`Folder analysis complete. Found and imported ${count} new books!`);
+        if (onRefreshLibrary) onRefreshLibrary();
+      } else if (useVirtualDir) {
+        const count = await scanVirtualDirectory(
+          books,
+          () => { if (onRefreshLibrary) onRefreshLibrary(); }
+        );
+        setScanResultText(`Virtual Folder analysis complete. Found and imported ${count} new books!`);
+        if (onRefreshLibrary) onRefreshLibrary();
+      } else {
+        setScanResultText("No directory or simulator is currently configured to scan.");
+      }
+    } catch (err: any) {
+      setScanResultText(`Scan failed: ${err.message}`);
+    } finally {
+      setIsScanning(false);
+    }
+  };
 
   const handleAddWord = (e: React.FormEvent) => {
     e.preventDefault();
@@ -473,6 +582,183 @@ export default function SettingsView({
                 </div>
               )}
             </div>
+          </div>
+        </section>
+
+        {/* Download Directory Settings */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
+          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
+            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+              <Download className="w-4 h-4 text-kindle-text" />
+            </div>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Download Directory Integration</h3>
+          </div>
+
+          <p className="text-[11px] text-kindle-text-muted leading-relaxed">
+            Configure where ebooks downloaded via the global archives (Rave Engine) are stored. 
+            When a target folder is configured, Kora will analyze that directory on startup to import any newly added ebook files.
+          </p>
+
+          {/* Real Directory Selection Block */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">System Folder Integration</h4>
+                <p className="text-[9px] text-kindle-text-muted">Use native File System Access APIs</p>
+              </div>
+              {realDirHandle ? (
+                <button
+                  onClick={handleDisconnectRealDir}
+                  className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/45 dark:text-red-400 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+                >
+                  Disconnect
+                </button>
+              ) : (
+                <button
+                  onClick={handleSelectRealDir}
+                  className="px-3 py-1.5 bg-kindle-bg border border-kindle-border hover:bg-neutral-100 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+                >
+                  Select Folder
+                </button>
+              )}
+            </div>
+
+            {realDirHandle && (
+              <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[11px] font-mono truncate max-w-xs">{realDirHandle.name}</span>
+                </div>
+                <span className="text-[8px] uppercase tracking-widest font-bold font-mono text-emerald-600">Active Path</span>
+              </div>
+            )}
+          </div>
+
+          {/* Virtual Fallback Simulator Mode */}
+          <div className="border-t border-kindle-border/60 pt-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Virtual Folder Simulator</h4>
+                <p className="text-[9px] text-kindle-text-muted">Simulate a local downloads folder in restricted sandbox iframes</p>
+              </div>
+              <Toggle
+                on={useVirtualDir}
+                onClick={handleToggleVirtualDir}
+              />
+            </div>
+
+            {useVirtualDir && (
+              <div className="space-y-3 animate-in fade-in duration-300">
+                <div>
+                  <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">
+                    Virtual Location Path
+                  </label>
+                  <input
+                    type="text"
+                    value={virtualPath}
+                    onChange={(e) => handleUpdateVirtualPath(e.target.value)}
+                    placeholder="e.g. ~/Downloads/Kora"
+                    className="w-full px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono outline-none focus:border-kindle-accent"
+                  />
+                </div>
+
+                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-kindle-border pb-2">
+                    <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Simulated Directory Content</span>
+                    <span className="text-[9px] font-mono font-bold">{virtualFiles.length} files present</span>
+                  </div>
+
+                  {virtualFiles.length === 0 ? (
+                    <p className="text-[10px] text-kindle-text-muted italic text-center py-2">
+                      Folder is empty. Add virtual files below to simulate downloading or side-loading.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                      {virtualFiles.map((f, i) => (
+                        <div key={i} className="flex items-center justify-between text-[11px] p-2 bg-kindle-card border border-kindle-border rounded-lg">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <BookMarked className="w-3.5 h-3.5 text-kindle-text-muted" />
+                            <div className="min-w-0">
+                              <p className="font-serif font-bold truncate">{f.name}</p>
+                              <p className="text-[8px] text-kindle-text-muted font-sans uppercase tracking-wider">{f.author} • {f.size}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[8px] font-mono bg-kindle-bg px-1.5 py-0.5 rounded border border-kindle-border uppercase font-bold text-kindle-text-muted">
+                              {f.extension}
+                            </span>
+                            <button
+                              onClick={() => handleRemoveVirtualFile(i)}
+                              className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
+                              title="Delete from virtual folder"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add simulated book inputs */}
+                  <div className="border-t border-kindle-border/60 pt-3 space-y-2">
+                    <p className="text-[8px] uppercase tracking-widest font-bold text-kindle-text-muted">
+                      Add Simulated Ebook to Folder
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        placeholder="Book Title (e.g., Moby Dick)"
+                        value={newVirtualFileName}
+                        onChange={(e) => setNewVirtualFileName(e.target.value)}
+                        className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Author"
+                        value={newVirtualAuthor}
+                        onChange={(e) => setNewVirtualAuthor(e.target.value)}
+                        className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                      />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <select
+                        value={newVirtualExt}
+                        onChange={(e) => setNewVirtualExt(e.target.value as any)}
+                        className="p-1.5 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                      >
+                        <option value="epub">EPUB format</option>
+                        <option value="pdf">PDF format</option>
+                      </select>
+                      <button
+                        onClick={handleAddVirtualFile}
+                        className="flex-1 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[9px] font-bold uppercase tracking-widest transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" /> Place in Folder
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Action Trigger Row */}
+          <div className="border-t border-kindle-border pt-4 flex flex-col gap-3">
+            <button
+              onClick={handleScanNow}
+              disabled={isScanning || (!realDirHandle && !useVirtualDir)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-kindle-text text-kindle-bg hover:bg-kindle-accent disabled:opacity-40 disabled:hover:bg-kindle-text rounded-xl text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
+            >
+              <HardDrive className={`w-3.5 h-3.5 ${isScanning ? "animate-spin" : ""}`} />
+              {isScanning ? "Analyzing Directory..." : "Analyze Folder for New Books Now"}
+            </button>
+
+            {scanResultText && (
+              <p className="text-[10px] text-center font-semibold text-emerald-600 uppercase tracking-wider animate-pulse">
+                {scanResultText}
+              </p>
+            )}
           </div>
         </section>
 

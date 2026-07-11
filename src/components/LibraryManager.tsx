@@ -49,6 +49,47 @@ export default function LibraryManager({
   const [syncingBookIds, setSyncingBookIds] = useState<Set<string>>(new Set());
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
+  const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
+
+  // Long press refs & helpers
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isLongPressedRef = useRef<boolean>(false);
+
+  const startLongPress = (book: BookMetadata, e: React.TouchEvent | React.MouseEvent) => {
+    isLongPressedRef.current = false;
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    touchStartPosRef.current = { x: clientX, y: clientY };
+
+    longPressTimeoutRef.current = setTimeout(() => {
+      isLongPressedRef.current = true;
+      setLongPressedBook(book);
+      if (navigator.vibrate) {
+        navigator.vibrate(40);
+      }
+    }, 600);
+  };
+
+  const endLongPress = () => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartPosRef.current) return;
+    const touch = e.touches[0];
+    const diffX = Math.abs(touch.clientX - touchStartPosRef.current.x);
+    const diffY = Math.abs(touch.clientY - touchStartPosRef.current.y);
+    if (diffX > 15 || diffY > 15) {
+      if (longPressTimeoutRef.current) {
+        clearTimeout(longPressTimeoutRef.current);
+        longPressTimeoutRef.current = null;
+      }
+    }
+  };
 
   // Upload States
   const [isDragActive, setIsDragActive] = useState<boolean>(false);
@@ -601,8 +642,24 @@ export default function LibraryManager({
               return (
                 <div
                   key={book.id}
-                  onClick={() => onBookSelected(book)}
-                  className="kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition-transform duration-300 hover:-translate-y-1"
+                  onTouchStart={(e) => startLongPress(book, e)}
+                  onTouchEnd={endLongPress}
+                  onTouchMove={handleTouchMove}
+                  onMouseDown={(e) => {
+                    if (e.button === 0) startLongPress(book, e);
+                  }}
+                  onMouseUp={endLongPress}
+                  onMouseLeave={endLongPress}
+                  onClick={(e) => {
+                    if (isLongPressedRef.current) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      isLongPressedRef.current = false;
+                      return;
+                    }
+                    onBookSelected(book);
+                  }}
+                  className="kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition-transform duration-300 hover:-translate-y-1 select-none"
                 >
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
                     {book.coverUrl ? (
@@ -934,6 +991,105 @@ export default function LibraryManager({
           onClose={() => setEditingMetadataBook(null)}
           onSave={onRefreshLibrary}
         />
+      )}
+
+      {/* 7. Mobile Long Press Action Sheet */}
+      {longPressedBook && (
+        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setLongPressedBook(null)} />
+          <div className="relative w-full sm:max-w-sm bg-kindle-card border-t sm:border border-kindle-border rounded-t-3xl sm:rounded-2xl shadow-2xl p-6 sm:p-6 text-kindle-text animate-in slide-in-from-bottom-10 sm:zoom-in duration-300">
+            {/* Grab handle for mobile bottom sheet feel */}
+            <div className="w-12 h-1 bg-kindle-border rounded-full mx-auto mb-4 sm:hidden" />
+            
+            <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-kindle-border/40">
+              {longPressedBook.coverUrl ? (
+                <img
+                  src={`/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}`}
+                  className="w-12 h-16 object-cover rounded-lg border border-kindle-border/60 shadow-sm"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-12 h-16 bg-kindle-bg rounded-lg border border-kindle-border/60 flex items-center justify-center">
+                  <BookOpen className="w-6 h-6 text-kindle-text-muted opacity-30" />
+                </div>
+              )}
+              <div className="overflow-hidden">
+                <h4 className="font-serif font-bold text-sm leading-tight truncate">{longPressedBook.title}</h4>
+                <p className="text-[11px] text-kindle-text-muted mt-1 truncate">{longPressedBook.author}</p>
+                <span className="inline-block mt-1.5 text-[8px] font-bold uppercase tracking-widest bg-kindle-bg border border-kindle-border px-1.5 py-0.5 rounded">
+                  {longPressedBook.extension}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 font-sans">
+              <button
+                onClick={() => {
+                  const book = longPressedBook;
+                  setLongPressedBook(null);
+                  onBookSelected(book);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+              >
+                <BookOpen className="w-4 h-4 text-kindle-text-muted" />
+                Open & Read Book
+              </button>
+              
+              <button
+                onClick={() => {
+                  setEditingCoverBook(longPressedBook);
+                  setLongPressedBook(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+              >
+                <ImageIcon className="w-4 h-4 text-kindle-text-muted" />
+                Change Book Cover
+              </button>
+
+              <button
+                onClick={() => {
+                  setEditingMetadataBook(longPressedBook);
+                  setLongPressedBook(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+              >
+                <Edit2 className="w-4 h-4 text-kindle-text-muted" />
+                Edit Metadata
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveBookForTags(longPressedBook);
+                  setLongPressedBook(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+              >
+                <Tag className="w-4 h-4 text-kindle-text-muted" />
+                Organize Tags
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveBookForDelete(longPressedBook);
+                  setLongPressedBook(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 text-red-600 rounded-xl text-left text-xs font-semibold transition-colors mt-2"
+              >
+                <Trash2 className="w-4 h-4 text-red-500" />
+                Delete Book
+              </button>
+
+              <div className="pt-2 border-t border-kindle-border/40 mt-3">
+                <button
+                  onClick={() => setLongPressedBook(null)}
+                  className="w-full py-3 bg-kindle-bg hover:bg-kindle-card border border-kindle-border/60 rounded-xl text-center text-xs font-bold uppercase tracking-widest transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

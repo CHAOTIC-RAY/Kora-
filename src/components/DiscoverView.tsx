@@ -77,6 +77,20 @@ export default function DiscoverView({
   const [mirrors, setMirrors] = useState<any[]>([]);
   const [mirrorError, setMirrorError] = useState<string | null>(null);
 
+  // Detailed book explorer popup states
+  const [selectedVariant, setSelectedVariant] = useState<any | null>(null);
+  const [verifiedDetails, setVerifiedDetails] = useState<{
+    description?: string;
+    subjects?: string[];
+    ratings?: number;
+    pageCount?: number;
+    publishYear?: string;
+    publisher?: string;
+    source: string;
+  } | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
+  const [readMoreExpanded, setReadMoreExpanded] = useState<boolean>(false);
+
   // Recent Searches state
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
@@ -143,12 +157,21 @@ export default function DiscoverView({
       ALL_CATEGORIES.forEach(cat => {
         const nytList = lists.find((l: any) => l.list_name_encoded === cat.query);
         if (nytList) {
-          data[cat.id] = nytList.books.map((b: any) => ({
-            title: b.title,
-            author: b.author,
-            coverUrl: b.book_image,
-            searchQuery: `${b.title} ${b.author}`
-          }));
+          const seen = new Set<string>();
+          const uniqueBooks: any[] = [];
+          (nytList.books || []).forEach((b: any) => {
+            const key = `${(b.title || "").toLowerCase().trim()}___${(b.author || "").toLowerCase().trim()}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+              uniqueBooks.push({
+                title: b.title,
+                author: b.author,
+                coverUrl: b.book_image,
+                searchQuery: `${b.title} ${b.author}`
+              });
+            }
+          });
+          data[cat.id] = uniqueBooks;
         } else {
           data[cat.id] = [];
         }
@@ -246,7 +269,56 @@ export default function DiscoverView({
         more = result.hasMore;
       }
 
-      setResults(mappedBooks);
+      // Group search results by simplified Title + Author to completely avoid duplicates of the same book
+      const groupedBooksMap = new Map<string, any>();
+
+      mappedBooks.forEach((b: any) => {
+        const cleanTitle = (b.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const cleanAuthor = (b.author || "Unknown").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const groupingKey = `${cleanTitle}___${cleanAuthor}`;
+
+        if (!groupedBooksMap.has(groupingKey)) {
+          groupedBooksMap.set(groupingKey, {
+            id: b.id || b.md5 || Math.random().toString(),
+            title: b.title,
+            author: b.author || "Unknown Author",
+            coverUrl: b.coverUrl,
+            year: b.year,
+            publisher: b.publisher,
+            pages: b.pages,
+            topic: b.topic,
+            language: b.language,
+            isbn: b.isbn,
+            exactMatch: b.exactMatch,
+            sourceId: b.sourceId,
+            source: b.source,
+            size: b.size,
+            extension: b.extension,
+            md5: b.md5,
+            downloadUrl: b.downloadUrl,
+            iaId: b.iaId,
+            hash: b.hash,
+            variants: [b]
+          });
+        } else {
+          const existing = groupedBooksMap.get(groupingKey)!;
+          existing.variants.push(b);
+          // If the new variant has coverUrl and existing doesn't, use it
+          if (!existing.coverUrl && b.coverUrl) {
+            existing.coverUrl = b.coverUrl;
+          }
+          // Merge metadata
+          if (!existing.year && b.year) existing.year = b.year;
+          if (!existing.publisher && b.publisher) existing.publisher = b.publisher;
+          if (!existing.pages && b.pages) existing.pages = b.pages;
+          if (!existing.topic && b.topic) existing.topic = b.topic;
+          if (!existing.isbn && b.isbn) existing.isbn = b.isbn;
+          if (b.exactMatch) existing.exactMatch = true;
+        }
+      });
+
+      const uniqueGroupedBooks = Array.from(groupedBooksMap.values());
+      setResults(uniqueGroupedBooks);
       setHasMore(more);
       setTotalResults(totalCount);
       setSearchMeta({});
@@ -298,15 +370,72 @@ export default function DiscoverView({
     prefetchCache.current.clear();
   }
 
-  async function handleGetDownloadLinks(book: any) {
-    onSelectedBookChange(book);
+  async function fetchVerifiedDetails(title: string, author: string) {
+    setLoadingDetails(true);
+    setVerifiedDetails(null);
+    setReadMoreExpanded(false);
+    try {
+      const searchRes = await fetch(`/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
+      if (searchRes.ok) {
+        const data = await searchRes.json();
+        const doc = data.docs?.[0];
+        if (doc) {
+          let description = "";
+          let subjects = doc.subject?.slice(0, 5) || [];
+          
+          if (doc.key) {
+            try {
+              const workRes = await fetch(`https://openlibrary.org${doc.key}.json`);
+              if (workRes.ok) {
+                const workData = await workRes.json();
+                if (workData.description) {
+                  if (typeof workData.description === "string") {
+                    description = workData.description;
+                  } else if (workData.description.value) {
+                    description = workData.description.value;
+                  }
+                }
+              }
+            } catch (workErr) {
+              console.warn("Failed to fetch work details from OpenLibrary:", workErr);
+            }
+          }
+
+          setVerifiedDetails({
+            description: description || doc.first_sentence || "",
+            subjects: subjects,
+            pageCount: doc.number_of_pages_median || doc.number_of_pages || undefined,
+            publishYear: doc.first_publish_year?.toString() || doc.publish_date?.[0] || undefined,
+            publisher: doc.publisher?.[0] || undefined,
+            source: "Open Library"
+          });
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch verified details:", err);
+    } finally {
+      setLoadingDetails(false);
+    }
+  }
+
+  async function handleGetDownloadLinks(book: any, variantOverride?: any) {
+    const activeBook = book;
+    const activeVariant = variantOverride || (book.variants && book.variants[0]) || book;
+
+    onSelectedBookChange(activeBook);
+    setSelectedVariant(activeVariant);
+    
     setFetchingMirrors(true);
     setMirrors([]);
     setMirrorError(null);
     setDownloadProgress({ step: "idle", percent: 0, error: null });
 
+    // Grab details from verified source asynchronously
+    fetchVerifiedDetails(activeBook.title, activeBook.author);
+
     try {
-      if (book.sourceId === "zlib") {
+      if (activeVariant.sourceId === "zlib") {
         let userId = undefined;
         let userKey = undefined;
 
@@ -333,8 +462,8 @@ export default function DiscoverView({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            book_id: book.id,
-            book_hash: book.hash,
+            book_id: activeVariant.id,
+            book_hash: activeVariant.hash,
             baseUrl: zlibConfig?.baseUrl,
             user_id: userId,
             user_key: userKey
@@ -351,18 +480,18 @@ export default function DiscoverView({
           setMirrorError("No download link found for this book.");
         }
       } else {
-        const iaParam = book.iaId ? `&iaId=${encodeURIComponent(book.iaId)}` : "";
+        const iaParam = activeVariant.iaId ? `&iaId=${encodeURIComponent(activeVariant.iaId)}` : "";
         // Pass Rave's real signed direct URL through so the worker uses the same
         // direct-download method as ravebooksearch.com (get.php?md5&key -> CDN).
-        const directParam = book.downloadUrl ? `&url=${encodeURIComponent(book.downloadUrl)}` : "";
-        const res = await fetch(`/api/annas-archive/download?md5=${book.md5}${iaParam}${directParam}`);
-        const data = await res.json(); console.log("DATA:", data);
+        const directParam = activeVariant.downloadUrl ? `&url=${encodeURIComponent(activeVariant.downloadUrl)}` : "";
+        const res = await fetch(`/api/annas-archive/download?md5=${activeVariant.md5}${iaParam}${directParam}`);
+        const data = await res.json();
         if (data.error) throw new Error(data.error);
 
         const links = data.downloadLinks || data.options || [];
         setMirrors(links);
         if (links.length === 0) {
-          setMirrorError("No download mirrors found for this book. Try searching again.");
+          setMirrorError("No download mirrors found for this variant. Try another format or mirror.");
         }
       }
     } catch (err: any) {
@@ -374,6 +503,7 @@ export default function DiscoverView({
 
   async function handleAutoDownload() {
     if (!selectedBook) return;
+    const activeVariant = selectedVariant || selectedBook;
     const directMirrors = mirrors.filter(m => m.isDirect);
     if (directMirrors.length === 0) {
       setDownloadProgress({ 
@@ -422,7 +552,7 @@ export default function DiscoverView({
         });
 
         let fileBlob = await response.blob();
-        let fileExtension = selectedBook.extension || "epub";
+        let fileExtension = activeVariant.extension || "epub";
 
         if (contentType.includes("zip")) {
           try {
@@ -436,18 +566,39 @@ export default function DiscoverView({
         }
 
         setDownloadProgress({ step: "saving", percent: 90, error: null });
-        const id = selectedBook.md5 || Math.random().toString(36).substring(7);
+        const id = activeVariant.md5 || Math.random().toString(36).substring(7);
         await storeBookFile(id, fileBlob, `${selectedBook.title}.${fileExtension}`, fileExtension);
+
+        // If a custom directory is configured, write the downloaded file there as well
+        try {
+          const { getSavedDirectoryHandle, saveFileToDirectory } = await import("../lib/directoryHelper");
+          const dirHandle = await getSavedDirectoryHandle();
+          if (dirHandle) {
+            await saveFileToDirectory(dirHandle, `${selectedBook.title}.${fileExtension}`, fileBlob);
+          }
+          const isVirtualActive = localStorage.getItem("kora_use_virtual_dir") === "true";
+          if (isVirtualActive) {
+            const { addVirtualDirectoryFile } = await import("../lib/directoryHelper");
+            addVirtualDirectoryFile({
+              name: selectedBook.title,
+              author: selectedBook.author || "Unknown",
+              size: activeVariant.size || "1.5 MB",
+              extension: fileExtension as any
+            });
+          }
+        } catch (dirErr) {
+          console.warn("Failed to write download to custom directory:", dirErr);
+        }
 
         const newBook: BookMetadata = {
           id,
           title: selectedBook.title,
           author: selectedBook.author,
           extension: fileExtension,
-          size: selectedBook.size || "Unknown",
-          language: selectedBook.language || "English",
+          size: activeVariant.size || "Unknown",
+          language: activeVariant.language || "English",
           coverUrl: selectedBook.coverUrl,
-          md5: selectedBook.md5,
+          md5: activeVariant.md5,
           source: "Kora Store",
           tags: inferBookTags(selectedBook.title, selectedBook.author, fileExtension),
           status: "to-read",
@@ -495,6 +646,7 @@ export default function DiscoverView({
 
   async function handleDownloadFromMirror(mirror: any) {
     if (!selectedBook) return;
+    const activeVariant = selectedVariant || selectedBook;
 
     // Try direct proxy download first to store in app's local storage
     setDownloadProgress({ step: "requesting", percent: 10, error: null });
@@ -539,7 +691,7 @@ export default function DiscoverView({
       setDownloadProgress({ step: "downloading", percent: 70, error: null });
 
       let fileBlob = await response.blob();
-      let fileExtension = selectedBook.extension || "epub";
+      let fileExtension = activeVariant.extension || "epub";
 
       if (contentType.includes("zip")) {
         try {
@@ -553,18 +705,39 @@ export default function DiscoverView({
       }
 
       setDownloadProgress({ step: "saving", percent: 90, error: null });
-      const id = selectedBook.md5 || Math.random().toString(36).substring(7);
+      const id = activeVariant.md5 || Math.random().toString(36).substring(7);
       await storeBookFile(id, fileBlob, `${selectedBook.title}.${fileExtension}`, fileExtension);
+
+      // If a custom directory is configured, write the downloaded file there as well
+      try {
+        const { getSavedDirectoryHandle, saveFileToDirectory } = await import("../lib/directoryHelper");
+        const dirHandle = await getSavedDirectoryHandle();
+        if (dirHandle) {
+          await saveFileToDirectory(dirHandle, `${selectedBook.title}.${fileExtension}`, fileBlob);
+        }
+        const isVirtualActive = localStorage.getItem("kora_use_virtual_dir") === "true";
+        if (isVirtualActive) {
+          const { addVirtualDirectoryFile } = await import("../lib/directoryHelper");
+          addVirtualDirectoryFile({
+            name: selectedBook.title,
+            author: selectedBook.author || "Unknown",
+            size: activeVariant.size || "1.5 MB",
+            extension: fileExtension as any
+          });
+        }
+      } catch (dirErr) {
+        console.warn("Failed to write download to custom directory:", dirErr);
+      }
 
       const newBook: BookMetadata = {
         id,
         title: selectedBook.title,
         author: selectedBook.author,
         extension: fileExtension,
-        size: selectedBook.size || "Unknown",
-        language: selectedBook.language || "English",
+        size: activeVariant.size || "Unknown",
+        language: activeVariant.language || "English",
         coverUrl: selectedBook.coverUrl,
-        md5: selectedBook.md5,
+        md5: activeVariant.md5,
         source: "Kora Store",
         tags: inferBookTags(selectedBook.title, selectedBook.author, fileExtension),
         status: "to-read",
@@ -1031,203 +1204,411 @@ export default function DiscoverView({
             })()
           )}
 
-          {/* Quick Categories & Info */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="md:col-span-2 bg-kindle-text text-kindle-bg rounded-3xl p-10 relative overflow-hidden group">
-              <div className="relative z-10 space-y-5 max-w-md">
-                <div className="inline-flex px-3 py-1 bg-kindle-bg/10 backdrop-blur-md rounded-full text-[8px] font-bold uppercase tracking-widest border border-white/10">
-                  Global Search Active
-                </div>
-                <h3 className="text-3xl font-lexend font-bold leading-tight">Unified Access via Rave Engine.</h3>
-                <p className="text-sm text-kindle-bg/70 leading-relaxed font-sans">
-                  Instantly search across millions of titles with optimized direct download mirrors.
-                </p>
-                <div className="flex items-center gap-4 pt-2">
-                  <div className="flex -space-x-2">
-                    {[1, 2, 3, 4].map(i => (
-                      <div key={i} className="w-8 h-8 rounded-full border-2 border-kindle-text bg-kindle-card flex items-center justify-center text-[10px] font-bold">
-                        {String.fromCharCode(64 + i)}
-                      </div>
-                    ))}
-                  </div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Millions of books indexed</span>
-                </div>
-              </div>
-              <div className="absolute -right-10 -bottom-10 opacity-10 group-hover:opacity-20 transition-opacity duration-1000">
-                <Globe className="w-64 h-64 rotate-12" />
-              </div>
+          {/* Explore Categories Dashboard */}
+          <div className="space-y-8 pt-4">
+            <div className="space-y-1">
+              <h3 className="text-xl font-lexend font-bold tracking-tight text-kindle-text">Explore Archives</h3>
+              <p className="text-xs text-kindle-text-muted font-sans">
+                Browse popular literature types, subjects, and specialized genres across global repositories.
+              </p>
             </div>
 
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-8 flex flex-col justify-between group hover:border-kindle-accent transition-all duration-500">
-              <div className="space-y-3">
-                <div className="w-12 h-12 bg-kindle-bg rounded-2xl flex items-center justify-center border border-kindle-border shadow-sm group-hover:scale-110 transition duration-500">
-                  <TrendingUp className="w-6 h-6 text-kindle-accent" />
+            <div className="space-y-8">
+              {[
+                {
+                  section: "Book Types",
+                  items: [
+                    { id: "fiction", label: "Fiction", query: "fiction", icon: BookMarked, color: "text-blue-500 bg-blue-500/5 hover:bg-blue-500/10 border-blue-500/10 hover:border-blue-500/30" },
+                    { id: "nonfiction", label: "Non-Fiction", query: "nonfiction", icon: BookOpen, color: "text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/10 hover:border-emerald-500/30" },
+                    { id: "documentary", label: "Documentary", query: "documentary", icon: ExternalLink, color: "text-amber-500 bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/10 hover:border-amber-500/30" },
+                    { id: "textbook", label: "Textbooks & Academic", query: "textbook educational", icon: Layers, color: "text-purple-500 bg-purple-500/5 hover:bg-purple-500/10 border-purple-500/10 hover:border-purple-500/30" },
+                  ]
+                },
+                {
+                  section: "Popular Genres",
+                  items: [
+                    { id: "sci-fi", label: "Sci-Fi & Fantasy", query: "science fiction fantasy", icon: Sparkles, color: "text-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/10 hover:border-indigo-500/30" },
+                    { id: "mystery", label: "Mystery & Thriller", query: "mystery thriller suspense", icon: Compass, color: "text-red-500 bg-red-500/5 hover:bg-red-500/10 border-red-500/10 hover:border-red-500/30" },
+                    { id: "biography", label: "Biography & Memoir", query: "biography memoir autobiography", icon: Library, color: "text-teal-500 bg-teal-500/5 hover:bg-teal-500/10 border-teal-500/10 hover:border-teal-500/30" },
+                    { id: "history", label: "History & Politics", query: "history historical politics", icon: Database, color: "text-amber-700 bg-amber-700/5 hover:bg-amber-700/10 border-amber-700/10 hover:border-amber-700/30" },
+                    { id: "tech", label: "Technology & Science", query: "technology computing science", icon: Globe, color: "text-cyan-500 bg-cyan-500/5 hover:bg-cyan-500/10 border-cyan-500/10 hover:border-cyan-500/30" },
+                    { id: "self-dev", label: "Self-Improvement", query: "self-help personal growth productivity", icon: TrendingUp, color: "text-orange-500 bg-orange-500/5 hover:bg-orange-500/10 border-orange-500/10 hover:border-orange-500/30" },
+                  ]
+                }
+              ].map((sect, sIdx) => (
+                <div key={sIdx} className="space-y-4">
+                  <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">{sect.section}</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {sect.items.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSearch(item.query)}
+                        className={`p-4 rounded-2xl border transition-all duration-300 text-left flex flex-col justify-between h-28 group relative overflow-hidden shadow-sm cursor-pointer ${item.color}`}
+                      >
+                        <div className="p-2 bg-kindle-card rounded-xl border border-kindle-border shadow-sm group-hover:scale-110 transition duration-300 w-10 h-10 flex items-center justify-center">
+                          <item.icon className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="text-xs font-bold text-kindle-text block truncate">{item.label}</span>
+                          <span className="text-[8px] text-kindle-text-muted font-sans font-medium uppercase tracking-wider block">Search Topic</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <h3 className="text-lg font-lexend font-bold">NYT Best Sellers</h3>
-                <p className="text-xs text-kindle-text-muted font-sans leading-relaxed">
-                  Always up-to-date with the latest trending literature and expert recommendations.
-                </p>
-              </div>
-              <div className="mt-8 grid grid-cols-2 gap-2">
-                {ALL_CATEGORIES.slice(0, 4).map(cat => (
-                  <button 
-                    key={cat.id}
-                    onClick={() => handleSearch(cat.query)}
-                    className="p-2 text-[9px] font-bold uppercase tracking-widest border border-kindle-border rounded-xl hover:bg-kindle-text hover:text-kindle-bg transition-colors"
-                  >
-                    {cat.title.replace("NYT: ", "").split(" ")[0]}
-                  </button>
-                ))}
-              </div>
+              ))}
             </div>
           </div>
         </div>
       )}
       </div>
 
-      {/* Download Modal */}
+      {/* Download Modal - Redesigned Book Explorer Profile */}
       {selectedBook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => onSelectedBookChange(null)} />
-          <div className="relative w-full max-w-md bg-kindle-card border border-kindle-border rounded-3xl shadow-2xl p-8 animate-in zoom-in fade-in duration-200">
-            <div className="flex justify-between items-start mb-6">
-              <div className="space-y-1 overflow-hidden flex-1 pr-4">
-                <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted font-sans">Direct Download</span>
-                <h3 className="text-sm font-lexend font-bold truncate">{selectedBook.title}</h3>
-                <p className="text-[10px] text-kindle-text-muted font-sans">{selectedBook.author}</p>
-              </div>
-              <button onClick={() => onSelectedBookChange(null)} className="p-2 hover:bg-kindle-bg rounded-xl transition shrink-0">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => onSelectedBookChange(null)} />
+          <div className="relative w-full max-w-3xl bg-kindle-card border border-kindle-border rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
+            {/* Close Button */}
+            <button 
+              onClick={() => onSelectedBookChange(null)} 
+              className="absolute top-4 right-4 p-2 bg-kindle-bg/80 hover:bg-kindle-bg border border-kindle-border rounded-full hover:scale-105 transition duration-200 z-10 cursor-pointer"
+            >
+              <X className="w-4 h-4 text-kindle-text" />
+            </button>
 
-            {fetchingMirrors ? (
-              <div className="py-12 text-center space-y-4">
-                <Loader2 className="w-8 h-8 animate-spin text-kindle-accent mx-auto" />
-                <p className="text-xs text-kindle-text-muted font-bold uppercase tracking-widest font-sans">Scanning mirrors…</p>
-              </div>
-            ) : mirrorError ? (
-              <div className="py-8 text-center space-y-3">
-                <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
-                <p className="text-xs text-kindle-text-muted font-sans">{mirrorError}</p>
-              </div>
-            ) : (
-              <div className="space-y-4 max-h-[20rem] overflow-y-auto pr-1">
-                {/* Auto-download banner/button */}
-                {mirrors.some(m => m.isDirect) && (
-                  <button
-                    onClick={handleAutoDownload}
-                    className="w-full p-4 rounded-2xl border border-dashed border-emerald-500/40 hover:border-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10 transition text-left flex items-center justify-between group shadow-sm cursor-pointer"
-                  >
-                    <div className="flex-1 pr-2">
-                      <p className="text-xs font-bold text-emerald-600 font-sans flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-                        Auto-Download (Recommended)
-                      </p>
-                      <p className="text-[10px] text-emerald-600/70 font-medium font-sans mt-0.5">
-                        Scans and downloads from the fastest active mirror automatically.
-                      </p>
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 pt-2">
+              {/* Left Column: Physical Book Cover Artwork */}
+              <div className="md:col-span-5 flex flex-col items-center">
+                <div className="w-48 md:w-full max-w-[220px] aspect-[3/4] bg-kindle-bg rounded-2xl border-2 border-kindle-border shadow-2xl overflow-hidden relative group/cover">
+                  {/* Spine simulated lighting */}
+                  <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-black/25 via-white/5 to-transparent z-10" />
+                  <div className="absolute left-3 top-0 bottom-0 w-[1px] bg-black/10 z-10" />
+                  
+                  {selectedBook.coverUrl ? (
+                    <img
+                      src={`/api/proxy-image?url=${encodeURIComponent(selectedBook.coverUrl)}`}
+                      alt={selectedBook.title}
+                      className={`w-full h-full object-cover transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        const attempt = parseInt(target.dataset.attempt || "0");
+                        target.dataset.attempt = String(attempt + 1);
+
+                        if (attempt === 0 && selectedBook.isbn && /^\d{10,13}$/.test(selectedBook.isbn)) {
+                          target.src = `https://covers.openlibrary.org/b/isbn/${selectedBook.isbn}-M.jpg`;
+                          return;
+                        }
+                        if (attempt === 1) {
+                          const encodedTitle = encodeURIComponent(selectedBook.title);
+                          const encodedAuthor = encodeURIComponent(selectedBook.author || "");
+                          target.src = `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${selectedBook.md5 || (selectedBook.variants && selectedBook.variants[0]?.md5)}`;
+                          return;
+                        }
+                        target.style.display = "none";
+                        const parent = target.parentElement;
+                        if (parent && !parent.querySelector(".kora-typo-cover")) {
+                          const div = document.createElement("div");
+                          div.className = "kora-typo-cover w-full h-full flex flex-col items-center justify-center p-4 text-center bg-kindle-card absolute inset-0";
+                          div.innerHTML = `
+                            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;margin-bottom:6px;">${(selectedBook.author || "Author").substring(0, 30)}</div>
+                            <div style="font-size:12px;font-weight:700;font-family:serif;line-height:1.3;">${selectedBook.title}</div>
+                          `;
+                          parent.style.position = "relative";
+                          parent.appendChild(div);
+                        }
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-kindle-card">
+                      <div className="text-[9px] font-bold uppercase tracking-[0.15em] opacity-30 mb-2">{(selectedBook.author || "Author").substring(0, 25)}</div>
+                      <div className="text-[12px] font-serif font-bold leading-snug text-center">{selectedBook.title}</div>
                     </div>
-                    <Download className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition shrink-0 ml-2 animate-bounce" />
-                  </button>
-                )}
+                  )}
 
-                <div className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider border-b border-kindle-border pb-1.5 mt-2 flex justify-between">
-                  <span>All Mirror Options</span>
-                  <span className="text-[8px] opacity-60">Opens in new tab if blocked</span>
+                  {/* Format overlay on cover */}
+                  {((selectedVariant || selectedBook).extension) && (
+                    <div className="absolute bottom-3 right-3 bg-kindle-text text-kindle-bg text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded shadow-md z-10">
+                      {(selectedVariant || selectedBook).extension}
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  {mirrors.map((m, i) => (
-                    <div
-                      key={i}
-                      onClick={() => handleMirrorClick(m)}
-                      className={`w-full p-4 rounded-2xl border transition text-left group flex items-center justify-between cursor-pointer ${
-                        m.isDirect 
-                          ? "border-kindle-border hover:border-kindle-accent bg-kindle-bg hover:bg-kindle-card" 
-                          : "border-kindle-border/60 hover:border-amber-500/60 bg-kindle-bg/40 hover:bg-kindle-card/60"
-                      }`}
-                      title={m.isDirect ? "Download and Import via App Server" : "Open Mirror"}
+                {/* File size & format metadata block */}
+                <div className="mt-4 flex flex-col items-center text-center space-y-1">
+                  <span className="text-[10px] font-mono font-semibold uppercase tracking-widest text-kindle-text-muted">
+                    {(selectedVariant || selectedBook).extension?.toUpperCase()} FILE · {(selectedVariant || selectedBook).size || "Unknown Size"}
+                  </span>
+                  <span className="text-[9px] font-bold text-kindle-accent uppercase tracking-wider bg-kindle-accent/5 px-2.5 py-0.5 rounded-full border border-kindle-accent/10">
+                    Source: {(selectedVariant || selectedBook).source || "Verified Archives"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Right Column: Detailed Book Metadata, Synopsis & Actions */}
+              <div className="md:col-span-7 flex flex-col justify-between space-y-6">
+                <div className="space-y-4">
+                  {/* Book Title & Author */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest">
+                      Verified Library Copy
+                    </span>
+                    <h3 className="text-2xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
+                    <p className="text-sm text-kindle-text-muted font-sans font-medium">{selectedBook.author}</p>
+                  </div>
+
+                  {/* Horizontal Stats Row */}
+                  <div className="grid grid-cols-3 gap-3 p-3 bg-kindle-bg border border-kindle-border rounded-2xl text-center">
+                    <div>
+                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block">Published</span>
+                      <span className="text-xs font-semibold text-kindle-text mt-0.5 block">
+                        {verifiedDetails?.publishYear || (selectedVariant || selectedBook).year || "N/A"}
+                      </span>
+                    </div>
+                    <div className="border-x border-kindle-border">
+                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block">Length</span>
+                      <span className="text-xs font-semibold text-kindle-text mt-0.5 block">
+                        {verifiedDetails?.pageCount ? `${verifiedDetails.pageCount} pp` : (selectedVariant || selectedBook).pages && (selectedVariant || selectedBook).pages !== "0" ? `${(selectedVariant || selectedBook).pages} pp` : "N/A"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block">Language</span>
+                      <span className="text-xs font-semibold text-kindle-text mt-0.5 block truncate">
+                        {(selectedVariant || selectedBook).language || "English"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Synopsis / Description from Verified Source */}
+                  <div className="space-y-1.5">
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Synopsis & Book Summary</h4>
+                    {loadingDetails ? (
+                      <div className="space-y-2 animate-pulse py-1">
+                        <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-full" />
+                        <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-5/6" />
+                        <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-4/5" />
+                      </div>
+                    ) : verifiedDetails?.description ? (
+                      <div className="text-xs text-kindle-text-muted leading-relaxed font-sans">
+                        <p className="inline">
+                          {readMoreExpanded 
+                            ? verifiedDetails.description 
+                            : verifiedDetails.description.length > 250 
+                              ? `${verifiedDetails.description.substring(0, 250)}...` 
+                              : verifiedDetails.description
+                          }
+                        </p>
+                        {verifiedDetails.description.length > 250 && (
+                          <button
+                            onClick={() => setReadMoreExpanded(!readMoreExpanded)}
+                            className="text-[10px] font-bold text-kindle-accent uppercase tracking-widest hover:underline ml-1.5 focus:outline-none cursor-pointer"
+                          >
+                            {readMoreExpanded ? "Read Less" : "Read More"}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-kindle-text-muted/60 leading-relaxed font-sans italic">
+                        No official synopsis available in digital archives. This is a verified {(selectedVariant || selectedBook).extension || "epub"} copy provided by the {(selectedVariant || selectedBook).source || "global storage libraries"}.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Category/Genre Badges */}
+                  {(verifiedDetails?.subjects?.length || (selectedVariant || selectedBook).topic) && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted mr-1">Genres:</span>
+                      {verifiedDetails?.subjects ? (
+                        verifiedDetails.subjects.map((sub, sIdx) => (
+                          <span key={sIdx} className="px-2 py-0.5 bg-kindle-bg border border-kindle-border rounded text-[9px] text-kindle-text-muted truncate max-w-[120px]" title={sub}>
+                            {sub}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="px-2 py-0.5 bg-kindle-bg border border-kindle-border rounded text-[9px] text-kindle-accent uppercase font-bold tracking-wider">
+                          {(selectedVariant || selectedBook).topic}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Multi-Format Selector: Render if this book has multiple variants collapsed */}
+                  {selectedBook.variants && selectedBook.variants.length > 1 && (
+                    <div className="space-y-2 pt-2 border-t border-kindle-border/40">
+                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Available Formats & Quality</h4>
+                      <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-1">
+                        {selectedBook.variants.map((v: any, vIdx: number) => {
+                          const isActive = selectedVariant?.id === v.id || selectedVariant?.md5 === v.md5;
+                          return (
+                            <button
+                              key={vIdx}
+                              onClick={() => {
+                                handleGetDownloadLinks(selectedBook, v);
+                              }}
+                              className={`px-3 py-2 rounded-xl text-left border transition duration-200 cursor-pointer ${
+                                isActive
+                                  ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent"
+                                  : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted text-kindle-text-muted hover:text-kindle-text"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-extrabold uppercase font-mono">{v.extension || "EPUB"}</span>
+                                <span className="text-[9px] opacity-70">· {v.size || "Unknown"}</span>
+                              </div>
+                              <span className="text-[8px] opacity-65 block truncate max-w-[150px] mt-0.5">
+                                {v.source === "Library Genesis" ? "LibGen" : v.source === "Anna's Archive" ? "Anna's" : v.source}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions & Progress Area */}
+                <div className="space-y-4 pt-4 border-t border-kindle-border">
+                  {/* Recommended Auto-Download */}
+                  {!fetchingMirrors && !mirrorError && mirrors.some(m => m.isDirect) && downloadProgress.step === "idle" && (
+                    <button
+                      onClick={handleAutoDownload}
+                      className="w-full p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 transition-all duration-300 text-left flex items-center justify-between group shadow-lg shadow-emerald-600/10 hover:shadow-emerald-500/20 text-white cursor-pointer"
                     >
-                      <div className="overflow-hidden flex-1 min-w-0 pr-2">
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-bold font-sans truncate pr-2">{m.label}</p>
-                          {m.isDirect ? (
-                            <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
-                          ) : (
-                            <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">Web Page</span>
-                          )}
-                        </div>
-                        <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5">{m.url}</p>
+                      <div>
+                        <p className="text-xs font-bold font-sans flex items-center gap-1.5 text-white">
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-200 animate-pulse" />
+                          Recommended Auto-Download
+                        </p>
+                        <p className="text-[10px] text-emerald-100/80 font-medium font-sans mt-0.5">
+                          Acquires the highest quality {(selectedVariant || selectedBook).extension || "epub"} copy instantly via the server.
+                        </p>
                       </div>
+                      <Download className="w-4 h-4 text-emerald-100 group-hover:scale-110 transition shrink-0 ml-2 animate-bounce" />
+                    </button>
+                  )}
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {/* Primary action: Download or open in app browser */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleMirrorClick(m);
-                          }}
-                          className={`p-2 rounded-xl border transition cursor-pointer ${
-                            m.isDirect
-                              ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"
-                              : "bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white border-amber-500/20"
-                          }`}
-                          title={m.isDirect ? "Download via Server Proxy" : "Open in App Browser"}
-                        >
-                          {m.isDirect ? (
-                            <Download className="w-3.5 h-3.5" />
-                          ) : (
-                            <BookOpen className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-
-                        {/* Open in New Tab action */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(m.url, '_blank');
-                          }}
-                          className="p-2 rounded-xl border border-kindle-border bg-kindle-bg hover:bg-kindle-accent/15 text-kindle-text-muted hover:text-kindle-accent transition cursor-pointer"
-                          title="Open Link in New Tab (Bypass Server Proxy)"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                  {/* Manual / All Mirror Options section */}
+                  <div className="space-y-2">
+                    <div className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider flex justify-between border-b border-kindle-border/40 pb-1">
+                      <span>Download Mirrors</span>
+                      {fetchingMirrors ? (
+                        <span className="text-[9px] font-bold text-kindle-accent uppercase tracking-widest flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Scanning...
+                        </span>
+                      ) : (
+                        <span className="text-[8px] opacity-60">Opens in browser tab if blocked</span>
+                      )}
                     </div>
-                  ))}
+
+                    {fetchingMirrors ? (
+                      <div className="py-6 text-center space-y-2 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
+                        <Loader2 className="w-6 h-6 animate-spin text-kindle-accent mx-auto" />
+                        <p className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest font-sans">Scanning global book repositories…</p>
+                      </div>
+                    ) : mirrorError ? (
+                      <div className="py-6 text-center space-y-2 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
+                        <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto" />
+                        <p className="text-[10px] text-kindle-text-muted font-sans font-medium">{mirrorError}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 max-h-[10rem] overflow-y-auto pr-1">
+                        {mirrors.map((m, i) => (
+                          <div
+                            key={i}
+                            onClick={() => handleMirrorClick(m)}
+                            className={`w-full p-3 rounded-xl border transition text-left group flex items-center justify-between cursor-pointer ${
+                              m.isDirect 
+                                ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card" 
+                                : "border-kindle-border/60 hover:border-amber-500/40 bg-kindle-bg/40 hover:bg-kindle-card/60"
+                            }`}
+                            title={m.isDirect ? "Download and Import via App Server" : "Open Mirror"}
+                          >
+                            <div className="overflow-hidden flex-1 min-w-0 pr-2">
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs font-bold font-sans truncate pr-2">{m.label}</p>
+                                {m.isDirect ? (
+                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">Web Page</span>
+                                )}
+                              </div>
+                              <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5">{m.url}</p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {/* Primary action */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMirrorClick(m);
+                                }}
+                                className={`p-2 rounded-xl border transition cursor-pointer ${
+                                  m.isDirect
+                                    ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"
+                                    : "bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white border-amber-500/20"
+                                }`}
+                                title={m.isDirect ? "Download via Server Proxy" : "Open in App Browser"}
+                              >
+                                {m.isDirect ? (
+                                  <Download className="w-3.5 h-3.5" />
+                                ) : (
+                                  <BookOpen className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+
+                              {/* Open in New Tab */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  window.open(m.url, '_blank');
+                                }}
+                                className="p-2 rounded-xl border border-kindle-border bg-kindle-bg hover:bg-kindle-accent/15 text-kindle-text-muted hover:text-kindle-accent transition cursor-pointer"
+                                title="Open Link in New Tab"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Active Download Progress Log Overlay */}
+                  {downloadProgress.step !== "idle" && (
+                    <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-3">
+                      {downloadProgress.step === "completed" ? (
+                        <div className="flex items-center gap-2 text-emerald-600">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="text-xs font-bold uppercase tracking-widest font-sans">Added to Library!</span>
+                        </div>
+                      ) : downloadProgress.error ? (
+                        <div className="flex items-center gap-2 text-red-600">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span className="text-xs font-sans">{downloadProgress.error}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2 justify-between">
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="w-4 h-4 animate-spin text-kindle-accent" />
+                              <span className="text-[10px] font-bold uppercase tracking-widest font-sans capitalize">{downloadProgress.step}…</span>
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-kindle-accent">{downloadProgress.percent}%</span>
+                          </div>
+                          <div className="w-full h-2 bg-kindle-border rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-kindle-accent transition-all duration-500 rounded-full"
+                              style={{ width: `${downloadProgress.percent}%` }}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-
-            {downloadProgress.step !== "idle" && (
-              <div className="mt-5 p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-3">
-                {downloadProgress.step === "completed" ? (
-                  <div className="flex items-center gap-2 text-emerald-600">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span className="text-xs font-bold uppercase tracking-widest font-sans">Added to Library!</span>
-                  </div>
-                ) : downloadProgress.error ? (
-                  <div className="flex items-center gap-2 text-red-600">
-                    <AlertTriangle className="w-4 h-4" />
-                    <span className="text-xs font-sans">{downloadProgress.error}</span>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin text-kindle-accent" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest font-sans capitalize">{downloadProgress.step}…</span>
-                    </div>
-                    <div className="w-full h-1.5 bg-kindle-border rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-kindle-accent transition-all duration-500 rounded-full"
-                        style={{ width: `${downloadProgress.percent}%` }}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
+            </div>
           </div>
         </div>,
         document.body

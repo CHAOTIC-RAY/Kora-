@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   auth, 
   isRealFirebase, 
@@ -201,6 +201,52 @@ export default function App() {
       }
     }
     setCachedBookIds(ids);
+  }
+
+  // Startup directory scan trigger
+  const hasScannedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (books.length > 0 && !hasScannedRef.current) {
+      hasScannedRef.current = true;
+      runStartupFolderScan();
+    }
+  }, [books]);
+
+  async function runStartupFolderScan() {
+    try {
+      const { getSavedDirectoryHandle, scanDirectoryForNewBooks, scanVirtualDirectory } = await import("./lib/directoryHelper");
+      
+      const realHandle = await getSavedDirectoryHandle();
+      const onImport = async (newBook: BookMetadata) => {
+        setBooks(prev => {
+          if (prev.some(b => b.title.toLowerCase().trim() === newBook.title.toLowerCase().trim())) return prev;
+          return [...prev, newBook];
+        });
+        await syncBookToCloud(user?.uid || "", newBook);
+      };
+
+      if (realHandle) {
+        console.log("Auto-scanning real download directory...");
+        const imported = await scanDirectoryForNewBooks(realHandle, books, user?.uid || "", onImport);
+        if (imported > 0) {
+          console.log(`Auto-imported ${imported} new books from folder scan.`);
+          updateCachedBookIndex();
+        }
+      } else {
+        const isVirtualActive = localStorage.getItem("kora_use_virtual_dir") === "true";
+        if (isVirtualActive) {
+          console.log("Auto-scanning virtual download directory...");
+          const imported = await scanVirtualDirectory(books, onImport);
+          if (imported > 0) {
+            console.log(`Auto-imported ${imported} new virtual books.`);
+            updateCachedBookIndex();
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Startup folder scan failed:", err);
+    }
   }
 
   // Load books metadata
@@ -487,6 +533,8 @@ export default function App() {
             cachedCount={cachedBookIds.size}
             onClearDeviceCache={handleClearDeviceCache}
             onClearRecentSearches={handleClearRecentSearches}
+            books={books}
+            onRefreshLibrary={refreshLibrary}
           />
         )}
       </main>
