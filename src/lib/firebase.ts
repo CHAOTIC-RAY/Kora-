@@ -205,3 +205,241 @@ export async function saveCustomTags(userId: string, tags: string[]): Promise<vo
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// BOOK HIGHLIGHTS & CHAPTER NOTES SYNCHRONIZATION ENGINE
+// Supports granular highlights and persistent, chapter-linked notes
+// ---------------------------------------------------------------------------
+
+// Error Handlers
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+export interface BookHighlight {
+  id: string;
+  text: string;
+  color: "yellow" | "green" | "blue" | "pink";
+  note?: string;
+  chapterIdx: number;
+  chapterTitle: string;
+  createdAt: number;
+}
+
+export interface ChapterNote {
+  chapterIdx: number;
+  chapterTitle: string;
+  noteText: string;
+  updatedAt: number;
+}
+
+// Chapter Notes Local & Cloud Sync
+export async function syncChapterNote(
+  userId: string,
+  bookId: string,
+  chapterIdx: number,
+  chapterTitle: string,
+  noteText: string
+): Promise<void> {
+  // 1. Update local storage first
+  const localKey = `ebook_reader_notes_${bookId}`;
+  let localNotes: Record<number, ChapterNote> = {};
+  try {
+    const data = localStorage.getItem(localKey);
+    if (data) localNotes = JSON.parse(data);
+  } catch {}
+  
+  const updatedNote: ChapterNote = {
+    chapterIdx,
+    chapterTitle,
+    noteText,
+    updatedAt: Date.now()
+  };
+  localNotes[chapterIdx] = updatedNote;
+  try {
+    localStorage.setItem(localKey, JSON.stringify(localNotes));
+  } catch (e) {
+    console.error("Local storage notes write failed:", e);
+  }
+
+  // 2. Sync to Firestore if authenticated & Firebase active
+  if (isRealFirebase && userId) {
+    const path = `users/${userId}/library/${bookId}/notes/${chapterIdx}`;
+    try {
+      const docRef = doc(db, "users", userId, "library", bookId, "notes", String(chapterIdx));
+      await setDoc(docRef, updatedNote, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  }
+}
+
+export async function loadChapterNotes(userId: string, bookId: string): Promise<Record<number, ChapterNote>> {
+  const localKey = `ebook_reader_notes_${bookId}`;
+  let localNotes: Record<number, ChapterNote> = {};
+  try {
+    const data = localStorage.getItem(localKey);
+    if (data) localNotes = JSON.parse(data);
+  } catch {}
+
+  if (isRealFirebase && userId) {
+    const path = `users/${userId}/library/${bookId}/notes`;
+    try {
+      const colRef = collection(db, "users", userId, "library", bookId, "notes");
+      const querySnapshot = await getDocs(colRef);
+      const cloudNotes: Record<number, ChapterNote> = {};
+      querySnapshot.forEach((doc) => {
+        const note = doc.data() as ChapterNote;
+        cloudNotes[note.chapterIdx] = note;
+      });
+
+      // Merge choosing latest updatedAt
+      const merged: Record<number, ChapterNote> = { ...localNotes };
+      Object.keys(cloudNotes).forEach((k) => {
+        const idx = Number(k);
+        const cn = cloudNotes[idx];
+        const ln = localNotes[idx];
+        if (!ln || cn.updatedAt > ln.updatedAt) {
+          merged[idx] = cn;
+        }
+      });
+      
+      try {
+        localStorage.setItem(localKey, JSON.stringify(merged));
+      } catch {}
+      return merged;
+    } catch (err) {
+      console.warn("Failed to load notes from Firestore cloud, using offline copy:", err);
+    }
+  }
+
+  return localNotes;
+}
+
+// Book Highlights Local & Cloud Sync
+export async function syncBookHighlight(
+  userId: string,
+  bookId: string,
+  highlight: BookHighlight
+): Promise<void> {
+  const localKey = `ebook_reader_highlights_${bookId}`;
+  let localHighlights: BookHighlight[] = [];
+  try {
+    const data = localStorage.getItem(localKey);
+    if (data) localHighlights = JSON.parse(data);
+  } catch {}
+
+  const idx = localHighlights.findIndex(h => h.id === highlight.id);
+  if (idx >= 0) {
+    localHighlights[idx] = highlight;
+  } else {
+    localHighlights.push(highlight);
+  }
+
+  try {
+    localStorage.setItem(localKey, JSON.stringify(localHighlights));
+  } catch (e) {
+    console.error("Local storage highlights write failed:", e);
+  }
+
+  if (isRealFirebase && userId) {
+    const path = `users/${userId}/library/${bookId}/highlights/${highlight.id}`;
+    try {
+      const docRef = doc(db, "users", userId, "library", bookId, "highlights", highlight.id);
+      await setDoc(docRef, highlight, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  }
+}
+
+export async function syncDeleteHighlight(
+  userId: string,
+  bookId: string,
+  highlightId: string
+): Promise<void> {
+  const localKey = `ebook_reader_highlights_${bookId}`;
+  let localHighlights: BookHighlight[] = [];
+  try {
+    const data = localStorage.getItem(localKey);
+    if (data) localHighlights = JSON.parse(data);
+  } catch {}
+
+  const updated = localHighlights.filter(h => h.id !== highlightId);
+  try {
+    localStorage.setItem(localKey, JSON.stringify(updated));
+  } catch {}
+
+  if (isRealFirebase && userId) {
+    const path = `users/${userId}/library/${bookId}/highlights/${highlightId}`;
+    try {
+      const docRef = doc(db, "users", userId, "library", bookId, "highlights", highlightId);
+      await deleteDoc(docRef);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, path);
+    }
+  }
+}
+
+export async function loadBookHighlights(userId: string, bookId: string): Promise<BookHighlight[]> {
+  const localKey = `ebook_reader_highlights_${bookId}`;
+  let localHighlights: BookHighlight[] = [];
+  try {
+    const data = localStorage.getItem(localKey);
+    if (data) localHighlights = JSON.parse(data);
+  } catch {}
+
+  if (isRealFirebase && userId) {
+    const path = `users/${userId}/library/${bookId}/highlights`;
+    try {
+      const colRef = collection(db, "users", userId, "library", bookId, "highlights");
+      const querySnapshot = await getDocs(colRef);
+      const cloudHighlights: BookHighlight[] = [];
+      querySnapshot.forEach((doc) => {
+        cloudHighlights.push(doc.data() as BookHighlight);
+      });
+
+      if (cloudHighlights.length > 0) {
+        // Merge - unique by ID, preferring cloud as master or later created
+        const mergedMap = new Map<string, BookHighlight>();
+        localHighlights.forEach(h => mergedMap.set(h.id, h));
+        cloudHighlights.forEach(ch => {
+          const existing = mergedMap.get(ch.id);
+          if (!existing || ch.createdAt > existing.createdAt) {
+            mergedMap.set(ch.id, ch);
+          }
+        });
+        const merged = Array.from(mergedMap.values());
+        try {
+          localStorage.setItem(localKey, JSON.stringify(merged));
+        } catch {}
+        return merged;
+      }
+    } catch (err) {
+      console.warn("Failed to load highlights from Firestore cloud, using offline copy:", err);
+    }
+  }
+
+  return localHighlights;
+}
+

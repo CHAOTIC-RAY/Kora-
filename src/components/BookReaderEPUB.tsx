@@ -1,14 +1,24 @@
 import React, { useState, useEffect, useRef } from "react";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
-import { BookMetadata, syncBookToCloud } from "../lib/firebase";
+import { 
+  BookMetadata, 
+  syncBookToCloud,
+  ChapterNote, 
+  BookHighlight,
+  syncChapterNote, 
+  loadChapterNotes, 
+  syncBookHighlight, 
+  syncDeleteHighlight, 
+  loadBookHighlights
+} from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
 import { 
   X, ChevronLeft, ChevronRight, Menu, Settings, 
   BookOpen, Sparkles, AlertCircle, Type, Layout, Info,
   Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind,
-  BookMarked, Copy, Check, FileText
+  BookMarked, Copy, Check, FileText, Highlighter, Trash2
 } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 
@@ -76,6 +86,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
+  const [showNotes, setShowNotes] = useState<boolean>(false);
+  
+  // Highlights & Notes State
+  const [chapterNotesData, setChapterNotesData] = useState<Record<number, ChapterNote>>({});
+  const [highlightsData, setHighlightsData] = useState<BookHighlight[]>([]);
+  const [activeNoteText, setActiveNoteText] = useState<string>("");
+  const [isSavingNote, setIsSavingNote] = useState<boolean>(false);
 
   // AI assistant states
   const [aiResponse, setAiResponse] = useState<string>("");
@@ -208,6 +225,57 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       }
     }
   }, [chapters]);
+
+  // Load Highlights and Chapter Notes Data
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchSyncData() {
+      const notes = await loadChapterNotes(userId, book.id);
+      const highlights = await loadBookHighlights(userId, book.id);
+      if (isMounted) {
+        setChapterNotesData(notes);
+        setHighlightsData(highlights);
+      }
+    }
+    fetchSyncData();
+    return () => { isMounted = false; };
+  }, [book.id, userId]);
+
+  // Sync active chapter note text when chapter changes
+  useEffect(() => {
+    if (chapterNotesData[currentChapterIdx]) {
+      setActiveNoteText(chapterNotesData[currentChapterIdx].noteText);
+    } else {
+      setActiveNoteText("");
+    }
+  }, [currentChapterIdx, chapterNotesData]);
+
+  // Save the current chapter note
+  const handleSaveChapterNote = async () => {
+    setIsSavingNote(true);
+    try {
+      const chapterTitle = chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`;
+      await syncChapterNote(userId, book.id, currentChapterIdx, chapterTitle, activeNoteText);
+      setChapterNotesData(prev => ({
+        ...prev,
+        [currentChapterIdx]: {
+          chapterIdx: currentChapterIdx,
+          chapterTitle,
+          noteText: activeNoteText,
+          updatedAt: Date.now()
+        }
+      }));
+    } catch (e) {
+      console.error("Failed to save note", e);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
+  const handleDeleteHighlight = async (id: string) => {
+    await syncDeleteHighlight(userId, book.id, id);
+    setHighlightsData(prev => prev.filter(h => h.id !== id));
+  };
 
   // Record highlighted/selected text for AI helper
   useEffect(() => {
@@ -876,6 +944,26 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   // Request AI companion assistance using our offline engine (No keys/API needed!)
+  const handleSaveHighlight = async (color: "yellow" | "green" | "blue" | "pink") => {
+    if (!selectedText) return;
+    const highlightId = Date.now().toString();
+    const chapterTitle = chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`;
+    const newHighlight: BookHighlight = {
+      id: highlightId,
+      text: selectedText,
+      color,
+      chapterIdx: currentChapterIdx,
+      chapterTitle,
+      createdAt: Date.now()
+    };
+    
+    await syncBookHighlight(userId, book.id, newHighlight);
+    setHighlightsData(prev => [newHighlight, ...prev]);
+    setSelectedText("");
+    setShowNotes(true);
+    setShowAiAssistant(false);
+  };
+
   async function requestAiAssistant(mode: string, query = "") {
     setAiLoading(true);
     setAiResponse("");
@@ -941,8 +1029,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         {/* Action Controls */}
         <div className="flex items-center gap-2">
           <button
+            onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); setShowAiAssistant(false); }}
+            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? 'bg-neutral-500/20' : ''}`}
+            title="Highlights & Notes"
+          >
+            <FileText className="w-5 h-5" />
+          </button>
+          <button
             id="toggle-toc-btn"
-            onClick={() => { setShowToc(!showToc); setShowSettings(false); setShowAudiobook(false); }}
+            onClick={() => { setShowToc(!showToc); setShowSettings(false); setShowAudiobook(false); setShowNotes(false); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showToc ? 'bg-neutral-500/20' : ''}`}
             title="Chapters"
           >
@@ -951,7 +1046,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           
           <button
             id="toggle-settings-btn"
-            onClick={() => { setShowSettings(!showSettings); setShowToc(false); setShowAudiobook(false); }}
+            onClick={() => { setShowSettings(!showSettings); setShowToc(false); setShowAudiobook(false); setShowNotes(false); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showSettings ? 'bg-neutral-500/20' : ''}`}
             title="Display Settings"
           >
@@ -967,6 +1062,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               setShowAudiobook(!showAudiobook);
               setShowToc(false);
               setShowSettings(false);
+              setShowNotes(false);
+              setShowAiAssistant(false);
             }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition relative ${showAudiobook ? 'bg-kindle-accent/20 text-kindle-accent' : ''}`}
             title="Listen"
@@ -979,7 +1076,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           
           <button
             id="toggle-ai-assistant"
-            onClick={() => setShowAiAssistant(!showAiAssistant)}
+            onClick={() => { setShowAiAssistant(!showAiAssistant); setShowNotes(false); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
             className={`flex items-center gap-2 px-4 py-2 ml-2 rounded-xl bg-kindle-text hover:bg-kindle-accent text-kindle-bg font-sans text-xs font-bold transition shadow-sm ${showAiAssistant ? 'ring-1 ring-kindle-accent' : ''}`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -1495,9 +1592,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             <div className="flex-1 flex flex-col overflow-hidden relative">
               {/* Floating highlighted text helper tip */}
               {selectedText && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-[#1e1c19] text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-sans flex items-center gap-3 border border-[#3e3933] animate-fade-in max-w-[90vw] md:max-w-xl">
-                  <span className="font-medium truncate max-w-[120px] md:max-w-xs">Selected: "{selectedText}"</span>
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-[#1e1c19] text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-sans flex items-center gap-3 border border-[#3e3933] animate-fade-in max-w-[90vw] w-max md:max-w-3xl overflow-x-auto no-scrollbar">
+                  <span className="font-medium truncate max-w-[100px] md:max-w-xs shrink-0">Selected: "{selectedText}"</span>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    <button 
+                      onClick={() => handleSaveHighlight("yellow")}
+                      className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border border-yellow-500/30"
+                    >
+                      <Highlighter className="w-3 h-3" /> Highlight
+                    </button>
                     <button 
                       onClick={() => { setShowAiAssistant(true); requestAiAssistant("explain"); }}
                       className="bg-amber-500 hover:bg-amber-600 text-neutral-950 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
@@ -1524,7 +1627,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       }}
                       className="bg-[#2c3e2b] hover:bg-[#3d5c3b] text-emerald-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border border-emerald-500/20"
                     >
-                      <BookMarked className="w-3 h-3 text-emerald-400" /> Save Word
+                      <BookMarked className="w-3 h-3 text-emerald-400" /> Save
                     </button>
                     <button onClick={() => setSelectedText("")} className="text-neutral-400 hover:text-white pl-1.5 text-sm font-semibold">✕</button>
                   </div>
@@ -1642,6 +1745,95 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             </div>
           )}
         </main>
+
+        {/* Sidebar: Highlights & Notes */}
+        {showNotes && (
+          <aside className={`w-80 md:w-96 border-l ${activeTheme.border} ${activeTheme.card} flex flex-col z-10 animate-in slide-in-from-right duration-250`}>
+            <div className={`p-4 border-b ${activeTheme.border} flex justify-between items-center bg-black/5`}>
+              <span className="font-serif font-bold text-sm tracking-tight flex items-center gap-2 text-kindle-text">
+                <FileText className="w-4 h-4 text-emerald-500" />
+                Highlights & Notes
+              </span>
+              <button 
+                onClick={() => setShowNotes(false)}
+                className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition text-kindle-text"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto no-scrollbar p-5 space-y-8">
+              {/* Chapter Notes Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Chapter Notes
+                </h3>
+                
+                <div className={`p-3 rounded-xl border ${activeTheme.border} bg-white/5`}>
+                  <p className="text-[10px] font-semibold text-kindle-text-muted mb-2 font-sans truncate">
+                    {chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`}
+                  </p>
+                  <textarea
+                    value={activeNoteText}
+                    onChange={(e) => setActiveNoteText(e.target.value)}
+                    placeholder="Add your notes for this chapter..."
+                    className="w-full h-24 bg-transparent resize-none text-sm font-sans focus:outline-none text-kindle-text placeholder:text-kindle-text-muted/50"
+                  />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={handleSaveChapterNote}
+                      disabled={isSavingNote || activeNoteText === chapterNotesData[currentChapterIdx]?.noteText}
+                      className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[10px] font-bold rounded-lg transition flex items-center gap-1"
+                    >
+                      {isSavingNote ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check className="w-3 h-3" />}
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Highlights Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
+                  <Highlighter className="w-3.5 h-3.5" />
+                  My Highlights
+                </h3>
+                
+                {highlightsData.length === 0 ? (
+                  <div className="text-center p-6 border border-dashed border-kindle-border rounded-xl">
+                    <p className="text-xs text-kindle-text-muted italic">Select text in the book to create highlights.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {highlightsData.map(h => (
+                      <div key={h.id} className={`p-3 rounded-xl border ${activeTheme.border} bg-white/5 relative group`}>
+                        <p className="text-[9px] font-semibold text-kindle-text-muted/60 mb-1 font-sans truncate pr-6">
+                          {h.chapterTitle}
+                        </p>
+                        <p className={`text-sm italic leading-relaxed text-kindle-text border-l-2 pl-2 ${
+                          h.color === 'yellow' ? 'border-yellow-400' :
+                          h.color === 'green' ? 'border-emerald-400' :
+                          h.color === 'blue' ? 'border-blue-400' :
+                          'border-pink-400'
+                        }`}>
+                          "{h.text}"
+                        </p>
+                        <button
+                          onClick={() => handleDeleteHighlight(h.id)}
+                          className="absolute top-2 right-2 p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition"
+                          title="Delete highlight"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </aside>
+        )}
 
         {/* Sidebar: Gemini AI Assistant */}
         {showAiAssistant && (

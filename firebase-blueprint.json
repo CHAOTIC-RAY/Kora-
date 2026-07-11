@@ -13,12 +13,47 @@
         "status": { "type": "string" }
       },
       "required": ["id", "title", "author", "extension", "size", "status"]
+    },
+    "ChapterNote": {
+      "title": "ChapterNote",
+      "description": "User's persistent note for a specific chapter of a book",
+      "type": "object",
+      "properties": {
+        "chapterIdx": { "type": "integer" },
+        "chapterTitle": { "type": "string" },
+        "noteText": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["chapterIdx", "chapterTitle", "noteText"]
+    },
+    "BookHighlight": {
+      "title": "BookHighlight",
+      "description": "User's highlight in a book with optional note and color choice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "color": { "type": "string" },
+        "note": { "type": "string" },
+        "chapterIdx": { "type": "integer" },
+        "chapterTitle": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "text", "color", "chapterIdx", "chapterTitle"]
     }
   },
   "firestore": {
     "/users/{userId}/library/{bookId}": {
       "schema": "BookMetadata",
       "description": "User's synchronized book list"
+    },
+    "/users/{userId}/library/{bookId}/notes/{chapterIdx}": {
+      "schema": "ChapterNote",
+      "description": "User's persistent chapter notes"
+    },
+    "/users/{userId}/library/{bookId}/highlights/{highlightId}": {
+      "schema": "BookHighlight",
+      "description": "User's highlights and annotations"
     }
   }
 }

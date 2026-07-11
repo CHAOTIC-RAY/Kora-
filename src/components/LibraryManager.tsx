@@ -510,6 +510,25 @@ export default function LibraryManager({
     return 0;
   });
 
+  const notesBook: BookMetadata = {
+    id: "global-notes",
+    title: "My Highlights & Notes",
+    author: "Kora Notebook",
+    extension: "notes",
+    size: "0",
+    coverUrl: "notes-cover",
+    tags: ["system"],
+    status: "completed",
+    progress: { percent: 100, lastReadTime: Date.now() },
+    dateAdded: Date.now(),
+    dateModified: Date.now()
+  };
+
+  const finalRenderedBooks = [
+    ...(filterStatus === "all" && filterTag === "all" && search === "" ? [notesBook] : []),
+    ...filteredBooks
+  ];
+
   // Reading Stats
   const totalBooks = books.length;
   const completedBooks = books.filter(b => b.status === "completed").length;
@@ -528,16 +547,17 @@ export default function LibraryManager({
       {/* Shelves / Collections Bar */}
       <section className="space-y-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide px-1">
-          {["All", "To Read", "Reading", "Completed", "Favorites"].map((shelf) => (
+          {["All", "To Read", "Reading", "Completed", "Favorites", ...availableTags].map((shelf) => (
             <button
               key={shelf}
               onClick={() => {
                 setActiveShelf(shelf);
-                if (shelf === "All") setFilterStatus("all");
-                else if (shelf === "To Read") setFilterStatus("to-read");
-                else if (shelf === "Reading") setFilterStatus("reading");
-                else if (shelf === "Completed") setFilterStatus("completed");
-                // Favorites logic can be added later
+                if (shelf === "All") { setFilterStatus("all"); setFilterTag("all"); }
+                else if (shelf === "To Read") { setFilterStatus("to-read"); setFilterTag("all"); }
+                else if (shelf === "Reading") { setFilterStatus("reading"); setFilterTag("all"); }
+                else if (shelf === "Completed") { setFilterStatus("completed"); setFilterTag("all"); }
+                else if (shelf === "Favorites") { setFilterStatus("all"); setFilterTag("all"); /* handle fav */ }
+                else { setFilterStatus("all"); setFilterTag(shelf); }
               }}
               className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border transition whitespace-nowrap ${
                 activeShelf === shelf 
@@ -900,17 +920,16 @@ export default function LibraryManager({
           </div>
         </div>
 
-        {filteredBooks.length === 0 ? (
+        {finalRenderedBooks.length === 0 ? (
           <div className="py-24 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
             <BookOpen className="w-10 h-10 text-kindle-text-muted mx-auto mb-3 animate-pulse" />
             <h3 className="font-sans font-bold text-xs text-kindle-text-muted uppercase tracking-widest">No books found</h3>
           </div>
         ) : (
           <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
-            {filteredBooks.map((book) => {
+            {finalRenderedBooks.map((book) => {
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
-
               return (
                 <div
                   key={book.id}
@@ -930,12 +949,25 @@ export default function LibraryManager({
                       isLongPressedRef.current = false;
                       return;
                     }
+                    if (book.id === "global-notes") {
+                      onBookSelected(book); // Or we can trigger a different callback, but we will handle it in App.tsx
+                      return;
+                    }
                     onBookSelected(book);
                   }}
                   className="kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition-transform duration-300 hover:-translate-y-1 select-none"
                 >
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
-                    {book.coverUrl ? (
+                    {book.coverUrl === "notes-cover" ? (
+                      <div className="w-full aspect-[3/4] bg-[#2a2826] border-[4px] border-[#1a1816] flex flex-col items-center justify-center p-4 text-center relative overflow-hidden">
+                        <div className="absolute left-4 top-0 bottom-0 w-px bg-white/10" />
+                        <FileText className="w-10 h-10 text-amber-500 mb-3 drop-shadow-md" />
+                        <span className="text-[11px] uppercase font-bold text-amber-100 tracking-[0.2em] font-serif">Journal</span>
+                        <div className="mt-4 px-3 py-1 border border-amber-500/30 rounded-full bg-amber-500/10">
+                          <span className="text-[8px] uppercase tracking-widest text-amber-400 font-bold">Notes</span>
+                        </div>
+                      </div>
+                    ) : book.coverUrl ? (
                       <img
                         src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
                         className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}

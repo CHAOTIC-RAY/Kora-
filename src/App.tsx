@@ -26,6 +26,7 @@ import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
+import NotesView from "./components/NotesView";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
@@ -35,7 +36,7 @@ import {
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings">("library");
+  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings" | "notes">("library");
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
     const saved = localStorage.getItem("kindle_last_read");
@@ -340,6 +341,10 @@ export default function App() {
 
   // Handle book selection for reading
   function handleOpenBook(book: BookMetadata) {
+    if (book.id === "global-notes") {
+      setActiveTab("notes");
+      return;
+    }
     if (!cachedBookIds.has(book.id)) {
       alert("This book is currently syncing to this device or requires a manual download. Please wait a moment.");
       return;
@@ -488,6 +493,7 @@ export default function App() {
         )}
 
         {activeTab === "downloads" && <DownloadsManager />}
+        {activeTab === "notes" && <NotesView books={books} userId={user?.uid || ""} onBack={() => setActiveTab("library")} />}
         
         {activeTab === "discover" && (
           <DiscoverView
