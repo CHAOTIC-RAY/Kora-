@@ -16,7 +16,7 @@ import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
 import { 
   X, ChevronLeft, ChevronRight, Menu, Settings, 
-  BookOpen, Sparkles, AlertCircle, Type, Layout, Info,
+  BookOpen, Sparkles, AlertCircle, Type, Layout, Info, Globe, Search,
   Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind,
   BookMarked, Copy, Check, FileText, Highlighter, Trash2
 } from "lucide-react";
@@ -72,6 +72,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [containerWidth, setContainerWidth] = useState<number>(600);
   const pageStepRef = React.useRef<number>(600 + 40); // last computed per-page stride
   const [doubleColumns, setDoubleColumns] = useState<boolean>(false); // Dual page mode
+  const [pageOverlap, setPageOverlap] = useState<number>(0); // KOReader-style page overlap (px repeated across page turns)
   const [letterSpacing, setLetterSpacing] = useState<string>("tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
   const [hyphenation, setHyphenation] = useState<boolean>(true);
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
@@ -140,24 +141,27 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const container = contentRef.current;
       if (!container) return;
       
-      // Get the actual width available for text (excluding article's own padding if any)
-      const rect = container.getBoundingClientRect();
-      const width = rect.width;
-      if (width <= 0) return;
+      // Use the article's actual rendered width (border-box, excludes the
+      // container's own padding). This is the true on-screen width of one page,
+      // whether single- or double-column. Using the padded container width
+      // (or half-width+gap) made each page turn overshoot and clip the left
+      // column — the "page display" bug.
+      const textWidth = container.offsetWidth;
+      if (textWidth <= 0) return;
       
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
-      // If double columns, one page is half the width minus half the gap
-      const colWidth = doubleColumns ? (width - gapWidth) / 2 : width;
-      const step = colWidth + gapWidth;
-      
-      // Calculate total pages based on scrollWidth and step
-      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
+      // Column width for the CSS column layout (matches the measured width so
+      // the content fills exactly one page stride).
+      const colWidth = doubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
+      // One page = the full visible article width (single column = whole width;
+      // double column = the whole spread). This is the exact translate stride.
+      const step = textWidth;
+      // With page overlap, every page after the first repeats `pageOverlap` px
+      // from the previous page; account for that when counting pages.
+      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - pageOverlap) / step) + 1);
       setTotalPages(calculatedPages);
-      setContainerWidth(width);
-      // Store the per-page step so the translate uses the exact same stride as the
-      // layout calculation (prevents pages from only partially advancing on mobile,
-      // especially in 2-column mode where a spread is `width` wide, not `width+gap`).
+      setContainerWidth(textWidth);
       pageStepRef.current = step;
     }, 150);
   };
@@ -841,15 +845,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setTimeout(() => {
       const container = contentRef.current;
       if (!container) return;
-      const width = container.getBoundingClientRect().width;
+      const textWidth = container.offsetWidth;
+      if (textWidth <= 0) return;
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
-      const colWidth = doubleColumns ? (width - gapWidth) / 2 : width;
-      const step = colWidth + gapWidth;
+      const colWidth = doubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
+      const step = textWidth;
       
-      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
+      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - pageOverlap) / step) + 1);
       setTotalPages(calculatedPages);
-      setContainerWidth(width);
+      setContainerWidth(textWidth);
       pageStepRef.current = step;
       setCurrentPageNum(goToLastPage ? calculatedPages : 1);
       
@@ -1344,6 +1349,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </button>
             </div>
 
+            {/* Page Overlap (KOReader-style) */}
+            <div className="mb-5">
+              <div className="flex justify-between items-center mb-1.5">
+                <label className="text-xs opacity-75 font-sans">Page Overlap</label>
+                <span className="text-[10px] font-mono">{pageOverlap}px</span>
+              </div>
+              <p className="text-[10px] text-kindle-text-muted mb-2">Repeat the last few lines on the next page (like KOReader).</p>
+              <input
+                type="range"
+                min="0"
+                max="60"
+                step="2"
+                value={pageOverlap}
+                onChange={(e) => setPageOverlap(parseInt(e.target.value))}
+                className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+
             {/* Letter Spacing Selection */}
             <div className="mb-5">
               <label className="text-xs opacity-75 font-sans block mb-2">Letter Spacing</label>
@@ -1641,8 +1664,49 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   <p className="text-xs opacity-60 py-4 font-sans">No definition found for "{dictionaryWord}".</p>
                 )}
                 
-                <div className="mt-5 pt-3 border-t border-current/10">
-                  <p className="text-[8px] opacity-40 uppercase tracking-widest text-center font-sans">Tap outside or press ESC to close</p>
+                {/* KOReader-style dictionary actions: Wikipedia, Search, Highlight, Close */}
+                <div className="mt-5 pt-3 border-t border-current/10 flex items-center gap-2">
+                  <button
+                    onClick={() => window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(dictionaryWord || "")}`, "_blank")}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-current/15 text-[10px] font-bold uppercase tracking-widest hover:bg-current/5 transition"
+                    title="Open Wikipedia"
+                  >
+                    <Globe className="w-3.5 h-3.5" /> Wiki
+                  </button>
+                  <button
+                    onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(dictionaryWord || "")}`, "_blank")}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-current/15 text-[10px] font-bold uppercase tracking-widest hover:bg-current/5 transition"
+                    title="Search the web"
+                  >
+                    <Search className="w-3.5 h-3.5" /> Search
+                  </button>
+                  <button
+                    onClick={() => {
+                      const text = selectedText || dictionaryWord || "";
+                      if (text) {
+                        addDictionaryEntry({
+                          word: text.length > 30 ? text.slice(0, 30) + "..." : text,
+                          definition: `Highlighted from '${book.title}': "${text}"`,
+                          partOfSpeech: "highlight",
+                          isCustom: true
+                        });
+                        setDictFeedback("Saved highlight to personal dictionary!");
+                        setTimeout(() => setDictFeedback(null), 2500);
+                      }
+                      setDictionaryWord(null);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30 text-[10px] font-bold uppercase tracking-widest transition"
+                    title="Highlight selection"
+                  >
+                    <Highlighter className="w-3.5 h-3.5" /> Highlight
+                  </button>
+                  <button
+                    onClick={() => setDictionaryWord(null)}
+                    className="px-3 py-2 rounded-lg bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest hover:opacity-80 transition"
+                    title="Close"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </div>
@@ -1766,7 +1830,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
                 <motion.article 
                   ref={contentRef}
-                  animate={{ x: -(currentPageNum - 1) * pageStepRef.current }}
+                  animate={{ x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)) }}
                   transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
                   className={`w-full mx-auto ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
                   style={{
@@ -1826,6 +1890,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     page {currentChapterIdx + 1}.{currentPageNum} of {totalPages} • {Math.round(((currentChapterIdx * totalPages + (currentPageNum - 1)) / (chapters.length * totalPages || 1)) * 100)}%
                   </span>
                 </div>
+
+                <button
+                  onClick={() => setDoubleColumns(!doubleColumns)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
+                  title="Toggle two-column spread (KOReader style)"
+                >
+                  <Layout className="w-3.5 h-3.5" /> 2-Page
+                </button>
 
                 <button
                   id="next-chapter-btn"
