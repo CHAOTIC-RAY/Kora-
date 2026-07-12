@@ -80,6 +80,7 @@ export interface BookMetadata {
   notes?: string;
   rating?: number; // 1-5
   dateAdded: number;
+  dateModified?: number;
   description?: string;
   series?: string;
   seriesNumber?: string;

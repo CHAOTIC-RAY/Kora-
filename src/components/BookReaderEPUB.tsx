@@ -70,6 +70,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [currentPageNum, setCurrentPageNum] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [containerWidth, setContainerWidth] = useState<number>(600);
+  const pageStepRef = React.useRef<number>(600 + 40); // last computed per-page stride
   const [doubleColumns, setDoubleColumns] = useState<boolean>(false); // Dual page mode
   const [letterSpacing, setLetterSpacing] = useState<string>("tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
   const [hyphenation, setHyphenation] = useState<boolean>(true);
@@ -154,6 +155,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
       setTotalPages(calculatedPages);
       setContainerWidth(width);
+      // Store the per-page step so the translate uses the exact same stride as the
+      // layout calculation (prevents pages from only partially advancing on mobile,
+      // especially in 2-column mode where a spread is `width` wide, not `width+gap`).
+      pageStepRef.current = step;
     }, 150);
   };
 
@@ -845,6 +850,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
       setTotalPages(calculatedPages);
       setContainerWidth(width);
+      pageStepRef.current = step;
       setCurrentPageNum(goToLastPage ? calculatedPages : 1);
       
       // Re-enable animation after layout settles
@@ -1760,7 +1766,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
                 <motion.article 
                   ref={contentRef}
-                  animate={{ x: -(currentPageNum - 1) * (containerWidth + 40) }}
+                  animate={{ x: -(currentPageNum - 1) * pageStepRef.current }}
                   transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
                   className={`w-full mx-auto ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
                   style={{

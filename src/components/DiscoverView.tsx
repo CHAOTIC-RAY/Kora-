@@ -6,6 +6,7 @@ import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library } from "lucide-react";
 import KoraLoading from "./KoraLoading";
+import HardcoverCommunity from "./HardcoverCommunity";
 
 interface DiscoverViewProps {
   userId: string;
@@ -62,6 +63,8 @@ export default function DiscoverView({
   const [selectedTopic, setSelectedTopic] = useState<string>("all");
 
   const [hasMore, setHasMore] = useState<boolean>(false);
+  // Community (Hardcover) data fetched alongside search results
+  const [communityBook, setCommunityBook] = useState<any | null>(null);
   // Background prefetch cache: page number → results
   const prefetchCache = React.useRef(new Map<number, any[]>());
   const prefetchingPage = React.useRef<number | null>(null);
@@ -349,9 +352,15 @@ export default function DiscoverView({
           if (src.includes("standard ebooks") || src.includes("standard")) sources.add("standard");
         });
         setAvailableSourcesFromResults(sources);
-      }
+        }
 
-      // Background prefetch next page
+        // Surface community (Hardcover) reviews for the top match alongside results
+        setCommunityBook(uniqueGroupedBooks[0] ? {
+          title: uniqueGroupedBooks[0].title,
+          author: uniqueGroupedBooks[0].author
+        } : null);
+
+        // Background prefetch next page
       if (more) {
         prefetchPage(term, source, page + 1);
       }
@@ -372,6 +381,7 @@ export default function DiscoverView({
     setHasMore(false);
     setTotalResults(0);
     setActiveSource("all");
+    setCommunityBook(null);
     prefetchCache.current.clear();
   }
 
@@ -1120,6 +1130,13 @@ export default function DiscoverView({
               )}
             </div>
           )}
+        </section>
+
+      )}
+
+      {searchMode && communityBook && (
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs">
+          <HardcoverCommunity book={communityBook} />
         </section>
       )}
 

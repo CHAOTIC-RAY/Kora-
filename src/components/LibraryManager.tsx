@@ -5,7 +5,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { 
   BookOpen, UploadCloud, Tag, Star, Trash2, ListFilter,
   CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, HelpCircle, HardDrive, Search, Cloud,
-  Edit2, ImageIcon, AlertTriangle, RefreshCw, MoreVertical, Flame, TrendingUp, Calendar, FileText
+  Edit2, ImageIcon, AlertTriangle, RefreshCw, MoreVertical, Flame, TrendingUp, Calendar
 } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
@@ -959,12 +959,68 @@ export default function LibraryManager({
                 >
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
                     {book.coverUrl === "notes-cover" ? (
-                      <div className="w-full aspect-[3/4] bg-[#2a2826] border-[4px] border-[#1a1816] flex flex-col items-center justify-center p-4 text-center relative overflow-hidden">
-                        <div className="absolute left-4 top-0 bottom-0 w-px bg-white/10" />
-                        <FileText className="w-10 h-10 text-amber-500 mb-3 drop-shadow-md" />
-                        <span className="text-[11px] uppercase font-bold text-amber-100 tracking-[0.2em] font-serif">Journal</span>
-                        <div className="mt-4 px-3 py-1 border border-amber-500/30 rounded-full bg-amber-500/10">
-                          <span className="text-[8px] uppercase tracking-widest text-amber-400 font-bold">Notes</span>
+                      <div className="w-full aspect-[3/4] relative overflow-hidden" style={{ background: "linear-gradient(135deg,#3a2a1c,#2a1d12 60%,#1c130b)" }}>
+                        {/* Leather grain + warm glow */}
+                        <div className="absolute inset-0 opacity-30" style={{ background: "radial-gradient(circle at 50% 38%, rgba(212,175,55,0.35), transparent 55%)" }} />
+                        <svg viewBox="0 0 300 400" className="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid slice" aria-hidden>
+                          <defs>
+                            <radialGradient id="jg" cx="50%" cy="42%" r="42%">
+                              <stop offset="0%" stopColor="#f6e3a1" />
+                              <stop offset="55%" stopColor="#d4af37" />
+                              <stop offset="100%" stopColor="#9c7a1e" />
+                            </radialGradient>
+                            <linearGradient id="jl" x1="0" y1="0" x2="1" y2="1">
+                              <stop offset="0%" stopColor="#e9c969" />
+                              <stop offset="100%" stopColor="#8a6a1c" />
+                            </linearGradient>
+                          </defs>
+                          {/* Sunburst */}
+                          <g transform="translate(150 168)" stroke="url(#jl)" strokeWidth="2.4" opacity="0.95">
+                            {Array.from({ length: 24 }).map((_, i) => {
+                              const a = (i * 15) * Math.PI / 180;
+                              const r1 = 34, r2 = i % 2 === 0 ? 78 : 62;
+                              return <line key={i} x1={Math.cos(a) * r1} y1={Math.sin(a) * r1} x2={Math.cos(a) * r2} y2={Math.sin(a) * r2} />;
+                            })}
+                          </g>
+                          {/* Central sun disc */}
+                          <circle cx="150" cy="168" r="33" fill="url(#jg)" stroke="#7a5e16" strokeWidth="1.5" />
+                          {/* Combination lock (brass) */}
+                          <g transform="translate(150 168)">
+                            <rect x="-19" y="-19" width="38" height="38" rx="7" fill="#b8912f" stroke="#6e5413" strokeWidth="2" />
+                            <rect x="-13" y="-13" width="26" height="26" rx="4" fill="#d9b84a" stroke="#7a5e16" strokeWidth="1.2" />
+                            {[-9, -3, 3, 9].map((x, i) => (
+                              <g key={i} transform={`translate(${x} 0)`}>
+                                <rect x="-2.4" y="-8" width="4.8" height="16" rx="1.6" fill="#5c4510" />
+                                <text x="0" y="-11" fontSize="6" fill="#3a2c08" textAnchor="middle" fontFamily="monospace">{i + 1}</text>
+                              </g>
+                            ))}
+                          </g>
+                          {/* Crescent moons */}
+                          <g fill="none" stroke="url(#jl)" strokeWidth="2.6" opacity="0.9">
+                            <path d="M250 56 a14 14 0 1 0 4 22 a11 11 0 1 1 -4 -22 Z" />
+                            <path d="M52 330 a12 12 0 1 0 3 19 a9 9 0 1 1 -3 -19 Z" />
+                          </g>
+                          {/* Little stars */}
+                          <g fill="#e9c969" opacity="0.9">
+                            <circle cx="60" cy="90" r="2.6" /><circle cx="246" cy="300" r="2.6" />
+                            <circle cx="92" cy="250" r="2" /><circle cx="216" cy="120" r="2" />
+                          </g>
+                          {/* Filigree corners */}
+                          <g stroke="url(#jl)" strokeWidth="2" fill="none" opacity="0.55">
+                            <path d="M14 14 q26 6 30 30 q-24 -4 -30 -30 Z" />
+                            <path d="M286 14 q-26 6 -30 30 q24 -4 30 -30 Z" />
+                            <path d="M14 386 q26 -6 30 -30 q-24 4 -30 30 Z" />
+                            <path d="M286 386 q-26 -6 -30 -30 q24 4 30 30 Z" />
+                          </g>
+                          {/* Leather strap across */}
+                          <rect x="0" y="250" width="300" height="22" fill="#241710" opacity="0.92" />
+                          <rect x="0" y="250" width="300" height="3" fill="#4a3320" />
+                          <rect x="0" y="269" width="300" height="3" fill="#4a3320" />
+                        </svg>
+                        {/* Title plate */}
+                        <div className="absolute inset-x-0 bottom-7 flex flex-col items-center gap-2 px-4 text-center">
+                          <span className="text-[13px] uppercase font-bold text-amber-200/90 tracking-[0.25em] font-serif drop-shadow">Journal</span>
+                          <span className="px-3 py-1 border border-amber-500/30 rounded-full bg-amber-500/10 text-[8px] uppercase tracking-widest text-amber-400/90 font-bold">Notes</span>
                         </div>
                       </div>
                     ) : book.coverUrl ? (
