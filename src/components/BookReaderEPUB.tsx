@@ -35,6 +35,11 @@ interface BookReaderEPUBProps {
     marginSize: string;
     isContinuous: boolean;
     brightness: number;
+    doubleColumns?: boolean;
+    pageOverlap?: number;
+    letterSpacing?: string;
+    hyphenation?: boolean;
+    pageTurnMode?: string;
   };
 }
 
@@ -71,10 +76,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [totalPages, setTotalPages] = useState<number>(1);
   const [containerWidth, setContainerWidth] = useState<number>(600);
   const pageStepRef = React.useRef<number>(600 + 40); // last computed per-page stride
-  const [doubleColumns, setDoubleColumns] = useState<boolean>(false); // Dual page mode
-  const [pageOverlap, setPageOverlap] = useState<number>(0); // KOReader-style page overlap (px repeated across page turns)
-  const [letterSpacing, setLetterSpacing] = useState<string>("tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
-  const [hyphenation, setHyphenation] = useState<boolean>(true);
+  const [doubleColumns, setDoubleColumns] = useState<boolean>(readerPrefs?.doubleColumns ?? false); // Dual page mode
+  const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 0); // KOReader-style page overlap (px repeated across page turns)
+  const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
+  const [hyphenation, setHyphenation] = useState<boolean>(readerPrefs?.hyphenation ?? true);
+  const [pageTurnMode, setPageTurnMode] = useState<string>(readerPrefs?.pageTurnMode ?? "fifty-fifty");
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
 
   // Disable animation temporarily during visual style changes
@@ -82,12 +88,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setShouldAnimate(false);
     const t = setTimeout(() => setShouldAnimate(true), 250);
     return () => clearTimeout(t);
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, doubleColumns, letterSpacing, hyphenation]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, doubleColumns, letterSpacing, hyphenation, pageTurnMode]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
   const [showNotes, setShowNotes] = useState<boolean>(false);
   
   // Highlights & Notes State
@@ -96,10 +101,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [activeNoteText, setActiveNoteText] = useState<string>("");
   const [isSavingNote, setIsSavingNote] = useState<boolean>(false);
 
-  // AI assistant states
-  const [aiResponse, setAiResponse] = useState<string>("");
-  const [aiLoading, setAiLoading] = useState<boolean>(false);
-  const [customAiQuery, setCustomAiQuery] = useState<string>("");
+  // AI/dictionary context states
   const [selectedText, setSelectedText] = useState<string>("");
   const [dictFeedback, setDictFeedback] = useState<string | null>(null);
   const [tapFeedback, setTapFeedback] = useState<"next" | "prev" | null>(null);
@@ -119,6 +121,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   // Maps an EPUB internal href (normalized) -> spine chapter index, so in-book
   // Table-of-Contents links (e.g. <a href="chapter1.xhtml">) navigate correctly.
   const hrefToIndexRef = useRef<Map<string, number>>(new Map());
+  const pointerStartRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
 
   // Font choices
   const fontFamilies = [
@@ -154,12 +157,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // Column width for the CSS column layout (matches the measured width so
       // the content fills exactly one page stride).
       const colWidth = doubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      // One page = the full visible article width (single column = whole width;
-      // double column = the whole spread). This is the exact translate stride.
-      const step = textWidth;
-      // With page overlap, every page after the first repeats `pageOverlap` px
-      // from the previous page; account for that when counting pages.
-      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - pageOverlap) / step) + 1);
+      // The exact horizontal stride is the full page width plus the column gap (40px)
+      // minus any desired page overlap.
+      const step = textWidth + gapWidth - pageOverlap;
+      // Avoid tiny subpixel overflows from creating a blank page
+      const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
+      const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
@@ -220,10 +223,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       brightness,
       doubleColumns,
       letterSpacing,
-      hyphenation
+      hyphenation,
+      pageTurnMode
     };
     localStorage.setItem("kora_reader_prefs", JSON.stringify(prefs));
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, letterSpacing, hyphenation]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, letterSpacing, hyphenation, pageTurnMode]);
 
   useEffect(() => {
     loadEpubFile();
@@ -465,19 +469,69 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
+    const ratio = clickX / rect.width;
     
-    // Zone-based clicking: 
-    // Left 30% -> Prev
-    // Right 30% -> Next
-    // Middle 40% -> Toggle Menu (handled by parent or other click listeners if needed)
-    // But user asked for left/right screen tap, so we'll do 40/20/40 or just 50/50.
-    // Let's stick to 50/50 but ensure it works on the currentTarget's rect.
-    const isLeftSide = clickX < rect.width / 2;
-    
-    if (isLeftSide) {
-      handlePrevPage();
-    } else {
-      handleNextPage();
+    if (pageTurnMode === "fifty-fifty") {
+      if (ratio < 0.5) {
+        handlePrevPage();
+      } else {
+        handleNextPage();
+      }
+    } else if (pageTurnMode === "classic-ereader") {
+      if (ratio < 0.25) {
+        handlePrevPage();
+      } else {
+        handleNextPage();
+      }
+    } else if (pageTurnMode === "margins-only") {
+      if (ratio < 0.15) {
+        handlePrevPage();
+      } else if (ratio > 0.85) {
+        handleNextPage();
+      }
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!e.isPrimary) return;
+    pointerStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now()
+    };
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointerStartRef.current) return;
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+
+    const diffX = e.clientX - start.x;
+    const diffY = e.clientY - start.y;
+    const duration = Date.now() - start.time;
+
+    // Check if it's a swipe (fast flick or drag)
+    if (duration < 500 && Math.abs(diffX) > 40 && Math.abs(diffY) < 60) {
+      // Swipe from left edge of screen to right -> go back / close reader (native iOS/Android gesture)
+      if (start.x < 50 && diffX > 45) {
+        onClose();
+        return;
+      }
+
+      if (diffX > 40) {
+        // Swipe Right -> Prev Page
+        handlePrevPage();
+        return;
+      } else if (diffX < -40) {
+        // Swipe Left -> Next Page
+        handleNextPage();
+        return;
+      }
+    }
+
+    // Only fire standard tap handler if pointer barely moved (prevent text selection drag conflicts)
+    if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15) {
+      handleContainerClick(e);
     }
   };
 
@@ -850,9 +904,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
       const colWidth = doubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      const step = textWidth;
+      // The exact horizontal stride is the full page width plus the column gap (40px)
+      // minus any desired page overlap.
+      const step = textWidth + gapWidth - pageOverlap;
       
-      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - pageOverlap) / step) + 1);
+      // Avoid tiny subpixel overflows from creating a blank page
+      const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
+      const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
@@ -1084,26 +1142,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setHighlightsData(prev => [newHighlight, ...prev]);
     setSelectedText("");
     setShowNotes(true);
-    setShowAiAssistant(false);
   };
-
-  async function requestAiAssistant(mode: string, query = "") {
-    setAiLoading(true);
-    setAiResponse("");
-    try {
-      const fullChapterText = chapters[currentChapterIdx]?.content || "";
-      
-      // Simulate highly responsive analytical processing lag (400ms)
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      
-      const response = await runOfflineCompanion(mode, selectedText, fullChapterText, book.title, query);
-      setAiResponse(response);
-    } catch (err: any) {
-      setAiResponse(`Assistant Error: ${err.message || "Failed to analyze book content."}`);
-    } finally {
-      setAiLoading(false);
-    }
-  }
 
   const activeTheme = themes[theme] || themes.sepia;
 
@@ -1130,7 +1169,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         {/* Action Controls */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); setShowAiAssistant(false); }}
+            onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? 'bg-neutral-500/20' : ''}`}
             title="Highlights & Notes"
           >
@@ -1153,7 +1192,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           >
             <Settings className="w-5 h-5" />
           </button>
-
+ 
           <button
             id="toggle-audiobook-btn"
             onClick={() => {
@@ -1164,7 +1203,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               setShowToc(false);
               setShowSettings(false);
               setShowNotes(false);
-              setShowAiAssistant(false);
             }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition relative ${showAudiobook ? 'bg-kindle-accent/20 text-kindle-accent' : ''}`}
             title="Listen"
@@ -1173,15 +1211,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             {isPlayingSpeech && (
               <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
             )}
-          </button>
-          
-          <button
-            id="toggle-ai-assistant"
-            onClick={() => { setShowAiAssistant(!showAiAssistant); setShowNotes(false); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
-            className={`flex items-center gap-2 px-4 py-2 ml-2 rounded-xl bg-kindle-text hover:bg-kindle-accent text-kindle-bg font-sans text-xs font-bold transition shadow-sm ${showAiAssistant ? 'ring-1 ring-kindle-accent' : ''}`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">AI Helper</span>
           </button>
         </div>
       </header>
@@ -1424,6 +1453,33 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     }`}
                   >
                     {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Page Change Control Options */}
+            <div className="mb-5">
+              <label className="text-xs opacity-75 font-sans block mb-2">Page Turn Zones</label>
+              <div className="space-y-1.5">
+                {[
+                  { label: "Classic 50/50 Split", val: "fifty-fifty", desc: "Left half goes backward, right half goes forward." },
+                  { label: "Classic E-Reader", val: "classic-ereader", desc: "Left 25% goes backward, right 75% goes forward." },
+                  { label: "Margins Only (15%)", val: "margins-only", desc: "Only tapping outer 15% edges turns pages." },
+                  { label: "Floating Buttons", val: "floating-buttons", desc: "Use on-screen circular buttons to turn pages." },
+                  { label: "Swipe & Keys Only", val: "swipe-only", desc: "Disable tap-to-turn entirely." }
+                ].map((mode) => (
+                  <button
+                    key={mode.val}
+                    onClick={() => setPageTurnMode(mode.val)}
+                    className={`w-full p-2.5 rounded-xl border text-left font-sans transition flex flex-col gap-0.5 ${
+                      pageTurnMode === mode.val
+                        ? "bg-kindle-text text-kindle-bg border-transparent"
+                        : "border-neutral-500/20 hover:border-neutral-500/50"
+                    }`}
+                  >
+                    <span className="text-xs font-semibold">{mode.label}</span>
+                    <span className={`text-[10px] ${pageTurnMode === mode.val ? "opacity-80" : "text-kindle-text-muted"}`}>{mode.desc}</span>
                   </button>
                 ))}
               </div>
@@ -1762,18 +1818,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       <Highlighter className="w-3 h-3" /> Highlight
                     </button>
                     <button 
-                      onClick={() => { setShowAiAssistant(true); requestAiAssistant("explain"); }}
-                      className="bg-amber-500 hover:bg-amber-600 text-neutral-950 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                    >
-                      Explain
-                    </button>
-                    <button 
-                      onClick={() => { setShowAiAssistant(true); requestAiAssistant("summarize"); }}
-                      className="bg-neutral-800 hover:bg-neutral-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                    >
-                      Summarize
-                    </button>
-                    <button 
                       onClick={() => {
                         addDictionaryEntry({
                           word: selectedText.length > 30 ? selectedText.slice(0, 30) + "..." : selectedText,
@@ -1804,114 +1848,172 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               {/* The Chapter Text Container — a strict single-page viewport */}
               <div 
-                onPointerUp={handleContainerClick}
-                className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start justify-center select-none cursor-default"
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                className={`flex-1 relative py-6 px-4 md:py-8 md:px-16 flex items-start justify-start select-none cursor-default mx-auto w-full ${marginSize}`}
                 style={{ height: "calc(100vh - 185px)" }}
               >
-                {/* Visual page slide feedback */}
-                <AnimatePresence mode="popLayout">
-                  {tapFeedback && (
-                    <motion.div
-                      key={tapFeedback}
-                      initial={{ opacity: 0, x: tapFeedback === "next" ? 120 : -120 }}
-                      animate={{ opacity: 0.15, x: 0 }}
-                      exit={{ opacity: 0, x: tapFeedback === "next" ? -60 : 60 }}
-                      transition={{ duration: 0.35, ease: "easeOut" }}
-                      className={`absolute inset-y-0 pointer-events-none ${
-                        tapFeedback === "next" ? "right-0" : "left-0"
-                      } w-1/4 pointer-events-none z-10 bg-gradient-to-r ${
-                        tapFeedback === "next" 
-                          ? "from-transparent to-amber-500/40" 
-                          : "from-amber-500/40 to-transparent"
-                      }`}
-                    />
+                <div className="w-full h-full overflow-hidden relative flex items-start justify-start">
+                  {/* Visual page slide feedback */}
+                  <AnimatePresence mode="popLayout">
+                    {tapFeedback && (
+                      <motion.div
+                        key={tapFeedback}
+                        initial={{ opacity: 0, x: tapFeedback === "next" ? 120 : -120 }}
+                        animate={{ opacity: 0.15, x: 0 }}
+                        exit={{ opacity: 0, x: tapFeedback === "next" ? -60 : 60 }}
+                        transition={{ duration: 0.35, ease: "easeOut" }}
+                        className={`absolute inset-y-0 pointer-events-none ${
+                          tapFeedback === "next" ? "right-0" : "left-0"
+                        } w-1/4 pointer-events-none z-10 bg-gradient-to-r ${
+                          tapFeedback === "next" 
+                            ? "from-transparent to-amber-500/40" 
+                            : "from-amber-500/40 to-transparent"
+                        }`}
+                      />
+                    )}
+                  </AnimatePresence>
+
+                  {pageTurnMode === "floating-buttons" && (
+                    <>
+                      <button
+                        onPointerUp={(e) => {
+                          e.stopPropagation();
+                          handlePrevPage();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        disabled={currentChapterIdx === 0 && currentPageNum === 1}
+                        className={`absolute left-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full shadow-lg border backdrop-blur-xs transition-all duration-200 ${
+                          theme === "dark"
+                            ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
+                            : "bg-white/60 text-neutral-800 border-neutral-200 hover:bg-neutral-50/80"
+                        } disabled:opacity-20 disabled:pointer-events-none`}
+                        title="Previous Page"
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </button>
+                      <button
+                        onPointerUp={(e) => {
+                          e.stopPropagation();
+                          handleNextPage();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                        }}
+                        disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
+                        className={`absolute right-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full shadow-lg border backdrop-blur-xs transition-all duration-200 ${
+                          theme === "dark"
+                            ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
+                            : "bg-white/60 text-neutral-800 border-neutral-200 hover:bg-neutral-50/80"
+                        } disabled:opacity-20 disabled:pointer-events-none`}
+                        title="Next Page"
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </button>
+                    </>
                   )}
-                </AnimatePresence>
 
-                <motion.article 
-                  ref={contentRef}
-                  animate={{ x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)) }}
-                  transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
-                  className={`w-full mx-auto ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
-                  style={{
-                    fontSize: `${fontSize}px`,
-                    lineHeight: lineSpacing,
-                    columnWidth: `${doubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
-                    columnGap: '40px',
-                    height: '100%',
-                    columnFill: 'auto',
-                    // Strictly clip to the current page so exactly one page (or one
-                    // 2-page spread) is visible at a time — true page-by-page reading.
-                    overflow: 'hidden',
-                    // Center "book spine" gutter between the two columns in 2-col mode
-                    boxShadow: doubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none'
-                  }}
-                >
-                  <div className={`mb-6 border-b ${activeTheme.border} pb-4`} style={{ columnSpan: "all" }}>
-                    <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">
-                      Chapter {currentChapterIdx + 1} of {chapters.length}
-                    </span>
-                    <h2 className="font-serif font-bold text-2xl mt-1 leading-tight tracking-tight">
-                      {chapters[currentChapterIdx]?.title}
-                    </h2>
-                  </div>
+                  <motion.article 
+                    ref={contentRef}
+                    animate={{ x: -(currentPageNum - 1) * pageStepRef.current }}
+                    transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
+                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
+                    style={{
+                      fontSize: `${fontSize}px`,
+                      lineHeight: lineSpacing,
+                      columnWidth: `${doubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
+                      columnGap: '40px',
+                      height: '100%',
+                      columnFill: 'auto',
+                      // Strictly clip to the current page so exactly one page (or one
+                      // 2-page spread) is visible at a time — true page-by-page reading.
+                      overflow: 'visible',
+                      // Center "book spine" gutter between the two columns in 2-col mode
+                      boxShadow: doubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none'
+                    }}
+                  >
+                    <div className={`mb-6 border-b ${activeTheme.border} pb-4`} style={{ columnSpan: "all" }}>
+                      <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">
+                        Chapter {currentChapterIdx + 1} of {chapters.length}
+                      </span>
+                      <h2 className="font-serif font-bold text-2xl mt-1 leading-tight tracking-tight">
+                        {chapters[currentChapterIdx]?.title}
+                      </h2>
+                    </div>
 
-                  {/* EPUB HTML Content Injection */}
-                  <div 
-                    id="epub-text-viewer"
-                    className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
-                    dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
-                  />
+                    {/* EPUB HTML Content Injection */}
+                    <div 
+                      id="epub-text-viewer"
+                      className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
+                      dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
+                    />
 
-                  {/* Bottom Controls */}
-                  <div className={`mt-12 pt-6 border-t ${activeTheme.border} flex justify-between items-center text-xs font-sans opacity-70`} style={{ columnSpan: "all" }}>
-                    <span>End of {chapters[currentChapterIdx]?.title}</span>
-                    <span>{Math.round((currentChapterIdx / chapters.length) * 100)}% read</span>
-                  </div>
-                </motion.article>
+                    {/* Bottom Controls */}
+                    <div className={`mt-12 pt-6 border-t ${activeTheme.border} flex justify-between items-center text-xs font-sans opacity-70`} style={{ columnSpan: "all" }}>
+                      <span>End of {chapters[currentChapterIdx]?.title}</span>
+                      <span>{Math.round((currentChapterIdx / chapters.length) * 100)}% read</span>
+                    </div>
+                  </motion.article>
+                </div>
               </div>
 
               {/* Footer Chapter Navigate Buttons */}
               <footer className={`px-6 py-4 border-t ${activeTheme.border} flex items-center justify-between font-sans shrink-0`}>
-                <button
-                  id="prev-chapter-btn"
-                  disabled={currentChapterIdx === 0 && currentPageNum === 1}
-                  onClick={handlePrevPage}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-neutral-500/10 transition"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Prev Page</span>
-                </button>
+                {!(pageTurnMode === "fifty-fifty" || pageTurnMode === "classic-ereader" || pageTurnMode === "margins-only") ? (
+                  <button
+                    id="prev-chapter-btn"
+                    disabled={currentChapterIdx === 0 && currentPageNum === 1}
+                    onClick={handlePrevPage}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-neutral-500/10 transition"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Prev Page</span>
+                  </button>
+                ) : (
+                  <div className="w-[100px] hidden sm:block" />
+                )}
 
                 <div className="flex flex-col items-center">
                   <div className="w-48 bg-neutral-200 h-1 rounded-full overflow-hidden mb-1.5">
                     <div 
                       className="bg-kindle-text h-full transition-all duration-500" 
-                      style={{ width: `${Math.round(((currentChapterIdx * totalPages + (currentPageNum - 1)) / (chapters.length * totalPages || 1)) * 100)}%` }}
+                      style={{ 
+                        width: `${Math.min(100, Math.max(0, Math.round(
+                          ((currentChapterIdx + (currentPageNum - 1) / (totalPages || 1)) / (chapters.length || 1)) * 100
+                        )))}%` 
+                      }}
                     />
                   </div>
                   <span className="text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90">
-                    page {currentChapterIdx + 1}.{currentPageNum} of {totalPages} • {Math.round(((currentChapterIdx * totalPages + (currentPageNum - 1)) / (chapters.length * totalPages || 1)) * 100)}%
+                    page {currentPageNum} of {totalPages} (Ch. {currentChapterIdx + 1}) • {Math.min(100, Math.max(0, Math.round(
+                      ((currentChapterIdx + (currentPageNum - 1) / (totalPages || 1)) / (chapters.length || 1)) * 100
+                    )))}%
                   </span>
                 </div>
 
-                <button
-                  onClick={() => setDoubleColumns(!doubleColumns)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
-                  title="Toggle two-column spread (KOReader style)"
-                >
-                  <Layout className="w-3.5 h-3.5" /> 2-Page
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setDoubleColumns(!doubleColumns)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
+                    title="Toggle two-column spread (KOReader style)"
+                  >
+                    <Layout className="w-3.5 h-3.5" /> 2-Page
+                  </button>
 
-                <button
-                  id="next-chapter-btn"
-                  disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
-                  onClick={handleNextPage}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-kindle-accent transition shadow-sm"
-                >
-                  <span>Next Page</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                  {!(pageTurnMode === "fifty-fifty" || pageTurnMode === "classic-ereader" || pageTurnMode === "margins-only") && (
+                    <button
+                      id="next-chapter-btn"
+                      disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
+                      onClick={handleNextPage}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-kindle-accent transition shadow-sm"
+                    >
+                      <span>Next Page</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </footer>
             </div>
           )}
@@ -1919,7 +2021,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
         {/* Sidebar: Highlights & Notes */}
         {showNotes && (
-          <aside className={`w-80 md:w-96 border-l ${activeTheme.border} ${activeTheme.card} flex flex-col z-10 animate-in slide-in-from-right duration-250`}>
+          <aside className={`w-full md:w-80 border-b md:border-b-0 border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col absolute md:relative inset-x-0 bottom-0 top-[30%] md:top-auto z-40 shadow-2xl md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200`}>
             <div className={`p-4 border-b ${activeTheme.border} flex justify-between items-center bg-black/5`}>
               <span className="font-serif font-bold text-sm tracking-tight flex items-center gap-2 text-kindle-text">
                 <FileText className="w-4 h-4 text-emerald-500" />
@@ -2002,116 +2104,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   </div>
                 )}
               </div>
-            </div>
-          </aside>
-        )}
-
-        {/* Sidebar: Gemini AI Assistant */}
-        {showAiAssistant && (
-          <aside className={`w-80 md:w-96 border-l ${activeTheme.border} ${activeTheme.card} flex flex-col z-10 animate-in slide-in-from-right duration-250`}>
-            <div className={`p-5 border-b ${activeTheme.border} flex justify-between items-center`}>
-              <span className="font-serif font-bold text-sm tracking-tight flex items-center gap-2 text-kindle-text">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                Kora Companion
-              </span>
-              <button 
-                onClick={() => setShowAiAssistant(false)} 
-                className="p-1.5 rounded-lg hover:bg-neutral-500/10 text-xs text-kindle-text font-medium"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
-              {/* Context helper */}
-              <div className="bg-[#fcfbf9] dark:bg-neutral-900 rounded-2xl p-4 border border-kindle-border text-[11px] font-sans leading-relaxed text-kindle-text-muted shadow-sm">
-                <div className="font-bold text-kindle-text mb-1.5 flex items-center gap-2 uppercase tracking-widest text-[9px]">
-                  <Info className="w-3.5 h-3.5 text-amber-500" />
-                  E-Ink Intelligent Engine
-                </div>
-                Highlight any word or passage in the text to prompt instant explanation, definition, or summarization. You can also converse directly with Kora below.
-              </div>
-
-              {selectedText && (
-                <div className="p-4 rounded-xl border border-amber-500/20 text-xs font-sans space-y-2 bg-amber-500/5">
-                  <div className="font-bold uppercase tracking-widest text-[9px] text-amber-600 dark:text-amber-400">Target Passage</div>
-                  <p className="italic line-clamp-3 text-kindle-text">"{selectedText}"</p>
-                  <button 
-                    onClick={() => setSelectedText("")} 
-                    className="text-[10px] font-semibold text-neutral-500 hover:text-kindle-text underline block pt-1"
-                  >
-                    Clear selection
-                  </button>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => requestAiAssistant("explain")}
-                  disabled={aiLoading}
-                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-500/5 active:bg-neutral-500/10 transition disabled:opacity-30 text-kindle-text"
-                >
-                  Explain
-                </button>
-                <button
-                  onClick={() => requestAiAssistant("summarize")}
-                  disabled={aiLoading}
-                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-500/5 active:bg-neutral-500/10 transition disabled:opacity-30 text-kindle-text"
-                >
-                  Summarize
-                </button>
-              </div>
-
-              {/* Core AI Output */}
-              <div className={`p-5 rounded-2xl border border-kindle-border min-h-[220px] relative font-sans text-xs flex flex-col justify-between bg-white dark:bg-neutral-950 shadow-inner overflow-hidden`}>
-                {aiLoading ? (
-                  <div className="absolute inset-0 bg-white/95 dark:bg-neutral-950/95 flex flex-col items-center justify-center gap-3 z-10 rounded-2xl animate-fade-in">
-                    <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest animate-pulse text-kindle-text-muted">Analyzing Text...</span>
-                  </div>
-                ) : null}
-
-                <div className="prose prose-sm dark:prose-invert space-y-3 max-w-full leading-relaxed overflow-x-hidden text-kindle-text">
-                  {aiResponse ? (
-                    <div className="whitespace-pre-wrap leading-relaxed select-text font-serif text-[13px]">{aiResponse}</div>
-                  ) : (
-                    <div className="text-center py-12 text-kindle-text-muted font-medium opacity-60 italic text-xs">
-                      Highlight book content or use the input below to trigger Kora insights.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Custom Ask Query Box */}
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (customAiQuery.trim()) {
-                    requestAiAssistant("chat", customAiQuery);
-                    setCustomAiQuery("");
-                  }
-                }}
-                className="space-y-3 pt-2"
-              >
-                <label className="text-[10px] font-bold uppercase tracking-widest block text-kindle-text-muted">Direct Query</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={customAiQuery}
-                    onChange={(e) => setCustomAiQuery(e.target.value)}
-                    placeholder="Search characters, themes, style..."
-                    className="flex-1 p-3 rounded-xl text-xs border border-kindle-border focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white dark:bg-neutral-900 text-kindle-text"
-                  />
-                  <button
-                    type="submit"
-                    disabled={aiLoading || !customAiQuery.trim()}
-                    className="bg-kindle-text hover:bg-[#2c2a26] disabled:opacity-40 text-kindle-bg px-5 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-sm transition"
-                  >
-                    Send
-                  </button>
-                </div>
-              </form>
             </div>
           </aside>
         )}

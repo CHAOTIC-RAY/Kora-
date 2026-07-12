@@ -204,6 +204,27 @@ export default function App() {
     setCachedBookIds(ids);
   }
 
+  // Handle physical/native back button and gesture navigation (iOS/Android/Browser edge-swipe or back button)
+  useEffect(() => {
+    if (activeBook) {
+      // Push history state to block native back navigation from leaving the application,
+      // converting it into a close-reader command instead.
+      window.history.pushState({ isReading: true, bookId: activeBook.id }, "", `#read-${activeBook.id}`);
+      
+      const handlePopState = (event: PopStateEvent) => {
+        if (!event.state || !event.state.isReading) {
+          setActiveBook(null);
+          refreshLibrary();
+        }
+      };
+      
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    }
+  }, [activeBook]);
+
   // Startup directory scan trigger
   const hasScannedRef = useRef<boolean>(false);
 
@@ -567,6 +588,9 @@ export default function App() {
             book={activeBook}
             userId={user?.uid || ""}
             onClose={() => {
+              if (window.history.state && window.history.state.isReading) {
+                window.history.back();
+              }
               setActiveBook(null);
               refreshLibrary();
             }}
@@ -582,6 +606,9 @@ export default function App() {
             userId={user?.uid || ""}
             readerPrefs={readerPrefs}
             onClose={() => {
+              if (window.history.state && window.history.state.isReading) {
+                window.history.back();
+              }
               setActiveBook(null);
               refreshLibrary();
             }}
