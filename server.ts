@@ -571,6 +571,7 @@ function isValidDownloadUrl(href: string, text: string): boolean {
 let nytBooksCache: { title: string; author: string; coverUrl: string; isbn: string }[] = [];
 let nytCacheTime = 0;
 const NYT_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours
+let isFetchingNyt = false;
 
 let lastNytRequestTime = 0;
 async function fetchNytWithDelay(url: string): Promise<Response> {
@@ -585,23 +586,16 @@ async function fetchNytWithDelay(url: string): Promise<Response> {
   return await fetch(url);
 }
 
-async function getNytBooks(): Promise<{ title: string; author: string; coverUrl: string; isbn: string }[]> {
-  const now = Date.now();
-  if (nytBooksCache.length > 0 && now - nytCacheTime < NYT_CACHE_TTL) {
-    return nytBooksCache;
-  }
-
-  const apiKey = process.env.NYT_BOOKS_API_KEY;
-  if (!apiKey || apiKey.trim() === "") {
-    return [];
-  }
-
+async function triggerNytBackgroundFetch(apiKey: string) {
+  if (isFetchingNyt) return;
+  isFetchingNyt = true;
   try {
+    console.log("[NYT Background Fetch] Fetching fresh NYT Books overview in background...");
     const response = await fetchNytWithDelay(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
-    if (!response.ok) return [];
+    if (!response.ok) return;
 
     const data = await response.json();
-    if (data.status !== "OK") return [];
+    if (data.status !== "OK") return;
 
     const books: { title: string; author: string; coverUrl: string; isbn: string }[] = [];
 
@@ -619,12 +613,29 @@ async function getNytBooks(): Promise<{ title: string; author: string; coverUrl:
     }
 
     nytBooksCache = books;
-    nytCacheTime = now;
-    console.log(`[NYT] Cached ${books.length} book covers from NYT best sellers`);
-    return books;
+    nytCacheTime = Date.now();
+    console.log(`[NYT Background Fetch] Cached ${books.length} book covers from NYT best sellers successfully.`);
   } catch (err) {
+    console.error("[NYT Background Fetch] Error during background fetch:", err);
+  } finally {
+    isFetchingNyt = false;
+  }
+}
+
+async function getNytBooks(): Promise<{ title: string; author: string; coverUrl: string; isbn: string }[]> {
+  const now = Date.now();
+  if (nytBooksCache.length > 0 && now - nytCacheTime < NYT_CACHE_TTL) {
+    return nytBooksCache;
+  }
+
+  const apiKey = process.env.NYT_BOOKS_API_KEY;
+  if (!apiKey || apiKey.trim() === "") {
     return [];
   }
+
+  // Trigger background fetch if not already fetching, returning any available (possibly stale) cache instantly
+  triggerNytBackgroundFetch(apiKey);
+  return nytBooksCache;
 }
 
 // Find NYT cover by title/author match
@@ -759,6 +770,33 @@ app.post("/api/nytimes/recommendations", express.json(), async (req, res) => {
   }
 });
 
+// NYT Overview Server-side Cache (Stale-While-Revalidate)
+let nytOverviewCache: any = null;
+let nytOverviewCacheTime = 0;
+let isFetchingNytOverview = false;
+const NYT_OVERVIEW_TTL = 12 * 60 * 60 * 1000; // 12 hours
+
+async function refreshNytOverviewBackground(apiKey: string) {
+  if (isFetchingNytOverview) return;
+  isFetchingNytOverview = true;
+  try {
+    console.log("[NYT Overview Cache] Refreshing cache in background...");
+    const response = await fetchNytWithDelay(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.status === "OK") {
+        nytOverviewCache = data;
+        nytOverviewCacheTime = Date.now();
+        console.log("[NYT Overview Cache] Background cache refresh successful.");
+      }
+    }
+  } catch (err: any) {
+    console.error("[NYT Overview Cache] Background refresh failed:", err.message);
+  } finally {
+    isFetchingNytOverview = false;
+  }
+}
+
 // NYT Best Sellers API
 app.get("/api/nytimes/overview", async (req, res) => {
   try {
@@ -770,7 +808,22 @@ app.get("/api/nytimes/overview", async (req, res) => {
       });
     }
 
-    console.log("Fetching NYT Books overview...");
+    const now = Date.now();
+    // 1. Fresh Hit
+    if (nytOverviewCache && (now - nytOverviewCacheTime < NYT_OVERVIEW_TTL)) {
+      console.log("[NYT Overview Cache] Fresh cache hit.");
+      return res.json(nytOverviewCache);
+    }
+
+    // 2. Stale Hit (Stale-While-Revalidate)
+    if (nytOverviewCache) {
+      console.log("[NYT Overview Cache] Stale cache hit. Revalidating in background...");
+      refreshNytOverviewBackground(apiKey); // trigger non-blocking refresh
+      return res.json(nytOverviewCache);
+    }
+
+    // 3. Cache Miss (Synchronous Fetch)
+    console.log("[NYT Overview Cache] Cache miss. Fetching NYT Books overview synchronously...");
     const response = await fetchNytWithDelay(`https://api.nytimes.com/svc/books/v3/lists/overview.json?api-key=${apiKey}`);
 
     if (!response.ok) {
@@ -788,6 +841,8 @@ app.get("/api/nytimes/overview", async (req, res) => {
       throw new Error(data.message || data.status || "NYT API error");
     }
 
+    nytOverviewCache = data;
+    nytOverviewCacheTime = Date.now();
     res.json(data);
   } catch (err: any) {
     console.error("NYT API handler failed:", err);
@@ -1593,7 +1648,7 @@ app.get("/api/annas-archive/search", async (req, res) => {
     
     console.log(`Executing Rave Book Search for query: "${q}", source: ${searchSource}, page: ${searchPage}`);
     
-    // Run Rave Search directly with a smart retry if results are initially scarce
+    // Run Rave Search directly
     let raveResults: any[] = [];
     let meta: any = {};
     
@@ -1602,52 +1657,7 @@ app.get("/api/annas-archive/search", async (req, res) => {
       raveResults = initial?.results || [];
       meta = initial?.meta || {};
     } catch (e) {
-      console.error("Initial fetchFromRaveBookSearch failed:", e);
-    }
-    
-    // Smart Retry / Pre-fetch wait logic for first-time searches:
-    // We poll the Rave API up to 4 times (with 1.5s delay) to wait for the worker's background scraper to finish.
-    // We break early if we get at least 25 results AND we have LibGen present, OR if the result count stops growing.
-    if (searchPage === 1 && Array.isArray(raveResults)) {
-      let attempts = 0;
-      const maxAttempts = 4;
-      
-      while (attempts < maxAttempts) {
-        const hasLibgen = raveResults.some(r => 
-          r && (
-            r.source === "Library Genesis" || 
-            (r.source && typeof r.source === "string" && r.source.toLowerCase().includes("libgen")) || 
-            (r.downloadUrl && typeof r.downloadUrl === "string" && r.downloadUrl.toLowerCase().includes("libgen")) ||
-            (r.downloadUrl && typeof r.downloadUrl === "string" && r.downloadUrl.toLowerCase().includes("library.lol"))
-          )
-        );
-
-        if (raveResults.length >= 25 && hasLibgen) {
-          break;
-        }
-
-        attempts++;
-        console.log(`[Search Delay Bypass] Query "${q}" has ${raveResults.length} results (LibGen present: ${hasLibgen}). Attempt ${attempts}/${maxAttempts}: Waiting 1500ms for background scraper to populate...`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        try {
-          const retryResult = await fetchFromRaveBookSearch(q as string, "ebooks", searchSource, searchPage);
-          const retryResultsList = retryResult?.results || [];
-          if (retryResultsList.length > raveResults.length) {
-            console.log(`[Search Delay Bypass] Attempt ${attempts} succeeded! Got ${retryResultsList.length} results (previously ${raveResults.length}).`);
-            raveResults = retryResultsList;
-            meta = retryResult?.meta || {};
-          } else {
-            console.log(`[Search Delay Bypass] Attempt ${attempts} finished, result count stayed at ${raveResults.length}.`);
-            // If we already have Libgen and the count didn't increase, we can stop early
-            if (hasLibgen) {
-              break;
-            }
-          }
-        } catch (retryErr) {
-          console.error(`[Search Delay Bypass] Retry attempt ${attempts} failed:`, retryErr);
-        }
-      }
+      console.error("fetchFromRaveBookSearch failed:", e);
     }
     
     // Ensure raveResults is indeed an array before mapping/forEach
@@ -1692,96 +1702,122 @@ app.get("/api/annas-archive/search", async (req, res) => {
 // 7. API: Anna's Archive Download
 app.get("/api/annas-archive/download", async (req, res) => {
   try {
-    const { md5, iaId: iaIdParam } = req.query;
+    const { md5, iaId: iaIdParam, url: directUrlParam } = req.query;
     if (!md5) return res.status(400).json({ error: "md5 is required." });
 
     const cachedBook = bookCache.get(md5 as string);
-    let downloadLinks: any[] = [];
-
     const md5Str = md5 as string;
     const isRealMd5 = /^[a-f0-9]{32}$/i.test(md5Str);
 
+    let directLinks: any[] = [];
+    let backupLinks: any[] = [];
+
+    // Resolve direct URL
+    const raveUrl = (directUrlParam as string) || (cachedBook?.downloadUrl as string) || "";
+
+    // Resolve IA ID
+    let iaId = (iaIdParam as string) || (cachedBook?.iaId as string) || "";
+    if (!iaId && raveUrl) {
+      const match = raveUrl.match(/archive\.org\/(details|download)\/([^/]+)/i);
+      if (match) {
+        iaId = match[2];
+      }
+    }
+
+    // 1. First Priority: Rave Direct Link (if available and not an IA details page)
+    if (raveUrl) {
+      const isIaDetails = raveUrl.includes("archive.org/details/");
+      if (!isIaDetails) {
+        const urlLower = raveUrl.toLowerCase();
+        const isSlow = urlLower.includes("/slow_download/") || urlLower.includes("annas-archive");
+        directLinks.push({
+          label: isSlow ? "Anna's Archive (Slow/Manual)" : "Rave Direct Download (Recommended)",
+          url: raveUrl,
+          isDirect: !isSlow
+        });
+      } else {
+        backupLinks.push({
+          label: "Internet Archive (Manual)",
+          url: raveUrl,
+          isDirect: false
+        });
+      }
+    }
+
+    // 2. Second Priority: Internet Archive Direct Links
+    if (iaId) {
+      try {
+        const metaRes = await fetch(`https://archive.org/metadata/${iaId}`, {
+          headers: { "User-Agent": "Mozilla/5.0" },
+          signal: AbortSignal.timeout(4000)
+        });
+        if (metaRes.ok) {
+          const meta = await metaRes.json();
+          const files: any[] = meta.files || [];
+          const epubFile = files.find((f: any) => f.name?.endsWith(".epub"));
+          const pdfFile = files.find((f: any) => f.name?.endsWith(".pdf"));
+          if (epubFile) {
+            directLinks.push({
+              label: "Internet Archive (EPUB)",
+              url: `https://archive.org/download/${iaId}/${encodeURIComponent(epubFile.name)}`,
+              isDirect: true
+            });
+          }
+          if (pdfFile) {
+            directLinks.push({
+              label: "Internet Archive (PDF)",
+              url: `https://archive.org/download/${iaId}/${encodeURIComponent(pdfFile.name)}`,
+              isDirect: true
+            });
+          }
+        }
+      } catch (e: any) {
+        console.warn("Failed to resolve archive.org item:", e.message);
+      }
+
+      // Also add manual link as backup if not already added
+      const hasManualIa = backupLinks.some(l => l.url.includes(iaId));
+      if (!hasManualIa) {
+        backupLinks.push({
+          label: "Internet Archive (Manual)",
+          url: `https://archive.org/details/${iaId}`,
+          isDirect: false
+        });
+      }
+    }
+
+    // 3. Third Priority: Standard Libgen / Library.lol mirrors
     if (isRealMd5) {
-      // 1. Prioritize Direct Mirror (library.lol) - Recommended because proxy-file handles it programmatically
-      downloadLinks.push({
+      // Direct Mirror (library.lol)
+      directLinks.push({
         label: "Library.lol (Recommended)",
         url: `https://library.lol/main/${md5Str}`,
         isDirect: true
       });
 
-      // 2. Add Libgen Mirror (libgen.li)
-      downloadLinks.push({
+      // Libgen Mirror (libgen.li)
+      directLinks.push({
         label: "Libgen Mirror",
         url: `https://libgen.li/get.php?md5=${md5Str.toLowerCase()}`,
         isDirect: true
       });
 
-      // 3. Add cached direct links if they exist and are not slow links
-      if (cachedBook && cachedBook.downloadUrl) {
-        const urlLower = cachedBook.downloadUrl.toLowerCase();
-        const isSlow = urlLower.includes("/slow_download/") || urlLower.includes("annas-archive");
-        const alreadyHas = downloadLinks.some(l => l.url === cachedBook.downloadUrl);
-        if (!alreadyHas) {
-          downloadLinks.push({
-            label: isSlow ? "Anna's Archive (Slow/Manual)" : "Direct Download Mirror",
-            url: cachedBook.downloadUrl,
-            isDirect: !isSlow
-          });
-        }
-      }
-
-      // 4. Add Anna's Archive lookup page as manual backup
-      downloadLinks.push({
+      // Anna's Archive lookup page as manual backup
+      backupLinks.push({
         label: "Anna's Archive (Manual)",
         url: `https://annas-archive.org/md5/${md5Str}`,
         isDirect: false
       });
-    } else {
-      // Not a real 32-character hex MD5 - likely an Internet Archive SHA-256 or pseudo-id
-      const iaId = iaIdParam as string || cachedBook?.iaId || "";
-      const downloadUrl = cachedBook?.downloadUrl || "";
+    }
 
-      if (iaId) {
-        try {
-          const metaRes = await fetch(`https://archive.org/metadata/${iaId}`, {
-            headers: { "User-Agent": "Mozilla/5.0" },
-            signal: AbortSignal.timeout(8000)
-          });
-          if (metaRes.ok) {
-            const meta = await metaRes.json();
-            const files: any[] = meta.files || [];
-            const epubFile = files.find((f: any) => f.name?.endsWith(".epub"));
-            const pdfFile = files.find((f: any) => f.name?.endsWith(".pdf"));
-            if (epubFile) {
-              downloadLinks.push({
-                label: "Internet Archive (EPUB)",
-                url: `https://archive.org/download/${iaId}/${encodeURIComponent(epubFile.name)}`,
-                isDirect: true
-              });
-            }
-            if (pdfFile) {
-              downloadLinks.push({
-                label: "Internet Archive (PDF)",
-                url: `https://archive.org/download/${iaId}/${encodeURIComponent(pdfFile.name)}`,
-                isDirect: true
-              });
-            }
-          }
-        } catch (e: any) {
-          console.warn("Failed to resolve archive.org item:", e.message);
-        }
-      }
+    // Combine and Deduplicate
+    const seenUrls = new Set<string>();
+    const downloadLinks: any[] = [];
 
-      if (downloadUrl) {
-        const alreadyHas = downloadLinks.some(l => l.url === downloadUrl);
-        if (!alreadyHas) {
-          const isIaDetails = downloadUrl.includes("archive.org/details/");
-          downloadLinks.push({
-            label: isIaDetails ? "Internet Archive (Manual)" : "Source Mirror",
-            url: downloadUrl,
-            isDirect: !isIaDetails
-          });
-        }
+    for (const link of [...directLinks, ...backupLinks]) {
+      if (!seenUrls.has(link.url)) {
+        seenUrls.add(link.url);
+        downloadLinks.push(link);
       }
     }
 
