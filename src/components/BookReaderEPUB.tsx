@@ -1996,7 +1996,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setDoubleColumns(!doubleColumns)}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
+                    className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
                     title="Toggle two-column spread (KOReader style)"
                   >
                     <Layout className="w-3.5 h-3.5" /> 2-Page

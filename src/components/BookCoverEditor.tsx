@@ -13,7 +13,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
   const [activeTab, setActiveTab] = useState<"search" | "upload">("search");
   const [searchQuery, setSearchQuery] = useState(`${book.title} ${book.author}`);
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<string[]>([]);
+  const [results, setResults] = useState<{ url: string; source: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 
@@ -22,20 +22,121 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/open-library/search?q=${encodeURIComponent(searchQuery)}`);
-      const data = await res.json();
-      
-      const covers = (data.docs || [])
-        .filter((doc: any) => doc.cover_i)
-        .map((doc: any) => `/api/proxy-image?url=${encodeURIComponent(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)}`)
-        .slice(0, 12);
-        
-      setResults(covers);
-      if (covers.length === 0) {
+      const searchPromises = [];
+
+      // 1. Open Library
+      searchPromises.push(
+        fetch(`/api/open-library/search?q=${encodeURIComponent(searchQuery)}`)
+          .then(async (res) => {
+            if (!res.ok) return [];
+            const data = await res.json();
+            return (data.docs || [])
+              .filter((doc: any) => doc.cover_i)
+              .map((doc: any) => ({
+                url: `/api/proxy-image?url=${encodeURIComponent(`https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`)}`,
+                source: "Open Library"
+              }))
+              .slice(0, 6);
+          })
+          .catch(() => [])
+      );
+
+      // 2. Google Books API
+      searchPromises.push(
+        fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchQuery)}&maxResults=6`)
+          .then(async (res) => {
+            if (!res.ok) return [];
+            const data = await res.json();
+            return (data.items || [])
+              .filter((item: any) => item.volumeInfo?.imageLinks?.thumbnail)
+              .map((item: any) => {
+                let thumb = item.volumeInfo.imageLinks.thumbnail;
+                thumb = thumb.replace("&edge=curl", "");
+                if (thumb.startsWith("http://")) thumb = thumb.replace("http://", "https://");
+                return {
+                  url: `/api/proxy-image?url=${encodeURIComponent(thumb)}`,
+                  source: "Google Books"
+                };
+              });
+          })
+          .catch(() => [])
+      );
+
+      // 3. Anna's Archive dynamic search
+      searchPromises.push(
+        fetch(`/api/annas-archive/search?q=${encodeURIComponent(searchQuery)}`)
+          .then(async (res) => {
+            if (!res.ok) return [];
+            const data = await res.json();
+            const list = data.books || data.results || [];
+            return list
+              .filter((item: any) => item && item.coverUrl)
+              .map((item: any) => ({
+                url: item.coverUrl,
+                source: "Ana's Archive"
+              }))
+              .slice(0, 6);
+          })
+          .catch(() => [])
+      );
+
+      // 4. NYT bestseller list dynamic overview match
+      searchPromises.push(
+        fetch(`/api/nytimes/overview`)
+          .then(async (res) => {
+            if (!res.ok) return [];
+            const data = await res.json();
+            const lists = data.results?.lists || [];
+            const booksInList = lists.flatMap((list: any) => list.books || []);
+            const queryLower = searchQuery.toLowerCase().trim();
+            return booksInList
+              .filter((b: any) => 
+                b && 
+                b.book_image && 
+                ((b.title || "").toLowerCase().includes(queryLower) || 
+                 queryLower.includes((b.title || "").toLowerCase()))
+              )
+              .map((b: any) => ({
+                url: b.book_image,
+                source: "NYT Best Sellers"
+              }))
+              .slice(0, 6);
+          })
+          .catch(() => [])
+      );
+
+      const resultsArray = await Promise.all(searchPromises);
+      let combinedResults = resultsArray.flat();
+
+      // Always prepend direct matches for the current book
+      // 5. Direct Anna's Archive Match (if book md5 is available)
+      if (book.md5) {
+        combinedResults.unshift({
+          url: `/api/cover-redirect?md5=${book.md5}`,
+          source: "Ana's Archive"
+        });
+      }
+
+      // 6. Direct NYT Bestseller Match
+      combinedResults.unshift({
+        url: `/api/cover-redirect?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || "")}`,
+        source: "NYT Best Sellers"
+      });
+
+      // De-duplicate results by URL
+      const seen = new Set<string>();
+      const finalResults = combinedResults.filter(item => {
+        if (!item.url || seen.has(item.url)) return false;
+        seen.add(item.url);
+        return true;
+      });
+
+      setResults(finalResults);
+      if (finalResults.length === 0) {
         setError("No covers found for this search. Try a different query.");
       }
     } catch (err) {
-      setError("Failed to search Open Library.");
+      setError("Failed to search book covers.");
     } finally {
       setLoading(false);
     }
@@ -135,21 +236,24 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 text-kindle-text-muted">
                   <Loader2 className="w-8 h-8 animate-spin mb-4" />
-                  <p className="text-xs uppercase tracking-widest font-bold">Searching Open Library...</p>
+                  <p className="text-xs uppercase tracking-widest font-bold">Searching Cover Sources...</p>
                 </div>
               ) : error ? (
                 <p className="text-center py-20 text-red-500 text-xs">{error}</p>
               ) : (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-                  {results.map((url, idx) => (
+                  {results.map((item, idx) => (
                     <button 
                       key={idx} 
-                      onClick={() => handleSelectCover(url)}
-                      className="aspect-[3/4] rounded-lg overflow-hidden border border-kindle-border hover:border-kindle-accent transition group relative"
+                      onClick={() => handleSelectCover(item.url)}
+                      className="aspect-[3/4] rounded-xl overflow-hidden border border-kindle-border hover:border-kindle-accent transition group relative bg-neutral-50 flex items-center justify-center animate-in fade-in zoom-in-95 duration-200"
                     >
-                      <img src={url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 flex items-center justify-center transition">
-                        <Check className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition" />
+                      <img src={item.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+                      <div className="absolute top-1.5 left-1.5 bg-black/85 text-white text-[7px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded shadow-sm">
+                        {item.source}
+                      </div>
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 flex items-center justify-center transition">
+                        <Check className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition" />
                       </div>
                     </button>
                   ))}

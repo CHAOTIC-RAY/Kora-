@@ -225,6 +225,38 @@ export default function App() {
     }
   }, [activeBook]);
 
+  // Keep track of the active tab before transitioning to settings
+  const prevTabRef = useRef<"library" | "discover" | "downloads" | "settings" | "notes">("library");
+  useEffect(() => {
+    if (activeTab !== "settings") {
+      prevTabRef.current = activeTab;
+    }
+  }, [activeTab]);
+
+  // Handle physical/native back button and gesture navigation for the settings tab on mobile
+  const lastTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (activeTab === "settings") {
+      window.history.pushState({ isSettings: true }, "", "#settings");
+      
+      const handlePopState = (event: PopStateEvent) => {
+        if (!event.state || !event.state.isSettings) {
+          setActiveTab(prevTabRef.current);
+        }
+      };
+      
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    } else {
+      if (lastTabRef.current === "settings" && window.history.state && window.history.state.isSettings) {
+        window.history.back();
+      }
+    }
+    lastTabRef.current = activeTab;
+  }, [activeTab]);
+
   // Startup directory scan trigger
   const hasScannedRef = useRef<boolean>(false);
 
@@ -548,6 +580,7 @@ export default function App() {
         {activeTab === "settings" && (
           <SettingsView 
             user={user}
+            userId={user?.uid || ""}
             grayscaleCovers={grayscaleCovers}
             onToggleGrayscale={toggleGrayscale}
             displayTheme={displayTheme}
@@ -564,6 +597,7 @@ export default function App() {
             onClearRecentSearches={handleClearRecentSearches}
             books={books}
             onRefreshLibrary={refreshLibrary}
+            onCachedIdsChanged={updateCachedBookIndex}
           />
         )}
       </main>
