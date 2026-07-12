@@ -1802,7 +1802,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 </div>
               )}
 
-              {/* The Chapter Text Container */}
+              {/* The Chapter Text Container — a strict single-page viewport */}
               <div 
                 onPointerUp={handleContainerClick}
                 className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start justify-center select-none cursor-default"
@@ -1840,7 +1840,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     columnGap: '40px',
                     height: '100%',
                     columnFill: 'auto',
-                    overflow: 'visible'
+                    // Strictly clip to the current page so exactly one page (or one
+                    // 2-page spread) is visible at a time — true page-by-page reading.
+                    overflow: 'hidden',
+                    // Center "book spine" gutter between the two columns in 2-col mode
+                    boxShadow: doubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none'
                   }}
                 >
                   <div className={`mb-6 border-b ${activeTheme.border} pb-4`} style={{ columnSpan: "all" }}>
