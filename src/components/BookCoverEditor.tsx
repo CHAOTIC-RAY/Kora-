@@ -11,7 +11,34 @@ interface BookCoverEditorProps {
 
 export default function BookCoverEditor({ book, userId, onClose, onUpdate }: BookCoverEditorProps) {
   const [activeTab, setActiveTab] = useState<"search" | "upload">("search");
-  const [searchQuery, setSearchQuery] = useState(`${book.title} ${book.author}`);
+  
+  const cleanSearchQuery = (title: string, author: string) => {
+    const cleanTitle = (title || "")
+      .replace(/\b\d{10,13}\b/g, ' ') // Remove ISBNs
+      .replace(/:(.*?)author(.*?)$/i, ' ') // Remove trailing subtitle with 'author'
+      .replace(/:(.*?)novellas?(.*?)$/i, ' ')
+      .replace(/^\d+[\.\-]?\s*/, ' ') // Remove leading numbers (e.g., "1. ")
+      .replace(/\(.*\)/g, ' ')
+      .replace(/#\d+/g, ' ')
+      .replace(/volume\s+\d+/gi, ' ')
+      .replace(/book\s+\d+/gi, ' ')
+      .replace(/[^\w\s-]/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+      
+    const cleanAuthor = (author || "")
+      .replace(/,\s*author/gi, ' ')
+      .replace(/\b\d{4}-\d{4}\b/g, ' ') // 1922-2012
+      .replace(/\bUnknown\b/gi, ' ')
+      .replace(/\(.*\)/g, ' ')
+      .replace(/[^\w\s-]/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return `${cleanTitle} ${cleanAuthor}`.trim();
+  };
+
+  const [searchQuery, setSearchQuery] = useState(cleanSearchQuery(book.title, book.author || ""));
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{ url: string; source: string }[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -188,33 +215,33 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in fade-in duration-200">
+      <div className="relative w-full max-w-2xl bg-kindle-card rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in fade-in duration-200 border border-kindle-border">
         <div className="p-6 border-b border-kindle-border flex items-center justify-between">
           <div className="space-y-1">
-            <h3 className="text-lg font-bold font-sans tracking-tight">Edit Book Cover</h3>
+            <h3 className="text-lg font-bold font-sans tracking-tight text-kindle-text">Edit Book Cover</h3>
             <p className="text-[10px] text-kindle-text-muted font-bold uppercase tracking-widest">{book.title}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-neutral-100 rounded-xl transition">
+          <button onClick={onClose} className="p-2 hover:bg-kindle-bg rounded-xl transition text-kindle-text">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex border-b border-kindle-border">
+        <div className="flex border-b border-kindle-border bg-kindle-card">
           <button 
             onClick={() => setActiveTab("search")}
-            className={`flex-1 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeTab === "search" ? "bg-white text-kindle-accent border-b-2 border-kindle-accent" : "bg-neutral-50 text-kindle-text-muted hover:bg-neutral-100"}`}
+            className={`flex-1 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeTab === "search" ? "bg-kindle-bg text-kindle-accent border-b-2 border-kindle-accent" : "bg-kindle-card text-kindle-text-muted hover:bg-kindle-bg"}`}
           >
             Search Online
           </button>
           <button 
             onClick={() => setActiveTab("upload")}
-            className={`flex-1 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeTab === "upload" ? "bg-white text-kindle-accent border-b-2 border-kindle-accent" : "bg-neutral-50 text-kindle-text-muted hover:bg-neutral-100"}`}
+            className={`flex-1 py-4 text-[10px] font-bold uppercase tracking-widest transition-colors ${activeTab === "upload" ? "bg-kindle-bg text-kindle-accent border-b-2 border-kindle-accent" : "bg-kindle-card text-kindle-text-muted hover:bg-kindle-bg"}`}
           >
             Upload Custom
           </button>
         </div>
 
-        <div className="p-6 h-[400px] overflow-y-auto custom-scrollbar">
+        <div className="p-6 h-[400px] overflow-y-auto custom-scrollbar bg-kindle-bg">
           {activeTab === "search" ? (
             <div className="space-y-6">
               <div className="flex gap-2">
@@ -222,12 +249,12 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
                   type="text" 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 bg-neutral-50 border border-kindle-border rounded-xl px-4 py-2 text-sm outline-none focus:border-kindle-accent transition"
+                  className="flex-1 bg-kindle-card border border-kindle-border text-kindle-text rounded-xl px-4 py-2 text-sm outline-none focus:border-kindle-accent transition"
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 />
                 <button 
                   onClick={handleSearch}
-                  className="px-4 py-2 bg-kindle-text text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent transition"
+                  className="px-4 py-2 bg-kindle-text text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent hover:text-white transition"
                 >
                   <Search className="w-4 h-4" />
                 </button>
@@ -235,7 +262,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
 
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 text-kindle-text-muted">
-                  <Loader2 className="w-8 h-8 animate-spin mb-4" />
+                  <Loader2 className="w-8 h-8 animate-spin mb-4 text-kindle-accent" />
                   <p className="text-xs uppercase tracking-widest font-bold">Searching Cover Sources...</p>
                 </div>
               ) : error ? (
@@ -246,7 +273,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
                     <button 
                       key={idx} 
                       onClick={() => handleSelectCover(item.url)}
-                      className="aspect-[3/4] rounded-xl overflow-hidden border border-kindle-border hover:border-kindle-accent transition group relative bg-neutral-50 flex items-center justify-center animate-in fade-in zoom-in-95 duration-200"
+                      className="aspect-[3/4] rounded-xl overflow-hidden border border-kindle-border hover:border-kindle-accent transition group relative bg-kindle-card flex items-center justify-center animate-in fade-in zoom-in-95 duration-200"
                     >
                       <img src={item.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
                       <div className="absolute top-1.5 left-1.5 bg-black/85 text-white text-[7px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded shadow-sm">
@@ -261,15 +288,15 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
               )}
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-kindle-border rounded-3xl bg-neutral-50/50 p-8 text-center space-y-4">
-              <div className="p-4 bg-white rounded-full shadow-md">
+            <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-kindle-border rounded-3xl bg-kindle-card p-8 text-center space-y-4">
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-full shadow-md">
                 {uploading ? <Loader2 className="w-8 h-8 animate-spin text-kindle-accent" /> : <Upload className="w-8 h-8 text-kindle-text-muted" />}
               </div>
               <div className="space-y-1">
-                <h4 className="font-bold text-sm">Select high-quality cover image</h4>
+                <h4 className="font-bold text-sm text-kindle-text">Select high-quality cover image</h4>
                 <p className="text-xs text-kindle-text-muted">Supports JPG, PNG, WEBP</p>
               </div>
-              <label className="px-6 py-3 bg-kindle-text text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent transition cursor-pointer shadow-lg inline-flex items-center gap-2">
+              <label className="px-6 py-3 bg-kindle-text text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent transition cursor-pointer shadow-lg inline-flex items-center gap-2 hover:text-white">
                 <ImageIcon className="w-4 h-4" />
                 Choose File
                 <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
