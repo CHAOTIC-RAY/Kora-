@@ -138,6 +138,20 @@ h1, h2, h3, h4 {
   background: var(--color-kindle-text-muted);
 }
 
+/* Hide scrollbars completely on mobile (screens 768px and under) */
+@media (max-w: 768px) {
+  ::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  
+  * {
+    -ms-overflow-style: none !important;  /* IE and Edge */
+    scrollbar-width: none !important;  /* Firefox */
+  }
+}
+
 .kindle-card {
   background-color: var(--color-kindle-card);
   border-color: var(--color-kindle-border);

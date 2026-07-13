@@ -444,92 +444,85 @@ export default function LibraryManager({
   }) ? 3 : 1; // standard streak mock or fallback
 
   return (
-    <div id="library-manager-section" className="space-y-8 pb-10">
+    <div id="library-manager-section" className="space-y-4 md:space-y-8 pb-4 md:pb-10">
       
       {/* 1. Interactive Header & Collapsible Stats/Streak Summary */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-kindle-border font-sans">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-4 pb-2 md:pb-4 border-b border-kindle-border font-sans">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-kindle-text">Library</h1>
-          <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Focus &amp; Collections</p>
+          <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Library</h1>
+          <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Focus &amp; Collections</p>
         </div>
       </header>
 
-      {/* 3. Shelves / Collections Bar (Instantly accessible on first scroll) */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide px-1">
-          {["All", "To Read", "Reading", "Completed", "Favorites", ...availableTags].map((shelf) => (
-            <button
-              key={shelf}
-              onClick={() => {
-                setActiveShelf(shelf);
-                if (shelf === "All") { setFilterStatus("all"); setFilterTag("all"); }
-                else if (shelf === "To Read") { setFilterStatus("to-read"); setFilterTag("all"); }
-                else if (shelf === "Reading") { setFilterStatus("reading"); setFilterTag("all"); }
-                else if (shelf === "Completed") { setFilterStatus("completed"); setFilterTag("all"); }
-                else if (shelf === "Favorites") { setFilterStatus("all"); setFilterTag("all"); /* handle fav */ }
-                else { setFilterStatus("all"); setFilterTag(shelf); }
-              }}
-              className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border transition whitespace-nowrap cursor-pointer ${
-                activeShelf === shelf 
-                  ? "bg-kindle-text text-kindle-bg border-transparent shadow-md" 
-                  : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text"
-              }`}
-            >
-              {shelf}
-            </button>
-          ))}
-          <button onClick={() => setShowTagConfig(true)} className="px-3 py-2 rounded-full border border-kindle-border text-kindle-text-muted hover:text-kindle-text transition cursor-pointer" title="Manage Collections">
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </section>
-
-
-
-
-
       {/* 3. Full Library Section with Search/Filter */}
-      <section className="space-y-6 pt-8 border-t border-kindle-border">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Full Library</h2>
-        </div>
-
-        {/* Filter and Query Control Dashboard */}
-        <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-kindle-card/50 p-4 border border-kindle-border rounded-kindle font-sans text-xs">
-          <div className="w-full md:w-64 relative">
+      <section className="space-y-5">
+        <div className="space-y-4">
+          {/* Search Bar - styled identically to Discover view */}
+          <div className="relative group max-w-2xl w-full">
+            <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
             <input
               id="library-search-input"
               type="text"
-              placeholder="Filter library..."
+              placeholder="Filter library by title, author..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-kindle-bg border border-kindle-border rounded-xl pl-9 pr-4 py-2.5 text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent placeholder-kindle-text-muted"
+              className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
             />
-            <Search className="w-3.5 h-3.5 absolute left-3.5 top-3.5 text-kindle-text-muted" />
           </div>
 
-          <div className="w-full md:w-auto flex flex-wrap gap-2 items-center justify-start md:justify-end">
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[10px] font-bold uppercase tracking-widest"
-            >
-              <option value="all">Status: All</option>
-              <option value="to-read">To Read</option>
-              <option value="reading">Reading</option>
-              <option value="completed">Completed</option>
-            </select>
+          {/* Shelves / Collections Chips (Bellow the search bar, smaller and compact) */}
+          <div className="flex flex-col gap-3 font-sans">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+              {["All", "To Read", "Reading", "Completed", "Favorites", ...availableTags].map((shelf) => (
+                <button
+                  key={shelf}
+                  onClick={() => {
+                    setActiveShelf(shelf);
+                    if (shelf === "All") { setFilterStatus("all"); setFilterTag("all"); }
+                    else if (shelf === "To Read") { setFilterStatus("to-read"); setFilterTag("all"); }
+                    else if (shelf === "Reading") { setFilterStatus("reading"); setFilterTag("all"); }
+                    else if (shelf === "Completed") { setFilterStatus("completed"); setFilterTag("all"); }
+                    else if (shelf === "Favorites") { setFilterStatus("all"); setFilterTag("all"); /* handle fav */ }
+                    else { setFilterStatus("all"); setFilterTag(shelf); }
+                  }}
+                  className={`px-3.5 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider border transition whitespace-nowrap cursor-pointer ${
+                    activeShelf === shelf 
+                      ? "bg-kindle-text text-kindle-bg border-transparent shadow-sm" 
+                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text"
+                  }`}
+                >
+                  {shelf}
+                </button>
+              ))}
+              <button onClick={() => setShowTagConfig(true)} className="px-2.5 py-1.5 rounded-full border border-kindle-border text-kindle-text-muted hover:text-kindle-text transition cursor-pointer flex items-center justify-center shrink-0" title="Manage Collections">
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
 
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[10px] font-bold uppercase tracking-widest"
-            >
-              <option value="dateAdded">Sort: Newest</option>
-              <option value="progress">Sort: Progress</option>
-              <option value="rating">Sort: Rating</option>
-              <option value="title">Sort: Title</option>
-            </select>
+            {/* Dropdowns */}
+            <div className="flex flex-wrap gap-1.5 items-center justify-start">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="bg-kindle-card border border-kindle-border rounded-full px-2.5 py-1 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[9px] font-bold uppercase tracking-wider cursor-pointer shadow-xs"
+              >
+                <option value="all">Status: All</option>
+                <option value="to-read">To Read</option>
+                <option value="reading">Reading</option>
+                <option value="completed">Completed</option>
+              </select>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-kindle-card border border-kindle-border rounded-full px-2.5 py-1 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[9px] font-bold uppercase tracking-wider cursor-pointer shadow-xs"
+              >
+                <option value="dateAdded">Sort: Newest</option>
+                <option value="progress">Sort: Progress</option>
+                <option value="rating">Sort: Rating</option>
+                <option value="title">Sort: Title</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -539,7 +532,7 @@ export default function LibraryManager({
             <h3 className="font-sans font-bold text-xs text-kindle-text-muted uppercase tracking-widest">No books found</h3>
           </div>
         ) : (
-          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
+          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 md:gap-6 space-y-3 md:space-y-6">
             {finalRenderedBooks.map((book) => {
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
@@ -571,7 +564,7 @@ export default function LibraryManager({
                       <>
                         <img
                           src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
-                          className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
+                          className={`w-full aspect-[2/3] object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
                           referrerPolicy="no-referrer"
                           onContextMenu={(e) => e.preventDefault()}
                           onError={(e) => {
@@ -581,7 +574,7 @@ export default function LibraryManager({
                             if (fallback) fallback.style.display = 'flex';
                           }}
                         />
-                        <div className="w-full aspect-[3/4] bg-kindle-card flex-col items-center justify-center p-4 text-center hidden">
+                        <div className="w-full aspect-[2/3] bg-kindle-card flex-col items-center justify-center p-4 text-center hidden">
                           <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
                           <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
                         </div>
@@ -642,40 +635,41 @@ export default function LibraryManager({
                     </div>
                   </div>
 
-                  <div className="p-3 flex flex-col justify-between flex-1">
-                    <div className="space-y-1.5">
-                      <h4 className="text-[10px] font-bold text-kindle-text leading-tight line-clamp-2 font-sans" title={book.title}>
-                        {book.title}
-                      </h4>
+                  <div className="p-1.5 flex flex-col gap-0.5 flex-1 font-sans">
+                    <h4 className="text-[10px] font-bold text-kindle-text leading-tight line-clamp-1" title={book.title}>
+                      {book.title}
+                    </h4>
+                    
+                    <div className="flex items-center justify-between text-[8px] text-kindle-text-muted font-bold tracking-tight mt-0.5">
+                      <div className="flex items-center gap-1">
+                        <span>{progressPercent}%</span>
+                        <span>•</span>
+                        <span className="uppercase">{book.extension}</span>
+                        <span>•</span>
+                        <span className="uppercase">
+                          {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
+                        </span>
+                      </div>
                       
-                      {/* Visual progress bar and reading percentage indicator */}
-                      <div className="space-y-1 pt-0.5 font-sans">
-                        <div className="flex justify-between items-center text-[8px] text-kindle-text-muted font-bold tracking-tight">
-                          <span>{progressPercent}% READ</span>
-                          <span className="uppercase text-[7px] bg-neutral-200 dark:bg-neutral-800 px-1 py-0.5 rounded-sm">
-                            {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
-                          </span>
-                        </div>
-                        <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              book.status === "completed" ? "bg-emerald-600 dark:bg-emerald-500" : "bg-kindle-text"
-                            }`} 
-                            style={{ width: `${progressPercent}%` }} 
-                          />
-                        </div>
+                      <div className="shrink-0">
+                        {isCached ? (
+                          <CheckCircle className="w-2.5 h-2.5 text-emerald-600" />
+                        ) : syncingBookIds.has(book.id) ? (
+                          <div className="w-2.5 h-2.5 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Cloud className="w-2.5 h-2.5 text-blue-500 opacity-60" />
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center mt-3 pt-2 border-t border-kindle-border/30 font-sans">
-                      <span className="text-[8px] font-bold text-kindle-text-muted uppercase tracking-widest">{book.extension}</span>
-                      {isCached ? (
-                        <CheckCircle className="w-3 h-3 text-emerald-600" />
-                      ) : syncingBookIds.has(book.id) ? (
-                        <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <Cloud className="w-3 h-3 text-blue-500" />
-                      )}
+                    {/* Compact elegant progress line */}
+                    <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-0.5 rounded-full overflow-hidden mt-1">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          book.status === "completed" ? "bg-emerald-600 dark:bg-emerald-500" : "bg-kindle-text"
+                        }`} 
+                        style={{ width: `${progressPercent}%` }} 
+                      />
                     </div>
                   </div>
                 </div>
@@ -1002,7 +996,7 @@ export default function LibraryManager({
                 <>
                   <img
                     src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}
-                    className="w-12 h-16 object-cover rounded-lg border border-kindle-border/60 shadow-sm"
+                    className="w-12 aspect-[2/3] object-cover rounded-lg border border-kindle-border/60 shadow-sm"
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       const img = e.currentTarget;
@@ -1023,8 +1017,8 @@ export default function LibraryManager({
               <div className="overflow-hidden">
                 <h4 className="font-serif font-bold text-sm leading-tight truncate">{longPressedBook.title}</h4>
                 <p className="text-[11px] text-kindle-text-muted mt-1 truncate">{longPressedBook.author}</p>
-                <span className="inline-block mt-1.5 text-[8px] font-bold uppercase tracking-widest bg-kindle-bg border border-kindle-border px-1.5 py-0.5 rounded">
-                  {longPressedBook.extension}
+                <span className="inline-block mt-1.5 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                  Format: {longPressedBook.extension || 'UNKNOWN'}
                 </span>
               </div>
             </div>

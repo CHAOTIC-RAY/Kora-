@@ -72,7 +72,7 @@ Include phonetic spelling, origin/etymology (historical development of the word)
 Baseline data (optional): ${freeData ? JSON.stringify(freeData) : "None"}`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash-exp",
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
@@ -129,7 +129,7 @@ Baseline data (optional): ${freeData ? JSON.stringify(freeData) : "None"}`;
 });
 
 // NYT Book Details Endpoint powered by Gemini & NYT Books API
-app.get("/api/nyt/book-details", async (req, res) => {
+app.get(["/api/nyt/book-details", "/api/nytimes/book-details"], async (req, res) => {
   const title = req.query.title as string;
   const author = req.query.author as string;
   if (!title) {
@@ -182,7 +182,7 @@ Bestseller history: ${nytBestsellerData ? JSON.stringify(nytBestsellerData) : "N
 Reviews history: ${nytReviewsData ? JSON.stringify(nytReviewsData) : "None found"}`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: "gemini-2.0-flash-exp",
       contents: userPrompt,
       config: {
         systemInstruction: systemPrompt,
@@ -202,6 +202,17 @@ Reviews history: ${nytReviewsData ? JSON.stringify(nytReviewsData) : "None found
             pageCount: { type: Type.INTEGER },
             publishYear: { type: Type.STRING },
             publisher: { type: Type.STRING },
+            language: { type: Type.STRING, description: "Language code like 'en', 'es', etc." },
+            industryIdentifiers: { 
+              type: Type.ARRAY, 
+              items: { 
+                type: Type.OBJECT,
+                properties: {
+                  type: { type: Type.STRING, description: "ISBN_10 or ISBN_13" },
+                  identifier: { type: Type.STRING }
+                }
+              }
+            },
             subjects: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Up to 5 genre tags or subjects" }
           }
         }
@@ -628,7 +639,7 @@ async function getNytBooks(): Promise<{ title: string; author: string; coverUrl:
     return nytBooksCache;
   }
 
-  const apiKey = process.env.NYT_BOOKS_API_KEY;
+  const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
   if (!apiKey || apiKey.trim() === "") {
     return [];
   }
@@ -663,7 +674,7 @@ async function findNytCover(title: string, author: string): Promise<string | nul
 app.post("/api/nytimes/recommendations", express.json(), async (req, res) => {
   try {
     const { library = [], recentSearches = [] } = req.body;
-    const apiKey = process.env.NYT_BOOKS_API_KEY;
+    const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
 
     // First fetch NYT Best Sellers to have context for recommendations
     let allNytBooks: any[] = [];
@@ -800,7 +811,7 @@ async function refreshNytOverviewBackground(apiKey: string) {
 // NYT Best Sellers API
 app.get("/api/nytimes/overview", async (req, res) => {
   try {
-    const apiKey = process.env.NYT_BOOKS_API_KEY;
+    const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
     if (!apiKey || apiKey.trim() === "") {
       console.warn("NYT_BOOKS_API_KEY is missing or empty");
       return res.status(500).json({
@@ -847,6 +858,49 @@ app.get("/api/nytimes/overview", async (req, res) => {
   } catch (err: any) {
     console.error("NYT API handler failed:", err);
     res.status(500).json({ error: "Failed to fetch trending books from NYT", details: err.message });
+  }
+});
+
+// NYT Category Books List API
+app.get("/api/nytimes/list", async (req, res) => {
+  try {
+    const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
+    if (!apiKey || apiKey.trim() === "") {
+      console.warn("NYT_BOOKS_API_KEY is missing or empty for list fetch");
+      return res.status(500).json({
+        error: "NYT API Key not configured. Please add NYT_BOOKS_API_KEY to your secrets."
+      });
+    }
+
+    const listName = req.query.list as string;
+    const date = req.query.date as string || "current";
+    if (!listName) {
+      return res.status(400).json({ error: "Missing 'list' query parameter." });
+    }
+
+    console.log(`[NYT List Fetch] Fetching books for list: ${listName} at date: ${date}`);
+    const url = `https://api.nytimes.com/svc/books/v3/lists/${encodeURIComponent(date)}/${encodeURIComponent(listName)}.json?api-key=${apiKey}`;
+    const response = await fetchNytWithDelay(url);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`NYT List API returned ${response.status} for list ${listName}:`, errorText);
+      return res.status(response.status).json({
+        error: `NYT API returned error ${response.status}`,
+        details: errorText
+      });
+    }
+
+    const data = await response.json();
+    if (data.status !== "OK") {
+      console.error("NYT List API returned non-OK status:", data);
+      throw new Error(data.message || data.status || "NYT API error");
+    }
+
+    res.json(data);
+  } catch (err: any) {
+    console.error("NYT List API handler failed:", err);
+    res.status(500).json({ error: "Failed to fetch category books from NYT", details: err.message });
   }
 });
 
@@ -2648,6 +2702,44 @@ app.all("/api/browser-proxy", async (req, res) => {
   }
 });
 
+
+// NYT Raw Details Endpoint (No AI)
+app.get("/api/nytimes/book-details-raw", async (req, res) => {
+  const { title, author } = req.query;
+  if (!title) return res.status(400).json({ error: "Missing title" });
+
+  const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
+  if (!apiKey) return res.status(500).json({ error: "NYT API Key not configured" });
+
+  try {
+    const url = `https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?title=${encodeURIComponent(title as string)}&author=${encodeURIComponent(author as string || "")}&api-key=${apiKey}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("NYT Raw Details Error:", err);
+    res.status(500).json({ error: "Failed to fetch raw NYT details" });
+  }
+});
+
+// Google Books API Proxy
+app.get("/api/google-books/search", async (req, res) => {
+  const { q, maxResults } = req.query;
+  if (!q) return res.status(400).json({ error: "Missing query" });
+
+  const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
+  const limit = maxResults || 1;
+  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q as string)}&maxResults=${limit}${apiKey ? `&key=${apiKey}` : ""}`;
+  
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Google Books API Proxy Error:", err);
+    res.status(500).json({ error: "Failed to fetch from Google Books" });
+  }
+});
 
 // Serve static assets and Vite middleware
 async function startServer() {

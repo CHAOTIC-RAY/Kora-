@@ -67,7 +67,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
 
       // 2. Google Books API
       searchPromises.push(
-        fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(searchQuery)}&maxResults=6`)
+        fetch(`/api/google-books/search?q=${encodeURIComponent(searchQuery)}&maxResults=6`)
           .then(async (res) => {
             if (!res.ok) return [];
             const data = await res.json();

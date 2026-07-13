@@ -16,10 +16,10 @@ export default function DownloadsManager() {
   }, []);
 
   return (
-    <div className="w-full min-h-screen bg-kindle-bg text-kindle-text font-sans p-6">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold font-serif mb-6">Downloads Manager</h1>
-        <p className="text-kindle-text-muted mb-8">
+    <div className="w-full bg-kindle-bg text-kindle-text font-sans p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="max-w-4xl">
+        <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text mb-1">Downloads</h1>
+        <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mb-8">
           Manage your active and completed book downloads here.
         </p>
 

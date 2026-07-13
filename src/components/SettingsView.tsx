@@ -150,8 +150,8 @@ export default function SettingsView({
 
   const handleFileUpload = async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext !== "epub" && ext !== "pdf") {
-      setUploadError("Only EPUB and PDF file formats are supported.");
+    if (!ext || !["epub", "pdf", "mobi", "azw3", "html", "json", "txt"].includes(ext)) {
+      setUploadError("Only EPUB, PDF, MOBI, AZW3, HTML, JSON, and TXT file formats are supported.");
       return;
     }
 
@@ -161,7 +161,15 @@ export default function SettingsView({
     try {
       const bookId = "local_" + Math.random().toString(36).substring(2, 15) + "_" + Date.now();
       const arrayBuffer = await file.arrayBuffer();
-      const blob = new Blob([arrayBuffer], { type: ext === "pdf" ? "application/pdf" : "application/epub+zip" });
+      
+      let mimeType = "application/octet-stream";
+      if (ext === "pdf") mimeType = "application/pdf";
+      else if (ext === "epub") mimeType = "application/epub+zip";
+      else if (ext === "html") mimeType = "text/html";
+      else if (ext === "json") mimeType = "application/json";
+      else if (ext === "txt") mimeType = "text/plain";
+      
+      const blob = new Blob([arrayBuffer], { type: mimeType });
       
       await storeBookFile(bookId, blob, file.name, ext);
       if (onCachedIdsChanged) {
@@ -366,10 +374,10 @@ export default function SettingsView({
   ];
 
   return (
-    <div className="max-w-xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <header className="space-y-1.5 text-center">
-        <h2 className="text-2xl font-bold font-lexend tracking-tight text-kindle-text">Settings</h2>
-        <p className="text-[10px] text-kindle-text-muted uppercase tracking-widest font-bold">Preferences & Cloud Sync</p>
+    <div className="max-w-4xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
+      <header className="space-y-1 text-left">
+        <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Settings</h2>
+        <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono">Preferences &amp; Cloud Sync</p>
       </header>
 
       <div className="space-y-6">
@@ -710,7 +718,7 @@ export default function SettingsView({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".epub,.pdf"
+                accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
                 onChange={(e) => {
                   if (e.target.files && e.target.files[0]) {
                     handleFileUpload(e.target.files[0]);
@@ -730,8 +738,8 @@ export default function SettingsView({
                     <Upload className="w-5 h-5 text-kindle-text" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.15em]">Drag & Drop or Click to Add Ebook</p>
-                    <p className="text-[8px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB, PDF up to 100MB</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em]">Drag & Drop or Click to Add File</p>
+                    <p className="text-[8px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB, PDF, HTML, JSON, TXT up to 100MB</p>
                   </div>
                 </>
               )}
@@ -1066,33 +1074,32 @@ export default function SettingsView({
         </section>
 
         {/* About */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-3">
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
             <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
               <Info className="w-4 h-4 text-kindle-text" />
             </div>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">About</h3>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">About Me</h3>
           </div>
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-kindle-text-muted">Version</span>
-            <span className="font-mono font-bold">Kora 1.0.0</span>
-          </div>
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-kindle-text-muted">Powered by</span>
-            <span className="font-bold flex items-center gap-1"><Sparkles className="w-3 h-3 text-kindle-accent" /> Rave Engine</span>
+          
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-kindle-text-muted">Version</span>
+              <span className="font-mono font-bold">Kora 1.2.0</span>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-kindle-text-muted">Powered by</span>
+              <span className="font-bold flex items-center gap-1"><Sparkles className="w-3 h-3 text-kindle-accent" /> Rave Engine</span>
+            </div>
+
+            <div className="pt-2 space-y-2 border-t border-kindle-border/50">
+              <p className="text-[10px] leading-relaxed text-kindle-text-muted italic">
+                A minimal, high-performance reader environment for digital sovereignty.
+              </p>
+            </div>
           </div>
         </section>
       </div>
-
-      <footer className="pt-8 border-t border-kindle-border flex flex-col items-center gap-3 text-center">
-        <div className="flex items-center gap-1.5 text-kindle-text-muted">
-          <BookOpen className="w-3.5 h-3.5" />
-          <span className="text-[9px] font-bold uppercase tracking-widest">Kora • Stable Release</span>
-        </div>
-        <p className="text-[9px] text-kindle-text-muted max-w-sm leading-relaxed">
-          Crafted for high-performance reading and digital sovereignty. Secure cloud sync and private locally cached reader environment.
-        </p>
-      </footer>
     </div>
   );
 }

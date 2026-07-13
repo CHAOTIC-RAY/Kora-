@@ -6,6 +6,7 @@ import {
   BookMetadata, 
   syncBookToCloud 
 } from "./lib/firebase";
+import { enrichBookMetadata } from "./lib/metadataEnricher";
 import { 
   signInAnonymously, 
   onAuthStateChanged, 
@@ -22,15 +23,17 @@ import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
 import BookReaderEPUB from "./components/BookReaderEPUB";
 import BookReaderPDF from "./components/BookReaderPDF";
+import BookReaderText from "./components/BookReaderText";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
+import DownloadBookBtn from "./components/DownloadBookBtn";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
-  Compass, Play, Download, Globe
+  Compass, Play, Download, Globe, FileText
 } from "lucide-react";
 
 export default function App() {
@@ -293,6 +296,11 @@ export default function App() {
           return [...prev, newBook];
         });
         await syncBookToCloud(user?.uid || "", newBook);
+        
+        // Enrich metadata in background after import
+        enrichBookMetadata(user?.uid || "", newBook).then(enriched => {
+          setBooks(prev => prev.map(b => b.id === enriched.id ? enriched : b));
+        });
       };
 
       if (realHandle) {
@@ -429,7 +437,7 @@ export default function App() {
   return (
     <div id="app-root-container" className="min-h-screen flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300">
       {/* 1. Global Navigation Header - Kora Style */}
-      <header className="border-b border-kindle-border bg-kindle-bg sticky top-0 z-40 h-16">
+      <header className="border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
@@ -443,7 +451,7 @@ export default function App() {
               <KoraWordmark className="h-4 text-kindle-text" />
             </div>
           </button>
-          <div className="flex flex-1 min-w-0 max-w-[130px] xs:max-w-[200px] sm:max-w-xs md:max-w-md lg:max-w-lg">
+          <div className="flex flex-1 min-w-0 max-w-sm sm:max-w-md md:max-w-xl lg:max-w-2xl">
             <Quote />
           </div>
         </div>
@@ -529,7 +537,7 @@ export default function App() {
       </header>
 
       {/* 2. Main Page View Content */}
-      <main className={`flex-1 w-full mx-auto pb-32 md:pb-8 ${activeTab === 'downloads' ? 'max-w-none p-0' : 'max-w-6xl p-4 md:p-8'}`}>
+      <main className={`flex-1 w-full mx-auto pb-20 md:pb-8 ${activeTab === 'downloads' ? 'max-w-none p-0' : 'max-w-6xl p-4 md:p-8'}`}>
         
         {/* Sync loading status indicator */}
         {loadingLibrary && (
@@ -569,7 +577,7 @@ export default function App() {
               setBrowserInitialUrl(url);
               setActiveTab("downloads");
             }}
-            onBookAdded={(book) => {
+            onBookAdded={async (book) => {
               setBooks(prev => {
                 const updated = [...prev];
                 if (!updated.some(b => b.id === book.id)) {
@@ -578,6 +586,10 @@ export default function App() {
                 return updated;
               });
               setActiveTab("library");
+              
+              // Enrich metadata in background after addition
+              const enriched = await enrichBookMetadata(user?.uid || "", book);
+              setBooks(prev => prev.map(b => b.id === enriched.id ? enriched : b));
             }}
             cachedBookIds={cachedBookIds}
             grayscaleCovers={grayscaleCovers}
@@ -644,7 +656,7 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
-        ) : (
+        ) : activeBook.extension === "epub" || !activeBook.extension ? (
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
@@ -663,6 +675,45 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
+        ) : ["html", "htm", "json", "txt", "md", "csv"].includes(activeBook.extension?.toLowerCase() || "") ? (
+          <BookReaderText
+            book={activeBook}
+            onClose={() => {
+              if (window.history.state && window.history.state.isReading) {
+                window.history.back();
+              }
+              setActiveBook(null);
+              refreshLibrary();
+            }}
+          />
+        ) : (
+          <div className="fixed inset-0 bg-kindle-bg z-[100] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in-95 duration-300">
+            <div className="max-w-md space-y-6 bg-kindle-card p-8 rounded-3xl border border-kindle-border shadow-2xl">
+              <FileText className="w-12 h-12 text-kindle-text-muted mx-auto" />
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold font-lexend text-kindle-text leading-tight">{activeBook.title}</h2>
+                <p className="text-xs text-kindle-text-muted max-w-sm mx-auto">
+                  The {activeBook.extension?.toUpperCase()} format is not supported by the built-in reader. You can download the file to read it on your device.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 pt-4 border-t border-kindle-border">
+                <div className="flex justify-center">
+                  <DownloadBookBtn book={activeBook} />
+                </div>
+                <button 
+                  onClick={() => {
+                    if (window.history.state && window.history.state.isReading) {
+                      window.history.back();
+                    }
+                    setActiveBook(null);
+                  }} 
+                  className="px-6 py-3 rounded-xl hover:bg-kindle-bg text-sm font-bold uppercase tracking-widest transition text-kindle-text-muted hover:text-kindle-text"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
         )
       )}
 
@@ -882,9 +933,27 @@ export default function App() {
       </footer>
 
       {/* 6. Compact Desktop Footer */}
-      <footer className="hidden md:block border-t border-kindle-border py-8 px-4 text-center text-[10px] text-kindle-text-muted font-sans mt-auto bg-kindle-bg">
-        <p>© 2026 Kora • Next-Gen Reader</p>
-        <p className="mt-1 font-mono uppercase tracking-widest opacity-60">Secure Firestore Cloud Persistence</p>
+      <footer className="hidden md:block border-t border-kindle-border py-10 px-4 text-center text-[10px] text-kindle-text-muted font-sans mt-auto bg-kindle-bg">
+        <div className="flex flex-col items-center gap-4 max-w-2xl mx-auto">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">
+            <span className="w-1 h-1 rounded-full bg-kindle-accent animate-pulse" />
+            Created from passion by <a href="https://portfolio.chaoticstudio.workers.dev/studio" target="_blank" rel="noopener noreferrer" className="text-kindle-accent hover:underline">chaos.studio.mv</a>
+            <span className="w-1 h-1 rounded-full bg-kindle-accent animate-pulse" />
+          </div>
+          
+          <div className="flex items-center gap-4 text-[10px] text-kindle-text-muted font-medium">
+            <a href="mailto:chaos.studio.mv@gmail.com" className="hover:text-kindle-text transition">chaos.studio.mv@gmail.com</a>
+            <span>•</span>
+            <a href="https://t.me/+9609401011" target="_blank" rel="noopener noreferrer" className="hover:text-kindle-text transition">+960 9401011 (Telegram)</a>
+            <span>•</span>
+            <span className="font-bold tracking-[0.1em] text-kindle-text">chaos.studio</span>
+          </div>
+
+          <div className="pt-4 border-t border-kindle-border/50 w-full flex flex-col items-center gap-1">
+            <p>© 2026 Kora • Next-Gen Reader</p>
+            <p className="font-mono uppercase tracking-[0.2em] opacity-50 text-[9px]">Secure Firestore Cloud Persistence</p>
+          </div>
+        </div>
       </footer>
     </div>
   );

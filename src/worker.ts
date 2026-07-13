@@ -157,6 +157,9 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         else if (url.endsWith(".epub")) extension = "epub";
         else if (url.endsWith(".mobi")) extension = "mobi";
         else if (url.endsWith(".azw3")) extension = "azw3";
+        else if (url.endsWith(".html")) extension = "html";
+        else if (url.endsWith(".json")) extension = "json";
+        else if (url.endsWith(".txt")) extension = "txt";
       }
       if (!extension) extension = "epub";
 
@@ -1525,7 +1528,11 @@ export default {
                 const files: any[] = meta.files || [];
                 const bookFile = files.find((f: any) => f.name?.endsWith(".epub")) ||
                                  files.find((f: any) => f.name?.endsWith(".pdf")) ||
-                                 files.find((f: any) => f.name?.endsWith(".mobi"));
+                                 files.find((f: any) => f.name?.endsWith(".mobi")) ||
+                                 files.find((f: any) => f.name?.endsWith(".azw3")) ||
+                                 files.find((f: any) => f.name?.endsWith(".html")) ||
+                                 files.find((f: any) => f.name?.endsWith(".json")) ||
+                                 files.find((f: any) => f.name?.endsWith(".txt"));
                 if (bookFile) {
                   const directUrl = `https://archive.org/download/${iaId}/${encodeURIComponent(bookFile.name)}`;
                   console.log(`[IA Worker] Resolved to direct download: ${directUrl}`);
