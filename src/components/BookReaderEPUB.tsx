@@ -627,7 +627,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setDictionaryWord(word);
       
       // 1. Check custom dictionary first
-      const localDef = lookupWord(word);
+      const localDef = await lookupWord(word);
       if (localDef) {
         setDictionaryData({
           word: localDef.word,

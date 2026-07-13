@@ -219,7 +219,13 @@ export default function SettingsView({
   const [newVirtualExt, setNewVirtualExt] = useState<"epub" | "pdf">("epub");
 
   useEffect(() => {
-    setDictEntries(getAllDictionaryEntries());
+    async function loadDict() {
+      const entries = await getAllDictionaryEntries();
+      // Only show custom entries in settings, not the external dictionary
+      setDictEntries(entries.filter(e => e.isCustom));
+    }
+    loadDict();
+    
     async function initDir() {
       const handle = await getSavedDirectoryHandle();
       setRealDirHandle(handle);
@@ -309,7 +315,7 @@ export default function SettingsView({
     }
   };
 
-  const handleAddWord = (e: React.FormEvent) => {
+  const handleAddWord = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newWord.trim() || !newDef.trim()) return;
     addDictionaryEntry({
@@ -319,7 +325,8 @@ export default function SettingsView({
       example: newEx.trim() || undefined,
       isCustom: true
     });
-    setDictEntries(getAllDictionaryEntries());
+    const entries = await getAllDictionaryEntries();
+    setDictEntries(entries.filter(e => e.isCustom));
     setNewWord("");
     setNewDef("");
     setNewPos("noun");
@@ -327,9 +334,10 @@ export default function SettingsView({
     setShowAddWordForm(false);
   };
 
-  const handleDeleteWord = (word: string) => {
+  const handleDeleteWord = async (word: string) => {
     deleteDictionaryEntry(word);
-    setDictEntries(getAllDictionaryEntries());
+    const entries = await getAllDictionaryEntries();
+    setDictEntries(entries.filter(e => e.isCustom));
   };
 
   const fontOptions = [

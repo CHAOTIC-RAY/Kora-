@@ -1,5 +1,6 @@
 // Custom Personal Dictionary Utility
 // Comes with a default dictionary and manages user additions in localStorage.
+// Can load external dictionary data from dictionary-data.json (parsed from StarDict).
 
 export interface DictionaryEntry {
   word: string;
@@ -9,7 +10,7 @@ export interface DictionaryEntry {
   isCustom?: boolean;
 }
 
-const DEFAULT_DICTIONARY: DictionaryEntry[] = [
+const FALLBACK_DICTIONARY: DictionaryEntry[] = [
   {
     word: "kora",
     definition: "A next-generation, e-ink inspired digital library and ebook reader built with meticulous visual pairing, persistent cloud synchronization, and offline-first technology.",
@@ -54,6 +55,35 @@ const DEFAULT_DICTIONARY: DictionaryEntry[] = [
   }
 ];
 
+// External dictionary cache (loaded from StarDict)
+let EXTERNAL_DICTIONARY: DictionaryEntry[] | null = null;
+let externalDictLoaded = false;
+
+// Load external dictionary data from JSON file (browser-safe)
+async function loadExternalDictionary(): Promise<void> {
+  if (externalDictLoaded) return;
+  
+  try {
+    const response = await fetch('/dictionary-data.json');
+    if (response.ok) {
+      EXTERNAL_DICTIONARY = await response.json();
+      console.log(`Loaded ${EXTERNAL_DICTIONARY.length} entries from external dictionary`);
+    }
+  } catch (e) {
+    // Silently fail - will use fallback dictionary
+    console.warn('Failed to load external dictionary:', e);
+  }
+  
+  externalDictLoaded = true;
+}
+
+// Get the default dictionary (external if available, otherwise fallback)
+function getDefaultDictionary(): DictionaryEntry[] {
+  return EXTERNAL_DICTIONARY || FALLBACK_DICTIONARY;
+}
+
+const DEFAULT_DICTIONARY = getDefaultDictionary();
+
 export function getCustomDictionary(): DictionaryEntry[] {
   try {
     const saved = localStorage.getItem("kora_custom_dictionary");
@@ -74,17 +104,22 @@ export function saveCustomDictionary(entries: DictionaryEntry[]): void {
   }
 }
 
-export function getAllDictionaryEntries(): DictionaryEntry[] {
+export async function getAllDictionaryEntries(): Promise<DictionaryEntry[]> {
+  // Try to load external dictionary on first call
+  if (!externalDictLoaded) {
+    await loadExternalDictionary();
+  }
+  
   const custom = getCustomDictionary();
-  const defaultWords = DEFAULT_DICTIONARY.filter(
+  const defaultWords = getDefaultDictionary().filter(
     defWord => !custom.some(custWord => custWord.word.toLowerCase() === defWord.word.toLowerCase())
   );
   return [...custom, ...defaultWords];
 }
 
-export function lookupWord(word: string): DictionaryEntry | null {
+export async function lookupWord(word: string): Promise<DictionaryEntry | null> {
   const normalized = word.trim().toLowerCase();
-  const all = getAllDictionaryEntries();
+  const all = await getAllDictionaryEntries();
   return all.find(entry => entry.word.toLowerCase() === normalized) || null;
 }
 
