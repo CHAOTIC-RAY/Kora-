@@ -14,12 +14,7 @@ import {
 } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
-import { 
-  X, ChevronLeft, ChevronRight, Menu, Settings, 
-  BookOpen, Sparkles, AlertCircle, Type, Layout, Info, Globe, Search,
-  Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind,
-  BookMarked, Copy, Check, FileText, Highlighter, Trash2
-} from "lucide-react";
+import { X, ChevronLeft, ChevronRight, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2 } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
 
@@ -504,13 +499,23 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
     if (
       target.closest("button") || 
-      target.closest("a") || 
       target.closest("aside") || 
       target.closest("input") || 
       target.closest("select") || 
       target.closest("textarea") || 
       target.closest(".tts-highlight")
     ) {
+      return;
+    }
+
+    // Prevent any remaining internal <a> tags (that weren't rewritten to
+    // data-epub-href) from navigating away and restarting the app.
+    const anchor = target.closest("a");
+    if (anchor) {
+      const href = anchor.getAttribute("href") || "";
+      if (!href.startsWith("http") && !href.startsWith("mailto:") && !href.startsWith("#")) {
+        e.preventDefault();
+      }
       return;
     }
     
@@ -780,6 +785,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // and read title metadata or HTML headings as title defaults
       const parsedChapters: EpubChapter[] = [];
 
+      // Pre-register all spine hrefs so that in-book TOC links in any chapter
+      // (especially the first chapter, which is often the TOC) can be resolved
+      // to the correct spine index during content processing.
+      for (let i = 0; i < spineItems.length; i++) {
+        const relativeHref = spineItems[i];
+        const norm = pathResolve(rootDir, relativeHref).toLowerCase();
+        hrefToIndexRef.current.set(norm, i);
+        hrefToIndexRef.current.set(relativeHref.toLowerCase(), i);
+      }
+
       for (let i = 0; i < spineItems.length; i++) {
         const relativeHref = spineItems[i];
         const fullChapterPath = `${rootDir}${relativeHref}`;
@@ -811,10 +826,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             content: processedContent,
             fullPath: fullChapterPath
           });
-          // Register spine href (and its basename) -> chapter index for in-book TOC links.
-          const norm = pathResolve(rootDir, relativeHref).toLowerCase();
-          hrefToIndexRef.current.set(norm, i);
-          hrefToIndexRef.current.set(relativeHref.toLowerCase(), i);
         }
       }
 
