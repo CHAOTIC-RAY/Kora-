@@ -2,11 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { 
-  BookOpen, UploadCloud, Tag, Star, Trash2, ListFilter,
-  CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, HelpCircle, HardDrive, Search, Cloud,
-  Edit2, ImageIcon, AlertTriangle, RefreshCw, MoreVertical, Flame, TrendingUp, Calendar
-} from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
@@ -573,7 +569,7 @@ export default function LibraryManager({
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
                     {book.coverUrl ? (
                       <img
-                        src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
+                        src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
                         className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
                         referrerPolicy="no-referrer"
                         onContextMenu={(e) => e.preventDefault()}
@@ -992,7 +988,7 @@ export default function LibraryManager({
             <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-kindle-border/40">
               {longPressedBook.coverUrl ? (
                 <img
-                  src={`/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}`}
+                  src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}
                   className="w-12 h-16 object-cover rounded-lg border border-kindle-border/60 shadow-sm"
                   referrerPolicy="no-referrer"
                 />
