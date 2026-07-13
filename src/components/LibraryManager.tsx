@@ -568,12 +568,24 @@ export default function LibraryManager({
                 >
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
                     {book.coverUrl ? (
-                      <img
-                        src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
-                        className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
-                        referrerPolicy="no-referrer"
-                        onContextMenu={(e) => e.preventDefault()}
-                      />
+                      <>
+                        <img
+                          src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
+                          className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
+                          referrerPolicy="no-referrer"
+                          onContextMenu={(e) => e.preventDefault()}
+                          onError={(e) => {
+                            const img = e.currentTarget;
+                            img.style.display = 'none';
+                            const fallback = img.nextElementSibling as HTMLElement | null;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                        <div className="w-full aspect-[3/4] bg-kindle-card flex-col items-center justify-center p-4 text-center hidden">
+                          <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
+                          <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
+                        </div>
+                      </>
                     ) : (
                       <div className="w-full aspect-[3/4] bg-kindle-card flex flex-col items-center justify-center p-4 text-center">
                         <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
@@ -987,11 +999,22 @@ export default function LibraryManager({
             
             <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-kindle-border/40">
               {longPressedBook.coverUrl ? (
-                <img
-                  src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}
-                  className="w-12 h-16 object-cover rounded-lg border border-kindle-border/60 shadow-sm"
-                  referrerPolicy="no-referrer"
-                />
+                <>
+                  <img
+                    src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}
+                    className="w-12 h-16 object-cover rounded-lg border border-kindle-border/60 shadow-sm"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      img.style.display = 'none';
+                      const fallback = img.nextElementSibling as HTMLElement | null;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                  <div className="w-12 h-16 bg-kindle-bg rounded-lg border border-kindle-border/60 items-center justify-center hidden">
+                    <BookOpen className="w-6 h-6 text-kindle-text-muted opacity-30" />
+                  </div>
+                </>
               ) : (
                 <div className="w-12 h-16 bg-kindle-bg rounded-lg border border-kindle-border/60 flex items-center justify-center">
                   <BookOpen className="w-6 h-6 text-kindle-text-muted opacity-30" />
