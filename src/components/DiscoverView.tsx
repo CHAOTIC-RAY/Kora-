@@ -128,7 +128,7 @@ export default function DiscoverView({
     }
   }, [activeSource, currentPage]);
 
-  async function loadFeaturedContent() {
+  async function loadFeaturedContent(forceRefresh = false) {
     setLoadingFeatured(true);
     setError(null);
     try {
@@ -137,11 +137,11 @@ export default function DiscoverView({
       const cachedFeed = localStorage.getItem("kora_nyt_featured_feed");
 
       let json: any;
-      if (cachedDate === todayString && cachedFeed) {
+      if (!forceRefresh && cachedDate === todayString && cachedFeed) {
         console.log("[NYT Cache] Loaded daily discover feed from localStorage");
         json = JSON.parse(cachedFeed);
       } else {
-        console.log("[NYT Cache] Daily cache expired or missing. Fetching fresh NYT overview...");
+        console.log("[NYT Cache] Fetching fresh NYT overview...");
         const res = await fetch("/api/nytimes/overview");
         if (!res.ok) throw new Error("Failed to fetch NYT overview");
         json = await res.json();
@@ -154,9 +154,16 @@ export default function DiscoverView({
         }
         setFeedNotice(json?.notice || (json?.source === "rave-fallback" ? "NYT Best Sellers API unavailable — showing popular picks via Rave Engine." : null));
 
-        // Save to cache for today
-        localStorage.setItem("kora_nyt_featured_date", todayString);
-        localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(json));
+        // Save to cache for today only if it's NOT a fallback/error
+        const isFallback = json?.source === "rave-fallback" || json?.fault || (json?.error && !json?.results?.lists?.length);
+        if (!isFallback) {
+          localStorage.setItem("kora_nyt_featured_date", todayString);
+          localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(json));
+        } else {
+          // If it is a fallback, clean any stale cache so we don't lock onto it
+          localStorage.removeItem("kora_nyt_featured_date");
+          localStorage.removeItem("kora_nyt_featured_feed");
+        }
       }
 
       const data: Record<string, any[]> = {};
@@ -962,14 +969,25 @@ export default function DiscoverView({
       <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Header */}
         <header className="flex flex-col gap-6">
-          <div className="space-y-1">
-            <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-[10px] text-kindle-text-muted font-bold uppercase tracking-[0.2em]">
-                Powered by NYT Best Sellers & Rave Engine
-              </p>
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-[10px] text-kindle-text-muted font-bold uppercase tracking-[0.2em]">
+                  Powered by NYT Best Sellers & Rave Engine
+                </p>
+              </div>
             </div>
+            {!searchMode && (
+              <button
+                onClick={() => loadFeaturedContent(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:bg-kindle-card hover:text-kindle-accent transition"
+                title="Force refresh NYT Best Sellers list"
+              >
+                <RefreshCw className="w-3 h-3" /> Refresh Feed
+              </button>
+            )}
           </div>
 
         {/* Search Bar */}

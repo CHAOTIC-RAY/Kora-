@@ -30,12 +30,12 @@ function parseIdxFile(idxPath: string): Array<{word: string, offset: number, siz
     // Skip null terminator
     end++;
 
-    // Read offset (4 bytes, little-endian)
-    const dataOffset = buffer.readUInt32LE(end);
+    // Read offset (4 bytes, big-endian / network byte order)
+    const dataOffset = buffer.readUInt32BE(end);
     end += 4;
 
-    // Read size (4 bytes, little-endian)
-    const dataSize = buffer.readUInt32LE(end);
+    // Read size (4 bytes, big-endian / network byte order)
+    const dataSize = buffer.readUInt32BE(end);
     end += 4;
 
     words.push({
