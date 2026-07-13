@@ -967,6 +967,78 @@ export default {
       }
     }
 
+    // 2.2 NYT Book Details API
+    if (path === "/api/nyt/book-details" || path === "/api/nytimes/book-details") {
+      const title = url.searchParams.get("title");
+      const author = url.searchParams.get("author");
+      
+      if (!title) {
+        return new Response(JSON.stringify({ error: "Missing title parameter" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
+        
+        // Search NYT Books API for the book
+        const searchRes = await fetch(`https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?api-key=${apiKey}&title=${encodeURIComponent(title)}`);
+        const searchData: any = await searchRes.json().catch(() => ({}));
+
+        if (searchRes.ok && searchData?.status === "OK" && searchData?.results?.length > 0) {
+          const book = searchData.results[0];
+          return new Response(JSON.stringify({
+            description: book.description || "",
+            subjects: book.subjects || [],
+            pageCount: book.page_count || null,
+            publishYear: book.published_date?.substring(0, 4) || null,
+            publisher: book.publisher || "",
+            isBestseller: true,
+            bestsellerRank: book.rank || null,
+            weeksOnList: book.weeks_on_list || null,
+            bestsellerCategory: book.list_name || "",
+            nytReviewSnippet: book.book_review_link || ""
+          }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        // If not found in bestsellers, try reviews API
+        const reviewsRes = await fetch(`https://api.nytimes.com/svc/books/v3/reviews.json?api-key=${apiKey}&author=${encodeURIComponent(author || "")}&title=${encodeURIComponent(title)}`);
+        const reviewsData: any = await reviewsRes.json().catch(() => ({}));
+
+        if (reviewsRes.ok && reviewsData?.status === "OK" && reviewsData?.results?.length > 0) {
+          const review = reviewsData.results[0];
+          return new Response(JSON.stringify({
+            description: review.summary || "",
+            subjects: [],
+            pageCount: null,
+            publishYear: review.publication_date?.substring(0, 4) || null,
+            publisher: review.publisher || "",
+            isBestseller: false,
+            bestsellerRank: null,
+            weeksOnList: null,
+            bestsellerCategory: "",
+            nytReviewSnippet: review.summary || ""
+          }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        // No NYT data found
+        return new Response(JSON.stringify({ error: "Book not found in NYT" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch NYT book details", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     if (path === "/api/nytimes/recommendations" && request.method === "POST") {
       try {
         let body: any = {};

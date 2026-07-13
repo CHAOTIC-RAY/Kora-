@@ -296,71 +296,23 @@ export default function DiscoverView({
         return;
       }
 
-      // Search for download links for each NYT book
-      const booksWithLinks: any[] = [];
-      
-      for (const nytBook of nytBooks.slice(0, 15)) { // Limit to first 15 books
-        try {
-          const searchResult = await fetchPage(nytBook.searchQuery, "all", 1);
-          const matchingBooks = searchResult.books.filter((b: any) => {
-            const bTitle = (b.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-            const nytTitle = (nytBook.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-            return bTitle.includes(nytTitle.substring(0, 10)) || nytTitle.includes(bTitle.substring(0, 10));
-          });
-
-          if (matchingBooks.length > 0) {
-            booksWithLinks.push({
-              ...nytBook,
-              downloadLinks: matchingBooks,
-              exactMatch: true
-            });
-          } else {
-            booksWithLinks.push({
-              ...nytBook,
-              downloadLinks: [],
-              exactMatch: false
-            });
-          }
-        } catch (err) {
-          console.error(`Failed to search for ${nytBook.title}:`, err);
-          booksWithLinks.push({
-            ...nytBook,
-            downloadLinks: [],
-            exactMatch: false
-          });
-        }
-      }
-
-      // Group and set results
-      const groupedBooksMap = new Map<string, any>();
-      
-      booksWithLinks.forEach((b: any) => {
-        const cleanTitle = (b.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-        const cleanAuthor = (b.author || "Unknown").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
-        const groupingKey = `${cleanTitle}___${cleanAuthor}`;
-
-        if (!groupedBooksMap.has(groupingKey)) {
-          groupedBooksMap.set(groupingKey, {
-            id: b.id || Math.random().toString(),
-            title: b.title,
-            author: b.author,
-            coverUrl: b.coverUrl,
-            description: b.description,
-            publisher: b.publisher,
-            rank: b.rank,
-            weeks_on_list: b.weeks_on_list,
-            source: 'nyt',
-            exactMatch: b.exactMatch,
-            downloadLinks: b.downloadLinks,
-            variants: b.downloadLinks
-          });
-        }
-      });
-
-      setResults(Array.from(groupedBooksMap.values()));
-      setTotalResults(booksWithLinks.length);
+      // Display NYT books only (no download links yet)
+      setResults(nytBooks.map((book: any) => ({
+        id: book.rank || Math.random().toString(),
+        title: book.title,
+        author: book.author,
+        coverUrl: book.coverUrl,
+        description: book.description,
+        publisher: book.publisher,
+        rank: book.rank,
+        weeks_on_list: book.weeks_on_list,
+        source: 'nyt',
+        searchQuery: book.searchQuery,
+        isNYTBook: true
+      })));
+      setTotalResults(nytBooks.length);
       setHasMore(false);
-      setAvailableSourcesFromResults(new Set(["nyt", "rave"]));
+      setAvailableSourcesFromResults(new Set(["nyt"]));
     } catch (err: any) {
       console.error("Failed to load category:", err);
       setError(`Failed to load category: ${err.message}`);
@@ -626,6 +578,25 @@ export default function DiscoverView({
 
     // Grab details from verified source asynchronously
     fetchVerifiedDetails(activeBook.title, activeBook.author);
+
+    // If this is a NYT book, search all sources for download links first
+    if (activeBook.isNYTBook && activeBook.searchQuery) {
+      try {
+        const searchResult = await fetchPage(activeBook.searchQuery, "all", 1);
+        if (searchResult.books.length > 0) {
+          // Update the book with download links from all sources
+          const updatedBook = {
+            ...activeBook,
+            variants: searchResult.books,
+            downloadLinks: searchResult.books
+          };
+          onSelectedBookChange(updatedBook);
+          setSelectedVariant(searchResult.books[0]);
+        }
+      } catch (err) {
+        console.error("Failed to search for download links:", err);
+      }
+    }
 
     try {
       if (activeVariant.sourceId === "zlib") {
