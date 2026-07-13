@@ -21,6 +21,7 @@ import {
   BookMarked, Copy, Check, FileText, Highlighter, Trash2
 } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
+import { playFlipSound, playBookOpenSound } from "../lib/sounds";
 
 interface BookReaderEPUBProps {
   book: BookMetadata;
@@ -40,7 +41,11 @@ interface BookReaderEPUBProps {
     letterSpacing?: string;
     hyphenation?: boolean;
     pageTurnMode?: string;
+    pageTransitionEffect?: string;
+    themeManuallySet?: boolean;
+    grayscaleImages?: boolean;
   };
+  onReaderPrefsChange?: (prefs: any) => void;
 }
 
 interface EpubChapter {
@@ -51,7 +56,7 @@ interface EpubChapter {
   fullPath: string;
 }
 
-export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs }: BookReaderEPUBProps) {
+export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs, onReaderPrefsChange }: BookReaderEPUBProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chapters, setChapters] = useState<EpubChapter[]>([]);
@@ -61,10 +66,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18); // px
   const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-serif");
   const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light"); // light, dark, sepia, green
+  const [themeManuallySet, setThemeManuallySet] = useState<boolean>(readerPrefs?.themeManuallySet ?? false);
   const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
   const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
   const [isContinuous, setIsContinuous] = useState<boolean>(readerPrefs?.isContinuous ?? false);
   const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
+  const [grayscaleImages, setGrayscaleImages] = useState<boolean>(readerPrefs?.grayscaleImages ?? false);
   
   // Dictionary states
   const [dictionaryWord, setDictionaryWord] = useState<string | null>(null);
@@ -81,6 +88,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
   const [hyphenation, setHyphenation] = useState<boolean>(readerPrefs?.hyphenation ?? true);
   const [pageTurnMode, setPageTurnMode] = useState<string>(readerPrefs?.pageTurnMode ?? "fifty-fifty");
+  const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(readerPrefs?.pageTransitionEffect ?? "paper-flip");
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
 
   // Disable animation temporarily during visual style changes
@@ -88,12 +96,55 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setShouldAnimate(false);
     const t = setTimeout(() => setShouldAnimate(true), 250);
     return () => clearTimeout(t);
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, doubleColumns, letterSpacing, hyphenation, pageTurnMode]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, doubleColumns, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect]);
+  
+  // Sync settings back to App
+  useEffect(() => {
+    if (onReaderPrefsChange) {
+      onReaderPrefsChange({
+        fontSize,
+        fontFamily,
+        theme,
+        marginSize,
+        lineSpacing,
+        isContinuous,
+        brightness,
+        doubleColumns,
+        pageOverlap,
+        letterSpacing,
+        hyphenation,
+        pageTurnMode,
+        pageTransitionEffect,
+        themeManuallySet,
+        grayscaleImages
+      });
+    }
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, onReaderPrefsChange]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showNotes, setShowNotes] = useState<boolean>(false);
+  
+  // Handle Android back gesture for settings overlay
+  useEffect(() => {
+    if (showSettings) {
+      window.history.pushState({ readerSettingsOpen: true }, "");
+      const handlePopState = (e: PopStateEvent) => {
+        if (!e.state?.readerSettingsOpen) {
+          setShowSettings(false);
+        }
+      };
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    } else {
+      if (window.history.state?.readerSettingsOpen) {
+        window.history.back();
+      }
+    }
+  }, [showSettings]);
   
   // Highlights & Notes State
   const [chapterNotesData, setChapterNotesData] = useState<Record<number, ChapterNote>>({});
@@ -400,6 +451,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   }, []);
 
   const handleNextPage = () => {
+    playFlipSound();
     setTapFeedback("next");
     setTimeout(() => setTapFeedback(null), 350);
     if (currentPageNum < totalPages) {
@@ -412,6 +464,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   const handlePrevPage = () => {
+    playFlipSound();
     setTapFeedback("prev");
     setTimeout(() => setTapFeedback(null), 350);
     if (currentPageNum > 1) {
@@ -771,6 +824,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
       setChapters(parsedChapters);
       setLoading(false);
+      playBookOpenSound();
     } catch (err: any) {
       console.error("EPUB Loader Error:", err);
       setError(err.message || "Failed to parse EPUB reader file.");
@@ -1253,7 +1307,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
         {/* Sidebar: Reader Settings panel */}
         {showSettings && (
-          <aside className={`w-full md:w-80 border-b md:border-b-0 border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col absolute md:relative inset-x-0 bottom-0 top-[30%] md:top-auto shadow-2xl md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200`}>
+          <>
+            <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} />
+            <aside className={`w-full md:w-80 border-b md:border-b-0 border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col absolute md:relative inset-x-0 bottom-0 top-[30%] md:top-auto shadow-2xl md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
               <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346]">
                 <Type className="w-4 h-4 text-[#5c5346]" />
@@ -1315,7 +1371,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   return (
                     <button
                       key={tKey}
-                      onClick={() => setTheme(tKey)}
+                      onClick={() => {
+                        setTheme(tKey);
+                        setThemeManuallySet(true);
+                      }}
                       className={`h-10 rounded-lg border flex items-center justify-center text-xs font-semibold capitalize ${th.bg} ${th.text} ${
                         theme === tKey ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
                       }`}
@@ -1362,6 +1421,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 onChange={(e) => setBrightness(parseInt(e.target.value))}
                 className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
               />
+            </div>
+
+            {/* Grayscale Images Toggle */}
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold">Grayscale Images</h4>
+                <p className="text-[10px] text-kindle-text-muted">Convert all book images to b&w</p>
+              </div>
+              <button 
+                onClick={() => setGrayscaleImages(!grayscaleImages)}
+                className={`w-10 h-5 rounded-full transition-colors relative ${grayscaleImages ? "bg-kindle-accent" : "bg-neutral-300"}`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${grayscaleImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
+              </button>
             </div>
 
             {/* Double Column Spread Toggle */}
@@ -1485,6 +1558,22 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </div>
             </div>
 
+            {/* Page Transition Effect */}
+            <div className="mb-5">
+              <label className="text-xs opacity-75 font-sans block mb-2">Page Transition Effect</label>
+              <div className="flex gap-2 p-1 bg-neutral-500/10 rounded-xl font-sans text-xs">
+                {["paper-flip", "spring", "none"].map((effect) => (
+                  <button
+                    key={effect}
+                    onClick={() => setPageTransitionEffect(effect)}
+                    className={`flex-1 py-1.5 rounded-lg transition capitalize ${pageTransitionEffect === effect ? "bg-kindle-text text-kindle-bg shadow" : "hover:bg-neutral-500/10 text-kindle-text-muted hover:text-kindle-text"}`}
+                  >
+                    {effect.replace("-", " ")}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Export Actions */}
             <div className="pt-4 border-t border-kindle-border space-y-2">
               <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Export</h4>
@@ -1496,6 +1585,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </button>
             </div>
           </aside>
+          </>
         )}
 
         {/* Sidebar: Audiobook / Text-To-Speech Player */}
@@ -1918,8 +2008,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   <motion.article 
                     ref={contentRef}
                     animate={{ x: -(currentPageNum - 1) * pageStepRef.current }}
-                    transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
-                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
+                    transition={shouldAnimate ? (pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
+                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""}`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,

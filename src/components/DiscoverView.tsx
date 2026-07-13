@@ -173,23 +173,20 @@ export default function DiscoverView({
               seen.add(key);
               
               const cleanTitle = (b.title || "")
-                .replace(/\b\d{10,13}\b/g, ' ') // Remove ISBNs
-                .replace(/:(.*?)author(.*?)$/i, ' ') // Remove trailing subtitle with 'author'
-                .replace(/:(.*?)novellas?(.*?)$/i, ' ')
-                .replace(/^\d+[\.\-]?\s*/, ' ') // Remove leading numbers (e.g., "1. ")
-                .replace(/\(.*\)/g, ' ')
-                .replace(/#\d+/g, ' ')
-                .replace(/volume\s+\d+/gi, ' ')
-                .replace(/book\s+\d+/gi, ' ')
+                .split(':')[0]
+                .replace(/\b\d{10,13}\b/g, '') // Remove ISBNs
+                .replace(/\(.*\)/g, '')
+                .replace(/volume\s+\d+/gi, '')
+                .replace(/book\s+\d+/gi, '')
                 .replace(/[^\w\s-]/gi, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();
                 
               const cleanAuthor = (b.author || "")
-                .replace(/,\s*author/gi, ' ')
-                .replace(/\b\d{4}-\d{4}\b/g, ' ') // 1922-2012
-                .replace(/\bUnknown\b/gi, ' ')
-                .replace(/\(.*\)/g, ' ')
+                .split(',')[0]
+                .replace(/\b\d{4}-\d{4}\b/g, '') // 1922-2012
+                .replace(/\bUnknown\b/gi, '')
+                .replace(/\(.*\)/g, '')
                 .replace(/[^\w\s-]/gi, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();

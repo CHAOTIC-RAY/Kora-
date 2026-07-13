@@ -26,7 +26,6 @@ import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
-import NotesView from "./components/NotesView";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
@@ -36,7 +35,7 @@ import {
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings" | "notes">("library");
+  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings">("library");
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
     const saved = localStorage.getItem("kindle_last_read");
@@ -53,16 +52,29 @@ export default function App() {
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
   const [readerPrefs, setReaderPrefs] = useState(() => {
     const saved = localStorage.getItem("kora_reader_prefs");
+    const initialDisplayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
     return saved ? JSON.parse(saved) : {
       fontSize: 18,
       lineSpacing: 1.6,
       fontFamily: "font-serif",
-      theme: "light",
+      theme: initialDisplayTheme.includes("dark") ? "dark" : "light",
+      themeManuallySet: false,
       marginSize: "max-w-2xl px-6",
       isContinuous: false,
       brightness: 100,
+      grayscaleImages: false,
     };
   });
+
+  // Automatically update reader theme if not manually set by user
+  useEffect(() => {
+    if (!readerPrefs.themeManuallySet) {
+      setReaderPrefs((prev: any) => ({
+        ...prev,
+        theme: displayTheme.includes("dark") ? "dark" : "light"
+      }));
+    }
+  }, [displayTheme]);
 
   // Search / discovery preferences
   const [searchPrefs, setSearchPrefs] = useState(() => {
@@ -105,6 +117,9 @@ export default function App() {
   useEffect(() => {
     // Apply theme to body
     document.body.className = displayTheme;
+    if (displayTheme.includes("dark")) {
+      document.body.classList.add("dark");
+    }
     if (grayscaleCovers) {
       document.body.classList.add("grayscale-app");
     } else {
@@ -226,7 +241,7 @@ export default function App() {
   }, [activeBook]);
 
   // Keep track of the active tab before transitioning to settings
-  const prevTabRef = useRef<"library" | "discover" | "downloads" | "settings" | "notes">("library");
+  const prevTabRef = useRef<"library" | "discover" | "downloads" | "settings">("library");
   useEffect(() => {
     if (activeTab !== "settings") {
       prevTabRef.current = activeTab;
@@ -394,10 +409,6 @@ export default function App() {
 
   // Handle book selection for reading
   function handleOpenBook(book: BookMetadata) {
-    if (book.id === "global-notes") {
-      setActiveTab("notes");
-      return;
-    }
     if (!cachedBookIds.has(book.id)) {
       alert("This book is currently syncing to this device or requires a manual download. Please wait a moment.");
       return;
@@ -546,7 +557,6 @@ export default function App() {
         )}
 
         {activeTab === "downloads" && <DownloadsManager />}
-        {activeTab === "notes" && <NotesView books={books} userId={user?.uid || ""} onBack={() => setActiveTab("library")} />}
         
         {activeTab === "discover" && (
           <DiscoverView
@@ -639,6 +649,7 @@ export default function App() {
             book={activeBook}
             userId={user?.uid || ""}
             readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
             onClose={() => {
               if (window.history.state && window.history.state.isReading) {
                 window.history.back();
