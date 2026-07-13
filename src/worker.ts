@@ -934,6 +934,39 @@ export default {
       }
     }
 
+    // 2.1 NYT Specific List API
+    if (path === "/api/nytimes/list") {
+      const listName = url.searchParams.get("list");
+      if (!listName) {
+        return new Response(JSON.stringify({ error: "Missing list parameter" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
+        const res = await fetch(`https://api.nytimes.com/svc/books/v3/lists/${listName}.json?api-key=${apiKey}`);
+        const data: any = await res.json().catch(() => ({}));
+
+        if (!res.ok || data?.fault || data?.status !== "OK") {
+          return new Response(JSON.stringify({ error: "Failed to fetch NYT list", details: data?.fault?.faultstring || "Unknown error" }), {
+            status: res.status || 500,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        return new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch NYT list", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     if (path === "/api/nytimes/recommendations" && request.method === "POST") {
       try {
         let body: any = {};

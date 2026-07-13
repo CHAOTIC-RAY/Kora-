@@ -232,6 +232,143 @@ export default function DiscoverView({
     return { books, totalCount: data.totalCount || 0, hasMore: !!data.hasMore };
   }
 
+  async function fetchNYTCategory(listName: string): Promise<any[]> {
+    try {
+      const res = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}`);
+      if (!res.ok) throw new Error(`NYT list fetch failed with status: ${res.status}`);
+      const data = await res.json();
+      
+      if (data?.status !== "OK" || !data?.results?.books) {
+        return [];
+      }
+
+      return data.results.books.map((book: any) => {
+        const cleanTitle = (book.title || "")
+          .split(':')[0]
+          .replace(/\b\d{10,13}\b/g, '')
+          .replace(/\(.*\)/g, '')
+          .replace(/volume\s+\d+/gi, '')
+          .replace(/book\s+\d+/gi, '')
+          .replace(/[^\w\s-]/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        const cleanAuthor = (book.author || "")
+          .split(',')[0]
+          .replace(/\b\d{4}-\d{4}\b/g, '')
+          .replace(/\bUnknown\b/gi, '')
+          .replace(/\(.*\)/g, '')
+          .replace(/[^\w\s-]/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        return {
+          title: book.title,
+          author: book.author,
+          coverUrl: book.book_image,
+          searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
+          description: book.description,
+          publisher: book.publisher,
+          rank: book.rank,
+          weeks_on_list: book.weeks_on_list,
+          source: 'nyt'
+        };
+      });
+    } catch (err) {
+      console.error("Failed to fetch NYT category:", err);
+      return [];
+    }
+  }
+
+  async function handleCategoryClick(category: any) {
+    setLoading(true);
+    setError(null);
+    setSearchMode(true);
+    setQuery(category.title);
+
+    try {
+      // Fetch NYT books for this category
+      const nytBooks = await fetchNYTCategory(category.query);
+      
+      if (nytBooks.length === 0) {
+        // Fallback to regular search if NYT fetch fails
+        handleSearch(category.query);
+        return;
+      }
+
+      // Search for download links for each NYT book
+      const booksWithLinks: any[] = [];
+      
+      for (const nytBook of nytBooks.slice(0, 15)) { // Limit to first 15 books
+        try {
+          const searchResult = await fetchPage(nytBook.searchQuery, "all", 1);
+          const matchingBooks = searchResult.books.filter((b: any) => {
+            const bTitle = (b.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            const nytTitle = (nytBook.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            return bTitle.includes(nytTitle.substring(0, 10)) || nytTitle.includes(bTitle.substring(0, 10));
+          });
+
+          if (matchingBooks.length > 0) {
+            booksWithLinks.push({
+              ...nytBook,
+              downloadLinks: matchingBooks,
+              exactMatch: true
+            });
+          } else {
+            booksWithLinks.push({
+              ...nytBook,
+              downloadLinks: [],
+              exactMatch: false
+            });
+          }
+        } catch (err) {
+          console.error(`Failed to search for ${nytBook.title}:`, err);
+          booksWithLinks.push({
+            ...nytBook,
+            downloadLinks: [],
+            exactMatch: false
+          });
+        }
+      }
+
+      // Group and set results
+      const groupedBooksMap = new Map<string, any>();
+      
+      booksWithLinks.forEach((b: any) => {
+        const cleanTitle = (b.title || "").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const cleanAuthor = (b.author || "Unknown").toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+        const groupingKey = `${cleanTitle}___${cleanAuthor}`;
+
+        if (!groupedBooksMap.has(groupingKey)) {
+          groupedBooksMap.set(groupingKey, {
+            id: b.id || Math.random().toString(),
+            title: b.title,
+            author: b.author,
+            coverUrl: b.coverUrl,
+            description: b.description,
+            publisher: b.publisher,
+            rank: b.rank,
+            weeks_on_list: b.weeks_on_list,
+            source: 'nyt',
+            exactMatch: b.exactMatch,
+            downloadLinks: b.downloadLinks,
+            variants: b.downloadLinks
+          });
+        }
+      });
+
+      setResults(Array.from(groupedBooksMap.values()));
+      setTotalResults(booksWithLinks.length);
+      setHasMore(false);
+      setAvailableSourcesFromResults(new Set(["nyt", "rave"]));
+    } catch (err: any) {
+      console.error("Failed to load category:", err);
+      setError(`Failed to load category: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function prefetchPage(term: string, source: string, page: number) {
     if (prefetchCache.current.has(page) || prefetchingPage.current === page) return;
     prefetchingPage.current = page;
@@ -1224,7 +1361,7 @@ export default function DiscoverView({
                         <h3 className="text-lg font-lexend font-bold tracking-tight">{cat.title}</h3>
                       </div>
                     <button
-                      onClick={() => handleSearch(cat.query)}
+                      onClick={() => handleCategoryClick(cat)}
                       className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-kindle-card border border-transparent hover:border-kindle-border"
                     >
                       View More <ArrowRight className="w-3 h-3" />
