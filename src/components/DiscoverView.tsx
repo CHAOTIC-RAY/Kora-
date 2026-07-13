@@ -1424,7 +1424,13 @@ export default function DiscoverView({
                       </p>
                     )}
                     <div className="flex flex-wrap items-center gap-1 mt-1">
-                      <span className="text-[10px] text-kindle-text-muted font-sans font-medium">
+                      <span 
+                        className="text-[10px] text-kindle-text-muted font-sans font-medium hover:text-kindle-accent hover:underline cursor-pointer transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (book.author) handleSearch(book.author);
+                        }}
+                      >
                         {book.author}
                       </span>
                       {book.year && (
@@ -1875,13 +1881,23 @@ export default function DiscoverView({
               <div className="md:col-span-7 flex flex-col justify-between space-y-6">
                 <div className="space-y-4">
                   {/* Book Title & Author */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest font-sans">
-                      Verified Library Copy
-                    </span>
-                    <h3 className="text-2xl md:text-3xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
-                    <p className="text-sm md:text-base text-kindle-text-muted font-sans font-medium">{selectedBook.author}</p>
-                  </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest font-sans">
+                        Verified Library Copy
+                      </span>
+                      <h3 className="text-2xl md:text-3xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
+                      <p 
+                        className="text-sm md:text-base text-kindle-text-muted font-sans font-medium hover:text-kindle-accent hover:underline cursor-pointer inline-block transition-colors"
+                        onClick={() => {
+                          if (selectedBook.author) {
+                            onSelectedBookChange(null);
+                            handleSearch(selectedBook.author);
+                          }
+                        }}
+                      >
+                        {selectedBook.author}
+                      </p>
+                    </div>
 
                   {/* NYT Bestseller Information Badge */}
                   {verifiedDetails?.isBestseller && (
@@ -2243,7 +2259,18 @@ export default function DiscoverView({
                         {featuredBookDetails?.title || selectedFeaturedBook.title}
                       </h2>
                       <div className="text-lg text-neutral-600 dark:text-neutral-400 font-sans">
-                        By <span className="text-kindle-accent font-medium hover:underline cursor-pointer">{featuredBookDetails?.authors?.join(", ") || selectedFeaturedBook.author}</span>
+                        By <span 
+                          className="text-kindle-accent font-medium hover:underline cursor-pointer transition-colors"
+                          onClick={() => {
+                            const author = featuredBookDetails?.authors?.join(", ") || selectedFeaturedBook.author;
+                            if (author) {
+                              setSelectedFeaturedBook(null);
+                              handleSearch(author);
+                            }
+                          }}
+                        >
+                          {featuredBookDetails?.authors?.join(", ") || selectedFeaturedBook.author}
+                        </span>
                         {featuredBookDetails?.publishedDate && ` · ${featuredBookDetails.publishedDate.split('-')[0]}`}
                       </div>
                     </div>

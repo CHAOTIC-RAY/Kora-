@@ -58,6 +58,8 @@ export interface BookMetadata {
   id: string; // MD5 or UUID
   title: string;
   author: string;
+  filename?: string;
+  filePath?: string;
   publisher?: string;
   year?: string;
   language?: string;

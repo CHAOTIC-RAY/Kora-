@@ -125,6 +125,7 @@ export async function scanDirectoryForNewBooks(
 
     const existingIds = new Set(existingBooks.map((b) => b.id));
     const existingTitles = new Set(existingBooks.map((b) => b.title.toLowerCase().trim()));
+    const existingFilenames = new Set(existingBooks.map((b) => b.filename?.toLowerCase().trim()).filter(Boolean));
 
     // Iterate through directory entries
     for await (const entry of (handle as any).values()) {
@@ -133,9 +134,10 @@ export async function scanDirectoryForNewBooks(
         if (ext === "epub" || ext === "pdf") {
           const titleWithoutExt = entry.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
           const normalizedTitle = titleWithoutExt.toLowerCase().trim();
+          const normalizedFilename = entry.name.toLowerCase().trim();
 
-          // Skip if already in library
-          if (existingTitles.has(normalizedTitle)) continue;
+          // Skip if already in library by title or filename
+          if (existingTitles.has(normalizedTitle) || existingFilenames.has(normalizedFilename)) continue;
 
           // Get file blob to store locally in IndexedDB
           const file = await entry.getFile();
@@ -150,6 +152,7 @@ export async function scanDirectoryForNewBooks(
             id: bookId,
             title: titleWithoutExt,
             author: "Local Import",
+            filename: file.name,
             extension: ext,
             size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
             language: "English",

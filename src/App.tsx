@@ -33,7 +33,8 @@ import {
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
-  Compass, Play, Download, Globe, FileText
+  Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle,
+  RefreshCw, Zap, Database, Trash2
 } from "lucide-react";
 
 export default function App() {
@@ -639,7 +640,7 @@ export default function App() {
 
       {/* 3. Full-Screen Reader Component Viewports */}
       {activeBook && (
-        activeBook.extension === "pdf" ? (
+        activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
             book={activeBook}
             userId={user?.uid || ""}
@@ -656,7 +657,7 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
-        ) : activeBook.extension === "epub" || !activeBook.extension ? (
+        ) : (activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
@@ -688,29 +689,63 @@ export default function App() {
           />
         ) : (
           <div className="fixed inset-0 bg-kindle-bg z-[100] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in-95 duration-300">
-            <div className="max-w-md space-y-6 bg-kindle-card p-8 rounded-3xl border border-kindle-border shadow-2xl">
-              <FileText className="w-12 h-12 text-kindle-text-muted mx-auto" />
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold font-lexend text-kindle-text leading-tight">{activeBook.title}</h2>
-                <p className="text-xs text-kindle-text-muted max-w-sm mx-auto">
-                  The {activeBook.extension?.toUpperCase()} format is not supported by the built-in reader. You can download the file to read it on your device.
-                </p>
-              </div>
-              <div className="flex flex-col gap-3 pt-4 border-t border-kindle-border">
-                <div className="flex justify-center">
-                  <DownloadBookBtn book={activeBook} />
+            <div className="max-w-md space-y-6 bg-kindle-card p-8 rounded-3xl border border-kindle-border shadow-2xl overflow-hidden relative">
+              <div className="absolute top-0 left-0 w-full h-1 bg-red-500/30" />
+              <div className="pt-4">
+                <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="w-8 h-8 text-red-500" />
                 </div>
-                <button 
-                  onClick={() => {
-                    if (window.history.state && window.history.state.isReading) {
-                      window.history.back();
-                    }
-                    setActiveBook(null);
-                  }} 
-                  className="px-6 py-3 rounded-xl hover:bg-kindle-bg text-sm font-bold uppercase tracking-widest transition text-kindle-text-muted hover:text-kindle-text"
-                >
-                  Close
-                </button>
+                <div className="px-8 pb-2 space-y-2">
+                  <h2 className="text-xl font-bold font-lexend text-kindle-text leading-tight line-clamp-2">
+                    {(() => {
+                      const t = activeBook.title;
+                      // Detect duplicate-ish title chunks (e.g. "TitleTitle" or "Title Title")
+                      if (t.length > 20) {
+                        const mid = Math.floor(t.length / 2);
+                        const first = t.slice(0, mid).trim().toLowerCase();
+                        const second = t.slice(mid).trim().toLowerCase();
+                        if (first === second || second.startsWith(first) || first.startsWith(second)) {
+                          return t.slice(0, mid).trim();
+                        }
+                      }
+                      return t;
+                    })()}
+                  </h2>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-kindle-text/5 border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                    <FileText className="w-3 h-3" /> {activeBook.extension?.toUpperCase() || "UNKNOWN"} FORMAT
+                  </div>
+                </div>
+                
+                <div className="p-6 bg-kindle-bg/50 border-t border-b border-kindle-border text-left space-y-3">
+                  <p className="text-xs text-kindle-text font-medium">
+                    The {activeBook.extension?.toUpperCase()} format is not currently supported by Kora's built-in reader engine.
+                  </p>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider">Troubleshooting</p>
+                    <ul className="text-[11px] text-kindle-text-muted space-y-1 ml-4 list-disc">
+                      <li>Kora natively supports <b>EPUB</b> and <b>PDF</b> formats.</li>
+                      <li>Text-based formats (TXT, MD, HTML) are supported in draft mode.</li>
+                      <li>Try converting your file to <b>EPUB</b> using a tool like Calibre.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="p-8 flex flex-col gap-3">
+                  <div className="flex justify-center">
+                    <DownloadBookBtn book={activeBook} />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      if (window.history.state && window.history.state.isReading) {
+                        window.history.back();
+                      }
+                      setActiveBook(null);
+                    }} 
+                    className="px-6 py-3 rounded-xl hover:bg-kindle-bg text-[10px] font-bold uppercase tracking-widest transition text-kindle-text-muted hover:text-kindle-text"
+                  >
+                    Return to Library
+                  </button>
+                </div>
               </div>
             </div>
           </div>

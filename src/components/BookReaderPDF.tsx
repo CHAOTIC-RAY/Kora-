@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import { 
-  X, AlertCircle, FileText, Bookmark, 
+  X, AlertCircle, AlertTriangle, RefreshCw, Database, Zap, FileText, Bookmark, Trash2,
   ChevronLeft, ChevronRight, Edit3, CheckCircle
 } from "lucide-react";
 
@@ -145,35 +145,62 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
               <p className="text-xs font-sans animate-pulse">Retrieving local PDF ebook...</p>
             </div>
           ) : error ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center max-w-sm mx-auto space-y-4">
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex flex-col items-center">
-                <AlertCircle className="w-12 h-12 text-red-500 mb-3 animate-bounce" />
-                <h3 className="font-semibold text-[#2d2a26] text-sm">PDF Reader Failed</h3>
-                <p className="text-xs text-red-700 font-medium my-2">{error}</p>
-                <p className="text-[10px] text-[#7c7467] leading-relaxed">
-                  This typically indicates a corrupted PDF file or that a mirror returned an HTML landing page instead of the actual PDF file.
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2.5 w-full justify-center">
-                <button 
-                  onClick={loadPdfBlob} 
-                  className="px-4 py-2 bg-white border border-[#e8e4de] text-[#5c5346] rounded-xl text-xs font-sans hover:bg-[#f0ede8] transition"
-                >
-                  Retry Load File
-                </button>
-                <button 
-                  onClick={async () => {
-                    try {
-                      await deleteBookFile(book.id);
-                      onClose();
-                    } catch (err) {
-                      console.error("Failed to delete local cache", err);
-                    }
-                  }}
-                  className="px-4 py-2 bg-[#5c5346] text-white rounded-xl text-xs font-sans hover:bg-[#4a4237] transition font-semibold"
-                >
-                  Delete & Re-download
-                </button>
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center max-w-lg mx-auto">
+              <div className="w-full bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-[2rem] p-8 md:p-10 shadow-xl flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
+                <div className="w-20 h-20 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                  <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-400" />
+                </div>
+                
+                <h2 className="text-xl md:text-2xl font-serif font-bold text-red-900 dark:text-red-100 mb-3">
+                  PDF Reader Error
+                </h2>
+                
+                <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-4 mb-6 border border-red-200/50 dark:border-red-800/30 w-full">
+                  <p className="text-xs md:text-sm text-red-700 dark:text-red-300 font-mono leading-relaxed break-words">
+                    Error: {error}
+                  </p>
+                </div>
+
+                <div className="space-y-4 text-left w-full">
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 font-medium px-1 uppercase tracking-widest opacity-70">
+                    Troubleshooting Steps:
+                  </p>
+                  <ul className="grid grid-cols-1 gap-2.5">
+                    {[
+                      { icon: <RefreshCw className="w-3.5 h-3.5" />, text: "Try refreshing the page or restarting the reader." },
+                      { icon: <Database className="w-3.5 h-3.5" />, text: "Clear local cache and re-download (mirror might have failed)." },
+                      { icon: <FileText className="w-3.5 h-3.5" />, text: "Verify the file is a valid PDF (not an HTML error page)." },
+                      { icon: <Zap className="w-3.5 h-3.5" />, text: "Ensure your browser supports native PDF viewing." }
+                    ].map((step, idx) => (
+                      <li key={idx} className="flex items-start gap-3 p-3 bg-white/40 dark:bg-white/5 rounded-xl border border-white/60 dark:border-white/5 shadow-sm">
+                        <span className="mt-0.5 text-red-500">{step.icon}</span>
+                        <span className="text-[11px] md:text-xs text-neutral-700 dark:text-neutral-300 leading-snug">{step.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 w-full mt-8">
+                  <button 
+                    onClick={loadPdfBlob}
+                    className="flex-1 px-6 py-3 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Retry
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        await deleteBookFile(book.id);
+                        onClose();
+                      } catch (err) {
+                        console.error("Failed to delete local cache", err);
+                      }
+                    }}
+                    className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-red-600/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> Reset & Close
+                  </button>
+                </div>
               </div>
             </div>
           ) : pdfUrl ? (
