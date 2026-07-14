@@ -560,7 +560,12 @@ export default function App() {
           />
         )}
 
-        {activeTab === "downloads" && <DownloadsManager />}
+        {activeTab === "downloads" && (
+          <DownloadsManager 
+            userId={user?.uid || ""} 
+            onRefreshLibrary={() => refreshLibrary()} 
+          />
+        )}
         
         {activeTab === "discover" && (
           <DiscoverView

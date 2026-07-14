@@ -36,6 +36,261 @@ function getGeminiClient() {
 
 app.use("/api/zlib", zlibRouter);
 
+// Web Clipper / URL-to-eBook Conversion Endpoint powered by Gemini
+app.post("/api/convert-url", express.json(), async (req, res) => {
+  const targetUrl = req.body.url || req.query.url as string;
+  if (!targetUrl) {
+    return res.status(400).json({ error: "Missing url parameter" });
+  }
+
+  try {
+    console.log(`[Web Clipper] Fetching: ${targetUrl}`);
+    
+    // Parse domain
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(targetUrl);
+    } catch (e) {
+      return res.status(400).json({ error: "Invalid URL format" });
+    }
+    const domain = parsedUrl.hostname;
+
+    // Fetch the raw page content using standard fetch with timeout
+    let rawHtml = "";
+    try {
+      const response = await fetch(targetUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+        signal: AbortSignal.timeout(10000)
+      });
+      if (response.ok) {
+        rawHtml = await response.text();
+      } else {
+        throw new Error(`HTTP error ${response.status}`);
+      }
+    } catch (fetchErr) {
+      console.warn(`[Web Clipper] Standard fetch failed, trying Puppeteer:`, fetchErr);
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+      });
+      try {
+        const page = await browser.newPage();
+        await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+        rawHtml = await page.content();
+      } finally {
+        await browser.close();
+      }
+    }
+
+    if (!rawHtml || rawHtml.trim().length < 100) {
+      return res.status(500).json({ error: "Could not fetch any meaningful content from the provided URL" });
+    }
+
+    // Parse with Cheerio to extract core body and reduce token size
+    const $ = cheerio.load(rawHtml);
+    
+    // Strip script, style, iframe, header, footer, nav, ads
+    $("script, style, iframe, header, footer, nav, noscript, .ads, .advertisement, #header, #footer, #nav").remove();
+    
+    const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+    const truncatedBody = bodyText.substring(0, 15000); // truncate to fit within token limits safely
+
+    console.log(`[Web Clipper] Extracted text length: ${truncatedBody.length}. Sending to Gemini.`);
+
+    // Use Gemini to structure and organize into chapters/sections
+    const ai = getGeminiClient();
+    const systemPrompt = `You are a high-fidelity web article clipper and ebook formatting assistant.
+Given raw web page text, your job is to extract the core reading content, organize it logically (into chapters or sections if it's long, or a single beautiful article if short), and format it neatly.
+Provide a clean, elegant JSON response that contains the title, author (or source website name), a brief description/summary, and a list of structured chapters.`;
+
+    const userPrompt = `Please parse the following webpage text from URL: "${targetUrl}" (domain: "${domain}").
+Extract the main article/story content, organize it into clean paragraphs, headings, and lists.
+Return a JSON object conforming exactly to this schema:
+{
+  "title": "Title of the Article/Book",
+  "author": "Author or Domain Name",
+  "description": "A brief summary or description of the article",
+  "chapters": [
+    {
+      "title": "Chapter 1: Title" (or "Introduction", "Part 1", etc.),
+      "content": "A clean HTML string containing only reading content (use <p>, <h2>, <h3>, <ul>, <ol>, <li>, <blockquote>, <strong>, <em>, <pre>, <code>). Do NOT include outer <html>, <body>, or <head> tags."
+    }
+  ]
+}
+
+Webpage text content:
+${truncatedBody}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          required: ["title", "author", "description", "chapters"],
+          properties: {
+            title: { type: Type.STRING },
+            author: { type: Type.STRING },
+            description: { type: Type.STRING },
+            chapters: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ["title", "content"],
+                properties: {
+                  title: { type: Type.STRING },
+                  content: { type: Type.STRING }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const resultText = response.text;
+    if (!resultText) {
+      throw new Error("No response from Gemini.");
+    }
+
+    const converted = JSON.parse(resultText);
+
+    // Compile chapters into a single elegant HTML reader-friendly file
+    let fullHtmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${converted.title}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Georgia, serif;
+      line-height: 1.7;
+      color: #111;
+      max-width: 650px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background-color: #fcfcf9;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        color: #e0e0e0;
+        background-color: #121212;
+      }
+    }
+    h1 {
+      font-size: 2.2em;
+      line-height: 1.2;
+      margin-bottom: 0.2em;
+      font-weight: 700;
+    }
+    .author-line {
+      font-style: italic;
+      color: #666;
+      margin-bottom: 2em;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 10px;
+      font-size: 0.9em;
+    }
+    @media (prefers-color-scheme: dark) {
+      .author-line {
+        color: #aaa;
+        border-bottom-color: #444;
+      }
+    }
+    .chapter {
+      margin-top: 3em;
+      padding-top: 2em;
+      border-top: 1px dashed #ccc;
+    }
+    .chapter:first-of-type {
+      margin-top: 1em;
+      padding-top: 0;
+      border-top: none;
+    }
+    h2.chapter-title {
+      font-size: 1.8em;
+      margin-top: 0;
+      margin-bottom: 1em;
+      font-family: Georgia, serif;
+    }
+    h3 {
+      font-size: 1.3em;
+      margin-top: 1.5em;
+    }
+    p {
+      margin-top: 0;
+      margin-bottom: 1.2em;
+      text-align: justify;
+    }
+    pre, code {
+      background-color: #f4f4f4;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    @media (prefers-color-scheme: dark) {
+      pre, code {
+        background-color: #2a2a2a;
+      }
+    }
+    blockquote {
+      border-left: 4px solid #b4a078;
+      margin: 1.5em 0;
+      padding-left: 1em;
+      color: #555;
+      font-style: italic;
+    }
+    @media (prefers-color-scheme: dark) {
+      blockquote {
+        color: #999;
+      }
+    }
+    ul, ol {
+      margin-bottom: 1.2em;
+      padding-left: 1.5em;
+    }
+    li {
+      margin-bottom: 0.5em;
+    }
+  </style>
+</head>
+<body>
+  <h1>${converted.title}</h1>
+  <div class="author-line">By ${converted.author} • Saved from ${domain}</div>
+  
+  <div class="chapters-container">
+    ${converted.chapters.map((ch: any, idx: number) => `
+      <div class="chapter" id="chapter-${idx}">
+        <h2 class="chapter-title">${ch.title}</h2>
+        <div class="chapter-content">
+          ${ch.content}
+        </div>
+      </div>
+    `).join("")}
+  </div>
+</body>
+</html>`;
+
+    res.json({
+      title: converted.title,
+      author: converted.author,
+      description: converted.description,
+      htmlContent: fullHtmlContent
+    });
+
+  } catch (err: any) {
+    console.error("[Web Clipper Error]:", err);
+    res.status(500).json({ error: err.message || "An error occurred during URL conversion." });
+  }
+});
+
 // Full Oxford English Dictionary Endpoint powered by Gemini
 app.get("/api/oxford-dictionary", async (req, res) => {
   const word = req.query.word as string;

@@ -299,6 +299,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     marginSize,
     doubleColumns,
     useDoubleColumns,
+    pageOverlap,
     letterSpacing,
     hyphenation
   ]);
@@ -386,12 +387,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       isContinuous,
       brightness,
       doubleColumns,
+      pageOverlap,
       letterSpacing,
       hyphenation,
-      pageTurnMode
+      pageTurnMode,
+      pageTransitionEffect,
+      themeManuallySet,
+      grayscaleImages
     };
     localStorage.setItem("kora_reader_prefs", JSON.stringify(prefs));
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, letterSpacing, hyphenation, pageTurnMode]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages]);
 
   useEffect(() => {
     loadEpubFile();
