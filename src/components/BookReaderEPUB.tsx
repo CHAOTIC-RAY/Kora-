@@ -2501,7 +2501,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     ].map((step, idx) => (
                       <li key={idx} className="flex items-start gap-3 p-3 bg-white/40 dark:bg-white/5 rounded-xl border border-white/60 dark:border-white/5 shadow-sm">
                         <span className="mt-0.5 text-red-500">{step.icon}</span>
-                        <span className="text-[11px] md:text-xs text-neutral-700 dark:text-neutral-300 leading-snug">{step.text}</span>
+                        <span className="text-[11px] md:text-xs text-red-900 dark:text-red-100 font-medium leading-snug">{step.text}</span>
                       </li>
                     ))}
                   </ul>
@@ -2776,48 +2776,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       />
                     )}
                   </AnimatePresence>
-
-                  {pageTurnMode === "floating-buttons" && (
-                    <>
-                      <button
-                        onPointerUp={(e) => {
-                          e.stopPropagation();
-                          handlePrevPage();
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
-                        disabled={currentChapterIdx === 0 && currentPageNum === 1}
-                        className={`absolute left-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full shadow-lg border backdrop-blur-xs transition-all duration-200 ${
-                          theme === "dark"
-                            ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
-                            : "bg-white/60 text-neutral-800 border-neutral-200 hover:bg-neutral-50/80"
-                        } disabled:opacity-20 disabled:pointer-events-none`}
-                        title="Previous Page"
-                      >
-                        <ChevronLeft className="w-6 h-6" />
-                      </button>
-                      <button
-                        onPointerUp={(e) => {
-                          e.stopPropagation();
-                          handleNextPage();
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                        }}
-                        disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
-                        className={`absolute right-4 top-1/2 -translate-y-1/2 z-30 p-3 rounded-full shadow-lg border backdrop-blur-xs transition-all duration-200 ${
-                          theme === "dark"
-                            ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
-                            : "bg-white/60 text-neutral-800 border-neutral-200 hover:bg-neutral-50/80"
-                        } disabled:opacity-20 disabled:pointer-events-none`}
-                        title="Next Page"
-                      >
-                        <ChevronRight className="w-6 h-6" />
-                      </button>
-                    </>
-                  )}
-
                   <motion.article 
                     ref={contentRef}
                     animate={{ 
@@ -3098,10 +3056,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     id="prev-chapter-btn"
                     disabled={currentChapterIdx === 0 && currentPageNum === 1}
                     onClick={handlePrevPage}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-neutral-500/10 transition"
+                    className={`flex items-center justify-center p-3 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
+                      theme === "dark"
+                        ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
+                        : "bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50"
+                    } disabled:opacity-30`}
+                    title="Previous Page"
                   >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                    <span>Prev Page</span>
+                    <ChevronLeft className="w-5 h-5" />
                   </button>
                 ) : (
                   <div className="w-[100px] hidden sm:block" />
@@ -3139,10 +3101,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       id="next-chapter-btn"
                       disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
                       onClick={handleNextPage}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-kindle-accent transition shadow-sm"
+                      className={`flex items-center justify-center p-3 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
+                        theme === "dark"
+                          ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
+                          : "bg-neutral-900 text-white border-neutral-800 hover:bg-neutral-800"
+                      } disabled:opacity-30`}
+                      title="Next Page"
                     >
-                      <span>Next Page</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
+                      <ChevronRight className="w-5 h-5" />
                     </button>
                   )}
                 </div>

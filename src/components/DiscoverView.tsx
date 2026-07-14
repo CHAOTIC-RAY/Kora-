@@ -1734,7 +1734,7 @@ export default function DiscoverView({
                     </button>
                   </div>
 
-                  <div className="flex gap-3 overflow-x-auto pb-4 scroll-smooth snap-x -mx-4 px-4 md:-mx-8 md:px-8">
+                  <div className="flex gap-3 overflow-x-auto pb-4 scroll-smooth snap-x">
                     {books.map((book, idx) => (
                       <div
                         key={idx}
