@@ -221,10 +221,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   const recalculateLayout = () => {
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const container = contentRef.current;
       if (!container) return;
-      
+
       // Use the article's actual rendered width (border-box, excludes the
       // container's own padding). This is the true on-screen width of one page,
       // whether single- or double-column. Using the padded container width
@@ -232,7 +232,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // column — the "page display" bug.
       const textWidth = container.offsetWidth;
       if (textWidth <= 0) return;
-      
+
+      // If the container has no resolved height, CSS columns can't paginate
+      // properly — bail out and try again on the next resize tick.
+      const textHeight = container.offsetHeight;
+      if (textHeight <= 0) return;
+
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
       // Column width for the CSS column layout (matches the measured width so
@@ -247,7 +252,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
-    }, 150);
+    });
   };
 
   // Recalculate layout on resize or preference change
@@ -1047,11 +1052,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     }
 
     // Recalculate pages for the new chapter and set target page index
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       const container = contentRef.current;
       if (!container) return;
       const textWidth = container.offsetWidth;
       if (textWidth <= 0) return;
+      const textHeight = container.offsetHeight;
+      if (textHeight <= 0) return;
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
       const colWidth = useDoubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
@@ -1068,8 +1075,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setCurrentPageNum(goToLastPage ? calculatedPages : 1);
       
       // Re-enable animation after layout settles
-      setTimeout(() => setShouldAnimate(true), 150);
-    }, 150);
+      requestAnimationFrame(() => setShouldAnimate(true));
+    });
 
     const percent = Math.round((newChapterIdx / chapters.length) * 100);
     const updated: BookMetadata = {
@@ -2077,7 +2084,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col relative">
+            <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
               {/* Floating highlighted text helper tip */}
               {selectedText && !selectMode && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-[#1e1c19] text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-sans flex items-center gap-3 border border-[#3e3933] animate-fade-in max-w-[90vw] w-max md:max-w-3xl overflow-x-auto no-scrollbar">
@@ -2256,9 +2263,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 ref={viewerRef}
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
-                className={`flex-1 min-h-0 relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start ${selectMode ? "select-text cursor-text" : "select-none cursor-default"} mx-auto w-full ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
+                className={`flex-1 min-h-0 flex flex-col overflow-hidden ${selectMode ? "select-text cursor-text" : "select-none cursor-default"} mx-auto w-full ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl" : marginSize}`}
+                style={{ padding: isMobile ? "12px 12px" : "32px 64px" }}
               >
-                <div className="w-full h-full overflow-hidden relative flex items-start justify-start" style={{ perspective: "1200px" }}>
+                <div className="flex-1 min-h-0 w-full overflow-hidden relative" style={{ perspective: "1200px" }}>
                   {/* Premium Page Curl & Light Sweep shadow overlay */}
                   {pageTransitionEffect === "paper-flip" && shouldAnimate && (
                     <motion.div
@@ -2367,7 +2375,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       columnFill: 'auto',
                       // Strictly clip to the current page so exactly one page (or one
                       // 2-page spread) is visible at a time — true page-by-page reading.
-                      overflow: 'visible',
+                      overflow: 'hidden',
                       // Center "book spine" gutter between the two columns in 2-col mode
                       boxShadow: useDoubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none',
                       transformOrigin: flipDirection === "next" ? "left center" : "right center"
