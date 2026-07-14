@@ -212,13 +212,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   // Audiobook / Speech states
   const [showAudiobook, setShowAudiobook] = useState<boolean>(false);
+  const [isAudiobookExpanded, setIsAudiobookExpanded] = useState<boolean>(false);
   const [isPlayingSpeech, setIsPlayingSpeech] = useState<boolean>(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
   const [currentParagraphIdx, setCurrentParagraphIdx] = useState<number>(-1);
 
-  const [isAudiobookExpanded, setIsAudiobookExpanded] = useState<boolean>(false);
   const [externalLinkToOpen, setExternalLinkToOpen] = useState<string | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -266,7 +266,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // whether single- or double-column. Using the padded container width
       // (or half-width+gap) made each page turn overshoot and clip the left
       // column — the "page display" bug.
-      const textWidth = container.offsetWidth;
+      const rect = container.getBoundingClientRect();
+      const textWidth = rect.width;
       if (textWidth <= 0) return;
       
       const scrollWidth = container.scrollWidth;
@@ -1232,6 +1233,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       return imageMap.get(base) || null;
     };
 
+    // Remove videos, iframes, and audios as requested
+    chapterDoc.querySelectorAll("video, iframe, audio").forEach(el => el.remove());
+
     const images = chapterDoc.querySelectorAll("img, image");
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
@@ -2073,126 +2077,176 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           </aside>
           </>
         )}
-
-        {/* Sidebar: Voice Narrator panel */}
+          {/* Sidebar / Popup: Voice Narrator panel */}
         {showAudiobook && (
           <>
-            <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => { stopSpeech(); setShowAudiobook(false); }} />
-            <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
-              <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
-                <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346]">
-                  <Headphones className="w-4 h-4 text-[#5c5346]" />
-                  Voice Narrator
-                </span>
-                <button 
-                  onClick={() => { stopSpeech(); setShowAudiobook(false); }} 
-                  className="text-xs p-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346]"
-                >
-                  Done
-                </button>
-              </div>
-
-              <div className="flex-1 flex flex-col gap-4">
-                {/* Status Indicator */}
-                <div className={`p-4 rounded-xl border ${activeTheme.border} bg-white/5 flex items-center gap-3`}>
-                  <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
-                    <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
-                      A
+            <div className={`absolute inset-0 z-30 bg-black/10 md:hidden transition-opacity ${isAudiobookExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setIsAudiobookExpanded(false)} />
+            
+            {/* Desktop Sidebar OR Mobile Expanded Popup OR Mobile Mini Player */}
+            <aside className={`
+              w-full md:w-80 border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0
+              md:relative md:h-auto md:translate-y-0
+              ${isAudiobookExpanded ? 'fixed bottom-0 left-0 right-0 h-[60vh] z-40 rounded-t-3xl p-5' : 'fixed bottom-4 left-4 right-4 h-16 z-40 rounded-2xl shadow-xl flex-row items-center px-4 py-2 border'}
+            `}>
+              
+              {/* Mobile Mini Player Layout */}
+              {!isAudiobookExpanded && (
+                <div className="flex md:hidden items-center justify-between w-full h-full" onClick={() => setIsAudiobookExpanded(true)}>
+                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                    <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
+                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
+                        A
+                      </div>
+                    </div>
+                    <div className="min-w-0 truncate">
+                      <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate">
+                        {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
+                      </span>
+                      <p className="text-[10px] opacity-70 truncate font-serif">
+                        {currentParagraphIdx >= 0 ? `Section ${currentParagraphIdx + 1}` : "Tap to open"}
+                      </p>
                     </div>
                   </div>
-                  <div className="min-w-0">
-                    <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1 uppercase tracking-wider">
-                      {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
-                    </span>
-                    <p className="text-xs opacity-70 truncate font-serif mt-0.5">
-                      {currentParagraphIdx >= 0 ? `Reading Section ${currentParagraphIdx + 1}` : "Click play to start"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Primary Playback controls */}
-                <div className="flex items-center gap-2 justify-center py-2">
-                  <button
-                    onClick={() => speakParagraph(Math.max(0, currentParagraphIdx - 1))}
-                    className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
-                    title="Previous Section"
-                  >
-                    <Rewind className="w-4 h-4 text-kindle-text" />
-                  </button>
-
-                  <button
-                    onClick={toggleSpeechPlayback}
-                    className="w-12 h-12 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-md transform active:scale-95 transition"
-                    title={isPlayingSpeech ? "Pause" : "Play"}
-                  >
-                    {isPlayingSpeech ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
-                  </button>
-
-                  <button
-                    onClick={() => speakParagraph(currentParagraphIdx + 1)}
-                    className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
-                    title="Next Section"
-                  >
-                    <FastForward className="w-4 h-4 text-kindle-text" />
-                  </button>
-
-                  <button
-                    onClick={stopSpeech}
-                    className="p-2.5 rounded-lg border border-neutral-500/20 text-red-500 hover:bg-red-50/10 transition"
-                    title="Reset Speech"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                </div>
-
-                {/* Settings Block (Voice, Speed, etc) */}
-                <div className="space-y-4 pt-2">
-                  {/* Voice selector */}
-                  <div>
-                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-60 block mb-1">Voice Accent</label>
-                    <select
-                      value={selectedVoiceName}
-                      onChange={(e) => {
-                        setSelectedVoiceName(e.target.value);
-                        if (isPlayingSpeech) {
-                          setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
-                        }
-                      }}
-                      className="w-full p-2 text-xs rounded-lg border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current"
+                  
+                  <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={toggleSpeechPlayback}
+                      className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-sm transform active:scale-95 transition"
                     >
-                      {voices.length === 0 ? (
-                        <option value="">No System Voices</option>
-                      ) : (
-                        voices.map((v) => (
-                          <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
-                            {v.name.slice(0, 24)} ({v.lang.split("-")[0].toUpperCase()})
-                          </option>
-                        ))
-                      )}
-                    </select>
+                      {isPlayingSpeech ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                    </button>
+                    <button 
+                      onClick={() => setShowAudiobook(false)}
+                      className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:text-current rounded-full"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Desktop / Expanded Mobile Layout */}
+              <div className={`w-full flex-col h-full ${!isAudiobookExpanded ? 'hidden md:flex' : 'flex'}`}>
+                {/* Drag handle for mobile */}
+                <div className="w-full flex justify-center pb-2 md:hidden" onClick={() => setIsAudiobookExpanded(false)}>
+                  <div className="w-12 h-1.5 bg-current opacity-20 rounded-full" />
+                </div>
+
+                <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center ${isAudiobookExpanded ? '' : 'p-5 md:p-0'}`}>
+                  <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
+                    <Headphones className="w-4 h-4" />
+                    Voice Narrator
+                  </span>
+                  <button 
+                    onClick={() => {
+                      if (isAudiobookExpanded) setIsAudiobookExpanded(false);
+                      else { stopSpeech(); setShowAudiobook(false); }
+                    }} 
+                    className="text-xs p-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346] dark:text-neutral-300"
+                  >
+                    {isAudiobookExpanded ? 'Collapse' : 'Done'}
+                  </button>
+                </div>
+
+                <div className={`flex-1 flex flex-col gap-4 overflow-y-auto ${isAudiobookExpanded ? '' : 'px-5 md:px-0 pb-5 md:pb-0'}`}>
+                  {/* Status Indicator */}
+                  <div className={`p-4 rounded-xl border ${activeTheme.border} bg-white/5 flex items-center gap-3`}>
+                    <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
+                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
+                        A
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1 uppercase tracking-wider">
+                        {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
+                      </span>
+                      <p className="text-xs opacity-70 truncate font-serif mt-0.5">
+                        {currentParagraphIdx >= 0 ? `Reading Section ${currentParagraphIdx + 1}` : "Click play to start"}
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Speed */}
-                  <div>
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Speech Speed</label>
-                      <span className="text-xs font-mono font-semibold">{speechRate}x</span>
+                  {/* Primary Playback controls */}
+                  <div className="flex items-center gap-2 justify-center py-2">
+                    <button
+                      onClick={() => speakParagraph(Math.max(0, currentParagraphIdx - 1))}
+                      className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
+                      title="Previous Section"
+                    >
+                      <Rewind className="w-4 h-4 text-kindle-text" />
+                    </button>
+                    <button
+                      onClick={toggleSpeechPlayback}
+                      className="w-12 h-12 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-md transform active:scale-95 transition"
+                      title={isPlayingSpeech ? "Pause" : "Play"}
+                    >
+                      {isPlayingSpeech ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                    </button>
+                    <button
+                      onClick={() => speakParagraph(currentParagraphIdx + 1)}
+                      className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
+                      title="Next Section"
+                    >
+                      <FastForward className="w-4 h-4 text-kindle-text" />
+                    </button>
+                    <button
+                      onClick={stopSpeech}
+                      className="p-2.5 rounded-lg border border-neutral-500/20 text-red-500 hover:bg-red-50/10 transition"
+                      title="Reset Speech"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Settings Block (Voice, Speed, etc) */}
+                  <div className="space-y-4 pt-2">
+                    {/* Voice selector */}
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-60 block mb-1">Voice Accent</label>
+                      <select
+                        value={selectedVoiceName}
+                        onChange={(e) => {
+                          setSelectedVoiceName(e.target.value);
+                          if (isPlayingSpeech) {
+                            setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
+                          }
+                        }}
+                        className="w-full p-2 text-xs rounded-lg border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current"
+                      >
+                        {voices.length === 0 ? (
+                          <option value="">No System Voices</option>
+                        ) : (
+                          voices.map((v) => (
+                            <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
+                              {v.name.slice(0, 24)} ({v.lang.split("-")[0].toUpperCase()})
+                            </option>
+                          ))
+                        )}
+                      </select>
                     </div>
-                    <input
-                      type="range"
-                      min="0.5"
-                      max="2.0"
-                      step="0.1"
-                      value={speechRate}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        setSpeechRate(val);
-                        if (isPlayingSpeech) {
-                          setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
-                        }
-                      }}
-                      className="w-full accent-amber-500 cursor-pointer h-1 bg-neutral-500/20 rounded-lg appearance-none"
-                    />
+
+                    {/* Speed */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Speech Speed</label>
+                        <span className="text-xs font-mono font-semibold">{speechRate}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2.0"
+                        step="0.1"
+                        value={speechRate}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setSpeechRate(val);
+                          if (isPlayingSpeech) {
+                            setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
+                          }
+                        }}
+                        className="w-full accent-amber-500 cursor-pointer h-1 bg-neutral-500/20 rounded-lg appearance-none"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2599,8 +2653,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               transform: `translateX(-${(turningPageNum - 1) * pageStepRef.current}px)`,
                               paddingTop: "12px",
                               paddingBottom: "12px",
-                              paddingLeft: useDoubleColumns ? "0" : "12px",
-                              paddingRight: useDoubleColumns ? "0" : "12px",
+                              
+                              
                             }}
                           >
                             <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
@@ -2663,8 +2717,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               }px)`,
                               paddingTop: "12px",
                               paddingBottom: "12px",
-                              paddingLeft: useDoubleColumns ? "0" : "12px",
-                              paddingRight: useDoubleColumns ? "0" : "12px",
+                              
+                              
                             }}
                           >
                             <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>

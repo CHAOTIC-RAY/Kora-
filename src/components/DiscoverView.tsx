@@ -2256,16 +2256,16 @@ export default function DiscoverView({
               </button>
             </div>
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar bg-white dark:bg-[#1a1c1e]">
+            <div className="flex-1 overflow-y-auto custom-scrollbar bg-kindle-bg">
               <div className="max-w-6xl mx-auto px-6 py-10">
                 <div className="flex flex-col md:flex-row gap-10">
                   {/* Left Column: Cover & Action Buttons */}
                   <div className="w-full md:w-56 shrink-0 flex flex-col items-center md:items-start">
-                    <div className="w-full max-w-[220px] aspect-[2/3] rounded-lg overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.15)] bg-neutral-100 dark:bg-neutral-800 relative group mb-6">
+                    <div className="w-full max-w-[220px] aspect-[2/3] rounded-lg overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.15)] bg-black/5 relative group mb-6">
                       {selectedFeaturedBook.coverUrl ? (
                         <img src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-neutral-400">
+                        <div className="w-full h-full flex items-center justify-center text-kindle-text-muted">
                           <BookOpen className="w-12 h-12" />
                         </div>
                       )}
@@ -2285,10 +2285,10 @@ export default function DiscoverView({
                   {/* Right Column: Title, Metadata, Description & Sidebar */}
                   <div className="flex-1 min-w-0">
                     <div className="mb-8">
-                      <h2 className="text-3xl md:text-4xl font-serif text-neutral-900 dark:text-white mb-2 leading-tight">
+                      <h2 className="text-3xl md:text-4xl font-serif text-kindle-text mb-2 leading-tight">
                         {featuredBookDetails?.title || selectedFeaturedBook.title}
                       </h2>
-                      <div className="text-lg text-neutral-600 dark:text-neutral-400 font-sans">
+                      <div className="text-lg text-kindle-text-muted font-sans">
                         By <span 
                           className="text-kindle-accent font-medium hover:underline cursor-pointer transition-colors"
                           onClick={() => {
@@ -2306,9 +2306,9 @@ export default function DiscoverView({
                     </div>
 
                     {/* Tabs navigation simulation */}
-                    <div className="flex items-center gap-8 border-b border-neutral-200 dark:border-neutral-800 mb-8 overflow-x-auto no-scrollbar">
+                    <div className="flex items-center gap-8 border-b border-kindle-border mb-8 overflow-x-auto no-scrollbar">
                       {['Overview'].map((tab, idx) => (
-                        <button key={tab} className={`pb-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-2 transition-colors ${idx === 0 ? 'text-kindle-accent border-kindle-accent' : 'text-neutral-500 border-transparent hover:text-neutral-700 dark:hover:text-neutral-300'}`}>
+                        <button key={tab} className={`pb-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-2 transition-colors ${idx === 0 ? 'text-kindle-accent border-kindle-accent' : 'text-kindle-text-muted border-transparent hover:text-kindle-text'}`}>
                           {tab}
                         </button>
                       ))}
@@ -2317,16 +2317,16 @@ export default function DiscoverView({
                     <div className="space-y-12">
                       <section>
                         <div className="flex items-center justify-between mb-6">
-                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-neutral-400">About this edition</h3>
-                          <div className="flex items-center bg-neutral-50 dark:bg-neutral-800/50 rounded p-1 border border-neutral-100 dark:border-neutral-800">
+                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text-muted">About this edition</h3>
+                          <div className="flex items-center bg-black/5 rounded p-1 border border-kindle-border">
                             {["google", "nyt", "openlibrary"].map((source) => (
                               <button 
                                 key={source}
                                 onClick={() => updateMetadataSource(source as any)}
                                 className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded transition-all ${
                                   metadataSource === source 
-                                    ? 'bg-white dark:bg-neutral-700 text-kindle-accent shadow-sm' 
-                                    : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
+                                    ? 'bg-kindle-text text-kindle-bg shadow-sm' 
+                                    : 'text-kindle-text-muted hover:text-kindle-text'
                                 }`}
                               >
                                 {source}
@@ -2335,15 +2335,15 @@ export default function DiscoverView({
                           </div>
                         </div>
                         
-                        <div className="text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans text-sm space-y-4 min-h-[150px]">
+                        <div className="text-kindle-text leading-relaxed font-sans text-sm space-y-4 min-h-[150px]">
                           {loadingFeaturedDetails ? (
                             <div className="space-y-4 animate-pulse">
-                              <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded w-full" />
-                              <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded w-full" />
-                              <div className="h-4 bg-neutral-100 dark:bg-neutral-800 rounded w-3/4" />
+                              <div className="h-4 bg-black/5 rounded w-full" />
+                              <div className="h-4 bg-black/5 rounded w-full" />
+                              <div className="h-4 bg-black/5 rounded w-3/4" />
                             </div>
                           ) : (
-                            <div className="prose prose-sm dark:prose-invert max-w-none prose-neutral leading-relaxed" dangerouslySetInnerHTML={{ __html: featuredBookDetails?.description || "No detailed description available." }} />
+                            <div className="prose prose-sm dark:prose-invert max-w-none prose-neutral leading-relaxed [&_a]:text-kindle-accent" dangerouslySetInnerHTML={{ __html: featuredBookDetails?.description || "No detailed description available." }} />
                           )}
                         </div>
                       </section>

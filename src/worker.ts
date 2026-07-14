@@ -215,6 +215,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
 export interface Env {
   BROWSER: any;
   NYT_API_KEY?: string;
+  GOOGLE_BOOKS_API_KEY?: string;
   NYT_BOOKS_API_KEY?: string;
   RAVE_BOOK_SEARCH?: any;
 }
@@ -970,6 +971,40 @@ export default {
       }
     }
 
+    // 2.1.5 NYT Raw Details Endpoint (No AI)
+    if (path === "/api/nytimes/book-details-raw") {
+      const title = url.searchParams.get("title");
+      const author = url.searchParams.get("author") || "";
+      if (!title) {
+        return new Response(JSON.stringify({ error: "Missing title parameter" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+      
+      const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: "NYT API Key not configured" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const nytUrl = `https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&api-key=${apiKey}`;
+        const response = await fetch(nytUrl);
+        const data = await response.json();
+        return new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch raw NYT details", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // 2.2 NYT Book Details API
     if (path === "/api/nyt/book-details" || path === "/api/nytimes/book-details") {
       const title = url.searchParams.get("title");
@@ -1149,6 +1184,31 @@ export default {
         });
       } catch (err: any) {
         return new Response(JSON.stringify({ error: "Failed to generate recommendations", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // Google Books API Proxy
+    if (path === "/api/google-books/search") {
+      const q = url.searchParams.get("q");
+      const maxResults = url.searchParams.get("maxResults") || "1";
+      if (!q) {
+        return new Response(JSON.stringify({ error: "Missing query" }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      }
+      
+      const apiKey = env.GOOGLE_BOOKS_API_KEY || "";
+      const fetchUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${maxResults}${apiKey ? `&key=${apiKey}` : ""}`;
+      
+      try {
+        const response = await fetch(fetchUrl);
+        const data = await response.json();
+        return new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch from Google Books", details: err.message }), {
           status: 500,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
