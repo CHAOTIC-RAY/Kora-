@@ -14,7 +14,7 @@ import {
 } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2 } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, TriangleAlert as AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2 } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
 
@@ -2256,8 +2256,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 ref={viewerRef}
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
-                className={`flex-1 relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start ${selectMode ? "select-text cursor-text" : "select-none cursor-default"} mx-auto w-full ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
-                style={{ height: isMobile ? "calc(100vh - 120px)" : "calc(100vh - 185px)" }}
+                className={`flex-1 min-h-0 relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start ${selectMode ? "select-text cursor-text" : "select-none cursor-default"} mx-auto w-full ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
                 <div className="w-full h-full overflow-hidden relative flex items-start justify-start" style={{ perspective: "1200px" }}>
                   {/* Premium Page Curl & Light Sweep shadow overlay */}
