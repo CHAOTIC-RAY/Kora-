@@ -941,13 +941,43 @@ export default function DiscoverView({
         }
 
         const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("text/html")) {
+          throw new Error("The server returned a webpage instead of the book file. Please try another mirror.");
+        }
+
+        const contentLength = response.headers.get('Content-Length');
+        const total = contentLength ? parseInt(contentLength, 10) : 0;
+        let loaded = 0;
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("Failed to get reader from response.");
+        }
+
+        const chunks: Uint8Array[] = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          loaded += value.length;
+          
+          if (total) {
+            const percent = Math.floor((loaded / total) * 100);
+            setDownloadProgress({
+              step: `downloading (Mirror ${index + 1}/${directMirrors.length})`,
+              percent: Math.min(percent, 95),
+              error: null
+            });
+          }
+        }
+
         setDownloadProgress({ 
           step: "processing", 
-          percent: 75, 
+          percent: 98, 
           error: null 
         });
 
-        let fileBlob = await response.blob();
+        let fileBlob = new Blob(chunks, { type: contentType });
         let fileExtension = activeVariant.extension || "epub";
 
         if (contentType.includes("zip")) {
@@ -2233,7 +2263,7 @@ export default function DiscoverView({
                   <div className="w-full md:w-56 shrink-0 flex flex-col items-center md:items-start">
                     <div className="w-full max-w-[220px] aspect-[2/3] rounded-lg overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.15)] bg-neutral-100 dark:bg-neutral-800 relative group mb-6">
                       {selectedFeaturedBook.coverUrl ? (
-                        <img src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className="w-full h-full object-cover" />
+                        <img src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-neutral-400">
                           <BookOpen className="w-12 h-12" />
@@ -2414,7 +2444,7 @@ export default function DiscoverView({
                                 handleSearch(`${book.title} ${book.author}`);
                               }}>
                                 <div className="aspect-[2/3] rounded shadow-sm overflow-hidden mb-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
-                                  {book.coverUrl && <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />}
+                                  {book.coverUrl && <img src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
                                 </div>
                                 <p className="text-[10px] font-bold text-neutral-800 dark:text-neutral-200 line-clamp-2 leading-tight">{book.title}</p>
                               </div>

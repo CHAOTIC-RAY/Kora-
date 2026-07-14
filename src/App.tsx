@@ -124,12 +124,7 @@ export default function App() {
     if (displayTheme.includes("dark")) {
       document.body.classList.add("dark");
     }
-    if (grayscaleCovers) {
-      document.body.classList.add("grayscale-app");
-    } else {
-      document.body.classList.remove("grayscale-app");
-    }
-  }, [displayTheme, grayscaleCovers]);
+  }, [displayTheme]);
 
   useEffect(() => {
     if (!auth) {
@@ -538,7 +533,7 @@ export default function App() {
       </header>
 
       {/* 2. Main Page View Content */}
-      <main className={`flex-1 w-full mx-auto pb-20 md:pb-8 ${activeTab === 'downloads' ? 'max-w-none p-0' : 'max-w-6xl p-4 md:p-8'}`}>
+      <main className="flex-1 w-full mx-auto pb-20 md:pb-8 max-w-6xl p-4 md:p-8">
         
         {/* Sync loading status indicator */}
         {loadingLibrary && (

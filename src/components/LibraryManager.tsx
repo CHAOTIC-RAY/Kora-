@@ -996,7 +996,7 @@ export default function LibraryManager({
                 <>
                   <img
                     src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}
-                    className="w-12 aspect-[2/3] object-cover rounded-lg border border-kindle-border/60 shadow-sm"
+                    className={`w-12 aspect-[2/3] object-cover rounded-lg border border-kindle-border/60 shadow-sm ${grayscaleCovers ? "grayscale-app" : ""}`}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       const img = e.currentTarget;

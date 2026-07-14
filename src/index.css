@@ -159,3 +159,53 @@ h1, h2, h3, h4 {
   border-radius: 1rem;
   transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }
+
+/* EPUB Text Reader Style Overrides to Prevent Text Clipping on Mobile */
+.epub-content {
+  box-sizing: border-box;
+}
+
+.epub-content * {
+  box-sizing: border-box;
+  max-width: 100% !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
+/* Eliminate any negative margins or excessive left indents that shift text off-screen */
+.epub-content p, 
+.epub-content div, 
+.epub-content blockquote,
+.epub-content span,
+.epub-content li,
+.epub-content h1,
+.epub-content h2,
+.epub-content h3,
+.epub-content h4,
+.epub-content h5,
+.epub-content h6 {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  text-indent: 0 !important;
+}
+
+/* Ensure clean indenting for paragraph rhythm without pushing off screen */
+.epub-content p {
+  text-indent: 1.25em !important;
+  margin-bottom: 0.5em !important;
+}
+
+/* Fix any inline absolute/relative horizontal shifting */
+.epub-content [style*="position: absolute"],
+.epub-content [style*="position: relative"] {
+  position: static !important;
+}
+
+.epub-content img {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+  margin: 1.5rem auto !important;
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
