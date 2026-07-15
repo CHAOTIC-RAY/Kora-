@@ -1,4 +1,5 @@
 import puppeteer from "@cloudflare/puppeteer";
+import * as cheerio from "cheerio";
 
 declare const HTMLRewriter: any;
 
@@ -1439,93 +1440,372 @@ export default {
           });
         }
 
-        console.log(`[Web Clipper] Extracted HTML length: ${rawHtml.length}. Processing with HTMLRewriter.`);
+        console.log(`[Web Clipper] Extracted HTML length: ${rawHtml.length}. Processing with Cheerio.`);
 
-        // Use HTMLRewriter to extract content (Cloudflare-native alternative to Cheerio)
-        let title = domain;
-        let author = domain;
-        let description = "";
-        let contentParts: string[] = [];
-        let currentSection: string[] = [];
-        let currentHeading: string = "Article";
+        // Parse with Cheerio to extract content
+        const $ = cheerio.load(rawHtml);
 
-        class ContentExtractor {
-          element(element: any) {
-            const tagName = element.tagName;
-            
-            // Extract title
-            if (tagName === "title") {
-              element.onEndTag(() => {
-                title = element.textContent || domain;
-              });
-            }
-            
-            // Extract author from meta
-            if (tagName === "meta") {
-              const name = element.getAttribute("name");
-              const content = element.getAttribute("content");
-              if (name === "author" && content) {
-                author = content;
-              }
-              if (name === "description" && content) {
-                description = content;
-              }
-            }
-            
-            // Handle headings for chapter splitting
-            if (tagName === "h2" || tagName === "h3") {
-              if (currentSection.length > 0) {
-                contentParts.push(`<h2>${currentHeading}</h2>`);
-                contentParts.push(...currentSection);
-                currentSection = [];
-              }
-              currentHeading = element.textContent || `Section ${contentParts.length + 1}`;
-            }
-            
-            // Skip unwanted elements
-            if (["script", "style", "iframe", "header", "footer", "nav", "noscript"].includes(tagName)) {
-              element.remove();
-            }
-          }
-          
-          text(text: any) {
-            if (text.text.trim()) {
-              currentSection.push(text.text);
+        // ===================================================================
+        // PHASE 1: Extract metadata BEFORE removing elements
+        // ===================================================================
+        
+        // 1. Title Extraction (priority: OG > Twitter > meta > title > h1)
+        let title = $("meta[property='og:title']").attr("content") || 
+                    $("meta[name='twitter:title']").attr("content") ||
+                    $("meta[name='title']").attr("content") ||
+                    $("title").text() || 
+                    $("h1").first().text() || 
+                    domain;
+        
+        // Clean title separators (remove site name portion)
+        const titleSeparators = [/ \| /, / - /, / › /, / » /, / :: /, / — /];
+        for (const sep of titleSeparators) {
+          if (sep.test(title)) {
+            const parts = title.split(sep).filter(p => p.trim().length > 0);
+            if (parts.length > 1) {
+              title = parts.reduce((a, b) => a.trim().length >= b.trim().length ? a : b).trim();
+              break;
             }
           }
         }
+        title = title.trim();
 
-        try {
-          const rewriter = new HTMLRewriter()
-            .on("*", new ContentExtractor());
-          
-          await rewriter.transform(new Response(rawHtml)).text();
-          
-          // Add the last section
-          if (currentSection.length > 0) {
-            contentParts.push(`<h2>${currentHeading}</h2>`);
-            contentParts.push(...currentSection);
+        // 2. Author/Byline Extraction
+        let author = $("meta[name='author']").attr("content") || 
+                     $("meta[property='article:author']").attr("content") ||
+                     $("meta[name='twitter:creator']").attr("content") ||
+                     "";
+        if (!author) {
+          // Try DOM-based author selectors
+          const authorSelectors = [
+            ".author-name", ".byline-name", "[rel='author']", ".author a",
+            ".byline a", ".article-author", ".post-author", ".entry-author",
+            ".author", ".byline", ".writer"
+          ];
+          for (const sel of authorSelectors) {
+            const text = $(sel).first().text().trim();
+            if (text && text.length > 1 && text.length < 60) {
+              author = text;
+              break;
+            }
           }
-        } catch (rewriteErr) {
-          console.error("[Web Clipper] HTMLRewriter failed, using fallback:", rewriteErr);
-          // Fallback: just use the raw HTML
-          contentParts = [rawHtml];
+        }
+        author = author.replace(/^(by|written\s+by|author[:\s])\s*/i, "").trim() || domain;
+
+        // 3. Description
+        const description = $("meta[name='description']").attr("content") || 
+                            $("meta[property='og:description']").attr("content") || 
+                            $("meta[name='twitter:description']").attr("content") || "";
+        
+        // 4. Published date
+        let publishedDate = $("meta[property='article:published_time']").attr("content") ||
+                            $("meta[name='date']").attr("content") ||
+                            $("meta[name='publish-date']").attr("content") ||
+                            $("time[datetime]").first().attr("datetime") ||
+                            $("time").first().text().trim() || "";
+
+        // 5. Lead image
+        const leadImage = $("meta[property='og:image']").attr("content") || "";
+
+        // ===================================================================
+        // PHASE 2: Aggressive boilerplate removal
+        // ===================================================================
+        
+        // Remove all scripts, styles, and non-content elements
+        $("script, style, link[rel='stylesheet'], noscript, svg, canvas, video, audio, embed, object, applet").remove();
+        $("iframe:not([src*='youtube']):not([src*='vimeo'])").remove();
+        
+        // Remove common boilerplate structural elements
+        const boilerplateSelectors = [
+          // Navigation & headers
+          "header", "footer", "nav", ".nav", ".navbar", ".navigation", ".menu",
+          "#header", "#footer", "#nav", "#navigation", "#menu",
+          ".header", ".footer", ".masthead", ".site-header", ".site-footer",
+          ".top-bar", ".bottom-bar", ".breadcrumb", ".breadcrumbs",
+          
+          // Sidebars
+          "aside", ".sidebar", "#sidebar", ".side-bar", ".widget-area",
+          
+          // Ads & promotions
+          ".ad", ".ads", ".advert", ".advertisement", ".ad-container",
+          "[class*='ad-']", "[class*='advert']", "[id*='ad-']", "[id*='advert']",
+          ".sponsor", ".sponsored", ".promotion", ".promo",
+          ".infinity", "[data-zone]",
+          
+          // Social sharing, comments, forms
+          ".share", ".sharing", ".social", ".social-share", ".share-buttons",
+          ".comment", ".comments", ".comment-form", ".comment-section",
+          ".disqus", "#disqus_thread", "#comments",
+          ".widget", ".widget-comment-form", "[class*='widget']",
+          "form", "button", "textarea", "input", "select", "option", "label",
+          
+          // Related content & tags
+          ".related", ".related-posts", ".related-articles", ".more-stories",
+          ".recommended", ".suggestions", ".tags", ".tag-list", ".tag-cloud",
+          ".article-tags", ".post-tags",
+          
+          // Newsletter, popups, modals
+          ".newsletter", ".subscribe", ".popup", ".modal", ".overlay",
+          ".cookie-notice", ".cookie-banner", ".gdpr",
+          
+          // Misc noise
+          ".hidden", "[style*='display:none']", "[style*='display: none']",
+          "[aria-hidden='true']",
+          ".loader", ".spinner", ".skeleton",
+          ".pagination", ".pager", ".page-numbers",
+          ".notification", ".notification-push",
+          ".submenu", ".menubar", ".menubar-mobile",
+          ".load-more", ".mobile_local_edition",
+          ".component-sponsor",
+          
+          // Tracking pixels & invisible images  
+          "img[width='1']", "img[height='1']", "img[style*='display:none']"
+        ];
+        
+        $(boilerplateSelectors.join(", ")).remove();
+        
+        // Remove empty anchors with no text (icon links, social buttons)
+        $("a").each((_, elem) => {
+          const $a = $(elem);
+          const text = $a.text().trim();
+          if (text.length === 0 && $a.find("img").length === 0) {
+            $a.remove();
+          }
+        });
+        
+        // Remove ALL inline event handlers and styles from remaining elements
+        $("*").each((_, elem) => {
+          const attribs = (elem as any).attribs || {};
+          for (const attr of Object.keys(attribs)) {
+            if (attr.startsWith("on") || attr === "style" || attr.startsWith("data-")) {
+              $(elem).removeAttr(attr);
+            }
+          }
+        });
+
+        // ===================================================================
+        // PHASE 3: Readability-style content scoring
+        // ===================================================================
+
+        // Allowlisted content tags
+        const CONTENT_TAGS = new Set([
+          "p", "h1", "h2", "h3", "h4", "h5", "h6",
+          "blockquote", "pre", "code",
+          "ul", "ol", "li",
+          "figure", "figcaption",
+          "table", "thead", "tbody", "tr", "td", "th",
+          "img", "a", "strong", "em", "b", "i", "br", "hr",
+          "div", "span", "section", "article", "main"
+        ]);
+
+        // Negative class/id patterns (reduce score for these containers)
+        const NEGATIVE_PATTERNS = /comment|combx|community|contact|disqus|extra|foot|header|menu|remark|rss|shoutbox|sidebar|sponsor|ad-break|agegate|pagination|pager|popup|tweet|twitter|share|social|related|tag|widget|nav|promo|ad|cookie|banner|breadcrumb|load-more|infinity|notification|submenu|menubar/i;
+
+        // Positive class/id patterns (boost score for these containers)
+        const POSITIVE_PATTERNS = /article|body|content|entry|hentry|main|page|post|text|blog|story|reader|news|article-reader|reader-body|article-body|post-body|entry-content|post-content/i;
+
+        // Score candidate containers
+        const candidates: { element: any; score: number }[] = [];
+        
+        $("div, section, article, main, .content, .post-content, .entry-content, .article-body, .reader-body-content").each((_, elem) => {
+          const $el = $(elem);
+          const className = ((elem as any).attribs?.class || "").toLowerCase();
+          const id = ((elem as any).attribs?.id || "").toLowerCase();
+          const identifier = className + " " + id;
+          
+          // Skip if this has too many child containers (likely a layout wrapper)
+          const childDivs = $el.children("div, section, article").length;
+          
+          // Count direct text-bearing elements
+          const paragraphs = $el.find("p").length;
+          const textLength = $el.text().trim().length;
+          
+          // Skip tiny containers
+          if (textLength < 100) return;
+          
+          let score = 0;
+          
+          // Paragraph density is the strongest signal
+          score += paragraphs * 10;
+          
+          // Text length score (logarithmic to avoid oversizing huge wrappers)
+          score += Math.log10(Math.max(textLength, 1)) * 5;
+          
+          // Positive class/id boost
+          if (POSITIVE_PATTERNS.test(identifier)) score += 30;
+          
+          // Negative class/id penalty
+          if (NEGATIVE_PATTERNS.test(identifier)) score -= 40;
+          
+          // Penalty for too many child divs (likely a broad layout container)
+          if (childDivs > 8) score -= childDivs * 3;
+          
+          // Bonus for article/main tags
+          if (elem.tagName === "article") score += 25;
+          if (elem.tagName === "main") score += 15;
+          
+          // Images inside content are a good signal
+          const images = $el.find("img").length;
+          score += Math.min(images, 5) * 3;
+          
+          candidates.push({ element: elem, score });
+        });
+        
+        // Sort by score, pick the best candidate
+        candidates.sort((a, b) => b.score - a.score);
+        
+        let contentElement = candidates.length > 0 ? $(candidates[0].element) : $("body");
+        
+        // Log for debugging
+        if (candidates.length > 0) {
+          const best = candidates[0];
+          const bestClass = (best.element as any).attribs?.class || "";
+          const bestId = (best.element as any).attribs?.id || "";
+          console.log(`[Web Clipper] Best content container: <${best.element.tagName}> class="${bestClass}" id="${bestId}" score=${best.score}`);
         }
 
-        // If no content extracted, use raw HTML
-        if (contentParts.length === 0) {
-          contentParts = [rawHtml];
+        // ===================================================================
+        // PHASE 4: Clean the winning container
+        // ===================================================================
+        
+        // Remove any remaining noise inside the content container
+        contentElement.find("script, style, iframe, form, button, input, textarea, label, select, option, noscript, svg, canvas").remove();
+        contentElement.find(".share, .social, .related, .tags, .comment, .comments, .ad, .ads, .advertisement, .widget, .sidebar, .footer, .header, .nav, .menu, .notification, .submenu, .infinity").remove();
+        contentElement.find("[class*='comment'], [class*='share'], [class*='social'], [class*='related'], [class*='widget'], [class*='ad-'], [class*='sponsor']").remove();
+        
+        // Make relative image sources absolute
+        contentElement.find("img").each((_, elem) => {
+          const $img = $(elem);
+          let src = $img.attr("src") || $img.attr("data-src") || $img.attr("data-original-src") || $img.attr("data-lazy-src");
+          if (src) {
+            try {
+              const absoluteUrl = new URL(src, targetUrl).href;
+              $img.attr("src", absoluteUrl);
+              // Keep only src and alt
+              const alt = $img.attr("alt") || "";
+              const attribs = (elem as any).attribs || {};
+              for (const attr of Object.keys(attribs)) {
+                if (attr !== "src" && attr !== "alt") {
+                  $img.removeAttr(attr);
+                }
+              }
+            } catch (e) {
+              // Leave src alone if URL parsing fails
+            }
+          } else {
+            $img.remove();
+          }
+        });
+        
+        // Extract cleaned text content, rebuilding only from safe elements
+        let cleanedHtml = "";
+        
+        // Walk the content tree and extract only meaningful text blocks
+        const extractCleanContent = ($container: any): string => {
+          let result = "";
+          
+          $container.children().each((_: any, child: any) => {
+            const tagName = (child.tagName || "").toLowerCase();
+            const $child = $(child);
+            const innerHtml = $child.html() || "";
+            const textContent = $child.text().trim();
+            
+            // Skip empty elements
+            if (textContent.length === 0 && !["img", "br", "hr"].includes(tagName)) return;
+            
+            // Skip elements that look like JavaScript or CSS remnants
+            if (textContent.startsWith("var ") || textContent.startsWith("function") ||
+                textContent.startsWith("$(") || textContent.startsWith("window.") ||
+                textContent.includes("document.createElement") ||
+                textContent.includes("navigator.userAgent") ||
+                /^\s*\.\w+\s*\{/.test(textContent) ||
+                /^\s*@media/.test(textContent) ||
+                /try\s*\{.*catch/.test(textContent)) {
+              return;
+            }
+            
+            // Skip short text that's likely UI labels/buttons  
+            const boilerplateTexts = [
+              "advertisement", "comment", "send comment", "load more", 
+              "like us", "follow us", "share", "tweet", "subscribe",
+              "name :", "send", "reply", "breaking news", "live",
+              "write your reply", "copyright", "all rights reserved",
+              "privacy policy", "terms and conditions", "contact us",
+              "about", "close", "menu"
+            ];
+            const lowerText = textContent.toLowerCase();
+            if (textContent.length < 40 && boilerplateTexts.some(bp => lowerText.includes(bp))) {
+              return;
+            }
+            
+            // Skip navigational text (menu items)
+            if (/^(News|World|Sports|Entertainment|Business|Travel|Column|Opinion|Features|Technology|Lifestyle|Art|Culture|Health|People|Local|Edition)\s*$/i.test(textContent)) {
+              return;
+            }
+            
+            // Process allowed elements
+            if (["p", "blockquote", "pre"].includes(tagName)) {
+              result += `<${tagName}>${innerHtml}</${tagName}>\n`;
+            } else if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName)) {
+              // Only include headings that look like real content, not nav labels
+              if (textContent.length > 3 && textContent.length < 200) {
+                result += `<${tagName}>${textContent}</${tagName}>\n`;
+              }
+            } else if (["ul", "ol"].includes(tagName)) {
+              result += `<${tagName}>${innerHtml}</${tagName}>\n`;
+            } else if (tagName === "figure") {
+              result += `<figure>${innerHtml}</figure>\n`;
+            } else if (tagName === "img") {
+              const src = $child.attr("src") || "";
+              const alt = $child.attr("alt") || "";
+              if (src) result += `<img src="${src}" alt="${alt}" />\n`;
+            } else if (tagName === "table") {
+              result += `<table>${innerHtml}</table>\n`;
+            } else if (["div", "section", "article", "span", "main"].includes(tagName)) {
+              // Recurse into structural containers
+              const nested = extractCleanContent($child);
+              if (nested.trim().length > 0) {
+                result += nested;
+              }
+            } else if (tagName === "hr") {
+              result += "<hr />\n";
+            }
+          });
+          
+          return result;
+        };
+        
+        cleanedHtml = extractCleanContent(contentElement);
+        
+        // If the cleaned content is too short, the scoring may have picked a sub-container.
+        // Fall back to a broader search.
+        if (cleanedHtml.replace(/<[^>]*>/g, "").trim().length < 100) {
+          console.log("[Web Clipper] Cleaned content too short, falling back to body extraction.");
+          cleanedHtml = extractCleanContent($("body"));
         }
+        
+        // Final cleanup: remove duplicate whitespace and empty tags
+        cleanedHtml = cleanedHtml
+          .replace(/<p>\s*<\/p>/g, "")
+          .replace(/<div>\s*<\/div>/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
 
-        // Compile content into HTML reader-friendly file
-        const chapters = contentParts.length > 0 ? [{
-          title: currentHeading,
-          content: contentParts.join("\n")
-        }] : [{
+        // Build a single clean chapter
+        let chapters: { title: string; content: string }[] = [{
           title: "Article",
-          content: rawHtml
+          content: cleanedHtml
         }];
 
+        if (chapters[0].content.replace(/<[^>]*>/g, "").trim().length < 30) {
+          // Absolute fallback
+          chapters = [{
+            title: "Article",
+            content: `<p>${description || "Content could not be extracted from this page."}</p>`
+          }];
+        }
+
+        // Compile chapters into a single elegant HTML reader-friendly file
         let fullHtmlContent = `<!DOCTYPE html>
 <html>
 <head>
@@ -1624,16 +1904,30 @@ export default {
     li {
       margin-bottom: 0.5em;
     }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 1.5em auto;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      img {
+        opacity: 0.85;
+      }
+    }
   </style>
 </head>
 <body>
   <h1>${title}</h1>
-  <div class="author-line">By ${author} • Saved from ${domain}</div>
+  <div class="author-line">By ${author}${publishedDate ? ` • ${publishedDate}` : ""} • Saved from ${domain}</div>
+  ${leadImage ? `<img src="${leadImage}" alt="${title}" />` : ""}
   
   <div class="chapters-container">
     ${chapters.map((ch, idx) => `
       <div class="chapter" id="chapter-${idx}">
-        <h2 class="chapter-title">${ch.title}</h2>
+        ${ch.title !== "Article" ? `<h2 class="chapter-title">${ch.title}</h2>` : ""}
         <div class="chapter-content">
           ${ch.content}
         </div>
