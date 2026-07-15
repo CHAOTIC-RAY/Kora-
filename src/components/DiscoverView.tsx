@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import ReactDOM from "react-dom";
 import JSZip from "jszip";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
+import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library } from "lucide-react";
@@ -49,9 +50,19 @@ export default function DiscoverView({
 }: DiscoverViewProps) {
   const [query, setQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [results, setResults] = useState<any[]>([]);
+  const observerTargetRef = React.useRef<HTMLDivElement | null>(null);
   const [searchMode, setSearchMode] = useState<boolean>(false);
   const [featuredData, setFeaturedData] = useState<Record<string, any[]>>({});
+  const [selectedFeaturedBook, setSelectedFeaturedBook] = useState<any | null>(null);
+  const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
+  const [similarBooks, setSimilarBooks] = useState<any[]>([]);
+  const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
+  const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
+  const [metadataSource, setMetadataSource] = useState<"google" | "nyt" | "openlibrary">(() => {
+    return tempStorage.get<any>("preferred_source") || "google";
+  });
   const [loadingFeatured, setLoadingFeatured] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
@@ -69,6 +80,13 @@ export default function DiscoverView({
   const prefetchCache = React.useRef(new Map<number, any[]>());
   const prefetchingPage = React.useRef<number | null>(null);
   const [feedNotice, setFeedNotice] = useState<string | null>(null);
+
+  // New NYT Category Detail States
+  const [viewingCategory, setViewingCategory] = useState<any | null>(null);
+  const [categoryBooks, setCategoryBooks] = useState<any[]>([]);
+  const [categoryPreviousDate, setCategoryPreviousDate] = useState<string | null>(null);
+  const [loadingCategoryMore, setLoadingCategoryMore] = useState<boolean>(false);
+  const [loadingCategory, setLoadingCategory] = useState<boolean>(false);
 
   // Download states
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -94,6 +112,9 @@ export default function DiscoverView({
     weeksOnList?: number;
     bestsellerCategory?: string;
     nytReviewSnippet?: string;
+    language?: string;
+    coverUrl?: string;
+    industryIdentifiers?: any[];
     source: string;
   } | null>(null);
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
@@ -128,7 +149,31 @@ export default function DiscoverView({
     }
   }, [activeSource, currentPage]);
 
-  async function loadFeaturedContent() {
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setCurrentPage((prev) => prev + 1);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerTargetRef.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [hasMore, loading, loadingMore]);
+
+  async function loadFeaturedContent(forceRefresh = false) {
     setLoadingFeatured(true);
     setError(null);
     try {
@@ -137,11 +182,11 @@ export default function DiscoverView({
       const cachedFeed = localStorage.getItem("kora_nyt_featured_feed");
 
       let json: any;
-      if (cachedDate === todayString && cachedFeed) {
+      if (!forceRefresh && cachedDate === todayString && cachedFeed) {
         console.log("[NYT Cache] Loaded daily discover feed from localStorage");
         json = JSON.parse(cachedFeed);
       } else {
-        console.log("[NYT Cache] Daily cache expired or missing. Fetching fresh NYT overview...");
+        console.log("[NYT Cache] Fetching fresh NYT overview...");
         const res = await fetch("/api/nytimes/overview");
         if (!res.ok) throw new Error("Failed to fetch NYT overview");
         json = await res.json();
@@ -154,9 +199,16 @@ export default function DiscoverView({
         }
         setFeedNotice(json?.notice || (json?.source === "rave-fallback" ? "NYT Best Sellers API unavailable — showing popular picks via Rave Engine." : null));
 
-        // Save to cache for today
-        localStorage.setItem("kora_nyt_featured_date", todayString);
-        localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(json));
+        // Save to cache for today only if it's NOT a fallback/error
+        const isFallback = json?.source === "rave-fallback" || json?.fault || (json?.error && !json?.results?.lists?.length);
+        if (!isFallback) {
+          localStorage.setItem("kora_nyt_featured_date", todayString);
+          localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(json));
+        } else {
+          // If it is a fallback, clean any stale cache so we don't lock onto it
+          localStorage.removeItem("kora_nyt_featured_date");
+          localStorage.removeItem("kora_nyt_featured_feed");
+        }
       }
 
       const data: Record<string, any[]> = {};
@@ -220,6 +272,144 @@ export default function DiscoverView({
     }
   }
 
+  const fetchFeaturedMetadata = async (title: string, author: string, forceSource?: "google" | "nyt" | "openlibrary") => {
+    setLoadingFeaturedDetails(true);
+    setFeaturedBookDetails(null);
+    setSimilarBooks([]);
+    setReadMoreExpanded(false);
+    const sourceToUse = forceSource || metadataSource;
+    
+    try {
+      // 1. Google Books (Preferred Default)
+      if (sourceToUse === "google") {
+        const q = encodeURIComponent(`intitle:${title} inauthor:${author}`);
+        const res = await fetch(`/api/google-books/search?q=${q}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.items && data.items.length > 0) {
+            const info = data.items[0].volumeInfo;
+            setFeaturedBookDetails({
+              ...info,
+              title: info.title,
+              authors: info.authors,
+              description: info.description || selectedFeaturedBook.description,
+              pageCount: info.pageCount,
+              publishedDate: info.publishedDate,
+              publisher: info.publisher,
+              language: info.language,
+              industryIdentifiers: info.industryIdentifiers || [],
+              categories: info.categories || [],
+              averageRating: info.averageRating,
+              ratingsCount: info.ratingsCount,
+              previewLink: info.previewLink,
+              source: "Google Books"
+            });
+
+            // Fetch similar books based on categories
+            if (info.categories && info.categories.length > 0) {
+              fetchSimilarBooks(info.categories[0]);
+            }
+            setLoadingFeaturedDetails(false);
+            return;
+          }
+        }
+      }
+
+      // 2. New York Times (Verified Raw)
+      if (sourceToUse === "nyt") {
+        const nytRes = await fetch(`/api/nytimes/book-details-raw?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
+        if (nytRes.ok) {
+          const data = await nytRes.json();
+          if (data && data.results && data.results.length > 0) {
+            const book = data.results[0];
+            setFeaturedBookDetails({
+              title: book.title,
+              authors: [book.author],
+              description: book.description || selectedFeaturedBook.description,
+              pageCount: null, 
+              publishedDate: null,
+              publisher: book.publisher,
+              language: "en",
+              industryIdentifiers: book.isbns?.map((i: any) => ({ type: "ISBN", identifier: i.isbn13 || i.isbn10 })),
+              categories: [selectedFeaturedBook.category || "General"],
+              source: "New York Times (Verified Raw)"
+            });
+            setLoadingFeaturedDetails(false);
+            return;
+          }
+        }
+      }
+
+      // 3. Open Library
+      if (sourceToUse === "openlibrary") {
+        const olRes = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&limit=1`);
+        if (olRes.ok) {
+          const data = await olRes.json();
+          const doc = data.docs?.[0];
+          if (doc) {
+            let description = "";
+            if (doc.key) {
+              try {
+                const workRes = await fetch(`https://openlibrary.org${doc.key}.json`);
+                if (workRes.ok) {
+                  const workData = await workRes.json();
+                  description = typeof workData.description === "string" ? workData.description : (workData.description?.value || "");
+                }
+              } catch (err) {}
+            }
+            setFeaturedBookDetails({
+              title: doc.title,
+              authors: doc.author_name,
+              description: description || selectedFeaturedBook.description,
+              pageCount: doc.number_of_pages_median || doc.number_of_pages,
+              publishedDate: doc.first_publish_year?.toString(),
+              publisher: doc.publisher?.[0],
+              language: doc.language?.[0],
+              industryIdentifiers: doc.isbn?.map((i: string) => ({ type: "ISBN", identifier: i })),
+              categories: doc.subject?.slice(0, 5) || [],
+              source: "Open Library"
+            });
+            setLoadingFeaturedDetails(false);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch featured book details:", e);
+    }
+    setLoadingFeaturedDetails(false);
+  };
+
+  const fetchSimilarBooks = async (category: string) => {
+    setLoadingSimilar(true);
+    try {
+      const q = encodeURIComponent(`subject:${category}`);
+      const res = await fetch(`/api/google-books/search?q=${q}&maxResults=6`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items) {
+          setSimilarBooks(data.items.map((item: any) => ({
+            title: item.volumeInfo.title,
+            author: item.volumeInfo.authors?.[0] || "Unknown",
+            coverUrl: item.volumeInfo.imageLinks?.thumbnail?.replace('http:', 'https:')
+          })));
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch similar books:", err);
+    } finally {
+      setLoadingSimilar(false);
+    }
+  };
+  const updateMetadataSource = (newSource: "google" | "nyt" | "openlibrary") => {
+    setMetadataSource(newSource);
+    tempStorage.set("preferred_source", newSource, 168); // 1 week TTL but helper handles daily reset if desired, though user said "resets daily" for source? Wait, "saved in a temporary local storage which resets daily"
+    // Actually the tempStorage helper I wrote has 24h default.
+    if (selectedFeaturedBook) {
+      fetchFeaturedMetadata(selectedFeaturedBook.title, selectedFeaturedBook.author || "", newSource);
+    }
+  };
+
   async function fetchPage(term: string, source: string, page: number): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
     const res = await fetch(`/api/annas-archive/search?q=${encodeURIComponent(term.trim())}&source=${source}&page=${page}`);
     if (!res.ok) throw new Error(`Search failed with status: ${res.status}`);
@@ -232,17 +422,44 @@ export default function DiscoverView({
     return { books, totalCount: data.totalCount || 0, hasMore: !!data.hasMore };
   }
 
-  async function fetchNYTCategory(listName: string): Promise<any[]> {
+  async function fetchNYTCategory(listName: string, date: string = "current"): Promise<{ books: any[]; previousDate: string | null }> {
+    const cacheKey = `nyt_list_opt_${listName}_${date}`;
+    const cached = tempStorage.get<any>(cacheKey);
+    if (cached) return cached;
+
     try {
-      const res = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}`);
+      // Fetch current week
+      const res = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(date)}`);
       if (!res.ok) throw new Error(`NYT list fetch failed with status: ${res.status}`);
       const data = await res.json();
       
       if (data?.status !== "OK" || !data?.results?.books) {
-        return [];
+        return { books: [], previousDate: null };
       }
 
-      return data.results.books.map((book: any) => {
+      let books = data.results.books;
+      const previousDate = data.results.previous_published_date || null;
+
+      // Optimize: Fetch previous week as well to get more books
+      if (previousDate) {
+        try {
+          const resPrev = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(previousDate)}`);
+          if (resPrev.ok) {
+            const dataPrev = await resPrev.json();
+            if (dataPrev?.results?.books) {
+              const prevBooks = dataPrev.results.books;
+              // Combine and deduplicate by title
+              const existingTitles = new Set(books.map((b: any) => b.title.toLowerCase()));
+              const newBooks = prevBooks.filter((b: any) => !existingTitles.has(b.title.toLowerCase()));
+              books = [...books, ...newBooks];
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to fetch previous NYT week for optimization:", err);
+        }
+      }
+      
+      const mappedBooks = books.map((book: any) => {
         const cleanTitle = (book.title || "")
           .split(':')[0]
           .replace(/\b\d{10,13}\b/g, '')
@@ -274,50 +491,52 @@ export default function DiscoverView({
           source: 'nyt'
         };
       });
+
+      const result = { books: mappedBooks, previousDate };
+      tempStorage.set(cacheKey, result);
+      return result;
     } catch (err) {
       console.error("Failed to fetch NYT category:", err);
-      return [];
+      return { books: [], previousDate: null };
     }
   }
 
   async function handleCategoryClick(category: any) {
-    setLoading(true);
+    setLoadingCategory(true);
+    setViewingCategory(category);
+    setSearchMode(false);
+    setCategoryPreviousDate(null);
+    setCategoryBooks([]);
     setError(null);
-    setSearchMode(true);
-    setQuery(category.title);
 
     try {
       // Fetch NYT books for this category
-      const nytBooks = await fetchNYTCategory(category.query);
-      
-      if (nytBooks.length === 0) {
-        // Fallback to regular search if NYT fetch fails
-        handleSearch(category.query);
-        return;
-      }
-
-      // Display NYT books only (no download links yet)
-      setResults(nytBooks.map((book: any) => ({
-        id: book.rank || Math.random().toString(),
-        title: book.title,
-        author: book.author,
-        coverUrl: book.coverUrl,
-        description: book.description,
-        publisher: book.publisher,
-        rank: book.rank,
-        weeks_on_list: book.weeks_on_list,
-        source: 'nyt',
-        searchQuery: book.searchQuery,
-        isNYTBook: true
-      })));
-      setTotalResults(nytBooks.length);
-      setHasMore(false);
-      setAvailableSourcesFromResults(new Set(["nyt"]));
+      const { books, previousDate } = await fetchNYTCategory(category.query);
+      setCategoryBooks(books);
+      setCategoryPreviousDate(previousDate);
     } catch (err: any) {
       console.error("Failed to load category:", err);
       setError(`Failed to load category: ${err.message}`);
     } finally {
-      setLoading(false);
+      setLoadingCategory(false);
+    }
+  }
+
+  async function loadMoreCategoryBooks() {
+    if (!viewingCategory || !categoryPreviousDate || loadingCategoryMore) return;
+    setLoadingCategoryMore(true);
+    try {
+      const { books, previousDate } = await fetchNYTCategory(viewingCategory.query, categoryPreviousDate);
+      // Filter out duplicates
+      setCategoryBooks(prev => {
+        const newBooks = books.filter(b => !prev.some(pb => pb.searchQuery === b.searchQuery));
+        return [...prev, ...newBooks];
+      });
+      setCategoryPreviousDate(previousDate);
+    } catch (err) {
+      console.error("Failed to load more category books:", err);
+    } finally {
+      setLoadingCategoryMore(false);
     }
   }
 
@@ -357,15 +576,22 @@ export default function DiscoverView({
       prefetchCache.current.clear();
     }
 
-    setLoading(true);
+    const page = isNewTerm ? 1 : currentPage;
+    if (page === 1) {
+      setLoading(true);
+      setResults([]);
+    } else {
+      setLoadingMore(true);
+    }
     setError(null);
     setSearchMode(true);
+    setViewingCategory(null);
+    setCategoryBooks([]);
 
     if (typeof e === "string") setQuery(e);
 
     try {
       const source = sourceOverride || activeSource;
-      const page = isNewTerm ? 1 : currentPage;
 
       // Check prefetch cache first
       const cached = prefetchCache.current.get(page);
@@ -435,7 +661,15 @@ export default function DiscoverView({
       });
 
       const uniqueGroupedBooks = Array.from(groupedBooksMap.values());
-      setResults(uniqueGroupedBooks);
+      if (page === 1) {
+        setResults(uniqueGroupedBooks);
+      } else {
+        setResults((prev) => {
+          const existingIds = new Set(prev.map(b => b.id || b.md5));
+          const filteredNew = uniqueGroupedBooks.filter(b => !existingIds.has(b.id || b.md5));
+          return [...prev, ...filteredNew];
+        });
+      }
       setHasMore(more);
       setTotalResults(totalCount);
       setSearchMeta({});
@@ -478,11 +712,14 @@ export default function DiscoverView({
       setError(err.message || "Search failed. Mirrors may be temporarily unavailable.");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
 
   function clearSearch() {
     setSearchMode(false);
+    setViewingCategory(null);
+    setCategoryBooks([]);
     setResults([]);
     setQuery("");
     setError(null);
@@ -499,61 +736,56 @@ export default function DiscoverView({
     setVerifiedDetails(null);
     setReadMoreExpanded(false);
     try {
-      // 1. Try NYT API
-      const nytRes = await fetch(`/api/nyt/book-details?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
-      if (nytRes.ok) {
-        const data = await nytRes.json();
-        setVerifiedDetails({
-          description: data.description,
-          subjects: data.subjects || [],
-          pageCount: data.pageCount,
-          publishYear: data.publishYear,
-          publisher: data.publisher,
-          isBestseller: data.isBestseller,
-          bestsellerRank: data.bestsellerRank,
-          weeksOnList: data.weeksOnList,
-          bestsellerCategory: data.bestsellerCategory,
-          nytReviewSnippet: data.nytReviewSnippet,
-          source: "New York Times Bestsellers & Reviews"
-        });
-        return;
+      // 1. Try Google Books first
+      const gRes = await fetch(`/api/google-books/search?q=${encodeURIComponent(`intitle:${title} inauthor:${author}`)}`);
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        if (gData.items && gData.items[0]) {
+          const info = gData.items[0].volumeInfo;
+          setVerifiedDetails({
+            description: info.description,
+            pageCount: info.pageCount,
+            publishYear: info.publishedDate?.split("-")[0],
+            publisher: info.publisher,
+            language: info.language,
+            coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
+            industryIdentifiers: info.industryIdentifiers || [],
+            subjects: info.categories,
+            source: "Google Books"
+          });
+          setLoadingDetails(false);
+          return;
+        }
       }
 
-      // 2. Fall back to Open Library
-      const searchRes = await fetch(`/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
-      if (searchRes.ok) {
-        const data = await searchRes.json();
-        const doc = data.docs?.[0];
+      // 2. Try Open Library
+      const olRes = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&limit=1`);
+      if (olRes.ok) {
+        const olData = await olRes.json();
+        const doc = olData.docs?.[0];
         if (doc) {
           let description = "";
-          let subjects = doc.subject?.slice(0, 5) || [];
-          
           if (doc.key) {
             try {
               const workRes = await fetch(`https://openlibrary.org${doc.key}.json`);
               if (workRes.ok) {
                 const workData = await workRes.json();
-                if (workData.description) {
-                  if (typeof workData.description === "string") {
-                    description = workData.description;
-                  } else if (workData.description.value) {
-                    description = workData.description.value;
-                  }
-                }
+                description = typeof workData.description === "string" ? workData.description : (workData.description?.value || "");
               }
-            } catch (workErr) {
-              console.warn("Failed to fetch work details from OpenLibrary:", workErr);
-            }
+            } catch (e) {}
           }
-
           setVerifiedDetails({
-            description: description || doc.first_sentence || "",
-            subjects: subjects,
-            pageCount: doc.number_of_pages_median || doc.number_of_pages || undefined,
-            publishYear: doc.first_publish_year?.toString() || doc.publish_date?.[0] || undefined,
-            publisher: doc.publisher?.[0] || undefined,
+            description: description || doc.first_sentence || "No description available.",
+            pageCount: doc.number_of_pages_median || doc.number_of_pages,
+            publishYear: doc.first_publish_year?.toString(),
+            publisher: doc.publisher?.[0],
+            language: doc.language?.[0],
+            coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : undefined,
+            industryIdentifiers: doc.isbn?.map((i: string) => ({ type: "ISBN", identifier: i })),
+            subjects: doc.subject?.slice(0, 5) || [],
             source: "Open Library"
           });
+          setLoadingDetails(false);
           return;
         }
       }
@@ -709,13 +941,43 @@ export default function DiscoverView({
         }
 
         const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("text/html")) {
+          throw new Error("The server returned a webpage instead of the book file. Please try another mirror.");
+        }
+
+        const contentLength = response.headers.get('Content-Length');
+        const total = contentLength ? parseInt(contentLength, 10) : 0;
+        let loaded = 0;
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("Failed to get reader from response.");
+        }
+
+        const chunks: Uint8Array[] = [];
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          loaded += value.length;
+          
+          if (total) {
+            const percent = Math.floor((loaded / total) * 100);
+            setDownloadProgress({
+              step: `downloading (Mirror ${index + 1}/${directMirrors.length})`,
+              percent: Math.min(percent, 95),
+              error: null
+            });
+          }
+        }
+
         setDownloadProgress({ 
           step: "processing", 
-          percent: 75, 
+          percent: 98, 
           error: null 
         });
 
-        let fileBlob = await response.blob();
+        let fileBlob = new Blob(chunks, { type: contentType });
         let fileExtension = activeVariant.extension || "epub";
 
         if (contentType.includes("zip")) {
@@ -760,14 +1022,21 @@ export default function DiscoverView({
           author: selectedBook.author,
           extension: fileExtension,
           size: activeVariant.size || "Unknown",
-          language: activeVariant.language || "English",
-          coverUrl: selectedBook.coverUrl,
+          language: verifiedDetails?.language || activeVariant.language || "English",
+          coverUrl: (!selectedBook.coverUrl || selectedBook.coverUrl.includes("placeholder")) && verifiedDetails?.coverUrl ? verifiedDetails.coverUrl : selectedBook.coverUrl,
           md5: activeVariant.md5,
           source: "Kora Store",
-          tags: inferBookTags(selectedBook.title, selectedBook.author, fileExtension),
+          tags: Array.from(new Set([...inferBookTags(selectedBook.title, selectedBook.author, fileExtension), ...(verifiedDetails?.subjects || [])])),
           status: "to-read",
-          progress: { percent: 0, lastReadTime: Date.now() },
-          dateAdded: Date.now()
+          progress: { 
+            percent: 0, 
+            lastReadTime: Date.now(),
+            totalPages: verifiedDetails?.pageCount
+          },
+          dateAdded: Date.now(),
+          description: verifiedDetails?.description,
+          publisher: verifiedDetails?.publisher,
+          year: verifiedDetails?.publishYear
         };
 
         await syncBookToCloud(userId, newBook);
@@ -959,17 +1228,22 @@ export default function DiscoverView({
 
   return (
     <>
-      <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
         {/* Header */}
-        <header className="flex flex-col gap-6">
-          <div className="space-y-1">
-            <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-[10px] text-kindle-text-muted font-bold uppercase tracking-[0.2em]">
-                Powered by NYT Best Sellers & Rave Engine
-              </p>
+        <header className="flex flex-col gap-4">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>
             </div>
+            {!searchMode && !viewingCategory && (
+              <button
+                onClick={() => loadFeaturedContent(true)}
+                className="p-2.5 border border-kindle-border rounded-full text-kindle-text-muted hover:bg-kindle-card hover:text-kindle-accent transition shadow-sm"
+                title="Refresh Best Sellers Feed"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
         {/* Search Bar */}
@@ -1003,67 +1277,69 @@ export default function DiscoverView({
           </form>
 
           {/* Source & Topic Filters */}
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {[
-                { id: "all", label: "All", icon: Globe },
-                { id: "annas", label: "Anna's Archive", icon: Database },
-                { id: "libgen", label: "LibGen", icon: Layers },
-                { id: "zlib", label: "Z-Library", icon: Library },
-                { id: "ia", label: "Archive.org", icon: BookOpen },
-                { id: "gutenberg", label: "Gutenberg", icon: BookMarked },
-                { id: "openlibrary", label: "Open Library", icon: ExternalLink },
-                { id: "standard", label: "Standard Ebooks", icon: Library },
-              ]
-              .filter(src => src.id === "all" || !searchMode || availableSourcesFromResults.has(src.id))
-              .map((src) => (
-                <button
-                  key={src.id}
-                  onClick={() => {
-                    setActiveSource(src.id);
-                    setCurrentPage(1);
-                  }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
-                    activeSource === src.id
-                      ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-md"
-                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/50"
-                  }`}
-                >
-                  <src.icon className="w-3.5 h-3.5" />
-                  {src.label}
-                </button>
-              ))}
-            </div>
-
-            {availableTopics.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 max-h-24 overflow-y-auto pr-2 scrollbar-hide">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mr-1 sticky top-0 bg-kindle-bg py-1">Topics:</span>
-                <button
-                  onClick={() => setSelectedTopic("all")}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border ${
-                    selectedTopic === "all"
-                      ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
-                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
-                  }`}
-                >
-                  All
-                </button>
-                {availableTopics.map((topic) => (
+          {searchMode && (
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { id: "all", label: "All", icon: Globe },
+                  { id: "annas", label: "Anna's Archive", icon: Database },
+                  { id: "libgen", label: "LibGen", icon: Layers },
+                  { id: "zlib", label: "Z-Library", icon: Library },
+                  { id: "ia", label: "Archive.org", icon: BookOpen },
+                  { id: "gutenberg", label: "Gutenberg", icon: BookMarked },
+                  { id: "openlibrary", label: "Open Library", icon: ExternalLink },
+                  { id: "standard", label: "Standard Ebooks", icon: Library },
+                ]
+                .filter(src => src.id === "all" || availableSourcesFromResults.has(src.id))
+                .map((src) => (
                   <button
-                    key={topic}
-                    onClick={() => setSelectedTopic(topic)}
-                    className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border truncate max-w-[150px] ${
-                      selectedTopic === topic
+                    key={src.id}
+                    onClick={() => {
+                      setActiveSource(src.id);
+                      setCurrentPage(1);
+                    }}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
+                      activeSource === src.id
+                        ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-md"
+                        : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/50"
+                    }`}
+                  >
+                    <src.icon className="w-3.5 h-3.5" />
+                    {src.label}
+                  </button>
+                ))}
+              </div>
+
+              {availableTopics.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 max-h-24 overflow-y-auto pr-2 scrollbar-hide">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mr-1 sticky top-0 bg-kindle-bg py-1">Topics:</span>
+                  <button
+                    onClick={() => setSelectedTopic("all")}
+                    className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border ${
+                      selectedTopic === "all"
                         ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
                         : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
                     }`}
                   >
-                    {topic}
+                    All
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+                  {availableTopics.map((topic) => (
+                    <button
+                      key={topic}
+                      onClick={() => setSelectedTopic(topic)}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border truncate max-w-[150px] ${
+                        selectedTopic === topic
+                          ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
+                          : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
+                      }`}
+                    >
+                      {topic}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -1112,10 +1388,10 @@ export default function DiscoverView({
                   }`}
                   onClick={() => handleGetDownloadLinks(book)}
                 >
-                  <div className={`aspect-[3/4] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
+                  <div className={`aspect-[2/3] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
                     {book.coverUrl ? (
                       <img
-                        src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
+                        src={book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                         referrerPolicy="no-referrer"
@@ -1145,7 +1421,6 @@ export default function DiscoverView({
                             div.innerHTML = `
                               <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;margin-bottom:6px;">${(book.author || "Author").substring(0, 30)}</div>
                               <div style="font-size:11px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${book.title}</div>
-                              <div style="position:absolute;bottom:10px;font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;">${book.extension || "BOOK"}</div>
                             `;
                             parent.style.position = "relative";
                             parent.appendChild(div);
@@ -1156,7 +1431,6 @@ export default function DiscoverView({
                       <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-kindle-card">
                         <div className="text-[8px] font-bold uppercase tracking-[0.15em] opacity-30 mb-1.5">{(book.author || "Author").substring(0, 25)}</div>
                         <div className="text-[11px] font-serif font-bold leading-snug line-clamp-4 text-center">{book.title}</div>
-                        <div className="absolute bottom-2.5 text-[8px] font-bold uppercase tracking-widest opacity-25">{book.extension || "BOOK"}</div>
                       </div>
                     )}
                     {/* Exact Match Indicator */}
@@ -1171,12 +1445,6 @@ export default function DiscoverView({
                         <Download className="w-5 h-5" />
                       </div>
                     </div>
-                    {/* Format badge */}
-                    {book.extension && (
-                      <div className="absolute bottom-2 left-2 bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">
-                        {book.extension}
-                      </div>
-                    )}
                   </div>
                   <div className="space-y-0.5 pr-1">
                     <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
@@ -1186,7 +1454,13 @@ export default function DiscoverView({
                       </p>
                     )}
                     <div className="flex flex-wrap items-center gap-1 mt-1">
-                      <span className="text-[10px] text-kindle-text-muted font-sans font-medium">
+                      <span 
+                        className="text-[10px] text-kindle-text-muted font-sans font-medium hover:text-kindle-accent hover:underline cursor-pointer transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (book.author) handleSearch(book.author);
+                        }}
+                      >
                         {book.author}
                       </span>
                       {book.year && (
@@ -1201,12 +1475,17 @@ export default function DiscoverView({
                         {book.source === "Library Genesis" ? "LibGen" : book.source === "Anna's Archive" ? "Anna's" : book.source}
                       </span>
                       {book.pages && book.pages !== "0" && (
-                        <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60">
+                        <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60 shrink-0">
                           · {book.pages} pp
                         </span>
                       )}
+                      {book.extension && (
+                        <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60 shrink-0">
+                          · {book.extension}
+                        </span>
+                      )}
                       {book.size && book.size !== "Unknown" && (
-                        <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60">
+                        <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60 shrink-0">
                           · {book.size}
                         </span>
                       )}
@@ -1217,44 +1496,28 @@ export default function DiscoverView({
             </div>
           )}
 
-          {/* Pagination Controls */}
+          {/* Infinite Scroll Sentinel & Loader */}
           {!loading && !error && results.length > 0 && (
-            <div className="pt-10 flex flex-col items-center gap-4">
-              <div className="flex items-center justify-center gap-3">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-kindle-card border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-kindle-bg disabled:opacity-30 disabled:cursor-not-allowed transition"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" /> Previous
-                </button>
-                <div className="flex flex-col items-center px-6 py-2.5 bg-kindle-text/5 rounded-xl border border-kindle-text/10">
-                  <span className="text-[10px] font-bold tracking-widest text-kindle-text">
-                    PAGE {currentPage}
-                  </span>
-                  {totalResults > 0 ? (
-                    <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted mt-0.5">
-                      {totalResults.toLocaleString()} results{hasMore ? "+" : ""}
-                    </span>
-                  ) : (
-                    <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted mt-0.5">
-                      {results.length} results
-                    </span>
-                  )}
+            <div className="pt-8 flex flex-col items-center justify-center gap-4">
+              {loadingMore ? (
+                <div className="flex flex-col items-center justify-center gap-2 py-4">
+                  <Loader2 className="w-6 h-6 text-kindle-accent animate-spin" />
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted animate-pulse">
+                    Loading more results...
+                  </p>
                 </div>
-                <button
-                  onClick={() => setCurrentPage(prev => prev + 1)}
-                  disabled={!hasMore}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-kindle-card border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-kindle-bg disabled:opacity-30 disabled:cursor-not-allowed transition"
-                >
-                  Next <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-              {prefetchCache.current.has(currentPage + 1) && (
-                <p className="text-[8px] text-emerald-600 font-bold uppercase tracking-widest flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                  Next page ready
-                </p>
+              ) : hasMore ? (
+                <div ref={observerTargetRef} className="h-10 w-full flex items-center justify-center">
+                  <p className="text-[9px] text-kindle-text-muted/50 font-semibold uppercase tracking-wider">
+                    Scroll down for more
+                  </p>
+                </div>
+              ) : (
+                <div className="py-6 text-center">
+                  <p className="text-[10px] text-kindle-text-muted font-semibold uppercase tracking-widest">
+                    No more results in this archive
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -1268,8 +1531,140 @@ export default function DiscoverView({
         </section>
       )}
 
-      {!searchMode && (
-        <div className="space-y-14">
+      {!searchMode && viewingCategory && (
+        <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                setViewingCategory(null);
+                setCategoryBooks([]);
+              }}
+              className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back to Discover
+            </button>
+            <div className="text-[10px] text-kindle-text-muted font-bold uppercase tracking-wider">
+              {viewingCategory.title}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-2xl font-lexend font-bold tracking-tight text-kindle-text">
+              {viewingCategory.title}
+            </h3>
+            <p className="text-xs text-kindle-text-muted font-sans">
+              Top trending books currently featured on the New York Times Best Sellers list. Click any book to search and download.
+            </p>
+          </div>
+
+          {loadingCategory ? (
+            <div className="py-24 flex flex-col items-center justify-center gap-4">
+              <KoraLoading />
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted animate-pulse">
+                Loading Best Sellers...
+              </p>
+            </div>
+          ) : categoryBooks.length === 0 ? (
+            <div className="py-16 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
+              <p className="text-xs text-kindle-text-muted italic">No books found in this category.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
+                {categoryBooks.map((book, idx) => (
+                <div
+                  key={idx}
+                  onClick={() => {
+                    setSelectedFeaturedBook(book);
+                    fetchFeaturedMetadata(book.title, book.author || "");
+                  }}
+                  className="group cursor-pointer space-y-2 p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl transition-all duration-300 border border-transparent hover:bg-kindle-card/50"
+                >
+                  <div className="aspect-[2/3] bg-kindle-card rounded-2xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
+                    {book.coverUrl ? (
+                      <img
+                        src={book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
+                        alt={book.title}
+                        className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-kindle-card">
+                        <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2 opacity-20" />
+                        <span className="text-[10px] font-bold text-kindle-text-muted uppercase text-center line-clamp-3">{book.title}</span>
+                      </div>
+                    )}
+                    
+                    {/* Rank Badge */}
+                    {book.rank && (
+                      <div className="absolute top-2 left-2 bg-emerald-500 text-white font-bold text-[10px] w-6 h-6 rounded-full flex items-center justify-center shadow-md">
+                        #{book.rank}
+                      </div>
+                    )}
+
+                    {/* Weeks on List Badge */}
+                    {book.weeks_on_list && book.weeks_on_list > 1 && (
+                      <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-xs text-white px-1.5 py-0.5 rounded text-[8px] font-sans font-bold">
+                        {book.weeks_on_list} wks
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">
+                      {book.title}
+                    </h4>
+                    <p className="text-[10px] text-kindle-text-muted font-sans font-medium truncate">
+                      {book.author}
+                    </p>
+                    {book.description && (
+                      <p className="text-[10px] text-kindle-text-muted/60 font-sans line-clamp-2 leading-relaxed pt-1 border-t border-kindle-border/20 mt-1">
+                        {book.description}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Category Infinite Scroll Observer */}
+            {categoryPreviousDate && (
+              <div 
+                ref={(node) => {
+                  if (node) {
+                    const observer = new IntersectionObserver((entries) => {
+                      if (entries[0].isIntersecting) {
+                        loadMoreCategoryBooks();
+                      }
+                    }, { rootMargin: "200px" });
+                    observer.observe(node);
+                    return () => observer.disconnect();
+                  }
+                }}
+                className="py-12 flex justify-center"
+              >
+                {loadingCategoryMore ? (
+                  <div className="flex items-center gap-3 bg-kindle-card/50 px-6 py-3 rounded-full border border-kindle-border">
+                    <Loader2 className="w-4 h-4 animate-spin text-kindle-accent" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Loading Past Weeks...</span>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={loadMoreCategoryBooks}
+                    className="px-6 py-3 bg-kindle-card hover:bg-kindle-border/50 transition border border-kindle-border rounded-full text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2"
+                  >
+                    Load Older Books
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    )}
+
+      {!searchMode && !viewingCategory && (
+        <div className="space-y-8">
           {feedNotice && !error && (
             <div className="flex items-center gap-3 p-3.5 bg-kindle-accent/[0.06] border border-kindle-accent/20 rounded-2xl">
               <Sparkles className="w-4 h-4 text-kindle-accent shrink-0" />
@@ -1295,7 +1690,7 @@ export default function DiscoverView({
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-5">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="space-y-2.5 animate-pulse">
-                  <div className="aspect-[3/4] bg-kindle-card rounded-2xl border border-kindle-border" />
+                  <div className="aspect-[2/3] bg-kindle-card rounded-2xl border border-kindle-border" />
                   <div className="h-3 bg-kindle-card rounded w-3/4" />
                   <div className="h-2 bg-kindle-card rounded w-1/2" />
                 </div>
@@ -1323,7 +1718,7 @@ export default function DiscoverView({
                 const books = featuredData[cat.id] || [];
                 if (books.length === 0) return null;
                 return (
-                  <section key={cat.id} className="space-y-5">
+                  <section key={cat.id} className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-kindle-card rounded-xl border border-kindle-border">
@@ -1339,17 +1734,20 @@ export default function DiscoverView({
                     </button>
                   </div>
 
-                  <div className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x -mx-4 px-4">
+                  <div className="flex gap-3 overflow-x-auto pb-4 scroll-smooth snap-x">
                     {books.map((book, idx) => (
                       <div
                         key={idx}
-                        onClick={() => handleSearch(book.searchQuery || book.title)}
-                        className="flex-shrink-0 w-32 sm:w-40 space-y-2.5 cursor-pointer group snap-start"
+                        onClick={() => {
+                          setSelectedFeaturedBook(book);
+                          fetchFeaturedMetadata(book.title, book.author || "");
+                        }}
+                        className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start"
                       >
-                        <div className="aspect-[3/4] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
+                        <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
                           {book.coverUrl ? (
                             <img
-                              src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
+                              src={book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
                               alt={book.title}
                               className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                               referrerPolicy="no-referrer"
@@ -1389,21 +1787,21 @@ export default function DiscoverView({
                 {
                   section: "Book Types",
                   items: [
-                    { id: "fiction", label: "Fiction", query: "fiction", icon: BookMarked, color: "text-blue-500 bg-blue-500/5 hover:bg-blue-500/10 border-blue-500/10 hover:border-blue-500/30" },
-                    { id: "nonfiction", label: "Non-Fiction", query: "nonfiction", icon: BookOpen, color: "text-emerald-500 bg-emerald-500/5 hover:bg-emerald-500/10 border-emerald-500/10 hover:border-emerald-500/30" },
-                    { id: "documentary", label: "Documentary", query: "documentary", icon: ExternalLink, color: "text-amber-500 bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/10 hover:border-amber-500/30" },
-                    { id: "textbook", label: "Textbooks & Academic", query: "textbook educational", icon: Layers, color: "text-purple-500 bg-purple-500/5 hover:bg-purple-500/10 border-purple-500/10 hover:border-purple-500/30" },
+                    { id: "fiction", label: "Fiction", query: "fiction", icon: BookMarked, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "nonfiction", label: "Non-Fiction", query: "nonfiction", icon: BookOpen, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "documentary", label: "Documentary", query: "documentary", icon: ExternalLink, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "textbook", label: "Textbooks & Academic", query: "textbook educational", icon: Layers, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
                   ]
                 },
                 {
                   section: "Popular Genres",
                   items: [
-                    { id: "sci-fi", label: "Sci-Fi & Fantasy", query: "science fiction fantasy", icon: Sparkles, color: "text-indigo-500 bg-indigo-500/5 hover:bg-indigo-500/10 border-indigo-500/10 hover:border-indigo-500/30" },
-                    { id: "mystery", label: "Mystery & Thriller", query: "mystery thriller suspense", icon: Compass, color: "text-red-500 bg-red-500/5 hover:bg-red-500/10 border-red-500/10 hover:border-red-500/30" },
-                    { id: "biography", label: "Biography & Memoir", query: "biography memoir autobiography", icon: Library, color: "text-teal-500 bg-teal-500/5 hover:bg-teal-500/10 border-teal-500/10 hover:border-teal-500/30" },
-                    { id: "history", label: "History & Politics", query: "history historical politics", icon: Database, color: "text-amber-700 bg-amber-700/5 hover:bg-amber-700/10 border-amber-700/10 hover:border-amber-700/30" },
-                    { id: "tech", label: "Technology & Science", query: "technology computing science", icon: Globe, color: "text-cyan-500 bg-cyan-500/5 hover:bg-cyan-500/10 border-cyan-500/10 hover:border-cyan-500/30" },
-                    { id: "self-dev", label: "Self-Improvement", query: "self-help personal growth productivity", icon: TrendingUp, color: "text-orange-500 bg-orange-500/5 hover:bg-orange-500/10 border-orange-500/10 hover:border-orange-500/30" },
+                    { id: "sci-fi", label: "Sci-Fi & Fantasy", query: "science fiction fantasy", icon: Sparkles, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "mystery", label: "Mystery & Thriller", query: "mystery thriller suspense", icon: Compass, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "biography", label: "Biography & Memoir", query: "biography memoir autobiography", icon: Library, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "history", label: "History & Politics", query: "history historical politics", icon: Database, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "tech", label: "Technology & Science", query: "technology computing science", icon: Globe, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "self-dev", label: "Self-Improvement", query: "self-help personal growth productivity", icon: TrendingUp, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
                   ]
                 }
               ].map((sect, sIdx) => (
@@ -1450,14 +1848,14 @@ export default function DiscoverView({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 pt-2">
               {/* Left Column: Physical Book Cover Artwork */}
               <div className="md:col-span-5 flex flex-col items-center">
-                <div className="w-48 md:w-full max-w-[220px] aspect-[3/4] bg-kindle-bg rounded-2xl border-2 border-kindle-border shadow-2xl overflow-hidden relative group/cover">
+                <div className="w-48 md:w-full max-w-[220px] aspect-[2/3] bg-kindle-bg rounded-2xl border-2 border-kindle-border shadow-2xl overflow-hidden relative group/cover">
                   {/* Spine simulated lighting */}
                   <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-black/25 via-white/5 to-transparent z-10" />
                   <div className="absolute left-3 top-0 bottom-0 w-[1px] bg-black/10 z-10" />
                   
                   {selectedBook.coverUrl ? (
                     <img
-                      src={`/api/proxy-image?url=${encodeURIComponent(selectedBook.coverUrl)}`}
+                      src={selectedBook.coverUrl.startsWith('/') ? selectedBook.coverUrl : `/api/proxy-image?url=${encodeURIComponent(selectedBook.coverUrl)}`}
                       alt={selectedBook.title}
                       className={`w-full h-full object-cover transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                       referrerPolicy="no-referrer"
@@ -1496,13 +1894,6 @@ export default function DiscoverView({
                       <div className="text-[12px] font-serif font-bold leading-snug text-center">{selectedBook.title}</div>
                     </div>
                   )}
-
-                  {/* Format overlay on cover */}
-                  {((selectedVariant || selectedBook).extension) && (
-                    <div className="absolute bottom-3 right-3 bg-kindle-text text-kindle-bg text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded shadow-md z-10">
-                      {(selectedVariant || selectedBook).extension}
-                    </div>
-                  )}
                 </div>
 
                 {/* File size & format metadata block */}
@@ -1520,13 +1911,23 @@ export default function DiscoverView({
               <div className="md:col-span-7 flex flex-col justify-between space-y-6">
                 <div className="space-y-4">
                   {/* Book Title & Author */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest font-sans">
-                      Verified Library Copy
-                    </span>
-                    <h3 className="text-2xl md:text-3xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
-                    <p className="text-sm md:text-base text-kindle-text-muted font-sans font-medium">{selectedBook.author}</p>
-                  </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest font-sans">
+                        Verified Library Copy
+                      </span>
+                      <h3 className="text-2xl md:text-3xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
+                      <p 
+                        className="text-sm md:text-base text-kindle-text-muted font-sans font-medium hover:text-kindle-accent hover:underline cursor-pointer inline-block transition-colors"
+                        onClick={() => {
+                          if (selectedBook.author) {
+                            onSelectedBookChange(null);
+                            handleSearch(selectedBook.author);
+                          }
+                        }}
+                      >
+                        {selectedBook.author}
+                      </p>
+                    </div>
 
                   {/* NYT Bestseller Information Badge */}
                   {verifiedDetails?.isBestseller && (
@@ -1610,6 +2011,34 @@ export default function DiscoverView({
                       </p>
                     )}
                   </div>
+
+                  {/* Extended Metadata Grid for Download Modal */}
+                  {verifiedDetails && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4 border-y border-kindle-border/40">
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">ISBN</span>
+                          <span className="font-medium text-kindle-text">
+                            {verifiedDetails.industryIdentifiers?.map((id: any) => id.identifier).slice(0, 1).join(", ") || "N/A"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">Publisher</span>
+                          <span className="font-medium text-kindle-text truncate max-w-[120px]">{verifiedDetails.publisher || "N/A"}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">Language</span>
+                          <span className="font-medium text-kindle-text uppercase">{verifiedDetails.language || "EN"}</span>
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">Format</span>
+                          <span className="font-medium text-kindle-text uppercase">{(selectedVariant || selectedBook).extension || "N/A"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Category/Genre Badges */}
                   {(verifiedDetails?.subjects?.length || (selectedVariant || selectedBook).topic) && (
@@ -1803,6 +2232,228 @@ export default function DiscoverView({
                       )}
                     </div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Featured Book Details Preview Modal */}
+      {selectedFeaturedBook && ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedFeaturedBook(null)} />
+          <div className="relative bg-kindle-bg w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="sticky top-0 z-10 flex items-center justify-between p-4 md:p-6 bg-kindle-bg/95 backdrop-blur-md border-b border-kindle-border">
+              <h2 className="text-sm font-bold uppercase tracking-widest text-kindle-text font-sans">Book Details</h2>
+              <button 
+                onClick={() => setSelectedFeaturedBook(null)}
+                className="p-2 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition text-kindle-text"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar bg-kindle-bg">
+              <div className="max-w-6xl mx-auto px-6 py-10">
+                <div className="flex flex-col md:flex-row gap-10">
+                  {/* Left Column: Cover & Action Buttons */}
+                  <div className="w-full md:w-56 shrink-0 flex flex-col items-center md:items-start">
+                    <div className="w-full max-w-[220px] aspect-[2/3] rounded-lg overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.15)] bg-black/5 relative group mb-6">
+                      {selectedFeaturedBook.coverUrl ? (
+                        <img src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-kindle-text-muted">
+                          <BookOpen className="w-12 h-12" />
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors" />
+                    </div>
+                    <div className="w-full flex flex-col gap-2.5 max-w-[220px]">
+                      <button 
+                        onClick={() => handleSearch(`${selectedFeaturedBook.title} ${selectedFeaturedBook.author || ""}`)}
+                        className="w-full py-3.5 px-4 bg-kindle-accent hover:bg-kindle-accent/90 text-kindle-bg rounded-lg font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
+                      >
+                        <Search className="w-4 h-4" />
+                        Search Download
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Title, Metadata, Description & Sidebar */}
+                  <div className="flex-1 min-w-0">
+                    <div className="mb-8">
+                      <h2 className="text-3xl md:text-4xl font-serif text-kindle-text mb-2 leading-tight">
+                        {featuredBookDetails?.title || selectedFeaturedBook.title}
+                      </h2>
+                      <div className="text-lg text-kindle-text-muted font-sans">
+                        By <span 
+                          className="text-kindle-accent font-medium hover:underline cursor-pointer transition-colors"
+                          onClick={() => {
+                            const author = featuredBookDetails?.authors?.join(", ") || selectedFeaturedBook.author;
+                            if (author) {
+                              setSelectedFeaturedBook(null);
+                              handleSearch(author);
+                            }
+                          }}
+                        >
+                          {featuredBookDetails?.authors?.join(", ") || selectedFeaturedBook.author}
+                        </span>
+                        {featuredBookDetails?.publishedDate && ` · ${featuredBookDetails.publishedDate.split('-')[0]}`}
+                      </div>
+                    </div>
+
+                    {/* Tabs navigation simulation */}
+                    <div className="flex items-center gap-8 border-b border-kindle-border mb-8 overflow-x-auto no-scrollbar">
+                      {['Overview'].map((tab, idx) => (
+                        <button key={tab} className={`pb-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-2 transition-colors ${idx === 0 ? 'text-kindle-accent border-kindle-accent' : 'text-kindle-text-muted border-transparent hover:text-kindle-text'}`}>
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="space-y-12">
+                      <section>
+                        <div className="flex items-center justify-between mb-6">
+                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text-muted">About this edition</h3>
+                          <div className="flex items-center bg-black/5 rounded p-1 border border-kindle-border">
+                            {["google", "nyt", "openlibrary"].map((source) => (
+                              <button 
+                                key={source}
+                                onClick={() => updateMetadataSource(source as any)}
+                                className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded transition-all ${
+                                  metadataSource === source 
+                                    ? 'bg-kindle-text text-kindle-bg shadow-sm' 
+                                    : 'text-kindle-text-muted hover:text-kindle-text'
+                                }`}
+                              >
+                                {source}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="text-kindle-text leading-relaxed font-sans text-sm space-y-4 min-h-[150px]">
+                          {loadingFeaturedDetails ? (
+                            <div className="space-y-4 animate-pulse">
+                              <div className="h-4 bg-black/5 rounded w-full" />
+                              <div className="h-4 bg-black/5 rounded w-full" />
+                              <div className="h-4 bg-black/5 rounded w-3/4" />
+                            </div>
+                          ) : (
+                            <div className="prose prose-sm dark:prose-invert max-w-none prose-neutral leading-relaxed [&_a]:text-kindle-accent" dangerouslySetInnerHTML={{ __html: featuredBookDetails?.description || "No detailed description available." }} />
+                          )}
+                        </div>
+                      </section>
+
+                      {/* Integrated Technical Details and Author profile */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 pt-10 border-t border-neutral-100 dark:border-neutral-800">
+                        {/* 1. Metadata */}
+                        <div className="space-y-5">
+                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Details</h4>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-neutral-400 uppercase tracking-widest font-bold mb-1">ISBN</span>
+                              <span className="text-[11px] text-neutral-800 dark:text-neutral-200 font-medium truncate">{featuredBookDetails?.industryIdentifiers?.map((id: any) => id.identifier).join(", ") || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-neutral-400 uppercase tracking-widest font-bold mb-1">Pages</span>
+                              <span className="text-[11px] text-neutral-800 dark:text-neutral-200 font-medium">{featuredBookDetails?.pageCount || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-neutral-400 uppercase tracking-widest font-bold mb-1">Published</span>
+                              <span className="text-[11px] text-neutral-800 dark:text-neutral-200 font-medium">{featuredBookDetails?.publishedDate || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-neutral-400 uppercase tracking-widest font-bold mb-1">Language</span>
+                              <span className="text-[11px] text-neutral-800 dark:text-neutral-200 font-medium uppercase">{featuredBookDetails?.language || "EN"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 2. Context */}
+                        <div className="space-y-5">
+                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Context</h4>
+                          <div className="space-y-4">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-neutral-400 uppercase tracking-widest font-bold mb-2">Genres</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {(featuredBookDetails?.categories || ["Fiction"]).map((cat: string, i: number) => (
+                                  <span key={i} className="px-2 py-0.5 bg-neutral-50 dark:bg-neutral-800/50 rounded text-[10px] text-kindle-accent font-bold uppercase tracking-wider border border-neutral-100 dark:border-neutral-800">
+                                    {cat}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            {featuredBookDetails?.averageRating && (
+                              <div className="flex flex-col">
+                                <span className="text-[9px] text-neutral-400 uppercase tracking-widest font-bold mb-1">Rating</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-bold text-neutral-900 dark:text-white">{featuredBookDetails.averageRating}</span>
+                                  <div className="flex text-kindle-accent">
+                                    {[...Array(5)].map((_, i) => (
+                                      <Sparkles key={i} className={`w-3 h-3 ${i < Math.floor(featuredBookDetails.averageRating) ? 'fill-current' : 'text-neutral-200 dark:text-neutral-700'}`} />
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 3. Author */}
+                        <div className="space-y-5">
+                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Author</h4>
+                          <div className="space-y-3">
+                            <span className="text-xs font-bold text-neutral-900 dark:text-white">{featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author}</span>
+                            <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed line-clamp-3">
+                              An accomplished author recognized for compelling storytelling and deep character exploration in the world of {featuredBookDetails?.categories?.[0] || "literature"}.
+                            </p>
+                            <button 
+                              onClick={() => {
+                                const author = featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author;
+                                handleSearch(`inauthor:"${author}"`);
+                                setSelectedFeaturedBook(null);
+                              }}
+                              className="mt-2 text-[10px] font-bold text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 px-3 py-1.5 rounded hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors uppercase tracking-widest"
+                            >
+                              Search Author
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Similar Books Section */}
+                      <section className="pt-10 border-t border-neutral-100 dark:border-neutral-800">
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400 mb-6">Similar books</h3>
+                        {loadingSimilar ? (
+                          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+                            {[...Array(4)].map((_, i) => (
+                              <div key={i} className="w-24 shrink-0 space-y-2 animate-pulse">
+                                <div className="aspect-[2/3] bg-neutral-100 dark:bg-neutral-800 rounded shadow-sm" />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex gap-6 overflow-x-auto pb-4 no-scrollbar custom-scrollbar">
+                            {similarBooks.map((book, idx) => (
+                              <div key={idx} className="w-24 shrink-0 group cursor-pointer" onClick={() => {
+                                setSelectedFeaturedBook(null);
+                                handleSearch(`${book.title} ${book.author}`);
+                              }}>
+                                <div className="aspect-[2/3] rounded shadow-sm overflow-hidden mb-2 bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
+                                  {book.coverUrl && <img src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
+                                </div>
+                                <p className="text-[10px] font-bold text-neutral-800 dark:text-neutral-200 line-clamp-2 leading-tight">{book.title}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
