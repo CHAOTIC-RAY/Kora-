@@ -1,12 +1,54 @@
-import React, { useState, useEffect } from "react";
-import { MessageSquare, Star, Loader2, Users } from "lucide-react";
+import React, { useState, useEffect, ErrorInfo, ReactNode } from "react";
+import { MessageSquare, Star, Loader2, Users, AlertTriangle } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class HardcoverErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(_: Error): ErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("HardcoverCommunity Error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="py-8 px-4 border border-kindle-border rounded-xl bg-kindle-bg text-center space-y-2">
+          <AlertTriangle className="w-5 h-5 text-amber-500 mx-auto" />
+          <p className="text-xs font-bold text-kindle-text-muted uppercase tracking-widest">Reviews Unavailable</p>
+          <p className="text-[10px] text-kindle-text-muted/60">An error occurred while loading community data.</p>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 interface HardcoverCommunityProps {
   book: BookMetadata;
 }
 
-export default function HardcoverCommunity({ book }: HardcoverCommunityProps) {
+function HardcoverCommunityContent({ book }: HardcoverCommunityProps) {
+  if (!book || !book.title) {
+    return (
+      <div className="py-8 text-center text-kindle-text-muted text-xs italic">
+        No community data available for this title.
+      </div>
+    );
+  }
+
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -127,12 +169,21 @@ export default function HardcoverCommunity({ book }: HardcoverCommunityProps) {
                 ))}
               </div>
             </div>
-            <p className="text-sm text-kindle-text-muted leading-relaxed line-clamp-4">
-              {rev.review}
-            </p>
+            <div 
+              className="text-sm text-kindle-text leading-relaxed prose prose-sm dark:prose-invert max-w-none prose-neutral [&_p]:mb-2 [&_p:last-child]:mb-0"
+              dangerouslySetInnerHTML={{ __html: rev.review }}
+            />
           </div>
         ))}
       </div>
     </div>
+  );
+}
+
+export default function HardcoverCommunity(props: HardcoverCommunityProps) {
+  return (
+    <HardcoverErrorBoundary>
+      <HardcoverCommunityContent {...props} />
+    </HardcoverErrorBoundary>
   );
 }

@@ -2168,7 +2168,6 @@ export default {
         }
 
         let targetUrl = downloadUrl;
-        let libraryLolResolved = false;
 
         // Force https for public search/downloads to avoid block/mixed content issues in Cloudflare Workers
         if (targetUrl.startsWith("http://")) {
@@ -2181,15 +2180,14 @@ export default {
         }
 
         // Pre-resolve: Libgen landing pages (like get.php?md5=) can be extremely difficult to fetch in Cloudflare Workers 
-        // due to strict TLS, DDOS protection, or IP blocks. We DO NOT rewrite to library.lol here because library.lol
-        // is frequently unreachable (Cloudflare 522). Instead libgen.li resolves its own signed CDN link in the
-        // LibGen resolver block below (get.php?md5= -> 307 -> ads.php -> signed get.php?md5&key).
+        // due to strict TLS, DDOS protection, or IP blocks. We use libgen.li or libgen.rs because library.lol
+        // is frequently unreachable or taken down.
         if (targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=") && !targetUrl.includes("libgen")) {
           const md5Match = targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
           if (md5Match) {
             const md5 = md5Match[1];
-            targetUrl = `https://library.lol/main/${md5}`;
-            console.log(`Rewrote Libgen landing page to Library.lol for robust worker resolution: ${targetUrl}`);
+            targetUrl = `https://libgen.li/get.php?md5=${md5.toLowerCase()}`;
+            console.log(`Rewrote Libgen landing page to libgen.li for robust worker resolution: ${targetUrl}`);
           }
         }
 
@@ -2231,66 +2229,13 @@ export default {
         }
 
 
-        // 1. Resolve library.lol to its actual direct file download link
+        // 1. Rewrite library.lol to working Libgen mirrors as library.lol is reportedly down
         if (targetUrl.includes("library.lol")) {
-          try {
-            console.log(`Resolving library.lol landing page in Worker: ${targetUrl}`);
-            let htmlRes;
-            try {
-              htmlRes = await fetch(targetUrl, {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                }
-              });
-            } catch (err) {
-              if (targetUrl.startsWith("https://")) {
-                const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
-                console.log(`Resolving library.lol landing page failed, retrying over HTTP: ${fallbackUrl}`);
-                htmlRes = await fetch(fallbackUrl, {
-                  headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                  }
-                });
-              } else {
-                throw err;
-              }
-            }
-            if (htmlRes.ok) {
-              const html = await htmlRes.text();
-              const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
-              let match;
-              let directLink = "";
-              while ((match = aTagRegex.exec(html)) !== null) {
-                const href = match[1];
-                const attrs = match[2];
-                const text = (match[3] || "").replace(/<[^>]*>/g, "").trim().toLowerCase();
-                if (text === "get" || href.includes("/ipfs/") || href.includes("gateway") || attrs.includes("download")) {
-                  directLink = href;
-                  break;
-                }
-              }
-              if (directLink) {
-                if (directLink.startsWith("/")) {
-                  directLink = "https://library.lol" + directLink;
-                }
-                console.log(`Successfully resolved library.lol direct link in Worker: ${directLink}`);
-                targetUrl = directLink;
-                libraryLolResolved = true;
-              }
-            }
-          } catch (err) {
-            console.warn("Failed to resolve library.lol direct link in Worker:", err);
-          }
-
-          // Fallback to Libgen RS if library.lol landing page couldn't be resolved or fetched
-          if (!libraryLolResolved) {
-            console.log("library.lol resolution failed. Attempting automatic fallback to libgen.rs...");
-            const md5Match = targetUrl.match(/\/main\/([a-fA-F0-9]{32})/i) || targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
-            if (md5Match) {
-              const md5 = md5Match[1];
-              targetUrl = `https://libgen.rs/get.php?md5=${md5}`;
-              console.log(`Rewrote target URL to libgen.rs fallback: ${targetUrl}`);
-            }
+          const md5Match = targetUrl.match(/([a-fA-F0-9]{32})/i);
+          if (md5Match) {
+            const md5 = md5Match[1];
+            targetUrl = `https://libgen.li/get.php?md5=${md5.toLowerCase()}`;
+            console.log(`Rewrote library.lol to libgen.li: ${targetUrl}`);
           }
         }
 
@@ -2494,7 +2439,7 @@ export default {
         if (contentType.toLowerCase().includes("text/html")) {
           const text = await response.clone().text();
           if (text.includes("Cloudflare") || text.includes("captcha")) {
-            throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like Library.lol or IPFS).");
+            throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like libgen.li or IPFS).");
           }
           throw new Error("This mirror URL returned an HTML webpage instead of a binary book file. This usually happens when the mirror requires manual verification (like resolving a CAPTCHA), wait countdowns, or the link has expired.");
         }
@@ -2526,7 +2471,7 @@ export default {
           if (textSample.includes("cloudflare") || textSample.includes("captcha") || textSample.includes("challenge-running") || textSample.includes("ray id")) {
             throw new Error("This mirror is blocked by a CAPTCHA, Cloudflare DDOS protection, or require human interaction. Please try a different mirror or solve any verification.");
           }
-          throw new Error("This mirror URL returned an HTML landing page instead of the actual ebook file. Try a direct download mirror (like Library.lol or IPFS).");
+          throw new Error("This mirror URL returned an HTML landing page instead of the actual ebook file. Try a direct download mirror (like libgen.li or IPFS).");
         }
 
         resHeaders.set("Content-Length", String(buffer.byteLength));

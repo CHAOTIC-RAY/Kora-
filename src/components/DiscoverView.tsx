@@ -5,7 +5,7 @@ import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library } from "lucide-react";
+import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users } from "lucide-react";
 import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
 
@@ -92,7 +92,7 @@ export default function DiscoverView({
 
   // Download states
   const [downloadProgress, setDownloadProgress] = useState<{
-    step: "idle" | "requesting" | "downloading" | "saving" | "completed";
+    step: string;
     percent: number;
     error: string | null;
   }>({ step: "idle", percent: 0, error: null });
@@ -142,7 +142,13 @@ export default function DiscoverView({
   });
 
   function sortMirrors(mirrors: any[]): any[] {
-    return [...mirrors].sort((a, b) => {
+    // Filter out library.lol as it is reportedly taken down
+    const filtered = mirrors.filter(m => {
+      const url = (m.url || "").toLowerCase();
+      return !url.includes("library.lol");
+    });
+
+    return [...filtered].sort((a, b) => {
       const getOrderScore = (m: any) => {
         const label = (m.label || "").toLowerCase();
         const url = (m.url || "").toLowerCase();
@@ -153,7 +159,7 @@ export default function DiscoverView({
           return 1;
         }
         // 2. LibGen
-        if (sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("library.lol") || url.includes("genesis")) {
+        if (sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis")) {
           return 2;
         }
         // 3. Internet Archive
@@ -220,10 +226,19 @@ export default function DiscoverView({
     try {
       const q = `${title} ${author || ""}`.trim();
       const result = await fetchPage(q, "all", 1);
-      setFeaturedDownloadVariants(result.books);
+      const rawBooks = result.books || [];
+      const uniqueVariants = rawBooks.reduce((acc: any[], current: any) => {
+        const key = `${(current.extension || "").toLowerCase()}-${current.size || ""}-${current.source || ""}-${current.language || ""}`;
+        if (!acc.some(item => `${(item.extension || "").toLowerCase()}-${item.size || ""}-${item.source || ""}-${item.language || ""}` === key)) {
+          acc.push(current);
+        }
+        return acc;
+      }, []);
       
-      if (result.books.length > 0) {
-        const firstVariant = result.books[0];
+      setFeaturedDownloadVariants(uniqueVariants);
+      
+      if (uniqueVariants.length > 0) {
+        const firstVariant = uniqueVariants[0];
         setSelectedFeaturedVariant(firstVariant);
         fetchFeaturedVariantMirrors(firstVariant);
       }
@@ -493,8 +508,12 @@ export default function DiscoverView({
               publisher: info.publisher,
               language: info.language,
               industryIdentifiers: info.industryIdentifiers || [],
-              categories: info.categories 
-                ? Array.from(new Set(info.categories.flatMap((cat: string) => cat.split("/").map(s => s.trim()).filter(Boolean))))
+              categories: info.categories || [],
+              subjects: info.categories 
+                ? Array.from(new Set(info.categories.flatMap((cat: string) => {
+                    const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+                    return [cat, ...parts]; // Keep full path and parts
+                  })))
                 : [],
               averageRating: info.averageRating,
               ratingsCount: info.ratingsCount,
@@ -563,8 +582,12 @@ export default function DiscoverView({
               publisher: doc.publisher?.[0],
               language: doc.language?.[0],
               industryIdentifiers: doc.isbn?.map((i: string) => ({ type: "ISBN", identifier: i })),
-              categories: doc.subject 
-                ? Array.from(new Set(doc.subject.slice(0, 5).flatMap((cat: string) => cat.split("/").map(s => s.trim()).filter(Boolean))))
+              categories: doc.subject || [],
+              subjects: doc.subject 
+                ? Array.from(new Set(doc.subject.flatMap((cat: string) => {
+                    const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+                    return [cat, ...parts];
+                  })))
                 : [],
               source: "Open Library"
             });
@@ -1430,7 +1453,7 @@ export default function DiscoverView({
   function handleMirrorClick(m: any) {
     // Always try direct download first - it will store in app's IndexedDB
     // and fall back to in-app browser on CAPTCHA/Cloudflare errors
-    if (m.isDirect || m.url.includes("libgen") || m.url.includes("library.lol")) {
+    if (m.isDirect || m.url.includes("libgen")) {
       handleDownloadFromMirror(m);
     } else if (onOpenBrowser) {
       // Open non-direct links in the in-app browser for manual navigation
@@ -1924,7 +1947,7 @@ export default function DiscoverView({
                 <p className="text-xs text-kindle-text-muted max-w-sm">{error}</p>
               </div>
               <button 
-                onClick={loadFeaturedContent}
+                onClick={() => loadFeaturedContent()}
                 className="px-4 py-2 bg-kindle-card border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-kindle-bg transition"
               >
                 Retry Loading
@@ -1951,7 +1974,7 @@ export default function DiscoverView({
                     <p className="text-sm font-bold text-kindle-text-muted">No trending titles right now</p>
                     <p className="text-xs text-kindle-text-muted/70 max-w-sm">Use the search above to find any book across the global archives.</p>
                     <button
-                      onClick={loadFeaturedContent}
+                      onClick={() => loadFeaturedContent()}
                       className="flex items-center gap-2 px-4 py-2 border border-kindle-border rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition"
                     >
                       <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -2483,8 +2506,7 @@ export default function DiscoverView({
                   <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted mb-3 font-sans">Community Reviews</h4>
                   <div className="bg-kindle-bg border border-kindle-border rounded-2xl p-4">
                     <HardcoverCommunity 
-                      bookTitle={selectedBook.title}
-                      authorName={selectedBook.author}
+                      book={selectedBook as any}
                     />
                   </div>
                 </div>
@@ -2516,8 +2538,8 @@ export default function DiscoverView({
               <div className="max-w-6xl mx-auto px-6 py-10">
                 <div className="flex flex-col md:flex-row gap-10">
                   {/* Left Column: Cover & Action Buttons */}
-                  <div className="w-full md:w-56 shrink-0 flex flex-col items-center md:items-start">
-                    <div className="w-full max-w-[220px] aspect-[2/3] rounded-lg overflow-hidden shadow-[0_12px_24px_rgba(0,0,0,0.15)] bg-black/5 relative group mb-6">
+                  <div className="w-full md:w-64 shrink-0 flex flex-col items-center md:items-start">
+                    <div className="w-full max-w-[240px] aspect-[2/3] rounded-xl overflow-hidden shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-black/5 relative group mb-6">
                       {selectedFeaturedBook.coverUrl ? (
                         <img src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                       ) : (
@@ -2527,18 +2549,87 @@ export default function DiscoverView({
                       )}
                       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors" />
                     </div>
-                    <div className="w-full flex flex-col gap-2.5 max-w-[220px]">
+                    <div className="w-full flex flex-col gap-3 max-w-[240px]">
                       <button 
                         onClick={() => {
                           const queryText = `${selectedFeaturedBook.title} ${selectedFeaturedBook.author || ""}`.trim();
                           setSelectedFeaturedBook(null);
                           handleSearch(queryText);
                         }}
-                        className="w-full py-3.5 px-4 bg-kindle-accent hover:bg-kindle-accent/90 text-kindle-bg rounded-lg font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                        className="w-full py-4 px-5 bg-kindle-accent hover:bg-kindle-accent/90 text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-[0.15em] transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
                       >
                         <Search className="w-4 h-4" />
                         Search Download
                       </button>
+                      
+                      <div className="hidden md:block mt-8 space-y-8">
+                        <section>
+                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-4 border-b border-kindle-border pb-2">Quick Stats</h4>
+                          <div className="grid grid-cols-2 gap-y-4 gap-x-2">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-0.5">Pages</span>
+                              <span className="text-[11px] text-kindle-text font-medium">{featuredBookDetails?.pageCount || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-0.5">Year</span>
+                              <span className="text-[11px] text-kindle-text font-medium">{featuredBookDetails?.publishedDate?.split('-')[0] || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-0.5">Rating</span>
+                              <span className="text-[11px] text-kindle-text font-medium">{featuredBookDetails?.averageRating || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-0.5">Language</span>
+                              <span className="text-[11px] text-kindle-text font-medium uppercase">{featuredBookDetails?.language || "EN"}</span>
+                            </div>
+                          </div>
+                        </section>
+
+                        {/* Context & Categories - Moved from right column */}
+                        <section className="space-y-6">
+                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-4 border-b border-kindle-border pb-2">Context & Genres</h4>
+                          <div className="space-y-6">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-3">Genres</span>
+                              <div className="flex flex-wrap gap-2">
+                                {([...(featuredBookDetails?.categories || []), ...(featuredBookDetails?.subjects || [])])
+                                  .filter((v, i, a) => v && a.indexOf(v) === i)
+                                  .length > 0 ? (
+                                    ([...(featuredBookDetails?.categories || []), ...(featuredBookDetails?.subjects || [])])
+                                      .filter((v, i, a) => v && a.indexOf(v) === i)
+                                      .map((cat: string, i: number) => (
+                                        <span key={i} className="px-2.5 py-1 bg-kindle-card rounded-lg text-[9px] text-kindle-accent font-bold uppercase tracking-widest border border-kindle-border shadow-sm">
+                                          {cat}
+                                        </span>
+                                      ))
+                                  ) : (
+                                    <span className="text-[10px] text-kindle-text-muted italic">Fiction</span>
+                                  )
+                                }
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-2">Author Profile</span>
+                              <div className="bg-kindle-card/30 p-4 rounded-xl border border-kindle-border">
+                                <span className="text-sm font-bold text-kindle-text block mb-2">{featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author}</span>
+                                <p className="text-[11px] text-neutral-600 dark:text-kindle-text-muted leading-relaxed line-clamp-4 mb-4 italic">
+                                  An accomplished author recognized for compelling storytelling and deep character exploration in the world of {featuredBookDetails?.categories?.[0] || "literature"}.
+                                </p>
+                                <button 
+                                  onClick={() => {
+                                    const author = featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author;
+                                    handleSearch(`inauthor:"${author}"`);
+                                    setSelectedFeaturedBook(null);
+                                  }}
+                                  className="w-full text-[9px] font-bold text-kindle-text border border-kindle-border px-4 py-2 rounded-lg hover:bg-kindle-accent hover:text-kindle-bg hover:border-kindle-accent transition-all uppercase tracking-widest"
+                                >
+                                  Library
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </section>
                       </div>
                     </div>
                   </div>
@@ -2546,12 +2637,13 @@ export default function DiscoverView({
                   {/* Right Column: Title, Metadata, Description & Sidebar */}
                   <div className="flex-1 min-w-0">
                     <div className="mb-8">
-                      <h2 className="text-3xl md:text-4xl font-serif text-kindle-text mb-2 leading-tight">
+                      <h2 className="text-3xl md:text-5xl font-serif text-kindle-text mb-3 leading-tight tracking-tight">
                         {featuredBookDetails?.title || selectedFeaturedBook.title}
                       </h2>
-                      <div className="text-lg text-kindle-text-muted font-sans">
-                        By <span 
-                          className="text-kindle-accent font-medium hover:underline cursor-pointer transition-colors"
+                      <div className="text-xl text-kindle-text-muted font-sans flex flex-wrap items-center gap-2">
+                        <span>By</span>
+                        <span 
+                          className="text-kindle-accent font-semibold hover:underline cursor-pointer transition-colors"
                           onClick={() => {
                             const author = featuredBookDetails?.authors?.join(", ") || selectedFeaturedBook.author;
                             if (author) {
@@ -2562,31 +2654,25 @@ export default function DiscoverView({
                         >
                           {featuredBookDetails?.authors?.join(", ") || selectedFeaturedBook.author}
                         </span>
-                        {featuredBookDetails?.publishedDate && ` · ${featuredBookDetails.publishedDate.split('-')[0]}`}
+                        {featuredBookDetails?.publishedDate && (
+                          <span className="text-kindle-text-muted/40 font-light">· {featuredBookDetails.publishedDate.split('-')[0]}</span>
+                        )}
                       </div>
                     </div>
 
-                    {/* Tabs navigation simulation */}
-                    <div className="flex items-center gap-8 border-b border-kindle-border mb-8 overflow-x-auto no-scrollbar">
-                      {['Overview'].map((tab, idx) => (
-                        <button key={tab} className={`pb-4 text-xs font-bold uppercase tracking-widest whitespace-nowrap border-b-2 transition-colors ${idx === 0 ? 'text-kindle-accent border-kindle-accent' : 'text-kindle-text-muted border-transparent hover:text-kindle-text'}`}>
-                          {tab}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="space-y-12">
+                    <div className="space-y-10">
+                      {/* Overview Section - Moved up to be next to cover */}
                       <section>
-                        <div className="flex items-center justify-between mb-6">
-                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text-muted">About this edition</h3>
-                          <div className="flex items-center bg-black/5 rounded p-1 border border-kindle-border">
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Overview</h3>
+                          <div className="flex items-center bg-black/5 rounded-lg p-1 border border-kindle-border">
                             {["google", "nyt", "openlibrary"].map((source) => (
                               <button 
                                 key={source}
                                 onClick={() => updateMetadataSource(source as any)}
-                                className={`px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded transition-all ${
+                                className={`px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider rounded-md transition-all ${
                                   metadataSource === source 
-                                    ? 'bg-kindle-text text-kindle-bg shadow-sm' 
+                                    ? 'bg-kindle-text text-kindle-bg shadow-md' 
                                     : 'text-kindle-text-muted hover:text-kindle-text'
                                 }`}
                               >
@@ -2596,142 +2682,51 @@ export default function DiscoverView({
                           </div>
                         </div>
                         
-                        <div className="text-kindle-text leading-relaxed font-sans text-sm space-y-4 min-h-[150px]">
+                        <div className="text-kindle-text leading-relaxed font-sans text-base space-y-4 min-h-[120px]">
                           {loadingFeaturedDetails ? (
                             <div className="space-y-4 animate-pulse">
-                              <div className="h-4 bg-black/5 rounded w-full" />
-                              <div className="h-4 bg-black/5 rounded w-full" />
-                              <div className="h-4 bg-black/5 rounded w-3/4" />
+                              <div className="h-5 bg-black/5 rounded-lg w-full" />
+                              <div className="h-5 bg-black/5 rounded-lg w-full" />
+                              <div className="h-5 bg-black/5 rounded-lg w-4/5" />
                             </div>
                           ) : (
-                            <div className="prose prose-sm dark:prose-invert max-w-none prose-neutral leading-relaxed [&_a]:text-kindle-accent" dangerouslySetInnerHTML={{ __html: featuredBookDetails?.description || "No detailed description available." }} />
+                            <div className="prose prose-base dark:prose-invert max-w-none prose-neutral leading-relaxed [&_a]:text-kindle-accent" dangerouslySetInnerHTML={{ __html: featuredBookDetails?.description || "No detailed description available." }} />
                           )}
                         </div>
                       </section>
 
-                      {/* Integrated Technical Details and Author profile */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 pt-10 border-t border-kindle-border">
-                        {/* 1. Metadata */}
-                        <div className="space-y-5">
-                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Details</h4>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="flex flex-col">
-                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-1">ISBN</span>
-                              <span className="text-[11px] text-kindle-text font-medium truncate">{featuredBookDetails?.industryIdentifiers?.map((id: any) => id.identifier).join(", ") || "N/A"}</span>
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-1">Pages</span>
-                              <span className="text-[11px] text-kindle-text font-medium">{featuredBookDetails?.pageCount || "N/A"}</span>
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-1">Published</span>
-                              <span className="text-[11px] text-kindle-text font-medium">{featuredBookDetails?.publishedDate || "N/A"}</span>
-                            </div>
-                            <div className="flex flex-col">
-                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-1">Language</span>
-                              <span className="text-[11px] text-kindle-text font-medium uppercase">{featuredBookDetails?.language || "EN"}</span>
-                            </div>
-                          </div>
+                      {/* Download Links - Moved UP and made larger */}
+                      <section className="pt-8 border-t border-kindle-border">
+                        <div className="flex items-center gap-3 mb-6">
+                          <Download className="w-5 h-5 text-kindle-accent" />
+                          <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-kindle-text">Download Links</h3>
                         </div>
-
-                        {/* 2. Context */}
-                        <div className="space-y-5">
-                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Context</h4>
-                          <div className="space-y-4">
-                            <div className="flex flex-col">
-                              <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-2">Genres</span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {(featuredBookDetails?.categories || ["Fiction"]).map((cat: string, i: number) => (
-                                  <span key={i} className="px-2 py-0.5 bg-kindle-card rounded text-[10px] text-kindle-accent font-bold uppercase tracking-wider border border-kindle-border">
-                                    {cat}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            {featuredBookDetails?.averageRating && (
-                              <div className="flex flex-col">
-                                <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-1">Rating</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold text-kindle-text">{featuredBookDetails.averageRating}</span>
-                                  <div className="flex text-kindle-accent">
-                                    {[...Array(5)].map((_, i) => (
-                                      <Sparkles key={i} className={`w-3 h-3 ${i < Math.floor(featuredBookDetails.averageRating) ? 'fill-current' : 'text-kindle-border'}`} />
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 3. Author */}
-                        <div className="space-y-5">
-                          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Author</h4>
-                          <div className="space-y-3">
-                            <span className="text-xs font-bold text-kindle-text">{featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author}</span>
-                            <p className="text-[11px] text-neutral-600 dark:text-kindle-text-muted leading-relaxed line-clamp-3">
-                              An accomplished author recognized for compelling storytelling and deep character exploration in the world of {featuredBookDetails?.categories?.[0] || "literature"}.
-                            </p>
-                            <button 
-                              onClick={() => {
-                                const author = featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author;
-                                handleSearch(`inauthor:"${author}"`);
-                                setSelectedFeaturedBook(null);
-                              }}
-                              className="mt-2 text-[10px] font-bold text-kindle-text border border-kindle-border px-3 py-1.5 rounded hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors uppercase tracking-widest"
-                            >
-                              Search Author
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Similar Books Section */}
-                      <section className="pt-10 border-t border-kindle-border">
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-6">Similar books</h3>
-                        {loadingSimilar ? (
-                          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-                            {[...Array(4)].map((_, i) => (
-                              <div key={i} className="w-24 shrink-0 space-y-2 animate-pulse">
-                                <div className="aspect-[2/3] bg-kindle-card dark:bg-neutral-800 rounded shadow-sm" />
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex gap-6 overflow-x-auto pb-4 no-scrollbar custom-scrollbar">
-                            {similarBooks.map((book, idx) => (
-                              <div key={idx} className="w-24 shrink-0 group cursor-pointer" onClick={() => {
-                                setSelectedFeaturedBook(null);
-                                handleSearch(`${book.title} ${book.author}`);
-                              }}>
-                                <div className="aspect-[2/3] rounded shadow-sm overflow-hidden mb-2 bg-kindle-card border border-kindle-border">
-                                  {book.coverUrl && <img src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
-                                </div>
-                                <p className="text-[10px] font-bold text-kindle-text line-clamp-2 leading-tight">{book.title}</p>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </section>
-                    
-
-                      {/* Featured Direct Downloads inside popup */}
-                      <div className="w-full pt-10 border-t border-kindle-border space-y-4">
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Download Links</h3>
                         
                         {loadingFeaturedDownloads ? (
-                          <div className="flex items-center gap-2 py-2 text-kindle-text-muted">
-                            <Loader2 className="w-4 h-4 animate-spin text-kindle-accent" />
-                            <span className="text-[10px] uppercase font-bold tracking-wider">Scanning Archives...</span>
+                          <div className="flex items-center gap-3 py-6 bg-kindle-card rounded-2xl border border-kindle-border justify-center">
+                            <Loader2 className="w-5 h-5 animate-spin text-kindle-accent" />
+                            <span className="text-xs uppercase font-bold tracking-widest text-kindle-text-muted">Scanning global archives...</span>
                           </div>
                         ) : featuredDownloadVariants.length === 0 ? (
-                          <p className="text-[10px] text-kindle-text-muted italic">No direct files found. Use search download above.</p>
+                          <div className="py-8 text-center bg-kindle-card rounded-2xl border border-kindle-border">
+                            <p className="text-xs text-kindle-text-muted italic">No direct files discovered for this edition yet.</p>
+                            <button 
+                              onClick={() => {
+                                const queryText = `${selectedFeaturedBook.title} ${selectedFeaturedBook.author || ""}`.trim();
+                                setSelectedFeaturedBook(null);
+                                handleSearch(queryText);
+                              }}
+                              className="mt-4 text-[10px] font-bold uppercase tracking-widest text-kindle-accent hover:underline"
+                            >
+                              Try manual search
+                            </button>
+                          </div>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             {/* Variant Format buttons */}
-                            <div className="space-y-1">
-                              <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60">Choose Format:</span>
-                              <div className="grid grid-cols-2 gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
+                            <div className="space-y-2">
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted/60">Select Edition:</span>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {featuredDownloadVariants.map((v, idx) => {
                                   const isActive = selectedFeaturedVariant?.md5 === v.md5 || selectedFeaturedVariant?.id === v.id;
                                   return (
@@ -2741,19 +2736,22 @@ export default function DiscoverView({
                                         setSelectedFeaturedVariant(v);
                                         fetchFeaturedVariantMirrors(v);
                                       }}
-                                      className={`p-1.5 rounded border text-left transition duration-200 cursor-pointer ${
+                                      className={`p-2.5 rounded-lg border text-left transition-all duration-200 cursor-pointer group ${
                                         isActive 
-                                          ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent" 
-                                          : "bg-kindle-bg border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:border-kindle-text-muted"
+                                          ? "bg-kindle-accent/5 border-kindle-accent shadow-sm" 
+                                          : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted/50 hover:bg-black/5"
                                       }`}
                                     >
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-[9px] font-extrabold uppercase font-mono">{v.extension || "EPUB"}</span>
-                                        <span className="text-[8px] opacity-65 font-mono">{v.size || "N/A"}</span>
+                                      <div className="flex items-center justify-between mb-1.5">
+                                        <span className={`text-[11px] font-black uppercase font-mono ${isActive ? "text-kindle-accent" : "text-kindle-text"}`}>{v.extension || "EPUB"}</span>
+                                        <span className="text-[8px] opacity-60 font-mono bg-kindle-card px-1 py-0.5 rounded border border-kindle-border">{v.size || "N/A"}</span>
                                       </div>
-                                      <span className="text-[7px] block truncate max-w-[85px] mt-0.5 font-sans uppercase tracking-wider opacity-60">
-                                        {v.source === "Library Genesis" ? "LibGen" : v.source === "Anna's Archive" ? "Anna's" : v.source}
-                                      </span>
+                                      <div className="flex items-center gap-1.5">
+                                        <div className={`w-1 h-1 rounded-full ${isActive ? 'bg-kindle-accent' : 'bg-kindle-accent/20'}`} />
+                                        <span className="text-[8px] font-sans uppercase tracking-widest font-bold opacity-60 truncate">
+                                          {v.source === "Library Genesis" ? "LibGen" : v.source === "Anna's Archive" ? "Anna's" : v.source}
+                                        </span>
+                                      </div>
                                     </button>
                                   );
                                 })}
@@ -2762,48 +2760,53 @@ export default function DiscoverView({
 
                             {/* Mirrors for selected variant */}
                             {selectedFeaturedVariant && (
-                              <div className="space-y-1.5 border-t border-kindle-border/20 pt-2">
-                                <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60 flex items-center justify-between">
-                                  <span>Download Mirrors:</span>
-                                  {fetchingFeaturedMirrors && <Loader2 className="w-2.5 h-2.5 animate-spin text-kindle-accent" />}
-                                </span>
+                              <div className="space-y-3 bg-kindle-card/50 rounded-2xl border border-kindle-border/40 p-5">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Available Download Mirrors:</span>
+                                  {fetchingFeaturedMirrors && <Loader2 className="w-3.5 h-3.5 animate-spin text-kindle-accent" />}
+                                </div>
 
                                 {fetchingFeaturedMirrors ? (
-                                  <div className="py-2 text-center text-[9px] text-kindle-text-muted font-bold uppercase tracking-wider">
-                                    Resolving Mirrors...
+                                  <div className="py-6 text-center text-xs text-kindle-text-muted font-bold uppercase tracking-widest animate-pulse">
+                                    Resolving direct links...
                                   </div>
                                 ) : featuredMirrorError ? (
-                                  <p className="text-[8px] text-amber-500 font-sans">{featuredMirrorError}</p>
+                                  <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl text-[10px] text-amber-600 font-sans leading-relaxed">
+                                    {featuredMirrorError}
+                                  </div>
                                 ) : featuredMirrors.length === 0 ? (
-                                  <p className="text-[8px] text-kindle-text-muted italic">No mirrors available.</p>
+                                  <p className="text-xs text-kindle-text-muted italic py-4 text-center">No mirrors available for this variant.</p>
                                 ) : (
-                                  <div className="space-y-1 max-h-36 overflow-y-auto custom-scrollbar">
+                                  <div className="space-y-2">
                                     {featuredMirrors.map((m, i) => (
                                       <div
                                         key={i}
                                         onClick={() => handleMirrorClick(m)}
-                                        className={`p-1.5 rounded border text-left transition cursor-pointer flex items-center justify-between ${
+                                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
                                           m.isDirect 
-                                            ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg" 
-                                            : "border-kindle-border/65 hover:border-amber-500/40 bg-kindle-bg"
+                                            ? "border-kindle-border hover:border-emerald-500/40 hover:bg-emerald-500/5 bg-kindle-bg shadow-sm" 
+                                            : "border-kindle-border hover:border-amber-500/40 hover:bg-amber-500/5 bg-kindle-bg shadow-sm"
                                         }`}
                                       >
-                                        <div className="min-w-0 pr-1.5">
-                                          <p className="text-[9px] font-bold truncate">{m.label}</p>
-                                          <p className="text-[7px] text-kindle-text-muted truncate font-mono mt-0.5">{m.url}</p>
+                                        <div className="min-w-0 flex-1 pr-4">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <span className={`w-1.5 h-1.5 rounded-full ${m.isDirect ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                            <p className="text-sm font-bold text-kindle-text group-hover:text-kindle-accent transition-colors">{m.label}</p>
+                                          </div>
+                                          <p className="text-[10px] text-kindle-text-muted/60 truncate font-mono">{m.url}</p>
                                         </div>
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleMirrorClick(m);
                                           }}
-                                          className={`p-1 rounded border shrink-0 ${
+                                          className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
                                             m.isDirect
-                                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600"
-                                              : "bg-amber-500/10 border-amber-500/20 text-amber-600"
+                                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
+                                              : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
                                           }`}
                                         >
-                                          {m.isDirect ? <Download className="w-2.5 h-2.5" /> : <BookOpen className="w-2.5 h-2.5" />}
+                                          {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
                                         </button>
                                       </div>
                                     ))}
@@ -2813,17 +2816,50 @@ export default function DiscoverView({
                             )}
                           </div>
                         )}
+                      </section>
+
+                      {/* Technical Details & More */}
+                      <div className="pt-10 border-t border-kindle-border">
+                        {/* Similar Books Section */}
+                        <section className="space-y-6">
+                          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">You might also like</h3>
+                          {loadingSimilar ? (
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                              {[...Array(6)].map((_, i) => (
+                                <div key={i} className="aspect-[2/3] bg-kindle-card dark:bg-neutral-800 rounded-lg animate-pulse border border-kindle-border" />
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                              {similarBooks.slice(0, 6).map((book, idx) => (
+                                <div key={idx} className="group cursor-pointer" onClick={() => {
+                                  setSelectedFeaturedBook(null);
+                                  handleSearch(`${book.title} ${book.author}`);
+                                }}>
+                                  <div className="aspect-[2/3] rounded-lg shadow-sm overflow-hidden mb-2 bg-kindle-card border border-kindle-border group-hover:shadow-md transition-all group-hover:-translate-y-1">
+                                    {book.coverUrl && <img src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
+                                  </div>
+                                  <p className="text-[10px] font-bold text-kindle-text line-clamp-2 leading-tight group-hover:text-kindle-accent transition-colors">{book.title}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </section>
+                      </div>
+
                       {/* Hardcover Community */}
                       <section className="pt-10 border-t border-kindle-border">
-                        <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-6">Community Reviews</h3>
-                        <div className="bg-kindle-bg border border-kindle-border rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-6">
+                          <Users className="w-4 h-4 text-kindle-accent" />
+                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text">Community Readers</h3>
+                        </div>
+                        <div className="bg-kindle-card/20 border border-kindle-border rounded-2xl overflow-hidden">
                           <HardcoverCommunity 
-                            bookTitle={featuredBookDetails?.title || selectedFeaturedBook.title}
-                            authorName={featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author}
+                            book={{ title: featuredBookDetails?.title || selectedFeaturedBook.title, author: featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author } as any}
                           />
                         </div>
                       </section>
-</div>
+                    </div>
                   </div>
                 </div>
               </div>

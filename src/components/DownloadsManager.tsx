@@ -111,7 +111,7 @@ export default function DownloadsManager({ userId = "", onRefreshLibrary }: Down
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
       <div>
         <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text mb-1">Downloads</h1>
         <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mb-6">
@@ -176,7 +176,7 @@ export default function DownloadsManager({ userId = "", onRefreshLibrary }: Down
                 <div className="flex items-center gap-3 p-3 bg-kindle-accent/[0.04] border border-kindle-accent/15 rounded-xl animate-pulse">
                   <Sparkles className="w-4 h-4 text-kindle-accent" />
                   <p className="text-[11px] font-medium text-kindle-text-muted">
-                    Gemini AI is parsing the content, removing ads/clutter, and organizing into chapters...
+                    Processing content, removing ads/clutter, and organizing into chapters...
                   </p>
                 </div>
               )}
