@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { ArrowLeft, RefreshCw, Database, FileText, Trash2, Settings, Type, Copy, Sparkles, Check, Globe } from "lucide-react";
+import { ArrowLeft, RefreshCw, Database, FileText, Trash2, Settings, Type, Copy, Sparkles, Check, Globe, ChevronDown } from "lucide-react";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 
 interface BookReaderTextProps {
@@ -127,62 +127,20 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
       <div className="flex-1 flex overflow-hidden relative">
         {/* Settings Sidebar */}
         {showSettings && (
-          <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-b md:border-b-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col shrink-0 absolute md:relative bottom-0 left-0 right-0 md:bottom-auto md:top-auto`}>
+          <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-b md:border-b-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col shrink-0 absolute md:relative bottom-0 left-0 right-0 md:bottom-auto md:top-auto shadow-lg md:shadow-none`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
               <span className="font-sans font-semibold text-sm flex items-center gap-2">
                 <Type className="w-4 h-4" />
-                Reader Settings
+                Display Settings
               </span>
               <button onClick={() => setShowSettings(false)} className="text-xs p-1 hover:bg-neutral-500/10 rounded">
-                Close
+                Done
               </button>
             </div>
 
-            {/* Font Family */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Font Style</label>
-              <div className="grid grid-cols-3 gap-2">
-                {fontFamilies.map((ff) => (
-                  <button
-                    key={ff.value}
-                    onClick={() => setFontFamily(ff.value)}
-                    className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      fontFamily === ff.value
-                        ? "border-[#5c5346] bg-[#5c5346]/10 font-semibold"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {ff.name.split(" ")[0]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Font Size */}
-            <div className="mb-5">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs opacity-75 font-sans">Font Size</label>
-                <span className="text-xs font-mono">{fontSize}px</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setFontSize(Math.max(12, fontSize - 1))}
-                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
-                >
-                  A -
-                </button>
-                <button
-                  onClick={() => setFontSize(Math.min(32, fontSize + 1))}
-                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
-                >
-                  A +
-                </button>
-              </div>
-            </div>
-
             {/* Reading Themes */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Reading Theme</label>
+            <div className="mb-4">
+              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Reading Theme</label>
               <div className="grid grid-cols-4 gap-1.5">
                 {Object.keys(themes).map((tKey) => {
                   const th = themes[tKey];
@@ -201,30 +159,52 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
               </div>
             </div>
 
-            {/* Line Spacing */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Line Spacing</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[1.2, 1.6, 2.0].map((spacing) => (
+            {/* Font Family */}
+            <div className="mb-4">
+              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Font Style</label>
+              <div className="grid grid-cols-3 gap-2">
+                {fontFamilies.map((ff) => (
                   <button
-                    key={spacing}
-                    onClick={() => setLineSpacing(spacing)}
+                    key={ff.value}
+                    onClick={() => setFontFamily(ff.value)}
                     className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      lineSpacing === spacing
-                        ? "bg-[#5c5346] text-white border-transparent"
+                      fontFamily === ff.value
+                        ? "border-[#5c5346] bg-[#5c5346]/10 font-semibold"
                         : "border-neutral-500/20 hover:border-neutral-500/50"
                     }`}
                   >
-                    {spacing === 1.2 ? "Compact" : spacing === 1.6 ? "Regular" : "Wide"}
+                    {ff.name.split(" ")[0]}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Font Size */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs opacity-75 font-sans font-semibold">Font Size</label>
+                <span className="text-xs font-mono">{fontSize}px</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFontSize(Math.max(12, fontSize - 1))}
+                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
+                >
+                  A -
+                </button>
+                <button
+                  onClick={() => setFontSize(Math.min(32, fontSize + 1))}
+                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
+                >
+                  A +
+                </button>
               </div>
             </div>
 
             {/* Brightness */}
             <div className="mb-5">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs opacity-75 font-sans">Brightness</label>
+                <label className="text-xs opacity-75 font-sans font-semibold">Brightness</label>
                 <span className="text-[10px] font-mono">{brightness}%</span>
               </div>
               <input
@@ -237,32 +217,63 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
               />
             </div>
 
-            {/* Margins */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Margins</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: "None", val: "max-w-full" },
-                  { label: "Narrow", val: "max-w-2xl px-6" },
-                  { label: "Wide", val: "max-w-xl px-12" }
-                ].map((m) => (
-                  <button
-                    key={m.val}
-                    onClick={() => setMarginSize(m.val)}
-                    className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      marginSize === m.val
-                        ? "bg-[#5c5346] text-white border-transparent"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
+            {/* Collapsible Layout Details */}
+            <div className="space-y-2 border-t border-neutral-500/15 pt-3">
+              <details className="group border-b border-neutral-500/10 pb-2">
+                <summary className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-neutral-400 hover:text-current cursor-pointer py-1.5 list-none select-none">
+                  <span>Typography & Layout</span>
+                  <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+                </summary>
+                <div className="mt-3 space-y-4">
+                  {/* Line Spacing */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Line Spacing</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[1.2, 1.6, 2.0].map((spacing) => (
+                        <button
+                          key={spacing}
+                          onClick={() => setLineSpacing(spacing)}
+                          className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
+                            lineSpacing === spacing
+                              ? "bg-[#5c5346] text-white border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {spacing === 1.2 ? "Compact" : spacing === 1.6 ? "Regular" : "Wide"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Margins */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Margins</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: "None", val: "max-w-full" },
+                        { label: "Narrow", val: "max-w-2xl px-6" },
+                        { label: "Wide", val: "max-w-xl px-12" }
+                      ].map((m) => (
+                        <button
+                          key={m.val}
+                          onClick={() => setMarginSize(m.val)}
+                          className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
+                            marginSize === m.val
+                              ? "bg-[#5c5346] text-white border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </details>
             </div>
 
             {/* Export */}
-            <div className="pt-4 border-t border-neutral-500/20 space-y-2">
+            <div className="pt-4 border-t border-neutral-500/20 space-y-2 mt-4">
               <button
                 onClick={() => {
                   const exportContent = `Book: ${book.title}\n\n${content || ""}`;
