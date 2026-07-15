@@ -1371,10 +1371,334 @@ export default {
       }
     }
 
+    // 5. Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Cheerio)
+    if (path === "/api/convert-url" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const targetUrl = body.url;
+        if (!targetUrl) {
+          return new Response(JSON.stringify({ error: "Missing url parameter" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        console.log(`[Web Clipper] Fetching: ${targetUrl}`);
+        
+        // Parse domain
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(targetUrl);
+        } catch (e) {
+          return new Response(JSON.stringify({ error: "Invalid URL format" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        const domain = parsedUrl.hostname;
+
+        // Fetch the raw page content using standard fetch with timeout
+        let rawHtml = "";
+        try {
+          const response = await fetch(targetUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          });
+          if (response.ok) {
+            rawHtml = await response.text();
+          } else {
+            throw new Error(`HTTP error ${response.status}`);
+          }
+        } catch (fetchErr) {
+          console.warn(`[Web Clipper] Standard fetch failed, trying Puppeteer:`, fetchErr);
+          if (env && env.BROWSER) {
+            try {
+              const browser = await env.BROWSER.connect();
+              try {
+                const page = await browser.newPage();
+                await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+                rawHtml = await page.content();
+              } finally {
+                await browser.disconnect();
+              }
+            } catch (puppeteerErr) {
+              console.error("[Web Clipper] Puppeteer failed:", puppeteerErr);
+              throw new Error("Failed to fetch content with both standard fetch and Puppeteer");
+            }
+          } else {
+            throw new Error("Failed to fetch content and no Puppeteer available");
+          }
+        }
+
+        if (!rawHtml || rawHtml.trim().length < 100) {
+          return new Response(JSON.stringify({ error: "Could not fetch any meaningful content from the provided URL" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        console.log(`[Web Clipper] Extracted HTML length: ${rawHtml.length}. Processing with HTMLRewriter.`);
+
+        // Use HTMLRewriter to extract content (Cloudflare-native alternative to Cheerio)
+        let title = domain;
+        let author = domain;
+        let description = "";
+        let contentParts: string[] = [];
+        let currentSection: string[] = [];
+        let currentHeading: string = "Article";
+
+        class ContentExtractor {
+          element(element: any) {
+            const tagName = element.tagName;
+            
+            // Extract title
+            if (tagName === "title") {
+              element.onEndTag(() => {
+                title = element.textContent || domain;
+              });
+            }
+            
+            // Extract author from meta
+            if (tagName === "meta") {
+              const name = element.getAttribute("name");
+              const content = element.getAttribute("content");
+              if (name === "author" && content) {
+                author = content;
+              }
+              if (name === "description" && content) {
+                description = content;
+              }
+            }
+            
+            // Handle headings for chapter splitting
+            if (tagName === "h2" || tagName === "h3") {
+              if (currentSection.length > 0) {
+                contentParts.push(`<h2>${currentHeading}</h2>`);
+                contentParts.push(...currentSection);
+                currentSection = [];
+              }
+              currentHeading = element.textContent || `Section ${contentParts.length + 1}`;
+            }
+            
+            // Skip unwanted elements
+            if (["script", "style", "iframe", "header", "footer", "nav", "noscript"].includes(tagName)) {
+              element.remove();
+            }
+          }
+          
+          text(text: any) {
+            if (text.text.trim()) {
+              currentSection.push(text.text);
+            }
+          }
+        }
+
+        try {
+          const rewriter = new HTMLRewriter()
+            .on("*", new ContentExtractor());
+          
+          await rewriter.transform(new Response(rawHtml)).text();
+          
+          // Add the last section
+          if (currentSection.length > 0) {
+            contentParts.push(`<h2>${currentHeading}</h2>`);
+            contentParts.push(...currentSection);
+          }
+        } catch (rewriteErr) {
+          console.error("[Web Clipper] HTMLRewriter failed, using fallback:", rewriteErr);
+          // Fallback: just use the raw HTML
+          contentParts = [rawHtml];
+        }
+
+        // If no content extracted, use raw HTML
+        if (contentParts.length === 0) {
+          contentParts = [rawHtml];
+        }
+
+        // Compile content into HTML reader-friendly file
+        const chapters = contentParts.length > 0 ? [{
+          title: currentHeading,
+          content: contentParts.join("\n")
+        }] : [{
+          title: "Article",
+          content: rawHtml
+        }];
+
+        let fullHtmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Georgia, serif;
+      line-height: 1.7;
+      color: #111;
+      max-width: 650px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background-color: #fcfcf9;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        color: #e0e0e0;
+        background-color: #121212;
+      }
+    }
+    h1 {
+      font-size: 2.2em;
+      line-height: 1.2;
+      margin-bottom: 0.2em;
+      font-weight: 700;
+    }
+    .author-line {
+      font-style: italic;
+      color: #666;
+      margin-bottom: 2em;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 10px;
+      font-size: 0.9em;
+    }
+    @media (prefers-color-scheme: dark) {
+      .author-line {
+        color: #aaa;
+        border-bottom-color: #444;
+      }
+    }
+    .chapter {
+      margin-top: 3em;
+      padding-top: 2em;
+      border-top: 1px dashed #ccc;
+    }
+    .chapter:first-of-type {
+      margin-top: 1em;
+      padding-top: 0;
+      border-top: none;
+    }
+    h2.chapter-title {
+      font-size: 1.8em;
+      margin-top: 0;
+      margin-bottom: 1em;
+      font-family: Georgia, serif;
+    }
+    h3 {
+      font-size: 1.3em;
+      margin-top: 1.5em;
+    }
+    p {
+      margin-top: 0;
+      margin-bottom: 1.2em;
+      text-align: justify;
+    }
+    pre, code {
+      background-color: #f4f4f4;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    @media (prefers-color-scheme: dark) {
+      pre, code {
+        background-color: #2a2a2a;
+      }
+    }
+    blockquote {
+      border-left: 4px solid #b4a078;
+      margin: 1.5em 0;
+      padding-left: 1em;
+      color: #555;
+      font-style: italic;
+    }
+    @media (prefers-color-scheme: dark) {
+      blockquote {
+        color: #999;
+      }
+    }
+    ul, ol {
+      margin-bottom: 1.2em;
+      padding-left: 1.5em;
+    }
+    li {
+      margin-bottom: 0.5em;
+    }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div class="author-line">By ${author} • Saved from ${domain}</div>
+  
+  <div class="chapters-container">
+    ${chapters.map((ch, idx) => `
+      <div class="chapter" id="chapter-${idx}">
+        <h2 class="chapter-title">${ch.title}</h2>
+        <div class="chapter-content">
+          ${ch.content}
+        </div>
+      </div>
+    `).join("")}
+  </div>
+</body>
+</html>`;
+
+        return new Response(JSON.stringify({
+          title,
+          author,
+          description,
+          htmlContent: fullHtmlContent
+        }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+
+      } catch (err: any) {
+        console.error("[Web Clipper Error]:", err);
+        return new Response(JSON.stringify({ error: err.message || "An error occurred during URL conversion." }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // 6. Cover Redirect/Proxy API (Proxies requests to bypass hotlinking and SSL restrictions)
     if (path === "/api/cover-redirect" || path === "/api/cover-proxy") {
       const isbn = url.searchParams.get("isbn");
       const md5 = url.searchParams.get("md5");
+      const title = url.searchParams.get("title");
+      const author = url.searchParams.get("author");
+
+      // Try OpenLibrary by title/author first
+      if (title) {
+        try {
+          const searchUrl = new URL("https://openlibrary.org/search.json");
+          searchUrl.searchParams.append("title", title);
+          if (author) searchUrl.searchParams.append("author", author);
+          searchUrl.searchParams.append("limit", "1");
+
+          const olRes = await fetch(searchUrl.toString());
+          if (olRes.ok) {
+            const olData = await olRes.json();
+            const firstBook = olData.docs?.[0];
+            if (firstBook?.cover_i) {
+              const coverUrl = `https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`;
+              const imgRes = await fetch(coverUrl, {
+                headers: { "User-Agent": "Mozilla/5.0" }
+              });
+              if (imgRes.ok) {
+                const body = await imgRes.arrayBuffer();
+                return new Response(body, {
+                  headers: {
+                    "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
+                    "Cache-Control": "public, max-age=604800, immutable",
+                    "Access-Control-Allow-Origin": "*"
+                  }
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      }
 
       if (isbn && /^\d{10,13}$/.test(isbn)) {
         try {
@@ -1941,7 +2265,7 @@ export default {
         return new Response("Missing url", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com)$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8})$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
