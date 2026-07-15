@@ -225,7 +225,7 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     
     // Remove ALL inline event handlers and styles from remaining elements
     $("*").each((_, elem) => {
-      const attribs = elem.attribs || {};
+      const attribs = (elem as any).attribs || {};
       for (const attr of Object.keys(attribs)) {
         if (attr.startsWith("on") || attr === "style" || attr.startsWith("data-")) {
           $(elem).removeAttr(attr);
@@ -259,8 +259,8 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     
     $("div, section, article, main, .content, .post-content, .entry-content, .article-body, .reader-body-content").each((_, elem) => {
       const $el = $(elem);
-      const className = (elem.attribs?.class || "").toLowerCase();
-      const id = (elem.attribs?.id || "").toLowerCase();
+      const className = ((elem as any).attribs?.class || "").toLowerCase();
+      const id = ((elem as any).attribs?.id || "").toLowerCase();
       const identifier = className + " " + id;
       
       // Skip if this has too many child containers (likely a layout wrapper)
@@ -309,8 +309,8 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     // Log for debugging
     if (candidates.length > 0) {
       const best = candidates[0];
-      const bestClass = best.element.attribs?.class || "";
-      const bestId = best.element.attribs?.id || "";
+      const bestClass = (best.element as any).attribs?.class || "";
+      const bestId = (best.element as any).attribs?.id || "";
       console.log(`[Web Clipper] Best content container: <${best.element.tagName}> class="${bestClass}" id="${bestId}" score=${best.score}`);
     }
 
@@ -333,7 +333,7 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
           $img.attr("src", absoluteUrl);
           // Keep only src and alt
           const alt = $img.attr("alt") || "";
-          const attribs = elem.attribs || {};
+          const attribs = (elem as any).attribs || {};
           for (const attr of Object.keys(attribs)) {
             if (attr !== "src" && attr !== "alt") {
               $img.removeAttr(attr);

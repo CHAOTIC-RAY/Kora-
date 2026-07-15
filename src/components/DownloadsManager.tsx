@@ -176,7 +176,7 @@ export default function DownloadsManager({ userId = "", onRefreshLibrary }: Down
                 <div className="flex items-center gap-3 p-3 bg-kindle-accent/[0.04] border border-kindle-accent/15 rounded-xl animate-pulse">
                   <Sparkles className="w-4 h-4 text-kindle-accent" />
                   <p className="text-[11px] font-medium text-kindle-text-muted">
-                    Processing content, removing ads/clutter, and organizing into chapters...
+                    Gemini AI is parsing the content, removing ads/clutter, and organizing into chapters...
                   </p>
                 </div>
               )}
