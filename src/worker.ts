@@ -1375,6 +1375,40 @@ export default {
     if (path === "/api/cover-redirect" || path === "/api/cover-proxy") {
       const isbn = url.searchParams.get("isbn");
       const md5 = url.searchParams.get("md5");
+      const title = url.searchParams.get("title");
+      const author = url.searchParams.get("author");
+
+      // Try OpenLibrary by title/author first
+      if (title) {
+        try {
+          const searchUrl = new URL("https://openlibrary.org/search.json");
+          searchUrl.searchParams.append("title", title);
+          if (author) searchUrl.searchParams.append("author", author);
+          searchUrl.searchParams.append("limit", "1");
+
+          const olRes = await fetch(searchUrl.toString());
+          if (olRes.ok) {
+            const olData = await olRes.json();
+            const firstBook = olData.docs?.[0];
+            if (firstBook?.cover_i) {
+              const coverUrl = `https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`;
+              const imgRes = await fetch(coverUrl, {
+                headers: { "User-Agent": "Mozilla/5.0" }
+              });
+              if (imgRes.ok) {
+                const body = await imgRes.arrayBuffer();
+                return new Response(body, {
+                  headers: {
+                    "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
+                    "Cache-Control": "public, max-age=604800, immutable",
+                    "Access-Control-Allow-Origin": "*"
+                  }
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      }
 
       if (isbn && /^\d{10,13}$/.test(isbn)) {
         try {
@@ -1941,7 +1975,7 @@ export default {
         return new Response("Missing url", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com)$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.com|google\.com|googleusercontent\.com)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);

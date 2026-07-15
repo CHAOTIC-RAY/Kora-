@@ -3,6 +3,8 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import * as cheerio from "cheerio";
 import { JSDOM } from "jsdom";
+import { Readability } from "@mozilla/readability";
+import TurndownService from "turndown";
 import dotenv from "dotenv";
 import puppeteer from "puppeteer";
 import crypto from "crypto";
@@ -36,7 +38,7 @@ function getGeminiClient() {
 
 app.use("/api/zlib", zlibRouter);
 
-// Web Clipper / URL-to-eBook Conversion Endpoint powered by Gemini
+// Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Readability.js)
 app.post("/api/convert-url", express.json(), async (req, res) => {
   const targetUrl = req.body.url || req.query.url as string;
   if (!targetUrl) {
@@ -89,76 +91,89 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
       return res.status(500).json({ error: "Could not fetch any meaningful content from the provided URL" });
     }
 
-    // Parse with Cheerio to extract core body and reduce token size
-    const $ = cheerio.load(rawHtml);
-    
-    // Strip script, style, iframe, header, footer, nav, ads
-    $("script, style, iframe, header, footer, nav, noscript, .ads, .advertisement, #header, #footer, #nav").remove();
-    
-    const bodyText = $("body").text().replace(/\s+/g, " ").trim();
-    const truncatedBody = bodyText.substring(0, 15000); // truncate to fit within token limits safely
+    console.log(`[Web Clipper] Extracted HTML length: ${rawHtml.length}. Processing with Readability.js.`);
 
-    console.log(`[Web Clipper] Extracted text length: ${truncatedBody.length}. Sending to Gemini.`);
+    // Use Readability.js to extract article content
+    const dom = new JSDOM(rawHtml, { url: targetUrl });
+    const document = dom.window.document;
+    const reader = new Readability(document);
+    const article = reader.parse();
 
-    // Use Gemini to structure and organize into chapters/sections
-    const ai = getGeminiClient();
-    const systemPrompt = `You are a high-fidelity web article clipper and ebook formatting assistant.
-Given raw web page text, your job is to extract the core reading content, organize it logically (into chapters or sections if it's long, or a single beautiful article if short), and format it neatly.
-Provide a clean, elegant JSON response that contains the title, author (or source website name), a brief description/summary, and a list of structured chapters.`;
-
-    const userPrompt = `Please parse the following webpage text from URL: "${targetUrl}" (domain: "${domain}").
-Extract the main article/story content, organize it into clean paragraphs, headings, and lists.
-Return a JSON object conforming exactly to this schema:
-{
-  "title": "Title of the Article/Book",
-  "author": "Author or Domain Name",
-  "description": "A brief summary or description of the article",
-  "chapters": [
-    {
-      "title": "Chapter 1: Title" (or "Introduction", "Part 1", etc.),
-      "content": "A clean HTML string containing only reading content (use <p>, <h2>, <h3>, <ul>, <ol>, <li>, <blockquote>, <strong>, <em>, <pre>, <code>). Do NOT include outer <html>, <body>, or <head> tags."
+    if (!article) {
+      return res.status(500).json({ error: "Could not extract article content from the page" });
     }
-  ]
-}
 
-Webpage text content:
-${truncatedBody}`;
+    // Extract metadata
+    const title = article.title || new URL(targetUrl).hostname;
+    const author = article.byline || domain;
+    const description = article.excerpt || "";
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          required: ["title", "author", "description", "chapters"],
-          properties: {
-            title: { type: Type.STRING },
-            author: { type: Type.STRING },
-            description: { type: Type.STRING },
-            chapters: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                required: ["title", "content"],
-                properties: {
-                  title: { type: Type.STRING },
-                  content: { type: Type.STRING }
-                }
-              }
-            }
-          }
-        }
-      }
+    // Parse article content and split into chapters by headings
+    const contentDom = new JSDOM(article.content);
+    const contentDoc = contentDom.window.document;
+    const $ = cheerio.load(article.content);
+
+    // Find all h2 and h3 headings to split into chapters
+    const headings: { level: number; text: string; element: any }[] = [];
+    $("h2, h3").each((_, elem) => {
+      const $elem = $(elem);
+      headings.push({
+        level: parseInt($elem[0].tagName.substring(1)),
+        text: $elem.text().trim(),
+        element: elem
+      });
     });
 
-    const resultText = response.text;
-    if (!resultText) {
-      throw new Error("No response from Gemini.");
-    }
+    // If no headings found, create single chapter
+    let chapters: { title: string; content: string }[] = [];
+    
+    if (headings.length === 0) {
+      // Single chapter with all content
+      const turndownService = new TurndownService({
+        headingStyle: "setext",
+        codeBlockStyle: "fenced"
+      });
+      const markdown = turndownService.turndown(article.content);
+      chapters.push({
+        title: "Article",
+        content: markdown
+      });
+    } else {
+      // Split content by headings
+      let currentChapter: { title: string; content: string } | null = null;
+      const turndownService = new TurndownService({
+        headingStyle: "setext",
+        codeBlockStyle: "fenced"
+      });
 
-    const converted = JSON.parse(resultText);
+      // Process content between headings
+      const allElements = $(article.content).find("*").addBack("*");
+      
+      headings.forEach((heading, index) => {
+        const chapterTitle = heading.text;
+        const chapterContent: any[] = [];
+        
+        // Find content between this heading and next heading (or end)
+        let currentElem = heading.element.nextElementSibling;
+        while (currentElem) {
+          const tagName = currentElem.tagName;
+          if (tagName === "H2" || tagName === "H3") {
+            break; // Next heading found
+          }
+          chapterContent.push(currentElem.outerHTML);
+          currentElem = currentElem.nextElementSibling;
+        }
+
+        // Convert to markdown
+        const contentHtml = chapterContent.join("\n");
+        const markdown = turndownService.turndown(contentHtml);
+        
+        chapters.push({
+          title: chapterTitle || `Section ${index + 1}`,
+          content: markdown
+        });
+      });
+    }
 
     // Compile chapters into a single elegant HTML reader-friendly file
     let fullHtmlContent = `<!DOCTYPE html>
@@ -166,7 +181,7 @@ ${truncatedBody}`;
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${converted.title}</title>
+  <title>${title}</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Georgia, serif;
@@ -262,11 +277,11 @@ ${truncatedBody}`;
   </style>
 </head>
 <body>
-  <h1>${converted.title}</h1>
-  <div class="author-line">By ${converted.author} • Saved from ${domain}</div>
+  <h1>${title}</h1>
+  <div class="author-line">By ${author} • Saved from ${domain}</div>
   
   <div class="chapters-container">
-    ${converted.chapters.map((ch: any, idx: number) => `
+    ${chapters.map((ch, idx) => `
       <div class="chapter" id="chapter-${idx}">
         <h2 class="chapter-title">${ch.title}</h2>
         <div class="chapter-content">
@@ -279,9 +294,9 @@ ${truncatedBody}`;
 </html>`;
 
     res.json({
-      title: converted.title,
-      author: converted.author,
-      description: converted.description,
+      title,
+      author,
+      description,
       htmlContent: fullHtmlContent
     });
 
