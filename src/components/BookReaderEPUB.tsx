@@ -39,6 +39,7 @@ interface BookReaderEPUBProps {
     pageTransitionEffect?: string;
     themeManuallySet?: boolean;
     grayscaleImages?: boolean;
+    hideImages?: boolean;
   };
   onReaderPrefsChange?: (prefs: any) => void;
 }
@@ -67,6 +68,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [isContinuous, setIsContinuous] = useState<boolean>(readerPrefs?.isContinuous ?? false);
   const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
   const [grayscaleImages, setGrayscaleImages] = useState<boolean>(readerPrefs?.grayscaleImages ?? false);
+  const [hideImages, setHideImages] = useState<boolean>(readerPrefs?.hideImages ?? false);
   
   // Dictionary states
   const [dictionaryWord, setDictionaryWord] = useState<string | null>(null);
@@ -156,10 +158,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         pageTurnMode,
         pageTransitionEffect,
         themeManuallySet,
-        grayscaleImages
+        grayscaleImages,
+        hideImages
       });
     }
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, onReaderPrefsChange]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, onReaderPrefsChange]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
@@ -1806,60 +1809,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} />
             <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
-              <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346]">
-                <Type className="w-4 h-4 text-[#5c5346]" />
-                Typography Settings
+              <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
+                <Type className="w-4 h-4 text-[#5c5346] dark:text-neutral-300" />
+                Display Settings
               </span>
-              <button onClick={() => setShowSettings(false)} className="text-xs p-1 hover:bg-neutral-500/10 rounded">
+              <button onClick={() => setShowSettings(false)} className="text-xs p-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346] dark:text-neutral-300">
                 Done
               </button>
             </div>
 
-            {/* Font Family Selection */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Font Style</label>
-              <div className="grid grid-cols-2 gap-2">
-                {fontFamilies.map((ff) => (
-                  <button
-                    key={ff.value}
-                    onClick={() => setFontFamily(ff.value)}
-                    className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      fontFamily === ff.value
-                        ? "border-[#5c5346] bg-[#5c5346]/10 font-semibold"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {ff.name}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Font Size Adjuster */}
-            <div className="mb-5">
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-xs opacity-75 font-sans">Font Size</label>
-                <span className="text-xs font-mono">{fontSize}px</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setFontSize(Math.max(12, fontSize - 1))}
-                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
-                >
-                  A -
-                </button>
-                <button
-                  onClick={() => setFontSize(Math.min(32, fontSize + 1))}
-                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
-                >
-                  A +
-                </button>
-              </div>
-            </div>
-
+            {/* PRIMARY SETTINGS (Always Visible) */}
             {/* Reading Modes (Themes) */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Reading Theme</label>
+            <div className="mb-4">
+              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Reading Theme</label>
               <div className="grid grid-cols-4 gap-1.5">
                 {Object.keys(themes).map((tKey) => {
                   const th = themes[tKey];
@@ -1882,30 +1844,52 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </div>
             </div>
 
-            {/* Line Spacing */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Line Spacing</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[1.2, 1.6, 2.0].map((spacing) => (
+            {/* Font Family Selection */}
+            <div className="mb-4">
+              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Font Style</label>
+              <div className="grid grid-cols-2 gap-2">
+                {fontFamilies.map((ff) => (
                   <button
-                    key={spacing}
-                    onClick={() => setLineSpacing(spacing)}
+                    key={ff.value}
+                    onClick={() => setFontFamily(ff.value)}
                     className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      lineSpacing === spacing
-                        ? "bg-kindle-text text-kindle-bg border-transparent"
+                      fontFamily === ff.value
+                        ? "border-[#5c5346] bg-[#5c5346]/10 font-semibold"
                         : "border-neutral-500/20 hover:border-neutral-500/50"
                     }`}
                   >
-                    {spacing === 1.2 ? "Compact" : spacing === 1.6 ? "Regular" : "Wide"}
+                    {ff.name}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Font Size Adjuster */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <label className="text-xs opacity-75 font-sans font-semibold">Font Size</label>
+                <span className="text-xs font-mono">{fontSize}px</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setFontSize(Math.max(12, fontSize - 1))}
+                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
+                >
+                  A -
+                </button>
+                <button
+                  onClick={() => setFontSize(Math.min(32, fontSize + 1))}
+                  className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
+                >
+                  A +
+                </button>
               </div>
             </div>
 
             {/* Brightness Control */}
             <div className="mb-5">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs opacity-75 font-sans">Brightness</label>
+                <label className="text-xs opacity-75 font-sans font-semibold">Brightness</label>
                 <span className="text-[10px] font-mono">{brightness}%</span>
               </div>
               <input
@@ -1918,159 +1902,220 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               />
             </div>
 
-            {/* Grayscale Images Toggle */}
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold">Grayscale Images</h4>
-                <p className="text-[10px] text-kindle-text-muted">Convert all book images to b&w</p>
-              </div>
-              <button 
-                onClick={() => setGrayscaleImages(!grayscaleImages)}
-                className={`w-10 h-5 rounded-full transition-colors relative ${grayscaleImages ? "bg-kindle-accent" : "bg-neutral-300"}`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${grayscaleImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
-              </button>
-            </div>
+            {/* COLLAPSIBLE SETTINGS - KEPT FULLY EXPANDED AS REQUESTED */}
+            <div className="space-y-6 border-t border-neutral-500/15 pt-4">
+              {/* Section 1: Typography Details */}
+              <div className="border-b border-neutral-500/10 pb-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-kindle-text-muted py-1.5 select-none">
+                  Typography Details
+                </h3>
+                <div className="mt-3 space-y-4">
+                  {/* Line Spacing */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Line Spacing</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[1.2, 1.6, 2.0].map((spacing) => (
+                        <button
+                          key={spacing}
+                          onClick={() => setLineSpacing(spacing)}
+                          className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
+                            lineSpacing === spacing
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {spacing === 1.2 ? "Compact" : spacing === 1.6 ? "Regular" : "Wide"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Double Column Spread Toggle */}
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold">Dual Page Spread</h4>
-                <p className="text-[10px] text-kindle-text-muted">Show 2 pages side-by-side</p>
-              </div>
-              <button 
-                onClick={() => setDoubleColumns(!doubleColumns)}
-                className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-neutral-300"}`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${doubleColumns ? "translate-x-5.5" : "translate-x-0.5"}`} />
-              </button>
-            </div>
+                  {/* Letter Spacing Selection */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Letter Spacing</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: "Normal", val: "tracking-normal" },
+                        { label: "Wide", val: "tracking-wide" },
+                        { label: "Wider", val: "tracking-wider" }
+                      ].map((ls) => (
+                        <button
+                          key={ls.val}
+                          onClick={() => setLetterSpacing(ls.val)}
+                          className={`p-2 text-[10px] rounded-lg border text-center font-sans transition ${
+                            letterSpacing === ls.val
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {ls.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Page Overlap (KOReader-style) */}
-            <div className="mb-5">
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs opacity-75 font-sans">Page Overlap</label>
-                <span className="text-[10px] font-mono">{pageOverlap}px</span>
-              </div>
-              <p className="text-[10px] text-kindle-text-muted mb-2">Repeat the last few lines on the next page (like KOReader).</p>
-              <input
-                type="range"
-                min="0"
-                max="60"
-                step="2"
-                value={pageOverlap}
-                onChange={(e) => setPageOverlap(parseInt(e.target.value))}
-                className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
+                  {/* Margins */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Margins</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: "None", val: "max-w-full" },
+                        { label: "Narrow", val: "max-w-2xl" },
+                        { label: "Wide", val: "max-w-xl" }
+                      ].map((m) => (
+                        <button
+                          key={m.val}
+                          onClick={() => setMarginSize(m.val)}
+                          className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
+                            marginSize === m.val
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Letter Spacing Selection */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Letter Spacing</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: "Normal", val: "tracking-normal" },
-                  { label: "Wide", val: "tracking-wide" },
-                  { label: "Wider", val: "tracking-wider" }
-                ].map((ls) => (
-                  <button
-                    key={ls.val}
-                    onClick={() => setLetterSpacing(ls.val)}
-                    className={`p-2 text-[10px] rounded-lg border text-center font-sans transition ${
-                      letterSpacing === ls.val
-                        ? "bg-kindle-text text-kindle-bg border-transparent"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {ls.label}
-                  </button>
-                ))}
+                  {/* Hyphenation Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Auto Hyphenation</h4>
+                      <p className="text-[10px] text-kindle-text-muted font-sans">Improve alignment with hyphens</p>
+                    </div>
+                    <button 
+                      onClick={() => setHyphenation(!hyphenation)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hyphenation ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {/* Hyphenation Toggle */}
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold">Auto Hyphenation</h4>
-                <p className="text-[10px] text-kindle-text-muted font-sans">Improve alignment with hyphens</p>
+              {/* Section 2: Layout & Media */}
+              <div className="border-b border-neutral-500/10 pb-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-kindle-text-muted py-1.5 select-none">
+                  Layout & Media
+                </h3>
+                <div className="mt-3 space-y-4">
+                  {/* Double Column Spread Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Dual Page Spread</h4>
+                      <p className="text-[10px] text-kindle-text-muted">Show 2 pages side-by-side</p>
+                    </div>
+                    <button 
+                      onClick={() => setDoubleColumns(!doubleColumns)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${doubleColumns ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+
+                  {/* Grayscale Images Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Grayscale Images</h4>
+                      <p className="text-[10px] text-kindle-text-muted">Convert all book images to b&w</p>
+                    </div>
+                    <button 
+                      onClick={() => setGrayscaleImages(!grayscaleImages)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${grayscaleImages ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${grayscaleImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+
+                  {/* Hide Images Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Hide Images</h4>
+                      <p className="text-[10px] text-kindle-text-muted">Do not display any images in book</p>
+                    </div>
+                    <button 
+                      onClick={() => setHideImages(!hideImages)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hideImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button 
-                onClick={() => setHyphenation(!hyphenation)}
-                className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-kindle-accent" : "bg-neutral-300"}`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hyphenation ? "translate-x-5.5" : "translate-x-0.5"}`} />
-              </button>
-            </div>
 
-            {/* Margins */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Margins</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: "None", val: "max-w-full" },
-                  { label: "Narrow", val: "max-w-2xl" },
-                  { label: "Wide", val: "max-w-xl" }
-                ].map((m) => (
-                  <button
-                    key={m.val}
-                    onClick={() => setMarginSize(m.val)}
-                    className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      marginSize === m.val
-                        ? "bg-kindle-text text-kindle-bg border-transparent"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+              {/* Section 3: Navigation & Gestures */}
+              <div className="border-b border-neutral-500/10 pb-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-kindle-text-muted py-1.5 select-none">
+                  Navigation & Gestures
+                </h3>
+                <div className="mt-3 space-y-4">
+                  {/* Page Change Control Options */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Page Turn Zones</label>
+                    <div className="space-y-1.5">
+                      {[
+                        { label: "Classic 50/50 Split", val: "fifty-fifty", desc: "Left half goes backward, right half goes forward." },
+                        { label: "Classic E-Reader", val: "classic-ereader", desc: "Left 25% goes backward, right 75% goes forward." },
+                        { label: "Margins Only (15%)", val: "margins-only", desc: "Only tapping outer 15% edges turns pages." },
+                        { label: "Floating Buttons", val: "floating-buttons", desc: "Use on-screen circular buttons to turn pages." },
+                        { label: "Swipe & Keys Only", val: "swipe-only", desc: "Disable tap-to-turn entirely." }
+                      ].map((mode) => (
+                        <button
+                          key={mode.val}
+                          onClick={() => setPageTurnMode(mode.val)}
+                          className={`w-full p-2.5 rounded-xl border text-left font-sans transition flex flex-col gap-0.5 ${
+                            pageTurnMode === mode.val
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          <span className="text-xs font-semibold">{mode.label}</span>
+                          <span className={`text-[10px] ${pageTurnMode === mode.val ? "opacity-80" : "text-kindle-text-muted"}`}>{mode.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Page Change Control Options */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Page Turn Zones</label>
-              <div className="space-y-1.5">
-                {[
-                  { label: "Classic 50/50 Split", val: "fifty-fifty", desc: "Left half goes backward, right half goes forward." },
-                  { label: "Classic E-Reader", val: "classic-ereader", desc: "Left 25% goes backward, right 75% goes forward." },
-                  { label: "Margins Only (15%)", val: "margins-only", desc: "Only tapping outer 15% edges turns pages." },
-                  { label: "Floating Buttons", val: "floating-buttons", desc: "Use on-screen circular buttons to turn pages." },
-                  { label: "Swipe & Keys Only", val: "swipe-only", desc: "Disable tap-to-turn entirely." }
-                ].map((mode) => (
-                  <button
-                    key={mode.val}
-                    onClick={() => setPageTurnMode(mode.val)}
-                    className={`w-full p-2.5 rounded-xl border text-left font-sans transition flex flex-col gap-0.5 ${
-                      pageTurnMode === mode.val
-                        ? "bg-kindle-text text-kindle-bg border-transparent"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    <span className="text-xs font-semibold">{mode.label}</span>
-                    <span className={`text-[10px] ${pageTurnMode === mode.val ? "opacity-80" : "text-kindle-text-muted"}`}>{mode.desc}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                  {/* Page Transition Effect */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Page Transition Effect</label>
+                    <div className="flex gap-2 p-1 bg-neutral-500/10 rounded-xl font-sans text-xs">
+                      {["paper-flip", "spring", "none"].map((effect) => (
+                        <button
+                          key={effect}
+                          onClick={() => setPageTransitionEffect(effect)}
+                          className={`flex-1 py-1.5 rounded-lg transition capitalize ${pageTransitionEffect === effect ? "bg-kindle-text text-kindle-bg shadow" : "hover:bg-neutral-500/10 text-kindle-text-muted hover:text-kindle-text"}`}
+                        >
+                          {effect.replace("-", " ")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Page Transition Effect */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Page Transition Effect</label>
-              <div className="flex gap-2 p-1 bg-neutral-500/10 rounded-xl font-sans text-xs">
-                {["paper-flip", "spring", "none"].map((effect) => (
-                  <button
-                    key={effect}
-                    onClick={() => setPageTransitionEffect(effect)}
-                    className={`flex-1 py-1.5 rounded-lg transition capitalize ${pageTransitionEffect === effect ? "bg-kindle-text text-kindle-bg shadow" : "hover:bg-neutral-500/10 text-kindle-text-muted hover:text-kindle-text"}`}
-                  >
-                    {effect.replace("-", " ")}
-                  </button>
-                ))}
+                  {/* Page Overlap (KOReader-style) */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[10px] opacity-75 font-sans uppercase font-bold tracking-wider">Page Overlap</label>
+                      <span className="text-[10px] font-mono">{pageOverlap}px</span>
+                    </div>
+                    <p className="text-[10px] text-kindle-text-muted mb-2 font-sans">Repeat the last few lines on the next page.</p>
+                    <input
+                      type="range"
+                      min="0"
+                      max="60"
+                      step="2"
+                      value={pageOverlap}
+                      onChange={(e) => setPageOverlap(parseInt(e.target.value))}
+                      className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Export Actions */}
-            <div className="pt-4 border-t border-kindle-border space-y-2">
+            <div className="pt-4 border-t border-kindle-border space-y-2 mt-4">
               <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Export</h4>
               <button
                 onClick={exportToPensieve}
@@ -2600,12 +2645,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 </div>
               )}
 
-              {/* The Chapter Text Container — a strict single-page viewport */}
               <div 
                 ref={viewerRef}
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
-                className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start ${selectMode ? "select-text cursor-text" : "select-none cursor-default"} mx-auto ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
+                className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start select-text cursor-text mx-auto ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
                 <div className="w-full h-full overflow-hidden relative flex items-start justify-start" style={{ perspective: "1200px" }}>
                   {/* Turn.js style 3D page flip transition */}
@@ -2790,7 +2834,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       scaleX: 1
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
-                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
+                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,

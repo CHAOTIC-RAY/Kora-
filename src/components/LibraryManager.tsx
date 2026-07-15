@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
@@ -15,6 +15,7 @@ interface LibraryManagerProps {
   cachedBookIds: Set<string>;
   onCachedIdsChanged: () => void;
   grayscaleCovers?: boolean;
+  hideCovers?: boolean;
   onSearchTrigger?: (query: string) => void;
 }
 
@@ -61,6 +62,7 @@ export default function LibraryManager({
   cachedBookIds,
   onCachedIdsChanged,
   grayscaleCovers = false,
+  hideCovers = false,
   onSearchTrigger
 }: LibraryManagerProps) {
   // Filters & sorting
@@ -80,6 +82,12 @@ export default function LibraryManager({
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
   const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
+
+  // Multi-select library management states
+  const [isManageMode, setIsManageMode] = useState<boolean>(false);
+  const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
+  const [bulkTagModalOpen, setBulkTagModalOpen] = useState<boolean>(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState<boolean>(false);
 
   // Reading Goals & Stats States
   const [dailyMinutesTarget, setDailyMinutesTarget] = useState<number>(() => {
@@ -357,6 +365,82 @@ export default function LibraryManager({
     }
   }
 
+  // Bulk Status Update for Selected Books
+  async function handleBulkStatusUpdate(status: string) {
+    const ids = Array.from(selectedBookIds) as string[];
+    try {
+      const promises = books
+        .filter(book => ids.includes(book.id))
+        .map(book => {
+          const updated = {
+            ...book,
+            status: status as any,
+            progress: {
+              ...book.progress,
+              percent: status === "completed" ? 100 : (book.progress?.percent ?? 0),
+              lastReadTime: Date.now()
+            }
+          };
+          return syncBookToCloud(userId, updated);
+        });
+
+      await Promise.all(promises);
+      onRefreshLibrary();
+    } catch (err) {
+      console.error("[Bulk Status Update Error]:", err);
+    } finally {
+      setSelectedBookIds(new Set());
+      setIsManageMode(false);
+    }
+  }
+
+  // Bulk Delete Selected Books
+  async function confirmBulkDelete() {
+    const ids = Array.from(selectedBookIds) as string[];
+    try {
+      for (const id of ids) {
+        await deleteBookFile(id);
+        await syncDeleteBook(userId, id);
+      }
+      onCachedIdsChanged();
+      onRefreshLibrary();
+    } catch (err) {
+      console.error("[Bulk Delete Error]:", err);
+    } finally {
+      setSelectedBookIds(new Set());
+      setIsManageMode(false);
+      setShowBulkDeleteConfirm(false);
+    }
+  }
+
+  // Bulk Add Tag/Collection to Selected Books
+  async function handleBulkAddTag(tag: string) {
+    if (!tag) return;
+    const ids = Array.from(selectedBookIds) as string[];
+    try {
+      const promises = books
+        .filter(book => ids.includes(book.id))
+        .map(book => {
+          const currentTags = book.tags || [];
+          const nextTags = currentTags.includes(tag) ? currentTags : [...currentTags, tag];
+          const updated = {
+            ...book,
+            tags: nextTags
+          };
+          return syncBookToCloud(userId, updated);
+        });
+
+      await Promise.all(promises);
+      onRefreshLibrary();
+    } catch (err) {
+      console.error("[Bulk Tag Error]:", err);
+    } finally {
+      setSelectedBookIds(new Set());
+      setIsManageMode(false);
+      setBulkTagModalOpen(false);
+    }
+  }
+
   // Add/remove tags to/from a book
   async function handleToggleBookTag(book: BookMetadata, tag: string) {
     const isTagged = book.tags.includes(tag);
@@ -447,27 +531,59 @@ export default function LibraryManager({
     <div id="library-manager-section" className="space-y-4 md:space-y-8 pb-4 md:pb-10">
       
       {/* 1. Interactive Header & Collapsible Stats/Streak Summary */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-2 md:gap-4 pb-2 md:pb-4 border-b border-kindle-border font-sans">
+      <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">
         <div>
           <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Library</h1>
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Focus &amp; Collections</p>
         </div>
+
+        {/* Manage Library Button (Mobile) */}
+        <button
+          onClick={() => {
+            setIsManageMode(!isManageMode);
+            setSelectedBookIds(new Set());
+          }}
+          className={`sm:hidden text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
+            isManageMode 
+              ? "text-red-600 dark:text-red-400" 
+              : "text-kindle-text-muted hover:text-kindle-text"
+          }`}
+          title={isManageMode ? "Cancel" : "Manage Library"}
+        >
+          {isManageMode ? "Cancel" : "Manage Library"}
+        </button>
       </header>
 
       {/* 3. Full Library Section with Search/Filter */}
       <section className="space-y-5">
         <div className="space-y-4">
           {/* Search Bar - styled identically to Discover view */}
-          <div className="relative group max-w-2xl w-full">
-            <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
-            <input
-              id="library-search-input"
-              type="text"
-              placeholder="Filter library by title, author..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
-            />
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full font-sans">
+            <div className="relative group flex-1">
+              <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
+              <input
+                id="library-search-input"
+                type="text"
+                placeholder="Filter library by title, author..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
+              />
+            </div>
+
+            <button
+              onClick={() => {
+                setIsManageMode(!isManageMode);
+                setSelectedBookIds(new Set());
+              }}
+              className={`hidden sm:flex px-5 py-3.5 rounded-2xl text-[10px] font-bold uppercase tracking-wider transition border items-center justify-center gap-2 shrink-0 cursor-pointer ${
+                isManageMode 
+                  ? "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/30 hover:bg-red-100/50" 
+                  : "bg-kindle-card text-kindle-text border-kindle-border hover:border-kindle-text"
+              }`}
+            >
+              {isManageMode ? "Cancel" : "Manage Library"}
+            </button>
           </div>
 
           {/* Shelves / Collections Chips (Bellow the search bar, smaller and compact) */}
@@ -539,16 +655,28 @@ export default function LibraryManager({
               return (
                 <div
                   key={book.id}
-                  onTouchStart={(e) => startLongPress(book, e)}
-                  onTouchEnd={endLongPress}
-                  onTouchMove={handleTouchMove}
+                  onTouchStart={(e) => !isManageMode && startLongPress(book, e)}
+                  onTouchEnd={isManageMode ? undefined : endLongPress}
+                  onTouchMove={isManageMode ? undefined : handleTouchMove}
                   onMouseDown={(e) => {
-                    if (e.button === 0) startLongPress(book, e);
+                    if (!isManageMode && e.button === 0) startLongPress(book, e);
                   }}
-                  onMouseUp={endLongPress}
-                  onMouseLeave={endLongPress}
+                  onMouseUp={isManageMode ? undefined : endLongPress}
+                  onMouseLeave={isManageMode ? undefined : endLongPress}
                   onContextMenu={(e) => e.preventDefault()}
                   onClick={(e) => {
+                    if (isManageMode) {
+                      setSelectedBookIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(book.id)) {
+                          next.delete(book.id);
+                        } else {
+                          next.add(book.id);
+                        }
+                        return next;
+                      });
+                      return;
+                    }
                     if (isLongPressedRef.current) {
                       e.preventDefault();
                       e.stopPropagation();
@@ -557,10 +685,26 @@ export default function LibraryManager({
                     }
                     onBookSelected(book);
                   }}
-                  className="kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition-transform duration-300 hover:-translate-y-1 select-none"
+                  className={`kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition duration-300 select-none relative ${
+                    isManageMode && selectedBookIds.has(book.id)
+                      ? "ring-4 ring-kindle-accent border-transparent bg-kindle-accent/[0.03] scale-[0.98] -translate-y-0"
+                      : "hover:-translate-y-1"
+                  }`}
                 >
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
-                    {book.coverUrl ? (
+                    {/* Visual Checkbox Selector in Manage Mode */}
+                    {isManageMode && (
+                      <div className="absolute top-3 left-3 z-30 flex items-center justify-center">
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shadow-md ${
+                          selectedBookIds.has(book.id)
+                            ? "bg-kindle-accent border-kindle-accent text-kindle-bg"
+                            : "bg-black/40 border-white text-transparent"
+                        }`}>
+                          <Check className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    )}
+                    {!hideCovers && book.coverUrl ? (
                       <>
                         <img
                           src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
@@ -574,13 +718,13 @@ export default function LibraryManager({
                             if (fallback) fallback.style.display = 'flex';
                           }}
                         />
-                        <div className="w-full aspect-[2/3] bg-kindle-card flex-col items-center justify-center p-4 text-center hidden">
+                        <div className="w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center hidden">
                           <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
                           <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
                         </div>
                       </>
                     ) : (
-                      <div className="w-full aspect-[3/4] bg-kindle-card flex flex-col items-center justify-center p-4 text-center">
+                      <div className="w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center">
                         <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
                         <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
                       </div>
@@ -866,6 +1010,33 @@ export default function LibraryManager({
         </div>
       )}
 
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xl text-kindle-text animate-fade-in">
+            <h3 className="font-sans font-bold text-base text-red-700 mb-2">Delete {selectedBookIds.size} Ebooks?</h3>
+            <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-5">
+              Are you sure you want to permanently delete the {selectedBookIds.size} selected books?<br/>
+              This will permanently delete both the locally cached files and your cloud-synced progress.
+            </p>
+
+            <div className="flex gap-3 justify-end font-sans">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-4 py-2 border border-kindle-border text-kindle-text-muted rounded-xl text-xs font-semibold hover:bg-kindle-bg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmBulkDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition"
+              >
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingMetadataBook && (
         <BookMetadataEditor
           userId={userId}
@@ -1088,6 +1259,102 @@ export default function LibraryManager({
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Tag Selection Modal */}
+      {bulkTagModalOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-2xl text-kindle-text font-sans">
+            <h3 className="font-bold text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-kindle-accent" />
+              Add Collection Tag ({selectedBookIds.size})
+            </h3>
+            <p className="text-[10px] text-kindle-text-muted mb-4">
+              Select which tag/collection to apply to all selected ebooks:
+            </p>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                {availableTags.length === 0 ? (
+                  <p className="col-span-2 text-center py-4 text-[10px] text-kindle-text-muted italic">
+                    No custom collections yet. Go back and add one!
+                  </p>
+                ) : (
+                  availableTags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => handleBulkAddTag(tag)}
+                      className="text-[10px] font-semibold p-2.5 rounded-xl border border-kindle-border text-center hover:bg-kindle-bg hover:border-kindle-text transition truncate uppercase tracking-wider"
+                    >
+                      {tag}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6 pt-4 border-t border-kindle-border/40">
+              <button
+                onClick={() => setBulkTagModalOpen(false)}
+                className="px-4 py-2 border border-kindle-border text-kindle-text-muted rounded-xl text-xs font-semibold hover:bg-kindle-bg transition uppercase tracking-wider"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Bar for Manage Mode */}
+      {isManageMode && selectedBookIds.size > 0 && (
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[calc(100%-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-kindle-card border border-kindle-border/80 rounded-2xl shadow-2xl p-3 flex items-center justify-between gap-3 text-sans">
+            <div className="flex items-center gap-1.5 pl-2">
+              <span className="text-[10px] font-extrabold text-kindle-bg bg-kindle-accent px-2 py-0.5 rounded-md uppercase tracking-wider">
+                {selectedBookIds.size}
+              </span>
+              <span className="text-[10px] text-kindle-text font-bold uppercase tracking-widest hidden sm:inline">selected</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Mark Status Group */}
+              <select
+                onChange={async (e) => {
+                  const status = e.target.value;
+                  if (!status) return;
+                  await handleBulkStatusUpdate(status);
+                  e.target.value = "";
+                }}
+                className="bg-kindle-bg border border-kindle-border rounded-xl px-2.5 py-1.5 text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+              >
+                <option value="">Mark As...</option>
+                <option value="to-read">To Read</option>
+                <option value="reading">Reading</option>
+                <option value="completed">Completed</option>
+              </select>
+
+              {/* Add Collection */}
+              <button
+                onClick={() => setBulkTagModalOpen(true)}
+                className="px-2.5 py-1.5 border border-kindle-border hover:border-kindle-text rounded-xl text-kindle-text-muted hover:text-kindle-text bg-kindle-bg transition cursor-pointer flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider"
+                title="Add to Collection"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Tag</span>
+              </button>
+
+              {/* Bulk Delete */}
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="px-2.5 py-1.5 bg-red-500/10 dark:bg-red-950/20 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 rounded-xl text-red-600 dark:text-red-400 transition cursor-pointer flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider"
+                title="Delete Selected"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
             </div>
           </div>
         </div>

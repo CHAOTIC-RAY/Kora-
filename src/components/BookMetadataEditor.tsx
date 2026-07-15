@@ -20,6 +20,7 @@ export default function BookMetadataEditor({ userId, book, onClose, onSave }: Bo
   const [seriesNumber, setSeriesNumber] = useState(book.seriesNumber || "");
   const [rating, setRating] = useState(book.rating || 0);
   const [coverUrl, setCoverUrl] = useState(book.coverUrl || "");
+  const [downloadUrl, setDownloadUrl] = useState(book.downloadUrl || "");
   const [saving, setSaving] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -94,7 +95,8 @@ export default function BookMetadataEditor({ userId, book, onClose, onSave }: Bo
       series,
       seriesNumber,
       rating,
-      coverUrl
+      coverUrl,
+      downloadUrl
     };
     
     try {
@@ -241,6 +243,10 @@ export default function BookMetadataEditor({ userId, book, onClose, onSave }: Bo
         </div>
 
         <div className="mt-8 pt-6 border-t border-kindle-border">
+          <div className="space-y-1 mb-6">
+            <label className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Download URL</label>
+            <input value={downloadUrl} onChange={e => setDownloadUrl(e.target.value)} placeholder="e.g. https://example.com/book.epub" className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-kindle-accent" />
+          </div>
           <HardcoverCommunity book={book} />
         </div>
         <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-kindle-border">

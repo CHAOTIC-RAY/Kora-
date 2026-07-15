@@ -1195,12 +1195,14 @@ export default {
     if (path === "/api/google-books/search") {
       const q = url.searchParams.get("q");
       const maxResults = url.searchParams.get("maxResults") || "1";
+      const startIndex = url.searchParams.get("startIndex") || "";
       if (!q) {
         return new Response(JSON.stringify({ error: "Missing query" }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
       }
       
       const apiKey = env.GOOGLE_BOOKS_API_KEY || "";
-      const fetchUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${maxResults}${apiKey ? `&key=${apiKey}` : ""}`;
+      const start = startIndex ? `&startIndex=${startIndex}` : "";
+      const fetchUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${maxResults}${start}${apiKey ? `&key=${apiKey}` : ""}`;
       
       try {
         const response = await fetch(fetchUrl);

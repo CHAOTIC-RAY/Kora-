@@ -66,6 +66,7 @@ export interface BookMetadata {
   extension: string;
   size: string;
   coverUrl?: string;
+  downloadUrl?: string;
   md5?: string;
   source?: string;
   tags: string[];
@@ -92,7 +93,7 @@ export interface BookMetadata {
 const LOCAL_STORAGE_KEY = "ebook_reader_library";
 const LOCAL_TAGS_KEY = "ebook_reader_tags";
 
-function getLocalLibrary(): BookMetadata[] {
+export function getLocalLibrary(): BookMetadata[] {
   try {
     const data = localStorage.getItem(LOCAL_STORAGE_KEY);
     return data ? JSON.parse(data) : [];
@@ -139,6 +140,24 @@ export async function syncDeleteBook(userId: string, bookId: string): Promise<vo
 
   if (isRealFirebase && userId) {
     try {
+      // Delete highlights subcollection
+      const highlightsRef = collection(db, "users", userId, "library", bookId, "highlights");
+      const highlightsSnap = await getDocs(highlightsRef);
+      const deletePromises: Promise<void>[] = [];
+      highlightsSnap.forEach(doc => {
+        deletePromises.push(deleteDoc(doc.ref));
+      });
+
+      // Delete notes subcollection
+      const notesRef = collection(db, "users", userId, "library", bookId, "notes");
+      const notesSnap = await getDocs(notesRef);
+      notesSnap.forEach(doc => {
+        deletePromises.push(deleteDoc(doc.ref));
+      });
+
+      await Promise.all(deletePromises);
+
+      // Finally delete the book document
       const docRef = doc(db, "users", userId, "library", bookId);
       await deleteDoc(docRef);
     } catch (err) {

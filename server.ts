@@ -3288,12 +3288,13 @@ app.get("/api/nytimes/book-details-raw", async (req, res) => {
 
 // Google Books API Proxy
 app.get("/api/google-books/search", async (req, res) => {
-  const { q, maxResults } = req.query;
+  const { q, maxResults, startIndex } = req.query;
   if (!q) return res.status(400).json({ error: "Missing query" });
 
   const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
   const limit = maxResults || 1;
-  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q as string)}&maxResults=${limit}${apiKey ? `&key=${apiKey}` : ""}`;
+  const start = startIndex ? `&startIndex=${startIndex}` : "";
+  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q as string)}&maxResults=${limit}${start}${apiKey ? `&key=${apiKey}` : ""}`;
   
   try {
     const response = await fetch(url);

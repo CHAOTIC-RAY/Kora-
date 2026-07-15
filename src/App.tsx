@@ -17,7 +17,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { getBookFile, clearAllCachedBooks } from "./db/indexedDB";
+import { getBookFile, clearAllCachedBooks, storeBookFile } from "./db/indexedDB";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
@@ -117,6 +117,11 @@ export default function App() {
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
   const [browserInitialUrl, setBrowserInitialUrl] = useState<string | null>(null);
 
+  // Mobile Web App / PWA Share Target state variables
+  const [sharingStatus, setSharingStatus] = useState<"idle" | "converting" | "success" | "error">("idle");
+  const [sharingUrl, setSharingUrl] = useState<string>("");
+  const [sharingError, setSharingError] = useState<string | null>(null);
+
   // 1. Authenticate user anonymously on mount if not logged in
   useEffect(() => {
     // Apply theme to body
@@ -125,6 +130,95 @@ export default function App() {
       document.body.classList.add("dark");
     }
   }, [displayTheme]);
+
+  // Web Share Target API helper to extract a URL
+  function extractUrl(text: string | null): string | null {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const matches = text.match(urlRegex);
+    return matches ? matches[0] : null;
+  }
+
+  // Handle incoming mobile shared webpages automatically
+  useEffect(() => {
+    if (loadingAuth) return; // wait until auth is complete
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const sharedText = searchParams.get("text");
+    const sharedUrlParam = searchParams.get("url");
+    const sharedTitle = searchParams.get("title");
+
+    const rawUrl = sharedUrlParam || sharedText;
+    const extractedUrl = extractUrl(rawUrl);
+
+    if (extractedUrl) {
+      console.log("[PWA Share Target] Detected shared URL:", extractedUrl);
+      setSharingUrl(extractedUrl);
+      
+      // Clean query parameters from URL so reloads don't convert again
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+
+      // Start conversion
+      handleConvertSharedUrl(extractedUrl, sharedTitle || "Shared Article");
+    }
+  }, [loadingAuth, user]);
+
+  async function handleConvertSharedUrl(urlToConvert: string, initialTitle: string) {
+    setSharingStatus("converting");
+    setSharingError(null);
+    try {
+      const response = await fetch("/api/convert-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlToConvert.trim() })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || `HTTP error ${response.status}`);
+      }
+
+      const data = await response.json();
+      const bookId = `clipper-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const sizeStr = `${(data.htmlContent.length / 1024).toFixed(1)} KB`;
+      
+      const newBook: BookMetadata = {
+        id: bookId,
+        title: data.title || initialTitle || "Clipped Article",
+        author: data.author || "Web Article",
+        extension: "html",
+        size: sizeStr,
+        tags: ["Clipped", "Web"],
+        status: "to-read",
+        progress: {
+          percent: 0,
+          lastReadTime: Date.now()
+        },
+        dateAdded: Date.now(),
+        description: data.description || `Clipped from ${new URL(urlToConvert).hostname}`
+      };
+
+      // Store in IndexedDB
+      const blob = new Blob([data.htmlContent], { type: "text/html" });
+      await storeBookFile(bookId, blob, `${newBook.title}.html`, "html");
+
+      // Sync to cloud/localStorage
+      await syncBookToCloud(user?.uid || "", newBook);
+
+      setSharingStatus("success");
+      await refreshLibrary(user?.uid || "");
+      
+      // Instantly open the newly added webpage in reader
+      setActiveBook(newBook);
+
+      setTimeout(() => setSharingStatus("idle"), 5000);
+    } catch (err: any) {
+      console.error("[PWA Share Target Error]:", err);
+      setSharingError(err.message || "Failed to convert shared webpage.");
+      setSharingStatus("error");
+    }
+  }
 
   useEffect(() => {
     if (!auth) {
@@ -412,10 +506,30 @@ export default function App() {
   }
 
   // Handle book selection for reading
-  function handleOpenBook(book: BookMetadata) {
+  async function handleOpenBook(book: BookMetadata) {
     if (!cachedBookIds.has(book.id)) {
-      alert("This book is currently syncing to this device or requires a manual download. Please wait a moment.");
-      return;
+      if (book.downloadUrl) {
+        try {
+          alert(`Downloading ${book.title}...`);
+          const res = await fetch(book.downloadUrl);
+          if (!res.ok) throw new Error("Download failed");
+          const blob = await res.blob();
+          await storeBookFile(book.id, blob, book.filename || `${book.title}.${book.extension}`, book.extension);
+          setCachedBookIds(prev => {
+            const next = new Set(prev);
+            next.add(book.id);
+            return next;
+          });
+          // Proceed to open
+        } catch (err) {
+          console.error("Failed to download from downloadUrl", err);
+          alert("Failed to download book from its saved URL. Please try again or download manually.");
+          return;
+        }
+      } else {
+        alert("This book is currently syncing to this device or requires a manual download. Please wait a moment.");
+        return;
+      }
     }
     setActiveBook(book);
     setLastReadBook(book);
@@ -679,14 +793,16 @@ export default function App() {
         ) : ["html", "htm", "json", "txt", "md", "csv"].includes(activeBook.extension?.toLowerCase() || "") ? (
           <BookReaderText
             book={activeBook}
+            readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
             onClose={() => {
               if (window.history.state && window.history.state.isReading) {
                 window.history.back();
-              }
-              setActiveBook(null);
-              refreshLibrary();
-            }}
-          />
+               }
+               setActiveBook(null);
+               refreshLibrary();
+             }}
+           />
         ) : (
           <div className="fixed inset-0 bg-kindle-bg z-[100] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in-95 duration-300">
             <div className="max-w-md space-y-6 bg-kindle-card p-8 rounded-3xl border border-kindle-border shadow-2xl overflow-hidden relative">
@@ -990,6 +1106,43 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {sharingStatus !== "idle" && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[999] font-sans text-left">
+          <div className="w-full max-w-md bg-kindle-card border border-kindle-border rounded-3xl p-6 shadow-2xl text-center space-y-4">
+            <div className="mx-auto w-12 h-12 bg-kindle-accent/10 border border-kindle-accent/20 rounded-2xl flex items-center justify-center">
+              {sharingStatus === "converting" ? (
+                <div className="w-5 h-5 border-3 border-kindle-accent border-t-transparent rounded-full animate-spin" />
+              ) : sharingStatus === "success" ? (
+                <Zap className="w-6 h-6 text-emerald-500 animate-bounce" />
+              ) : (
+                <AlertCircle className="w-6 h-6 text-red-500" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="font-lexend font-bold text-sm text-kindle-text uppercase tracking-wider">
+                {sharingStatus === "converting" ? "Converting Shared Webpage" :
+                 sharingStatus === "success" ? "Webpage Saved Successfully!" : "Web Conversion Failed"}
+              </h3>
+              <p className="text-xs text-kindle-text-muted break-all leading-relaxed">
+                {sharingStatus === "converting" ? `Saving offline readable version of ${sharingUrl}...` :
+                 sharingStatus === "success" ? "The webpage has been converted to an ebook and added to your library." :
+                 sharingError || "An unexpected error occurred while converting."}
+              </p>
+            </div>
+
+            {sharingStatus === "error" && (
+              <button
+                onClick={() => setSharingStatus("idle")}
+                className="w-full py-2.5 bg-kindle-accent text-kindle-bg text-xs font-bold uppercase tracking-wider rounded-xl transition hover:bg-opacity-95"
+              >
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
