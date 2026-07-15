@@ -157,9 +157,6 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         else if (url.endsWith(".epub")) extension = "epub";
         else if (url.endsWith(".mobi")) extension = "mobi";
         else if (url.endsWith(".azw3")) extension = "azw3";
-        else if (url.endsWith(".html")) extension = "html";
-        else if (url.endsWith(".json")) extension = "json";
-        else if (url.endsWith(".txt")) extension = "txt";
       }
       if (!extension) extension = "epub";
 
@@ -215,7 +212,6 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
 export interface Env {
   BROWSER: any;
   NYT_API_KEY?: string;
-  GOOGLE_BOOKS_API_KEY?: string;
   NYT_BOOKS_API_KEY?: string;
   RAVE_BOOK_SEARCH?: any;
 }
@@ -971,40 +967,6 @@ export default {
       }
     }
 
-    // 2.1.5 NYT Raw Details Endpoint (No AI)
-    if (path === "/api/nytimes/book-details-raw") {
-      const title = url.searchParams.get("title");
-      const author = url.searchParams.get("author") || "";
-      if (!title) {
-        return new Response(JSON.stringify({ error: "Missing title parameter" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-      
-      const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
-      if (!apiKey) {
-        return new Response(JSON.stringify({ error: "NYT API Key not configured" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-
-      try {
-        const nytUrl = `https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&api-key=${apiKey}`;
-        const response = await fetch(nytUrl);
-        const data = await response.json();
-        return new Response(JSON.stringify(data), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: "Failed to fetch raw NYT details", details: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-    }
-
     // 2.2 NYT Book Details API
     if (path === "/api/nyt/book-details" || path === "/api/nytimes/book-details") {
       const title = url.searchParams.get("title");
@@ -1190,31 +1152,6 @@ export default {
       }
     }
 
-    // Google Books API Proxy
-    if (path === "/api/google-books/search") {
-      const q = url.searchParams.get("q");
-      const maxResults = url.searchParams.get("maxResults") || "1";
-      if (!q) {
-        return new Response(JSON.stringify({ error: "Missing query" }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
-      }
-      
-      const apiKey = env.GOOGLE_BOOKS_API_KEY || "";
-      const fetchUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${maxResults}${apiKey ? `&key=${apiKey}` : ""}`;
-      
-      try {
-        const response = await fetch(fetchUrl);
-        const data = await response.json();
-        return new Response(JSON.stringify(data), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: "Failed to fetch from Google Books", details: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-    }
-
     // 3. Download Options / Mirrors API
     if (path === "/api/download" || path === "/api/download-options" || path === "/api/annas-archive/download") {
       const md5 = url.searchParams.get("md5");
@@ -1375,40 +1312,6 @@ export default {
     if (path === "/api/cover-redirect" || path === "/api/cover-proxy") {
       const isbn = url.searchParams.get("isbn");
       const md5 = url.searchParams.get("md5");
-      const title = url.searchParams.get("title");
-      const author = url.searchParams.get("author");
-
-      // Try OpenLibrary by title/author first
-      if (title) {
-        try {
-          const searchUrl = new URL("https://openlibrary.org/search.json");
-          searchUrl.searchParams.append("title", title);
-          if (author) searchUrl.searchParams.append("author", author);
-          searchUrl.searchParams.append("limit", "1");
-
-          const olRes = await fetch(searchUrl.toString());
-          if (olRes.ok) {
-            const olData = await olRes.json();
-            const firstBook = olData.docs?.[0];
-            if (firstBook?.cover_i) {
-              const coverUrl = `https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`;
-              const imgRes = await fetch(coverUrl, {
-                headers: { "User-Agent": "Mozilla/5.0" }
-              });
-              if (imgRes.ok) {
-                const body = await imgRes.arrayBuffer();
-                return new Response(body, {
-                  headers: {
-                    "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
-                    "Cache-Control": "public, max-age=604800, immutable",
-                    "Access-Control-Allow-Origin": "*"
-                  }
-                });
-              }
-            }
-          }
-        } catch (_) {}
-      }
 
       if (isbn && /^\d{10,13}$/.test(isbn)) {
         try {
@@ -1622,11 +1525,7 @@ export default {
                 const files: any[] = meta.files || [];
                 const bookFile = files.find((f: any) => f.name?.endsWith(".epub")) ||
                                  files.find((f: any) => f.name?.endsWith(".pdf")) ||
-                                 files.find((f: any) => f.name?.endsWith(".mobi")) ||
-                                 files.find((f: any) => f.name?.endsWith(".azw3")) ||
-                                 files.find((f: any) => f.name?.endsWith(".html")) ||
-                                 files.find((f: any) => f.name?.endsWith(".json")) ||
-                                 files.find((f: any) => f.name?.endsWith(".txt"));
+                                 files.find((f: any) => f.name?.endsWith(".mobi"));
                 if (bookFile) {
                   const directUrl = `https://archive.org/download/${iaId}/${encodeURIComponent(bookFile.name)}`;
                   console.log(`[IA Worker] Resolved to direct download: ${directUrl}`);
@@ -1975,7 +1874,7 @@ export default {
         return new Response("Missing url", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.com|google\.com|googleusercontent\.com)$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
