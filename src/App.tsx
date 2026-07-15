@@ -679,14 +679,16 @@ export default function App() {
         ) : ["html", "htm", "json", "txt", "md", "csv"].includes(activeBook.extension?.toLowerCase() || "") ? (
           <BookReaderText
             book={activeBook}
+            readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
             onClose={() => {
               if (window.history.state && window.history.state.isReading) {
                 window.history.back();
-              }
-              setActiveBook(null);
-              refreshLibrary();
-            }}
-          />
+               }
+               setActiveBook(null);
+               refreshLibrary();
+             }}
+           />
         ) : (
           <div className="fixed inset-0 bg-kindle-bg z-[100] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in-95 duration-300">
             <div className="max-w-md space-y-6 bg-kindle-card p-8 rounded-3xl border border-kindle-border shadow-2xl overflow-hidden relative">

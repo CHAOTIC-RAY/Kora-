@@ -113,14 +113,71 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
       }
     });
 
-    // Extract metadata
-    const title = $("title").text() || $("h1").first().text() || domain;
-    const author = $("meta[name='author']").attr("content") || 
-                   $(".author").text() || 
-                   $(".byline").text() || 
-                   domain;
+    // Make relative image sources absolute based on targetUrl
+    $("img").each((_, elem) => {
+      const $img = $(elem);
+      let src = $img.attr("src") || $img.attr("data-src") || $img.attr("data-original-src");
+      if (src) {
+        try {
+          const absoluteUrl = new URL(src, targetUrl).href;
+          $img.attr("src", absoluteUrl);
+          // Strip other attributes except alt
+          const alt = $img.attr("alt") || "";
+          const attribs = elem.attribs || {};
+          for (const attr of Object.keys(attribs)) {
+            if (attr !== "src" && attr !== "alt") {
+              $img.removeAttr(attr);
+            }
+          }
+        } catch (e) {
+          // Leave src alone if URL parsing fails
+        }
+      } else {
+        // If image has no src, remove it
+        $img.remove();
+      }
+    });
+
+    // Extract metadata using multiple fallback algorithms
+    // 1. Title Extraction
+    let title = $("meta[property='og:title']").attr("content") || 
+                $("meta[name='twitter:title']").attr("content") ||
+                $("meta[name='title']").attr("content") ||
+                $("title").text() || 
+                $("h1").first().text() || 
+                domain;
+    
+    // Clean up title separators if any
+    const titleSeparators = [/ - /, / \| /, / › /, / » /, / \\ /, / \/ /, /: /];
+    for (const sep of titleSeparators) {
+      if (sep.test(title)) {
+        const parts = title.split(sep);
+        // Take the part that has more words or is longer, typically the article title itself
+        const candidates = parts.filter(p => p.trim().length > 0);
+        if (candidates.length > 1) {
+          title = candidates[0].trim().split(" ").length >= candidates[1].trim().split(" ").length ? candidates[0].trim() : candidates[1].trim();
+          break;
+        }
+      }
+    }
+
+    // 2. Author/Byline Extraction
+    let author = $("meta[name='author']").attr("content") || 
+                 $("meta[property='article:author']").attr("content") ||
+                 $("meta[name='twitter:creator']").attr("content") ||
+                 $(".author").text() || 
+                 $(".byline").text() ||
+                 $(".byline-name").text() ||
+                 $("[rel='author']").text() ||
+                 domain;
+                 
+    // Clean up author string (e.g., remove "By ", "Written by", etc.)
+    author = author.replace(/^(by|written\s+by)\s+/i, "").trim();
+
+    // 3. Description Extraction
     const description = $("meta[name='description']").attr("content") || 
-                         $("meta[property='og:description']").attr("content") || "";
+                        $("meta[property='og:description']").attr("content") || 
+                        $("meta[name='twitter:description']").attr("content") || "";
 
     // Find main content area
     let contentElement = $("article").first();
@@ -190,16 +247,37 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     chapters = chapters.map(ch => {
       let content = ch.content;
       // Strip anything that looks like inline JS code block leftover or CSS rule block leftover (e.g. .cls-1 { fill: #fff; })
-      content = content.replace(/var\s+\w+\s*=\s*['"][^'"]*['"];/g, "");
+      content = content.replace(/var\s+host\s*=\s*[^;]+;/gi, "");
+      content = content.replace(/var\s+\w+\s*=\s*['"][^'"]*['"];/gi, "");
       content = content.replace(/\.\w+\s*\{\s*[^}]*\}/g, "");
       content = content.replace(/@media\s*[^{]*\{\s*[^}]*\}/g, "");
+      content = content.replace(/Window\s*\[[^\]]*\]/gi, "");
+      content = content.replace(/\$\(document\)\.ready\(function\(\)\s*\{[\s\S]*\}\);\s*$/i, "");
+      
+      // Strip common boilerplate text phrases or leftovers
+      content = content.replace(/Copyright\s*©\s*\d{4}[\s\S]*?All\s*rights\s*reserved\.?/gi, "");
+      content = content.replace(/Ma\.\s*Eureka,\s*Vaidheri[\s\S]*?Tel\s*:\s*\d+/gi, "");
+      content = content.replace(/Like\s*us\s*sunmv\s*Follow\s*us\s*sunbrk/gi, "");
+      content = content.replace(/Media\s*About\s*Sun\s*Contact\s*Us\s*Privacy\s*Policy\s*Terms\s*and\s*Conditions/gi, "");
+      content = content.replace(/Dhivehi\s*Edition\s*\+\s*News\s*World\s*Sports\s*Entertainment\s*Business\s*Travel\s*Column\s*Opinion\s*Features\s*Technology\s*Lifestyle\s*Art\s*&\s*Culture\s*Health\s*People/gi, "");
+      content = content.replace(/LOCAL\s*EDITION\s*Local\s*World\s*Sports\s*Entertainment\s*Business\s*Lifestyle\s*Travel\s*Column\s*Opinion\s*Features\s*Technology\s*Lifestyle\s*Art\s*&\s*Culture\s*Health\s*People/gi, "");
+      content = content.replace(/Advertisement\s*Comment\s*Name\s*:\s*Send\s*Comment/gi, "");
+      content = content.replace(/Related\s*Tags[\s\S]*?Expatriates/gi, "");
+      
       // Clean up multiple empty paragraphs or spaces
       content = content.replace(/<p>\s*<\/p>/g, "");
       return {
         title: ch.title,
         content: content
       };
-    }).filter(ch => ch.content.trim().length > 0);
+    }).filter(ch => {
+      // Remove chapters containing only script/boilerplate noise
+      const textOnly = ch.content.replace(/<[^>]*>/g, "").trim();
+      if (textOnly.length < 30 && (textOnly.includes("$(document)") || textOnly.includes("function") || textOnly.includes("Copyright") || textOnly.includes("About Us"))) {
+        return false;
+      }
+      return textOnly.length > 0;
+    });
 
     if (chapters.length === 0) {
       chapters.push({
@@ -306,6 +384,19 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     }
     li {
       margin-bottom: 0.5em;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 1.5em auto;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      img {
+        opacity: 0.85;
+      }
     }
   </style>
 </head>
