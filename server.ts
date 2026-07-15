@@ -94,9 +94,25 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     // Parse with Cheerio to extract content
     const $ = cheerio.load(rawHtml);
     
-    // Remove unwanted elements
-    $("script, style, iframe, header, footer, nav, noscript, .ads, .advertisement, #header, #footer, #nav, .sidebar, .menu, .navigation").remove();
+    // Remove unwanted elements, widgets, comments, scripts, styles, and other boilerplate elements
+    $("script, style, iframe, header, footer, nav, noscript, svg, img[style*='display:none']").remove();
+    $(".ads, .advertisement, #header, #footer, #nav, .sidebar, .menu, .navigation").remove();
+    $(".widget, .widget-comment-form, .comment-form-reply, .widget-title, .widget-content, .comment-form, .comment-writer, .comment-bottom, .comment-name, .comment-send, .comment-feedback").remove();
+    $("form, button, textarea, input, select, option, label").remove();
+    $("[class*='advertisement'], [class*='widget'], [class*='comment-form'], [id*='advertisement'], [id*='widget']").remove();
     
+    // Clean up inline scripts, styles, and CSS declarations within element attributes
+    $("*").each((_, elem) => {
+      const $elem = $(elem);
+      // Remove inline event handlers
+      const attribs = elem.attribs || {};
+      for (const attr of Object.keys(attribs)) {
+        if (attr.startsWith("on") || attr === "style") {
+          $elem.removeAttr(attr);
+        }
+      }
+    });
+
     // Extract metadata
     const title = $("title").text() || $("h1").first().text() || domain;
     const author = $("meta[name='author']").attr("content") || 
@@ -104,7 +120,7 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
                    $(".byline").text() || 
                    domain;
     const description = $("meta[name='description']").attr("content") || 
-                        $("meta[property='og:description']").attr("content") || "";
+                         $("meta[property='og:description']").attr("content") || "";
 
     // Find main content area
     let contentElement = $("article").first();
@@ -123,6 +139,9 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     if (contentElement.length === 0) {
       contentElement = $("body");
     }
+
+    // Double check that we strip any unwanted text/elements from the main content element
+    contentElement.find("script, style, iframe, form, button, input, textarea, label").remove();
 
     // Split content by headings
     const headings: { level: number; text: string; element: any }[] = [];
@@ -164,6 +183,28 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
           title: chapterTitle,
           content: chapterContent.join("\n")
         });
+      });
+    }
+
+    // Post-processing chapter content to filter out styling text fragments or JS text like "var host = ..."
+    chapters = chapters.map(ch => {
+      let content = ch.content;
+      // Strip anything that looks like inline JS code block leftover or CSS rule block leftover (e.g. .cls-1 { fill: #fff; })
+      content = content.replace(/var\s+\w+\s*=\s*['"][^'"]*['"];/g, "");
+      content = content.replace(/\.\w+\s*\{\s*[^}]*\}/g, "");
+      content = content.replace(/@media\s*[^{]*\{\s*[^}]*\}/g, "");
+      // Clean up multiple empty paragraphs or spaces
+      content = content.replace(/<p>\s*<\/p>/g, "");
+      return {
+        title: ch.title,
+        content: content
+      };
+    }).filter(ch => ch.content.trim().length > 0);
+
+    if (chapters.length === 0) {
+      chapters.push({
+        title: "Article",
+        content: contentElement.html() || ""
       });
     }
 
