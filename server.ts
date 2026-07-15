@@ -3,8 +3,6 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import * as cheerio from "cheerio";
 import { JSDOM } from "jsdom";
-import { Readability } from "@mozilla/readability";
-import TurndownService from "turndown";
 import dotenv from "dotenv";
 import puppeteer from "puppeteer";
 import crypto from "crypto";
@@ -38,7 +36,7 @@ function getGeminiClient() {
 
 app.use("/api/zlib", zlibRouter);
 
-// Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Readability.js)
+// Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Cheerio + JSDOM)
 app.post("/api/convert-url", express.json(), async (req, res) => {
   const targetUrl = req.body.url || req.query.url as string;
   if (!targetUrl) {
@@ -91,31 +89,44 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
       return res.status(500).json({ error: "Could not fetch any meaningful content from the provided URL" });
     }
 
-    console.log(`[Web Clipper] Extracted HTML length: ${rawHtml.length}. Processing with Readability.js.`);
+    console.log(`[Web Clipper] Extracted HTML length: ${rawHtml.length}. Processing with Cheerio.`);
 
-    // Use Readability.js to extract article content
-    const dom = new JSDOM(rawHtml, { url: targetUrl });
-    const document = dom.window.document;
-    const reader = new Readability(document);
-    const article = reader.parse();
+    // Parse with Cheerio to extract content
+    const $ = cheerio.load(rawHtml);
+    
+    // Remove unwanted elements
+    $("script, style, iframe, header, footer, nav, noscript, .ads, .advertisement, #header, #footer, #nav, .sidebar, .menu, .navigation").remove();
+    
+    // Extract metadata
+    const title = $("title").text() || $("h1").first().text() || domain;
+    const author = $("meta[name='author']").attr("content") || 
+                   $(".author").text() || 
+                   $(".byline").text() || 
+                   domain;
+    const description = $("meta[name='description']").attr("content") || 
+                        $("meta[property='og:description']").attr("content") || "";
 
-    if (!article) {
-      return res.status(500).json({ error: "Could not extract article content from the page" });
+    // Find main content area
+    let contentElement = $("article").first();
+    if (contentElement.length === 0) {
+      contentElement = $("main").first();
+    }
+    if (contentElement.length === 0) {
+      contentElement = $(".content").first();
+    }
+    if (contentElement.length === 0) {
+      contentElement = $(".post-content").first();
+    }
+    if (contentElement.length === 0) {
+      contentElement = $(".entry-content").first();
+    }
+    if (contentElement.length === 0) {
+      contentElement = $("body");
     }
 
-    // Extract metadata
-    const title = article.title || new URL(targetUrl).hostname;
-    const author = article.byline || domain;
-    const description = article.excerpt || "";
-
-    // Parse article content and split into chapters by headings
-    const contentDom = new JSDOM(article.content);
-    const contentDoc = contentDom.window.document;
-    const $ = cheerio.load(article.content);
-
-    // Find all h2 and h3 headings to split into chapters
+    // Split content by headings
     const headings: { level: number; text: string; element: any }[] = [];
-    $("h2, h3").each((_, elem) => {
+    contentElement.find("h2, h3").each((_, elem) => {
       const $elem = $(elem);
       headings.push({
         level: parseInt($elem[0].tagName.substring(1)),
@@ -124,53 +135,34 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
       });
     });
 
-    // If no headings found, create single chapter
     let chapters: { title: string; content: string }[] = [];
     
     if (headings.length === 0) {
       // Single chapter with all content
-      const turndownService = new TurndownService({
-        headingStyle: "setext",
-        codeBlockStyle: "fenced"
-      });
-      const markdown = turndownService.turndown(article.content);
       chapters.push({
         title: "Article",
-        content: markdown
+        content: contentElement.html() || ""
       });
     } else {
       // Split content by headings
-      let currentChapter: { title: string; content: string } | null = null;
-      const turndownService = new TurndownService({
-        headingStyle: "setext",
-        codeBlockStyle: "fenced"
-      });
-
-      // Process content between headings
-      const allElements = $(article.content).find("*").addBack("*");
-      
       headings.forEach((heading, index) => {
-        const chapterTitle = heading.text;
-        const chapterContent: any[] = [];
+        const chapterTitle = heading.text || `Section ${index + 1}`;
+        const chapterContent: string[] = [];
         
         // Find content between this heading and next heading (or end)
-        let currentElem = heading.element.nextElementSibling;
-        while (currentElem) {
-          const tagName = currentElem.tagName;
+        let currentElem = $(heading.element).next();
+        while (currentElem.length > 0) {
+          const tagName = currentElem[0].tagName;
           if (tagName === "H2" || tagName === "H3") {
             break; // Next heading found
           }
-          chapterContent.push(currentElem.outerHTML);
-          currentElem = currentElem.nextElementSibling;
+          chapterContent.push(currentElem.html() || "");
+          currentElem = currentElem.next();
         }
 
-        // Convert to markdown
-        const contentHtml = chapterContent.join("\n");
-        const markdown = turndownService.turndown(contentHtml);
-        
         chapters.push({
-          title: chapterTitle || `Section ${index + 1}`,
-          content: markdown
+          title: chapterTitle,
+          content: chapterContent.join("\n")
         });
       });
     }
