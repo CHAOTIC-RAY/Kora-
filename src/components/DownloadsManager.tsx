@@ -233,7 +233,9 @@ export default function DownloadsManager({
                   {dl.status === "downloading" && (
                     <div className="flex flex-col items-end gap-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono font-bold text-kindle-accent">{dl.percent || 0}%</span>
+                        <span className="text-[10px] font-mono font-bold text-kindle-accent">
+                          {dl.percent !== null ? `${dl.percent}%` : "..."}
+                        </span>
                         <Loader2 className="w-4 h-4 text-kindle-accent animate-spin" />
                       </div>
                       <div className="w-20 h-1 bg-kindle-bg rounded-full overflow-hidden border border-kindle-border">

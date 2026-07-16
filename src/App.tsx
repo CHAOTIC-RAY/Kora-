@@ -189,10 +189,11 @@ export default function App() {
           chunks.push(value);
           receivedLength += value.length;
           
-          if (contentLength) {
-            const percent = Math.round((receivedLength / contentLength) * 100);
-            setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { ...dl, percent } : dl));
-          }
+          const percent = contentLength > 0 
+            ? Math.round((receivedLength / contentLength) * 100) 
+            : null;
+            
+          setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { ...dl, percent } : dl));
         }
       }
 
@@ -992,7 +993,7 @@ export default function App() {
       )}
 
       {/* Settings Modal */}
-      <Toaster position="bottom-right" toastOptions={{
+      <Toaster position="bottom-center" toastOptions={{
         duration: 5000,
         style: {
           background: 'var(--kindle-card)',
@@ -1006,6 +1007,7 @@ export default function App() {
           letterSpacing: '0.05em',
           padding: '12px 20px',
           boxShadow: '0 10px 40px -10px rgba(0,0,0,0.2)',
+          marginBottom: '60px', // Add margin to avoid overlapping tab bar
         },
         success: {
           iconTheme: {
