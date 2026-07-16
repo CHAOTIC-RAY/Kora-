@@ -4,7 +4,8 @@ import {
   isRealFirebase, 
   loadLibrary, 
   BookMetadata, 
-  syncBookToCloud 
+  syncBookToCloud,
+  initFirebase 
 } from "./lib/firebase";
 import { enrichBookMetadata } from "./lib/metadataEnricher";
 import { 
@@ -242,6 +243,7 @@ export default function App() {
 
   // 1. Authenticate user anonymously on mount if not logged in
   useEffect(() => {
+    initFirebase();
     // Apply theme to body
     document.body.className = displayTheme;
     if (displayTheme.includes("dark")) {

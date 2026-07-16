@@ -757,7 +757,10 @@ export default function DiscoverView({
 
     try {
       const res = await fetch(`/api/goodreads/list?id=${encodeURIComponent(listId)}`);
-      if (!res.ok) throw new Error(`Goodreads fetch failed: ${res.status}`);
+      if (!res.ok) {
+        console.warn(`Goodreads list ${listId} returned status ${res.status}`);
+        return { books: [], previousDate: null };
+      }
       const data = await res.json();
       
       const mappedBooks = (data.results?.books || []).map((book: any) => {

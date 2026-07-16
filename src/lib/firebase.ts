@@ -35,6 +35,30 @@ let db: any = null;
 let auth: any = null;
 let isRealFirebase = false;
 
+let initialized = false;
+
+export function initFirebase() {
+  if (initialized) return;
+  
+  try {
+    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyFakeKey" && firebaseConfig.projectId) {
+      app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      db = getFirestore(app, (rawFirebaseConfig as any).firestoreDatabaseId);
+      auth = getAuth(app);
+      isRealFirebase = true;
+      console.log("Firebase initialized successfully. Real Firestore enabled.");
+    } else {
+      isRealFirebase = false;
+    }
+  } catch (error) {
+    console.error("Firebase failed to initialize. Falling back to local state sync.", error);
+    isRealFirebase = false;
+    db = null;
+    auth = null;
+  }
+  initialized = true;
+}
+
 export function disableFirebase() {
   isRealFirebase = false;
   db = null;
