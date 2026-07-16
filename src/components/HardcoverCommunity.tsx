@@ -170,8 +170,8 @@ function HardcoverCommunityContent({ book }: HardcoverCommunityProps) {
               </div>
             </div>
             <div 
-              className="text-sm text-kindle-text leading-relaxed prose prose-sm dark:prose-invert max-w-none prose-neutral [&_p]:mb-2 [&_p:last-child]:mb-0"
-              dangerouslySetInnerHTML={{ __html: rev.review }}
+              className="text-base text-kindle-text leading-relaxed prose prose-neutral dark:prose-invert max-w-none [&_p]:mb-2 [&_p:last-child]:mb-0"
+              dangerouslySetInnerHTML={{ __html: rev.review || "" }}
             />
           </div>
         ))}

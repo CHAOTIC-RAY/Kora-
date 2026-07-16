@@ -18,6 +18,7 @@ import {
   signInWithPopup
 } from "firebase/auth";
 import { getBookFile, clearAllCachedBooks, storeBookFile } from "./db/indexedDB";
+import { inferBookTags } from "./lib/tagsHelper";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
@@ -29,6 +30,7 @@ import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
 import DownloadBookBtn from "./components/DownloadBookBtn";
+import { toast, Toaster } from "react-hot-toast";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
@@ -36,6 +38,25 @@ import {
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle,
   RefreshCw, Zap, Database, Trash2
 } from "lucide-react";
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any, errorInfo: any) { console.error("ErrorBoundary caught an error", error, errorInfo); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center">
+          <p className="text-xs text-red-600 font-bold uppercase tracking-widest">Something went wrong in this section.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   // Navigation & view states
@@ -121,6 +142,102 @@ export default function App() {
   const [sharingStatus, setSharingStatus] = useState<"idle" | "converting" | "success" | "error">("idle");
   const [sharingUrl, setSharingUrl] = useState<string>("");
   const [sharingError, setSharingError] = useState<string | null>(null);
+
+  // Global Background Downloads State
+  const [globalDownloads, setGlobalDownloads] = useState<any[]>(() => {
+    const saved = localStorage.getItem("kora_downloads_log");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Background download handler
+  async function startBackgroundDownload(book: any, mirror: any, variant: any) {
+    const downloadId = Math.random().toString(36).substring(7);
+    const newDl = {
+      id: downloadId,
+      title: book.title,
+      author: book.author || "Unknown",
+      size: variant.size || "Unknown",
+      status: "downloading",
+      percent: 0,
+      timestamp: Date.now()
+    };
+
+    setGlobalDownloads(prev => {
+      const updated = [newDl, ...prev];
+      localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+      return updated;
+    });
+
+    toast.loading(`Downloading ${book.title}...`, { id: downloadId });
+
+    try {
+      const fileExtension = mirror.url.split('.').pop()?.split('?')[0]?.toLowerCase() || "epub";
+      const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+      
+      const response = await fetch(proxyUrl);
+      if (!response.ok) throw new Error("Download failed");
+
+      const reader = response.body?.getReader();
+      const contentLength = +(response.headers.get('Content-Length') || 0);
+      let receivedLength = 0;
+      const chunks = [];
+
+      if (reader) {
+        while(true) {
+          const {done, value} = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          receivedLength += value.length;
+          
+          if (contentLength) {
+            const percent = Math.round((receivedLength / contentLength) * 100);
+            setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { ...dl, percent } : dl));
+          }
+        }
+      }
+
+      const fileBlob = new Blob(chunks);
+      const id = variant.md5 || Math.random().toString(36).substring(7);
+      await storeBookFile(id, fileBlob, `${book.title}.${fileExtension}`, fileExtension);
+
+      // Save to library
+      const newBook: BookMetadata = {
+        id,
+        title: book.title,
+        author: book.author,
+        extension: fileExtension,
+        size: variant.size || "Unknown",
+        language: variant.language || "English",
+        coverUrl: book.coverUrl,
+        md5: variant.md5,
+        source: "Kora Store",
+        tags: inferBookTags(book.title, book.author, fileExtension),
+        status: "to-read",
+        progress: { percent: 0, lastReadTime: Date.now() },
+        dateAdded: Date.now(),
+        description: book.description || ""
+      };
+
+      await syncBookToCloud(user?.uid || "", newBook);
+      
+      setGlobalDownloads(prev => {
+        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
+        localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+        return updated;
+      });
+
+      toast.success(`${book.title} downloaded!`, { id: downloadId });
+      refreshLibrary();
+    } catch (err: any) {
+      console.error("Background download failed:", err);
+      setGlobalDownloads(prev => {
+        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: err.message } : dl);
+        localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+        return updated;
+      });
+      toast.error(`Failed to download ${book.title}`, { id: downloadId });
+    }
+  }
 
   // 1. Authenticate user anonymously on mount if not logged in
   useEffect(() => {
@@ -677,6 +794,11 @@ export default function App() {
         {activeTab === "downloads" && (
           <DownloadsManager 
             userId={user?.uid || ""} 
+            downloads={globalDownloads}
+            onSetDownloads={(updated: any[]) => {
+              setGlobalDownloads(updated);
+              localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+            }}
             onRefreshLibrary={() => refreshLibrary()} 
           />
         )}
@@ -688,6 +810,7 @@ export default function App() {
             zlibConfig={zlibConfig}
             selectedBook={selectedBookForDownload}
             onSelectedBookChange={setSelectedBookForDownload}
+            onTriggerDownload={startBackgroundDownload}
             onOpenBrowser={(url) => {
               setBrowserInitialUrl(url);
               setActiveTab("downloads");
@@ -868,8 +991,36 @@ export default function App() {
         )
       )}
 
-      {/* Auth Modal */}
-      {showAuthModal && (
+      {/* Settings Modal */}
+      <Toaster position="bottom-right" toastOptions={{
+        duration: 5000,
+        style: {
+          background: 'var(--kindle-card)',
+          color: 'var(--kindle-text)',
+          border: '1px solid var(--kindle-border)',
+          fontSize: '11px',
+          fontWeight: '700',
+          borderRadius: '16px',
+          fontFamily: 'var(--font-sans)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          padding: '12px 20px',
+          boxShadow: '0 10px 40px -10px rgba(0,0,0,0.2)',
+        },
+        success: {
+          iconTheme: {
+            primary: '#10b981',
+            secondary: '#fff',
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: '#ef4444',
+            secondary: '#fff',
+          },
+        }
+      }} />
+      {showSettings && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
           <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-kindle p-6 shadow-2xl text-kindle-text">
             <div className="flex items-center justify-between mb-6">

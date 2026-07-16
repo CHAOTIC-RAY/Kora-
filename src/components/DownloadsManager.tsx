@@ -6,36 +6,30 @@ import { storeBookFile } from "../db/indexedDB";
 interface DownloadsManagerProps {
   userId?: string;
   onRefreshLibrary?: () => void;
+  downloads: any[];
+  onSetDownloads: (downloads: any[]) => void;
 }
 
-export default function DownloadsManager({ userId = "", onRefreshLibrary }: DownloadsManagerProps) {
-  const [downloads, setDownloads] = useState<any[]>([]);
+export default function DownloadsManager({ 
+  userId = "", 
+  onRefreshLibrary,
+  downloads,
+  onSetDownloads
+}: DownloadsManagerProps) {
   const [clipperUrl, setClipperUrl] = useState<string>("");
   const [clipStatus, setClipStatus] = useState<"idle" | "fetching" | "converting" | "saving" | "success" | "error">("idle");
   const [clipError, setClipError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const cached = localStorage.getItem("kora_downloads_log");
-    if (cached) {
-      try {
-        setDownloads(JSON.parse(cached));
-      } catch (e) {
-        console.error(e);
-      }
-    }
-  }, []);
-
   const addDownloadLog = (title: string, author: string, size: string, status: "completed" | "downloading" | "error") => {
     const newDl = {
+      id: Math.random().toString(36).substring(7),
       title,
       author,
       size,
       status,
       timestamp: Date.now()
     };
-    const updated = [newDl, ...downloads];
-    setDownloads(updated);
-    localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+    onSetDownloads([newDl, ...downloads]);
   };
 
   const handleClipUrl = async (e: React.FormEvent) => {
@@ -111,13 +105,17 @@ export default function DownloadsManager({ userId = "", onRefreshLibrary }: Down
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
-      <div>
-        <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text mb-1">Downloads</h1>
-        <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mb-6">
-          Manage your active and completed book downloads here.
-        </p>
+    <div className="space-y-6 md:space-y-10 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
+      <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">
+        <div>
+          <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Downloads</h1>
+          <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">
+            Manage your active and completed book downloads here.
+          </p>
+        </div>
+      </header>
 
+      <div className="space-y-8">
         {/* Web Clipper Input Section */}
         <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 mb-8 shadow-sm">
           <div className="flex items-center gap-3 mb-3">
@@ -232,13 +230,24 @@ export default function DownloadsManager({ userId = "", onRefreshLibrary }: Down
                 </div>
                 <div className="flex items-center gap-3">
                   {dl.status === "completed" && <CheckCircle className="w-5 h-5 text-green-500" />}
-                  {dl.status === "downloading" && <Clock className="w-5 h-5 text-yellow-500 animate-pulse" />}
+                  {dl.status === "downloading" && (
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-kindle-accent">{dl.percent || 0}%</span>
+                        <Loader2 className="w-4 h-4 text-kindle-accent animate-spin" />
+                      </div>
+                      <div className="w-20 h-1 bg-kindle-bg rounded-full overflow-hidden border border-kindle-border">
+                        <div 
+                          className="h-full bg-kindle-accent transition-all duration-300"
+                          style={{ width: `${dl.percent || 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                   {dl.status === "error" && <FileWarning className="w-5 h-5 text-red-500" />}
                   <button 
                     onClick={() => {
-                      const newDls = downloads.filter((_, i) => i !== idx);
-                      setDownloads(newDls);
-                      localStorage.setItem("kora_downloads_log", JSON.stringify(newDls));
+                      onSetDownloads(downloads.filter((_, i) => i !== idx));
                     }}
                     className="p-2 text-kindle-text-muted hover:text-red-400 transition"
                   >

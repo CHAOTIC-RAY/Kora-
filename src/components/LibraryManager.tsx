@@ -528,7 +528,7 @@ export default function LibraryManager({
   }) ? 3 : 1; // standard streak mock or fallback
 
   return (
-    <div id="library-manager-section" className="space-y-4 md:space-y-8 pb-4 md:pb-10">
+    <div id="library-manager-section" className="space-y-6 md:space-y-10 pb-4 md:pb-10">
       
       {/* 1. Interactive Header & Collapsible Stats/Streak Summary */}
       <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">

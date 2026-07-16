@@ -405,10 +405,12 @@ export default function SettingsView({
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
-      <header className="space-y-1 text-left">
-        <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Settings</h2>
-        <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono">Preferences &amp; Cloud Sync</p>
+    <div className="space-y-6 md:space-y-10 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
+      <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">
+        <div>
+          <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Settings</h2>
+          <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Preferences &amp; Cloud Sync</p>
+        </div>
       </header>
 
       <div className="space-y-6">

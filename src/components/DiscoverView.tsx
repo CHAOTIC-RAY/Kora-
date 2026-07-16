@@ -5,7 +5,8 @@ import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users } from "lucide-react";
+import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users } from "lucide-react";
+import toast from "react-hot-toast";
 import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
 
@@ -22,18 +23,22 @@ interface DiscoverViewProps {
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
   onOpenBrowser?: (url: string) => void;
+  onTriggerDownload?: (book: any, mirror: any, variant: any) => void;
 }
 
 // Define all possible categories tied to their connector IDs
 const ALL_CATEGORIES = [
-  { id: "hardcover-fiction",    title: "NYT: Hardcover Fiction",    query: "hardcover-fiction" },
-  { id: "hardcover-nonfiction", title: "NYT: Hardcover Nonfiction", query: "hardcover-nonfiction" },
-  { id: "paperback-nonfiction", title: "NYT: Paperback Nonfiction", query: "paperback-nonfiction" },
-  { id: "e-book-fiction",       title: "NYT: E-Book Fiction",       query: "e-book-fiction" },
-  { id: "e-book-nonfiction",    title: "NYT: E-Book Nonfiction",    query: "e-book-nonfiction" },
-  { id: "advice-how-to",        title: "Advice & How-To",           query: "advice-how-to" },
-  { id: "childrens-middle-grade-hardcover", title: "Middle Grade", query: "childrens-middle-grade-hardcover" },
-  { id: "young-adult-hardcover", title: "Young Adult", query: "young-adult-hardcover" },
+  { id: "hardcover-fiction",    title: "NYT: Hardcover Fiction",    query: "hardcover-fiction", source: "nyt" },
+  { id: "hardcover-nonfiction", title: "NYT: Hardcover Nonfiction", query: "hardcover-nonfiction", source: "nyt" },
+  { id: "paperback-nonfiction", title: "NYT: Paperback Nonfiction", query: "paperback-nonfiction", source: "nyt" },
+  { id: "e-book-fiction",       title: "NYT: E-Book Fiction",       query: "e-book-fiction", source: "nyt" },
+  { id: "e-book-nonfiction",    title: "NYT: E-Book Nonfiction",    query: "e-book-nonfiction", source: "nyt" },
+  { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
+  { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
+  { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
+  { id: "advice-how-to",        title: "Advice & How-To",           query: "advice-how-to", source: "nyt" },
+  { id: "childrens-middle-grade-hardcover", title: "Middle Grade", query: "childrens-middle-grade-hardcover", source: "nyt" },
+  { id: "young-adult-hardcover", title: "Young Adult", query: "young-adult-hardcover", source: "nyt" },
 ];
 
 export default function DiscoverView({ 
@@ -48,8 +53,14 @@ export default function DiscoverView({
   zlibConfig,
   initialQuery = null,
   onClearInitialQuery,
-  onOpenBrowser
+  onOpenBrowser,
+  onTriggerDownload
 }: DiscoverViewProps) {
+  const stripHtml = (html: string) => {
+    if (!html) return "";
+    return html.replace(/<[^>]*>?/gm, "").trim();
+  };
+
   const [query, setQuery] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
@@ -200,7 +211,10 @@ export default function DiscoverView({
         pages: info.pageCount ? info.pageCount.toString() : "",
         topic: info.categories?.[0] || "",
         categories: info.categories 
-          ? Array.from(new Set(info.categories.flatMap((cat: string) => cat.split("/").map(s => s.trim()).filter(Boolean))))
+          ? Array.from(new Set(info.categories.flatMap((cat: string) => {
+              const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+              return [cat, ...parts]; // Keep full path and parts
+            })))
           : [],
         language: info.language || "English",
         description: info.description || "",
@@ -424,7 +438,8 @@ export default function DiscoverView({
       const data: Record<string, any[]> = {};
       const lists = json.results?.lists || [];
 
-      ALL_CATEGORIES.forEach(cat => {
+      // Process NYT Lists
+      ALL_CATEGORIES.filter(cat => cat.source === "nyt").forEach(cat => {
         const nytList = lists.find((l: any) => l.list_name_encoded === cat.query);
         if (nytList) {
           const seen = new Set<string>();
@@ -457,7 +472,8 @@ export default function DiscoverView({
                 title: b.title,
                 author: b.author,
                 coverUrl: b.book_image,
-                searchQuery: `${cleanTitle} ${cleanAuthor}`.trim()
+                searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
+                source: 'nyt'
               });
             }
           });
@@ -466,6 +482,17 @@ export default function DiscoverView({
           data[cat.id] = [];
         }
       });
+
+      // Process Goodreads Lists
+      await Promise.all(ALL_CATEGORIES.filter(cat => cat.source === "goodreads").map(async (cat) => {
+        try {
+          const { books } = await fetchGoodreadsList(cat.query);
+          data[cat.id] = books.slice(0, 15); // Show top 15 in overview
+        } catch (err) {
+          console.error(`Failed to load Goodreads list ${cat.id}:`, err);
+          data[cat.id] = [];
+        }
+      }));
 
       setFeaturedData(data);
     } catch (err: any) {
@@ -723,6 +750,55 @@ export default function DiscoverView({
     }
   }
 
+  async function fetchGoodreadsList(listId: string): Promise<{ books: any[]; previousDate: string | null }> {
+    const cacheKey = `goodreads_list_${listId}`;
+    const cached = tempStorage.get<any>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const res = await fetch(`/api/goodreads/list?id=${encodeURIComponent(listId)}`);
+      if (!res.ok) throw new Error(`Goodreads fetch failed: ${res.status}`);
+      const data = await res.json();
+      
+      const mappedBooks = (data.results?.books || []).map((book: any) => {
+        const cleanTitle = (book.title || "")
+          .split(':')[0]
+          .replace(/\b\d{10,13}\b/g, '')
+          .replace(/\(.*\)/g, '')
+          .replace(/volume\s+\d+/gi, '')
+          .replace(/book\s+\d+/gi, '')
+          .replace(/[^\w\s-]/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        const cleanAuthor = (book.author || "")
+          .split(',')[0]
+          .replace(/\b\d{4}-\d{4}\b/g, '')
+          .replace(/\bUnknown\b/gi, '')
+          .replace(/\(.*\)/g, '')
+          .replace(/[^\w\s-]/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        return {
+          title: book.title,
+          author: book.author,
+          coverUrl: book.coverUrl,
+          searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
+          rating: book.rating,
+          source: 'goodreads'
+        };
+      });
+
+      const result = { books: mappedBooks, previousDate: null };
+      tempStorage.set(cacheKey, result);
+      return result;
+    } catch (err) {
+      console.error("Failed to fetch Goodreads list:", err);
+      return { books: [], previousDate: null };
+    }
+  }
+
   async function handleCategoryClick(category: any) {
     setLoadingCategory(true);
     setViewingCategory(category);
@@ -732,10 +808,15 @@ export default function DiscoverView({
     setError(null);
 
     try {
-      // Fetch NYT books for this category
-      const { books, previousDate } = await fetchNYTCategory(category.query);
-      setCategoryBooks(books);
-      setCategoryPreviousDate(previousDate);
+      if (category.source === "goodreads") {
+        const { books } = await fetchGoodreadsList(category.query);
+        setCategoryBooks(books);
+      } else {
+        // Fetch NYT books for this category
+        const { books, previousDate } = await fetchNYTCategory(category.query);
+        setCategoryBooks(books);
+        setCategoryPreviousDate(previousDate);
+      }
     } catch (err: any) {
       console.error("Failed to load category:", err);
       setError(`Failed to load category: ${err.message}`);
@@ -745,7 +826,10 @@ export default function DiscoverView({
   }
 
   async function loadMoreCategoryBooks() {
-    if (!viewingCategory || !categoryPreviousDate || loadingCategoryMore) return;
+    if (!viewingCategory || loadingCategoryMore) return;
+    if (viewingCategory.source === "goodreads") return; // Goodreads scraping is usually one page for now
+    if (!categoryPreviousDate) return;
+    
     setLoadingCategoryMore(true);
     try {
       const { books, previousDate } = await fetchNYTCategory(viewingCategory.query, categoryPreviousDate);
@@ -775,13 +859,15 @@ export default function DiscoverView({
     }
   }
 
-  async function handleSearch(e: React.FormEvent | string | number, sourceOverride?: string) {
+  async function handleSearch(e: React.FormEvent | string | number, sourceOverride?: string, autoDownload?: boolean) {
     if (typeof e !== "string" && typeof e !== "number") {
       if (e) e.preventDefault();
     }
 
-    const term = typeof e === "string" ? e : query;
-    if (!term.trim()) return;
+    const term = typeof e === "string" ? e : (typeof e === "number" ? e.toString() : query);
+    if (!term || !term.trim()) return;
+
+    if (typeof e === "string") setQuery(e);
 
     // Save to search history
     setRecentSearches(prev => {
@@ -895,6 +981,15 @@ export default function DiscoverView({
       const uniqueGroupedBooks = Array.from(groupedBooksMap.values());
       if (page === 1) {
         setResults(uniqueGroupedBooks);
+        // Handle auto-download if requested for a specific search
+        if (autoDownload && uniqueGroupedBooks.length > 0) {
+          const firstBook = uniqueGroupedBooks[0];
+          onSelectedBookChange(firstBook);
+          // Wait a bit for the modal to open and mirrors to be fetched
+          setTimeout(() => {
+            handleGetDownloadLinks(firstBook, null, true);
+          }, 100);
+        }
       } else {
         setResults((prev) => {
           const existingIds = new Set(prev.map(b => b.id || b.md5));
@@ -983,7 +1078,10 @@ export default function DiscoverView({
             coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
             industryIdentifiers: info.industryIdentifiers || [],
             subjects: info.categories 
-              ? Array.from(new Set(info.categories.flatMap((cat: string) => cat.split("/").map(s => s.trim()).filter(Boolean))))
+              ? Array.from(new Set(info.categories.flatMap((cat: string) => {
+                  const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+                  return [cat, ...parts]; // Keep full path and parts
+                })))
               : [],
             source: "Google Books"
           });
@@ -1017,7 +1115,10 @@ export default function DiscoverView({
             coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : undefined,
             industryIdentifiers: doc.isbn?.map((i: string) => ({ type: "ISBN", identifier: i })),
             subjects: doc.subject 
-              ? Array.from(new Set(doc.subject.slice(0, 5).flatMap((cat: string) => cat.split("/").map(s => s.trim()).filter(Boolean))))
+              ? Array.from(new Set(doc.subject.slice(0, 10).flatMap((cat: string) => {
+                  const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+                  return [cat, ...parts];
+                })))
               : [],
             source: "Open Library"
           });
@@ -1032,7 +1133,7 @@ export default function DiscoverView({
     }
   }
 
-  async function handleGetDownloadLinks(book: any, variantOverride?: any) {
+  async function handleGetDownloadLinks(book: any, variantOverride?: any, autoDownload?: boolean) {
     const activeBook = book;
     const activeVariant = variantOverride || (book.variants && book.variants[0]) || book;
 
@@ -1047,8 +1148,8 @@ export default function DiscoverView({
     // Grab details from verified source asynchronously
     fetchVerifiedDetails(activeBook.title, activeBook.author);
 
-    // If this is a NYT book, search all sources for download links first
-    if (activeBook.isNYTBook && activeBook.searchQuery) {
+    // If this is a featured book (NYT or Goodreads), search all sources for download links first
+    if ((activeBook.isNYTBook || activeBook.source === 'nyt' || activeBook.source === 'goodreads') && activeBook.searchQuery) {
       try {
         const searchResult = await fetchPage(activeBook.searchQuery, "all", 1);
         if (searchResult.books.length > 0) {
@@ -1105,9 +1206,13 @@ export default function DiscoverView({
         
         if (data.error) throw new Error(data.error.message || data.error);
         if (data.download_link) {
-          setMirrors([{ url: data.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }]);
+          const m = [{ url: data.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }];
+          setMirrors(m);
+          if (autoDownload) setTimeout(() => handleAutoDownload(m), 50);
         } else if (data.file && data.file.download_link) {
-           setMirrors([{ url: data.file.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }]);
+          const m = [{ url: data.file.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }];
+          setMirrors(m);
+          if (autoDownload) setTimeout(() => handleAutoDownload(m), 50);
         } else {
           setMirrorError("No download link found for this book.");
         }
@@ -1121,9 +1226,14 @@ export default function DiscoverView({
         if (data.error) throw new Error(data.error);
 
         const links = data.downloadLinks || data.options || [];
-        setMirrors(sortMirrors(links));
+        const sorted = sortMirrors(links);
+        setMirrors(sorted);
+        
         if (links.length === 0) {
           setMirrorError("No download mirrors found for this variant. Try another format or mirror.");
+        } else if (autoDownload) {
+          // If autoDownload is true, trigger the download immediately with the fetched mirrors
+          setTimeout(() => handleAutoDownload(sorted), 50);
         }
       }
     } catch (err: any) {
@@ -1133,10 +1243,12 @@ export default function DiscoverView({
     }
   }
 
-  async function handleAutoDownload() {
-    if (!selectedBook) return;
-    const activeVariant = selectedVariant || selectedBook;
-    const directMirrors = mirrors.filter(m => m.isDirect);
+  async function handleAutoDownload(mirrorsOverride?: any[]) {
+    const book = selectedBook || selectedFeaturedBook;
+    if (!book) return;
+    const activeVariant = selectedVariant || selectedFeaturedVariant || book;
+    const activeMirrors = mirrorsOverride || mirrors;
+    const directMirrors = activeMirrors.filter(m => m.isDirect);
     if (directMirrors.length === 0) {
       setDownloadProgress({ 
         step: "idle", 
@@ -1148,6 +1260,16 @@ export default function DiscoverView({
 
     setDownloadProgress({ step: "requesting", percent: 10, error: null });
 
+    const mirror = directMirrors[0]; // Take the first direct mirror
+    if (onTriggerDownload) {
+      onTriggerDownload(book, mirror, activeVariant);
+      // Close the selection modal after starting background download
+      if (selectedBook) onSelectedBookChange(null);
+      if (selectedFeaturedBook) setSelectedFeaturedBook(null);
+      return;
+    }
+
+    // Fallback if no trigger (shouldn't happen with new layout)
     for (let index = 0; index < directMirrors.length; index++) {
       const mirror = directMirrors[index];
       try {
@@ -1315,8 +1437,17 @@ export default function DiscoverView({
   });
 
   async function handleDownloadFromMirror(mirror: any) {
-    if (!selectedBook) return;
-    const activeVariant = selectedVariant || selectedBook;
+    const book = selectedBook || selectedFeaturedBook;
+    if (!book) return;
+    const activeVariant = selectedVariant || selectedFeaturedVariant || book;
+
+    if (onTriggerDownload) {
+      onTriggerDownload(book, mirror, activeVariant);
+      // Close the selection modal after starting background download
+      if (selectedBook) onSelectedBookChange(null);
+      if (selectedFeaturedBook) setSelectedFeaturedBook(null);
+      return;
+    }
 
     // Try direct proxy download first to store in app's local storage
     setDownloadProgress({ step: "requesting", percent: 10, error: null });
@@ -1376,21 +1507,21 @@ export default function DiscoverView({
 
       setDownloadProgress({ step: "saving", percent: 90, error: null });
       const id = activeVariant.md5 || Math.random().toString(36).substring(7);
-      await storeBookFile(id, fileBlob, `${selectedBook.title}.${fileExtension}`, fileExtension);
+      await storeBookFile(id, fileBlob, `${book.title}.${fileExtension}`, fileExtension);
 
       // If a custom directory is configured, write the downloaded file there as well
       try {
         const { getSavedDirectoryHandle, saveFileToDirectory } = await import("../lib/directoryHelper");
         const dirHandle = await getSavedDirectoryHandle();
         if (dirHandle) {
-          await saveFileToDirectory(dirHandle, `${selectedBook.title}.${fileExtension}`, fileBlob);
+          await saveFileToDirectory(dirHandle, `${book.title}.${fileExtension}`, fileBlob);
         }
         const isVirtualActive = localStorage.getItem("kora_use_virtual_dir") === "true";
         if (isVirtualActive) {
           const { addVirtualDirectoryFile } = await import("../lib/directoryHelper");
           addVirtualDirectoryFile({
-            name: selectedBook.title,
-            author: selectedBook.author || "Unknown",
+            name: book.title,
+            author: book.author || "Unknown",
             size: activeVariant.size || "1.5 MB",
             extension: fileExtension as any
           });
@@ -1401,15 +1532,15 @@ export default function DiscoverView({
 
       const newBook: BookMetadata = {
         id,
-        title: selectedBook.title,
-        author: selectedBook.author,
+        title: book.title,
+        author: book.author,
         extension: fileExtension,
         size: activeVariant.size || "Unknown",
         language: activeVariant.language || "English",
-        coverUrl: selectedBook.coverUrl,
+        coverUrl: book.coverUrl,
         md5: activeVariant.md5,
         source: "Kora Store",
-        tags: inferBookTags(selectedBook.title, selectedBook.author, fileExtension),
+        tags: inferBookTags(book.title, book.author, fileExtension),
         status: "to-read",
         progress: { percent: 0, lastReadTime: Date.now() },
         dateAdded: Date.now(),
@@ -1431,7 +1562,10 @@ export default function DiscoverView({
       localStorage.setItem("kora_downloads_log", JSON.stringify(dlLog.slice(0, 50)));
 
       setDownloadProgress({ step: "completed", percent: 100, error: null });
-      setTimeout(() => onSelectedBookChange(null), 1200);
+      setTimeout(() => {
+        if (selectedBook) onSelectedBookChange(null);
+        if (selectedFeaturedBook) setSelectedFeaturedBook(null);
+      }, 1200);
     } catch (err: any) {
       // If proxy download failed (CAPTCHA, Cloudflare, etc), open in in-app browser
       const errMsg = err.message || "Failed to download from this mirror.";
@@ -1442,7 +1576,8 @@ export default function DiscoverView({
         // Fall back to in-app browser for manual download
         if (onOpenBrowser) {
           onOpenBrowser(mirror.url);
-          onSelectedBookChange(null);
+          if (selectedBook) onSelectedBookChange(null);
+          if (selectedFeaturedBook) setSelectedFeaturedBook(null);
           return;
         }
       }
@@ -1450,28 +1585,82 @@ export default function DiscoverView({
     }
   }
 
+  async function handleDirectDownloadFromFeatured(book: any) {
+    const queryText = `${book.title} ${book.author || ""}`.trim();
+    const tId = toast.loading(`Searching for ${book.title}...`);
+    
+    try {
+      // 1. Search Anna's Archive (labeled as rave in fetchPage) in the background
+      const searchResult = await fetchPage(queryText, "all", 1);
+      if (searchResult.books.length === 0) {
+        toast.error(`No direct links found for "${book.title}". Try manual search.`, { id: tId });
+        return;
+      }
+
+      // 2. Pick the best result - prioritize those already havingrave source
+      const firstBookResult = searchResult.books.find((b: any) => b.sourceId === "rave") || searchResult.books[0];
+      
+      // 3. Fetch mirrors for this book
+      const res = await fetch(`/api/annas-archive/details?md5=${firstBookResult.md5}`);
+      if (!res.ok) throw new Error("Failed to fetch download links");
+      
+      const data = await res.json();
+      if (!data.mirrors || data.mirrors.length === 0) {
+        toast.error(`No mirrors found for this edition.`, { id: tId });
+        return;
+      }
+
+      const sortedMirrors = sortMirrors(data.mirrors);
+      const directMirrors = sortedMirrors.filter(m => m.isDirect);
+      
+      if (directMirrors.length === 0) {
+        toast.error(`No direct mirrors available. Opening manual links...`, { id: tId });
+        // Fallback: trigger normal search so user can see manual mirrors
+        setSelectedFeaturedBook(null);
+        setSearchMode(true);
+        handleSearch(queryText, "all", false);
+        return;
+      }
+
+      // 4. Trigger background download
+      if (onTriggerDownload) {
+        toast.dismiss(tId);
+        onTriggerDownload(book, directMirrors[0], firstBookResult);
+        setSelectedFeaturedBook(null);
+      } else {
+        toast.error("Download service not available.", { id: tId });
+      }
+    } catch (err: any) {
+      console.error("Background auto-download failed:", err);
+      toast.error(`Auto-download failed: ${err.message}`, { id: tId });
+    }
+  }
+
   function handleMirrorClick(m: any) {
+    console.log("[DiscoverView] handleMirrorClick called for:", m.label, m.url);
     // Always try direct download first - it will store in app's IndexedDB
     // and fall back to in-app browser on CAPTCHA/Cloudflare errors
-    if (m.isDirect || m.url.includes("libgen")) {
+    if (m.isDirect || (m.url && m.url.toLowerCase().includes("libgen"))) {
+      console.log("[DiscoverView] Triggering handleDownloadFromMirror");
       handleDownloadFromMirror(m);
-    } else if (onOpenBrowser) {
-      // Open non-direct links in the in-app browser for manual navigation
-      onOpenBrowser(m.url);
-      onSelectedBookChange(null);
     } else {
+      // Manual download links should open in a new tab in their browser
+      console.log("[DiscoverView] Opening link in new tab:", m.url);
       window.open(m.url, '_blank');
     }
   }
 
   return (
     <>
-      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        {/* Header */}
-        <header className="flex flex-col gap-4">
+      <div className="space-y-6 md:space-y-10 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* Header & Search */}
+        <header className="space-y-6">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>
+              <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono">
+                Explore global archives or browse trending best sellers.
+              </p>
             </div>
             {!searchMode && !viewingCategory && (
               <button
@@ -1484,125 +1673,125 @@ export default function DiscoverView({
             )}
           </div>
 
-        {/* Search Bar */}
-        <div className="space-y-4">
-          <form onSubmit={handleSearch} className="relative group max-w-2xl">
-            <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
-            <input
-              type="text"
-              placeholder="Search millions of books, authors, ISBNs..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="w-full pl-12 pr-32 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              {searchMode && (
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              <form onSubmit={handleSearch} className="relative group w-full md:max-w-2xl">
+                <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
+                <input
+                  type="text"
+                  placeholder="Search millions of books, authors, ISBNs..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  className="w-full pl-12 pr-32 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {searchMode && (
+                    <button
+                      type="button"
+                      onClick={clearSearch}
+                      className="p-2 rounded-xl hover:bg-kindle-bg text-kindle-text-muted transition"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-kindle-text text-kindle-bg rounded-xl font-bold text-[11px] uppercase tracking-widest hover:bg-kindle-accent transition"
+                  >
+                    Search
+                  </button>
+                </div>
+              </form>
+
+              {/* Advanced Search Toggle */}
+              <div className="flex items-center">
                 <button
                   type="button"
-                  onClick={clearSearch}
-                  className="p-2 rounded-xl hover:bg-kindle-bg text-kindle-text-muted transition"
+                  onClick={() => {
+                    const newVal = !isAdvancedSearch;
+                    setIsAdvancedSearch(newVal);
+                    // Preserve query when switching modes as requested
+                    if (newVal) {
+                      setSearchMode(true);
+                    }
+                  }}
+                  className={`px-3.5 py-1.5 md:py-3.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    isAdvancedSearch
+                      ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent"
+                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/30 hover:text-kindle-accent"
+                  }`}
                 >
-                  <X className="w-4 h-4" />
+                  <Database className="w-3.5 h-3.5" />
+                  Advanced Search
                 </button>
-              )}
-              <button
-                type="submit"
-                className="px-5 py-2 bg-kindle-text text-kindle-bg rounded-xl font-bold text-[11px] uppercase tracking-widest hover:bg-kindle-accent transition"
-              >
-                Search
-              </button>
-            </div>
-          </form>
-
-          {/* Advanced Search Toggle */}
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => {
-                const newVal = !isAdvancedSearch;
-                setIsAdvancedSearch(newVal);
-                // Clear state when switching search modes to avoid mixing results
-                setResults([]);
-                setSearchMode(false);
-                setQuery("");
-              }}
-              className={`px-3.5 py-1.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition flex items-center gap-1.5 cursor-pointer ${
-                isAdvancedSearch
-                  ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent"
-                  : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/30 hover:text-kindle-accent"
-              }`}
-            >
-              <Database className="w-3.5 h-3.5" />
-              {isAdvancedSearch ? "Advanced Archive Search (Active)" : "Advanced Search"}
-            </button>
-          </div>
-
-          {/* Source & Topic Filters */}
-          {searchMode && isAdvancedSearch && (
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {[
-                  { id: "all", label: "All", icon: Globe },
-                  { id: "annas", label: "Anna's Archive", icon: Database },
-                  { id: "libgen", label: "LibGen", icon: Layers },
-                  { id: "zlib", label: "Z-Library", icon: Library },
-                  { id: "ia", label: "Archive.org", icon: BookOpen },
-                  { id: "gutenberg", label: "Gutenberg", icon: BookMarked },
-                  { id: "openlibrary", label: "Open Library", icon: ExternalLink },
-                  { id: "standard", label: "Standard Ebooks", icon: Library },
-                ]
-                .filter(src => src.id === "all" || availableSourcesFromResults.has(src.id))
-                .map((src) => (
-                  <button
-                    key={src.id}
-                    onClick={() => {
-                      setActiveSource(src.id);
-                      setCurrentPage(1);
-                    }}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
-                      activeSource === src.id
-                        ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-md"
-                        : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/50"
-                    }`}
-                  >
-                    <src.icon className="w-3.5 h-3.5" />
-                    {src.label}
-                  </button>
-                ))}
               </div>
+            </div>
 
-              {availableTopics.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 max-h-24 overflow-y-auto pr-2 scrollbar-hide">
-                  <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mr-1 sticky top-0 bg-kindle-bg py-1">Topics:</span>
-                  <button
-                    onClick={() => setSelectedTopic("all")}
-                    className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border ${
-                      selectedTopic === "all"
-                        ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
-                        : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
-                    }`}
-                  >
-                    All
-                  </button>
-                  {availableTopics.map((topic) => (
+            {/* Source & Topic Filters - Positioned directly under search bar */}
+            {searchMode && isAdvancedSearch && (
+              <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { id: "all", label: "All", icon: Globe },
+                    { id: "annas", label: "Anna's Archive", icon: Database },
+                    { id: "libgen", label: "LibGen", icon: Layers },
+                    { id: "zlib", label: "Z-Library", icon: Library },
+                    { id: "ia", label: "Archive.org", icon: BookOpen },
+                    { id: "gutenberg", label: "Gutenberg", icon: BookMarked },
+                    { id: "openlibrary", label: "Open Library", icon: ExternalLink },
+                    { id: "standard", label: "Standard Ebooks", icon: Library },
+                  ]
+                  .filter(src => src.id === "all" || availableSourcesFromResults.has(src.id))
+                  .map((src) => (
                     <button
-                      key={topic}
-                      onClick={() => setSelectedTopic(topic)}
-                      className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border truncate max-w-[150px] ${
-                        selectedTopic === topic
+                      key={src.id}
+                      onClick={() => {
+                        setActiveSource(src.id);
+                        setCurrentPage(1);
+                      }}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
+                        activeSource === src.id
+                          ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-sm"
+                          : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/50"
+                      }`}
+                    >
+                      <src.icon className="w-3.5 h-3.5" />
+                      {src.label}
+                    </button>
+                  ))}
+                </div>
+
+                {availableTopics.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 max-h-32 overflow-y-auto pr-2 scrollbar-hide">
+                    <button
+                      onClick={() => setSelectedTopic("all")}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border ${
+                        selectedTopic === "all"
                           ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
                           : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
                       }`}
                     >
-                      {topic}
+                      All Topics
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </header>
+                    {availableTopics.map((topic) => (
+                      <button
+                        key={topic}
+                        onClick={() => setSelectedTopic(topic)}
+                        className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border truncate max-w-[150px] ${
+                          selectedTopic === topic
+                            ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
+                            : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
+                        }`}
+                      >
+                        {topic}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </header>
 
       {/* Search Results */}
       {searchMode && (
@@ -1794,7 +1983,7 @@ export default function DiscoverView({
       )}
 
       {searchMode && communityBook && (
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs">
+        <section className="bg-kindle-card border border-kindle-border rounded-3xl p-8 shadow-sm max-w-5xl mx-auto overflow-hidden">
           <HardcoverCommunity book={communityBook} />
         </section>
       )}
@@ -2100,11 +2289,11 @@ export default function DiscoverView({
       )}
       </div>
 
-      {/* Download Modal - Redesigned Book Explorer Profile */}
+      {/* Download Modal - Simplified Download Link Selector */}
       {selectedBook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => onSelectedBookChange(null)} />
-          <div className="relative w-full max-w-3xl bg-kindle-card border border-kindle-border rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
+          <div className="relative w-full max-w-xl bg-kindle-card border border-kindle-border rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
             {/* Close Button */}
             <button 
               onClick={() => onSelectedBookChange(null)} 
@@ -2113,410 +2302,182 @@ export default function DiscoverView({
               <X className="w-4 h-4 text-kindle-text" />
             </button>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-8 pt-2">
-              {/* Left Column: Physical Book Cover Artwork */}
-              <div className="md:col-span-5 flex flex-col items-center">
-                <div className="w-48 md:w-full max-w-[220px] aspect-[2/3] bg-kindle-bg rounded-2xl border-2 border-kindle-border shadow-2xl overflow-hidden relative group/cover">
-                  {/* Spine simulated lighting */}
-                  <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-black/25 via-white/5 to-transparent z-10" />
-                  <div className="absolute left-3 top-0 bottom-0 w-[1px] bg-black/10 z-10" />
-                  
-                  {selectedBook.coverUrl ? (
-                    <img
-                      src={selectedBook.coverUrl.startsWith('/') ? selectedBook.coverUrl : `/api/proxy-image?url=${encodeURIComponent(selectedBook.coverUrl)}`}
-                      alt={selectedBook.title}
-                      className={`w-full h-full object-cover transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        const attempt = parseInt(target.dataset.attempt || "0");
-                        target.dataset.attempt = String(attempt + 1);
-
-                        if (attempt === 0 && selectedBook.isbn && /^\d{10,13}$/.test(selectedBook.isbn)) {
-                          target.src = `https://covers.openlibrary.org/b/isbn/${selectedBook.isbn}-M.jpg`;
-                          return;
-                        }
-                        if (attempt === 1) {
-                          const encodedTitle = encodeURIComponent(selectedBook.title);
-                          const encodedAuthor = encodeURIComponent(selectedBook.author || "");
-                          target.src = `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${selectedBook.md5 || (selectedBook.variants && selectedBook.variants[0]?.md5)}`;
-                          return;
-                        }
-                        target.style.display = "none";
-                        const parent = target.parentElement;
-                        if (parent && !parent.querySelector(".kora-typo-cover")) {
-                          const div = document.createElement("div");
-                          div.className = "kora-typo-cover w-full h-full flex flex-col items-center justify-center p-4 text-center bg-kindle-card absolute inset-0";
-                          div.innerHTML = `
-                            <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;margin-bottom:6px;">${(selectedBook.author || "Author").substring(0, 30)}</div>
-                            <div style="font-size:12px;font-weight:700;font-family:serif;line-height:1.3;">${selectedBook.title}</div>
-                          `;
-                          parent.style.position = "relative";
-                          parent.appendChild(div);
-                        }
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-kindle-card">
-                      <div className="text-[9px] font-bold uppercase tracking-[0.15em] opacity-30 mb-2">{(selectedBook.author || "Author").substring(0, 25)}</div>
-                      <div className="text-[12px] font-serif font-bold leading-snug text-center">{selectedBook.title}</div>
-                    </div>
-                  )}
+            <div className="space-y-6 pt-2">
+              {/* Header: Title & Author */}
+              <div className="text-center space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-600 uppercase tracking-widest font-sans">
+                  Available for Download
                 </div>
-
-                {/* File size & format metadata block */}
-                <div className="mt-4 flex flex-col items-center text-center space-y-1">
-                  <span className="text-[10px] font-mono font-semibold uppercase tracking-widest text-kindle-text-muted">
-                    {(selectedVariant || selectedBook).extension?.toUpperCase()} FILE · {(selectedVariant || selectedBook).size || "Unknown Size"}
+                <h3 className="text-2xl font-lexend font-bold leading-tight text-kindle-text">{selectedBook.title}</h3>
+                <p className="text-sm text-kindle-text-muted font-sans font-medium">
+                  {selectedBook.author}
+                </p>
+                
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-kindle-text-muted bg-kindle-bg px-2 py-0.5 rounded border border-kindle-border">
+                    {(selectedVariant || selectedBook).extension?.toUpperCase() || "FILE"}
                   </span>
-                  <span className="text-[9px] font-bold text-kindle-accent uppercase tracking-wider bg-kindle-accent/5 px-2.5 py-0.5 rounded-full border border-kindle-accent/10">
-                    Source: {(selectedVariant || selectedBook).source || "Verified Archives"}
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-kindle-text-muted bg-kindle-bg px-2 py-0.5 rounded border border-kindle-border">
+                    {(selectedVariant || selectedBook).size || "N/A"}
                   </span>
                 </div>
               </div>
 
-              {/* Right Column: Detailed Book Metadata, Synopsis & Actions */}
-              <div className="md:col-span-7 flex flex-col justify-between space-y-6">
-                <div className="space-y-4">
-                  {/* Book Title & Author */}
-                    <div className="space-y-1">
-                      <span className="text-[10px] text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest font-sans">
-                        Verified Library Copy
-                      </span>
-                      <h3 className="text-2xl md:text-3xl font-lexend font-bold leading-tight text-kindle-text pt-1.5">{selectedBook.title}</h3>
-                      <p 
-                        className="text-sm md:text-base text-kindle-text-muted font-sans font-medium hover:text-kindle-accent hover:underline cursor-pointer inline-block transition-colors"
-                        onClick={() => {
-                          if (selectedBook.author) {
-                            onSelectedBookChange(null);
-                            handleSearch(selectedBook.author);
-                          }
-                        }}
-                      >
-                        {selectedBook.author}
-                      </p>
-                    </div>
-
-                  {/* NYT Bestseller Information Badge */}
-                  {verifiedDetails?.isBestseller && (
-                    <div className="bg-amber-500/5 border border-amber-500/20 p-3 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-1">
-                      <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5 text-left">
-                        <span className="text-[9px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-widest block font-sans">New York Times Best Seller</span>
-                        <p className="text-xs font-semibold text-kindle-text leading-tight font-sans">
-                          {verifiedDetails.bestsellerRank || "Featured NYT Bestseller"}
-                          {verifiedDetails.weeksOnList ? ` · ${verifiedDetails.weeksOnList} weeks on list` : ""}
-                        </p>
-                        {verifiedDetails.bestsellerCategory && (
-                          <span className="text-[10px] text-kindle-text-muted font-medium block font-sans">Category: {verifiedDetails.bestsellerCategory}</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* NYT Review Snip Quote */}
-                  {verifiedDetails?.nytReviewSnippet && (
-                    <div className="border-l-2 border-amber-500/30 pl-3 py-1.5 bg-amber-500/[0.02] rounded-r-xl text-left">
-                      <p className="text-xs md:text-sm italic leading-relaxed text-kindle-text-muted font-serif">
-                        "{verifiedDetails.nytReviewSnippet}"
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Horizontal Stats Row */}
-                  <div className="grid grid-cols-3 gap-3 p-3 bg-kindle-bg border border-kindle-border rounded-2xl text-center">
-                    <div>
-                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block font-sans">Published</span>
-                      <span className="text-xs md:text-sm font-semibold text-kindle-text mt-0.5 block font-sans">
-                        {verifiedDetails?.publishYear || (selectedVariant || selectedBook).year || "N/A"}
-                      </span>
-                    </div>
-                    <div className="border-x border-kindle-border">
-                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block font-sans">Length</span>
-                      <span className="text-xs md:text-sm font-semibold text-kindle-text mt-0.5 block font-sans">
-                        {verifiedDetails?.pageCount ? `${verifiedDetails.pageCount} pp` : (selectedVariant || selectedBook).pages && (selectedVariant || selectedBook).pages !== "0" ? `${(selectedVariant || selectedBook).pages} pp` : "N/A"}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-wider block font-sans">Language</span>
-                      <span className="text-xs md:text-sm font-semibold text-kindle-text mt-0.5 block truncate font-sans font-sans">
-                        {(selectedVariant || selectedBook).language || "English"}
-                      </span>
-                    </div>
+              {/* Multi-Format Selector */}
+              {selectedBook.variants && selectedBook.variants.length > 1 && (
+                <div className="space-y-3 p-4 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted text-center">Switch Format / Mirror</h4>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {selectedBook.variants.map((v: any, vIdx: number) => {
+                      const isActive = selectedVariant?.id === v.id || selectedVariant?.md5 === v.md5;
+                      return (
+                        <button
+                          key={vIdx}
+                          onClick={() => handleGetDownloadLinks(selectedBook, v)}
+                          className={`px-3 py-1.5 rounded-xl text-left border transition duration-200 cursor-pointer ${
+                            isActive
+                              ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent shadow-sm"
+                              : "bg-kindle-card border-kindle-border hover:border-kindle-text-muted text-kindle-text-muted hover:text-kindle-text"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-extrabold uppercase font-mono">{v.extension || "EPUB"}</span>
+                            <span className="text-[9px] opacity-70">· {v.size || "..."}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
+              )}
 
-                  {/* Synopsis / Description from Verified Source */}
-                  <div className="space-y-1.5">
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted font-sans">Synopsis & Book Summary</h4>
-                    {loadingDetails ? (
-                      <div className="space-y-2 animate-pulse py-1">
-                        <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-full" />
-                        <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-5/6" />
-                        <div className="h-3 bg-kindle-bg border border-kindle-border rounded w-4/5" />
-                      </div>
-                    ) : verifiedDetails?.description ? (
-                      <div className="text-xs md:text-sm text-kindle-text-muted leading-relaxed font-sans text-left">
-                        <p className="inline">
-                          {readMoreExpanded 
-                            ? verifiedDetails.description 
-                            : verifiedDetails.description.length > 250 
-                              ? `${verifiedDetails.description.substring(0, 250)}...` 
-                              : verifiedDetails.description
-                          }
-                        </p>
-                        {verifiedDetails.description.length > 250 && (
-                          <button
-                            onClick={() => setReadMoreExpanded(!readMoreExpanded)}
-                            className="text-[10px] font-bold text-kindle-accent uppercase tracking-widest hover:underline ml-1.5 focus:outline-none cursor-pointer"
-                          >
-                            {readMoreExpanded ? "Read Less" : "Read More"}
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs md:text-sm text-kindle-text-muted/60 leading-relaxed font-sans italic text-left">
-                        No official synopsis available in digital archives. This is a verified {(selectedVariant || selectedBook).extension || "epub"} copy provided by the {(selectedVariant || selectedBook).source || "global storage libraries"}.
+              {/* Actions & Progress Area */}
+              <div className="space-y-4">
+                {/* Recommended Auto-Download */}
+                {!fetchingMirrors && !mirrorError && mirrors.some(m => m.isDirect) && downloadProgress.step === "idle" && (
+                  <button
+                    onClick={() => handleAutoDownload()}
+                    className="w-full p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 transition-all duration-300 text-left flex items-center justify-between group shadow-lg shadow-emerald-600/10 hover:shadow-emerald-500/20 text-white cursor-pointer"
+                  >
+                    <div>
+                      <p className="text-xs font-bold font-sans flex items-center gap-1.5 text-white">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-200 animate-pulse" />
+                        Recommended Direct Download
                       </p>
+                      <p className="text-[10px] text-emerald-100/80 font-medium font-sans mt-0.5">
+                        Import high-quality {(selectedVariant || selectedBook).extension || "epub"} copy to library.
+                      </p>
+                    </div>
+                    <Download className="w-4 h-4 text-emerald-100 group-hover:scale-110 transition shrink-0 ml-2 animate-bounce" />
+                  </button>
+                )}
+
+                {/* Mirror Options List */}
+                <div className="space-y-2">
+                  <div className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider flex justify-between border-b border-kindle-border/40 pb-1">
+                    <span>Download Mirrors</span>
+                    {fetchingMirrors && (
+                      <span className="text-[9px] font-bold text-kindle-accent uppercase tracking-widest flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> Scanning...
+                      </span>
                     )}
                   </div>
 
-                  {/* Extended Metadata Grid for Download Modal */}
-                  {verifiedDetails && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4 border-y border-kindle-border/40">
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-[10px]">
-                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">ISBN</span>
-                          <span className="font-medium text-kindle-text">
-                            {verifiedDetails.industryIdentifiers?.map((id: any) => id.identifier).slice(0, 1).join(", ") || "N/A"}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-[10px]">
-                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">Publisher</span>
-                          <span className="font-medium text-kindle-text truncate max-w-[120px]">{verifiedDetails.publisher || "N/A"}</span>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-[10px]">
-                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">Language</span>
-                          <span className="font-medium text-kindle-text uppercase">{verifiedDetails.language || "EN"}</span>
-                        </div>
-                        <div className="flex justify-between text-[10px]">
-                          <span className="text-kindle-text-muted font-bold uppercase tracking-wider">Format</span>
-                          <span className="font-medium text-kindle-text uppercase">{(selectedVariant || selectedBook).extension || "N/A"}</span>
-                        </div>
-                      </div>
+                  {fetchingMirrors ? (
+                    <div className="py-8 text-center space-y-3 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
+                      <Loader2 className="w-8 h-8 animate-spin text-kindle-accent mx-auto" />
+                      <p className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest font-sans animate-pulse">Syncing with global repositories…</p>
                     </div>
-                  )}
-
-                  {/* Category/Genre Badges */}
-                  {(verifiedDetails?.subjects?.length || (selectedVariant || selectedBook).topic) && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted mr-1">Genres:</span>
-                      {verifiedDetails?.subjects ? (
-                        verifiedDetails.subjects.map((sub, sIdx) => (
-                          <span key={sIdx} className="px-2 py-0.5 bg-kindle-bg border border-kindle-border rounded text-[9px] text-kindle-text-muted truncate max-w-[120px]" title={sub}>
-                            {sub}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="px-2 py-0.5 bg-kindle-bg border border-kindle-border rounded text-[9px] text-kindle-accent uppercase font-bold tracking-wider">
-                          {(selectedVariant || selectedBook).topic}
-                        </span>
-                      )}
+                  ) : mirrorError ? (
+                    <div className="py-8 text-center space-y-2 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
+                      <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto" />
+                      <p className="text-[10px] text-kindle-text-muted font-sans font-medium px-6">{mirrorError}</p>
                     </div>
-                  )}
+                  ) : (
+                    <div className="space-y-1.5">
+                      {mirrors.map((m, i) => (
+                        <div
+                          key={i}
+                          onClick={() => handleMirrorClick(m)}
+                          className={`w-full p-3 rounded-xl border transition text-left group flex items-center justify-between cursor-pointer ${
+                            m.isDirect 
+                              ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card" 
+                              : "border-kindle-border/60 hover:border-amber-500/40 bg-kindle-bg/40 hover:bg-kindle-card/60"
+                          }`}
+                        >
+                          <div className="overflow-hidden flex-1 min-w-0 pr-2">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-bold font-sans truncate pr-2">{m.label}</p>
+                              {m.isDirect ? (
+                                <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">External</span>
+                              )}
+                            </div>
+                            <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5 opacity-60">{m.url}</p>
+                          </div>
 
-                  {/* Multi-Format Selector: Render if this book has multiple variants collapsed */}
-                  {selectedBook.variants && selectedBook.variants.length > 1 && (
-                    <div className="space-y-2 pt-2 border-t border-kindle-border/40">
-                      <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Available Formats & Quality</h4>
-                      <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto pr-1">
-                        {selectedBook.variants.map((v: any, vIdx: number) => {
-                          const isActive = selectedVariant?.id === v.id || selectedVariant?.md5 === v.md5;
-                          return (
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <button
-                              key={vIdx}
-                              onClick={() => {
-                                handleGetDownloadLinks(selectedBook, v);
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleMirrorClick(m);
                               }}
-                              className={`px-3 py-2 rounded-xl text-left border transition duration-200 cursor-pointer ${
-                                isActive
-                                  ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent"
-                                  : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted text-kindle-text-muted hover:text-kindle-text"
+                              className={`p-2 rounded-xl border transition cursor-pointer ${
+                                m.isDirect
+                                  ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"
+                                  : "bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white border-amber-500/20"
                               }`}
                             >
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-extrabold uppercase font-mono">{v.extension || "EPUB"}</span>
-                                <span className="text-[9px] opacity-70">· {v.size || "Unknown"}</span>
-                              </div>
-                              <span className="text-[8px] opacity-65 block truncate max-w-[150px] mt-0.5">
-                                {v.source === "Library Genesis" ? "LibGen" : v.source === "Anna's Archive" ? "Anna's" : v.source}
-                              </span>
+                              {m.isDirect ? <Download className="w-3.5 h-3.5" /> : <ExternalLink className="w-3.5 h-3.5" />}
                             </button>
-                          );
-                        })}
-                      </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
 
-                {/* Actions & Progress Area */}
-                <div className="space-y-4 pt-4 border-t border-kindle-border">
-                  {/* Recommended Auto-Download */}
-                  {!fetchingMirrors && !mirrorError && mirrors.some(m => m.isDirect) && downloadProgress.step === "idle" && (
-                    <button
-                      onClick={handleAutoDownload}
-                      className="w-full p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 transition-all duration-300 text-left flex items-center justify-between group shadow-lg shadow-emerald-600/10 hover:shadow-emerald-500/20 text-white cursor-pointer"
-                    >
-                      <div>
-                        <p className="text-xs font-bold font-sans flex items-center gap-1.5 text-white">
-                          <Sparkles className="w-3.5 h-3.5 text-emerald-200 animate-pulse" />
-                          Recommended Auto-Download
-                        </p>
-                        <p className="text-[10px] text-emerald-100/80 font-medium font-sans mt-0.5">
-                          Acquires the highest quality {(selectedVariant || selectedBook).extension || "epub"} copy instantly via the server.
-                        </p>
+                {/* Download Progress Overlay */}
+                {downloadProgress.step !== "idle" && (
+                  <div className="p-4 bg-kindle-card border-2 border-kindle-accent/20 rounded-2xl shadow-xl space-y-3 animate-in fade-in zoom-in-95 duration-300">
+                    {downloadProgress.step === "completed" ? (
+                      <div className="flex flex-col items-center gap-2 py-2">
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                        <span className="text-sm font-bold uppercase tracking-widest font-sans text-kindle-text">Import Successful</span>
+                        <p className="text-[10px] text-kindle-text-muted">Book has been added to your local library.</p>
                       </div>
-                      <Download className="w-4 h-4 text-emerald-100 group-hover:scale-110 transition shrink-0 ml-2 animate-bounce" />
-                    </button>
-                  )}
-
-                  {/* Manual / All Mirror Options section */}
-                  <div className="space-y-2">
-                    <div className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider flex justify-between border-b border-kindle-border/40 pb-1">
-                      <span>Download Mirrors</span>
-                      {fetchingMirrors ? (
-                        <span className="text-[9px] font-bold text-kindle-accent uppercase tracking-widest flex items-center gap-1">
-                          <Loader2 className="w-3 h-3 animate-spin" /> Scanning...
-                        </span>
-                      ) : (
-                        <span className="text-[8px] opacity-60">Opens in browser tab if blocked</span>
-                      )}
-                    </div>
-
-                    {fetchingMirrors ? (
-                      <div className="py-6 text-center space-y-2 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
-                        <Loader2 className="w-6 h-6 animate-spin text-kindle-accent mx-auto" />
-                        <p className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest font-sans">Scanning global book repositories…</p>
-                      </div>
-                    ) : mirrorError ? (
-                      <div className="py-6 text-center space-y-2 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
-                        <AlertTriangle className="w-6 h-6 text-amber-500 mx-auto" />
-                        <p className="text-[10px] text-kindle-text-muted font-sans font-medium">{mirrorError}</p>
+                    ) : downloadProgress.error ? (
+                      <div className="flex items-center gap-3 text-red-600 p-2">
+                        <AlertTriangle className="w-5 h-5 shrink-0" />
+                        <p className="text-xs font-sans font-medium">{downloadProgress.error}</p>
                       </div>
                     ) : (
-                      <div className="space-y-1.5 max-h-[10rem] overflow-y-auto pr-1">
-                        {mirrors.map((m, i) => (
-                          <div
-                            key={i}
-                            onClick={() => handleMirrorClick(m)}
-                            className={`w-full p-3 rounded-xl border transition text-left group flex items-center justify-between cursor-pointer ${
-                              m.isDirect 
-                                ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card" 
-                                : "border-kindle-border/60 hover:border-amber-500/40 bg-kindle-bg/40 hover:bg-kindle-card/60"
-                            }`}
-                            title={m.isDirect ? "Download and Import via App Server" : "Open Mirror"}
-                          >
-                            <div className="overflow-hidden flex-1 min-w-0 pr-2">
-                              <div className="flex items-center gap-2">
-                                <p className="text-xs font-bold font-sans truncate pr-2">{m.label}</p>
-                                {m.isDirect ? (
-                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
-                                ) : (
-                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">Web Page</span>
-                                )}
-                              </div>
-                              <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5">{m.url}</p>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {/* Primary action */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMirrorClick(m);
-                                }}
-                                className={`p-2 rounded-xl border transition cursor-pointer ${
-                                  m.isDirect
-                                    ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"
-                                    : "bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white border-amber-500/20"
-                                }`}
-                                title={m.isDirect ? "Download via Server Proxy" : "Open in App Browser"}
-                              >
-                                {m.isDirect ? (
-                                  <Download className="w-3.5 h-3.5" />
-                                ) : (
-                                  <BookOpen className="w-3.5 h-3.5" />
-                                )}
-                              </button>
-
-                              {/* Open in New Tab */}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.open(m.url, '_blank');
-                                }}
-                                className="p-2 rounded-xl border border-kindle-border bg-kindle-bg hover:bg-kindle-accent/15 text-kindle-text-muted hover:text-kindle-accent transition cursor-pointer"
-                                title="Open Link in New Tab"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 justify-between">
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin text-kindle-accent" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest font-sans text-kindle-text-muted">{downloadProgress.step}…</span>
                           </div>
-                        ))}
+                          <span className="text-[10px] font-mono font-bold text-kindle-accent">{downloadProgress.percent}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-kindle-bg rounded-full overflow-hidden border border-kindle-border">
+                          <div
+                            className="h-full bg-kindle-accent transition-all duration-500 rounded-full"
+                            style={{ width: `${downloadProgress.percent}%` }}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>
-
-                  {/* Active Download Progress Log Overlay */}
-                  {downloadProgress.step !== "idle" && (
-                    <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-3">
-                      {downloadProgress.step === "completed" ? (
-                        <div className="flex items-center gap-2 text-emerald-600">
-                          <CheckCircle2 className="w-5 h-5" />
-                          <span className="text-xs font-bold uppercase tracking-widest font-sans">Added to Library!</span>
-                        </div>
-                      ) : downloadProgress.error ? (
-                        <div className="flex items-center gap-2 text-red-600">
-                          <AlertTriangle className="w-4 h-4" />
-                          <span className="text-xs font-sans">{downloadProgress.error}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-2 justify-between">
-                            <div className="flex items-center gap-2">
-                              <Loader2 className="w-4 h-4 animate-spin text-kindle-accent" />
-                              <span className="text-[10px] font-bold uppercase tracking-widest font-sans capitalize">{downloadProgress.step}…</span>
-                            </div>
-                            <span className="text-[10px] font-mono font-bold text-kindle-accent">{downloadProgress.percent}%</span>
-                          </div>
-                          <div className="w-full h-2 bg-kindle-border rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-kindle-accent transition-all duration-500 rounded-full"
-                              style={{ width: `${downloadProgress.percent}%` }}
-                            />
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                
-                {/* Hardcover Community */}
-                <div className="pt-4 mt-4 border-t border-kindle-border">
-                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted mb-3 font-sans">Community Reviews</h4>
-                  <div className="bg-kindle-bg border border-kindle-border rounded-2xl p-4">
-                    <HardcoverCommunity 
-                      book={selectedBook as any}
-                    />
-                  </div>
-                </div>
-</div>
+                )}
               </div>
             </div>
           </div>
         </div>,
         document.body
       )}
+
 
       {/* Featured Book Details Preview Modal */}
       {selectedFeaturedBook && ReactDOM.createPortal(
@@ -2551,15 +2512,26 @@ export default function DiscoverView({
                     </div>
                     <div className="w-full flex flex-col gap-3 max-w-[240px]">
                       <button 
+                        onClick={() => handleDirectDownloadFromFeatured(selectedFeaturedBook)}
+                        className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                      >
+                        <Zap className="w-4 h-4" />
+                        Direct Download
+                      </button>
+
+                      <button 
                         onClick={() => {
                           const queryText = `${selectedFeaturedBook.title} ${selectedFeaturedBook.author || ""}`.trim();
                           setSelectedFeaturedBook(null);
+                          setIsAdvancedSearch(true);
+                          setSearchMode(true);
                           handleSearch(queryText);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className="w-full py-4 px-5 bg-kindle-accent hover:bg-kindle-accent/90 text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-[0.15em] transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
+                        className="w-full py-3.5 px-5 bg-kindle-card border border-kindle-border hover:border-kindle-accent text-kindle-text rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        <Search className="w-4 h-4" />
-                        Search Download
+                        <Database className="w-4 h-4" />
+                        Advanced Search
                       </button>
                       
                       <div className="hidden md:block mt-8 space-y-8">
@@ -2690,7 +2662,9 @@ export default function DiscoverView({
                               <div className="h-5 bg-black/5 rounded-lg w-4/5" />
                             </div>
                           ) : (
-                            <div className="prose prose-base dark:prose-invert max-w-none prose-neutral leading-relaxed [&_a]:text-kindle-accent" dangerouslySetInnerHTML={{ __html: featuredBookDetails?.description || "No detailed description available." }} />
+                            <p className="whitespace-pre-line text-sm md:text-base text-neutral-700 dark:text-kindle-text-muted leading-relaxed">
+                              {stripHtml(featuredBookDetails?.description || selectedFeaturedBook.description || "No detailed description available.")}
+                            </p>
                           )}
                         </div>
                       </section>
@@ -2769,6 +2743,37 @@ export default function DiscoverView({
                                 {fetchingFeaturedMirrors ? (
                                   <div className="py-6 text-center text-xs text-kindle-text-muted font-bold uppercase tracking-widest animate-pulse">
                                     Resolving direct links...
+                                  </div>
+                                ) : downloadProgress.step !== "idle" ? (
+                                  <div className="p-4 bg-kindle-card border-2 border-kindle-accent/20 rounded-2xl shadow-xl space-y-3 animate-in fade-in zoom-in-95 duration-300">
+                                    {downloadProgress.step === "completed" ? (
+                                      <div className="flex flex-col items-center gap-2 py-2">
+                                        <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                                        <span className="text-sm font-bold uppercase tracking-widest font-sans text-kindle-text">Import Successful</span>
+                                        <p className="text-[10px] text-kindle-text-muted">Book has been added to your local library.</p>
+                                      </div>
+                                    ) : downloadProgress.error ? (
+                                      <div className="flex items-center gap-3 text-red-600 p-2">
+                                        <AlertTriangle className="w-5 h-5 shrink-0" />
+                                        <p className="text-xs font-sans font-medium">{downloadProgress.error}</p>
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-3">
+                                        <div className="flex items-center gap-2 justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <Loader2 className="w-4 h-4 animate-spin text-kindle-accent" />
+                                            <span className="text-[10px] font-bold uppercase tracking-widest font-sans text-kindle-text-muted">{downloadProgress.step}…</span>
+                                          </div>
+                                          <span className="text-[10px] font-mono font-bold text-kindle-accent">{downloadProgress.percent}%</span>
+                                        </div>
+                                        <div className="w-full h-2 bg-kindle-bg rounded-full overflow-hidden border border-kindle-border">
+                                          <div
+                                            className="h-full bg-kindle-accent transition-all duration-500 rounded-full"
+                                            style={{ width: `${downloadProgress.percent}%` }}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 ) : featuredMirrorError ? (
                                   <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl text-[10px] text-amber-600 font-sans leading-relaxed">
@@ -2853,7 +2858,7 @@ export default function DiscoverView({
                           <Users className="w-4 h-4 text-kindle-accent" />
                           <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text">Community Readers</h3>
                         </div>
-                        <div className="bg-kindle-card/20 border border-kindle-border rounded-2xl overflow-hidden">
+                        <div className="bg-kindle-card/20 border border-kindle-border rounded-2xl overflow-hidden p-4 md:p-6">
                           <HardcoverCommunity 
                             book={{ title: featuredBookDetails?.title || selectedFeaturedBook.title, author: featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author } as any}
                           />
