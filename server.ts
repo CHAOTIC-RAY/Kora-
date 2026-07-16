@@ -2066,7 +2066,9 @@ app.get("/api/proxy-file", async (req, res) => {
         try {
           const resIpfs = await fetch(gatewayUrl, {
             headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+              "Referer": "https://annas-archive.org/",
+              "Accept": "application/octet-stream,application/epub+zip,application/pdf,*/*"
             },
             signal: controller.signal,
             redirect: 'follow'
@@ -2127,7 +2129,9 @@ app.get("/api/proxy-file", async (req, res) => {
           const timeoutId = setTimeout(() => controller.abort(), 8000);
           const resOriginal = await fetch(targetUrl, {
             headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+              "Referer": "https://annas-archive.org/",
+              "Accept": "application/octet-stream,application/epub+zip,application/pdf,*/*"
             },
             signal: controller.signal,
             redirect: 'follow'
