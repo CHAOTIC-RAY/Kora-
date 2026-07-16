@@ -2180,15 +2180,19 @@ app.get("/api/proxy-file", async (req, res) => {
     }
 
     const contentType = response.headers.get("content-type") || "application/octet-stream";
-    if (contentType.toLowerCase().includes("text/html")) {
-      const text = await response.text();
-      if (text.includes("Cloudflare") || text.includes("captcha")) {
-        throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like Library.lol or IPFS).");
-      }
-      throw new Error("This mirror URL returned an HTML webpage instead of a binary book file. This usually happens when the mirror requires manual verification (like resolving a CAPTCHA), wait countdowns, or the link has expired.");
-    }
-
     const contentDisposition = response.headers.get("content-disposition");
+    
+    if (contentType.toLowerCase().includes("text/html") || 
+        contentType.toLowerCase().includes("php") || 
+        (contentDisposition && contentDisposition.toLowerCase().includes(".php"))) {
+      if (contentType.toLowerCase().includes("text/html")) {
+        const text = await response.text();
+        if (text.includes("Cloudflare") || text.includes("captcha")) {
+          throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like Library.lol or IPFS).");
+        }
+      }
+      throw new Error("This mirror URL returned an incorrect file type (HTML/PHP) instead of a binary book file. This usually happens when the mirror requires manual verification or the link has expired.");
+    }
     const contentLength = response.headers.get("content-length");
 
     res.setHeader("Content-Type", contentType);
