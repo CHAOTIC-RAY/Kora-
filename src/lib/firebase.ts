@@ -31,19 +31,32 @@ const firebaseConfig = {
 };
 
 let app;
-let db: any;
-let auth: any;
+let db: any = null;
+let auth: any = null;
 let isRealFirebase = false;
 
+export function disableFirebase() {
+  isRealFirebase = false;
+  db = null;
+  auth = null;
+  console.log("Firebase disabled due to network or configuration errors.");
+}
+
 try {
-  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app, (rawFirebaseConfig as any).firestoreDatabaseId);
-  auth = getAuth(app);
-  isRealFirebase = !!firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("AIzaSyFakeKey");
-  console.log("Firebase initialized successfully.", isRealFirebase ? "Real Firestore enabled." : "Using Firestore with placeholder credentials.");
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyFakeKey" && firebaseConfig.projectId) {
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    db = getFirestore(app, (rawFirebaseConfig as any).firestoreDatabaseId);
+    auth = getAuth(app);
+    isRealFirebase = true;
+    console.log("Firebase initialized successfully. Real Firestore enabled.");
+  } else {
+    isRealFirebase = false;
+  }
 } catch (error) {
   console.error("Firebase failed to initialize. Falling back to local state sync.", error);
   isRealFirebase = false;
+  db = null;
+  auth = null;
 }
 
 export { db, auth, isRealFirebase };
@@ -129,6 +142,7 @@ export async function syncBookToCloud(userId: string, book: BookMetadata): Promi
       await setDoc(docRef, book, { merge: true });
     } catch (err) {
       console.warn("Failed to sync book to Firestore cloud:", err);
+      disableFirebase();
     }
   }
 }
@@ -162,6 +176,7 @@ export async function syncDeleteBook(userId: string, bookId: string): Promise<vo
       await deleteDoc(docRef);
     } catch (err) {
       console.warn("Failed to delete book from Firestore cloud:", err);
+      disableFirebase();
     }
   }
 }
@@ -194,6 +209,7 @@ export async function loadLibrary(userId: string): Promise<BookMetadata[]> {
       }
     } catch (err) {
       console.warn("Failed to load library from Firestore cloud, using offline copy:", err);
+      disableFirebase();
     }
   }
 
@@ -224,6 +240,7 @@ export async function saveCustomTags(userId: string, tags: string[]): Promise<vo
       await setDoc(docRef, { tags }, { merge: true });
     } catch (err) {
       console.warn("Failed to sync custom tags to cloud:", err);
+      disableFirebase();
     }
   }
 }
@@ -244,6 +261,7 @@ export enum OperationType {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  disableFirebase();
   const errInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {

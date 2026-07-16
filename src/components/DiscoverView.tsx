@@ -371,7 +371,7 @@ export default function DiscoverView({
     if (searchMode && query) {
       handleSearch(query);
     }
-  }, [activeSource, currentPage]);
+  }, [activeSource, currentPage, isAdvancedSearch]);
 
   useEffect(() => {
     if (!hasMore || loading || loadingMore) return;
@@ -1710,9 +1710,18 @@ export default function DiscoverView({
                   onClick={() => {
                     const newVal = !isAdvancedSearch;
                     setIsAdvancedSearch(newVal);
-                    // Preserve query when switching modes as requested
+                    // Ensure we are in search mode when activating advanced search
                     if (newVal) {
                       setSearchMode(true);
+                      setCurrentPage(1);
+                      setResults([]);
+                      prefetchCache.current.clear();
+                      if (activeSource !== "all") setActiveSource("all");
+                    } else {
+                      // If toggling off, also clear to reset to Google Books
+                      setCurrentPage(1);
+                      setResults([]);
+                      prefetchCache.current.clear();
                     }
                   }}
                   className={`px-3.5 py-1.5 md:py-3.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
@@ -1741,13 +1750,14 @@ export default function DiscoverView({
                     { id: "openlibrary", label: "Open Library", icon: ExternalLink },
                     { id: "standard", label: "Standard Ebooks", icon: Library },
                   ]
-                  .filter(src => src.id === "all" || availableSourcesFromResults.has(src.id))
                   .map((src) => (
                     <button
                       key={src.id}
                       onClick={() => {
                         setActiveSource(src.id);
                         setCurrentPage(1);
+                        setResults([]);
+                        prefetchCache.current.clear();
                       }}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all border ${
                         activeSource === src.id

@@ -414,71 +414,269 @@ export default function SettingsView({
       </header>
 
       <div className="space-y-6">
-        {/* Account & Sync */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
-          <div 
-            onClick={() => toggleCategory("account")}
-            className="flex items-center justify-between cursor-pointer select-none"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-                <UserIcon className="w-4 h-4 text-kindle-text" />
-              </div>
-              <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Account &amp; Sync</h3>
+        {/* Add Books & Sideload Settings */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-6">
+          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
+            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+              <Plus className="w-4 h-4 text-kindle-text" />
             </div>
-            <ChevronDown className={`w-4 h-4 text-kindle-text-muted transition-transform duration-200 ${expandedCategories.account ? "rotate-180" : ""}`} />
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Add Books & Import Settings</h3>
           </div>
 
-          {expandedCategories.account && (
-            <div className="mt-4 pt-4 border-t border-kindle-border/40 space-y-4 animate-in slide-in-from-top-2 duration-200">
-              {user && !user.isAnonymous ? (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-100 dark:bg-emerald-950/20 dark:border-emerald-900/35 rounded-xl">
-                    <div className="w-9 h-9 bg-emerald-600 rounded-full flex items-center justify-center text-white font-bold shrink-0">
-                      {user.email?.[0].toUpperCase()}
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="text-xs font-bold truncate">{user.email}</p>
-                      <p className="text-[9px] text-emerald-700 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-1 font-semibold">
-                        <ShieldCheck className="w-3 h-3" />
-                        Cloud Sync Active
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={onSignOut}
-                    className="w-full py-2 border border-red-200 text-red-600 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 dark:hover:bg-red-950/10 transition cursor-pointer"
-                  >
-                    Sign Out
-                  </button>
-                </div>
+          <p className="text-[11px] text-kindle-text-muted leading-relaxed">
+            Kora supports multi-channel ingestion. Upload local files directly, sideload from Cloud providers, or map a System download directory to synchronize your library.
+          </p>
+
+          {/* 1. Direct File Upload Box */}
+          <div className="space-y-3">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Local File Upload</h4>
+            <div 
+              id="drag-and-drop-box"
+              onDragEnter={handleDrag}
+              onDragOver={handleDrag}
+              onDragLeave={handleDrag}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-kindle p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3 h-40 ${
+                isDragActive 
+                  ? "border-kindle-accent bg-kindle-accent/5" 
+                  : "border-kindle-border hover:border-kindle-text-muted bg-kindle-bg/50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    handleFileUpload(e.target.files[0]);
+                  }
+                }}
+                className="hidden"
+              />
+
+              {uploading ? (
+                <>
+                  <div className="w-6 h-6 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
+                  <p className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-widest animate-pulse">Syncing to storage...</p>
+                </>
               ) : (
-                <div className="space-y-4">
-                  {user && user.isAnonymous && (
-                    <div className="p-3 bg-amber-50/50 border border-amber-200/50 dark:bg-amber-950/10 dark:border-amber-900/35 rounded-xl space-y-1">
-                      <div className="flex items-center gap-1.5 text-amber-800 dark:text-amber-400">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span className="text-[9px] font-bold uppercase tracking-widest">Guest Account Active</span>
-                      </div>
-                      <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 leading-relaxed font-sans font-medium">
-                        Your guest workspace is saved locally. It will automatically reset in {getRemainingGuestDays(user)} days.
-                      </p>
-                    </div>
-                  )}
-                  <p className="text-xs text-kindle-text-muted leading-relaxed">
-                    Sign in with Google or create an account to secure your library forever and sync across all your devices.
-                  </p>
+                <>
+                  <div className="p-2.5 bg-kindle-card border border-kindle-border rounded-xl text-kindle-text-muted shadow-sm hover:scale-105 transition">
+                    <Upload className="w-5 h-5 text-kindle-text" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em]">Drag & Drop or Click to Add File</p>
+                    <p className="text-[8px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB, PDF, HTML, JSON, TXT up to 100MB</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {uploadError && (
+              <p className="text-[9px] text-red-500 font-bold uppercase tracking-wider text-center bg-red-500/5 py-1.5 rounded-lg border border-red-500/10">
+                {uploadError}
+              </p>
+            )}
+          </div>
+
+          {/* 2. Cloud Sideloading Triggers */}
+          <div className="border-t border-kindle-border/60 pt-4 space-y-3">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Cloud Sync Ingestion</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => setShowCloudImport(true)}
+                className="p-3.5 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition shadow-xs group cursor-pointer"
+              >
+                <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg group-hover:scale-105 transition">
+                  <Cloud className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text">Google Drive</p>
+                  <p className="text-[7px] text-kindle-text-muted">Direct Import</p>
+                </div>
+              </button>
+              <button 
+                onClick={() => setShowCloudImport(true)}
+                className="p-3.5 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition shadow-xs group cursor-pointer"
+              >
+                <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-lg group-hover:scale-105 transition">
+                  <HardDrive className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text">Dropbox</p>
+                  <p className="text-[7px] text-kindle-text-muted">Cloud sideload</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Folder Auto-Ingestion Settings */}
+          <div className="border-t border-kindle-border/60 pt-4 space-y-4">
+            <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Folder Auto-Ingestion</h4>
+            
+            {/* Real Directory Selection Block */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">System Folder Integration</h5>
+                  <p className="text-[9px] text-kindle-text-muted">Use native File System Access APIs</p>
+                </div>
+                {realDirHandle ? (
                   <button
-                    onClick={onSignIn}
-                    className="w-full py-2.5 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                    onClick={handleDisconnectRealDir}
+                    className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/45 dark:text-red-400 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
                   >
-                    <LogIn className="w-3.5 h-3.5" />
-                    Sign In / Create Account
+                    Disconnect
                   </button>
+                ) : (
+                  <button
+                    onClick={handleSelectRealDir}
+                    className="px-3 py-1.5 bg-kindle-bg border border-kindle-border hover:bg-neutral-100 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+                  >
+                    Select Folder
+                  </button>
+                )}
+              </div>
+
+              {realDirHandle && (
+                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[11px] font-mono truncate max-w-xs">{realDirHandle.name}</span>
+                  </div>
+                  <span className="text-[8px] uppercase tracking-widest font-bold font-mono text-emerald-600">Active Path</span>
                 </div>
               )}
             </div>
-          )}
+
+            {/* Virtual Fallback Simulator Mode */}
+            <div className="border-t border-kindle-border/40 pt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Virtual Folder Simulator</h5>
+                  <p className="text-[9px] text-kindle-text-muted">Simulate a local downloads folder in iframe sandboxes</p>
+                </div>
+                <Toggle
+                  on={useVirtualDir}
+                  onClick={handleToggleVirtualDir}
+                />
+              </div>
+
+              {useVirtualDir && (
+                <div className="space-y-3 animate-in fade-in duration-300">
+                  <div>
+                    <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">
+                      Virtual Location Path
+                    </label>
+                    <input
+                      type="text"
+                      value={virtualPath}
+                      onChange={(e) => handleUpdateVirtualPath(e.target.value)}
+                      placeholder="e.g. ~/Downloads/Kora"
+                      className="w-full px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono outline-none focus:border-kindle-accent"
+                    />
+                  </div>
+
+                  <div className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-kindle-border pb-2">
+                      <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Simulated Directory Content</span>
+                      <span className="text-[9px] font-mono font-bold">{virtualFiles.length} files present</span>
+                    </div>
+
+                    {virtualFiles.length === 0 ? (
+                      <p className="text-[10px] text-kindle-text-muted italic text-center py-2">
+                        Folder is empty. Add virtual files below to simulate downloading or side-loading.
+                      </p>
+                    ) : (
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        {virtualFiles.map((f, i) => (
+                          <div key={i} className="flex items-center justify-between text-[11px] p-2 bg-kindle-card border border-kindle-border rounded-lg">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <BookMarked className="w-3.5 h-3.5 text-kindle-text-muted" />
+                              <div className="min-w-0">
+                                <p className="font-serif font-bold truncate">{f.name}</p>
+                                <p className="text-[8px] text-kindle-text-muted font-sans uppercase tracking-wider">{f.author} • {f.size}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[8px] font-mono bg-kindle-bg px-1.5 py-0.5 rounded border border-kindle-border uppercase font-bold text-kindle-text-muted">
+                                {f.extension}
+                              </span>
+                              <button
+                                onClick={() => handleRemoveVirtualFile(i)}
+                                className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
+                                title="Delete from virtual folder"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add simulated book inputs */}
+                    <div className="border-t border-kindle-border/60 pt-3 space-y-2">
+                      <p className="text-[8px] uppercase tracking-widest font-bold text-kindle-text-muted">
+                        Add Simulated Ebook to Folder
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Book Title (e.g., Moby Dick)"
+                          value={newVirtualFileName}
+                          onChange={(e) => setNewVirtualFileName(e.target.value)}
+                          className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Author"
+                          value={newVirtualAuthor}
+                          onChange={(e) => setNewVirtualAuthor(e.target.value)}
+                          className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                        />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <select
+                          value={newVirtualExt}
+                          onChange={(e) => setNewVirtualExt(e.target.value as any)}
+                          className="p-1.5 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                        >
+                          <option value="epub">EPUB format</option>
+                          <option value="pdf">PDF format</option>
+                        </select>
+                        <button
+                          onClick={handleAddVirtualFile}
+                          className="flex-1 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[9px] font-bold uppercase tracking-widest transition flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" /> Place in Folder
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Trigger Row */}
+          <div className="border-t border-kindle-border pt-4 flex flex-col gap-3">
+            <button
+              onClick={handleScanNow}
+              disabled={isScanning || (!realDirHandle && !useVirtualDir)}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-kindle-text text-kindle-bg hover:bg-kindle-accent disabled:opacity-40 disabled:hover:bg-kindle-text rounded-xl text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
+            >
+              <HardDrive className={`w-3.5 h-3.5 ${isScanning ? "animate-spin" : ""}`} />
+              {isScanning ? "Analyzing Directory..." : "Analyze Folder for New Books Now"}
+            </button>
+
+            {scanResultText && (
+              <p className="text-[10px] text-center font-semibold text-emerald-600 uppercase tracking-wider animate-pulse">
+                {scanResultText}
+              </p>
+            )}
+          </div>
         </section>
 
         {/* Appearance */}
@@ -820,270 +1018,7 @@ export default function SettingsView({
           </div>
         </section>
 
-        {/* Add Books & Sideload Settings */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-6">
-          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
-            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-              <Plus className="w-4 h-4 text-kindle-text" />
-            </div>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Add Books & Import Settings</h3>
-          </div>
 
-          <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-            Kora supports multi-channel ingestion. Upload local files directly, sideload from Cloud providers, or map a System download directory to synchronize your library.
-          </p>
-
-          {/* 1. Direct File Upload Box */}
-          <div className="space-y-3">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Local File Upload</h4>
-            <div 
-              id="drag-and-drop-box"
-              onDragEnter={handleDrag}
-              onDragOver={handleDrag}
-              onDragLeave={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-kindle p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3 h-40 ${
-                isDragActive 
-                  ? "border-kindle-accent bg-kindle-accent/5" 
-                  : "border-kindle-border hover:border-kindle-text-muted bg-kindle-bg/50"
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileUpload(e.target.files[0]);
-                  }
-                }}
-                className="hidden"
-              />
-
-              {uploading ? (
-                <>
-                  <div className="w-6 h-6 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-widest animate-pulse">Syncing to storage...</p>
-                </>
-              ) : (
-                <>
-                  <div className="p-2.5 bg-kindle-card border border-kindle-border rounded-xl text-kindle-text-muted shadow-sm hover:scale-105 transition">
-                    <Upload className="w-5 h-5 text-kindle-text" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.15em]">Drag & Drop or Click to Add File</p>
-                    <p className="text-[8px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB, PDF, HTML, JSON, TXT up to 100MB</p>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {uploadError && (
-              <p className="text-[9px] text-red-500 font-bold uppercase tracking-wider text-center bg-red-500/5 py-1.5 rounded-lg border border-red-500/10">
-                {uploadError}
-              </p>
-            )}
-          </div>
-
-          {/* 2. Cloud Sideloading Triggers */}
-          <div className="border-t border-kindle-border/60 pt-4 space-y-3">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Cloud Sync Ingestion</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => setShowCloudImport(true)}
-                className="p-3.5 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition shadow-xs group cursor-pointer"
-              >
-                <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg group-hover:scale-105 transition">
-                  <Cloud className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text">Google Drive</p>
-                  <p className="text-[7px] text-kindle-text-muted">Direct Import</p>
-                </div>
-              </button>
-              <button 
-                onClick={() => setShowCloudImport(true)}
-                className="p-3.5 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition shadow-xs group cursor-pointer"
-              >
-                <div className="p-2 bg-indigo-500/10 text-indigo-500 rounded-lg group-hover:scale-105 transition">
-                  <HardDrive className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text">Dropbox</p>
-                  <p className="text-[7px] text-kindle-text-muted">Cloud sideload</p>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* 3. Folder Auto-Ingestion Settings */}
-          <div className="border-t border-kindle-border/60 pt-4 space-y-4">
-            <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Folder Auto-Ingestion</h4>
-            
-            {/* Real Directory Selection Block */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">System Folder Integration</h5>
-                  <p className="text-[9px] text-kindle-text-muted">Use native File System Access APIs</p>
-                </div>
-                {realDirHandle ? (
-                  <button
-                    onClick={handleDisconnectRealDir}
-                    className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/45 dark:text-red-400 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
-                  >
-                    Disconnect
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSelectRealDir}
-                    className="px-3 py-1.5 bg-kindle-bg border border-kindle-border hover:bg-neutral-100 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
-                  >
-                    Select Folder
-                  </button>
-                )}
-              </div>
-
-              {realDirHandle && (
-                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[11px] font-mono truncate max-w-xs">{realDirHandle.name}</span>
-                  </div>
-                  <span className="text-[8px] uppercase tracking-widest font-bold font-mono text-emerald-600">Active Path</span>
-                </div>
-              )}
-            </div>
-
-            {/* Virtual Fallback Simulator Mode */}
-            <div className="border-t border-kindle-border/40 pt-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Virtual Folder Simulator</h5>
-                  <p className="text-[9px] text-kindle-text-muted">Simulate a local downloads folder in iframe sandboxes</p>
-                </div>
-                <Toggle
-                  on={useVirtualDir}
-                  onClick={handleToggleVirtualDir}
-                />
-              </div>
-
-              {useVirtualDir && (
-                <div className="space-y-3 animate-in fade-in duration-300">
-                  <div>
-                    <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">
-                      Virtual Location Path
-                    </label>
-                    <input
-                      type="text"
-                      value={virtualPath}
-                      onChange={(e) => handleUpdateVirtualPath(e.target.value)}
-                      placeholder="e.g. ~/Downloads/Kora"
-                      className="w-full px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono outline-none focus:border-kindle-accent"
-                    />
-                  </div>
-
-                  <div className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3">
-                    <div className="flex items-center justify-between border-b border-kindle-border pb-2">
-                      <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Simulated Directory Content</span>
-                      <span className="text-[9px] font-mono font-bold">{virtualFiles.length} files present</span>
-                    </div>
-
-                    {virtualFiles.length === 0 ? (
-                      <p className="text-[10px] text-kindle-text-muted italic text-center py-2">
-                        Folder is empty. Add virtual files below to simulate downloading or side-loading.
-                      </p>
-                    ) : (
-                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                        {virtualFiles.map((f, i) => (
-                          <div key={i} className="flex items-center justify-between text-[11px] p-2 bg-kindle-card border border-kindle-border rounded-lg">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <BookMarked className="w-3.5 h-3.5 text-kindle-text-muted" />
-                              <div className="min-w-0">
-                                <p className="font-serif font-bold truncate">{f.name}</p>
-                                <p className="text-[8px] text-kindle-text-muted font-sans uppercase tracking-wider">{f.author} • {f.size}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[8px] font-mono bg-kindle-bg px-1.5 py-0.5 rounded border border-kindle-border uppercase font-bold text-kindle-text-muted">
-                                {f.extension}
-                              </span>
-                              <button
-                                onClick={() => handleRemoveVirtualFile(i)}
-                                className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
-                                title="Delete from virtual folder"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Add simulated book inputs */}
-                    <div className="border-t border-kindle-border/60 pt-3 space-y-2">
-                      <p className="text-[8px] uppercase tracking-widest font-bold text-kindle-text-muted">
-                        Add Simulated Ebook to Folder
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <input
-                          type="text"
-                          placeholder="Book Title (e.g., Moby Dick)"
-                          value={newVirtualFileName}
-                          onChange={(e) => setNewVirtualFileName(e.target.value)}
-                          className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Author"
-                          value={newVirtualAuthor}
-                          onChange={(e) => setNewVirtualAuthor(e.target.value)}
-                          className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
-                        />
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <select
-                          value={newVirtualExt}
-                          onChange={(e) => setNewVirtualExt(e.target.value as any)}
-                          className="p-1.5 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
-                        >
-                          <option value="epub">EPUB format</option>
-                          <option value="pdf">PDF format</option>
-                        </select>
-                        <button
-                          onClick={handleAddVirtualFile}
-                          className="flex-1 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[9px] font-bold uppercase tracking-widest transition flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" /> Place in Folder
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Action Trigger Row */}
-          <div className="border-t border-kindle-border pt-4 flex flex-col gap-3">
-            <button
-              onClick={handleScanNow}
-              disabled={isScanning || (!realDirHandle && !useVirtualDir)}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-kindle-text text-kindle-bg hover:bg-kindle-accent disabled:opacity-40 disabled:hover:bg-kindle-text rounded-xl text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
-            >
-              <HardDrive className={`w-3.5 h-3.5 ${isScanning ? "animate-spin" : ""}`} />
-              {isScanning ? "Analyzing Directory..." : "Analyze Folder for New Books Now"}
-            </button>
-
-            {scanResultText && (
-              <p className="text-[10px] text-center font-semibold text-emerald-600 uppercase tracking-wider animate-pulse">
-                {scanResultText}
-              </p>
-            )}
-          </div>
-        </section>
 
         {/* Cloud Import Connectivity Modal */}
         {showCloudImport && (
