@@ -32,6 +32,7 @@ import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
 import DownloadBookBtn from "./components/DownloadBookBtn";
 import { toast, Toaster } from "react-hot-toast";
+import { logger } from "./lib/logger";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
@@ -170,13 +171,16 @@ export default function App() {
     });
 
     toast.loading(`Downloading ${book.title}...`, { id: downloadId });
+    logger.info(`Starting background download for "${book.title}" by ${book.author || 'Unknown'}. Size: ${variant.size || 'Unknown'}. Mirror: ${mirror.url}`);
 
     try {
       const fileExtension = mirror.url.split('.').pop()?.split('?')[0]?.toLowerCase() || "epub";
       const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
       
       const response = await fetch(proxyUrl);
-      if (!response.ok) throw new Error("Download failed");
+      if (!response.ok) {
+        throw new Error(`Download request failed with status: ${response.status}`);
+      }
 
       const reader = response.body?.getReader();
       const contentLength = +(response.headers.get('Content-Length') || 0);
@@ -228,9 +232,11 @@ export default function App() {
         return updated;
       });
 
+      logger.info(`Successfully completed download for "${book.title}". Saved to IndexedDB with ID: ${id}`);
       toast.success(`${book.title} downloaded!`, { id: downloadId });
       refreshLibrary();
     } catch (err: any) {
+      logger.error(`Background download failed for "${book.title}". Mirror URL: ${mirror.url}. Error: ${err.message || err}`, err);
       console.error("Background download failed:", err);
       setGlobalDownloads(prev => {
         const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: err.message } : dl);

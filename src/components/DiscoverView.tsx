@@ -7,6 +7,7 @@ import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users } from "lucide-react";
 import toast from "react-hot-toast";
+import { logger } from "../lib/logger";
 import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
 
@@ -1276,7 +1277,9 @@ export default function DiscoverView({
     for (let index = 0; index < directMirrors.length; index++) {
       const mirror = directMirrors[index];
       try {
-        console.log(`Auto-downloading from mirror ${index + 1}/${directMirrors.length}: ${mirror.url}`);
+        const logMsg = `Auto-downloading "${book.title}" from mirror ${index + 1}/${directMirrors.length}: ${mirror.url}`;
+        console.log(logMsg);
+        logger.info(logMsg);
         setDownloadProgress({ 
           step: `downloading (Mirror ${index + 1}/${directMirrors.length})`, 
           percent: 30 + Math.floor((index / directMirrors.length) * 30), 
@@ -1415,13 +1418,16 @@ export default function DiscoverView({
         });
         localStorage.setItem("kora_downloads_log", JSON.stringify(dlLog.slice(0, 50)));
 
+        logger.info(`Auto-download succeeded for "${newBook.title}". Saved to IndexedDB via mirror: ${mirror.url}`);
         setDownloadProgress({ step: "completed", percent: 100, error: null });
         setTimeout(() => onSelectedBookChange(null), 1500);
         return; // Success!
 
       } catch (err: any) {
+        logger.warn(`Mirror failed during auto-download for "${book.title}". URL: ${mirror.url}. Error: ${err.message || err}`);
         console.warn(`Mirror ${mirror.url} failed during auto-download:`, err);
         if (index === directMirrors.length - 1) {
+          logger.error(`All direct mirrors failed during auto-download for "${book.title}".`);
           setDownloadProgress({ 
             step: "idle", 
             percent: 0, 
