@@ -187,7 +187,18 @@ export default function App() {
       let receivedLength = 0;
       const chunks = [];
 
+      const formatBytes = (bytes: number) => {
+        if (bytes === 0) return "0 B";
+        const k = 1024;
+        const sizes = ["B", "KB", "MB", "GB"];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+      };
+
       if (reader) {
+        const startTime = Date.now();
+        let lastUpdateTime = Date.now();
+
         while(true) {
           const {done, value} = await reader.read();
           if (done) break;
@@ -198,7 +209,47 @@ export default function App() {
             ? Math.round((receivedLength / contentLength) * 100) 
             : null;
             
-          setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { ...dl, percent } : dl));
+          const now = Date.now();
+          // Throttle state updates to once every 150ms for buttery-smooth UI rendering
+          if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
+            lastUpdateTime = now;
+            const elapsed = (now - startTime) / 1000; // seconds
+            const speedBytes = elapsed > 0 ? (receivedLength / elapsed) : 0;
+            const speedStr = speedBytes > 1024 * 1024 
+              ? `${(speedBytes / (1024 * 1024)).toFixed(1)} MB/s` 
+              : speedBytes > 1024 
+                ? `${(speedBytes / 1024).toFixed(0)} KB/s` 
+                : `${Math.round(speedBytes)} B/s`;
+
+            let etaStr = "";
+            if (contentLength > 0 && speedBytes > 0) {
+              const remainingBytes = contentLength - receivedLength;
+              const remainingSeconds = Math.round(remainingBytes / speedBytes);
+              if (remainingSeconds > 60) {
+                const mins = Math.floor(remainingSeconds / 60);
+                const secs = remainingSeconds % 60;
+                etaStr = `${mins}m ${secs}s remaining`;
+              } else if (remainingSeconds > 0) {
+                etaStr = `${remainingSeconds}s remaining`;
+              } else {
+                etaStr = "finishing...";
+              }
+            } else {
+              etaStr = "downloading...";
+            }
+
+            const transferredStr = contentLength > 0 
+              ? `${formatBytes(receivedLength)} of ${formatBytes(contentLength)}`
+              : formatBytes(receivedLength);
+
+            setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
+              ...dl, 
+              percent,
+              speed: speedStr,
+              transferred: transferredStr,
+              eta: etaStr
+            } : dl));
+          }
         }
       }
 

@@ -58,6 +58,18 @@ class DiagnosticLogger {
     };
   }
 
+  public info(message: string, detail?: any) {
+    this.addLog("info", message, detail);
+  }
+
+  public warn(message: string, detail?: any) {
+    this.addLog("warn", message, detail);
+  }
+
+  public error(message: string, detail?: any) {
+    this.addLog("error", message, detail);
+  }
+
   public addLog(type: "info" | "warn" | "error", message: string, detail?: any) {
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),

@@ -225,7 +225,15 @@ export default function DownloadsManager({
                 <div>
                   <h4 className="font-bold text-xs">{dl.title}</h4>
                   <p className="text-[10px] text-kindle-text-muted mt-0.5">
-                    {dl.author} • {dl.size || "Unknown size"}
+                    {dl.author} • {dl.status === "downloading" ? (
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <span className="font-mono text-kindle-text font-medium bg-kindle-bg border border-kindle-border/40 px-1.5 py-0.5 rounded text-[9px]">{dl.transferred || "0 KB"}</span>
+                        {dl.speed && <span className="text-kindle-accent font-bold font-mono text-[9px] bg-kindle-accent/[0.04] border border-kindle-accent/10 px-1.5 py-0.5 rounded">{dl.speed}</span>}
+                        {dl.eta && <span className="text-kindle-text-muted italic text-[9px]">{dl.eta}</span>}
+                      </span>
+                    ) : (
+                      <span>{dl.size || "Unknown size"}</span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -238,9 +246,9 @@ export default function DownloadsManager({
                         </span>
                         <Loader2 className="w-4 h-4 text-kindle-accent animate-spin" />
                       </div>
-                      <div className="w-20 h-1 bg-kindle-bg rounded-full overflow-hidden border border-kindle-border">
+                      <div className="w-20 sm:w-32 h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden border border-kindle-border">
                         <div 
-                          className="h-full bg-kindle-accent transition-all duration-300"
+                          className="h-full bg-gradient-to-r from-kindle-accent to-emerald-500 transition-all duration-300 rounded-full shadow-[0_0_8px_rgba(var(--kindle-accent-rgb),0.3)]"
                           style={{ width: `${dl.percent || 0}%` }}
                         />
                       </div>
