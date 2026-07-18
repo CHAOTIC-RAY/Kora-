@@ -5,7 +5,7 @@ import {
   User as UserIcon, ShieldCheck, BookOpen,
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
-  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown
+  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import { 
@@ -1246,22 +1246,12 @@ export default function SettingsView({
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">GitHub</span>
               <a 
-                href="https://github.com/2003Ray-Dark" 
+                href="https://github.com/CHAOTIC-RAY/Kora-" 
                 target="_blank" 
                 rel="noreferrer" 
-                className="font-bold flex items-center gap-1 hover:text-kindle-accent transition-colors"
+                className="font-bold flex items-center gap-1.5 hover:text-kindle-accent transition-colors"
               >
-                @2003Ray-Dark
-              </a>
-            </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-kindle-text-muted">Source Code</span>
-              <a 
-                href="https://github.com/2003Ray-Dark/Kora" 
-                target="_blank" 
-                rel="noreferrer" 
-                className="font-bold flex items-center gap-1 hover:text-kindle-accent transition-colors"
-              >
+                <Github className="w-3.5 h-3.5" />
                 Kora Repository
               </a>
             </div>

@@ -525,6 +525,32 @@ export default function LibraryManager({
 
   const finalRenderedBooks = filteredBooks;
 
+  // Render active downloads as cards too (so the light-grayscale thumbnail +
+  // download animation shows in the library while the file is still incoming).
+  // The existing downloading overlay keys off book.id/md5 matching a download,
+  // so we synthesize cards with id = download id/md5.
+  const downloadingBooks: any[] = (downloads || [])
+    .filter((d) => d.status === "downloading" || d.status === "error")
+    .map((d) => {
+      let coverUrl = "";
+      try {
+        const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[d.id];
+        coverUrl = mirror?.book?.coverUrl || "";
+      } catch (e) {}
+      return {
+        id: d.md5 || d.id,
+        md5: d.md5,
+        title: d.title,
+        author: d.author,
+        coverUrl,
+        isDownloadingCard: true,
+        downloadStatus: d.status,
+      };
+    });
+  const renderedWithDownloads = downloadingBooks.length
+    ? [...downloadingBooks, ...finalRenderedBooks]
+    : finalRenderedBooks;
+
   // Reading Stats
   const totalBooks = books.length;
   const completedBooks = books.filter(b => b.status === "completed").length;
@@ -659,9 +685,10 @@ export default function LibraryManager({
           </div>
         ) : (
           <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 md:gap-6 space-y-3 md:space-y-6">
-            {finalRenderedBooks.map((book) => {
+            {renderedWithDownloads.map((book) => {
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
+              const isDownloadingCard = !!book.isDownloadingCard;
               return (
                 <div
                   key={book.id}
@@ -693,6 +720,7 @@ export default function LibraryManager({
                       isLongPressedRef.current = false;
                       return;
                     }
+                    if (isDownloadingCard) return; // don't open a half-downloaded book
                     onBookSelected(book);
                   }}
                   className={`kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition duration-300 select-none relative ${
