@@ -29,6 +29,9 @@ interface DiscoverViewProps {
 
 // Define all possible categories tied to their connector IDs
 const ALL_CATEGORIES = [
+  { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
+  { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
+  { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
   { id: "hardcover-fiction",    title: "NYT: Hardcover Fiction",    query: "hardcover-fiction", source: "nyt" },
   { id: "hardcover-nonfiction", title: "NYT: Hardcover Nonfiction", query: "hardcover-nonfiction", source: "nyt" },
   { id: "paperback-nonfiction", title: "NYT: Paperback Nonfiction", query: "paperback-nonfiction", source: "nyt" },
@@ -748,6 +751,53 @@ export default function DiscoverView({
   }
 
 
+  async function fetchGoodreadsCategory(query: string): Promise<any[]> {
+    const cacheKey = `goodreads_list_${query}`;
+    const cached = tempStorage.get<any[]>(cacheKey);
+    if (cached) return cached;
+
+    try {
+      const res = await fetch(`/api/goodreads/list?list=${encodeURIComponent(query)}`);
+      if (!res.ok) throw new Error(`Goodreads list fetch failed with status: ${res.status}`);
+      const books = await res.json();
+      
+      const mappedBooks = books.map((book: any) => {
+        const cleanTitle = (book.title || "")
+          .split(':')[0]
+          .replace(/\b\d{10,13}\b/g, '')
+          .replace(/\(.*\)/g, '')
+          .replace(/[^\w\s-]/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        
+        const cleanAuthor = (book.author || "")
+          .split(',')[0]
+          .replace(/[^\w\s-]/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        return {
+          title: book.title,
+          author: book.author,
+          coverUrl: book.coverUrl || (book.isbn ? `https://covers.openlibrary.org/b/isbn/${book.isbn}-M.jpg` : null),
+          searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
+          description: book.description,
+          rating: book.rating,
+          ratingCount: book.ratingCount,
+          rank: book.rank,
+          source: 'goodreads',
+          isGoogleBook: false
+        };
+      });
+
+      tempStorage.set(cacheKey, mappedBooks);
+      return mappedBooks;
+    } catch (err) {
+      console.error("Failed to fetch Goodreads category:", err);
+      return [];
+    }
+  }
+
   async function handleCategoryClick(category: any) {
     setLoadingCategory(true);
     setViewingCategory(category);
@@ -757,10 +807,15 @@ export default function DiscoverView({
     setError(null);
 
     try {
-      // Fetch NYT books for this category
-      const { books, previousDate } = await fetchNYTCategory(category.query);
-      setCategoryBooks(books);
-      setCategoryPreviousDate(previousDate);
+      if (category.source === "goodreads") {
+        const books = await fetchGoodreadsCategory(category.query);
+        setCategoryBooks(books);
+        setCategoryPreviousDate(null);
+      } else {
+        const { books, previousDate } = await fetchNYTCategory(category.query);
+        setCategoryBooks(books);
+        setCategoryPreviousDate(previousDate);
+      }
     } catch (err: any) {
       console.error("Failed to load category:", err);
       setError(`Failed to load category: ${err.message}`);
@@ -2101,6 +2156,13 @@ export default function DiscoverView({
                         {book.weeks_on_list} wks
                       </div>
                     )}
+
+                    {/* Goodreads rating badge */}
+                    {book.rating && (
+                      <div className="absolute top-2 right-2 bg-amber-500/95 text-white font-sans font-bold text-[8px] px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md">
+                        ★ {book.rating}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-0.5">
@@ -2561,11 +2623,16 @@ export default function DiscoverView({
                     </div>
                     <div className="w-full flex flex-col gap-3 max-w-[240px]">
                       <button 
-                        onClick={() => handleDirectDownloadFromFeatured(selectedFeaturedBook)}
+                        onClick={() => {
+                          const section = document.getElementById("featured-download-links-section");
+                          if (section) {
+                            section.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }
+                        }}
                         className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer"
                       >
-                        <Zap className="w-4 h-4" />
-                        Direct Download
+                        <Download className="w-4 h-4" />
+                        Download Book
                       </button>
 
                       <button 
@@ -2719,7 +2786,7 @@ export default function DiscoverView({
                       </section>
 
                       {/* Download Links - Moved UP and made larger */}
-                      <section className="pt-8 border-t border-kindle-border">
+                      <section id="featured-download-links-section" className="pt-8 border-t border-kindle-border">
                         <div className="flex items-center gap-3 mb-6">
                           <Download className="w-5 h-5 text-kindle-accent" />
                           <h3 className="text-sm font-bold uppercase tracking-[0.2em] text-kindle-text">Download Links</h3>

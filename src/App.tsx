@@ -31,6 +31,7 @@ import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
 import DownloadBookBtn from "./components/DownloadBookBtn";
+import OnboardingModal from "./components/OnboardingModal";
 import { toast, Toaster } from "react-hot-toast";
 import { logger } from "./lib/logger";
 import { 
@@ -75,6 +76,49 @@ export default function App() {
   const [displayTheme, setDisplayTheme] = useState<string>(() => {
     return localStorage.getItem("kora_display_theme") || "theme-light-white";
   });
+
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
+    return localStorage.getItem("kora_onboarding_completed") !== "true";
+  });
+  const [userNickname, setUserNickname] = useState<string>(() => {
+    return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
+  });
+
+  const handleOnboardingComplete = (prefs: {
+    nickname: string;
+    archetype: string;
+    displayTheme: string;
+    fontSize: number;
+    dailyGoal: number;
+    autoCache: boolean;
+  }) => {
+    localStorage.setItem("kora_onboarding_completed", "true");
+    localStorage.setItem("kora_user_nickname", prefs.nickname);
+    localStorage.setItem("kora_user_archetype", prefs.archetype);
+    localStorage.setItem("kora_display_theme", prefs.displayTheme);
+    setDisplayTheme(prefs.displayTheme);
+    setUserNickname(prefs.nickname);
+    
+    const updatedPrefs = {
+      ...readerPrefs,
+      fontSize: prefs.fontSize,
+      theme: prefs.displayTheme.includes("dark") ? "dark" : "light"
+    };
+    setReaderPrefs(updatedPrefs);
+    localStorage.setItem("kora_reader_prefs", JSON.stringify(updatedPrefs));
+    
+    localStorage.setItem("kora_reading_goal", String(prefs.dailyGoal));
+    
+    const updatedSearch = {
+      ...searchPrefs,
+      autoCacheDownloads: prefs.autoCache
+    };
+    setSearchPrefs(updatedSearch);
+    localStorage.setItem("kora_search_prefs", JSON.stringify(updatedSearch));
+
+    setShowOnboarding(false);
+    toast.success(`Welcome, ${prefs.nickname}! Your reading identity has been forged.`);
+  };
 
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
   const [readerPrefs, setReaderPrefs] = useState(() => {
@@ -1016,6 +1060,7 @@ export default function App() {
             books={books}
             onRefreshLibrary={refreshLibrary}
             onCachedIdsChanged={updateCachedBookIndex}
+            onOpenOnboarding={() => setShowOnboarding(true)}
           />
         )}
       </main>
@@ -1453,6 +1498,14 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Playful Booknerd Onboarding Modal */}
+      <OnboardingModal
+        isOpen={showOnboarding}
+        onComplete={handleOnboardingComplete}
+        currentTheme={displayTheme}
+        onThemeChange={(newTheme) => changeTheme(newTheme)}
+      />
     </div>
   );
 }

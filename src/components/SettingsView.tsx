@@ -57,6 +57,7 @@ interface SettingsViewProps {
   books?: any[];
   onRefreshLibrary?: (uid?: string) => void;
   onCachedIdsChanged?: () => void;
+  onOpenOnboarding?: () => void;
 }
 
 function getRemainingGuestDays(user: User | null): number {
@@ -120,7 +121,8 @@ export default function SettingsView({
   onClearRecentSearches,
   books = [],
   onRefreshLibrary,
-  onCachedIdsChanged
+  onCachedIdsChanged,
+  onOpenOnboarding
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -1194,6 +1196,16 @@ export default function SettingsView({
               <p className="text-[10px] leading-relaxed text-kindle-text-muted italic">
                 A minimal, high-performance reader environment for digital sovereignty.
               </p>
+              {onOpenOnboarding && (
+                <button
+                  type="button"
+                  onClick={onOpenOnboarding}
+                  className="w-full mt-2 py-2 px-3 bg-kindle-accent text-kindle-bg hover:opacity-90 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Booknerd Setup & Walkthrough
+                </button>
+              )}
             </div>
           </div>
         </section>
