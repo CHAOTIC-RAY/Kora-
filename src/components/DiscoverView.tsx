@@ -115,9 +115,6 @@ async function injectMetadataIntoEpub(
 
 // Define all possible categories tied to their connector IDs
 const ALL_CATEGORIES = [
-  { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
-  { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
-  { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
   { id: "hardcover-fiction",    title: "NYT: Hardcover Fiction",    query: "hardcover-fiction", source: "nyt" },
   { id: "hardcover-nonfiction", title: "NYT: Hardcover Nonfiction", query: "hardcover-nonfiction", source: "nyt" },
   { id: "paperback-nonfiction", title: "NYT: Paperback Nonfiction", query: "paperback-nonfiction", source: "nyt" },
@@ -129,6 +126,9 @@ const ALL_CATEGORIES = [
   { id: "advice-how-to",        title: "Advice & How-To",           query: "advice-how-to", source: "nyt" },
   { id: "childrens-middle-grade-hardcover", title: "Middle Grade", query: "childrens-middle-grade-hardcover", source: "nyt" },
   { id: "young-adult-hardcover", title: "Young Adult", query: "young-adult-hardcover", source: "nyt" },
+  { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
+  { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
+  { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
 ];
 
 export default function DiscoverView({ 

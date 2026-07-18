@@ -162,8 +162,10 @@ export async function syncBookToCloud(userId: string, book: BookMetadata): Promi
   // Sync to Firestore if authenticated & Firebase is active
   if (isRealFirebase && userId) {
     try {
-      const docRef = doc(db, "users", userId, "library", book.id);
-      await setDoc(docRef, book, { merge: true });
+      // Clean undefined fields to prevent Firestore errors
+      const cleanedBook = JSON.parse(JSON.stringify(book));
+      const docRef = doc(db, "users", userId, "library", cleanedBook.id);
+      await setDoc(docRef, cleanedBook, { merge: true });
     } catch (err) {
       console.warn("Failed to sync book to Firestore cloud:", err);
       disableFirebase();

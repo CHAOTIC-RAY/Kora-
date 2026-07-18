@@ -1236,6 +1236,28 @@ export default function SettingsView({
               <span className="text-kindle-text-muted">Powered by</span>
               <span className="font-bold flex items-center gap-1"><Sparkles className="w-3 h-3 text-kindle-accent" /> Rave Engine</span>
             </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-kindle-text-muted">GitHub</span>
+              <a 
+                href="https://github.com/2003Ray-Dark" 
+                target="_blank" 
+                rel="noreferrer" 
+                className="font-bold flex items-center gap-1 hover:text-kindle-accent transition-colors"
+              >
+                @2003Ray-Dark
+              </a>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-kindle-text-muted">Source Code</span>
+              <a 
+                href="https://github.com/2003Ray-Dark/Kora" 
+                target="_blank" 
+                rel="noreferrer" 
+                className="font-bold flex items-center gap-1 hover:text-kindle-accent transition-colors"
+              >
+                Kora Repository
+              </a>
+            </div>
 
             <div className="pt-2 space-y-2 border-t border-kindle-border/50">
               <p className="text-[10px] leading-relaxed text-kindle-text-muted italic">

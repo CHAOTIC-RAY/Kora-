@@ -2876,7 +2876,7 @@ export default {
         return new Response("Missing url", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8})$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gr-assets\.com|goodreads\.com)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
