@@ -11,6 +11,39 @@ export interface LogEntry {
 const MAX_LOGS = 300;
 const STORAGE_KEY = "kora_diagnostic_logs";
 
+function formatLogArg(arg: any): string {
+  if (arg === null) return "null";
+  if (arg === undefined) return "undefined";
+  
+  if (arg instanceof Error) {
+    return `${arg.name || "Error"}: ${arg.message}${arg.stack ? `\nStack: ${arg.stack}` : ""}`;
+  }
+  
+  if (typeof arg === "object") {
+    // Check if it's empty
+    if (Object.keys(arg).length === 0 && (arg.message || arg.reason || arg.stack)) {
+      return `${arg.name || "Error"}: ${arg.message || arg.reason || "Unknown reason"}${arg.stack ? `\nStack: ${arg.stack}` : ""}`;
+    }
+    
+    try {
+      const cache = new Set();
+      return JSON.stringify(arg, (key, value) => {
+        if (typeof value === "object" && value !== null) {
+          if (cache.has(value)) {
+            return "[Circular]";
+          }
+          cache.add(value);
+        }
+        return value;
+      }, 2);
+    } catch (e) {
+      return String(arg);
+    }
+  }
+  
+  return String(arg);
+}
+
 class DiagnosticLogger {
   private logs: LogEntry[] = [];
   private listeners: (() => void)[] = [];
@@ -71,11 +104,16 @@ class DiagnosticLogger {
   }
 
   public addLog(type: "info" | "warn" | "error", message: string, detail?: any) {
+    let detailStr: string | undefined = undefined;
+    if (detail !== undefined) {
+      detailStr = formatLogArg(detail);
+    }
+
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       type,
       message,
-      detail: detail ? (typeof detail === "object" ? JSON.stringify(detail, null, 2) : String(detail)) : undefined
+      detail: detailStr
     };
     
     this.logs.push(entry);
@@ -122,7 +160,10 @@ class DiagnosticLogger {
 
     console.error = (...args: any[]) => {
       originalError.apply(console, args);
-      const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : String(arg))).join(" ");
+      const message = args.map(arg => {
+        if (typeof arg === "string") return arg;
+        return formatLogArg(arg);
+      }).join(" ");
       // Avoid infinite loop if logger itself fails
       if (!message.includes(STORAGE_KEY)) {
         this.addLog("error", `Console error: ${message}`);
@@ -131,7 +172,10 @@ class DiagnosticLogger {
 
     console.warn = (...args: any[]) => {
       originalWarn.apply(console, args);
-      const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : String(arg))).join(" ");
+      const message = args.map(arg => {
+        if (typeof arg === "string") return arg;
+        return formatLogArg(arg);
+      }).join(" ");
       if (!message.includes(STORAGE_KEY)) {
         this.addLog("warn", `Console warn: ${message}`);
       }

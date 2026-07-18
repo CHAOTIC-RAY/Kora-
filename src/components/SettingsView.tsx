@@ -144,6 +144,18 @@ export default function SettingsView({
   };
 
   const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
+  const [showLiveLogs, setShowLiveLogs] = useState(false);
+  const [liveLogs, setLiveLogs] = useState(() => logger.getLogs());
+
+  useEffect(() => {
+    if (showLiveLogs) {
+      setLiveLogs(logger.getLogs());
+      const unsubscribe = logger.subscribe(() => {
+        setLiveLogs(logger.getLogs());
+      });
+      return unsubscribe;
+    }
+  }, [showLiveLogs]);
 
   // File Upload and Sideloading states
   const [uploading, setUploading] = useState<boolean>(false);
@@ -1104,6 +1116,53 @@ export default function SettingsView({
                 <Trash2 className="w-3.5 h-3.5 text-red-500" /> Clear Log
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLiveLogs(!showLiveLogs)}
+              className="w-full flex items-center justify-between py-2 px-3 border border-kindle-border/60 rounded-xl text-[10px] text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+            >
+              <span className="font-bold uppercase tracking-wider">Live Log Console ({liveLogs.length})</span>
+              <ChevronDown className={`w-3.5 h-3.5 text-kindle-text-muted transition-transform duration-200 ${showLiveLogs ? "rotate-180" : ""}`} />
+            </button>
+
+            {showLiveLogs && (
+              <div className="border border-kindle-border/60 rounded-xl overflow-hidden bg-neutral-50 dark:bg-neutral-950 p-2.5 space-y-2 max-h-60 overflow-y-auto">
+                {liveLogs.length === 0 ? (
+                  <p className="text-[9px] text-kindle-text-muted text-center py-2">No logs captured yet.</p>
+                ) : (
+                  [...liveLogs].reverse().map((log, index) => {
+                    const typeColors = {
+                      info: "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950/40 dark:border-blue-900/40",
+                      warn: "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950/40 dark:border-amber-900/40",
+                      error: "text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950/40 dark:border-red-900/40"
+                    }[log.type];
+
+                    return (
+                      <div key={index} className="text-[10px] border-b border-kindle-border/30 pb-2 last:border-0 last:pb-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`px-1 rounded text-[8px] font-bold uppercase border ${typeColors}`}>
+                            {log.type}
+                          </span>
+                          <span className="text-[8px] text-kindle-text-muted font-mono">
+                            {new Date(log.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <p className="mt-1 font-mono text-kindle-text leading-tight break-all">
+                          {log.message}
+                        </p>
+                        {log.detail && (
+                          <pre className="mt-1 bg-white dark:bg-neutral-900 border border-kindle-border/40 p-1.5 rounded text-[8px] font-mono text-kindle-text-muted max-h-24 overflow-y-auto overflow-x-auto whitespace-pre">
+                            {log.detail}
+                          </pre>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
             <p className="text-[8px] text-kindle-text-muted leading-relaxed italic">
               Contains details on download links, proxy attempts, worker syncs, and system errors.
             </p>
