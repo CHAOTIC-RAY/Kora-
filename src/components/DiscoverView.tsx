@@ -24,7 +24,7 @@ interface DiscoverViewProps {
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
   onOpenBrowser?: (url: string) => void;
-  onTriggerDownload?: (book: any, mirror: any, variant: any) => void;
+  onTriggerDownload?: (book: any, mirrors: any | any[], variant: any) => void;
 }
 
 // Define all possible categories tied to their connector IDs
@@ -155,9 +155,14 @@ export default function DiscoverView({
 
   function sortMirrors(mirrors: any[]): any[] {
     // Filter out library.lol as it is reportedly taken down
+    // Also filter duplicates by exact URL
+    const seenUrls = new Set<string>();
     const filtered = mirrors.filter(m => {
       const url = (m.url || "").toLowerCase();
-      return !url.includes("library.lol");
+      if (url.includes("library.lol")) return false;
+      if (seenUrls.has(url)) return false;
+      if (url) seenUrls.add(url);
+      return true;
     });
 
     return [...filtered].sort((a, b) => {
@@ -220,7 +225,9 @@ export default function DiscoverView({
         language: info.language || "English",
         description: info.description || "",
         isbn: info.industryIdentifiers?.[0]?.identifier || "",
-        isGoogleBook: true
+        isGoogleBook: true,
+        source: "google",
+        searchQuery: `${info.title || ""} ${info.authors?.[0] || ""}`.trim()
       };
     });
     
@@ -1152,8 +1159,8 @@ export default function DiscoverView({
     // Grab details from verified source asynchronously
     fetchVerifiedDetails(activeBook.title, activeBook.author);
 
-    // If this is a featured book (NYT or Goodreads), search all sources for download links first
-    if ((activeBook.isNYTBook || activeBook.source === 'nyt' || activeBook.source === 'goodreads') && activeBook.searchQuery) {
+    // If this is a featured book (NYT or Goodreads or Google), search all sources for download links first
+    if ((activeBook.isNYTBook || activeBook.isGoogleBook || activeBook.source === 'nyt' || activeBook.source === 'google' || activeBook.source === 'goodreads') && activeBook.searchQuery) {
       try {
         const searchResult = await fetchPage(activeBook.searchQuery, "all", 1);
         if (searchResult.books.length > 0) {
@@ -1264,9 +1271,8 @@ export default function DiscoverView({
 
     setDownloadProgress({ step: "requesting", percent: 10, error: null });
 
-    const mirror = directMirrors[0]; // Take the first direct mirror
     if (onTriggerDownload) {
-      onTriggerDownload(book, mirror, activeVariant);
+      onTriggerDownload(book, directMirrors, activeVariant);
       // Close the selection modal after starting background download
       if (selectedBook) onSelectedBookChange(null);
       if (selectedFeaturedBook) setSelectedFeaturedBook(null);
@@ -1711,7 +1717,7 @@ export default function DiscoverView({
       // 4. Trigger background download
       if (onTriggerDownload) {
         toast.dismiss(tId);
-        onTriggerDownload(book, directMirrors[0], firstBookResult);
+        onTriggerDownload(book, directMirrors, firstBookResult);
         setSelectedFeaturedBook(null);
       } else {
         toast.error("Download service not available.", { id: tId });
@@ -2514,11 +2520,24 @@ export default function DiscoverView({
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
+                            {m.isDirect && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onOpenBrowser?.(m.url);
+                                }}
+                                title="Open Link"
+                                className="p-2 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleMirrorClick(m);
                               }}
+                              title={m.isDirect ? "Download directly" : "Open external mirror"}
                               className={`p-2 rounded-xl border transition cursor-pointer ${
                                 m.isDirect
                                   ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"

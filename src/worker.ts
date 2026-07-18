@@ -1006,6 +1006,62 @@ export default {
       }
     }
 
+    // Goodreads Scraper Endpoint
+    if (path === "/api/goodreads/list") {
+      const listId = url.searchParams.get("id") || "1.Best_Books_Ever";
+      const goodreadsUrl = `https://www.goodreads.com/list/show/${listId}`;
+      
+      try {
+        const response = await fetch(goodreadsUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          }
+        });
+        
+        if (!response.ok) {
+          return new Response(JSON.stringify({ error: `Failed to fetch Goodreads list: ${response.status}` }), {
+            status: response.status,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        
+        const html = await response.text();
+        const $ = cheerio.load(html);
+        const books: any[] = [];
+        
+        $("tr[itemscope]").each((_, el) => {
+          const $el = $(el);
+          const title = $el.find("a.bookTitle span[itemprop='name']").text().trim();
+          const author = $el.find("a.authorName span[itemprop='name']").text().trim();
+          const coverUrl = $el.find("img.bookCover").attr("src")?.replace(/\._.*_\./, "."); // Get higher res cover
+          const rating = $el.find("span.minirating").text().trim();
+          const link = "https://www.goodreads.com" + $el.find("a.bookTitle").attr("href");
+          
+          if (title && author) {
+            books.push({
+              title,
+              author,
+              coverUrl,
+              rating,
+              link,
+              source: "goodreads"
+            });
+          }
+        });
+        
+        const previousDate = null; // No previous date for Goodreads lists in this context
+        
+        return new Response(JSON.stringify({ books, previousDate }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch Goodreads list", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // 2.2 NYT Book Details API
     if (path === "/api/nyt/book-details" || path === "/api/nytimes/book-details") {
       const title = url.searchParams.get("title");
@@ -2450,32 +2506,9 @@ export default {
         resHeaders.delete("transfer-encoding");
         resHeaders.delete("content-security-policy");
 
-        const buffer = await response.arrayBuffer();
-        const uint8 = new Uint8Array(buffer);
-
-        // Detect if the buffer is actually HTML text
-        let isHtml = false;
-        let textSample = "";
-        try {
-          textSample = new TextDecoder("utf-8").decode(uint8.subarray(0, 500)).trim().toLowerCase();
-          isHtml = textSample.startsWith("<!doctype html") || 
-                   textSample.startsWith("<html") || 
-                   textSample.includes("<head") || 
-                   textSample.includes("<body") ||
-                   textSample.includes("<div") ||
-                   textSample.includes("cloudflare") ||
-                   textSample.includes("captcha");
-        } catch (decodeErr) {}
-
-        if (isHtml) {
-          if (textSample.includes("cloudflare") || textSample.includes("captcha") || textSample.includes("challenge-running") || textSample.includes("ray id")) {
-            throw new Error("This mirror is blocked by a CAPTCHA, Cloudflare DDOS protection, or require human interaction. Please try a different mirror or solve any verification.");
-          }
-          throw new Error("This mirror URL returned an HTML landing page instead of the actual ebook file. Try a direct download mirror (like libgen.li or IPFS).");
-        }
-
-        resHeaders.set("Content-Length", String(buffer.byteLength));
-
+        // Removed arrayBuffer buffering to allow streaming progress in frontend
+        resHeaders.set("Content-Length", response.headers.get("content-length") || "");
+        
         const contentDisposition = response.headers.get("content-disposition");
         if (!contentDisposition) {
           try {
@@ -2485,9 +2518,9 @@ export default {
             resHeaders.set("Content-Disposition", `attachment; filename="download.epub"`);
           }
         }
-
-        return new Response(buffer, {
-          status: response.status,
+        
+        return new Response(response.body, {
+          status: 200,
           headers: resHeaders
         });
       } catch (err: any) {

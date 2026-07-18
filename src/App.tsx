@@ -152,7 +152,13 @@ export default function App() {
   });
 
   // Background download handler
-  async function startBackgroundDownload(book: any, mirror: any, variant: any) {
+  async function startBackgroundDownload(book: any, mirrors: any | any[], variant: any) {
+    const mirrorList = Array.isArray(mirrors) ? mirrors : [mirrors];
+    if (!mirrorList || mirrorList.length === 0) {
+      toast.error("No valid download mirrors available for auto-download.");
+      return;
+    }
+    
     const downloadId = Math.random().toString(36).substring(7);
     const newDl = {
       id: downloadId,
@@ -171,187 +177,213 @@ export default function App() {
     });
 
     toast.loading(`Downloading ${book.title}...`, { id: downloadId });
-    logger.info(`Starting background download for "${book.title}" by ${book.author || 'Unknown'}. Size: ${variant.size || 'Unknown'}. Mirror: ${mirror.url}`);
 
-    try {
-      const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
-      
-      const response = await fetch(proxyUrl);
-      if (!response.ok) {
-        let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
-        try {
-          const errData = await response.json();
-          if (errData && errData.error) {
-            errMsg = errData.error;
-          }
-        } catch (e) {
+    let finalError: any = null;
+    let success = false;
+
+    for (let index = 0; index < mirrorList.length; index++) {
+      const mirror = mirrorList[index];
+      try {
+        const attemptLabel = mirrorList.length > 1 ? `(Mirror ${index + 1}/${mirrorList.length}) ` : '';
+        logger.info(`Starting background download for "${book.title}" ${attemptLabel}. Size: ${variant.size || 'Unknown'}. Mirror: ${mirror.url}`);
+
+        setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
+          ...dl, 
+          status: "downloading", 
+          percent: 0,
+          speed: "Connecting...",
+          eta: "",
+          transferred: attemptLabel
+        } : dl));
+
+        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        
+        const response = await fetch(proxyUrl);
+        if (!response.ok) {
+          let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
           try {
-            const errText = await response.text();
-            if (errText && errText.length < 200) errMsg = errText;
-          } catch (e2) {}
-        }
-        throw new Error(errMsg);
-      }
-
-      // Determine the correct file extension based on response headers, metadata, and URL
-      const contentDisposition = response.headers.get("content-disposition");
-      const contentType = response.headers.get("content-type");
-      let fileExtension = "epub"; // safe fallback
-
-      // 1. Check Content-Disposition first
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename\*?=["']?([^"';]+)["']?/i);
-        if (filenameMatch && filenameMatch[1]) {
-          let filename = filenameMatch[1];
-          if (filename.startsWith("UTF-8''")) {
-            filename = decodeURIComponent(filename.substring(7));
-          }
-          const ext = filename.split('.').pop()?.toLowerCase();
-          if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
-            fileExtension = ext;
-          }
-        }
-      }
-
-      // 2. Fallback to Content-Type
-      if (fileExtension === "epub" && contentType) {
-        const ct = contentType.toLowerCase();
-        if (ct.includes("epub")) fileExtension = "epub";
-        else if (ct.includes("pdf")) fileExtension = "pdf";
-        else if (ct.includes("mobi")) fileExtension = "mobi";
-        else if (ct.includes("azw3")) fileExtension = "azw3";
-        else if (ct.includes("zip")) fileExtension = "zip";
-      }
-
-      // 3. Fallback to variant/metadata extension
-      if (fileExtension === "epub" && (variant.extension || variant.format)) {
-        const ext = (variant.extension || variant.format).toLowerCase();
-        if (ext && ext !== "php" && ext !== "html") {
-          fileExtension = ext;
-        }
-      }
-
-      // 4. Fallback to safe parsing of original mirror URL
-      if (fileExtension === "epub" && mirror.url) {
-        try {
-          const urlObj = new URL(mirror.url);
-          const pathname = urlObj.pathname;
-          const ext = pathname.split('.').pop()?.toLowerCase();
-          if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
-            fileExtension = ext;
-          }
-        } catch (e) {}
-      }
-
-      const reader = response.body?.getReader();
-      const contentLength = +(response.headers.get('Content-Length') || 0);
-      let receivedLength = 0;
-      const chunks = [];
-
-      const formatBytes = (bytes: number) => {
-        if (bytes === 0) return "0 B";
-        const k = 1024;
-        const sizes = ["B", "KB", "MB", "GB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-      };
-
-      if (reader) {
-        const startTime = Date.now();
-        let lastUpdateTime = Date.now();
-
-        while(true) {
-          const {done, value} = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          receivedLength += value.length;
-          
-          const percent = contentLength > 0 
-            ? Math.round((receivedLength / contentLength) * 100) 
-            : null;
-            
-          const now = Date.now();
-          // Throttle state updates to once every 150ms for buttery-smooth UI rendering
-          if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
-            lastUpdateTime = now;
-            const elapsed = (now - startTime) / 1000; // seconds
-            const speedBytes = elapsed > 0 ? (receivedLength / elapsed) : 0;
-            const speedStr = speedBytes > 1024 * 1024 
-              ? `${(speedBytes / (1024 * 1024)).toFixed(1)} MB/s` 
-              : speedBytes > 1024 
-                ? `${(speedBytes / 1024).toFixed(0)} KB/s` 
-                : `${Math.round(speedBytes)} B/s`;
-
-            let etaStr = "";
-            if (contentLength > 0 && speedBytes > 0) {
-              const remainingBytes = contentLength - receivedLength;
-              const remainingSeconds = Math.round(remainingBytes / speedBytes);
-              if (remainingSeconds > 60) {
-                const mins = Math.floor(remainingSeconds / 60);
-                const secs = remainingSeconds % 60;
-                etaStr = `${mins}m ${secs}s remaining`;
-              } else if (remainingSeconds > 0) {
-                etaStr = `${remainingSeconds}s remaining`;
-              } else {
-                etaStr = "finishing...";
-              }
-            } else {
-              etaStr = "downloading...";
+            const errData = await response.json();
+            if (errData && errData.error) {
+              errMsg = errData.error;
             }
+          } catch (e) {
+            try {
+              const errText = await response.text();
+              if (errText && errText.length < 200) errMsg = errText;
+            } catch (e2) {}
+          }
+          throw new Error(errMsg);
+        }
 
-            const transferredStr = contentLength > 0 
-              ? `${formatBytes(receivedLength)} of ${formatBytes(contentLength)}`
-              : formatBytes(receivedLength);
+        // Determine the correct file extension based on response headers, metadata, and URL
+        const contentDisposition = response.headers.get("content-disposition");
+        const contentType = response.headers.get("content-type");
+        let fileExtension = "epub"; // safe fallback
 
-            setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
-              ...dl, 
-              percent,
-              speed: speedStr,
-              transferred: transferredStr,
-              eta: etaStr
-            } : dl));
+        // 1. Check Content-Disposition first
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename\*?=["']?([^"';]+)["']?/i);
+          if (filenameMatch && filenameMatch[1]) {
+            let filename = filenameMatch[1];
+            if (filename.startsWith("UTF-8''")) {
+              filename = decodeURIComponent(filename.substring(7));
+            }
+            const ext = filename.split('.').pop()?.toLowerCase();
+            if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+              fileExtension = ext;
+            }
           }
         }
+
+        // 2. Fallback to Content-Type
+        if (fileExtension === "epub" && contentType) {
+          const ct = contentType.toLowerCase();
+          if (ct.includes("epub")) fileExtension = "epub";
+          else if (ct.includes("pdf")) fileExtension = "pdf";
+          else if (ct.includes("mobi")) fileExtension = "mobi";
+          else if (ct.includes("azw3")) fileExtension = "azw3";
+          else if (ct.includes("zip")) fileExtension = "zip";
+        }
+
+        // 3. Fallback to variant/metadata extension
+        if (fileExtension === "epub" && (variant.extension || variant.format)) {
+          const ext = (variant.extension || variant.format).toLowerCase();
+          if (ext && ext !== "php" && ext !== "html") {
+            fileExtension = ext;
+          }
+        }
+
+        // 4. Fallback to safe parsing of original mirror URL
+        if (fileExtension === "epub" && mirror.url) {
+          try {
+            const urlObj = new URL(mirror.url);
+            const pathname = urlObj.pathname;
+            const ext = pathname.split('.').pop()?.toLowerCase();
+            if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+              fileExtension = ext;
+            }
+          } catch (e) {}
+        }
+
+        const reader = response.body?.getReader();
+        const contentLength = +(response.headers.get('Content-Length') || 0);
+        let receivedLength = 0;
+        const chunks = [];
+
+        const formatBytes = (bytes: number) => {
+          if (bytes === 0) return "0 B";
+          const k = 1024;
+          const sizes = ["B", "KB", "MB", "GB"];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+        };
+
+        if (reader) {
+          const startTime = Date.now();
+          let lastUpdateTime = Date.now();
+
+          while(true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            receivedLength += value.length;
+            
+            const percent = contentLength > 0 
+              ? Math.round((receivedLength / contentLength) * 100) 
+              : null;
+              
+            const now = Date.now();
+            // Throttle state updates to once every 150ms for buttery-smooth UI rendering
+            if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
+              lastUpdateTime = now;
+              const elapsed = (now - startTime) / 1000; // seconds
+              const speedBytes = elapsed > 0 ? (receivedLength / elapsed) : 0;
+              const speedStr = speedBytes > 1024 * 1024 
+                ? `${(speedBytes / (1024 * 1024)).toFixed(1)} MB/s` 
+                : speedBytes > 1024 
+                  ? `${(speedBytes / 1024).toFixed(0)} KB/s` 
+                  : `${Math.round(speedBytes)} B/s`;
+
+              let etaStr = "";
+              if (contentLength > 0 && speedBytes > 0) {
+                const remainingBytes = contentLength - receivedLength;
+                const remainingSeconds = Math.round(remainingBytes / speedBytes);
+                if (remainingSeconds > 60) {
+                  const mins = Math.floor(remainingSeconds / 60);
+                  const secs = remainingSeconds % 60;
+                  etaStr = `${mins}m ${secs}s remaining`;
+                } else if (remainingSeconds > 0) {
+                  etaStr = `${remainingSeconds}s remaining`;
+                } else {
+                  etaStr = "finishing...";
+                }
+              } else {
+                etaStr = "downloading...";
+              }
+
+              const transferredStr = contentLength > 0 
+                ? `${formatBytes(receivedLength)} of ${formatBytes(contentLength)}`
+                : formatBytes(receivedLength);
+
+              setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
+                ...dl, 
+                percent,
+                speed: speedStr,
+                transferred: transferredStr,
+                eta: etaStr
+              } : dl));
+            }
+          }
+        }
+
+        const fileBlob = new Blob(chunks);
+        const id = variant.md5 || Math.random().toString(36).substring(7);
+        await storeBookFile(id, fileBlob, `${book.title}.${fileExtension}`, fileExtension);
+
+        // Save to library
+        const newBook: BookMetadata = {
+          id,
+          title: book.title,
+          author: book.author,
+          extension: fileExtension,
+          size: variant.size || "Unknown",
+          language: variant.language || "English",
+          coverUrl: book.coverUrl,
+          md5: variant.md5,
+          source: "Kora Store",
+          tags: inferBookTags(book.title, book.author, fileExtension),
+          status: "to-read",
+          progress: { percent: 0, lastReadTime: Date.now() },
+          dateAdded: Date.now(),
+          description: book.description || ""
+        };
+
+        await syncBookToCloud(user?.uid || "", newBook);
+        
+        setGlobalDownloads(prev => {
+          const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
+          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          return updated;
+        });
+
+        logger.info(`Successfully completed download for "${book.title}". Saved to IndexedDB with ID: ${id}`);
+        toast.success(`${book.title} downloaded!`, { id: downloadId });
+        refreshLibrary();
+        
+        success = true;
+        break; // Stop iterating on success
+      } catch (err: any) {
+        logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error: ${err.message || err}`);
+        finalError = err;
+        // Proceed to the next mirror if this one failed
       }
-
-      const fileBlob = new Blob(chunks);
-      const id = variant.md5 || Math.random().toString(36).substring(7);
-      await storeBookFile(id, fileBlob, `${book.title}.${fileExtension}`, fileExtension);
-
-      // Save to library
-      const newBook: BookMetadata = {
-        id,
-        title: book.title,
-        author: book.author,
-        extension: fileExtension,
-        size: variant.size || "Unknown",
-        language: variant.language || "English",
-        coverUrl: book.coverUrl,
-        md5: variant.md5,
-        source: "Kora Store",
-        tags: inferBookTags(book.title, book.author, fileExtension),
-        status: "to-read",
-        progress: { percent: 0, lastReadTime: Date.now() },
-        dateAdded: Date.now(),
-        description: book.description || ""
-      };
-
-      await syncBookToCloud(user?.uid || "", newBook);
-      
+    }
+    
+    if (!success) {
+      logger.error(`All mirrors failed for "${book.title}". Last error: ${finalError?.message || finalError}`, finalError);
+      console.error("Background download failed on all mirrors:", finalError);
       setGlobalDownloads(prev => {
-        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
-        localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
-        return updated;
-      });
-
-      logger.info(`Successfully completed download for "${book.title}". Saved to IndexedDB with ID: ${id}`);
-      toast.success(`${book.title} downloaded!`, { id: downloadId });
-      refreshLibrary();
-    } catch (err: any) {
-      logger.error(`Background download failed for "${book.title}". Mirror URL: ${mirror.url}. Error: ${err.message || err}`, err);
-      console.error("Background download failed:", err);
-      setGlobalDownloads(prev => {
-        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: err.message } : dl);
+        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: finalError?.message } : dl);
         localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
         return updated;
       });

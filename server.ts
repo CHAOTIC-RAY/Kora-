@@ -2224,72 +2224,18 @@ app.get("/api/proxy-file", async (req, res) => {
       res.setHeader("Content-Length", contentLength);
     }
 
-    // Access raw arrayBuffer and send
-    const buffer = await response.arrayBuffer();
-    const uint8 = new Uint8Array(buffer);
-
-    // 1. Detect if the buffer is actually HTML text
-    let isHtml = false;
-    let textSample = "";
-    try {
-      textSample = new TextDecoder("utf-8").decode(uint8.subarray(0, 500)).trim().toLowerCase();
-      isHtml = textSample.startsWith("<!doctype html") || 
-               textSample.startsWith("<html") || 
-               textSample.includes("<head") || 
-               textSample.includes("<body") ||
-               textSample.includes("<div") ||
-               textSample.includes("cloudflare") ||
-               textSample.includes("captcha");
-    } catch (decodeErr) {
-      // Binary data, not decodable as utf-8 safely, probably fine
-    }
-
-    if (isHtml) {
-      if (textSample.includes("cloudflare") || textSample.includes("captcha") || textSample.includes("challenge-running") || textSample.includes("ray id")) {
-        throw new Error("This mirror is blocked by a CAPTCHA, Cloudflare DDOS protection, or require human interaction. Please open the 'Proxy Browser' tab, navigate to this site, solve any verification/login, and then download directly from there.");
+    // Stream the body directly to allow frontend progress bar to update properly
+    if (response.body) {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(value);
       }
-      throw new Error("This mirror URL returned an HTML landing page instead of the actual ebook file. This usually happens due to wait-time countdowns, expiring links, or temporary IP limits. Try a direct download mirror (like Library.lol or IPFS), or use the 'Proxy Browser' tab.");
-    }
-
-    // 2. Validate expected magic bytes for epub/pdf/zip
-    const isZip = uint8[0] === 0x50 && uint8[1] === 0x4B && uint8[2] === 0x03 && uint8[3] === 0x04;
-    const isPdf = uint8[0] === 0x25 && uint8[1] === 0x50 && uint8[2] === 0x44 && uint8[3] === 0x46;
-
-    const lowerUrl = fileUrl.toLowerCase();
-    const isEpubOrZipExpected = lowerUrl.endsWith(".epub") || lowerUrl.endsWith(".zip") || lowerUrl.endsWith(".cbz") || contentType.includes("epub") || contentType.includes("zip");
-    const isPdfExpected = lowerUrl.endsWith(".pdf") || contentType.includes("pdf");
-
-    if (isEpubOrZipExpected && !isZip) {
-      // It was supposed to be a ZIP/EPUB but didn't match magic bytes
-      if (textSample.startsWith("{") || textSample.includes("error")) {
-        try {
-          const jsonErr = JSON.parse(textSample);
-          if (jsonErr.error || jsonErr.message) {
-            throw new Error(jsonErr.error || jsonErr.message);
-          }
-        } catch (e) {}
-      }
-      throw new Error("The downloaded EPUB/ZIP file is corrupted or in an invalid format. The mirror page may have returned an error page or expired link instead of the actual book file.");
-    }
-
-    if (isPdfExpected && !isPdf) {
-      // Supposed to be a PDF but didn't match magic bytes
-      throw new Error("The downloaded PDF file is corrupted or in an invalid format. The mirror page may have returned an error page or expired link instead of the actual book file.");
-    }
-
-    res.setHeader("Content-Type", contentType);
-    if (contentDisposition) {
-      res.setHeader("Content-Disposition", contentDisposition);
+      res.end();
     } else {
-      const filename = path.basename(new URL(resolvedFinalUrl).pathname) || "download.epub";
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.end();
     }
-
-    if (contentLength) {
-      res.setHeader("Content-Length", contentLength);
-    }
-
-    res.send(Buffer.from(buffer));
   } catch (err: any) {
     console.log(`[Proxy File Info] Download did not complete: ${err.message || "Proxy download failed."}`);
     res.status(500).json({ error: err.message || "Proxy download failed." });
