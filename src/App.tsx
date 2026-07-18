@@ -684,54 +684,7 @@ export default function App() {
           speed: data.speed
         } : dl));
       } else if (data.type === "download-complete") {
-        try {
-          const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(data.downloadId)}`);
-          if (!res.ok) throw new Error("pickup failed");
-          const blob = await res.blob();
-
-          const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[data.downloadId];
-          const book = mirror?.book || { title: data.title };
-          const variant = mirror?.variant || {};
-          const fileExtension = mirror?.fileExtension || (blob.type.includes("pdf") ? "pdf" : "epub");
-          const finalTitle = book.title || data.title;
-          const finalAuthor = book.author || "Unknown";
-          const id = variant.md5 || data.downloadId;
-          const finalCoverUrl = book.coverUrl || "";
-          const finalTags = Array.from(new Set([...(book.tags || []), ...inferBookTags(finalTitle, finalAuthor, fileExtension)]));
-
-          await storeBookFile(id, blob, `${finalTitle}.${fileExtension}`, fileExtension);
-          const newBook: BookMetadata = {
-            id,
-            title: finalTitle,
-            author: finalAuthor,
-            extension: fileExtension,
-            size: data.size || variant.size || "Unknown",
-            language: book.language || variant.language || "English",
-            coverUrl: finalCoverUrl,
-            md5: variant.md5,
-            source: "Kora Store",
-            tags: finalTags,
-            status: "to-read",
-            progress: { percent: 0, lastReadTime: Date.now() },
-            dateAdded: Date.now(),
-            description: book.description || "",
-            publisher: book.publisher || "",
-            year: book.year || "",
-            downloadUrl: variant.downloadUrl || variant.directUrl
-          };
-          await syncBookToCloud(user?.uid || "", newBook);
-          setGlobalDownloads(prev => {
-            const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
-            localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
-            return updated;
-          });
-          toast.success(`${finalTitle} downloaded!`, { id: data.downloadId });
-          refreshLibrary();
-          navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId: data.downloadId });
-        } catch (err) {
-          console.error("SW pickup failed:", err);
-          setGlobalDownloads(prev => prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: "Pickup failed" } : dl));
-        }
+        await ingestDownload(data.downloadId, data.title, data.size);
       } else if (data.type === "download-error") {
         setGlobalDownloads(prev => {
           const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl);
@@ -739,11 +692,95 @@ export default function App() {
           return updated;
         });
         toast.error(data.error || "Download failed", { id: data.downloadId });
+      } else if (data.type === "open-downloads") {
+        setActiveTab("downloads");
+      } else if (data.type === "bgf-retry") {
+        setActiveTab("downloads");
+        // The DownloadsManager renders retry buttons for errored items.
+        toast.loading("Retry available in the Downloads panel");
+      } else if (data.type === "bgf-cancel") {
+        setGlobalDownloads(prev => {
+          const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: "Cancelled" } : dl);
+          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          return updated;
+        });
       }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [user?.uid]);
+  }, [user?.uid, refreshLibrary]);
+
+  // Pick up a finished blob from the SW store, store it in the library, then
+  // tell the SW to delete its copy. Shared by the completion handler and the
+  // on-launch leftover sweep (C7).
+  async function ingestDownload(downloadId: string, fallbackTitle: string, fallbackSize?: string) {
+    try {
+      const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(downloadId)}`);
+      if (!res.ok) throw new Error("pickup failed");
+      const blob = await res.blob();
+
+      const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[downloadId];
+      const book = mirror?.book || { title: fallbackTitle };
+      const variant = mirror?.variant || {};
+      const fileExtension = mirror?.fileExtension || (blob.type.includes("pdf") ? "pdf" : "epub");
+      const finalTitle = book.title || fallbackTitle;
+      const finalAuthor = book.author || "Unknown";
+      const id = variant.md5 || downloadId;
+      const finalCoverUrl = book.coverUrl || "";
+      const finalTags = Array.from(new Set([...(book.tags || []), ...inferBookTags(finalTitle, finalAuthor, fileExtension)]));
+
+      await storeBookFile(id, blob, `${finalTitle}.${fileExtension}`, fileExtension);
+      const newBook: BookMetadata = {
+        id,
+        title: finalTitle,
+        author: finalAuthor,
+        extension: fileExtension,
+        size: fallbackSize || variant.size || "Unknown",
+        language: book.language || variant.language || "English",
+        coverUrl: finalCoverUrl,
+        md5: variant.md5,
+        source: "Kora Store",
+        tags: finalTags,
+        status: "to-read",
+        progress: { percent: 0, lastReadTime: Date.now() },
+        dateAdded: Date.now(),
+        description: book.description || "",
+        publisher: book.publisher || "",
+        year: book.year || "",
+        downloadUrl: variant.downloadUrl || variant.directUrl
+      };
+      await syncBookToCloud(user?.uid || "", newBook);
+      setGlobalDownloads(prev => {
+        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
+        localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+        return updated;
+      });
+      toast.success(`${finalTitle} downloaded!`, { id: downloadId });
+      refreshLibrary();
+      navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId });
+    } catch (err) {
+      console.error("SW pickup failed:", err);
+      setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: "Pickup failed" } : dl));
+    }
+  }
+
+  // On launch, sweep any blobs the SW finished while the app was closed and
+  // ingest them into the library (C7).
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !navigator.serviceWorker.controller) return;
+    (async () => {
+      try {
+        const res = await fetch("/__kora_sw_list__");
+        if (!res.ok) return;
+        const pending: string[] = await res.json();
+        for (const id of pending) {
+          await ingestDownload(id, "Downloaded book");
+        }
+      } catch (e) {
+        /* SW not ready yet; will retry on next launch */
+      }
+    })();
+  }, [user?.uid, ingestDownload]);
 
   // Web Share Target API helper to extract a URL
   function extractUrl(text: string | null): string | null {
@@ -1297,7 +1334,16 @@ export default function App() {
               setGlobalDownloads(updated);
               localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
             }}
-            onRefreshLibrary={() => refreshLibrary()} 
+            onRefreshLibrary={() => refreshLibrary()}
+            onRetryDownload={(dl: any) => {
+              // Reconstruct the original book + variant from the stashed payload
+              const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[dl.id];
+              if (!mirror) {
+                toast.error("Cannot retry — original source unavailable");
+                return;
+              }
+              startBackgroundDownload(mirror.book, [mirror.variant], mirror.variant);
+            }}
           />
         )}
         

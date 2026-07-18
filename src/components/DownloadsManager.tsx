@@ -8,13 +8,15 @@ interface DownloadsManagerProps {
   onRefreshLibrary?: () => void;
   downloads: any[];
   onSetDownloads: (downloads: any[]) => void;
+  onRetryDownload?: (dl: any) => void;
 }
 
 export default function DownloadsManager({ 
   userId = "", 
   onRefreshLibrary,
   downloads,
-  onSetDownloads
+  onSetDownloads,
+  onRetryDownload
 }: DownloadsManagerProps) {
   const [clipperUrl, setClipperUrl] = useState<string>("");
   const [clipStatus, setClipStatus] = useState<"idle" | "fetching" | "converting" | "saving" | "success" | "error">("idle");
@@ -255,7 +257,33 @@ export default function DownloadsManager({
                     </div>
                   )}
                   {dl.status === "error" && <FileWarning className="w-5 h-5 text-red-500" />}
+                  {/* Cancel an in-progress download (tells the SW to abort) */}
+                  {dl.status === "downloading" && (
+                    <button
+                      title="Cancel download"
+                      onClick={() => {
+                        if (navigator.serviceWorker?.controller) {
+                          navigator.serviceWorker.controller.postMessage({ type: "bgf-cancel", downloadId: dl.id });
+                        }
+                        onSetDownloads(downloads.filter((_, i) => i !== idx));
+                      }}
+                      className="p-2 text-kindle-text-muted hover:text-red-400 transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {/* Retry a failed download */}
+                  {dl.status === "error" && onRetryDownload && (
+                    <button
+                      title="Retry download"
+                      onClick={() => onRetryDownload(dl)}
+                      className="p-2 text-kindle-text-muted hover:text-kindle-accent transition"
+                    >
+                      <ArrowRight className="w-4 h-4 rotate-[-45deg]" />
+                    </button>
+                  )}
                   <button 
+                    title="Remove from history"
                     onClick={() => {
                       onSetDownloads(downloads.filter((_, i) => i !== idx));
                     }}

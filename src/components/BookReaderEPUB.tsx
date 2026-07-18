@@ -278,9 +278,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // Column width for the CSS column layout (matches the measured width so
       // the content fills exactly one page stride).
       const colWidth = useDoubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      // The exact horizontal stride is the full page width plus the column gap (40px)
-      // minus any desired page overlap.
-      const step = textWidth + gapWidth - pageOverlap;
+      // The exact horizontal stride is the full page width (the article's
+      // rendered width), minus any requested page overlap. Adding the column
+      // gap here was the bug — it over-shifted every page turn and clipped the
+      // left column. Page overlap REPEATS the last N px, so we subtract it.
+      const step = textWidth - pageOverlap;
       // Avoid tiny subpixel overflows from creating a blank page
       const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
       const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
@@ -1345,9 +1347,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
       const colWidth = useDoubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      // The exact horizontal stride is the full page width plus the column gap (40px)
-      // minus any desired page overlap.
-      const step = textWidth + gapWidth - pageOverlap;
+      // The exact horizontal stride is the full page width (the article's
+      // rendered width), minus any requested page overlap. Adding the column
+      // gap was the bug — it over-shifted every page turn and clipped the
+      // left column. Page overlap REPEATS the last N px, so we subtract it.
+      const step = textWidth - pageOverlap;
       
       // Avoid tiny subpixel overflows from creating a blank page
       const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
