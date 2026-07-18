@@ -205,15 +205,18 @@ async function downloadBookBGF(payload) {
   try {
     // Persist the payload + proxyUrl so the success handler can resolve it.
     await putDB(bgfId, { id: bgfId, payload, proxyUrl: payload.proxyUrl, saved: false, bgf: true });
-    const bgf = await self.registration.backgroundFetch.fetch(bgfId, [
-      { request: payload.proxyUrl, method: "GET" },
-    ], {
+    // Correct Background Fetch API: `requests` is an array of URL strings (or
+    // Request objects), NOT {request, method} objects. A malformed request
+    // throws and silently falls back to the streaming path — which dies when
+    // the app is closed. Using the right shape lets the OS download manager
+    // take over and survive the app being killed.
+    const bgf = await self.registration.backgroundFetch.fetch(bgfId, [payload.proxyUrl], {
       title: `Downloading "${payload.title}"`,
       downloadTotal: 0,
       icons: [{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml" }],
     });
     // Optimistically tell the page we started (progress comes from the OS).
-    await postToClients({ type: "download-progress", downloadId: payload.downloadId, percent: null, transferred: "starting…", speed: "" });
+    await postToClients({ type: "download-progress", downloadId: payload.downloadId, percent: null, transferred: "downloading in background…", speed: "" });
     if (bgf && bgf.failureReason && bgf.failureReason !== "aborted") {
       throw new Error("Background fetch rejected: " + bgf.failureReason);
     }
