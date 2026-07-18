@@ -1342,7 +1342,45 @@ export default function DiscoverView({
         });
 
         let fileBlob = new Blob(chunks, { type: contentType });
-        let fileExtension = activeVariant.extension || "epub";
+        let fileExtension = activeVariant.extension || activeVariant.format || "epub";
+
+        // 1. Try to extract from content-disposition
+        const contentDisposition = response.headers.get("content-disposition");
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename\*?=["']?([^"';]+)["']?/i);
+          if (filenameMatch && filenameMatch[1]) {
+            let filename = filenameMatch[1];
+            if (filename.startsWith("UTF-8''")) {
+              filename = decodeURIComponent(filename.substring(7));
+            }
+            const ext = filename.split('.').pop()?.toLowerCase();
+            if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+              fileExtension = ext;
+            }
+          }
+        }
+
+        // 2. Try content-type fallback
+        if (fileExtension === "epub" && contentType) {
+          const ct = contentType.toLowerCase();
+          if (ct.includes("epub")) fileExtension = "epub";
+          else if (ct.includes("pdf")) fileExtension = "pdf";
+          else if (ct.includes("mobi")) fileExtension = "mobi";
+          else if (ct.includes("azw3")) fileExtension = "azw3";
+          else if (ct.includes("zip")) fileExtension = "zip";
+        }
+
+        // 3. Safe URL fallback
+        if (fileExtension === "epub" && mirror.url) {
+          try {
+            const urlObj = new URL(mirror.url);
+            const pathname = urlObj.pathname;
+            const ext = pathname.split('.').pop()?.toLowerCase();
+            if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+              fileExtension = ext;
+            }
+          } catch (e) {}
+        }
 
         if (contentType.includes("zip")) {
           try {
@@ -1501,7 +1539,46 @@ export default function DiscoverView({
       setDownloadProgress({ step: "downloading", percent: 70, error: null });
 
       let fileBlob = await response.blob();
-      let fileExtension = activeVariant.extension || "epub";
+      let fileExtension = activeVariant.extension || activeVariant.format || "epub";
+
+      // 1. Try to extract from content-disposition
+      const contentDisposition = response.headers.get("content-disposition");
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename\*?=["']?([^"';]+)["']?/i);
+        if (filenameMatch && filenameMatch[1]) {
+          let filename = filenameMatch[1];
+          if (filename.startsWith("UTF-8''")) {
+            filename = decodeURIComponent(filename.substring(7));
+          }
+          const ext = filename.split('.').pop()?.toLowerCase();
+          if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+            fileExtension = ext;
+          }
+        }
+      }
+
+      // 2. Try content-type fallback
+      if (fileExtension === "epub" && contentType) {
+        const ct = contentType.toLowerCase();
+        if (ct.includes("epub")) fileExtension = "epub";
+        else if (ct.includes("pdf")) fileExtension = "pdf";
+        else if (ct.includes("mobi")) fileExtension = "mobi";
+        else if (ct.includes("azw3")) fileExtension = "azw3";
+        else if (ct.includes("zip")) fileExtension = "zip";
+      }
+
+      // 3. Safe URL fallback
+      const mirrorUrl = typeof mirror === "string" ? mirror : mirror.url;
+      if (fileExtension === "epub" && mirrorUrl) {
+        try {
+          const urlObj = new URL(mirrorUrl);
+          const pathname = urlObj.pathname;
+          const ext = pathname.split('.').pop()?.toLowerCase();
+          if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+            fileExtension = ext;
+          }
+        } catch (e) {}
+      }
 
       if (contentType.includes("zip")) {
         try {

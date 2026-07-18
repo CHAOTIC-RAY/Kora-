@@ -174,7 +174,6 @@ export default function App() {
     logger.info(`Starting background download for "${book.title}" by ${book.author || 'Unknown'}. Size: ${variant.size || 'Unknown'}. Mirror: ${mirror.url}`);
 
     try {
-      const fileExtension = mirror.url.split('.').pop()?.split('?')[0]?.toLowerCase() || "epub";
       const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
       
       const response = await fetch(proxyUrl);
@@ -192,6 +191,56 @@ export default function App() {
           } catch (e2) {}
         }
         throw new Error(errMsg);
+      }
+
+      // Determine the correct file extension based on response headers, metadata, and URL
+      const contentDisposition = response.headers.get("content-disposition");
+      const contentType = response.headers.get("content-type");
+      let fileExtension = "epub"; // safe fallback
+
+      // 1. Check Content-Disposition first
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename\*?=["']?([^"';]+)["']?/i);
+        if (filenameMatch && filenameMatch[1]) {
+          let filename = filenameMatch[1];
+          if (filename.startsWith("UTF-8''")) {
+            filename = decodeURIComponent(filename.substring(7));
+          }
+          const ext = filename.split('.').pop()?.toLowerCase();
+          if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+            fileExtension = ext;
+          }
+        }
+      }
+
+      // 2. Fallback to Content-Type
+      if (fileExtension === "epub" && contentType) {
+        const ct = contentType.toLowerCase();
+        if (ct.includes("epub")) fileExtension = "epub";
+        else if (ct.includes("pdf")) fileExtension = "pdf";
+        else if (ct.includes("mobi")) fileExtension = "mobi";
+        else if (ct.includes("azw3")) fileExtension = "azw3";
+        else if (ct.includes("zip")) fileExtension = "zip";
+      }
+
+      // 3. Fallback to variant/metadata extension
+      if (fileExtension === "epub" && (variant.extension || variant.format)) {
+        const ext = (variant.extension || variant.format).toLowerCase();
+        if (ext && ext !== "php" && ext !== "html") {
+          fileExtension = ext;
+        }
+      }
+
+      // 4. Fallback to safe parsing of original mirror URL
+      if (fileExtension === "epub" && mirror.url) {
+        try {
+          const urlObj = new URL(mirror.url);
+          const pathname = urlObj.pathname;
+          const ext = pathname.split('.').pop()?.toLowerCase();
+          if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+            fileExtension = ext;
+          }
+        } catch (e) {}
       }
 
       const reader = response.body?.getReader();
