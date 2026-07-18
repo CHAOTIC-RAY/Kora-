@@ -79,6 +79,7 @@ export default function LibraryManager({
   const [activeBookForDelete, setActiveBookForDelete] = useState<BookMetadata | null>(null);
   const [activeShelf, setActiveShelf] = useState<string>("All");
   const [syncingBookIds, setSyncingBookIds] = useState<Set<string>>(new Set());
+  const [deletingBookIds, setDeletingBookIds] = useState<Set<string>>(new Set());
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
   const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
@@ -334,11 +335,11 @@ export default function LibraryManager({
     };
 
     books.forEach(book => {
-      if (!cachedBookIds.has(book.id) && book.md5 && !syncingBookIds.has(book.id)) {
+      if (!cachedBookIds.has(book.id) && book.md5 && !syncingBookIds.has(book.id) && !deletingBookIds.has(book.id)) {
         downloadMissingBook(book);
       }
     });
-  }, [books, cachedBookIds, syncingBookIds]);
+  }, [books, cachedBookIds, syncingBookIds, deletingBookIds]);
 
   async function loadTags() {
     const tags = await loadCustomTags(userId);
@@ -353,9 +354,11 @@ export default function LibraryManager({
 
   async function confirmDeleteBook() {
     if (!activeBookForDelete) return;
+    const bookId = activeBookForDelete.id;
+    setDeletingBookIds(prev => new Set(prev).add(bookId));
     try {
-      await deleteBookFile(activeBookForDelete.id);
-      await syncDeleteBook(userId, activeBookForDelete.id);
+      await deleteBookFile(bookId);
+      await syncDeleteBook(userId, bookId);
       onCachedIdsChanged();
       onRefreshLibrary();
     } catch (err) {
@@ -397,6 +400,11 @@ export default function LibraryManager({
   // Bulk Delete Selected Books
   async function confirmBulkDelete() {
     const ids = Array.from(selectedBookIds) as string[];
+    setDeletingBookIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.add(id));
+      return next;
+    });
     try {
       for (const id of ids) {
         await deleteBookFile(id);
