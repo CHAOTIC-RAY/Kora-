@@ -116,7 +116,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
 
   const nextStep = () => {
     if (step === 1 && !nickname.trim()) {
-      setNickname("Anonymous Bookworm");
+      setNickname("Anonymous Reader");
     }
     setStep(prev => prev + 1);
   };
@@ -127,11 +127,11 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
 
   const handleFinish = () => {
     if (!agreedToLicenses) {
-      toast.error("Please pledge allegiance to the Bookworm Guild by agreeing to the terms!");
+      toast.error("Please review and agree to the legal terms and copyright guidelines before continuing.");
       return;
     }
     onComplete({
-      nickname: nickname.trim() || "Noble Bookworm",
+      nickname: nickname.trim() || "Registered Reader",
       archetype: selectedArchetype,
       displayTheme: currentTheme,
       fontSize,
@@ -142,29 +142,29 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
 
   const walkthroughSteps = [
     {
-      title: "Your Personal Sanctuary (Library)",
-      desc: "All your acquired PDF, EPUB, and TXT scrolls dwell here securely. Drag and drop any book file directly onto the screen to ingest it instantly into your offline database.",
+      title: "E-Book Catalog & Library",
+      desc: "Keep your EPUB, PDF, and TXT files securely organized. Drag and drop files from your device to ingest them instantly into your secure local web storage database.",
       icon: BookOpen,
       color: "text-emerald-500",
       bg: "bg-emerald-500/10"
     },
     {
-      title: "Discover & Fetch Scraped Tomes",
-      desc: "Venture to the 'Discover' feed. You can explore curations from the New York Times Bestsellers or search Goodreads lists real-time, fetching rich metadata seamlessly.",
+      title: "Discover & Search Feeds",
+      desc: "Browse curations from the New York Times Bestsellers or search public Goodreads lists in real-time, fetching rich book metadata seamlessly.",
       icon: Compass,
       color: "text-amber-500",
       bg: "bg-amber-500/10"
     },
     {
-      title: "Download Alchemy & Background Spells",
-      desc: "Tap direct download on any featured book! Kora will perform download alchemy in the background, updating your downloads list with high-speed multi-mirror progress.",
+      title: "Background Download Manager",
+      desc: "Retrieve files from available public mirrors in the background. Your active downloads list tracks download streams and multi-mirror backup progress in real-time.",
       icon: Download,
       color: "text-blue-500",
       bg: "bg-blue-500/10"
     },
     {
-      title: "Aesthetic Enhancements",
-      desc: "Tweak fonts, adjust contrast, change spacing, or switch to grayscale covers to mimic a premium nostalgic E-Ink physical reader.",
+      title: "Display & Theme Settings",
+      desc: "Tweak font size, contrast, line height, or switch to paper-like grayscale mode to recreate a premium, eye-safe e-reader experience.",
       icon: Settings,
       color: "text-purple-500",
       bg: "bg-purple-500/10"
@@ -180,7 +180,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
           <div className="flex items-center gap-2">
             <Book className="w-5 h-5 text-kindle-accent" />
             <span className="font-lexend font-bold text-xs uppercase tracking-wider text-kindle-text">
-              Bookworm Onboarding & Odyssey Setup
+              Reader Setup & Legal Agreement
             </span>
           </div>
           <div className="flex gap-1.5">
@@ -213,22 +213,22 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                     Welcome to Kora
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    Let's curate your reading identity
+                    Let's personalize your reading environment
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    Kora is built by book lovers, for book lovers. Set up your bookish persona to tailor your aesthetic experience.
+                    Kora is built by book lovers, for book lovers. Set up your preferences to tailor your eye-comfort experience.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-kindle-text-muted">
-                    Your Booknerd Pseudonym
+                    Your Reader Nickname / Pen Name
                   </label>
                   <input
                     type="text"
                     value={nickname}
                     onChange={(e) => setNickname(e.target.value)}
-                    placeholder="e.g. Gutenberg's Apprentice, Cozy Page Turner..."
+                    placeholder="e.g. Reader, Scholar, Night Owl..."
                     className="w-full px-4 py-3 bg-kindle-card border border-kindle-border rounded-xl text-sm font-sans focus:outline-hidden focus:ring-1 focus:ring-kindle-accent text-kindle-text"
                   />
                 </div>
@@ -287,13 +287,13 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
               >
                 <div className="text-center space-y-2">
                   <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full">
-                    Aesthetic Alchemy
+                    Eye Comfort Settings
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
                     Fine-tune your reading interface
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    Kora renders texts exactly how your eyes desire. Customize the display to match your focus level.
+                    Kora renders texts to maximize focus and reduce eye strain. Customize the display to match your lighting conditions.
                   </p>
                 </div>
 
@@ -383,10 +383,10 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                     <div className="flex justify-between items-start gap-2">
                       <div>
                         <h4 className="font-display font-bold text-xs text-kindle-text">
-                          Auto-Cache Offline Scours
+                          Offline Library Cache
                         </h4>
                         <p className="text-[9px] text-kindle-text-muted leading-relaxed">
-                          Automatically download book files to your device's persistent IndexedDB local storage upon first view. Highly recommended for offline commutes!
+                          Automatically cache loaded books inside your browser's persistent IndexedDB local storage. Highly recommended for offline reading.
                         </p>
                       </div>
                       <input
@@ -413,13 +413,13 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                 <div className="text-center space-y-2">
                   <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full flex items-center gap-1 w-fit mx-auto">
                     <Award className="w-3.5 h-3.5 text-kindle-accent" />
-                    Interactive Guidebook
+                    Interactive Guide
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    A Walkthrough of Kora's Wonders
+                    App Navigation & Capabilities
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    A brief interactive guide showing how to harness the magical reading utilities inside this applet.
+                    A brief interactive overview showing how to navigate and manage your digital catalog inside this application.
                   </p>
                 </div>
 
@@ -486,36 +486,40 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
               >
                 <div className="text-center space-y-2">
                   <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full">
-                    Gutenberg Guard & Guild Pact
+                    Legal Disclaimer & Copyright Compliance
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    Terms & Regulation Licenses
+                    Terms of Use & Regulations
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    Kora operates strictly under public domain registries, open APIs, and direct secure peer caching. Review our reader pact below.
+                    Please read and agree to our legally focused policy regarding copyright laws, local regulations, and personal liability before continuing.
                   </p>
                 </div>
 
                 {/* Terms text box */}
                 <div className="p-4 bg-kindle-card border border-kindle-border rounded-xl space-y-3 max-h-[160px] overflow-y-auto text-[10px] text-kindle-text-muted leading-relaxed font-mono">
                   <div className="font-sans font-bold text-xs text-kindle-text border-b border-kindle-border pb-1 mb-2">
-                    Kora Reader Guild Compact & Licenses
+                    LEGAL COMPLIANCE, COPYRIGHT DISCLAIMER & PRIVACY POLICY
                   </div>
                   <p>
-                    <strong>1. FAIR USE & PUBLIC DOMAIN ACCESS</strong><br />
-                    All direct search features query public indices like Open Library, the New York Times Developer board, and Anna's Archive index references. Book downloads must only be initiated under fair use for educational, archival, and public domain research in compliance with localized laws.
+                    <strong>1. DISCLAIMER OF CONTENT ORIGIN & AGGREGATION</strong><br />
+                    Kora is a browser-based, independent, open-source client utility. It provides search aggregation, reader customization, and metadata indexing by querying public third-party web indices, open APIs, and decentralized document mirror databases. Kora does not host, control, store, upload, or distribute any digital book files or copyright-protected materials on its own servers.
                   </p>
                   <p className="mt-2">
-                    <strong>2. LOCAL STORAGE PRIVACY</strong><br />
-                    Your books, reader bookmarks, annotations, and reading speeds remain fully on your local device's IndexedDB container. No raw file blobs are uploaded to any server. If you activate the cloud sync module, only light structural metadata (e.g. read percent, book identifiers) are synced to secure Firebase storage.
+                    <strong>2. LOCAL JURISDICTION & USER RESPONSIBILITY</strong><br />
+                    By using this application, you acknowledge that you are entirely and solely responsible for compliance with all applicable local, national, and international copyright laws and intellectual property regulations. Any book download, file conversion, or metadata search initiated through decentralized mirror links must strictly conform to fair use, open access, public domain exemptions, or explicit personal license ownership under your local jurisdiction. You are strictly prohibited from using Kora to commit copyright infringement or engage in the unauthorized piracy of protected publications.
                   </p>
                   <p className="mt-2">
-                    <strong>3. OPEN SOURCE REGULATION & LICENSES</strong><br />
-                    The application integrates Cheerio under the MIT license, EpubJS parser systems under the BSD 3-Clause, Recharts for visual progress rendering, and Lucide vector icons.
+                    <strong>3. DMCA & TAKEDOWN REQUESTS</strong><br />
+                    Because Kora dynamically queries third-party search APIs and decentralized storage mirrors, it does not possess the technical capability to delete, disable, or remove files at their source. Copyright holders seeking DMCA takedowns, file removals, or suppression of metadata must direct their requests to the actual host platforms, server hosts, or API gateways that serve the documents.
+                  </p>
+                  <p className="mt-2">
+                    <strong>4. DATA PRIVACY & SANDBOXED STORAGE</strong><br />
+                    Your personal reading history remains fully confidential. All loaded book files, local reader progress, highlights, and annotations are stored locally within your browser's sandboxed IndexedDB container. No raw text content, imported documents, or private reading records are transmitted to external servers, ensuring absolute isolation and privacy.
                   </p>
                 </div>
 
-                {/* Playful agreement pact */}
+                {/* Legally focused agreement pact */}
                 <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2">
                   <div className="flex items-start gap-3">
                     <input
@@ -526,8 +530,8 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                       className="w-4 h-4 rounded border-amber-500/40 text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0 mt-0.5"
                     />
                     <label htmlFor="pact-checkbox" className="text-[11px] font-sans text-kindle-text leading-tight cursor-pointer">
-                      <span className="font-bold block text-amber-800">The Bookworm Oath:</span>
-                      I agree to the licensing conditions, will respect authors' rights, will read until my eyes grow weary, and will keep the bookworm fire alive.
+                      <span className="font-bold block text-amber-800">Acknowledgment of Legal Responsibility:</span>
+                      I have read and agree to the legal terms, disclaimers, and copyright regulations. I understand and accept full personal responsibility regarding files accessed, searched, or downloaded using third-party indices.
                     </label>
                   </div>
                 </div>
@@ -569,7 +573,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
               }`}
             >
               <Sparkles className="w-4 h-4" />
-              Begin Odyssey
+              Get Started
             </button>
           )}
         </div>

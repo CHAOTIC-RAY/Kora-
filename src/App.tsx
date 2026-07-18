@@ -41,6 +41,93 @@ import {
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle,
   RefreshCw, Zap, Database, Trash2
 } from "lucide-react";
+import JSZip from "jszip";
+
+async function injectMetadataIntoEpub(
+  fileBlob: Blob,
+  title: string,
+  author: string,
+  description?: string,
+  publisher?: string,
+  year?: string
+): Promise<Blob> {
+  try {
+    const zip = await JSZip.loadAsync(fileBlob);
+    let opfPath = "";
+    
+    const containerFile = zip.file("META-INF/container.xml");
+    if (containerFile) {
+      const containerXml = await containerFile.async("text");
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(containerXml, "text/xml");
+      const rootfile = doc.querySelector("rootfile");
+      if (rootfile) {
+        opfPath = rootfile.getAttribute("full-path") || "";
+      }
+    }
+    
+    if (!opfPath) {
+      opfPath = Object.keys(zip.files).find(name => name.endsWith(".opf")) || "";
+    }
+    
+    if (opfPath) {
+      const opfFile = zip.file(opfPath);
+      if (opfFile) {
+        const opfText = await opfFile.async("text");
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(opfText, "text/xml");
+        
+        const metadataNode = doc.querySelector("metadata") || doc.querySelector("opf\\:metadata");
+        if (metadataNode) {
+          const setMetadataTag = (tagName: string, value: string, attributes?: Record<string, string>) => {
+            let el = doc.querySelector(tagName.replace(":", "\\:"));
+            if (!el) {
+              const localName = tagName.split(":").pop() || tagName;
+              el = doc.querySelector(localName);
+            }
+            if (el) {
+              el.textContent = value;
+            } else {
+              const newEl = doc.createElementNS("http://purl.org/dc/elements/1.1/", tagName);
+              newEl.textContent = value;
+              if (attributes) {
+                Object.entries(attributes).forEach(([k, v]) => newEl.setAttribute(k, v));
+              }
+              metadataNode.appendChild(newEl);
+            }
+          };
+          
+          setMetadataTag("dc:title", title);
+          setMetadataTag("dc:creator", author, { "opf:role": "aut" });
+          if (description) {
+            setMetadataTag("dc:description", description);
+          }
+          if (publisher) {
+            setMetadataTag("dc:publisher", publisher);
+          }
+          if (year) {
+            setMetadataTag("dc:date", year);
+          }
+          
+          const serializer = new XMLSerializer();
+          const updatedOpfText = serializer.serializeToString(doc);
+          zip.file(opfPath, updatedOpfText);
+          
+          const newBlob = await zip.generateAsync({ 
+            type: "blob", 
+            mimeType: "application/epub+zip",
+            compression: "DEFLATE",
+            compressionOptions: { level: 5 }
+          });
+          return newBlob;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to inject metadata into EPUB file:", err);
+  }
+  return fileBlob;
+}
 
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
   constructor(props: { children: React.ReactNode }) {
@@ -385,26 +472,104 @@ export default function App() {
           }
         }
 
-        const fileBlob = new Blob(chunks);
+        let fileBlob = new Blob(chunks);
         const id = variant.md5 || Math.random().toString(36).substring(7);
-        await storeBookFile(id, fileBlob, `${book.title}.${fileExtension}`, fileExtension);
+
+        // Check if downloading using normal discovery search (non-advanced Google Book based search)
+        const isGoogleBookSearch = book.isGoogleBook || book.source === "google";
+        
+        let finalTitle = book.title;
+        let finalAuthor = book.author;
+        let finalDescription = book.description || "";
+        let finalPublisher = book.publisher || "";
+        let finalYear = book.year || "";
+        let finalLanguage = book.language || variant.language || "English";
+        let finalCoverUrl = book.coverUrl || "";
+        let finalPageCount = book.pages ? parseInt(book.pages) : undefined;
+        let finalTags = Array.from(new Set([
+          ...inferBookTags(finalTitle, finalAuthor, fileExtension),
+          ...(book.categories || [])
+        ]));
+
+        if (isGoogleBookSearch) {
+          logger.info(`Normal discovery search download detected. Fetching complete Google Books metadata for "${book.title}"`);
+          try {
+            const query = encodeURIComponent(`intitle:${book.title} inauthor:${book.author}`);
+            const gRes = await fetch(`/api/google-books/search?q=${query}&maxResults=1`);
+            if (gRes.ok) {
+              const gData = await gRes.json();
+              if (gData.items && gData.items[0]) {
+                const info = gData.items[0].volumeInfo;
+                if (info) {
+                  finalTitle = info.title || finalTitle;
+                  finalAuthor = info.authors?.join(", ") || finalAuthor;
+                  finalDescription = info.description || finalDescription;
+                  finalPublisher = info.publisher || finalPublisher;
+                  finalYear = info.publishedDate?.split("-")[0] || finalYear;
+                  finalLanguage = info.language || finalLanguage;
+                  if (info.imageLinks?.thumbnail) {
+                    finalCoverUrl = info.imageLinks.thumbnail.replace("http:", "https:");
+                  }
+                  if (info.pageCount) {
+                    finalPageCount = info.pageCount;
+                  }
+                  if (info.categories) {
+                    const parsedCats = info.categories.flatMap((cat: string) => {
+                      const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+                      return [cat, ...parts];
+                    });
+                    finalTags = Array.from(new Set([...finalTags, ...parsedCats]));
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Failed on-the-fly Google Books metadata enrich:", e);
+          }
+
+          // Inject metadata into the EPUB zip before storing it
+          if (fileExtension === "epub") {
+            logger.info(`Injecting updated Google Books metadata into EPUB file for "${finalTitle}"`);
+            try {
+              fileBlob = await injectMetadataIntoEpub(
+                fileBlob,
+                finalTitle,
+                finalAuthor,
+                finalDescription,
+                finalPublisher,
+                finalYear
+              );
+            } catch (injectErr) {
+              console.warn("Failed to inject metadata into EPUB blob:", injectErr);
+            }
+          }
+        }
+
+        await storeBookFile(id, fileBlob, `${finalTitle}.${fileExtension}`, fileExtension);
 
         // Save to library
         const newBook: BookMetadata = {
           id,
-          title: book.title,
-          author: book.author,
+          title: finalTitle,
+          author: finalAuthor,
           extension: fileExtension,
           size: variant.size || "Unknown",
-          language: variant.language || "English",
-          coverUrl: book.coverUrl,
+          language: finalLanguage,
+          coverUrl: finalCoverUrl,
           md5: variant.md5,
           source: "Kora Store",
-          tags: inferBookTags(book.title, book.author, fileExtension),
+          tags: finalTags,
           status: "to-read",
-          progress: { percent: 0, lastReadTime: Date.now() },
+          progress: { 
+            percent: 0, 
+            lastReadTime: Date.now(),
+            totalPages: finalPageCount
+          },
           dateAdded: Date.now(),
-          description: book.description || ""
+          description: finalDescription,
+          publisher: finalPublisher,
+          year: finalYear,
+          downloadUrl: variant.downloadUrl || variant.directUrl
         };
 
         await syncBookToCloud(user?.uid || "", newBook);
@@ -1198,9 +1363,11 @@ export default function App() {
       <Toaster position="bottom-center" toastOptions={{
         duration: 5000,
         style: {
-          background: 'var(--kindle-card)',
+          background: 'var(--toast-bg, var(--kindle-card))',
           color: 'var(--kindle-text)',
           border: '1px solid var(--kindle-border)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
           fontSize: '11px',
           fontWeight: '700',
           borderRadius: '16px',
@@ -1208,7 +1375,7 @@ export default function App() {
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
           padding: '12px 20px',
-          boxShadow: '0 10px 40px -10px rgba(0,0,0,0.2)',
+          boxShadow: '0 10px 40px -10px rgba(0,0,0,0.25)',
           marginBottom: '60px', // Add margin to avoid overlapping tab bar
         },
         success: {

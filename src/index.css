@@ -25,6 +25,7 @@
   --theme-border: #E4E4E7;
   --theme-accent: #2D2D2D;
   --theme-card: #FFFFFF;
+  --toast-bg: rgba(255, 255, 255, 0.85);
 
   --color-kindle-bg: #FAFAFA;
   --color-kindle-text: #1A1A1A;
@@ -42,6 +43,7 @@
   --theme-border: #D6D2C3;
   --theme-accent: #6B6459;
   --theme-card: #ECE8D4;
+  --toast-bg: rgba(236, 232, 212, 0.85);
 
   --color-kindle-bg: #F7F3E3;
   --color-kindle-text: #3D3B36;
@@ -59,6 +61,7 @@
   --theme-border: #3F3F46;
   --theme-accent: #E4E4E7;
   --theme-card: #27272A;
+  --toast-bg: rgba(39, 39, 42, 0.85);
 
   --color-kindle-bg: #18181B;
   --color-kindle-text: #F4F4F5;
@@ -76,6 +79,7 @@
   --theme-border: #1E3A5F;
   --theme-accent: #38BDF8;
   --theme-card: #0F1F38;
+  --toast-bg: rgba(15, 31, 56, 0.85);
 
   --color-kindle-bg: #0B1120;
   --color-kindle-text: #E2E8F0;

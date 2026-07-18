@@ -27,6 +27,92 @@ interface DiscoverViewProps {
   onTriggerDownload?: (book: any, mirrors: any | any[], variant: any) => void;
 }
 
+async function injectMetadataIntoEpub(
+  fileBlob: Blob,
+  title: string,
+  author: string,
+  description?: string,
+  publisher?: string,
+  year?: string
+): Promise<Blob> {
+  try {
+    const zip = await JSZip.loadAsync(fileBlob);
+    let opfPath = "";
+    
+    const containerFile = zip.file("META-INF/container.xml");
+    if (containerFile) {
+      const containerXml = await containerFile.async("text");
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(containerXml, "text/xml");
+      const rootfile = doc.querySelector("rootfile");
+      if (rootfile) {
+        opfPath = rootfile.getAttribute("full-path") || "";
+      }
+    }
+    
+    if (!opfPath) {
+      opfPath = Object.keys(zip.files).find(name => name.endsWith(".opf")) || "";
+    }
+    
+    if (opfPath) {
+      const opfFile = zip.file(opfPath);
+      if (opfFile) {
+        const opfText = await opfFile.async("text");
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(opfText, "text/xml");
+        
+        const metadataNode = doc.querySelector("metadata") || doc.querySelector("opf\\:metadata");
+        if (metadataNode) {
+          const setMetadataTag = (tagName: string, value: string, attributes?: Record<string, string>) => {
+            let el = doc.querySelector(tagName.replace(":", "\\:"));
+            if (!el) {
+              const localName = tagName.split(":").pop() || tagName;
+              el = doc.querySelector(localName);
+            }
+            if (el) {
+              el.textContent = value;
+            } else {
+              const newEl = doc.createElementNS("http://purl.org/dc/elements/1.1/", tagName);
+              newEl.textContent = value;
+              if (attributes) {
+                Object.entries(attributes).forEach(([k, v]) => newEl.setAttribute(k, v));
+              }
+              metadataNode.appendChild(newEl);
+            }
+          };
+          
+          setMetadataTag("dc:title", title);
+          setMetadataTag("dc:creator", author, { "opf:role": "aut" });
+          if (description) {
+            setMetadataTag("dc:description", description);
+          }
+          if (publisher) {
+            setMetadataTag("dc:publisher", publisher);
+          }
+          if (year) {
+            setMetadataTag("dc:date", year);
+          }
+          
+          const serializer = new XMLSerializer();
+          const updatedOpfText = serializer.serializeToString(doc);
+          zip.file(opfPath, updatedOpfText);
+          
+          const newBlob = await zip.generateAsync({ 
+            type: "blob", 
+            mimeType: "application/epub+zip",
+            compression: "DEFLATE",
+            compressionOptions: { level: 5 }
+          });
+          return newBlob;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to inject metadata into EPUB file:", err);
+  }
+  return fileBlob;
+}
+
 // Define all possible categories tied to their connector IDs
 const ALL_CATEGORIES = [
   { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
@@ -81,6 +167,7 @@ export default function DiscoverView({
     return tempStorage.get<any>("preferred_source") || "google";
   });
   const [loadingFeatured, setLoadingFeatured] = useState<boolean>(true);
+  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt">("all");
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -416,94 +503,130 @@ export default function DiscoverView({
       const cachedDate = localStorage.getItem("kora_nyt_featured_date");
       const cachedFeed = localStorage.getItem("kora_nyt_featured_feed");
 
-      let json: any;
-      if (!forceRefresh && cachedDate === todayString && cachedFeed) {
-        console.log("[NYT Cache] Loaded daily discover feed from localStorage");
-        json = JSON.parse(cachedFeed);
-      } else {
-        console.log("[NYT Cache] Fetching fresh NYT overview...");
-        const res = await fetch("/api/nytimes/overview");
-        if (!res.ok) throw new Error("Failed to fetch NYT overview");
-        json = await res.json();
+      let nytOverviewJson: any = null;
+      let nytError: string | null = null;
 
-        // Detect an upstream NYT fault (bad key, quota, outage) and tell the user.
-        if (json?.fault || (json?.error && !json?.results?.lists?.length)) {
-          setError(`The NYT Best Sellers API rejected the configured key (${json?.fault?.faultstring || "invalid"}). Discover is showing popular picks via the Rave Engine instead. Check NYT_BOOKS_API_KEY in Cloudflare.`);
+      // 1. Load or Fetch NYT overview
+      try {
+        if (!forceRefresh && cachedDate === todayString && cachedFeed) {
+          console.log("[NYT Cache] Loaded daily discover feed from localStorage");
+          nytOverviewJson = JSON.parse(cachedFeed);
         } else {
-          setError(null);
-        }
-        setFeedNotice(json?.notice || (json?.source === "rave-fallback" ? "NYT Best Sellers API unavailable — showing popular picks via Rave Engine." : null));
+          console.log("[NYT Cache] Fetching fresh NYT overview...");
+          const res = await fetch("/api/nytimes/overview");
+          if (!res.ok) throw new Error("Failed to fetch NYT overview");
+          nytOverviewJson = await res.json();
 
-        // Save to cache for today only if it's NOT a fallback/error
-        const isFallback = json?.source === "rave-fallback" || json?.fault || (json?.error && !json?.results?.lists?.length);
-        if (!isFallback) {
-          localStorage.setItem("kora_nyt_featured_date", todayString);
-          localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(json));
-        } else {
-          // If it is a fallback, clean any stale cache so we don't lock onto it
-          localStorage.removeItem("kora_nyt_featured_date");
-          localStorage.removeItem("kora_nyt_featured_feed");
+          // Detect upstream NYT fault
+          if (nytOverviewJson?.fault || (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length)) {
+            nytError = `The NYT Best Sellers API is unavailable.`;
+          }
+
+          const isFallback = nytOverviewJson?.source === "rave-fallback" || nytOverviewJson?.fault || (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length);
+          if (!isFallback && nytOverviewJson) {
+            localStorage.setItem("kora_nyt_featured_date", todayString);
+            localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(nytOverviewJson));
+          } else if (isFallback) {
+            localStorage.removeItem("kora_nyt_featured_date");
+            localStorage.removeItem("kora_nyt_featured_feed");
+          }
         }
+      } catch (err: any) {
+        console.error("NYT overview fetch failed:", err);
+        nytError = err.message || "Failed to fetch NYT overview";
       }
 
-      const data: Record<string, any[]> = {};
-      const lists = json.results?.lists || [];
+      const mergedData: Record<string, any[]> = {};
 
-      // Process NYT Lists
-      ALL_CATEGORIES.filter(cat => cat.source === "nyt").forEach(cat => {
-        const nytList = lists.find((l: any) => l.list_name_encoded === cat.query);
-        if (nytList) {
-          const seen = new Set<string>();
-          const uniqueBooks: any[] = [];
-          (nytList.books || []).forEach((b: any) => {
-            const key = `${(b.title || "").toLowerCase().trim()}___${(b.author || "").toLowerCase().trim()}`;
-            if (!seen.has(key)) {
-              seen.add(key);
-              
-              const cleanTitle = (b.title || "")
-                .split(':')[0]
-                .replace(/\b\d{10,13}\b/g, '') // Remove ISBNs
-                .replace(/\(.*\)/g, '')
-                .replace(/volume\s+\d+/gi, '')
-                .replace(/book\s+\d+/gi, '')
-                .replace(/[^\w\s-]/gi, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
+      // 2. Process NYT lists if available
+      if (nytOverviewJson && !nytOverviewJson.fault) {
+        const lists = nytOverviewJson.results?.lists || [];
+        ALL_CATEGORIES.filter(cat => cat.source === "nyt").forEach(cat => {
+          const nytList = lists.find((l: any) => l.list_name_encoded === cat.query);
+          if (nytList) {
+            const seen = new Set<string>();
+            const uniqueBooks: any[] = [];
+            (nytList.books || []).forEach((b: any) => {
+              const key = `${(b.title || "").toLowerCase().trim()}___${(b.author || "").toLowerCase().trim()}`;
+              if (!seen.has(key)) {
+                seen.add(key);
                 
-              const cleanAuthor = (b.author || "")
-                .split(',')[0]
-                .replace(/\b\d{4}-\d{4}\b/g, '') // 1922-2012
-                .replace(/\bUnknown\b/gi, '')
-                .replace(/\(.*\)/g, '')
-                .replace(/[^\w\s-]/gi, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
+                const cleanTitle = (b.title || "")
+                  .split(':')[0]
+                  .replace(/\b\d{10,13}\b/g, '') // Remove ISBNs
+                  .replace(/\(.*\)/g, '')
+                  .replace(/volume\s+\d+/gi, '')
+                  .replace(/book\s+\d+/gi, '')
+                  .replace(/[^\w\s-]/gi, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+                  
+                const cleanAuthor = (b.author || "")
+                  .split(',')[0]
+                  .replace(/\b\d{4}-\d{4}\b/g, '') // 1922-2012
+                  .replace(/\bUnknown\b/gi, '')
+                  .replace(/\(.*\)/g, '')
+                  .replace(/[^\w\s-]/gi, ' ')
+                  .replace(/\s+/g, ' ')
+                  .trim();
 
-              uniqueBooks.push({
-                title: b.title,
-                author: b.author,
-                coverUrl: b.book_image,
-                searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
-                source: 'nyt'
-              });
-            }
-          });
-          data[cat.id] = uniqueBooks;
-        } else {
-          data[cat.id] = [];
+                uniqueBooks.push({
+                  title: b.title,
+                  author: b.author,
+                  coverUrl: b.book_image,
+                  searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
+                  source: 'nyt'
+                });
+              }
+            });
+            mergedData[cat.id] = uniqueBooks;
+          } else {
+            mergedData[cat.id] = [];
+          }
+        });
+      } else {
+        // Populate empty lists for NYT if it failed
+        ALL_CATEGORIES.filter(cat => cat.source === "nyt").forEach(cat => {
+          mergedData[cat.id] = [];
+        });
+      }
+
+      // 3. Fetch Goodreads categories concurrently
+      const goodreadsCats = ALL_CATEGORIES.filter(cat => cat.source === "goodreads");
+      const goodreadsPromises = goodreadsCats.map(async (cat) => {
+        try {
+          const gBooks = await fetchGoodreadsCategory(cat.query);
+          return { id: cat.id, books: gBooks };
+        } catch (err) {
+          console.error(`Failed to background fetch Goodreads ${cat.title}:`, err);
+          return { id: cat.id, books: [] };
         }
       });
 
-      setFeaturedData(data);
+      const goodreadsResults = await Promise.all(goodreadsPromises);
+      goodreadsResults.forEach(res => {
+        mergedData[res.id] = res.books;
+      });
+
+      // Update states
+      setFeaturedData(mergedData);
+
+      // Handle notices & errors gracefully
+      if (nytError) {
+        const hasGoodreads = goodreadsResults.some(res => res.books.length > 0);
+        if (hasGoodreads) {
+          setFeedNotice("NYT Best Sellers API currently unavailable — displaying Goodreads picks and popular archives.");
+          setError(null);
+        } else {
+          setError(`Featured content unavailable. ${nytError}`);
+        }
+      } else {
+        setFeedNotice(nytOverviewJson?.notice || (nytOverviewJson?.source === "rave-fallback" ? "NYT Best Sellers API unavailable — showing popular picks via Rave Engine." : null));
+        setError(null);
+      }
     } catch (err: any) {
       console.error("Failed to load featured content:", err);
-      // More descriptive error handling
-      const errorMessage = err.message || "Unknown error";
-      if (errorMessage.includes("NYT API Key")) {
-        setError(`Featured content requires NYT_BOOKS_API_KEY to be configured in secrets.`);
-      } else {
-        setError(`Featured Content: ${errorMessage}`);
-      }
+      setError(`Failed to load featured content: ${err.message || err}`);
     } finally {
       setLoadingFeatured(false);
     }
@@ -674,7 +797,9 @@ export default function DiscoverView({
   async function fetchNYTCategory(listName: string, date: string = "current"): Promise<{ books: any[]; previousDate: string | null }> {
     const cacheKey = `nyt_list_opt_${listName}_${date}`;
     const cached = tempStorage.get<any>(cacheKey);
-    if (cached) return cached;
+    if (cached && typeof cached === "object" && Array.isArray(cached.books)) {
+      return cached;
+    }
 
     try {
       // Fetch current week
@@ -754,7 +879,7 @@ export default function DiscoverView({
   async function fetchGoodreadsCategory(query: string): Promise<any[]> {
     const cacheKey = `goodreads_list_${query}`;
     const cached = tempStorage.get<any[]>(cacheKey);
-    if (cached) return cached;
+    if (cached && Array.isArray(cached)) return cached;
 
     try {
       const res = await fetch(`/api/goodreads/list?list=${encodeURIComponent(query)}`);
@@ -809,11 +934,11 @@ export default function DiscoverView({
     try {
       if (category.source === "goodreads") {
         const books = await fetchGoodreadsCategory(category.query);
-        setCategoryBooks(books);
+        setCategoryBooks(Array.isArray(books) ? books : []);
         setCategoryPreviousDate(null);
       } else {
-        const { books, previousDate } = await fetchNYTCategory(category.query);
-        setCategoryBooks(books);
+        const { books = [], previousDate = null } = await fetchNYTCategory(category.query) || {};
+        setCategoryBooks(Array.isArray(books) ? books : []);
         setCategoryPreviousDate(previousDate);
       }
     } catch (err: any) {
@@ -831,11 +956,13 @@ export default function DiscoverView({
     
     setLoadingCategoryMore(true);
     try {
-      const { books, previousDate } = await fetchNYTCategory(viewingCategory.query, categoryPreviousDate);
+      const { books = [], previousDate = null } = await fetchNYTCategory(viewingCategory.query, categoryPreviousDate) || {};
       // Filter out duplicates
       setCategoryBooks(prev => {
-        const newBooks = books.filter(b => !prev.some(pb => pb.searchQuery === b.searchQuery));
-        return [...prev, ...newBooks];
+        const actualBooks = Array.isArray(books) ? books : [];
+        const actualPrev = Array.isArray(prev) ? prev : [];
+        const newBooks = actualBooks.filter(b => !actualPrev.some(pb => pb.searchQuery === b.searchQuery));
+        return [...actualPrev, ...newBooks];
       });
       setCategoryPreviousDate(previousDate);
     } catch (err) {
@@ -1388,23 +1515,63 @@ export default function DiscoverView({
           } catch (e) { /* ignore */ }
         }
 
+        // Check if downloading using normal discovery search (non-advanced Google Book based search)
+        const isGoogleBookSearch = !isAdvancedSearch && (
+          (selectedBook && (selectedBook.isGoogleBook || selectedBook.source === "google")) ||
+          (selectedFeaturedBook && (selectedFeaturedBook.isGoogleBook || selectedFeaturedBook.source === "google"))
+        );
+        const activeBookMeta = selectedBook || selectedFeaturedBook;
+
+        let finalTitle = selectedBook.title;
+        let finalAuthor = selectedBook.author;
+        let finalDescription = verifiedDetails?.description || selectedBook.description || "";
+        let finalPublisher = verifiedDetails?.publisher || selectedBook.publisher || "";
+        let finalYear = verifiedDetails?.publishYear || selectedBook.year || "";
+        let finalLanguage = verifiedDetails?.language || selectedBook.language || activeVariant.language || "English";
+        let finalCoverUrl = (!selectedBook.coverUrl || selectedBook.coverUrl.includes("placeholder")) && verifiedDetails?.coverUrl ? verifiedDetails.coverUrl : selectedBook.coverUrl;
+        let finalPageCount = verifiedDetails?.pageCount || (selectedBook.pages ? parseInt(selectedBook.pages) : undefined);
+        let finalTags = Array.from(new Set([
+          ...inferBookTags(finalTitle, finalAuthor, fileExtension),
+          ...(verifiedDetails?.subjects || []),
+          ...(selectedBook.categories || [])
+        ]));
+
+        if (isGoogleBookSearch && activeBookMeta) {
+          logger.info(`Normal discovery search download detected in fallback auto-download. Enriching and injecting metadata for "${finalTitle}"`);
+          // Inject metadata into the EPUB zip before storing it
+          if (fileExtension === "epub") {
+            try {
+              fileBlob = await injectMetadataIntoEpub(
+                fileBlob,
+                finalTitle,
+                finalAuthor,
+                finalDescription,
+                finalPublisher,
+                finalYear
+              );
+            } catch (injectErr) {
+              console.warn("Failed to inject metadata into EPUB blob:", injectErr);
+            }
+          }
+        }
+
         setDownloadProgress({ step: "saving", percent: 90, error: null });
         const id = activeVariant.md5 || Math.random().toString(36).substring(7);
-        await storeBookFile(id, fileBlob, `${selectedBook.title}.${fileExtension}`, fileExtension);
+        await storeBookFile(id, fileBlob, `${finalTitle}.${fileExtension}`, fileExtension);
 
         // If a custom directory is configured, write the downloaded file there as well
         try {
           const { getSavedDirectoryHandle, saveFileToDirectory } = await import("../lib/directoryHelper");
           const dirHandle = await getSavedDirectoryHandle();
           if (dirHandle) {
-            await saveFileToDirectory(dirHandle, `${selectedBook.title}.${fileExtension}`, fileBlob);
+            await saveFileToDirectory(dirHandle, `${finalTitle}.${fileExtension}`, fileBlob);
           }
           const isVirtualActive = localStorage.getItem("kora_use_virtual_dir") === "true";
           if (isVirtualActive) {
             const { addVirtualDirectoryFile } = await import("../lib/directoryHelper");
             addVirtualDirectoryFile({
-              name: selectedBook.title,
-              author: selectedBook.author || "Unknown",
+              name: finalTitle,
+              author: finalAuthor || "Unknown",
               size: activeVariant.size || "1.5 MB",
               extension: fileExtension as any
             });
@@ -1415,25 +1582,25 @@ export default function DiscoverView({
 
         const newBook: BookMetadata = {
           id,
-          title: selectedBook.title,
-          author: selectedBook.author,
+          title: finalTitle,
+          author: finalAuthor,
           extension: fileExtension,
           size: activeVariant.size || "Unknown",
-          language: verifiedDetails?.language || activeVariant.language || "English",
-          coverUrl: (!selectedBook.coverUrl || selectedBook.coverUrl.includes("placeholder")) && verifiedDetails?.coverUrl ? verifiedDetails.coverUrl : selectedBook.coverUrl,
+          language: finalLanguage,
+          coverUrl: finalCoverUrl,
           md5: activeVariant.md5,
           source: "Kora Store",
-          tags: Array.from(new Set([...inferBookTags(selectedBook.title, selectedBook.author, fileExtension), ...(verifiedDetails?.subjects || [])])),
+          tags: finalTags,
           status: "to-read",
           progress: { 
             percent: 0, 
             lastReadTime: Date.now(),
-            totalPages: verifiedDetails?.pageCount
+            totalPages: finalPageCount
           },
           dateAdded: Date.now(),
-          description: verifiedDetails?.description,
-          publisher: verifiedDetails?.publisher,
-          year: verifiedDetails?.publishYear,
+          description: finalDescription,
+          publisher: finalPublisher,
+          year: finalYear,
           downloadUrl: activeVariant.downloadUrl || activeVariant.directUrl
         };
 
@@ -1586,23 +1753,60 @@ export default function DiscoverView({
         } catch (e) { /* ignore ZIP parse error */ }
       }
 
+      // Check if downloading using normal discovery search (non-advanced Google Book based search)
+      const isGoogleBookSearch = !isAdvancedSearch && (
+        (book && (book.isGoogleBook || book.source === "google"))
+      );
+
+      let finalTitle = book.title;
+      let finalAuthor = book.author;
+      let finalDescription = book.description || "";
+      let finalPublisher = book.publisher || "";
+      let finalYear = book.year || "";
+      let finalLanguage = book.language || activeVariant.language || "English";
+      let finalCoverUrl = book.coverUrl || "";
+      let finalPageCount = book.pages ? parseInt(book.pages) : undefined;
+      let finalTags = Array.from(new Set([
+        ...inferBookTags(finalTitle, finalAuthor, fileExtension),
+        ...(book.categories || [])
+      ]));
+
+      if (isGoogleBookSearch) {
+        logger.info(`Normal discovery search download detected in mirror download. Enriching and injecting metadata for "${finalTitle}"`);
+        // Inject metadata into the EPUB zip before storing it
+        if (fileExtension === "epub") {
+          try {
+            fileBlob = await injectMetadataIntoEpub(
+              fileBlob,
+              finalTitle,
+              finalAuthor,
+              finalDescription,
+              finalPublisher,
+              finalYear
+            );
+          } catch (injectErr) {
+            console.warn("Failed to inject metadata into EPUB blob:", injectErr);
+          }
+        }
+      }
+
       setDownloadProgress({ step: "saving", percent: 90, error: null });
       const id = activeVariant.md5 || Math.random().toString(36).substring(7);
-      await storeBookFile(id, fileBlob, `${book.title}.${fileExtension}`, fileExtension);
+      await storeBookFile(id, fileBlob, `${finalTitle}.${fileExtension}`, fileExtension);
 
       // If a custom directory is configured, write the downloaded file there as well
       try {
         const { getSavedDirectoryHandle, saveFileToDirectory } = await import("../lib/directoryHelper");
         const dirHandle = await getSavedDirectoryHandle();
         if (dirHandle) {
-          await saveFileToDirectory(dirHandle, `${book.title}.${fileExtension}`, fileBlob);
+          await saveFileToDirectory(dirHandle, `${finalTitle}.${fileExtension}`, fileBlob);
         }
         const isVirtualActive = localStorage.getItem("kora_use_virtual_dir") === "true";
         if (isVirtualActive) {
           const { addVirtualDirectoryFile } = await import("../lib/directoryHelper");
           addVirtualDirectoryFile({
-            name: book.title,
-            author: book.author || "Unknown",
+            name: finalTitle,
+            author: finalAuthor || "Unknown",
             size: activeVariant.size || "1.5 MB",
             extension: fileExtension as any
           });
@@ -1613,18 +1817,25 @@ export default function DiscoverView({
 
       const newBook: BookMetadata = {
         id,
-        title: book.title,
-        author: book.author,
+        title: finalTitle,
+        author: finalAuthor,
         extension: fileExtension,
         size: activeVariant.size || "Unknown",
-        language: activeVariant.language || "English",
-        coverUrl: book.coverUrl,
+        language: finalLanguage,
+        coverUrl: finalCoverUrl,
         md5: activeVariant.md5,
         source: "Kora Store",
-        tags: inferBookTags(book.title, book.author, fileExtension),
+        tags: finalTags,
         status: "to-read",
-        progress: { percent: 0, lastReadTime: Date.now() },
+        progress: { 
+          percent: 0, 
+          lastReadTime: Date.now(),
+          totalPages: finalPageCount
+        },
         dateAdded: Date.now(),
+        description: finalDescription,
+        publisher: finalPublisher,
+        year: finalYear,
         downloadUrl: activeVariant.downloadUrl || activeVariant.directUrl
       };
 
@@ -2241,6 +2452,47 @@ export default function DiscoverView({
               </button>
             </div>
           )}
+          {/* Feed Filter Tabs */}
+          <div className="flex items-center justify-between border-b border-kindle-border/40 pb-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
+              <button
+                onClick={() => setFeedFilter("all")}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+                  feedFilter === "all"
+                    ? "border-kindle-text text-kindle-text"
+                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                All Feeds
+              </button>
+              <button
+                onClick={() => setFeedFilter("goodreads")}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  feedFilter === "goodreads"
+                    ? "border-kindle-text text-kindle-text"
+                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                <Library className="w-3.5 h-3.5 text-amber-500" />
+                Goodreads Favorites
+              </button>
+              <button
+                onClick={() => setFeedFilter("nyt")}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  feedFilter === "nyt"
+                    ? "border-kindle-text text-kindle-text"
+                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+                NYT Best Sellers
+              </button>
+            </div>
+            <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
+              {feedFilter === "all" ? "Showing all" : feedFilter === "goodreads" ? "Goodreads lists" : "NYT Best Sellers"}
+            </div>
+          </div>
+
           {loadingFeatured ? (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-5">
               {[...Array(6)].map((_, i) => (
@@ -2253,7 +2505,11 @@ export default function DiscoverView({
             </div>
           ) : (
             (() => {
-              const totalBooks = ALL_CATEGORIES.reduce((n, c) => n + (featuredData[c.id]?.length || 0), 0);
+              const filteredCategories = ALL_CATEGORIES.filter(cat => {
+                if (feedFilter === "all") return true;
+                return cat.source === feedFilter;
+              });
+              const totalBooks = filteredCategories.reduce((n, c) => n + (featuredData[c.id]?.length || 0), 0);
               if (totalBooks === 0) {
                 return (
                   <div className="py-20 flex flex-col items-center gap-4 text-center">
@@ -2269,15 +2525,21 @@ export default function DiscoverView({
                   </div>
                 );
               }
-              return ALL_CATEGORIES.map((cat) => {
-                const books = featuredData[cat.id] || [];
-                if (books.length === 0) return null;
+              return filteredCategories.map((cat) => {
+                const books = featuredData[cat.id];
+                if (!Array.isArray(books) || books.length === 0) return null;
                 return (
                   <section key={cat.id} className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-kindle-card rounded-xl border border-kindle-border">
-                          {cat.id.includes("fiction") ? <BookMarked className="w-4 h-4 text-kindle-accent" /> : <Sparkles className="w-4 h-4 text-kindle-accent" />}
+                          {cat.source === "goodreads" ? (
+                            <Library className="w-4 h-4 text-amber-500" />
+                          ) : cat.id.includes("fiction") ? (
+                            <BookMarked className="w-4 h-4 text-kindle-accent" />
+                          ) : (
+                            <Sparkles className="w-4 h-4 text-kindle-accent" />
+                          )}
                         </div>
                         <h3 className="text-lg font-lexend font-bold tracking-tight">{cat.title}</h3>
                       </div>
@@ -2300,6 +2562,12 @@ export default function DiscoverView({
                         className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start"
                       >
                         <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
+                          {/* Goodreads rating badge */}
+                          {book.rating && (
+                            <div className="absolute top-2 right-2 bg-amber-500/95 text-white font-sans font-bold text-[8.5px] px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md z-10">
+                              ★ {book.rating}
+                            </div>
+                          )}
                           {!hideCovers && book.coverUrl ? (
                             <img
                               src={book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
@@ -2516,19 +2784,34 @@ export default function DiscoverView({
                           </div>
 
                           <div className="flex items-center gap-1.5 shrink-0">
+                            {/* Always show Open in New Tab button for all mirrors */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(m.url, '_blank');
+                              }}
+                              title="Open in new tab"
+                              className="p-2 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </button>
+
                             {m.isDirect && (
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onOpenBrowser?.(m.url);
                                 }}
-                                title="Open Link"
+                                title="Open in-app browser"
                                 className="p-2 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
                               >
-                                <ExternalLink className="w-3.5 h-3.5" />
+                                <Globe className="w-3.5 h-3.5" />
                               </button>
                             )}
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleMirrorClick(m);
@@ -2916,19 +3199,62 @@ export default function DiscoverView({
                                           </div>
                                           <p className="text-[10px] text-kindle-text-muted/60 truncate font-mono">{m.url}</p>
                                         </div>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleMirrorClick(m);
-                                          }}
-                                          className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
-                                            m.isDirect
-                                              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
-                                              : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
-                                          }`}
-                                        >
-                                          {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
-                                        </button>
+                                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+
+                                          {/* Always show Open in New Tab button for featured details mirrors */}
+
+                                          <button
+
+                                            type="button"
+
+                                            onClick={(e) => {
+
+                                              e.stopPropagation();
+
+                                              window.open(m.url, "_blank");
+
+                                            }}
+
+                                            title="Open in new tab"
+
+                                            className="p-2.5 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition-all"
+
+                                          >
+
+                                            <ExternalLink className="w-4 h-4" />
+
+                                          </button>
+
+
+                                          <button
+
+                                            type="button"
+
+                                            onClick={(e) => {
+
+                                              e.stopPropagation();
+
+                                              handleMirrorClick(m);
+
+                                            }}
+
+                                            className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
+
+                                              m.isDirect
+
+                                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
+
+                                                : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
+
+                                            }`}
+
+                                          >
+
+                                            {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+
+                                          </button>
+
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
