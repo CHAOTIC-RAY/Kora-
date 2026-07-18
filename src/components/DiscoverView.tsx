@@ -1595,7 +1595,7 @@ export default function DiscoverView({
           progress: { 
             percent: 0, 
             lastReadTime: Date.now(),
-            totalPages: finalPageCount
+            totalPages: finalPageCount || 0
           },
           dateAdded: Date.now(),
           description: finalDescription,
@@ -1830,7 +1830,7 @@ export default function DiscoverView({
         progress: { 
           percent: 0, 
           lastReadTime: Date.now(),
-          totalPages: finalPageCount
+          totalPages: finalPageCount || 0
         },
         dateAdded: Date.now(),
         description: finalDescription,

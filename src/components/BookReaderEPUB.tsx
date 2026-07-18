@@ -1175,10 +1175,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           const chapterDoc = parser.parseFromString(rawContent, "text/html");
           
           // Get beautiful title from H1/H2 or title element
-          let chapterTitle = chapterDoc.querySelector("title")?.textContent || 
-                             chapterDoc.querySelector("h1")?.textContent || 
-                             chapterDoc.querySelector("h2")?.textContent || 
-                             `Chapter ${i + 1}`;
+          let chapterTitle = chapterDoc.querySelector("title")?.textContent?.trim() || "";
+          
+          if (!chapterTitle || chapterTitle.toLowerCase() === "unknown" || chapterTitle.toLowerCase() === "untitled") {
+             chapterTitle = chapterDoc.querySelector("h1")?.textContent || 
+                            chapterDoc.querySelector("h2")?.textContent || 
+                            chapterDoc.querySelector("h3")?.textContent ||
+                            `Chapter ${i + 1}`;
+          }
 
           chapterTitle = chapterTitle.trim().replace(/\s+/g, " ");
           if (chapterTitle.length > 50) {
