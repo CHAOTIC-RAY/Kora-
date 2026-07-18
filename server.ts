@@ -2325,16 +2325,16 @@ app.post("/api/hardcover", express.json(), async (req, res) => {
 
 // 6. API: Anna's Archive Search - Replaced with Rave Book Search
 app.get("/api/annas-archive/search", async (req, res) => {
+  const { q, source, page } = req.query;
+  if (!q) return res.status(400).json({ error: "Query 'q' is required." });
+  
+  const searchSource = (source as string) || "all";
+  const searchPage = parseInt(page as string) || 1;
+  const cacheKey = `${q}_${searchSource}_${searchPage}`;
+  const cached = raveSearchCache.get(cacheKey);
+  const now = Date.now();
+
   try {
-    const { q, source, page } = req.query;
-    if (!q) return res.status(400).json({ error: "Query 'q' is required." });
-    
-    const searchSource = (source as string) || "all";
-    const searchPage = parseInt(page as string) || 1;
-    
-    const cacheKey = `${q}_${searchSource}_${searchPage}`;
-    const cached = raveSearchCache.get(cacheKey);
-    const now = Date.now();
     if (cached && now - cached.timestamp < RAVE_SEARCH_CACHE_TTL) {
       console.log(`Serving cached Rave Book Search for: "${q}"`);
       if (cached.data && Array.isArray(cached.data.books)) {
@@ -2395,6 +2395,15 @@ app.get("/api/annas-archive/search", async (req, res) => {
     res.json(responseData);
   } catch (err: any) {
     console.error("Rave Book Search API failed:", err);
+    if (cached) {
+      console.log(`Error occurred. Serving expired Rave Book Search cache for key: ${cacheKey}`);
+      if (cached.data && Array.isArray(cached.data.books)) {
+        cached.data.books.forEach((b: any) => {
+          if (b && b.md5) bookCache.set(b.md5, b);
+        });
+      }
+      return res.json(cached.data);
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -2403,14 +2412,15 @@ app.get("/api/annas-archive/search", async (req, res) => {
 
 // 7. API: Anna's Archive Download
 app.get("/api/annas-archive/download", async (req, res) => {
-  try {
-    const { md5, iaId: iaIdParam, url: directUrlParam } = req.query;
-    if (!md5) return res.status(400).json({ error: "md5 is required." });
+  const { md5, iaId: iaIdParam, url: directUrlParam } = req.query;
+  if (!md5) return res.status(400).json({ error: "md5 is required." });
 
-    const md5Str = md5 as string;
-    const cacheKey = `${md5Str}_${iaIdParam || ""}_${directUrlParam || ""}`;
-    const now = Date.now();
-    const cached = downloadLinksCache.get(cacheKey);
+  const md5Str = md5 as string;
+  const cacheKey = `${md5Str}_${iaIdParam || ""}_${directUrlParam || ""}`;
+  const now = Date.now();
+  const cached = downloadLinksCache.get(cacheKey);
+
+  try {
     if (cached && now - cached.timestamp < DOWNLOAD_LINKS_CACHE_TTL) {
       console.log(`Serving cached download links for MD5: ${md5Str}`);
       return res.json(cached.data);
@@ -2552,17 +2562,22 @@ app.get("/api/annas-archive/download", async (req, res) => {
     res.json(responseData);
   } catch (err: any) {
     console.error("Download route error:", err);
+    if (cached) {
+      console.log(`Error occurred. Serving expired download links cache for key: ${cacheKey}`);
+      return res.json(cached.data);
+    }
     res.status(500).json({ error: "Failed to get download links" });
   }
 });
 
 // 7. API: Open Library Proxy
 app.get("/api/open-library/search", async (req, res) => {
+  const { q, title, author } = req.query;
+  const cacheKey = `${q || ""}_${title || ""}_${author || ""}`;
+  const now = Date.now();
+  const cached = openLibraryCache.get(cacheKey);
+
   try {
-    const { q, title, author } = req.query;
-    const cacheKey = `${q || ""}_${title || ""}_${author || ""}`;
-    const now = Date.now();
-    const cached = openLibraryCache.get(cacheKey);
     if (cached && now - cached.timestamp < OL_CACHE_TTL) {
       console.log(`Serving cached Open Library Search for key: ${cacheKey}`);
       return res.json(cached.data);
@@ -2580,6 +2595,10 @@ app.get("/api/open-library/search", async (req, res) => {
     res.json(data);
   } catch (err: any) {
     console.error("Open Library Search Error:", err);
+    if (cached) {
+      console.log(`Error occurred. Serving expired Open Library cache for key: ${cacheKey}`);
+      return res.json(cached.data);
+    }
     res.status(500).json({ error: "Failed to communicate with Open Library API." });
   }
 });
