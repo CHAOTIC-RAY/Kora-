@@ -799,6 +799,19 @@ Reviews history: ${nytReviewsData ? JSON.stringify(nytReviewsData) : "None found
 // In-memory book cache to store metadata and direct download URLs from search results
 const bookCache = new Map<string, any>();
 
+// Caches for optimizing performance, reliability, and speed-using (stress testing)
+const googleBooksCache = new Map<string, { data: any, timestamp: number }>();
+const GOOGLE_BOOKS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+const raveSearchCache = new Map<string, { data: any, timestamp: number }>();
+const RAVE_SEARCH_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+const downloadLinksCache = new Map<string, { data: any, timestamp: number }>();
+const DOWNLOAD_LINKS_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+const openLibraryCache = new Map<string, { data: any, timestamp: number }>();
+const OL_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
 
 
 function safeMD5(str: string): string {
@@ -2319,6 +2332,19 @@ app.get("/api/annas-archive/search", async (req, res) => {
     const searchSource = (source as string) || "all";
     const searchPage = parseInt(page as string) || 1;
     
+    const cacheKey = `${q}_${searchSource}_${searchPage}`;
+    const cached = raveSearchCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < RAVE_SEARCH_CACHE_TTL) {
+      console.log(`Serving cached Rave Book Search for: "${q}"`);
+      if (cached.data && Array.isArray(cached.data.books)) {
+        cached.data.books.forEach((b: any) => {
+          if (b && b.md5) bookCache.set(b.md5, b);
+        });
+      }
+      return res.json(cached.data);
+    }
+
     console.log(`Executing Rave Book Search for query: "${q}", source: ${searchSource}, page: ${searchPage}`);
     
     // Run Rave Search directly
@@ -2352,7 +2378,7 @@ app.get("/api/annas-archive/search", async (req, res) => {
     // totalCount: prefer meta, else estimate conservatively from received + possible next pages
     const totalCount = totalFromMeta ?? (hasMore ? (searchPage * RESULTS_PER_PAGE) + RESULTS_PER_PAGE : raveResults.length);
 
-    res.json({
+    const responseData = {
       books: raveResults,
       results: raveResults,
       source: searchSource,
@@ -2363,7 +2389,10 @@ app.get("/api/annas-archive/search", async (req, res) => {
       hasMore,
       mirror: "Rave Official Site",
       parsedBy: "Puppeteer Scraper"
-    });
+    };
+
+    raveSearchCache.set(cacheKey, { data: responseData, timestamp: now });
+    res.json(responseData);
   } catch (err: any) {
     console.error("Rave Book Search API failed:", err);
     res.status(500).json({ error: err.message });
@@ -2378,8 +2407,16 @@ app.get("/api/annas-archive/download", async (req, res) => {
     const { md5, iaId: iaIdParam, url: directUrlParam } = req.query;
     if (!md5) return res.status(400).json({ error: "md5 is required." });
 
-    const cachedBook = bookCache.get(md5 as string);
     const md5Str = md5 as string;
+    const cacheKey = `${md5Str}_${iaIdParam || ""}_${directUrlParam || ""}`;
+    const now = Date.now();
+    const cached = downloadLinksCache.get(cacheKey);
+    if (cached && now - cached.timestamp < DOWNLOAD_LINKS_CACHE_TTL) {
+      console.log(`Serving cached download links for MD5: ${md5Str}`);
+      return res.json(cached.data);
+    }
+
+    const cachedBook = bookCache.get(md5Str);
     const isRealMd5 = /^[a-f0-9]{32}$/i.test(md5Str);
 
     let directLinks: any[] = [];
@@ -2504,12 +2541,15 @@ app.get("/api/annas-archive/download", async (req, res) => {
       });
     }
 
-    res.json({
+    const responseData = {
       downloadLinks: downloadLinks,
       options: downloadLinks,
       mirror: "Consolidated Search Cache",
       parsedBy: "Rave API"
-    });
+    };
+
+    downloadLinksCache.set(cacheKey, { data: responseData, timestamp: now });
+    res.json(responseData);
   } catch (err: any) {
     console.error("Download route error:", err);
     res.status(500).json({ error: "Failed to get download links" });
@@ -2520,6 +2560,14 @@ app.get("/api/annas-archive/download", async (req, res) => {
 app.get("/api/open-library/search", async (req, res) => {
   try {
     const { q, title, author } = req.query;
+    const cacheKey = `${q || ""}_${title || ""}_${author || ""}`;
+    const now = Date.now();
+    const cached = openLibraryCache.get(cacheKey);
+    if (cached && now - cached.timestamp < OL_CACHE_TTL) {
+      console.log(`Serving cached Open Library Search for key: ${cacheKey}`);
+      return res.json(cached.data);
+    }
+
     const url = new URL("https://openlibrary.org/search.json");
     if (q) url.searchParams.append("q", q as string);
     if (title) url.searchParams.append("title", title as string);
@@ -2528,6 +2576,7 @@ app.get("/api/open-library/search", async (req, res) => {
 
     const response = await fetch(url.toString());
     const data = await response.json();
+    openLibraryCache.set(cacheKey, { data, timestamp: now });
     res.json(data);
   } catch (err: any) {
     console.error("Open Library Search Error:", err);
@@ -3346,6 +3395,14 @@ app.get("/api/google-books/search", async (req, res) => {
   const { q, maxResults, startIndex } = req.query;
   if (!q) return res.status(400).json({ error: "Missing query" });
 
+  const cacheKey = `${q}_${maxResults || 1}_${startIndex || 0}`;
+  const now = Date.now();
+  const cached = googleBooksCache.get(cacheKey);
+  if (cached && now - cached.timestamp < GOOGLE_BOOKS_CACHE_TTL) {
+    console.log(`Serving cached Google Books Search for key: ${cacheKey}`);
+    return res.json(cached.data);
+  }
+
   const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
   const limit = maxResults || 1;
   const start = startIndex ? `&startIndex=${startIndex}` : "";
@@ -3354,9 +3411,14 @@ app.get("/api/google-books/search", async (req, res) => {
   try {
     const response = await fetch(url);
     const data = await response.json();
+    googleBooksCache.set(cacheKey, { data, timestamp: now });
     res.json(data);
   } catch (err) {
     console.error("Google Books API Proxy Error:", err);
+    if (cached) {
+      console.log(`Error occurred. Serving expired cache for key: ${cacheKey}`);
+      return res.json(cached.data);
+    }
     res.status(500).json({ error: "Failed to fetch from Google Books" });
   }
 });

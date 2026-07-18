@@ -530,7 +530,7 @@ export default function DiscoverView({
               ...info,
               title: info.title,
               authors: info.authors,
-              description: info.description || selectedFeaturedBook.description,
+              description: info.description || selectedFeaturedBook?.description,
               pageCount: info.pageCount,
               publishedDate: info.publishedDate,
               publisher: info.publisher,
@@ -569,13 +569,13 @@ export default function DiscoverView({
             setFeaturedBookDetails({
               title: book.title,
               authors: [book.author],
-              description: book.description || selectedFeaturedBook.description,
+              description: book.description || selectedFeaturedBook?.description,
               pageCount: null, 
               publishedDate: null,
               publisher: book.publisher,
               language: "en",
               industryIdentifiers: book.isbns?.map((i: any) => ({ type: "ISBN", identifier: i.isbn13 || i.isbn10 })),
-              categories: [selectedFeaturedBook.category || "General"],
+              categories: [selectedFeaturedBook?.category || "General"],
               source: "New York Times (Verified Raw)"
             });
             setLoadingFeaturedDetails(false);
@@ -586,7 +586,7 @@ export default function DiscoverView({
 
       // 3. Open Library
       if (sourceToUse === "openlibrary") {
-        const olRes = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&limit=1`);
+        const olRes = await fetch(`/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
         if (olRes.ok) {
           const data = await olRes.json();
           const doc = data.docs?.[0];
@@ -604,7 +604,7 @@ export default function DiscoverView({
             setFeaturedBookDetails({
               title: doc.title,
               authors: doc.author_name,
-              description: description || selectedFeaturedBook.description,
+              description: description || selectedFeaturedBook?.description,
               pageCount: doc.number_of_pages_median || doc.number_of_pages,
               publishedDate: doc.first_publish_year?.toString(),
               publisher: doc.publisher?.[0],
@@ -1095,7 +1095,7 @@ export default function DiscoverView({
       }
 
       // 2. Try Open Library
-      const olRes = await fetch(`https://openlibrary.org/search.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&limit=1`);
+      const olRes = await fetch(`/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
       if (olRes.ok) {
         const olData = await olRes.json();
         const doc = olData.docs?.[0];
