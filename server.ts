@@ -1484,81 +1484,88 @@ app.get("/api/nytimes/list", async (req, res) => {
 // Goodreads Scraper Endpoint using cheerio and proxy fallbacks (bypassing Cloudflare without AI/Gemini)
 const goodreadsCache = new Map<string, any>();
 
-async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
-  const targetUrl = `https://www.goodreads.com/list/show/${listQuery}`;
-  
-  // Try 1: Direct fetch with browser headers
+async function fetchPageHtmlWithProxies(targetUrl: string, expectedMarker?: string): Promise<string> {
+  const userAgents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0"
+  ];
+  const headers = {
+    "User-Agent": userAgents[Math.floor(Math.random() * userAgents.length)],
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache"
+  };
+
+  // Try 1: Direct fetch
   try {
-    console.log(`[Goodreads Scraper] Trying direct fetch: ${targetUrl}`);
-    const res = await fetch(targetUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache"
-      }
-    });
+    console.log(`[Proxy Fetcher] Trying direct fetch: ${targetUrl}`);
+    const res = await fetch(targetUrl, { headers });
     if (res.ok) {
       const html = await res.text();
-      if (html.includes("tableList") || html.includes("bookTitle")) {
-        console.log(`[Goodreads Scraper] Direct fetch succeeded.`);
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] Direct fetch succeeded.`);
         return html;
       }
     }
-    console.warn(`[Goodreads Scraper] Direct fetch failed or page empty, status: ${res.status}`);
   } catch (e: any) {
-    console.warn(`[Goodreads Scraper] Direct fetch failed: ${e.message}`);
+    console.warn(`[Proxy Fetcher] Direct fetch failed: ${e.message}`);
   }
 
   // Try 2: Via corsproxy.io
   try {
     const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
-    console.log(`[Goodreads Scraper] Trying corsproxy.io: ${proxyUrl}`);
+    console.log(`[Proxy Fetcher] Trying corsproxy.io: ${proxyUrl}`);
     const res = await fetch(proxyUrl);
     if (res.ok) {
       const html = await res.text();
-      if (html.includes("tableList") || html.includes("bookTitle")) {
-        console.log(`[Goodreads Scraper] corsproxy.io succeeded.`);
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] corsproxy.io succeeded.`);
         return html;
       }
     }
   } catch (e: any) {
-    console.warn(`[Goodreads Scraper] corsproxy.io failed: ${e.message}`);
+    console.warn(`[Proxy Fetcher] corsproxy.io failed: ${e.message}`);
   }
 
   // Try 3: Via api.allorigins.win
   try {
     const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-    console.log(`[Goodreads Scraper] Trying allorigins: ${proxyUrl}`);
+    console.log(`[Proxy Fetcher] Trying allorigins: ${proxyUrl}`);
     const res = await fetch(proxyUrl);
     if (res.ok) {
       const html = await res.text();
-      if (html.includes("tableList") || html.includes("bookTitle")) {
-        console.log(`[Goodreads Scraper] allorigins succeeded.`);
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] allorigins succeeded.`);
         return html;
       }
     }
   } catch (e: any) {
-    console.warn(`[Goodreads Scraper] allorigins failed: ${e.message}`);
+    console.warn(`[Proxy Fetcher] allorigins failed: ${e.message}`);
   }
 
   // Try 4: Via codetabs
   try {
     const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
-    console.log(`[Goodreads Scraper] Trying codetabs: ${proxyUrl}`);
+    console.log(`[Proxy Fetcher] Trying codetabs: ${proxyUrl}`);
     const res = await fetch(proxyUrl);
     if (res.ok) {
       const html = await res.text();
-      if (html.includes("tableList") || html.includes("bookTitle")) {
-        console.log(`[Goodreads Scraper] codetabs succeeded.`);
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] codetabs succeeded.`);
         return html;
       }
     }
   } catch (e: any) {
-    console.warn(`[Goodreads Scraper] codetabs failed: ${e.message}`);
+    console.warn(`[Proxy Fetcher] codetabs failed: ${e.message}`);
   }
 
-  throw new Error("All methods to fetch Goodreads list page failed or got blocked by Cloudflare.");
+  throw new Error(`Failed to fetch page: ${targetUrl}`);
+}
+
+async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
+  const targetUrl = `https://www.goodreads.com/list/show/${listQuery}`;
+  return fetchPageHtmlWithProxies(targetUrl, "bookTitle");
 }
 
 app.get("/api/goodreads/list", async (req, res) => {
@@ -1705,6 +1712,151 @@ app.get("/api/goodreads/list", async (req, res) => {
     console.error("Critical failure in Goodreads route:", globalErr);
     res.status(500).json({ error: "Failed to load Goodreads list" });
   }
+});
+
+// Goodreads reviews endpoint
+app.post("/api/goodreads/reviews", express.json(), async (req, res) => {
+  const { title, author } = req.body;
+  if (!title) {
+    return res.status(400).json({ error: "Title is required" });
+  }
+
+  // 1. Clean the search query to improve Goodreads matching rate
+  let cleanTitle = title.split(':')[0].split('(')[0].split('-')[0];
+  cleanTitle = cleanTitle.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  let cleanAuthor = (author || "").split(',')[0];
+  cleanAuthor = cleanAuthor.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  
+  const queryStr = `${cleanTitle} ${cleanAuthor}`.trim();
+  console.log(`[Goodreads Reviews API] Searching with cleaned query: "${queryStr}" (Original: "${title} ${author || ''}")`);
+
+  let reviews: any[] = [];
+  let sourceMethod = "scraped";
+
+  try {
+    // Search for the book on Goodreads using the cleaned query
+    const searchUrl = `https://www.goodreads.com/search?q=${encodeURIComponent(queryStr)}`;
+    const searchHtml = await fetchPageHtmlWithProxies(searchUrl, "goodreads");
+    const $ = cheerio.load(searchHtml);
+    
+    // Find first book link matching bookTitle or standard book link structures
+    let bookPath = "";
+    $("a.bookTitle, a[href*='/book/show/']").each((_, elem) => {
+      const href = $(elem).attr("href");
+      if (href && href.includes("/book/show/") && !bookPath) {
+        bookPath = href;
+      }
+    });
+
+    // If search with clean query failed, try search with original title
+    if (!bookPath && title !== queryStr) {
+      const backupQuery = `${title} ${author || ""}`.trim();
+      console.log(`[Goodreads Reviews API] Trying backup query: "${backupQuery}"`);
+      const backupSearchUrl = `https://www.goodreads.com/search?q=${encodeURIComponent(backupQuery)}`;
+      try {
+        const backupHtml = await fetchPageHtmlWithProxies(backupSearchUrl, "goodreads");
+        const $backup = cheerio.load(backupHtml);
+        $backup("a.bookTitle, a[href*='/book/show/']").each((_, elem) => {
+          const href = $backup(elem).attr("href");
+          if (href && href.includes("/book/show/") && !bookPath) {
+            bookPath = href;
+          }
+        });
+      } catch (backupErr: any) {
+        console.warn(`[Goodreads Reviews API] Backup search failed: ${backupErr.message}`);
+      }
+    }
+
+    if (bookPath) {
+      const bookUrl = bookPath.startsWith("http") ? bookPath : `https://www.goodreads.com${bookPath}`;
+      console.log(`[Goodreads Reviews API] Found book URL: ${bookUrl}`);
+      
+      // Fetch book page html
+      const bookHtml = await fetchPageHtmlWithProxies(bookUrl, "goodreads");
+      const $book = cheerio.load(bookHtml);
+      
+      // Parse Modern Layout (.ReviewCard or [data-testid='ReviewCard'])
+      $book(".ReviewCard, [data-testid='ReviewCard']").each((_, elem) => {
+        const reviewerName = $book(elem).find(".ReviewerProfile__name, [data-testid='name'], .ReviewCard__user a").first().text().trim() || "Goodreads Reader";
+        
+        let rating = 4;
+        const ratingText = $book(elem).find(".RatingStars, [data-testid='ratingStars']").first().attr("aria-label") || "";
+        const starsMatch = ratingText.match(/Rating (\d+) out of/i) || ratingText.match(/(\d+)\s*star/i);
+        if (starsMatch) {
+          rating = parseInt(starsMatch[1]);
+        } else {
+          const filledStars = $book(elem).find(".RatingStars__star--filled, .p10").length;
+          if (filledStars > 0) rating = filledStars;
+        }
+
+        let reviewContent = $book(elem).find(".ReviewText, [data-testid='reviewText']").first().html() || "";
+        if (!reviewContent) {
+          reviewContent = $book(elem).find(".ReviewText, [data-testid='reviewText']").first().text().trim();
+        }
+
+        if (reviewContent && reviewerName) {
+          reviews.push({
+            rating,
+            review: reviewContent,
+            user: {
+              name: reviewerName,
+              username: reviewerName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+            }
+          });
+        }
+      });
+
+      // Parse Classic Layout if no reviews found yet (.review, .comment, div.friendReviews)
+      if (reviews.length === 0) {
+        $book(".review, .comment").each((_, elem) => {
+          const reviewerName = $book(elem).find("a.user, .user a, .left.client a").first().text().trim() || "Goodreads Reader";
+          
+          let rating = 4;
+          const ratingMeta = $book(elem).find("meta[itemprop='rating']").attr("content");
+          if (ratingMeta) {
+            rating = parseInt(ratingMeta) || 4;
+          } else {
+            const starText = $book(elem).find(".staticStars, .stars").text() || "";
+            const starsMatch = starText.match(/(\d+)\s*star/i);
+            if (starsMatch) {
+              rating = parseInt(starsMatch[1]);
+            } else {
+              const filledStars = $book(elem).find(".staticStar.p10, .staticStar.p11").length;
+              if (filledStars > 0) rating = filledStars;
+            }
+          }
+
+          let reviewEl = $book(elem).find("span[id^='freeTextContainer']").first();
+          if (reviewEl.length === 0) {
+            reviewEl = $book(elem).find(".readable").first();
+          }
+          
+          let reviewContent = reviewEl.html() || "";
+          if (!reviewContent) {
+            reviewContent = reviewEl.text().trim();
+          }
+
+          if (reviewContent && reviewerName) {
+            reviews.push({
+              rating,
+              review: reviewContent,
+              user: {
+                name: reviewerName,
+                username: reviewerName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+              }
+            });
+          }
+        });
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[Goodreads Reviews API] Scraper failed for "${queryStr}": ${err.message}`);
+  }
+
+  // Under the "no dont fake reviews" policy, if scraping fails, we do NOT fall back to AI/Gemini or dummy templates.
+  // We return the real empty reviews list so the client can handle it or show direct search links.
+  console.log(`[Goodreads Reviews API] Returning ${reviews.length} reviews via ${sourceMethod}`);
+  return res.json({ reviews, source: sourceMethod });
 });
 
 // Cover lookup endpoint - redirects to best available cover
