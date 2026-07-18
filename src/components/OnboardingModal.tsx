@@ -15,6 +15,7 @@ interface OnboardingModalProps {
     fontSize: number;
     dailyGoal: number;
     autoCache: boolean;
+    dailyReminders: boolean;
   }) => void;
   currentTheme: string;
   onThemeChange: (theme: string) => void;
@@ -101,6 +102,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
   const [fontSize, setFontSize] = useState(18);
   const [dailyGoal, setDailyGoal] = useState(30); // minutes or pages
   const [autoCache, setAutoCache] = useState(true);
+  const [dailyReminders, setDailyReminders] = useState(false);
   const [agreedToLicenses, setAgreedToLicenses] = useState(false);
   const [showFullLicense, setShowFullLicense] = useState(false);
 
@@ -136,7 +138,8 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
       displayTheme: currentTheme,
       fontSize,
       dailyGoal,
-      autoCache
+      autoCache,
+      dailyReminders
     });
   };
 
@@ -380,7 +383,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                   </div>
 
                   <div className="p-4 bg-kindle-card border border-kindle-border rounded-xl flex flex-col justify-between space-y-3">
-                    <div className="flex justify-between items-start gap-2">
+                    <div className="flex justify-between items-start gap-2 border-b border-kindle-border pb-3">
                       <div>
                         <h4 className="font-display font-bold text-xs text-kindle-text">
                           Offline Library Cache
@@ -393,6 +396,22 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                         type="checkbox"
                         checked={autoCache}
                         onChange={(e) => setAutoCache(e.target.checked)}
+                        className="w-4 h-4 rounded border-kindle-border text-kindle-accent focus:ring-kindle-accent cursor-pointer shrink-0 mt-0.5"
+                      />
+                    </div>
+                    <div className="flex justify-between items-start gap-2 pt-1">
+                      <div>
+                        <h4 className="font-display font-bold text-xs text-kindle-text">
+                          Daily Reading Reminders
+                        </h4>
+                        <p className="text-[9px] text-kindle-text-muted leading-relaxed">
+                          Opt in to receive a friendly daily quote and motivation on open to hit your reading streak.
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={dailyReminders}
+                        onChange={(e) => setDailyReminders(e.target.checked)}
                         className="w-4 h-4 rounded border-kindle-border text-kindle-accent focus:ring-kindle-accent cursor-pointer shrink-0 mt-0.5"
                       />
                     </div>

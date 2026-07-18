@@ -32,6 +32,7 @@ import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
 import DownloadBookBtn from "./components/DownloadBookBtn";
 import OnboardingModal from "./components/OnboardingModal";
+import DailyReminderModal from "./components/DailyReminderModal";
 import { toast, Toaster } from "react-hot-toast";
 import { logger } from "./lib/logger";
 import { 
@@ -170,6 +171,21 @@ export default function App() {
   const [userNickname, setUserNickname] = useState<string>(() => {
     return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
   });
+  const [dailyRemindersEnabled, setDailyRemindersEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("kora_daily_reminders") === "true";
+  });
+  const [showDailyReminder, setShowDailyReminder] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (dailyRemindersEnabled && !showOnboarding) {
+      const lastReminder = localStorage.getItem("kora_last_reminder_date");
+      const today = new Date().toDateString();
+      if (lastReminder !== today) {
+        setShowDailyReminder(true);
+        localStorage.setItem("kora_last_reminder_date", today);
+      }
+    }
+  }, [dailyRemindersEnabled, showOnboarding]);
 
   const handleOnboardingComplete = (prefs: {
     nickname: string;
@@ -178,11 +194,13 @@ export default function App() {
     fontSize: number;
     dailyGoal: number;
     autoCache: boolean;
+    dailyReminders: boolean;
   }) => {
     localStorage.setItem("kora_onboarding_completed", "true");
     localStorage.setItem("kora_user_nickname", prefs.nickname);
     localStorage.setItem("kora_user_archetype", prefs.archetype);
     localStorage.setItem("kora_display_theme", prefs.displayTheme);
+    localStorage.setItem("kora_daily_reminders", String(prefs.dailyReminders));
     setDisplayTheme(prefs.displayTheme);
     setUserNickname(prefs.nickname);
     
@@ -1211,6 +1229,11 @@ export default function App() {
             grayscaleCovers={grayscaleCovers}
             onToggleGrayscale={toggleGrayscale}
             displayTheme={displayTheme}
+            dailyRemindersEnabled={dailyRemindersEnabled}
+            onChangeDailyReminders={(enabled) => {
+              setDailyRemindersEnabled(enabled);
+              localStorage.setItem("kora_daily_reminders", String(enabled));
+            }}
             onChangeTheme={changeTheme}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}
@@ -1665,6 +1688,13 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Daily Motivation Reminder Modal */}
+      <DailyReminderModal
+        isOpen={showDailyReminder}
+        onClose={() => setShowDailyReminder(false)}
+        nickname={userNickname}
+      />
 
       {/* Playful Booknerd Onboarding Modal */}
       <OnboardingModal

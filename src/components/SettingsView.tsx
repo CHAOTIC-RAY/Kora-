@@ -41,6 +41,8 @@ interface SettingsViewProps {
   grayscaleCovers: boolean;
   hideCovers?: boolean;
   displayTheme: string;
+  dailyRemindersEnabled?: boolean;
+  onChangeDailyReminders?: (enabled: boolean) => void;
   onToggleGrayscale: () => void;
   onToggleHideCovers?: () => void;
   onChangeTheme: (theme: string) => void;
@@ -106,6 +108,8 @@ export default function SettingsView({
   grayscaleCovers,
   hideCovers = false,
   displayTheme,
+  dailyRemindersEnabled = false,
+  onChangeDailyReminders,
   onToggleGrayscale,
   onToggleHideCovers,
   onChangeTheme,
@@ -730,6 +734,9 @@ export default function SettingsView({
               </Row>
               <Row title="Open Results in New Tab" desc="Open the in-app browser in a separate tab">
                 <Toggle on={searchPrefs.openInNewTab} onClick={() => setSP({ openInNewTab: !searchPrefs.openInNewTab })} />
+              </Row>
+              <Row title="Daily Motivation Reminders" desc="Get a daily quote and reading streak on open">
+                <Toggle on={dailyRemindersEnabled} onClick={() => onChangeDailyReminders?.(!dailyRemindersEnabled)} />
               </Row>
             </div>
           )}
