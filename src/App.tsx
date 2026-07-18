@@ -218,6 +218,11 @@ export default function App() {
         // Determine the correct file extension based on response headers, metadata, and URL
         const contentDisposition = response.headers.get("content-disposition");
         const contentType = response.headers.get("content-type");
+        
+        if (contentType && contentType.toLowerCase().includes("text/html")) {
+          throw new Error("Mirror returned a webpage instead of a book file. Trying next link...");
+        }
+
         let fileExtension = "epub"; // safe fallback
 
         // 1. Check Content-Disposition first
