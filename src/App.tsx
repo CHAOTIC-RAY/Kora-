@@ -179,7 +179,19 @@ export default function App() {
       
       const response = await fetch(proxyUrl);
       if (!response.ok) {
-        throw new Error(`Download request failed with status: ${response.status}`);
+        let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
+        try {
+          const errData = await response.json();
+          if (errData && errData.error) {
+            errMsg = errData.error;
+          }
+        } catch (e) {
+          try {
+            const errText = await response.text();
+            if (errText && errText.length < 200) errMsg = errText;
+          } catch (e2) {}
+        }
+        throw new Error(errMsg);
       }
 
       const reader = response.body?.getReader();
