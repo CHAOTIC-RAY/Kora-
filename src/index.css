@@ -17,6 +17,12 @@
   --color-kindle-card: var(--theme-card);
 }
 
+/* Shimmer sweep used by the download progress overlay in the library */
+@keyframes shimmer {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(300%); }
+}
+
 /* ── Light White (Default) ── */
 :root, .theme-light-white {
   --theme-bg: #FAFAFA;

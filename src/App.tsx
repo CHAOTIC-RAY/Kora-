@@ -311,6 +311,7 @@ export default function App() {
     const downloadId = Math.random().toString(36).substring(7);
     const newDl = {
       id: downloadId,
+      md5: variant.md5,
       title: book.title,
       author: book.author || "Unknown",
       size: variant.size || "Unknown",
@@ -326,6 +327,42 @@ export default function App() {
     });
 
     toast.loading(`Downloading ${book.title}...`, { id: downloadId });
+
+    // --- Background download via Service Worker (survives app exit + shows
+    // Android progress notification). Falls back to the foreground loop below
+    // if the SW isn't controlling the page yet. ---
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      try {
+        if ("Notification" in window && Notification.permission === "default") {
+          try { await Notification.requestPermission(); } catch (e) {}
+        }
+        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirrorList[0].url)}`;
+        // Stash the book/variant payload so the completion listener can rebuild
+        // BookMetadata (the SW only returns the raw blob).
+        const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
+        payloads[downloadId] = {
+          book: { title: book.title, author: book.author, coverUrl: book.coverUrl, tags: book.tags, language: book.language, description: book.description, publisher: book.publisher, year: book.year },
+          variant: { md5: variant.md5, size: variant.size, extension: variant.extension, format: variant.format, downloadUrl: variant.downloadUrl, directUrl: variant.directUrl },
+          fileExtension: variant.extension || variant.format || "epub"
+        };
+        localStorage.setItem("kora_sw_payloads", JSON.stringify(payloads));
+        navigator.serviceWorker.controller.postMessage({
+          type: "download-book",
+          payload: {
+            downloadId,
+            title: book.title,
+            author: book.author || "Unknown",
+            coverUrl: book.coverUrl || "",
+            md5: variant.md5,
+            fileExtension: variant.extension || variant.format || "epub",
+            proxyUrl
+          }
+        });
+        return; // SW listener (below) drives progress + completion
+      } catch (swErr) {
+        logger.warn("SW download handoff failed, using foreground fallback:", swErr);
+      }
+    }
 
     let finalError: any = null;
     let success = false;
@@ -632,6 +669,81 @@ export default function App() {
       document.body.classList.add("dark");
     }
   }, [displayTheme]);
+
+  // Listen for download progress / completion from the service worker
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = async (event: MessageEvent) => {
+      const data = event.data || {};
+      if (data.type === "download-progress") {
+        setGlobalDownloads(prev => prev.map(dl => dl.id === data.downloadId ? {
+          ...dl,
+          status: "downloading",
+          percent: data.percent,
+          transferred: data.transferred,
+          speed: data.speed
+        } : dl));
+      } else if (data.type === "download-complete") {
+        try {
+          const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(data.downloadId)}`);
+          if (!res.ok) throw new Error("pickup failed");
+          const blob = await res.blob();
+
+          const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[data.downloadId];
+          const book = mirror?.book || { title: data.title };
+          const variant = mirror?.variant || {};
+          const fileExtension = mirror?.fileExtension || (blob.type.includes("pdf") ? "pdf" : "epub");
+          const finalTitle = book.title || data.title;
+          const finalAuthor = book.author || "Unknown";
+          const id = variant.md5 || data.downloadId;
+          const finalCoverUrl = book.coverUrl || "";
+          const finalTags = Array.from(new Set([...(book.tags || []), ...inferBookTags(finalTitle, finalAuthor, fileExtension)]));
+
+          await storeBookFile(id, blob, `${finalTitle}.${fileExtension}`, fileExtension);
+          const newBook: BookMetadata = {
+            id,
+            title: finalTitle,
+            author: finalAuthor,
+            extension: fileExtension,
+            size: data.size || variant.size || "Unknown",
+            language: book.language || variant.language || "English",
+            coverUrl: finalCoverUrl,
+            md5: variant.md5,
+            source: "Kora Store",
+            tags: finalTags,
+            status: "to-read",
+            progress: { percent: 0, lastReadTime: Date.now() },
+            dateAdded: Date.now(),
+            description: book.description || "",
+            publisher: book.publisher || "",
+            year: book.year || "",
+            downloadUrl: variant.downloadUrl || variant.directUrl
+          };
+          await syncBookToCloud(user?.uid || "", newBook);
+          setGlobalDownloads(prev => {
+            const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
+            localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+            return updated;
+          });
+          toast.success(`${finalTitle} downloaded!`, { id: data.downloadId });
+          refreshLibrary();
+          navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId: data.downloadId });
+        } catch (err) {
+          console.error("SW pickup failed:", err);
+          setGlobalDownloads(prev => prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: "Pickup failed" } : dl));
+        }
+      } else if (data.type === "download-error") {
+        setGlobalDownloads(prev => {
+          const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl);
+          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          return updated;
+        });
+        toast.error(data.error || "Download failed", { id: data.downloadId });
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [user?.uid]);
 
   // Web Share Target API helper to extract a URL
   function extractUrl(text: string | null): string | null {
@@ -1169,6 +1281,7 @@ export default function App() {
             cachedBookIds={cachedBookIds}
             onCachedIdsChanged={updateCachedBookIndex}
             grayscaleCovers={grayscaleCovers}
+            downloads={globalDownloads}
             onSearchTrigger={(query) => {
               setDiscoverInitialQuery(query);
               setActiveTab("discover");

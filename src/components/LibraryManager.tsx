@@ -16,6 +16,7 @@ interface LibraryManagerProps {
   onCachedIdsChanged: () => void;
   grayscaleCovers?: boolean;
   hideCovers?: boolean;
+  downloads?: any[];
   onSearchTrigger?: (query: string) => void;
 }
 
@@ -63,6 +64,7 @@ export default function LibraryManager({
   onCachedIdsChanged,
   grayscaleCovers = false,
   hideCovers = false,
+  downloads = [],
   onSearchTrigger
 }: LibraryManagerProps) {
   // Filters & sorting
@@ -737,6 +739,47 @@ export default function LibraryManager({
                         <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
                       </div>
                     )}
+
+                    {/* Downloading overlay: light grayscale thumbnail + progress animation */}
+                    {(() => {
+                      const dl = downloads.find(
+                        (d) => d.status === "downloading" && (d.md5 === book.md5 || d.md5 === book.id || d.id === book.id || d.id === book.md5)
+                      );
+                      if (!dl) return null;
+                      const pct = typeof dl.percent === "number" ? dl.percent : 0;
+                      return (
+                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-kindle-card/70 backdrop-blur-[1px]">
+                          {/* Light grayscale book thumbnail */}
+                          {!hideCovers && book.coverUrl ? (
+                            <img
+                              src={book.coverUrl.startsWith("http") ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
+                              className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale"
+                              referrerPolicy="no-referrer"
+                              alt=""
+                            />
+                          ) : null}
+                          {/* Shimmer sweep */}
+                          <div className="absolute inset-0 overflow-hidden">
+                            <div className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-[shimmer_1.4s_infinite]" />
+                          </div>
+                          {/* Progress ring */}
+                          <div className="relative w-14 h-14 rounded-full flex items-center justify-center bg-kindle-bg/80 border border-kindle-border shadow">
+                            <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-kindle-border" />
+                              <circle
+                                cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
+                                className="text-kindle-accent transition-all duration-300"
+                                strokeDasharray={97.4}
+                                strokeDashoffset={97.4 - (97.4 * Math.max(0, Math.min(100, pct))) / 100}
+                              />
+                            </svg>
+                            <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
+                          </div>
+                          <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">Downloading…</span>
+                        </div>
+                      );
+                    })()}
+
 
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-kindle-border">
                       <div className="h-full bg-kindle-text" style={{ width: `${progressPercent}%` }} />
