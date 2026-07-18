@@ -31,7 +31,7 @@ import {
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
-  Compass, Play, Download, Globe
+  Compass, Play, Download, Globe, Library, BookMarked
 } from "lucide-react";
 
 export default function App() {
@@ -549,15 +549,6 @@ export default function App() {
 
       {/* Floating Actions for Mobile */}
       <div className="md:hidden fixed bottom-24 right-6 flex flex-col gap-4 z-50">
-        {lastReadBook && activeTab === "library" && (
-          <button
-            onClick={() => handleOpenBook(lastReadBook)}
-            className="w-14 h-14 bg-kindle-text text-kindle-bg rounded-full shadow-2xl flex items-center justify-center transition-transform active:scale-90 ring-4 ring-kindle-bg"
-            title={`Continue Reading: ${lastReadBook.title}`}
-          >
-            <Play className="w-6 h-6 ml-1 fill-current" />
-          </button>
-        )}
       </div>
 
       {/* 3. Full-Screen Reader Component Viewports */}
@@ -765,46 +756,68 @@ export default function App() {
         </div>
       )}
 
-      {/* 5. Mobile Native Bottom Navigation Bar */}
-      <footer className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-kindle-bg border-t border-kindle-border pb-safe shadow-lg">
-        <div className="flex justify-around items-center h-16">
+      {/* 5. Modern Floating Mobile Navigation Bar */}
+      <footer className="md:hidden fixed bottom-5 left-4 right-4 z-40 mx-auto max-w-md bg-kindle-card/90 dark:bg-kindle-card/85 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300">
+        <div className="flex justify-around items-center h-14 px-1">
           <button
             onClick={() => setActiveTab("library")}
-            className={`flex flex-col items-center justify-center w-20 h-full transition ${
-              activeTab === "library" ? "text-kindle-text" : "text-kindle-text-muted"
+            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
+              activeTab === "library" ? "text-kindle-accent" : "text-kindle-text-muted"
             }`}
           >
-            <BookOpen className={`w-5 h-5 transition-transform duration-150 ${activeTab === "library" ? "scale-110" : ""}`} />
-            <span className="text-[9px] font-sans font-bold mt-1 uppercase tracking-widest">Library</span>
+            <Library className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "library" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Library</span>
           </button>
 
           <button
             onClick={() => setActiveTab("discover")}
-            className={`flex flex-col items-center justify-center w-20 h-full transition ${
-              activeTab === "discover" ? "text-kindle-text" : "text-kindle-text-muted"
+            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
+              activeTab === "discover" ? "text-kindle-accent" : "text-kindle-text-muted"
             }`}
           >
-            <Compass className={`w-5 h-5 transition-transform duration-150 ${activeTab === "discover" ? "scale-110" : ""}`} />
-            <span className="text-[9px] font-sans font-bold mt-1 uppercase tracking-widest">Discover</span>
+            <Compass className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "discover" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Discover</span>
+          </button>
+
+          {/* Quick Continue Reading Button - centered and highlighted if there's a last read book */}
+          {lastReadBook && (
+            <button
+              onClick={() => handleOpenBook(lastReadBook)}
+              className="flex items-center justify-center w-11 h-11 bg-kindle-text text-kindle-bg rounded-full shadow-md hover:bg-kindle-accent transition-transform duration-300 active:scale-95 -mt-5 border-4 border-kindle-bg relative z-50 group shrink-0"
+              title={`Resume: ${lastReadBook.title}`}
+            >
+              <Play className="w-4 h-4 ml-0.5 fill-current text-kindle-bg group-hover:scale-110 transition-transform" />
+            </button>
+          )}
+
+          <button
+            onClick={() => setActiveTab("notes")}
+            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
+              activeTab === "notes" ? "text-kindle-accent" : "text-kindle-text-muted"
+            }`}
+          >
+            <BookMarked className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "notes" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Notes</span>
           </button>
 
           <button
             onClick={() => setActiveTab("downloads")}
-            className={`flex flex-col items-center justify-center w-20 h-full transition ${
-              activeTab === "downloads" ? "text-kindle-text" : "text-kindle-text-muted"
+            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
+              activeTab === "downloads" ? "text-kindle-accent" : "text-kindle-text-muted"
             }`}
           >
-            <Download className={`w-5 h-5 transition-transform duration-150 ${activeTab === "downloads" ? "scale-110" : ""}`} />
-            <span className="text-[9px] font-sans font-bold mt-1 uppercase tracking-widest">Downloads</span>
+            <Download className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "downloads" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Storage</span>
           </button>
+
           <button
             onClick={() => setActiveTab("settings")}
-            className={`flex flex-col items-center justify-center w-20 h-full transition ${
-              activeTab === "settings" ? "text-kindle-text" : "text-kindle-text-muted"
+            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
+              activeTab === "settings" ? "text-kindle-accent" : "text-kindle-text-muted"
             }`}
           >
-            <SettingsIcon className={`w-5 h-5 transition-transform duration-150 ${activeTab === "settings" ? "scale-110" : ""}`} />
-            <span className="text-[9px] font-sans font-bold mt-1 uppercase tracking-widest">Settings</span>
+            <SettingsIcon className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "settings" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Settings</span>
           </button>
         </div>
       </footer>

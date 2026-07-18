@@ -1806,16 +1806,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               <div 
                 onPointerUp={handleContainerClick}
                 className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start justify-center select-none cursor-default"
-                style={{ height: "calc(100vh - 185px)" }}
+                style={{ 
+                  height: "calc(100vh - 185px)",
+                  perspective: "1500px",
+                  transformStyle: "preserve-3d"
+                }}
               >
                 {/* Visual page slide feedback */}
                 <AnimatePresence mode="popLayout">
                   {tapFeedback && (
                     <motion.div
                       key={tapFeedback}
-                      initial={{ opacity: 0, x: tapFeedback === "next" ? 120 : -120 }}
-                      animate={{ opacity: 0.15, x: 0 }}
-                      exit={{ opacity: 0, x: tapFeedback === "next" ? -60 : 60 }}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 0.15 }}
+                      exit={{ opacity: 0 }}
                       transition={{ duration: 0.35, ease: "easeOut" }}
                       className={`absolute inset-y-0 pointer-events-none ${
                         tapFeedback === "next" ? "right-0" : "left-0"
@@ -1828,10 +1832,51 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   )}
                 </AnimatePresence>
 
+                {/* 3D Page turn folding shadow overlay */}
+                {tapFeedback && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: [0, 0.25, 0] }}
+                    transition={{ duration: 0.35, ease: "easeInOut" }}
+                    className={`absolute inset-0 pointer-events-none z-20 ${
+                      tapFeedback === "next"
+                        ? "bg-gradient-to-l from-black/25 via-transparent to-black/5"
+                        : "bg-gradient-to-r from-black/25 via-transparent to-black/5"
+                    }`}
+                  />
+                )}
+
                 <motion.article 
                   ref={contentRef}
-                  animate={{ x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)) }}
-                  transition={shouldAnimate ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : { duration: 0 }}
+                  animate={
+                    tapFeedback === "next"
+                      ? {
+                          x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)),
+                          rotateY: [0, -12, 0],
+                          skewY: [0, 1.2, 0],
+                          scale: [1, 0.98, 1],
+                        }
+                      : tapFeedback === "prev"
+                      ? {
+                          x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)),
+                          rotateY: [0, 12, 0],
+                          skewY: [0, -1.2, 0],
+                          scale: [1, 0.98, 1],
+                        }
+                      : {
+                          x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)),
+                          rotateY: 0,
+                          skewY: 0,
+                          scale: 1,
+                        }
+                  }
+                  transition={
+                    shouldAnimate
+                      ? tapFeedback
+                        ? { duration: 0.35, ease: "easeInOut", times: [0, 0.5, 1] }
+                        : { type: "tween", ease: "easeOut", duration: 0.2 }
+                      : { duration: 0 }
+                  }
                   className={`w-full mx-auto ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
                   style={{
                     fontSize: `${fontSize}px`,
@@ -1844,7 +1889,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     // 2-page spread) is visible at a time — true page-by-page reading.
                     overflow: 'hidden',
                     // Center "book spine" gutter between the two columns in 2-col mode
-                    boxShadow: doubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none'
+                    boxShadow: doubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none',
+                    transformOrigin: tapFeedback === "next" ? "left center" : tapFeedback === "prev" ? "right center" : "center center",
+                    willChange: "transform"
                   }}
                 >
                   <div className={`mb-6 border-b ${activeTheme.border} pb-4`} style={{ columnSpan: "all" }}>

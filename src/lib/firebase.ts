@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
-  getFirestore, 
+  initializeFirestore, 
   collection, 
   doc, 
   setDoc, 
@@ -37,7 +37,10 @@ let isRealFirebase = false;
 
 try {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app, (rawFirebaseConfig as any).firestoreDatabaseId);
+  const dbId = (rawFirebaseConfig as any).firestoreDatabaseId;
+  db = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+  }, dbId || "(default)");
   auth = getAuth(app);
   isRealFirebase = !!firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("AIzaSyFakeKey");
   console.log("Firebase initialized successfully.", isRealFirebase ? "Real Firestore enabled." : "Using Firestore with placeholder credentials.");
