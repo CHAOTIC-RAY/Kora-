@@ -1482,51 +1482,6 @@ app.get("/api/nytimes/list", async (req, res) => {
 });
 
 // Goodreads Scraper Endpoint
-app.get("/api/goodreads/list", async (req, res) => {
-  const listId = req.query.id as string || "1.Best_Books_Ever";
-  const url = `https://www.goodreads.com/list/show/${listId}`;
-  
-  try {
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch Goodreads list: ${response.status}`);
-    }
-    
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const books: any[] = [];
-    
-    $("tr[itemscope]").each((_, el) => {
-      const $el = $(el);
-      const title = $el.find("a.bookTitle span[itemprop='name']").text().trim();
-      const author = $el.find("a.authorName span[itemprop='name']").text().trim();
-      const coverUrl = $el.find("img.bookCover").attr("src")?.replace(/\._.*_\./, "."); // Get higher res cover
-      const rating = $el.find("span.minirating").text().trim();
-      const link = "https://www.goodreads.com" + $el.find("a.bookTitle").attr("href");
-      
-      if (title && author) {
-        books.push({
-          title,
-          author,
-          coverUrl,
-          rating,
-          link,
-          source: "goodreads"
-        });
-      }
-    });
-    
-    res.json({ results: { books } });
-  } catch (err: any) {
-    console.error("[Goodreads Scraper] Error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Cover lookup endpoint - redirects to best available cover
 app.get("/api/cover-redirect", async (req, res) => {

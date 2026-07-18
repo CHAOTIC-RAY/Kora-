@@ -34,9 +34,9 @@ const ALL_CATEGORIES = [
   { id: "paperback-nonfiction", title: "NYT: Paperback Nonfiction", query: "paperback-nonfiction", source: "nyt" },
   { id: "e-book-fiction",       title: "NYT: E-Book Fiction",       query: "e-book-fiction", source: "nyt" },
   { id: "e-book-nonfiction",    title: "NYT: E-Book Nonfiction",    query: "e-book-nonfiction", source: "nyt" },
-  { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
-  { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
-  { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
+  { id: "nyt-combined-fiction", title: "NYT: Combined Fiction", query: "combined-print-and-e-book-fiction", source: "nyt" },
+  { id: "nyt-combined-nonfiction", title: "NYT: Combined Nonfiction", query: "combined-print-and-e-book-nonfiction", source: "nyt" },
+  { id: "nyt-business",         title: "NYT: Business",            query: "business-books", source: "nyt" },
   { id: "advice-how-to",        title: "Advice & How-To",           query: "advice-how-to", source: "nyt" },
   { id: "childrens-middle-grade-hardcover", title: "Middle Grade", query: "childrens-middle-grade-hardcover", source: "nyt" },
   { id: "young-adult-hardcover", title: "Young Adult", query: "young-adult-hardcover", source: "nyt" },
@@ -491,17 +491,6 @@ export default function DiscoverView({
         }
       });
 
-      // Process Goodreads Lists
-      await Promise.all(ALL_CATEGORIES.filter(cat => cat.source === "goodreads").map(async (cat) => {
-        try {
-          const { books } = await fetchGoodreadsList(cat.query);
-          data[cat.id] = books.slice(0, 15); // Show top 15 in overview
-        } catch (err) {
-          console.error(`Failed to load Goodreads list ${cat.id}:`, err);
-          data[cat.id] = [];
-        }
-      }));
-
       setFeaturedData(data);
     } catch (err: any) {
       console.error("Failed to load featured content:", err);
@@ -758,57 +747,6 @@ export default function DiscoverView({
     }
   }
 
-  async function fetchGoodreadsList(listId: string): Promise<{ books: any[]; previousDate: string | null }> {
-    const cacheKey = `goodreads_list_${listId}`;
-    const cached = tempStorage.get<any>(cacheKey);
-    if (cached) return cached;
-
-    try {
-      const res = await fetch(`/api/goodreads/list?id=${encodeURIComponent(listId)}`);
-      if (!res.ok) {
-        console.warn(`Goodreads list ${listId} returned status ${res.status}`);
-        return { books: [], previousDate: null };
-      }
-      const data = await res.json();
-      
-      const mappedBooks = (data.results?.books || []).map((book: any) => {
-        const cleanTitle = (book.title || "")
-          .split(':')[0]
-          .replace(/\b\d{10,13}\b/g, '')
-          .replace(/\(.*\)/g, '')
-          .replace(/volume\s+\d+/gi, '')
-          .replace(/book\s+\d+/gi, '')
-          .replace(/[^\w\s-]/gi, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        
-        const cleanAuthor = (book.author || "")
-          .split(',')[0]
-          .replace(/\b\d{4}-\d{4}\b/g, '')
-          .replace(/\bUnknown\b/gi, '')
-          .replace(/\(.*\)/g, '')
-          .replace(/[^\w\s-]/gi, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        return {
-          title: book.title,
-          author: book.author,
-          coverUrl: book.coverUrl,
-          searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
-          rating: book.rating,
-          source: 'goodreads'
-        };
-      });
-
-      const result = { books: mappedBooks, previousDate: null };
-      tempStorage.set(cacheKey, result);
-      return result;
-    } catch (err) {
-      console.error("Failed to fetch Goodreads list:", err);
-      return { books: [], previousDate: null };
-    }
-  }
 
   async function handleCategoryClick(category: any) {
     setLoadingCategory(true);
@@ -819,15 +757,10 @@ export default function DiscoverView({
     setError(null);
 
     try {
-      if (category.source === "goodreads") {
-        const { books } = await fetchGoodreadsList(category.query);
-        setCategoryBooks(books);
-      } else {
-        // Fetch NYT books for this category
-        const { books, previousDate } = await fetchNYTCategory(category.query);
-        setCategoryBooks(books);
-        setCategoryPreviousDate(previousDate);
-      }
+      // Fetch NYT books for this category
+      const { books, previousDate } = await fetchNYTCategory(category.query);
+      setCategoryBooks(books);
+      setCategoryPreviousDate(previousDate);
     } catch (err: any) {
       console.error("Failed to load category:", err);
       setError(`Failed to load category: ${err.message}`);
@@ -1145,8 +1078,8 @@ export default function DiscoverView({
   }
 
   async function handleGetDownloadLinks(book: any, variantOverride?: any, autoDownload?: boolean) {
-    const activeBook = book;
-    const activeVariant = variantOverride || (book.variants && book.variants[0]) || book;
+    let activeBook = book;
+    let activeVariant = variantOverride || (book.variants && book.variants[0]) || book;
 
     onSelectedBookChange(activeBook);
     setSelectedVariant(activeVariant);
@@ -1165,13 +1098,14 @@ export default function DiscoverView({
         const searchResult = await fetchPage(activeBook.searchQuery, "all", 1);
         if (searchResult.books.length > 0) {
           // Update the book with download links from all sources
-          const updatedBook = {
+          activeBook = {
             ...activeBook,
             variants: searchResult.books,
             downloadLinks: searchResult.books
           };
-          onSelectedBookChange(updatedBook);
-          setSelectedVariant(searchResult.books[0]);
+          activeVariant = searchResult.books[0];
+          onSelectedBookChange(activeBook);
+          setSelectedVariant(activeVariant);
         }
       } catch (err) {
         console.error("Failed to search for download links:", err);

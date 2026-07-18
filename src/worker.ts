@@ -1007,60 +1007,6 @@ export default {
     }
 
     // Goodreads Scraper Endpoint
-    if (path === "/api/goodreads/list") {
-      const listId = url.searchParams.get("id") || "1.Best_Books_Ever";
-      const goodreadsUrl = `https://www.goodreads.com/list/show/${listId}`;
-      
-      try {
-        const response = await fetch(goodreadsUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          }
-        });
-        
-        if (!response.ok) {
-          return new Response(JSON.stringify({ error: `Failed to fetch Goodreads list: ${response.status}` }), {
-            status: response.status,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-          });
-        }
-        
-        const html = await response.text();
-        const $ = cheerio.load(html);
-        const books: any[] = [];
-        
-        $("tr[itemscope]").each((_, el) => {
-          const $el = $(el);
-          const title = $el.find("a.bookTitle span[itemprop='name']").text().trim();
-          const author = $el.find("a.authorName span[itemprop='name']").text().trim();
-          const coverUrl = $el.find("img.bookCover").attr("src")?.replace(/\._.*_\./, "."); // Get higher res cover
-          const rating = $el.find("span.minirating").text().trim();
-          const link = "https://www.goodreads.com" + $el.find("a.bookTitle").attr("href");
-          
-          if (title && author) {
-            books.push({
-              title,
-              author,
-              coverUrl,
-              rating,
-              link,
-              source: "goodreads"
-            });
-          }
-        });
-        
-        const previousDate = null; // No previous date for Goodreads lists in this context
-        
-        return new Response(JSON.stringify({ books, previousDate }), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: "Failed to fetch Goodreads list", details: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-    }
 
     // 2.2 NYT Book Details API
     if (path === "/api/nyt/book-details" || path === "/api/nytimes/book-details") {
