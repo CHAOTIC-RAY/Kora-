@@ -4,8 +4,10 @@ import {
   isRealFirebase, 
   loadLibrary, 
   BookMetadata, 
-  syncBookToCloud 
+  syncBookToCloud,
+  initFirebase 
 } from "./lib/firebase";
+import { enrichBookMetadata } from "./lib/metadataEnricher";
 import { 
   signInAnonymously, 
   onAuthStateChanged, 
@@ -16,27 +18,140 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { getBookFile, clearAllCachedBooks } from "./db/indexedDB";
+import { getBookFile, clearAllCachedBooks, storeBookFile } from "./db/indexedDB";
+import { inferBookTags } from "./lib/tagsHelper";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
 import BookReaderEPUB from "./components/BookReaderEPUB";
 import BookReaderPDF from "./components/BookReaderPDF";
+import BookReaderText from "./components/BookReaderText";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
-import NotesView from "./components/NotesView";
+import DownloadBookBtn from "./components/DownloadBookBtn";
+import OnboardingModal from "./components/OnboardingModal";
+import DailyReminderModal from "./components/DailyReminderModal";
+import { toast, Toaster } from "react-hot-toast";
+import { logger } from "./lib/logger";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
-  Compass, Play, Download, Globe, Library, BookMarked
+  Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle,
+  RefreshCw, Zap, Database, Trash2, Library, BookMarked
 } from "lucide-react";
+import JSZip from "jszip";
+
+async function injectMetadataIntoEpub(
+  fileBlob: Blob,
+  title: string,
+  author: string,
+  description?: string,
+  publisher?: string,
+  year?: string
+): Promise<Blob> {
+  try {
+    const zip = await JSZip.loadAsync(fileBlob);
+    let opfPath = "";
+    
+    const containerFile = zip.file("META-INF/container.xml");
+    if (containerFile) {
+      const containerXml = await containerFile.async("text");
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(containerXml, "text/xml");
+      const rootfile = doc.querySelector("rootfile");
+      if (rootfile) {
+        opfPath = rootfile.getAttribute("full-path") || "";
+      }
+    }
+    
+    if (!opfPath) {
+      opfPath = Object.keys(zip.files).find(name => name.endsWith(".opf")) || "";
+    }
+    
+    if (opfPath) {
+      const opfFile = zip.file(opfPath);
+      if (opfFile) {
+        const opfText = await opfFile.async("text");
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(opfText, "text/xml");
+        
+        const metadataNode = doc.querySelector("metadata") || doc.querySelector("opf\\:metadata");
+        if (metadataNode) {
+          const setMetadataTag = (tagName: string, value: string, attributes?: Record<string, string>) => {
+            let el = doc.querySelector(tagName.replace(":", "\\:"));
+            if (!el) {
+              const localName = tagName.split(":").pop() || tagName;
+              el = doc.querySelector(localName);
+            }
+            if (el) {
+              el.textContent = value;
+            } else {
+              const newEl = doc.createElementNS("http://purl.org/dc/elements/1.1/", tagName);
+              newEl.textContent = value;
+              if (attributes) {
+                Object.entries(attributes).forEach(([k, v]) => newEl.setAttribute(k, v));
+              }
+              metadataNode.appendChild(newEl);
+            }
+          };
+          
+          setMetadataTag("dc:title", title);
+          setMetadataTag("dc:creator", author, { "opf:role": "aut" });
+          if (description) {
+            setMetadataTag("dc:description", description);
+          }
+          if (publisher) {
+            setMetadataTag("dc:publisher", publisher);
+          }
+          if (year) {
+            setMetadataTag("dc:date", year);
+          }
+          
+          const serializer = new XMLSerializer();
+          const updatedOpfText = serializer.serializeToString(doc);
+          zip.file(opfPath, updatedOpfText);
+          
+          const newBlob = await zip.generateAsync({ 
+            type: "blob", 
+            mimeType: "application/epub+zip",
+            compression: "DEFLATE",
+            compressionOptions: { level: 5 }
+          });
+          return newBlob;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to inject metadata into EPUB file:", err);
+  }
+  return fileBlob;
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: any, errorInfo: any) { console.error("ErrorBoundary caught an error", error, errorInfo); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center">
+          <p className="text-xs text-red-600 font-bold uppercase tracking-widest">Something went wrong in this section.</p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings" | "notes">("library");
+  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings">("library");
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
     const saved = localStorage.getItem("kindle_last_read");
@@ -50,19 +165,92 @@ export default function App() {
     return localStorage.getItem("kora_display_theme") || "theme-light-white";
   });
 
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
+    return localStorage.getItem("kora_onboarding_completed") !== "true";
+  });
+  const [userNickname, setUserNickname] = useState<string>(() => {
+    return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
+  });
+  const [dailyRemindersEnabled, setDailyRemindersEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("kora_daily_reminders") === "true";
+  });
+  const [showDailyReminder, setShowDailyReminder] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (dailyRemindersEnabled && !showOnboarding) {
+      const lastReminder = localStorage.getItem("kora_last_reminder_date");
+      const today = new Date().toDateString();
+      if (lastReminder !== today) {
+        setShowDailyReminder(true);
+        localStorage.setItem("kora_last_reminder_date", today);
+      }
+    }
+  }, [dailyRemindersEnabled, showOnboarding]);
+
+  const handleOnboardingComplete = (prefs: {
+    nickname: string;
+    archetype: string;
+    displayTheme: string;
+    fontSize: number;
+    dailyGoal: number;
+    autoCache: boolean;
+    dailyReminders: boolean;
+  }) => {
+    localStorage.setItem("kora_onboarding_completed", "true");
+    localStorage.setItem("kora_user_nickname", prefs.nickname);
+    localStorage.setItem("kora_user_archetype", prefs.archetype);
+    localStorage.setItem("kora_display_theme", prefs.displayTheme);
+    localStorage.setItem("kora_daily_reminders", String(prefs.dailyReminders));
+    setDisplayTheme(prefs.displayTheme);
+    setUserNickname(prefs.nickname);
+    
+    const updatedPrefs = {
+      ...readerPrefs,
+      fontSize: prefs.fontSize,
+      theme: prefs.displayTheme.includes("dark") ? "dark" : "light"
+    };
+    setReaderPrefs(updatedPrefs);
+    localStorage.setItem("kora_reader_prefs", JSON.stringify(updatedPrefs));
+    
+    localStorage.setItem("kora_reading_goal", String(prefs.dailyGoal));
+    
+    const updatedSearch = {
+      ...searchPrefs,
+      autoCacheDownloads: prefs.autoCache
+    };
+    setSearchPrefs(updatedSearch);
+    localStorage.setItem("kora_search_prefs", JSON.stringify(updatedSearch));
+
+    setShowOnboarding(false);
+    toast.success(`Welcome, ${prefs.nickname}! Your reading identity has been forged.`);
+  };
+
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
   const [readerPrefs, setReaderPrefs] = useState(() => {
     const saved = localStorage.getItem("kora_reader_prefs");
+    const initialDisplayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
     return saved ? JSON.parse(saved) : {
       fontSize: 18,
       lineSpacing: 1.6,
       fontFamily: "font-serif",
-      theme: "light",
+      theme: initialDisplayTheme.includes("dark") ? "dark" : "light",
+      themeManuallySet: false,
       marginSize: "max-w-2xl px-6",
       isContinuous: false,
       brightness: 100,
+      grayscaleImages: false,
     };
   });
+
+  // Automatically update reader theme if not manually set by user
+  useEffect(() => {
+    if (!readerPrefs.themeManuallySet) {
+      setReaderPrefs((prev: any) => ({
+        ...prev,
+        theme: displayTheme.includes("dark") ? "dark" : "light"
+      }));
+    }
+  }, [displayTheme]);
 
   // Search / discovery preferences
   const [searchPrefs, setSearchPrefs] = useState(() => {
@@ -101,16 +289,438 @@ export default function App() {
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
   const [browserInitialUrl, setBrowserInitialUrl] = useState<string | null>(null);
 
+  // Mobile Web App / PWA Share Target state variables
+  const [sharingStatus, setSharingStatus] = useState<"idle" | "converting" | "success" | "error">("idle");
+  const [sharingUrl, setSharingUrl] = useState<string>("");
+  const [sharingError, setSharingError] = useState<string | null>(null);
+
+  // Global Background Downloads State
+  const [globalDownloads, setGlobalDownloads] = useState<any[]>(() => {
+    const saved = localStorage.getItem("kora_downloads_log");
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Background download handler
+  async function startBackgroundDownload(book: any, mirrors: any | any[], variant: any) {
+    const mirrorList = Array.isArray(mirrors) ? mirrors : [mirrors];
+    if (!mirrorList || mirrorList.length === 0) {
+      toast.error("No valid download mirrors available for auto-download.");
+      return;
+    }
+    
+    const downloadId = Math.random().toString(36).substring(7);
+    const newDl = {
+      id: downloadId,
+      title: book.title,
+      author: book.author || "Unknown",
+      size: variant.size || "Unknown",
+      status: "downloading",
+      percent: 0,
+      timestamp: Date.now()
+    };
+
+    setGlobalDownloads(prev => {
+      const updated = [newDl, ...prev];
+      localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+      return updated;
+    });
+
+    toast.loading(`Downloading ${book.title}...`, { id: downloadId });
+
+    let finalError: any = null;
+    let success = false;
+
+    for (let index = 0; index < mirrorList.length; index++) {
+      const mirror = mirrorList[index];
+      try {
+        const attemptLabel = mirrorList.length > 1 ? `(Mirror ${index + 1}/${mirrorList.length}) ` : '';
+        logger.info(`Starting background download for "${book.title}" ${attemptLabel}. Size: ${variant.size || 'Unknown'}. Mirror: ${mirror.url}`);
+
+        setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
+          ...dl, 
+          status: "downloading", 
+          percent: 0,
+          speed: "Connecting...",
+          eta: "",
+          transferred: attemptLabel
+        } : dl));
+
+        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        
+        const response = await fetch(proxyUrl);
+        if (!response.ok) {
+          let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
+          try {
+            const errData = await response.json();
+            if (errData && errData.error) {
+              errMsg = errData.error;
+            }
+          } catch (e) {
+            try {
+              const errText = await response.text();
+              if (errText && errText.length < 200) errMsg = errText;
+            } catch (e2) {}
+          }
+          throw new Error(errMsg);
+        }
+
+        // Determine the correct file extension based on response headers, metadata, and URL
+        const contentDisposition = response.headers.get("content-disposition");
+        const contentType = response.headers.get("content-type");
+        
+        if (contentType && contentType.toLowerCase().includes("text/html")) {
+          throw new Error("Mirror returned a webpage instead of a book file. Trying next link...");
+        }
+
+        let fileExtension = "epub"; // safe fallback
+
+        // 1. Check Content-Disposition first
+        if (contentDisposition) {
+          const filenameMatch = contentDisposition.match(/filename\*?=["']?([^"';]+)["']?/i);
+          if (filenameMatch && filenameMatch[1]) {
+            let filename = filenameMatch[1];
+            if (filename.startsWith("UTF-8''")) {
+              filename = decodeURIComponent(filename.substring(7));
+            }
+            const ext = filename.split('.').pop()?.toLowerCase();
+            if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+              fileExtension = ext;
+            }
+          }
+        }
+
+        // 2. Fallback to Content-Type
+        if (fileExtension === "epub" && contentType) {
+          const ct = contentType.toLowerCase();
+          if (ct.includes("epub")) fileExtension = "epub";
+          else if (ct.includes("pdf")) fileExtension = "pdf";
+          else if (ct.includes("mobi")) fileExtension = "mobi";
+          else if (ct.includes("azw3")) fileExtension = "azw3";
+          else if (ct.includes("zip")) fileExtension = "zip";
+        }
+
+        // 3. Fallback to variant/metadata extension
+        if (fileExtension === "epub" && (variant.extension || variant.format)) {
+          const ext = (variant.extension || variant.format).toLowerCase();
+          if (ext && ext !== "php" && ext !== "html") {
+            fileExtension = ext;
+          }
+        }
+
+        // 4. Fallback to safe parsing of original mirror URL
+        if (fileExtension === "epub" && mirror.url) {
+          try {
+            const urlObj = new URL(mirror.url);
+            const pathname = urlObj.pathname;
+            const ext = pathname.split('.').pop()?.toLowerCase();
+            if (ext && ext !== "php" && ext !== "html" && ext.length <= 4) {
+              fileExtension = ext;
+            }
+          } catch (e) {}
+        }
+
+        const reader = response.body?.getReader();
+        const contentLength = +(response.headers.get('Content-Length') || 0);
+        let receivedLength = 0;
+        const chunks = [];
+
+        const formatBytes = (bytes: number) => {
+          if (bytes === 0) return "0 B";
+          const k = 1024;
+          const sizes = ["B", "KB", "MB", "GB"];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+        };
+
+        if (reader) {
+          const startTime = Date.now();
+          let lastUpdateTime = Date.now();
+
+          while(true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            receivedLength += value.length;
+            
+            const percent = contentLength > 0 
+              ? Math.round((receivedLength / contentLength) * 100) 
+              : null;
+              
+            const now = Date.now();
+            // Throttle state updates to once every 150ms for buttery-smooth UI rendering
+            if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
+              lastUpdateTime = now;
+              const elapsed = (now - startTime) / 1000; // seconds
+              const speedBytes = elapsed > 0 ? (receivedLength / elapsed) : 0;
+              const speedStr = speedBytes > 1024 * 1024 
+                ? `${(speedBytes / (1024 * 1024)).toFixed(1)} MB/s` 
+                : speedBytes > 1024 
+                  ? `${(speedBytes / 1024).toFixed(0)} KB/s` 
+                  : `${Math.round(speedBytes)} B/s`;
+
+              let etaStr = "";
+              if (contentLength > 0 && speedBytes > 0) {
+                const remainingBytes = contentLength - receivedLength;
+                const remainingSeconds = Math.round(remainingBytes / speedBytes);
+                if (remainingSeconds > 60) {
+                  const mins = Math.floor(remainingSeconds / 60);
+                  const secs = remainingSeconds % 60;
+                  etaStr = `${mins}m ${secs}s remaining`;
+                } else if (remainingSeconds > 0) {
+                  etaStr = `${remainingSeconds}s remaining`;
+                } else {
+                  etaStr = "finishing...";
+                }
+              } else {
+                etaStr = "downloading...";
+              }
+
+              const transferredStr = contentLength > 0 
+                ? `${formatBytes(receivedLength)} of ${formatBytes(contentLength)}`
+                : formatBytes(receivedLength);
+
+              setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
+                ...dl, 
+                percent,
+                speed: speedStr,
+                transferred: transferredStr,
+                eta: etaStr
+              } : dl));
+            }
+          }
+        }
+
+        let fileBlob = new Blob(chunks);
+        const id = variant.md5 || Math.random().toString(36).substring(7);
+
+        // Check if downloading using normal discovery search (non-advanced Google Book based search)
+        const isGoogleBookSearch = book.isGoogleBook || book.source === "google";
+        
+        let finalTitle = book.title;
+        let finalAuthor = book.author;
+        let finalDescription = book.description || "";
+        let finalPublisher = book.publisher || "";
+        let finalYear = book.year || "";
+        let finalLanguage = book.language || variant.language || "English";
+        let finalCoverUrl = book.coverUrl || "";
+        let finalPageCount = book.pages ? parseInt(book.pages) : undefined;
+        let finalTags = Array.from(new Set([
+          ...inferBookTags(finalTitle, finalAuthor, fileExtension),
+          ...(book.categories || [])
+        ]));
+
+        if (isGoogleBookSearch) {
+          logger.info(`Normal discovery search download detected. Fetching complete Google Books metadata for "${book.title}"`);
+          try {
+            const query = encodeURIComponent(`intitle:${book.title} inauthor:${book.author}`);
+            const gRes = await fetch(`/api/google-books/search?q=${query}&maxResults=1`);
+            if (gRes.ok) {
+              const gData = await gRes.json();
+              if (gData.items && gData.items[0]) {
+                const info = gData.items[0].volumeInfo;
+                if (info) {
+                  finalTitle = info.title || finalTitle;
+                  finalAuthor = info.authors?.join(", ") || finalAuthor;
+                  finalDescription = info.description || finalDescription;
+                  finalPublisher = info.publisher || finalPublisher;
+                  finalYear = info.publishedDate?.split("-")[0] || finalYear;
+                  finalLanguage = info.language || finalLanguage;
+                  if (info.imageLinks?.thumbnail) {
+                    finalCoverUrl = info.imageLinks.thumbnail.replace("http:", "https:");
+                  }
+                  if (info.pageCount) {
+                    finalPageCount = info.pageCount;
+                  }
+                  if (info.categories) {
+                    const parsedCats = info.categories.flatMap((cat: string) => {
+                      const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+                      return [cat, ...parts];
+                    });
+                    finalTags = Array.from(new Set([...finalTags, ...parsedCats]));
+                  }
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("Failed on-the-fly Google Books metadata enrich:", e);
+          }
+
+          // Inject metadata into the EPUB zip before storing it
+          if (fileExtension === "epub") {
+            logger.info(`Injecting updated Google Books metadata into EPUB file for "${finalTitle}"`);
+            try {
+              fileBlob = await injectMetadataIntoEpub(
+                fileBlob,
+                finalTitle,
+                finalAuthor,
+                finalDescription,
+                finalPublisher,
+                finalYear
+              );
+            } catch (injectErr) {
+              console.warn("Failed to inject metadata into EPUB blob:", injectErr);
+            }
+          }
+        }
+
+        await storeBookFile(id, fileBlob, `${finalTitle}.${fileExtension}`, fileExtension);
+
+        // Save to library
+        const newBook: BookMetadata = {
+          id,
+          title: finalTitle,
+          author: finalAuthor,
+          extension: fileExtension,
+          size: variant.size || "Unknown",
+          language: finalLanguage,
+          coverUrl: finalCoverUrl,
+          md5: variant.md5,
+          source: "Kora Store",
+          tags: finalTags,
+          status: "to-read",
+          progress: { 
+            percent: 0, 
+            lastReadTime: Date.now(),
+            totalPages: finalPageCount || 0
+          },
+          dateAdded: Date.now(),
+          description: finalDescription,
+          publisher: finalPublisher,
+          year: finalYear,
+          downloadUrl: variant.downloadUrl || variant.directUrl
+        };
+
+        await syncBookToCloud(user?.uid || "", newBook);
+        
+        setGlobalDownloads(prev => {
+          const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
+          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          return updated;
+        });
+
+        logger.info(`Successfully completed download for "${book.title}". Saved to IndexedDB with ID: ${id}`);
+        toast.success(`${book.title} downloaded!`, { id: downloadId });
+        refreshLibrary();
+        
+        success = true;
+        break; // Stop iterating on success
+      } catch (err: any) {
+        logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error: ${err.message || err}`);
+        finalError = err;
+        // Proceed to the next mirror if this one failed
+      }
+    }
+    
+    if (!success) {
+      logger.error(`All mirrors failed for "${book.title}". Last error: ${finalError?.message || finalError}`, finalError);
+      console.error("Background download failed on all mirrors:", finalError);
+      setGlobalDownloads(prev => {
+        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: finalError?.message } : dl);
+        localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+        return updated;
+      });
+      toast.error(`Failed to download ${book.title}`, { id: downloadId });
+    }
+  }
+
   // 1. Authenticate user anonymously on mount if not logged in
   useEffect(() => {
+    initFirebase();
     // Apply theme to body
     document.body.className = displayTheme;
-    if (grayscaleCovers) {
-      document.body.classList.add("grayscale-app");
-    } else {
-      document.body.classList.remove("grayscale-app");
+    if (displayTheme.includes("dark")) {
+      document.body.classList.add("dark");
     }
-  }, [displayTheme, grayscaleCovers]);
+  }, [displayTheme]);
+
+  // Web Share Target API helper to extract a URL
+  function extractUrl(text: string | null): string | null {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const matches = text.match(urlRegex);
+    return matches ? matches[0] : null;
+  }
+
+  // Handle incoming mobile shared webpages automatically
+  useEffect(() => {
+    if (loadingAuth) return; // wait until auth is complete
+
+    const searchParams = new URLSearchParams(window.location.search);
+    const sharedText = searchParams.get("text");
+    const sharedUrlParam = searchParams.get("url");
+    const sharedTitle = searchParams.get("title");
+
+    const rawUrl = sharedUrlParam || sharedText;
+    const extractedUrl = extractUrl(rawUrl);
+
+    if (extractedUrl) {
+      console.log("[PWA Share Target] Detected shared URL:", extractedUrl);
+      setSharingUrl(extractedUrl);
+      
+      // Clean query parameters from URL so reloads don't convert again
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+
+      // Start conversion
+      handleConvertSharedUrl(extractedUrl, sharedTitle || "Shared Article");
+    }
+  }, [loadingAuth, user]);
+
+  async function handleConvertSharedUrl(urlToConvert: string, initialTitle: string) {
+    setSharingStatus("converting");
+    setSharingError(null);
+    try {
+      const response = await fetch("/api/convert-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: urlToConvert.trim() })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || `HTTP error ${response.status}`);
+      }
+
+      const data = await response.json();
+      const bookId = `clipper-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const sizeStr = `${(data.htmlContent.length / 1024).toFixed(1)} KB`;
+      
+      const newBook: BookMetadata = {
+        id: bookId,
+        title: data.title || initialTitle || "Clipped Article",
+        author: data.author || "Web Article",
+        extension: "html",
+        size: sizeStr,
+        tags: ["Clipped", "Web"],
+        status: "to-read",
+        progress: {
+          percent: 0,
+          lastReadTime: Date.now()
+        },
+        dateAdded: Date.now(),
+        description: data.description || `Clipped from ${new URL(urlToConvert).hostname}`
+      };
+
+      // Store in IndexedDB
+      const blob = new Blob([data.htmlContent], { type: "text/html" });
+      await storeBookFile(bookId, blob, `${newBook.title}.html`, "html");
+
+      // Sync to cloud/localStorage
+      await syncBookToCloud(user?.uid || "", newBook);
+
+      setSharingStatus("success");
+      await refreshLibrary(user?.uid || "");
+      
+      // Instantly open the newly added webpage in reader
+      setActiveBook(newBook);
+
+      setTimeout(() => setSharingStatus("idle"), 5000);
+    } catch (err: any) {
+      console.error("[PWA Share Target Error]:", err);
+      setSharingError(err.message || "Failed to convert shared webpage.");
+      setSharingStatus("error");
+    }
+  }
 
   useEffect(() => {
     if (!auth) {
@@ -204,6 +814,59 @@ export default function App() {
     setCachedBookIds(ids);
   }
 
+  // Handle physical/native back button and gesture navigation (iOS/Android/Browser edge-swipe or back button)
+  useEffect(() => {
+    if (activeBook) {
+      // Push history state to block native back navigation from leaving the application,
+      // converting it into a close-reader command instead.
+      window.history.pushState({ isReading: true, bookId: activeBook.id }, "", `#read-${activeBook.id}`);
+      
+      const handlePopState = (event: PopStateEvent) => {
+        if (!event.state || !event.state.isReading) {
+          setActiveBook(null);
+          refreshLibrary();
+        }
+      };
+      
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    }
+  }, [activeBook]);
+
+  // Keep track of the active tab before transitioning to settings
+  const prevTabRef = useRef<"library" | "discover" | "downloads" | "settings">("library");
+  useEffect(() => {
+    if (activeTab !== "settings") {
+      prevTabRef.current = activeTab;
+    }
+  }, [activeTab]);
+
+  // Handle physical/native back button and gesture navigation for the settings tab on mobile
+  const lastTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (activeTab === "settings") {
+      window.history.pushState({ isSettings: true }, "", "#settings");
+      
+      const handlePopState = (event: PopStateEvent) => {
+        if (!event.state || !event.state.isSettings) {
+          setActiveTab(prevTabRef.current);
+        }
+      };
+      
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    } else {
+      if (lastTabRef.current === "settings" && window.history.state && window.history.state.isSettings) {
+        window.history.back();
+      }
+    }
+    lastTabRef.current = activeTab;
+  }, [activeTab]);
+
   // Startup directory scan trigger
   const hasScannedRef = useRef<boolean>(false);
 
@@ -225,6 +888,11 @@ export default function App() {
           return [...prev, newBook];
         });
         await syncBookToCloud(user?.uid || "", newBook);
+        
+        // Enrich metadata in background after import
+        enrichBookMetadata(user?.uid || "", newBook).then(enriched => {
+          setBooks(prev => prev.map(b => b.id === enriched.id ? enriched : b));
+        });
       };
 
       if (realHandle) {
@@ -340,14 +1008,30 @@ export default function App() {
   }
 
   // Handle book selection for reading
-  function handleOpenBook(book: BookMetadata) {
-    if (book.id === "global-notes") {
-      setActiveTab("notes");
-      return;
-    }
+  async function handleOpenBook(book: BookMetadata) {
     if (!cachedBookIds.has(book.id)) {
-      alert("This book is currently syncing to this device or requires a manual download. Please wait a moment.");
-      return;
+      if (book.downloadUrl) {
+        try {
+          alert(`Downloading ${book.title}...`);
+          const res = await fetch(book.downloadUrl);
+          if (!res.ok) throw new Error("Download failed");
+          const blob = await res.blob();
+          await storeBookFile(book.id, blob, book.filename || `${book.title}.${book.extension}`, book.extension);
+          setCachedBookIds(prev => {
+            const next = new Set(prev);
+            next.add(book.id);
+            return next;
+          });
+          // Proceed to open
+        } catch (err) {
+          console.error("Failed to download from downloadUrl", err);
+          alert("Failed to download book from its saved URL. Please try again or download manually.");
+          return;
+        }
+      } else {
+        alert("This book is currently syncing to this device or requires a manual download. Please wait a moment.");
+        return;
+      }
     }
     setActiveBook(book);
     setLastReadBook(book);
@@ -365,7 +1049,7 @@ export default function App() {
   return (
     <div id="app-root-container" className="min-h-screen flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300">
       {/* 1. Global Navigation Header - Kora Style */}
-      <header className="border-b border-kindle-border bg-kindle-bg sticky top-0 z-40 h-16">
+      <header className="border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
@@ -379,7 +1063,7 @@ export default function App() {
               <KoraWordmark className="h-4 text-kindle-text" />
             </div>
           </button>
-          <div className="flex flex-1 min-w-0 max-w-[130px] xs:max-w-[200px] sm:max-w-xs md:max-w-md lg:max-w-lg">
+          <div className="flex flex-1 min-w-0 max-w-sm sm:max-w-md md:max-w-xl lg:max-w-2xl">
             <Quote />
           </div>
         </div>
@@ -465,7 +1149,7 @@ export default function App() {
       </header>
 
       {/* 2. Main Page View Content */}
-      <main className={`flex-1 w-full mx-auto pb-32 md:pb-8 ${activeTab === 'downloads' ? 'max-w-none p-0' : 'max-w-6xl p-4 md:p-8'}`}>
+      <main className="flex-1 w-full mx-auto pb-20 md:pb-8 max-w-6xl p-4 md:p-8">
         
         {/* Sync loading status indicator */}
         {loadingLibrary && (
@@ -492,8 +1176,17 @@ export default function App() {
           />
         )}
 
-        {activeTab === "downloads" && <DownloadsManager />}
-        {activeTab === "notes" && <NotesView books={books} userId={user?.uid || ""} onBack={() => setActiveTab("library")} />}
+        {activeTab === "downloads" && (
+          <DownloadsManager 
+            userId={user?.uid || ""} 
+            downloads={globalDownloads}
+            onSetDownloads={(updated: any[]) => {
+              setGlobalDownloads(updated);
+              localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+            }}
+            onRefreshLibrary={() => refreshLibrary()} 
+          />
+        )}
         
         {activeTab === "discover" && (
           <DiscoverView
@@ -502,11 +1195,12 @@ export default function App() {
             zlibConfig={zlibConfig}
             selectedBook={selectedBookForDownload}
             onSelectedBookChange={setSelectedBookForDownload}
+            onTriggerDownload={startBackgroundDownload}
             onOpenBrowser={(url) => {
               setBrowserInitialUrl(url);
               setActiveTab("downloads");
             }}
-            onBookAdded={(book) => {
+            onBookAdded={async (book) => {
               setBooks(prev => {
                 const updated = [...prev];
                 if (!updated.some(b => b.id === book.id)) {
@@ -515,6 +1209,10 @@ export default function App() {
                 return updated;
               });
               setActiveTab("library");
+              
+              // Enrich metadata in background after addition
+              const enriched = await enrichBookMetadata(user?.uid || "", book);
+              setBooks(prev => prev.map(b => b.id === enriched.id ? enriched : b));
             }}
             cachedBookIds={cachedBookIds}
             grayscaleCovers={grayscaleCovers}
@@ -527,9 +1225,15 @@ export default function App() {
         {activeTab === "settings" && (
           <SettingsView 
             user={user}
+            userId={user?.uid || ""}
             grayscaleCovers={grayscaleCovers}
             onToggleGrayscale={toggleGrayscale}
             displayTheme={displayTheme}
+            dailyRemindersEnabled={dailyRemindersEnabled}
+            onChangeDailyReminders={(enabled) => {
+              setDailyRemindersEnabled(enabled);
+              localStorage.setItem("kora_daily_reminders", String(enabled));
+            }}
             onChangeTheme={changeTheme}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}
@@ -543,21 +1247,35 @@ export default function App() {
             onClearRecentSearches={handleClearRecentSearches}
             books={books}
             onRefreshLibrary={refreshLibrary}
+            onCachedIdsChanged={updateCachedBookIndex}
+            onOpenOnboarding={() => setShowOnboarding(true)}
           />
         )}
       </main>
 
       {/* Floating Actions for Mobile */}
       <div className="md:hidden fixed bottom-24 right-6 flex flex-col gap-4 z-50">
+        {lastReadBook && activeTab === "library" && (
+          <button
+            onClick={() => handleOpenBook(lastReadBook)}
+            className="w-14 h-14 bg-kindle-text text-kindle-bg rounded-full shadow-2xl flex items-center justify-center transition-transform active:scale-90 ring-4 ring-kindle-bg"
+            title={`Continue Reading: ${lastReadBook.title}`}
+          >
+            <Play className="w-6 h-6 ml-1 fill-current" />
+          </button>
+        )}
       </div>
 
       {/* 3. Full-Screen Reader Component Viewports */}
       {activeBook && (
-        activeBook.extension === "pdf" ? (
+        activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
             book={activeBook}
             userId={user?.uid || ""}
             onClose={() => {
+              if (window.history.state && window.history.state.isReading) {
+                window.history.back();
+              }
               setActiveBook(null);
               refreshLibrary();
             }}
@@ -567,12 +1285,16 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
-        ) : (
+        ) : (activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
             readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
             onClose={() => {
+              if (window.history.state && window.history.state.isReading) {
+                window.history.back();
+              }
               setActiveBook(null);
               refreshLibrary();
             }}
@@ -582,11 +1304,117 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
+        ) : ["html", "htm", "json", "txt", "md", "csv"].includes(activeBook.extension?.toLowerCase() || "") ? (
+          <BookReaderText
+            book={activeBook}
+            readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
+            onClose={() => {
+              if (window.history.state && window.history.state.isReading) {
+                window.history.back();
+               }
+               setActiveBook(null);
+               refreshLibrary();
+             }}
+           />
+        ) : (
+          <div className="fixed inset-0 bg-kindle-bg z-[100] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in-95 duration-300">
+            <div className="max-w-md space-y-6 bg-kindle-card p-8 rounded-3xl border border-kindle-border shadow-2xl overflow-hidden relative">
+              <div className="absolute top-0 left-0 w-full h-1 bg-red-500/30" />
+              <div className="pt-4">
+                <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <div className="px-8 pb-2 space-y-2">
+                  <h2 className="text-xl font-bold font-lexend text-kindle-text leading-tight line-clamp-2">
+                    {(() => {
+                      const t = activeBook.title;
+                      // Detect duplicate-ish title chunks (e.g. "TitleTitle" or "Title Title")
+                      if (t.length > 20) {
+                        const mid = Math.floor(t.length / 2);
+                        const first = t.slice(0, mid).trim().toLowerCase();
+                        const second = t.slice(mid).trim().toLowerCase();
+                        if (first === second || second.startsWith(first) || first.startsWith(second)) {
+                          return t.slice(0, mid).trim();
+                        }
+                      }
+                      return t;
+                    })()}
+                  </h2>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-kindle-text/5 border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                    <FileText className="w-3 h-3" /> {activeBook.extension?.toUpperCase() || "UNKNOWN"} FORMAT
+                  </div>
+                </div>
+                
+                <div className="p-6 bg-kindle-bg/50 border-t border-b border-kindle-border text-left space-y-3">
+                  <p className="text-xs text-kindle-text font-medium">
+                    The {activeBook.extension?.toUpperCase()} format is not currently supported by Kora's built-in reader engine.
+                  </p>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider">Troubleshooting</p>
+                    <ul className="text-[11px] text-kindle-text-muted space-y-1 ml-4 list-disc">
+                      <li>Kora natively supports <b>EPUB</b> and <b>PDF</b> formats.</li>
+                      <li>Text-based formats (TXT, MD, HTML) are supported in draft mode.</li>
+                      <li>Try converting your file to <b>EPUB</b> using a tool like Calibre.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="p-8 flex flex-col gap-3">
+                  <div className="flex justify-center">
+                    <DownloadBookBtn book={activeBook} />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      if (window.history.state && window.history.state.isReading) {
+                        window.history.back();
+                      }
+                      setActiveBook(null);
+                    }} 
+                    className="px-6 py-3 rounded-xl hover:bg-kindle-bg text-[10px] font-bold uppercase tracking-widest transition text-kindle-text-muted hover:text-kindle-text"
+                  >
+                    Return to Library
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )
       )}
 
-      {/* Auth Modal */}
-      {showAuthModal && (
+      {/* Settings Modal */}
+      <Toaster position="bottom-center" toastOptions={{
+        duration: 5000,
+        style: {
+          background: 'var(--toast-bg, var(--kindle-card))',
+          color: 'var(--kindle-text)',
+          border: '1px solid var(--kindle-border)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          fontSize: '11px',
+          fontWeight: '700',
+          borderRadius: '16px',
+          fontFamily: 'var(--font-sans)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          padding: '12px 20px',
+          boxShadow: '0 10px 40px -10px rgba(0,0,0,0.25)',
+          marginBottom: '60px', // Add margin to avoid overlapping tab bar
+        },
+        success: {
+          iconTheme: {
+            primary: '#10b981',
+            secondary: '#fff',
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: '#ef4444',
+            secondary: '#fff',
+          },
+        }
+      }} />
+      {showSettings && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
           <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-kindle p-6 shadow-2xl text-kindle-text">
             <div className="flex items-center justify-between mb-6">
@@ -757,76 +1585,125 @@ export default function App() {
       )}
 
       {/* 5. Modern Floating Mobile Navigation Bar */}
-      <footer className="md:hidden fixed bottom-5 left-4 right-4 z-40 mx-auto max-w-md bg-kindle-card/90 dark:bg-kindle-card/85 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300">
+      <footer className="md:hidden fixed bottom-5 left-4 right-4 z-40 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300">
         <div className="flex justify-around items-center h-14 px-1">
           <button
             onClick={() => setActiveTab("library")}
             className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "library" ? "text-kindle-accent" : "text-kindle-text-muted"
+              activeTab === "library" ? "text-kindle-text" : "text-kindle-text-muted"
             }`}
           >
-            <Library className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "library" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <Library className={`w-5 h-5 transition-all duration-300 ${activeTab === "library" ? "scale-110" : "opacity-80"}`} />
             <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Library</span>
           </button>
 
           <button
             onClick={() => setActiveTab("discover")}
             className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "discover" ? "text-kindle-accent" : "text-kindle-text-muted"
+              activeTab === "discover" ? "text-kindle-text" : "text-kindle-text-muted"
             }`}
           >
-            <Compass className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "discover" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <Compass className={`w-5 h-5 transition-all duration-300 ${activeTab === "discover" ? "scale-110" : "opacity-80"}`} />
             <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Discover</span>
-          </button>
-
-          {/* Quick Continue Reading Button - centered and highlighted if there's a last read book */}
-          {lastReadBook && (
-            <button
-              onClick={() => handleOpenBook(lastReadBook)}
-              className="flex items-center justify-center w-11 h-11 bg-kindle-text text-kindle-bg rounded-full shadow-md hover:bg-kindle-accent transition-transform duration-300 active:scale-95 -mt-5 border-4 border-kindle-bg relative z-50 group shrink-0"
-              title={`Resume: ${lastReadBook.title}`}
-            >
-              <Play className="w-4 h-4 ml-0.5 fill-current text-kindle-bg group-hover:scale-110 transition-transform" />
-            </button>
-          )}
-
-          <button
-            onClick={() => setActiveTab("notes")}
-            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "notes" ? "text-kindle-accent" : "text-kindle-text-muted"
-            }`}
-          >
-            <BookMarked className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "notes" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
-            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Notes</span>
           </button>
 
           <button
             onClick={() => setActiveTab("downloads")}
             className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "downloads" ? "text-kindle-accent" : "text-kindle-text-muted"
+              activeTab === "downloads" ? "text-kindle-text" : "text-kindle-text-muted"
             }`}
           >
-            <Download className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "downloads" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <Download className={`w-5 h-5 transition-all duration-300 ${activeTab === "downloads" ? "scale-110" : "opacity-80"}`} />
             <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Storage</span>
           </button>
 
           <button
             onClick={() => setActiveTab("settings")}
             className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "settings" ? "text-kindle-accent" : "text-kindle-text-muted"
+              activeTab === "settings" ? "text-kindle-text" : "text-kindle-text-muted"
             }`}
           >
-            <SettingsIcon className={`w-4.5 h-4.5 transition-all duration-300 ${activeTab === "settings" ? "scale-110 stroke-[2.2px] text-kindle-text" : "opacity-80"}`} />
+            <SettingsIcon className={`w-5 h-5 transition-all duration-300 ${activeTab === "settings" ? "scale-110" : "opacity-80"}`} />
             <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Settings</span>
           </button>
         </div>
       </footer>
 
       {/* 6. Compact Desktop Footer */}
-      <footer className="hidden md:block border-t border-kindle-border py-8 px-4 text-center text-[10px] text-kindle-text-muted font-sans mt-auto bg-kindle-bg">
-        <p>© 2026 Kora • Next-Gen Reader</p>
-        <p className="mt-1 font-mono uppercase tracking-widest opacity-60">Secure Firestore Cloud Persistence</p>
+      <footer className="hidden md:block border-t border-kindle-border py-10 px-4 text-center text-[10px] text-kindle-text-muted font-sans mt-auto bg-kindle-bg">
+        <div className="flex flex-col items-center gap-4 max-w-2xl mx-auto">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">
+            <span className="w-1 h-1 rounded-full bg-kindle-accent animate-pulse" />
+            Created from passion by <a href="https://portfolio.chaoticstudio.workers.dev/studio" target="_blank" rel="noopener noreferrer" className="text-kindle-accent hover:underline">chaos.studio.mv</a>
+            <span className="w-1 h-1 rounded-full bg-kindle-accent animate-pulse" />
+          </div>
+          
+          <div className="flex items-center gap-4 text-[10px] text-kindle-text-muted font-medium">
+            <a href="mailto:chaos.studio.mv@gmail.com" className="hover:text-kindle-text transition">chaos.studio.mv@gmail.com</a>
+            <span>•</span>
+            <a href="https://t.me/+9609401011" target="_blank" rel="noopener noreferrer" className="hover:text-kindle-text transition">+960 9401011 (Telegram)</a>
+            <span>•</span>
+            <span className="font-bold tracking-[0.1em] text-kindle-text">chaos.studio</span>
+          </div>
+
+          <div className="pt-4 border-t border-kindle-border/50 w-full flex flex-col items-center gap-1">
+            <p>© 2026 Kora • Next-Gen Reader</p>
+            <p className="font-mono uppercase tracking-[0.2em] opacity-50 text-[9px]">Secure Firestore Cloud Persistence</p>
+          </div>
+        </div>
       </footer>
+
+      {sharingStatus !== "idle" && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[999] font-sans text-left">
+          <div className="w-full max-w-md bg-kindle-card border border-kindle-border rounded-3xl p-6 shadow-2xl text-center space-y-4">
+            <div className="mx-auto w-12 h-12 bg-kindle-accent/10 border border-kindle-accent/20 rounded-2xl flex items-center justify-center">
+              {sharingStatus === "converting" ? (
+                <div className="w-5 h-5 border-3 border-kindle-accent border-t-transparent rounded-full animate-spin" />
+              ) : sharingStatus === "success" ? (
+                <Zap className="w-6 h-6 text-emerald-500 animate-bounce" />
+              ) : (
+                <AlertCircle className="w-6 h-6 text-red-500" />
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="font-lexend font-bold text-sm text-kindle-text uppercase tracking-wider">
+                {sharingStatus === "converting" ? "Converting Shared Webpage" :
+                 sharingStatus === "success" ? "Webpage Saved Successfully!" : "Web Conversion Failed"}
+              </h3>
+              <p className="text-xs text-kindle-text-muted break-all leading-relaxed">
+                {sharingStatus === "converting" ? `Saving offline readable version of ${sharingUrl}...` :
+                 sharingStatus === "success" ? "The webpage has been converted to an ebook and added to your library." :
+                 sharingError || "An unexpected error occurred while converting."}
+              </p>
+            </div>
+
+            {sharingStatus === "error" && (
+              <button
+                onClick={() => setSharingStatus("idle")}
+                className="w-full py-2.5 bg-kindle-accent text-kindle-bg text-xs font-bold uppercase tracking-wider rounded-xl transition hover:bg-opacity-95"
+              >
+                Close
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Daily Motivation Reminder Modal */}
+      <DailyReminderModal
+        isOpen={showDailyReminder}
+        onClose={() => setShowDailyReminder(false)}
+        nickname={userNickname}
+      />
+
+      {/* Playful Booknerd Onboarding Modal */}
+      <OnboardingModal
+        isOpen={showOnboarding}
+        onComplete={handleOnboardingComplete}
+        currentTheme={displayTheme}
+        onThemeChange={(newTheme) => changeTheme(newTheme)}
+      />
     </div>
   );
 }

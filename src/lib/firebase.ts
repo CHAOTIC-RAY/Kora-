@@ -31,22 +31,62 @@ const firebaseConfig = {
 };
 
 let app;
-let db: any;
-let auth: any;
+let db: any = null;
+let auth: any = null;
 let isRealFirebase = false;
 
+let initialized = false;
+
+export function initFirebase() {
+  if (initialized) return;
+  
+  try {
+    if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyFakeKey" && firebaseConfig.projectId) {
+      app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      const dbId = (rawFirebaseConfig as any).firestoreDatabaseId;
+      db = initializeFirestore(app, {
+        experimentalForceLongPolling: true,
+      }, dbId || "(default)");
+      auth = getAuth(app);
+      isRealFirebase = true;
+      console.log("Firebase initialized successfully. Real Firestore enabled.");
+    } else {
+      isRealFirebase = false;
+    }
+  } catch (error) {
+    console.error("Firebase failed to initialize. Falling back to local state sync.", error);
+    isRealFirebase = false;
+    db = null;
+    auth = null;
+  }
+  initialized = true;
+}
+
+export function disableFirebase() {
+  isRealFirebase = false;
+  db = null;
+  auth = null;
+  console.log("Firebase disabled due to network or configuration errors.");
+}
+
 try {
-  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  const dbId = (rawFirebaseConfig as any).firestoreDatabaseId;
-  db = initializeFirestore(app, {
-    experimentalForceLongPolling: true,
-  }, dbId || "(default)");
-  auth = getAuth(app);
-  isRealFirebase = !!firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("AIzaSyFakeKey");
-  console.log("Firebase initialized successfully.", isRealFirebase ? "Real Firestore enabled." : "Using Firestore with placeholder credentials.");
+  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyFakeKey" && firebaseConfig.projectId) {
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    const dbId = (rawFirebaseConfig as any).firestoreDatabaseId;
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    }, dbId || "(default)");
+    auth = getAuth(app);
+    isRealFirebase = true;
+    console.log("Firebase initialized successfully. Real Firestore enabled.");
+  } else {
+    isRealFirebase = false;
+  }
 } catch (error) {
   console.error("Firebase failed to initialize. Falling back to local state sync.", error);
   isRealFirebase = false;
+  db = null;
+  auth = null;
 }
 
 export { db, auth, isRealFirebase };
@@ -61,12 +101,15 @@ export interface BookMetadata {
   id: string; // MD5 or UUID
   title: string;
   author: string;
+  filename?: string;
+  filePath?: string;
   publisher?: string;
   year?: string;
   language?: string;
   extension: string;
   size: string;
   coverUrl?: string;
+  downloadUrl?: string;
   md5?: string;
   source?: string;
   tags: string[];
@@ -93,7 +136,7 @@ export interface BookMetadata {
 const LOCAL_STORAGE_KEY = "ebook_reader_library";
 const LOCAL_TAGS_KEY = "ebook_reader_tags";
 
-function getLocalLibrary(): BookMetadata[] {
+export function getLocalLibrary(): BookMetadata[] {
   try {
     const data = localStorage.getItem(LOCAL_STORAGE_KEY);
     return data ? JSON.parse(data) : [];
@@ -125,10 +168,13 @@ export async function syncBookToCloud(userId: string, book: BookMetadata): Promi
   // Sync to Firestore if authenticated & Firebase is active
   if (isRealFirebase && userId) {
     try {
-      const docRef = doc(db, "users", userId, "library", book.id);
-      await setDoc(docRef, book, { merge: true });
+      // Clean undefined fields to prevent Firestore errors
+      const cleanedBook = JSON.parse(JSON.stringify(book));
+      const docRef = doc(db, "users", userId, "library", cleanedBook.id);
+      await setDoc(docRef, cleanedBook, { merge: true });
     } catch (err) {
       console.warn("Failed to sync book to Firestore cloud:", err);
+      disableFirebase();
     }
   }
 }
@@ -140,10 +186,29 @@ export async function syncDeleteBook(userId: string, bookId: string): Promise<vo
 
   if (isRealFirebase && userId) {
     try {
+      // Delete highlights subcollection
+      const highlightsRef = collection(db, "users", userId, "library", bookId, "highlights");
+      const highlightsSnap = await getDocs(highlightsRef);
+      const deletePromises: Promise<void>[] = [];
+      highlightsSnap.forEach(doc => {
+        deletePromises.push(deleteDoc(doc.ref));
+      });
+
+      // Delete notes subcollection
+      const notesRef = collection(db, "users", userId, "library", bookId, "notes");
+      const notesSnap = await getDocs(notesRef);
+      notesSnap.forEach(doc => {
+        deletePromises.push(deleteDoc(doc.ref));
+      });
+
+      await Promise.all(deletePromises);
+
+      // Finally delete the book document
       const docRef = doc(db, "users", userId, "library", bookId);
       await deleteDoc(docRef);
     } catch (err) {
       console.warn("Failed to delete book from Firestore cloud:", err);
+      disableFirebase();
     }
   }
 }
@@ -176,6 +241,7 @@ export async function loadLibrary(userId: string): Promise<BookMetadata[]> {
       }
     } catch (err) {
       console.warn("Failed to load library from Firestore cloud, using offline copy:", err);
+      disableFirebase();
     }
   }
 
@@ -206,6 +272,7 @@ export async function saveCustomTags(userId: string, tags: string[]): Promise<vo
       await setDoc(docRef, { tags }, { merge: true });
     } catch (err) {
       console.warn("Failed to sync custom tags to cloud:", err);
+      disableFirebase();
     }
   }
 }
@@ -226,6 +293,7 @@ export enum OperationType {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  disableFirebase();
   const errInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {

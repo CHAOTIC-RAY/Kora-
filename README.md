@@ -33,6 +33,12 @@
 
 Kora combines the simplicity of an e-ink Kindle device with the power of modern full-stack web applications.
 
+### 🎭 Playful Bookworm Onboarding
+* **Custom Reader Archetypes**: Define your literary identity! Choose from **The Midnight Reader** (lives in slate grey mode), **The Cozy Tea Sipper** (warm sepia presets), **The Bibliophile Curator** (perfectly ordered white pages), or **The Speed Scholar** (utilizing high-contrast navy presets).
+* **Pseudonym Customization**: Personalize your application header with a custom pseudonym.
+* **Interactive Guidebook**: A delightful, step-by-step carousel walking you through library drag-and-drop file ingestion, discovery feeds, background download alchemy, and aesthetic settings.
+* **The Bookworm Oath & Guild Pact**: Transparency first. Agreements detailing Fair Use compliance, offline browser-contained data sovereignty, and open-source licenses.
+
 ### 📚 Immersive Reading Engine
 * **Kindle-inspired Layout**: Clean text grids with adjustable font sizes, line heights, and margin widths to suit your reading habits.
 * **Aesthetic Palette Presets**: Four eye-safe display presets: **Light White** (default crisp paper), **Sepia** (warm amber), **Dark Grey** (calm charcoal), and **Dark Blue** (deep twilight).
@@ -40,6 +46,7 @@ Kora combines the simplicity of an e-ink Kindle device with the power of modern 
 * **Full Ebook Format Support**: Seamlessly parse and render standard EPUB and PDF books with chapter-to-chapter tracking, bookmarking, and highlighting.
 
 ### 🔍 Unified Ebook Discovery
+* **Resilient Goodreads Scraping (Zero-AI/Zero-API)**: Direct, high-speed cheerio extraction of Goodreads curation lists with auto-retry and multiple CORS/Cloudflare bypass proxies (including corsproxy.io, codetabs, and allorigins). Loaded instantly, kept fully private.
 * **Federated Book Search**: Real-time crawling and searching of millions of public, open-source titles.
 * **Direct Mirror Intelligence**: Automatically resolves fast, direct mirrors (such as Library.lol and Libgen) to offer instant auto-download streams.
 * **Intelligent Landing Page Detection**: Recognizes slow links (such as Anna's Archive manual pages), safely labeling them to prevent script timeouts while supporting manual-download fallbacks.

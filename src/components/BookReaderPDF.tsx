@@ -1,10 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
-import { runOfflineCompanion } from "../lib/offlineAssistant";
 import { 
-  X, Sparkles, AlertCircle, FileText, Bookmark, 
-  ChevronLeft, ChevronRight, Edit3, CheckCircle, HelpCircle
+  X, AlertCircle, AlertTriangle, RefreshCw, Database, Zap, FileText, Bookmark, Trash2,
+  ChevronLeft, ChevronRight, Edit3, CheckCircle
 } from "lucide-react";
 
 interface BookReaderPDFProps {
@@ -26,12 +25,6 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
   const [isSaved, setIsSaved] = useState<boolean>(false);
   const [brightness, setBrightness] = useState<number>(100);
   const [theme, setTheme] = useState<string>("light"); // light, dark, sepia, green
-
-  // AI companion states
-  const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
-  const [aiQuery, setAiQuery] = useState<string>("");
-  const [aiResponse, setAiResponse] = useState<string>("");
-  const [aiLoading, setAiLoading] = useState<boolean>(false);
 
   useEffect(() => {
     loadPdfBlob();
@@ -109,25 +102,6 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
     setTimeout(() => setIsSaved(false), 2000);
   }
 
-  async function handleAskAi() {
-    if (!aiQuery.trim()) return;
-    setAiLoading(true);
-    setAiResponse("");
-    try {
-      const fullContext = notes ? `Notes from reader: ${notes}` : `Ebook: ${book.title}`;
-      
-      // Simulate pleasant processing lag
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      
-      const response = await runOfflineCompanion("chat", "", fullContext, book.title, aiQuery);
-      setAiResponse(response);
-    } catch (err: any) {
-      setAiResponse(`Assistant Error: ${err.message || "Failed to analyze notes."}`);
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
   return (
     <div id="pdf-reader-container" className="fixed inset-0 z-50 flex flex-col bg-kindle-bg text-kindle-text transition-colors duration-200">
       {/* Brightness Overlay */}
@@ -158,13 +132,6 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
 
         {/* Sync status button */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowAiAssistant(!showAiAssistant)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-text hover:bg-kindle-accent text-kindle-bg font-sans text-xs font-bold transition shadow-sm ${showAiAssistant ? 'ring-1 ring-kindle-accent' : ''}`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Helper</span>
-          </button>
         </div>
       </header>
 
@@ -178,35 +145,62 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
               <p className="text-xs font-sans animate-pulse">Retrieving local PDF ebook...</p>
             </div>
           ) : error ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center max-w-sm mx-auto space-y-4">
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex flex-col items-center">
-                <AlertCircle className="w-12 h-12 text-red-500 mb-3 animate-bounce" />
-                <h3 className="font-semibold text-[#2d2a26] text-sm">PDF Reader Failed</h3>
-                <p className="text-xs text-red-700 font-medium my-2">{error}</p>
-                <p className="text-[10px] text-[#7c7467] leading-relaxed">
-                  This typically indicates a corrupted PDF file or that a mirror returned an HTML landing page instead of the actual PDF file.
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2.5 w-full justify-center">
-                <button 
-                  onClick={loadPdfBlob} 
-                  className="px-4 py-2 bg-white border border-[#e8e4de] text-[#5c5346] rounded-xl text-xs font-sans hover:bg-[#f0ede8] transition"
-                >
-                  Retry Load File
-                </button>
-                <button 
-                  onClick={async () => {
-                    try {
-                      await deleteBookFile(book.id);
-                      onClose();
-                    } catch (err) {
-                      console.error("Failed to delete local cache", err);
-                    }
-                  }}
-                  className="px-4 py-2 bg-[#5c5346] text-white rounded-xl text-xs font-sans hover:bg-[#4a4237] transition font-semibold"
-                >
-                  Delete & Re-download
-                </button>
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center max-w-lg mx-auto">
+              <div className="w-full bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-[2rem] p-8 md:p-10 shadow-xl flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
+                <div className="w-20 h-20 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                  <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-400" />
+                </div>
+                
+                <h2 className="text-xl md:text-2xl font-serif font-bold text-red-900 dark:text-red-100 mb-3">
+                  PDF Reader Error
+                </h2>
+                
+                <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-4 mb-6 border border-red-200/50 dark:border-red-800/30 w-full">
+                  <p className="text-xs md:text-sm text-red-700 dark:text-red-300 font-mono leading-relaxed break-words">
+                    Error: {error}
+                  </p>
+                </div>
+
+                <div className="space-y-4 text-left w-full">
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 font-medium px-1 uppercase tracking-widest opacity-70">
+                    Troubleshooting Steps:
+                  </p>
+                  <ul className="grid grid-cols-1 gap-2.5">
+                    {[
+                      { icon: <RefreshCw className="w-3.5 h-3.5" />, text: "Try refreshing the page or restarting the reader." },
+                      { icon: <Database className="w-3.5 h-3.5" />, text: "Clear local cache and re-download (mirror might have failed)." },
+                      { icon: <FileText className="w-3.5 h-3.5" />, text: "Verify the file is a valid PDF (not an HTML error page)." },
+                      { icon: <Zap className="w-3.5 h-3.5" />, text: "Ensure your browser supports native PDF viewing." }
+                    ].map((step, idx) => (
+                      <li key={idx} className="flex items-start gap-3 p-3 bg-white/40 dark:bg-white/5 rounded-xl border border-white/60 dark:border-white/5 shadow-sm">
+                        <span className="mt-0.5 text-red-500">{step.icon}</span>
+                        <span className="text-[11px] md:text-xs text-neutral-700 dark:text-neutral-300 leading-snug">{step.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 w-full mt-8">
+                  <button 
+                    onClick={loadPdfBlob}
+                    className="flex-1 px-6 py-3 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Retry
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        await deleteBookFile(book.id);
+                        onClose();
+                      } catch (err) {
+                        console.error("Failed to delete local cache", err);
+                      }
+                    }}
+                    className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-red-600/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> Reset & Close
+                  </button>
+                </div>
               </div>
             </div>
           ) : pdfUrl ? (
@@ -353,72 +347,6 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
               </button>
             </div>
           </div>
-
-          {/* Section 2: PDF AI assistant module */}
-          {showAiAssistant && (
-            <div className="p-6 flex-1 flex flex-col space-y-5">
-              <h3 className="text-[10px] font-bold tracking-widest uppercase text-kindle-text-muted flex items-center gap-2 font-sans">
-                <Sparkles className="w-4 h-4 text-kindle-accent" />
-                AI Reader Helper
-              </h3>
-
-              <div className="bg-neutral-100 p-4 rounded-xl border border-kindle-border text-[11px] text-kindle-text-muted font-sans flex flex-col gap-1.5 leading-relaxed">
-                <span className="font-bold text-kindle-text flex items-center gap-2 uppercase tracking-widest text-[9px]">
-                  <HelpCircle className="w-3.5 h-3.5 text-kindle-accent" />
-                  PDF Intelligence
-                </span>
-                Ask about the document structure, summarize your notes, or extract key motifs.
-              </div>
-
-              <div className="flex-1 flex flex-col justify-between space-y-4 min-h-[250px]">
-                {/* Scrollable Response Container */}
-                <div className="flex-1 bg-white border border-kindle-border rounded-2xl p-5 text-xs font-sans overflow-y-auto relative shadow-sm text-kindle-text">
-                  {aiLoading && (
-                    <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center gap-3 z-10 rounded-2xl">
-                      <div className="w-6 h-6 border-3 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest animate-pulse text-kindle-text-muted">Consulting AI...</span>
-                    </div>
-                  )}
-
-                  {aiResponse ? (
-                    <div className="whitespace-pre-wrap leading-relaxed prose prose-invert max-w-full text-kindle-text">
-                      {aiResponse}
-                    </div>
-                  ) : (
-                    <div className="text-kindle-text-muted text-center py-12 italic opacity-60">
-                      Ask a question to generate analysis
-                    </div>
-                  )}
-                </div>
-
-                {/* Input Prompt */}
-                <form 
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleAskAi();
-                  }}
-                  className="space-y-3"
-                >
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={aiQuery}
-                      onChange={(e) => setAiQuery(e.target.value)}
-                      placeholder="Ask a question..."
-                      className="flex-1 bg-white border border-kindle-border rounded-xl px-4 py-3 text-xs text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent placeholder-kindle-text-muted"
-                    />
-                    <button
-                      type="submit"
-                      disabled={aiLoading || !aiQuery.trim()}
-                      className="bg-kindle-text hover:bg-kindle-accent disabled:opacity-40 text-kindle-bg font-sans text-[10px] font-bold uppercase tracking-widest px-5 py-3 rounded-xl shadow-sm transition"
-                    >
-                      Ask
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
         </aside>
       </div>
     </div>

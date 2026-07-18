@@ -2,11 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { 
-  BookOpen, UploadCloud, Tag, Star, Trash2, ListFilter,
-  CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, HelpCircle, HardDrive, Search, Cloud,
-  Edit2, ImageIcon, AlertTriangle, RefreshCw, MoreVertical, Flame, TrendingUp, Calendar
-} from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
@@ -19,6 +15,7 @@ interface LibraryManagerProps {
   cachedBookIds: Set<string>;
   onCachedIdsChanged: () => void;
   grayscaleCovers?: boolean;
+  hideCovers?: boolean;
   onSearchTrigger?: (query: string) => void;
 }
 
@@ -65,6 +62,7 @@ export default function LibraryManager({
   cachedBookIds,
   onCachedIdsChanged,
   grayscaleCovers = false,
+  hideCovers = false,
   onSearchTrigger
 }: LibraryManagerProps) {
   // Filters & sorting
@@ -79,12 +77,18 @@ export default function LibraryManager({
   const [showTagConfig, setShowTagConfig] = useState<boolean>(false);
   const [activeBookForTags, setActiveBookForTags] = useState<BookMetadata | null>(null);
   const [activeBookForDelete, setActiveBookForDelete] = useState<BookMetadata | null>(null);
-  const [showCloudImport, setShowCloudImport] = useState<boolean>(false);
   const [activeShelf, setActiveShelf] = useState<string>("All");
   const [syncingBookIds, setSyncingBookIds] = useState<Set<string>>(new Set());
+  const [deletingBookIds, setDeletingBookIds] = useState<Set<string>>(new Set());
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
   const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
+
+  // Multi-select library management states
+  const [isManageMode, setIsManageMode] = useState<boolean>(false);
+  const [selectedBookIds, setSelectedBookIds] = useState<Set<string>>(new Set());
+  const [bulkTagModalOpen, setBulkTagModalOpen] = useState<boolean>(false);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState<boolean>(false);
 
   // Reading Goals & Stats States
   const [dailyMinutesTarget, setDailyMinutesTarget] = useState<number>(() => {
@@ -214,11 +218,8 @@ export default function LibraryManager({
     }
   };
 
-  // Upload States
-  const [isDragActive, setIsDragActive] = useState<boolean>(false);
-  const [uploading, setUploading] = useState<boolean>(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Compact Stats Drawer state
+  const [showGoalsDrawer, setShowGoalsDrawer] = useState<boolean>(false);
 
   // Personalized Recommendations (Daily Refresh Cache)
   const [recommendations, setRecommendations] = useState<any[]>([]);
@@ -334,89 +335,16 @@ export default function LibraryManager({
     };
 
     books.forEach(book => {
-      if (!cachedBookIds.has(book.id) && book.md5 && !syncingBookIds.has(book.id)) {
+      if (!cachedBookIds.has(book.id) && book.md5 && !syncingBookIds.has(book.id) && !deletingBookIds.has(book.id)) {
         downloadMissingBook(book);
       }
     });
-  }, [books, cachedBookIds, syncingBookIds]);
+  }, [books, cachedBookIds, syncingBookIds, deletingBookIds]);
 
   async function loadTags() {
     const tags = await loadCustomTags(userId);
     setAvailableTags(tags);
   }
-
-  // Handle uploading local EPUB or PDF
-  async function handleFileUpload(file: File) {
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    if (ext !== "epub" && ext !== "pdf") {
-      setUploadError("Only EPUB and PDF file formats are supported.");
-      return;
-    }
-
-    setUploading(true);
-    setUploadError(null);
-
-    try {
-      // 1. Generate unique local book ID (UUID or similar hash)
-      const bookId = "local_" + Math.random().toString(36).substring(2, 15) + "_" + Date.now();
-      
-      // 2. Read as array buffer/blob and store in IndexedDB
-      const arrayBuffer = await file.arrayBuffer();
-      const blob = new Blob([arrayBuffer], { type: ext === "pdf" ? "application/pdf" : "application/epub+zip" });
-      
-      await storeBookFile(bookId, blob, file.name, ext);
-      onCachedIdsChanged();
-
-      // 3. Create book metadata
-      const cleanTitle = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
-      const extStr = ext || "epub";
-      const inferredTags = inferBookTags(cleanTitle, "Local Upload", extStr);
-      const newBook: BookMetadata = {
-        id: bookId,
-        title: cleanTitle,
-        author: "Local Upload",
-        extension: extStr,
-        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-        language: "English",
-        tags: inferredTags,
-        status: "to-read",
-        progress: {
-          percent: 0,
-          lastReadTime: Date.now()
-        },
-        dateAdded: Date.now()
-      };
-
-      // 4. Sync metadata to Firebase
-      await syncBookToCloud(userId, newBook);
-      onRefreshLibrary();
-    } catch (err: any) {
-      console.error("Local Upload Error:", err);
-      setUploadError("Failed to store file locally in IndexedDB: " + err.message);
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  // Drag and drop event handlers
-  const handleDrag = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setIsDragActive(true);
-    } else if (e.type === "dragleave") {
-      setIsDragActive(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  };
 
   // Delete book from local cache AND cloud sync
   async function handleDeleteBook(book: BookMetadata, e: React.MouseEvent) {
@@ -426,15 +354,98 @@ export default function LibraryManager({
 
   async function confirmDeleteBook() {
     if (!activeBookForDelete) return;
+    const bookId = activeBookForDelete.id;
+    setDeletingBookIds(prev => new Set(prev).add(bookId));
     try {
-      await deleteBookFile(activeBookForDelete.id);
-      await syncDeleteBook(userId, activeBookForDelete.id);
+      await deleteBookFile(bookId);
+      await syncDeleteBook(userId, bookId);
       onCachedIdsChanged();
       onRefreshLibrary();
     } catch (err) {
       console.error("Delete Book Error:", err);
     } finally {
       setActiveBookForDelete(null);
+    }
+  }
+
+  // Bulk Status Update for Selected Books
+  async function handleBulkStatusUpdate(status: string) {
+    const ids = Array.from(selectedBookIds) as string[];
+    try {
+      const promises = books
+        .filter(book => ids.includes(book.id))
+        .map(book => {
+          const updated = {
+            ...book,
+            status: status as any,
+            progress: {
+              ...book.progress,
+              percent: status === "completed" ? 100 : (book.progress?.percent ?? 0),
+              lastReadTime: Date.now()
+            }
+          };
+          return syncBookToCloud(userId, updated);
+        });
+
+      await Promise.all(promises);
+      onRefreshLibrary();
+    } catch (err) {
+      console.error("[Bulk Status Update Error]:", err);
+    } finally {
+      setSelectedBookIds(new Set());
+      setIsManageMode(false);
+    }
+  }
+
+  // Bulk Delete Selected Books
+  async function confirmBulkDelete() {
+    const ids = Array.from(selectedBookIds) as string[];
+    setDeletingBookIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.add(id));
+      return next;
+    });
+    try {
+      for (const id of ids) {
+        await deleteBookFile(id);
+        await syncDeleteBook(userId, id);
+      }
+      onCachedIdsChanged();
+      onRefreshLibrary();
+    } catch (err) {
+      console.error("[Bulk Delete Error]:", err);
+    } finally {
+      setSelectedBookIds(new Set());
+      setIsManageMode(false);
+      setShowBulkDeleteConfirm(false);
+    }
+  }
+
+  // Bulk Add Tag/Collection to Selected Books
+  async function handleBulkAddTag(tag: string) {
+    if (!tag) return;
+    const ids = Array.from(selectedBookIds) as string[];
+    try {
+      const promises = books
+        .filter(book => ids.includes(book.id))
+        .map(book => {
+          const currentTags = book.tags || [];
+          const nextTags = currentTags.includes(tag) ? currentTags : [...currentTags, tag];
+          const updated = {
+            ...book,
+            tags: nextTags
+          };
+          return syncBookToCloud(userId, updated);
+        });
+
+      await Promise.all(promises);
+      onRefreshLibrary();
+    } catch (err) {
+      console.error("[Bulk Tag Error]:", err);
+    } finally {
+      setSelectedBookIds(new Set());
+      setIsManageMode(false);
+      setBulkTagModalOpen(false);
     }
   }
 
@@ -510,24 +521,7 @@ export default function LibraryManager({
     return 0;
   });
 
-  const notesBook: BookMetadata = {
-    id: "global-notes",
-    title: "My Highlights & Notes",
-    author: "Kora Notebook",
-    extension: "notes",
-    size: "0",
-    coverUrl: "notes-cover",
-    tags: ["system"],
-    status: "completed",
-    progress: { percent: 100, lastReadTime: Date.now() },
-    dateAdded: Date.now(),
-    dateModified: Date.now()
-  };
-
-  const finalRenderedBooks = [
-    ...(filterStatus === "all" && filterTag === "all" && search === "" ? [notesBook] : []),
-    ...filteredBooks
-  ];
+  const finalRenderedBooks = filteredBooks;
 
   // Reading Stats
   const totalBooks = books.length;
@@ -542,381 +536,117 @@ export default function LibraryManager({
   }) ? 3 : 1; // standard streak mock or fallback
 
   return (
-    <div id="library-manager-section" className="space-y-10">
+    <div id="library-manager-section" className="space-y-6 md:space-y-10 pb-4 md:pb-10">
       
-      {/* Shelves / Collections Bar */}
-      <section className="space-y-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide px-1">
-          {["All", "To Read", "Reading", "Completed", "Favorites", ...availableTags].map((shelf) => (
-            <button
-              key={shelf}
-              onClick={() => {
-                setActiveShelf(shelf);
-                if (shelf === "All") { setFilterStatus("all"); setFilterTag("all"); }
-                else if (shelf === "To Read") { setFilterStatus("to-read"); setFilterTag("all"); }
-                else if (shelf === "Reading") { setFilterStatus("reading"); setFilterTag("all"); }
-                else if (shelf === "Completed") { setFilterStatus("completed"); setFilterTag("all"); }
-                else if (shelf === "Favorites") { setFilterStatus("all"); setFilterTag("all"); /* handle fav */ }
-                else { setFilterStatus("all"); setFilterTag(shelf); }
-              }}
-              className={`px-5 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border transition whitespace-nowrap ${
-                activeShelf === shelf 
-                  ? "bg-kindle-text text-kindle-bg border-transparent shadow-md" 
-                  : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text"
-              }`}
-            >
-              {shelf}
-            </button>
-          ))}
-          <button onClick={() => setShowTagConfig(true)} className="px-3 py-2 rounded-full border border-kindle-border text-kindle-text-muted hover:text-kindle-text transition" title="Manage Collections">
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </section>
-
-      {/* Reading Goals & Streaks Section */}
-      <section className="grid grid-cols-1 md:grid-cols-12 gap-5 p-1 font-sans">
-        {/* Today's Goal Ring & Streak */}
-        <div className="md:col-span-5 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between shadow-xs">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-kindle-text-muted" /> Daily Focus Goal
-              </span>
-              <button 
-                onClick={() => setShowGoalEditor(true)}
-                className="text-[9px] font-bold text-kindle-accent uppercase tracking-widest hover:underline"
-              >
-                Set Goal
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-5">
-              {/* Circular percentage display */}
-              <div className="relative w-16 h-16 flex items-center justify-center rounded-full border-4 border-kindle-border">
-                <div 
-                  className="absolute inset-0 rounded-full border-4 border-kindle-text" 
-                  style={{ 
-                    clipPath: todayMinutes >= dailyMinutesTarget 
-                      ? "none" 
-                      : `polygon(50% 50%, 50% 0%, ${todayMinutes / dailyMinutesTarget >= 0.25 ? "100% 0%," : ""} ${todayMinutes / dailyMinutesTarget >= 0.5 ? "100% 100%," : ""} ${todayMinutes / dailyMinutesTarget >= 0.75 ? "0% 100%," : ""} 0% 0%)`,
-                    transform: "rotate(-90deg)"
-                  }} 
-                />
-                <span className="text-xs font-bold font-mono">{Math.round(Math.min(100, (todayMinutes / dailyMinutesTarget) * 100))}%</span>
-              </div>
-              <div>
-                <p className="text-sm font-bold">{todayMinutes} / {dailyMinutesTarget} mins</p>
-                <p className="text-[10px] text-kindle-text-muted mt-0.5">Keep reading in-app to automatically log time!</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between pt-4 border-t border-kindle-border/40 mt-4">
-            <div className="flex items-center gap-1.5">
-              <span className="p-1.5 bg-amber-500/10 text-amber-600 rounded-lg">
-                <Flame className="w-4 h-4 fill-current" />
-              </span>
-              <div>
-                <span className="text-[8px] font-bold uppercase tracking-wider text-kindle-text-muted block">Current Streak</span>
-                <span className="text-xs font-bold text-kindle-text block mt-0.5">{calculatedStreak} {calculatedStreak === 1 ? "day" : "days"}</span>
-              </div>
-            </div>
-            
-            <button
-              onClick={() => setShowLogModal(true)}
-              className="px-3 py-1.5 bg-kindle-text text-kindle-bg text-[9px] font-bold uppercase tracking-widest rounded-lg hover:opacity-90 transition"
-            >
-              Log Offline Session
-            </button>
-          </div>
+      {/* 1. Interactive Header & Collapsible Stats/Streak Summary */}
+      <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">
+        <div>
+          <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Library</h1>
+          <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Focus &amp; Collections</p>
         </div>
 
-        {/* Weekly Activity Bar Chart */}
-        <div className="md:col-span-4 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between shadow-xs">
-          <div className="space-y-3">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-kindle-text-muted" /> Weekly Focus (mins)
-            </span>
-            
-            <div className="flex items-end justify-between h-20 pt-4 px-1">
-              {weeklyStats.map((dayStat, idx) => {
-                const maxVal = Math.max(1, ...weeklyStats.map(d => d.minutes), dailyMinutesTarget);
-                const heightPercent = Math.min(100, (dayStat.minutes / maxVal) * 100);
-                const isGoalMet = dayStat.minutes >= dailyMinutesTarget;
-                return (
-                  <div key={idx} className="flex flex-col items-center gap-2 flex-1 group">
-                    <div className="w-full px-1 relative flex items-end justify-center h-full">
-                      {/* Tooltip on hover */}
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-kindle-text text-kindle-bg px-1.5 py-0.5 rounded text-[8px] font-bold opacity-0 group-hover:opacity-100 transition duration-150 pointer-events-none whitespace-nowrap z-20 shadow-sm">
-                        {dayStat.minutes} min
-                      </div>
-                      <div 
-                        className={`w-2.5 rounded-xs transition-all duration-300 ${
-                          isGoalMet ? "bg-emerald-600 dark:bg-emerald-500" : "bg-kindle-text/40 dark:bg-neutral-600"
-                        }`}
-                        style={{ height: `${Math.max(4, Math.round(heightPercent))}%` }}
-                      />
-                    </div>
-                    <span className="text-[8px] font-bold text-kindle-text-muted uppercase tracking-tight">{dayStat.day.split(" ")[0]}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Annual Reading Challenge */}
-        <div className="md:col-span-3 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between shadow-xs">
-          <div className="space-y-3">
-            <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-kindle-text-muted" /> {new Date().getFullYear()} Reading Challenge
-            </span>
-            
-            <div className="space-y-1.5 pt-1">
-              <div className="flex justify-between items-end">
-                <span className="text-xl font-bold">{books.filter(b => {
-                  if (b.status !== "completed") return false;
-                  const lastRead = b.progress?.lastReadTime;
-                  if (lastRead) {
-                    return new Date(lastRead).getFullYear() === new Date().getFullYear();
-                  }
-                  return true;
-                }).length} / {annualBooksTarget}</span>
-                <span className="text-[9px] text-kindle-text-muted font-bold tracking-tight">BOOKS READ</span>
-              </div>
-              <div className="w-full bg-kindle-border h-1.5 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-kindle-text rounded-full transition-all duration-500" 
-                  style={{ 
-                    width: `${Math.min(100, (books.filter(b => {
-                      if (b.status !== "completed") return false;
-                      const lastRead = b.progress?.lastReadTime;
-                      if (lastRead) {
-                        return new Date(lastRead).getFullYear() === new Date().getFullYear();
-                      }
-                      return true;
-                    }).length / annualBooksTarget) * 100)}%` 
-                  }}
-                />
-              </div>
-              <p className="text-[9px] text-kindle-text-muted italic">
-                {books.filter(b => {
-                  if (b.status !== "completed") return false;
-                  const lastRead = b.progress?.lastReadTime;
-                  if (lastRead) {
-                    return new Date(lastRead).getFullYear() === new Date().getFullYear();
-                  }
-                  return true;
-                }).length >= annualBooksTarget ? "Congratulations, challenge complete! 🎉" : `${annualBooksTarget - books.filter(b => {
-                  if (b.status !== "completed") return false;
-                  const lastRead = b.progress?.lastReadTime;
-                  if (lastRead) {
-                    return new Date(lastRead).getFullYear() === new Date().getFullYear();
-                  }
-                  return true;
-                }).length} more to reach goal.`}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {books.length > 0 && (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between px-1">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">From Your Library</h2>
-            <button className="text-[10px] font-bold text-kindle-accent uppercase tracking-widest hover:underline">See All</button>
-          </div>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
-            {books.slice(0, 5).map((book) => {
-              const isCached = cachedBookIds.has(book.id);
-              const progressPercent = book.progress?.percent ?? 0;
-              return (
-                <div 
-                  key={`recent-${book.id}`}
-                  onClick={() => onBookSelected(book)}
-                  className="group cursor-pointer space-y-3"
-                >
-                  <div className="aspect-[3/4] bg-kindle-bg rounded-sm overflow-hidden shadow-md group-hover:shadow-xl transition-all duration-300 relative border border-kindle-border">
-                    {book.coverUrl ? (
-                      <img
-                        src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
-                        className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center bg-kindle-card">
-                        <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
-                        <span className="text-[8px] font-bold uppercase tracking-tighter line-clamp-3">{book.title}</span>
-                      </div>
-                    )}
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-kindle-border">
-                      <div className="h-full bg-kindle-text transition-all duration-500" style={{ width: `${progressPercent}%` }} />
-                    </div>
-                    {isCached && (
-                      <div className="absolute top-2 right-2 bg-kindle-card/90 p-1 rounded-full border border-kindle-border shadow-sm">
-                        <CheckCircle className="w-3 h-3 text-emerald-600" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="px-1 space-y-1 font-sans">
-                    <h3 className="text-[11px] font-bold text-kindle-text line-clamp-1 group-hover:text-kindle-accent transition">{book.title}</h3>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden">
-                        <div className="h-full bg-kindle-text" style={{ width: `${progressPercent}%` }} />
-                      </div>
-                      <span className="text-[8px] text-kindle-text-muted font-bold tracking-tight shrink-0">{progressPercent}%</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* 2. Kindle Home: Recommendations (Dynamic recommendations with daily refresh cache) */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between px-1 border-t border-kindle-border pt-8">
-          <div className="flex items-center gap-2">
-            <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Recommended For You</h2>
-            <span className="px-1.5 py-0.5 bg-kindle-accent/10 text-kindle-accent rounded text-[8px] font-bold uppercase tracking-widest border border-kindle-accent/20">
-              Daily Refresh
-            </span>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => loadRecommendations(true)}
-              disabled={loadingRecommendations}
-              className="p-1 rounded-full text-kindle-text-muted hover:text-kindle-text transition disabled:opacity-50 cursor-pointer"
-              title="Refresh Recommendations"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingRecommendations ? "animate-spin" : ""}`} />
-            </button>
-            <button 
-              onClick={() => onSearchTrigger?.("")}
-              className="text-[10px] font-bold text-kindle-accent uppercase tracking-widest hover:underline cursor-pointer"
-            >
-              Discover More
-            </button>
-          </div>
-        </div>
-        
-        {loadingRecommendations ? (
-          <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide snap-x flex-nowrap items-start">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="w-[140px] sm:w-[160px] flex-shrink-0 snap-start space-y-2 animate-pulse">
-                <div className="aspect-[3/4] bg-kindle-card rounded-sm border border-kindle-border" />
-                <div className="h-3 bg-kindle-card rounded w-3/4" />
-                <div className="h-2.5 bg-kindle-card rounded w-1/2" />
-              </div>
-            ))}
-          </div>
-        ) : recommendationError ? (
-          <div className="py-6 flex flex-col items-center justify-center text-center gap-2 bg-kindle-card/20 border border-dashed border-kindle-border rounded-xl p-4">
-            <AlertTriangle className="w-5 h-5 text-amber-500" />
-            <p className="text-[10px] font-bold text-kindle-text-muted">Could not load custom recommendations</p>
-            <button
-              onClick={() => loadRecommendations(true)}
-              className="px-3 py-1 bg-kindle-card border border-kindle-border rounded text-[9px] font-bold uppercase tracking-widest hover:bg-kindle-bg transition cursor-pointer"
-            >
-              Retry
-            </button>
-          </div>
-        ) : recommendations.length === 0 ? (
-          <div className="py-8 flex flex-col items-center justify-center text-center gap-2 bg-kindle-card/20 border border-dashed border-kindle-border rounded-xl p-4">
-            <BookMarked className="w-6 h-6 text-kindle-text-muted/40" />
-            <p className="text-[10px] font-bold text-kindle-text">Your bookshelf is empty</p>
-            <p className="text-[9px] text-kindle-text-muted max-w-xs">Add books to your Library or search to activate AI-powered daily recommendations.</p>
-          </div>
-        ) : (
-          <div className="flex gap-6 overflow-x-auto pb-4 scrollbar-hide snap-x flex-nowrap items-start">
-            {recommendations.map((rec, idx) => (
-              <div 
-                key={idx} 
-                onClick={() => onSearchTrigger?.(`${rec.title} ${rec.author}`)}
-                className="w-[140px] sm:w-[160px] flex-shrink-0 snap-start group cursor-pointer hover:opacity-90 active:scale-[0.98] transition-all flex flex-col justify-between"
-              >
-                <div>
-                  <div className="aspect-[3/4] bg-kindle-bg rounded-sm overflow-hidden shadow-sm border border-kindle-border group-hover:border-kindle-accent transition relative">
-                    {rec.coverUrl ? (
-                      <img src={rec.coverUrl} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale-filter" : ""}`} referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-kindle-card relative">
-                        <span className="text-[8px] font-bold uppercase tracking-tighter text-kindle-text-muted mb-2 truncate max-w-full">
-                          {rec.author || "Author"}
-                        </span>
-                        <span className="text-[10px] font-bold font-serif leading-snug line-clamp-3 text-kindle-text">
-                          {rec.title}
-                        </span>
-                      </div>
-                    )}
-                    {rec.matchingNytBook && (
-                      <div className="absolute top-1.5 right-1.5 bg-amber-500 text-white px-1.5 py-0.5 rounded text-[6px] font-bold uppercase tracking-widest shadow-md z-10">
-                        BEST SELLER
-                      </div>
-                    )}
-                  </div>
-                  <div className="mt-2 px-1">
-                    <h4 className="text-[10px] font-bold line-clamp-1 group-hover:text-kindle-accent transition">{rec.title}</h4>
-                    <p className="text-[9px] text-kindle-text-muted mt-0.5">{rec.author}</p>
-                  </div>
-                </div>
-                {rec.reason && (
-                  <p className="mt-2 text-[8px] text-kindle-text-muted font-sans leading-relaxed line-clamp-2 italic opacity-80 group-hover:opacity-100 transition px-1 border-t border-kindle-border/40 pt-1.5">
-                    "{rec.reason}"
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+        {/* Manage Library Button (Mobile) */}
+        <button
+          onClick={() => {
+            setIsManageMode(!isManageMode);
+            setSelectedBookIds(new Set());
+          }}
+          className={`sm:hidden text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
+            isManageMode 
+              ? "text-red-600 dark:text-red-400" 
+              : "text-kindle-text-muted hover:text-kindle-text"
+          }`}
+          title={isManageMode ? "Cancel" : "Manage Library"}
+        >
+          {isManageMode ? "Cancel" : "Manage Library"}
+        </button>
+      </header>
 
       {/* 3. Full Library Section with Search/Filter */}
-      <section className="space-y-6 pt-8 border-t border-kindle-border">
-        <div className="flex items-center justify-between px-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Full Library</h2>
-        </div>
+      <section className="space-y-5">
+        <div className="space-y-4">
+          {/* Search Bar - styled identically to Discover view */}
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full font-sans">
+            <div className="relative group flex-1">
+              <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
+              <input
+                id="library-search-input"
+                type="text"
+                placeholder="Filter library by title, author..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
+              />
+            </div>
 
-        {/* Filter and Query Control Dashboard */}
-        <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-kindle-card/50 p-4 border border-kindle-border rounded-kindle font-sans text-xs">
-          <div className="w-full md:w-64 relative">
-            <input
-              id="library-search-input"
-              type="text"
-              placeholder="Filter library..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-kindle-bg border border-kindle-border rounded-xl pl-9 pr-4 py-2.5 text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent placeholder-kindle-text-muted"
-            />
-            <Search className="w-3.5 h-3.5 absolute left-3.5 top-3.5 text-kindle-text-muted" />
+            <button
+              onClick={() => {
+                setIsManageMode(!isManageMode);
+                setSelectedBookIds(new Set());
+              }}
+              className={`hidden sm:flex px-5 py-3.5 rounded-2xl text-[10px] font-bold uppercase tracking-wider transition border items-center justify-center gap-2 shrink-0 cursor-pointer ${
+                isManageMode 
+                  ? "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/30 hover:bg-red-100/50" 
+                  : "bg-kindle-card text-kindle-text border-kindle-border hover:border-kindle-text"
+              }`}
+            >
+              {isManageMode ? "Cancel" : "Manage Library"}
+            </button>
           </div>
 
-          <div className="w-full md:w-auto flex flex-wrap gap-2 items-center justify-start md:justify-end">
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[10px] font-bold uppercase tracking-widest"
-            >
-              <option value="all">Status: All</option>
-              <option value="to-read">To Read</option>
-              <option value="reading">Reading</option>
-              <option value="completed">Completed</option>
-            </select>
+          {/* Shelves / Collections Chips (Bellow the search bar, smaller and compact) */}
+          <div className="flex flex-col gap-3 font-sans">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+              {["All", "To Read", "Reading", "Completed", "Favorites", ...availableTags].map((shelf) => (
+                <button
+                  key={shelf}
+                  onClick={() => {
+                    setActiveShelf(shelf);
+                    if (shelf === "All") { setFilterStatus("all"); setFilterTag("all"); }
+                    else if (shelf === "To Read") { setFilterStatus("to-read"); setFilterTag("all"); }
+                    else if (shelf === "Reading") { setFilterStatus("reading"); setFilterTag("all"); }
+                    else if (shelf === "Completed") { setFilterStatus("completed"); setFilterTag("all"); }
+                    else if (shelf === "Favorites") { setFilterStatus("all"); setFilterTag("all"); /* handle fav */ }
+                    else { setFilterStatus("all"); setFilterTag(shelf); }
+                  }}
+                  className={`px-3.5 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-wider border transition whitespace-nowrap cursor-pointer ${
+                    activeShelf === shelf 
+                      ? "bg-kindle-text text-kindle-bg border-transparent shadow-sm" 
+                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text"
+                  }`}
+                >
+                  {shelf}
+                </button>
+              ))}
+              <button onClick={() => setShowTagConfig(true)} className="px-2.5 py-1.5 rounded-full border border-kindle-border text-kindle-text-muted hover:text-kindle-text transition cursor-pointer flex items-center justify-center shrink-0" title="Manage Collections">
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
 
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[10px] font-bold uppercase tracking-widest"
-            >
-              <option value="dateAdded">Sort: Newest</option>
-              <option value="progress">Sort: Progress</option>
-              <option value="rating">Sort: Rating</option>
-              <option value="title">Sort: Title</option>
-            </select>
+            {/* Dropdowns */}
+            <div className="flex flex-wrap gap-1.5 items-center justify-start">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="bg-kindle-card border border-kindle-border rounded-full px-2.5 py-1 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[9px] font-bold uppercase tracking-wider cursor-pointer shadow-xs"
+              >
+                <option value="all">Status: All</option>
+                <option value="to-read">To Read</option>
+                <option value="reading">Reading</option>
+                <option value="completed">Completed</option>
+              </select>
+
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="bg-kindle-card border border-kindle-border rounded-full px-2.5 py-1 text-kindle-text focus:ring-1 focus:ring-kindle-accent appearance-none text-[9px] font-bold uppercase tracking-wider cursor-pointer shadow-xs"
+              >
+                <option value="dateAdded">Sort: Newest</option>
+                <option value="progress">Sort: Progress</option>
+                <option value="rating">Sort: Rating</option>
+                <option value="title">Sort: Title</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -926,112 +656,83 @@ export default function LibraryManager({
             <h3 className="font-sans font-bold text-xs text-kindle-text-muted uppercase tracking-widest">No books found</h3>
           </div>
         ) : (
-          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-6 space-y-6">
+          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 md:gap-6 space-y-3 md:space-y-6">
             {finalRenderedBooks.map((book) => {
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
               return (
                 <div
                   key={book.id}
-                  onTouchStart={(e) => startLongPress(book, e)}
-                  onTouchEnd={endLongPress}
-                  onTouchMove={handleTouchMove}
+                  onTouchStart={(e) => !isManageMode && startLongPress(book, e)}
+                  onTouchEnd={isManageMode ? undefined : endLongPress}
+                  onTouchMove={isManageMode ? undefined : handleTouchMove}
                   onMouseDown={(e) => {
-                    if (e.button === 0) startLongPress(book, e);
+                    if (!isManageMode && e.button === 0) startLongPress(book, e);
                   }}
-                  onMouseUp={endLongPress}
-                  onMouseLeave={endLongPress}
+                  onMouseUp={isManageMode ? undefined : endLongPress}
+                  onMouseLeave={isManageMode ? undefined : endLongPress}
                   onContextMenu={(e) => e.preventDefault()}
                   onClick={(e) => {
+                    if (isManageMode) {
+                      setSelectedBookIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(book.id)) {
+                          next.delete(book.id);
+                        } else {
+                          next.add(book.id);
+                        }
+                        return next;
+                      });
+                      return;
+                    }
                     if (isLongPressedRef.current) {
                       e.preventDefault();
                       e.stopPropagation();
                       isLongPressedRef.current = false;
                       return;
                     }
-                    if (book.id === "global-notes") {
-                      onBookSelected(book); // Or we can trigger a different callback, but we will handle it in App.tsx
-                      return;
-                    }
                     onBookSelected(book);
                   }}
-                  className="kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition-transform duration-300 hover:-translate-y-1 select-none"
+                  className={`kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition duration-300 select-none relative ${
+                    isManageMode && selectedBookIds.has(book.id)
+                      ? "ring-4 ring-kindle-accent border-transparent bg-kindle-accent/[0.03] scale-[0.98] -translate-y-0"
+                      : "hover:-translate-y-1"
+                  }`}
                 >
                   <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
-                    {book.coverUrl === "notes-cover" ? (
-                      <div className="w-full aspect-[3/4] relative overflow-hidden" style={{ background: "linear-gradient(135deg,#3a2a1c,#2a1d12 60%,#1c130b)" }}>
-                        {/* Leather grain + warm glow */}
-                        <div className="absolute inset-0 opacity-30" style={{ background: "radial-gradient(circle at 50% 38%, rgba(212,175,55,0.35), transparent 55%)" }} />
-                        <svg viewBox="0 0 300 400" className="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid slice" aria-hidden>
-                          <defs>
-                            <radialGradient id="jg" cx="50%" cy="42%" r="42%">
-                              <stop offset="0%" stopColor="#f6e3a1" />
-                              <stop offset="55%" stopColor="#d4af37" />
-                              <stop offset="100%" stopColor="#9c7a1e" />
-                            </radialGradient>
-                            <linearGradient id="jl" x1="0" y1="0" x2="1" y2="1">
-                              <stop offset="0%" stopColor="#e9c969" />
-                              <stop offset="100%" stopColor="#8a6a1c" />
-                            </linearGradient>
-                          </defs>
-                          {/* Sunburst */}
-                          <g transform="translate(150 168)" stroke="url(#jl)" strokeWidth="2.4" opacity="0.95">
-                            {Array.from({ length: 24 }).map((_, i) => {
-                              const a = (i * 15) * Math.PI / 180;
-                              const r1 = 34, r2 = i % 2 === 0 ? 78 : 62;
-                              return <line key={i} x1={Math.cos(a) * r1} y1={Math.sin(a) * r1} x2={Math.cos(a) * r2} y2={Math.sin(a) * r2} />;
-                            })}
-                          </g>
-                          {/* Central sun disc */}
-                          <circle cx="150" cy="168" r="33" fill="url(#jg)" stroke="#7a5e16" strokeWidth="1.5" />
-                          {/* Combination lock (brass) */}
-                          <g transform="translate(150 168)">
-                            <rect x="-19" y="-19" width="38" height="38" rx="7" fill="#b8912f" stroke="#6e5413" strokeWidth="2" />
-                            <rect x="-13" y="-13" width="26" height="26" rx="4" fill="#d9b84a" stroke="#7a5e16" strokeWidth="1.2" />
-                            {[-9, -3, 3, 9].map((x, i) => (
-                              <g key={i} transform={`translate(${x} 0)`}>
-                                <rect x="-2.4" y="-8" width="4.8" height="16" rx="1.6" fill="#5c4510" />
-                                <text x="0" y="-11" fontSize="6" fill="#3a2c08" textAnchor="middle" fontFamily="monospace">{i + 1}</text>
-                              </g>
-                            ))}
-                          </g>
-                          {/* Crescent moons */}
-                          <g fill="none" stroke="url(#jl)" strokeWidth="2.6" opacity="0.9">
-                            <path d="M250 56 a14 14 0 1 0 4 22 a11 11 0 1 1 -4 -22 Z" />
-                            <path d="M52 330 a12 12 0 1 0 3 19 a9 9 0 1 1 -3 -19 Z" />
-                          </g>
-                          {/* Little stars */}
-                          <g fill="#e9c969" opacity="0.9">
-                            <circle cx="60" cy="90" r="2.6" /><circle cx="246" cy="300" r="2.6" />
-                            <circle cx="92" cy="250" r="2" /><circle cx="216" cy="120" r="2" />
-                          </g>
-                          {/* Filigree corners */}
-                          <g stroke="url(#jl)" strokeWidth="2" fill="none" opacity="0.55">
-                            <path d="M14 14 q26 6 30 30 q-24 -4 -30 -30 Z" />
-                            <path d="M286 14 q-26 6 -30 30 q24 -4 30 -30 Z" />
-                            <path d="M14 386 q26 -6 30 -30 q-24 4 -30 30 Z" />
-                            <path d="M286 386 q-26 -6 -30 -30 q24 4 30 30 Z" />
-                          </g>
-                          {/* Leather strap across */}
-                          <rect x="0" y="250" width="300" height="22" fill="#241710" opacity="0.92" />
-                          <rect x="0" y="250" width="300" height="3" fill="#4a3320" />
-                          <rect x="0" y="269" width="300" height="3" fill="#4a3320" />
-                        </svg>
-                        {/* Title plate */}
-                        <div className="absolute inset-x-0 bottom-7 flex flex-col items-center gap-2 px-4 text-center">
-                          <span className="text-[13px] uppercase font-bold text-amber-200/90 tracking-[0.25em] font-serif drop-shadow">Journal</span>
-                          <span className="px-3 py-1 border border-amber-500/30 rounded-full bg-amber-500/10 text-[8px] uppercase tracking-widest text-amber-400/90 font-bold">Notes</span>
+                    {/* Visual Checkbox Selector in Manage Mode */}
+                    {isManageMode && (
+                      <div className="absolute top-3 left-3 z-30 flex items-center justify-center">
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all shadow-md ${
+                          selectedBookIds.has(book.id)
+                            ? "bg-kindle-accent border-kindle-accent text-kindle-bg"
+                            : "bg-black/40 border-white text-transparent"
+                        }`}>
+                          <Check className="w-3.5 h-3.5" />
                         </div>
                       </div>
-                    ) : book.coverUrl ? (
-                      <img
-                        src={`/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
-                        className={`w-full h-auto object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
-                        referrerPolicy="no-referrer"
-                        onContextMenu={(e) => e.preventDefault()}
-                      />
+                    )}
+                    {!hideCovers && book.coverUrl ? (
+                      <>
+                        <img
+                          src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
+                          className={`w-full aspect-[2/3] object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
+                          referrerPolicy="no-referrer"
+                          onContextMenu={(e) => e.preventDefault()}
+                          onError={(e) => {
+                            const img = e.currentTarget;
+                            img.style.display = 'none';
+                            const fallback = img.nextElementSibling as HTMLElement | null;
+                            if (fallback) fallback.style.display = 'flex';
+                          }}
+                        />
+                        <div className="w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center hidden">
+                          <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
+                          <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
+                        </div>
+                      </>
                     ) : (
-                      <div className="w-full aspect-[3/4] bg-kindle-card flex flex-col items-center justify-center p-4 text-center">
+                      <div className="w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center">
                         <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
                         <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
                       </div>
@@ -1086,40 +787,41 @@ export default function LibraryManager({
                     </div>
                   </div>
 
-                  <div className="p-3 flex flex-col justify-between flex-1">
-                    <div className="space-y-1.5">
-                      <h4 className="text-[10px] font-bold text-kindle-text leading-tight line-clamp-2 font-sans" title={book.title}>
-                        {book.title}
-                      </h4>
+                  <div className="p-1.5 flex flex-col gap-0.5 flex-1 font-sans">
+                    <h4 className="text-[10px] font-bold text-kindle-text leading-tight line-clamp-1" title={book.title}>
+                      {book.title}
+                    </h4>
+                    
+                    <div className="flex items-center justify-between text-[8px] text-kindle-text-muted font-bold tracking-tight mt-0.5">
+                      <div className="flex items-center gap-1">
+                        <span>{progressPercent}%</span>
+                        <span>•</span>
+                        <span className="uppercase">{book.extension}</span>
+                        <span>•</span>
+                        <span className="uppercase">
+                          {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
+                        </span>
+                      </div>
                       
-                      {/* Visual progress bar and reading percentage indicator */}
-                      <div className="space-y-1 pt-0.5 font-sans">
-                        <div className="flex justify-between items-center text-[8px] text-kindle-text-muted font-bold tracking-tight">
-                          <span>{progressPercent}% READ</span>
-                          <span className="uppercase text-[7px] bg-neutral-200 dark:bg-neutral-800 px-1 py-0.5 rounded-sm">
-                            {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
-                          </span>
-                        </div>
-                        <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-1 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              book.status === "completed" ? "bg-emerald-600 dark:bg-emerald-500" : "bg-kindle-text"
-                            }`} 
-                            style={{ width: `${progressPercent}%` }} 
-                          />
-                        </div>
+                      <div className="shrink-0">
+                        {isCached ? (
+                          <CheckCircle className="w-2.5 h-2.5 text-emerald-600" />
+                        ) : syncingBookIds.has(book.id) ? (
+                          <div className="w-2.5 h-2.5 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                          <Cloud className="w-2.5 h-2.5 text-blue-500 opacity-60" />
+                        )}
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center mt-3 pt-2 border-t border-kindle-border/30 font-sans">
-                      <span className="text-[8px] font-bold text-kindle-text-muted uppercase tracking-widest">{book.extension}</span>
-                      {isCached ? (
-                        <CheckCircle className="w-3 h-3 text-emerald-600" />
-                      ) : syncingBookIds.has(book.id) ? (
-                        <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                      ) : (
-                        <Cloud className="w-3 h-3 text-blue-500" />
-                      )}
+                    {/* Compact elegant progress line */}
+                    <div className="w-full bg-neutral-200 dark:bg-neutral-800 h-0.5 rounded-full overflow-hidden mt-1">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          book.status === "completed" ? "bg-emerald-600 dark:bg-emerald-500" : "bg-kindle-text"
+                        }`} 
+                        style={{ width: `${progressPercent}%` }} 
+                      />
                     </div>
                   </div>
                 </div>
@@ -1129,134 +831,30 @@ export default function LibraryManager({
         )}
       </section>
 
-      {/* 4. Administrative: Stats and Upload at the bottom */}
+      {/* 4. Reading Stats at the bottom */}
       <section className="space-y-8 pt-12 border-t border-kindle-border">
-        <div className="flex flex-col md:flex-row gap-6">
-          {/* Stats */}
-          <div className="flex-1 grid grid-cols-2 gap-3">
+        <div>
+          <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-4 font-mono">Reading Statistics</h4>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="kindle-card p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Library</h4>
-              <div className="text-lg font-bold">{totalBooks}</div>
+              <div className="text-xl font-bold">{totalBooks} <span className="text-xs font-normal text-kindle-text-muted">books</span></div>
             </div>
             <div className="kindle-card p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Reading</h4>
-              <div className="text-lg font-bold">{activeReading}</div>
+              <div className="text-xl font-bold">{activeReading} <span className="text-xs font-normal text-kindle-text-muted">books</span></div>
             </div>
             <div className="kindle-card p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Completed</h4>
-              <div className="text-lg font-bold">{completedBooks}</div>
+              <div className="text-xl font-bold">{completedBooks} <span className="text-xs font-normal text-kindle-text-muted">books</span></div>
             </div>
             <div className="kindle-card p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Streak</h4>
-              <div className="text-lg font-bold">{readingStreak} <span className="text-xs font-normal">days</span></div>
-            </div>
-          </div>
-
-          {/* Upload & Cloud Import */}
-          <div className="flex-1 space-y-4">
-            <div 
-              id="drag-and-drop-box"
-              onDragEnter={handleDrag}
-              onDragOver={handleDrag}
-              onDragLeave={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-kindle p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3 h-48 ${
-                isDragActive 
-                  ? "border-kindle-accent bg-kindle-accent/5" 
-                  : "border-kindle-border hover:border-kindle-text-muted bg-kindle-card/50"
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".epub,.pdf,.mobi,.cbz,.cbr"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileUpload(e.target.files[0]);
-                  }
-                }}
-                className="hidden"
-              />
-
-              {uploading ? (
-                <>
-                  <div className="w-8 h-8 border-3 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-xs font-bold text-kindle-text-muted uppercase tracking-widest animate-pulse">Syncing...</p>
-                </>
-              ) : (
-                <>
-                  <div className="p-3 bg-kindle-bg border border-kindle-border rounded-2xl text-kindle-text-muted shadow-sm group-hover:scale-110 transition">
-                    <Plus className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em]">Add New Ebook</p>
-                    <p className="text-[8px] text-kindle-text-muted font-sans uppercase tracking-widest">EPUB, PDF, MOBI, COMICS</p>
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => setShowCloudImport(true)}
-                className="p-4 bg-kindle-card border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-kindle-bg transition shadow-sm group"
-              >
-                <div className="p-2 bg-blue-50/10 text-blue-500 rounded-lg group-hover:scale-110 transition">
-                  <Cloud className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-bold uppercase tracking-widest">Google Drive</p>
-                  <p className="text-[8px] text-kindle-text-muted">Cloud Import</p>
-                </div>
-              </button>
-              <button 
-                onClick={() => setShowCloudImport(true)}
-                className="p-4 bg-kindle-card border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-kindle-bg transition shadow-sm group"
-              >
-                <div className="p-2 bg-indigo-50/10 text-indigo-500 rounded-lg group-hover:scale-110 transition">
-                  <HardDrive className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <p className="text-[10px] font-bold uppercase tracking-widest">Dropbox</p>
-                  <p className="text-[8px] text-kindle-text-muted">Sideload</p>
-                </div>
-              </button>
+              <div className="text-xl font-bold">{readingStreak} <span className="text-xs font-normal">days</span></div>
             </div>
           </div>
         </div>
       </section>
-
-      {/* Cloud Import Modal */}
-      {showCloudImport && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
-          <div className="relative w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl shadow-2xl p-8 text-center text-kindle-text">
-            <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Cloud className="w-8 h-8" />
-            </div>
-            <h3 className="text-lg font-bold mb-2">Cloud Connectivity</h3>
-            <p className="text-xs text-kindle-text-muted mb-8 leading-relaxed">
-              Connect your Google Drive or Dropbox to instantly sync your entire ebook collection. 
-              Secure OAuth integration ensures your data stays private.
-            </p>
-            <div className="space-y-3">
-              <button 
-                className="w-full py-3.5 bg-[#4285F4] text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:brightness-110 transition"
-                onClick={() => alert("Cloud Sync Integration: Please set up Google OAuth in AI Studio settings to enable this feature.")}
-              >
-                Connect Google Drive
-              </button>
-              <button 
-                className="w-full py-3.5 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition"
-                onClick={() => setShowCloudImport(false)}
-              >
-                Maybe Later
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 5. Custom Tags Manager Popup Modal */}
       {activeBookForTags && (
@@ -1420,6 +1018,33 @@ export default function LibraryManager({
         </div>
       )}
 
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xl text-kindle-text animate-fade-in">
+            <h3 className="font-sans font-bold text-base text-red-700 mb-2">Delete {selectedBookIds.size} Ebooks?</h3>
+            <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-5">
+              Are you sure you want to permanently delete the {selectedBookIds.size} selected books?<br/>
+              This will permanently delete both the locally cached files and your cloud-synced progress.
+            </p>
+
+            <div className="flex gap-3 justify-end font-sans">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-4 py-2 border border-kindle-border text-kindle-text-muted rounded-xl text-xs font-semibold hover:bg-kindle-bg transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmBulkDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition"
+              >
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {editingMetadataBook && (
         <BookMetadataEditor
           userId={userId}
@@ -1547,11 +1172,22 @@ export default function LibraryManager({
             
             <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-kindle-border/40">
               {longPressedBook.coverUrl ? (
-                <img
-                  src={`/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}`}
-                  className="w-12 h-16 object-cover rounded-lg border border-kindle-border/60 shadow-sm"
-                  referrerPolicy="no-referrer"
-                />
+                <>
+                  <img
+                    src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}
+                    className={`w-12 aspect-[2/3] object-cover rounded-lg border border-kindle-border/60 shadow-sm ${grayscaleCovers ? "grayscale-app" : ""}`}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      img.style.display = 'none';
+                      const fallback = img.nextElementSibling as HTMLElement | null;
+                      if (fallback) fallback.style.display = 'flex';
+                    }}
+                  />
+                  <div className="w-12 h-16 bg-kindle-bg rounded-lg border border-kindle-border/60 items-center justify-center hidden">
+                    <BookOpen className="w-6 h-6 text-kindle-text-muted opacity-30" />
+                  </div>
+                </>
               ) : (
                 <div className="w-12 h-16 bg-kindle-bg rounded-lg border border-kindle-border/60 flex items-center justify-center">
                   <BookOpen className="w-6 h-6 text-kindle-text-muted opacity-30" />
@@ -1560,8 +1196,8 @@ export default function LibraryManager({
               <div className="overflow-hidden">
                 <h4 className="font-serif font-bold text-sm leading-tight truncate">{longPressedBook.title}</h4>
                 <p className="text-[11px] text-kindle-text-muted mt-1 truncate">{longPressedBook.author}</p>
-                <span className="inline-block mt-1.5 text-[8px] font-bold uppercase tracking-widest bg-kindle-bg border border-kindle-border px-1.5 py-0.5 rounded">
-                  {longPressedBook.extension}
+                <span className="inline-block mt-1.5 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                  Format: {longPressedBook.extension || 'UNKNOWN'}
                 </span>
               </div>
             </div>
@@ -1631,6 +1267,102 @@ export default function LibraryManager({
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Tag Selection Modal */}
+      {bulkTagModalOpen && (
+        <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-2xl text-kindle-text font-sans">
+            <h3 className="font-bold text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-kindle-accent" />
+              Add Collection Tag ({selectedBookIds.size})
+            </h3>
+            <p className="text-[10px] text-kindle-text-muted mb-4">
+              Select which tag/collection to apply to all selected ebooks:
+            </p>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+                {availableTags.length === 0 ? (
+                  <p className="col-span-2 text-center py-4 text-[10px] text-kindle-text-muted italic">
+                    No custom collections yet. Go back and add one!
+                  </p>
+                ) : (
+                  availableTags.map((tag) => (
+                    <button
+                      key={tag}
+                      onClick={() => handleBulkAddTag(tag)}
+                      className="text-[10px] font-semibold p-2.5 rounded-xl border border-kindle-border text-center hover:bg-kindle-bg hover:border-kindle-text transition truncate uppercase tracking-wider"
+                    >
+                      {tag}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-6 pt-4 border-t border-kindle-border/40">
+              <button
+                onClick={() => setBulkTagModalOpen(false)}
+                className="px-4 py-2 border border-kindle-border text-kindle-text-muted rounded-xl text-xs font-semibold hover:bg-kindle-bg transition uppercase tracking-wider"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Bar for Manage Mode */}
+      {isManageMode && selectedBookIds.size > 0 && (
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[calc(100%-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-kindle-card border border-kindle-border/80 rounded-2xl shadow-2xl p-3 flex items-center justify-between gap-3 text-sans">
+            <div className="flex items-center gap-1.5 pl-2">
+              <span className="text-[10px] font-extrabold text-kindle-bg bg-kindle-accent px-2 py-0.5 rounded-md uppercase tracking-wider">
+                {selectedBookIds.size}
+              </span>
+              <span className="text-[10px] text-kindle-text font-bold uppercase tracking-widest hidden sm:inline">selected</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Mark Status Group */}
+              <select
+                onChange={async (e) => {
+                  const status = e.target.value;
+                  if (!status) return;
+                  await handleBulkStatusUpdate(status);
+                  e.target.value = "";
+                }}
+                className="bg-kindle-bg border border-kindle-border rounded-xl px-2.5 py-1.5 text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+              >
+                <option value="">Mark As...</option>
+                <option value="to-read">To Read</option>
+                <option value="reading">Reading</option>
+                <option value="completed">Completed</option>
+              </select>
+
+              {/* Add Collection */}
+              <button
+                onClick={() => setBulkTagModalOpen(true)}
+                className="px-2.5 py-1.5 border border-kindle-border hover:border-kindle-text rounded-xl text-kindle-text-muted hover:text-kindle-text bg-kindle-bg transition cursor-pointer flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider"
+                title="Add to Collection"
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Tag</span>
+              </button>
+
+              {/* Bulk Delete */}
+              <button
+                onClick={() => setShowBulkDeleteConfirm(true)}
+                className="px-2.5 py-1.5 bg-red-500/10 dark:bg-red-950/20 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/30 rounded-xl text-red-600 dark:text-red-400 transition cursor-pointer flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider"
+                title="Delete Selected"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
             </div>
           </div>
         </div>

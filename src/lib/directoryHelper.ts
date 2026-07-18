@@ -125,6 +125,7 @@ export async function scanDirectoryForNewBooks(
 
     const existingIds = new Set(existingBooks.map((b) => b.id));
     const existingTitles = new Set(existingBooks.map((b) => b.title.toLowerCase().trim()));
+    const existingFilenames = new Set(existingBooks.map((b) => b.filename?.toLowerCase().trim()).filter(Boolean));
 
     // Iterate through directory entries
     for await (const entry of (handle as any).values()) {
@@ -133,15 +134,19 @@ export async function scanDirectoryForNewBooks(
         if (ext === "epub" || ext === "pdf") {
           const titleWithoutExt = entry.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
           const normalizedTitle = titleWithoutExt.toLowerCase().trim();
+          const normalizedFilename = entry.name.toLowerCase().trim();
 
-          // Skip if already in library
-          if (existingTitles.has(normalizedTitle)) continue;
+          // Skip if already in library by title or filename
+          if (existingTitles.has(normalizedTitle) || existingFilenames.has(normalizedFilename)) continue;
 
           // Get file blob to store locally in IndexedDB
           const file = await entry.getFile();
-          const bookId = "local_" + Math.random().toString(36).substring(7);
-
           const arrayBuffer = await file.arrayBuffer();
+          const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+          const bookId = "file_" + hashHex.substring(0, 16);
+
           const fileBlob = new Blob([arrayBuffer], { type: ext === "pdf" ? "application/pdf" : "application/epub+zip" });
 
           await storeBookFile(bookId, fileBlob, file.name, ext);
@@ -150,6 +155,7 @@ export async function scanDirectoryForNewBooks(
             id: bookId,
             title: titleWithoutExt,
             author: "Local Import",
+            filename: file.name,
             extension: ext,
             size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
             language: "English",
@@ -239,8 +245,14 @@ export async function scanVirtualDirectory(
     const normalizedTitle = file.name.toLowerCase().trim();
     if (!existingTitles.has(normalizedTitle)) {
       // Create a mock epub/pdf blob
-      const mockBlob = new Blob([`Mock ebook content for ${file.name}`], { type: file.extension === "pdf" ? "application/pdf" : "application/epub+zip" });
-      const bookId = "virtual_" + Math.random().toString(36).substring(7);
+      const mockStr = `Mock ebook content for ${file.name}`;
+      const mockBlob = new Blob([mockStr], { type: file.extension === "pdf" ? "application/pdf" : "application/epub+zip" });
+      
+      const encoder = new TextEncoder();
+      const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(mockStr));
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      const bookId = "virtual_" + hashHex.substring(0, 16);
 
       await storeBookFile(bookId, mockBlob, `${file.name}.${file.extension}`, file.extension);
 

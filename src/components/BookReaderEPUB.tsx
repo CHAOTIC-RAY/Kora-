@@ -14,13 +14,9 @@ import {
 } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
-import { 
-  X, ChevronLeft, ChevronRight, Menu, Settings, 
-  BookOpen, Sparkles, AlertCircle, Type, Layout, Info, Globe, Search,
-  Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind,
-  BookMarked, Copy, Check, FileText, Highlighter, Trash2
-} from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
+import { playFlipSound, playBookOpenSound } from "../lib/sounds";
 
 interface BookReaderEPUBProps {
   book: BookMetadata;
@@ -35,7 +31,17 @@ interface BookReaderEPUBProps {
     marginSize: string;
     isContinuous: boolean;
     brightness: number;
+    doubleColumns?: boolean;
+    pageOverlap?: number;
+    letterSpacing?: string;
+    hyphenation?: boolean;
+    pageTurnMode?: string;
+    pageTransitionEffect?: string;
+    themeManuallySet?: boolean;
+    grayscaleImages?: boolean;
+    hideImages?: boolean;
   };
+  onReaderPrefsChange?: (prefs: any) => void;
 }
 
 interface EpubChapter {
@@ -46,7 +52,7 @@ interface EpubChapter {
   fullPath: string;
 }
 
-export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs }: BookReaderEPUBProps) {
+export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs, onReaderPrefsChange }: BookReaderEPUBProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chapters, setChapters] = useState<EpubChapter[]>([]);
@@ -56,10 +62,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18); // px
   const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-serif");
   const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light"); // light, dark, sepia, green
+  const [themeManuallySet, setThemeManuallySet] = useState<boolean>(readerPrefs?.themeManuallySet ?? false);
   const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
   const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
   const [isContinuous, setIsContinuous] = useState<boolean>(readerPrefs?.isContinuous ?? false);
   const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
+  const [grayscaleImages, setGrayscaleImages] = useState<boolean>(readerPrefs?.grayscaleImages ?? false);
+  const [hideImages, setHideImages] = useState<boolean>(readerPrefs?.hideImages ?? false);
   
   // Dictionary states
   const [dictionaryWord, setDictionaryWord] = useState<string | null>(null);
@@ -71,24 +80,114 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [totalPages, setTotalPages] = useState<number>(1);
   const [containerWidth, setContainerWidth] = useState<number>(600);
   const pageStepRef = React.useRef<number>(600 + 40); // last computed per-page stride
-  const [doubleColumns, setDoubleColumns] = useState<boolean>(false); // Dual page mode
-  const [pageOverlap, setPageOverlap] = useState<number>(0); // KOReader-style page overlap (px repeated across page turns)
-  const [letterSpacing, setLetterSpacing] = useState<string>("tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
-  const [hyphenation, setHyphenation] = useState<boolean>(true);
+  const [doubleColumns, setDoubleColumns] = useState<boolean>(readerPrefs?.doubleColumns ?? false); // Dual page mode
+  const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 0); // KOReader-style page overlap (px repeated across page turns)
+  const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
+  const [hyphenation, setHyphenation] = useState<boolean>(readerPrefs?.hyphenation ?? true);
+  const [pageTurnMode, setPageTurnMode] = useState<string>(readerPrefs?.pageTurnMode ?? "fifty-fifty");
+  const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(readerPrefs?.pageTransitionEffect ?? "paper-flip");
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
+
+  // Responsive mobile state
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [flipDirection, setFlipDirection] = useState<"next" | "prev">("next");
+  const prevPageNumRef = useRef<number>(1);
+  const prevChapterIdxRef = useRef<number>(0);
+
+  // Turn.js style 3D page flip states
+  const [isTurningPage, setIsTurningPage] = useState<boolean>(false);
+  const [turningPageNum, setTurningPageNum] = useState<number>(1);
+  const [turningChapterIdx, setTurningChapterIdx] = useState<number>(0);
+  const [turnDirection, setTurnDirection] = useState<"next" | "prev">("next");
+
+  const useDoubleColumns = doubleColumns && !isMobile;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (currentPageNum !== prevPageNumRef.current || currentChapterIdx !== prevChapterIdxRef.current) {
+      const isNext = 
+        currentChapterIdx > prevChapterIdxRef.current || 
+        (currentChapterIdx === prevChapterIdxRef.current && currentPageNum > prevPageNumRef.current);
+      const dir = isNext ? "next" : "prev";
+      
+      setFlipDirection(dir);
+
+      if (pageTransitionEffect === "paper-flip" && shouldAnimate && !isTurningPage) {
+        setTurningPageNum(prevPageNumRef.current);
+        setTurningChapterIdx(prevChapterIdxRef.current);
+        setTurnDirection(dir);
+        setIsTurningPage(true);
+      }
+
+      prevPageNumRef.current = currentPageNum;
+      prevChapterIdxRef.current = currentChapterIdx;
+    }
+  }, [currentPageNum, currentChapterIdx, pageTransitionEffect, shouldAnimate, isTurningPage]);
 
   // Disable animation temporarily during visual style changes
   useEffect(() => {
     setShouldAnimate(false);
     const t = setTimeout(() => setShouldAnimate(true), 250);
     return () => clearTimeout(t);
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, doubleColumns, letterSpacing, hyphenation]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, doubleColumns, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect]);
+  
+  // Sync settings back to App
+  useEffect(() => {
+    if (onReaderPrefsChange) {
+      onReaderPrefsChange({
+        fontSize,
+        fontFamily,
+        theme,
+        marginSize,
+        lineSpacing,
+        isContinuous,
+        brightness,
+        doubleColumns,
+        pageOverlap,
+        letterSpacing,
+        hyphenation,
+        pageTurnMode,
+        pageTransitionEffect,
+        themeManuallySet,
+        grayscaleImages,
+        hideImages
+      });
+    }
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, onReaderPrefsChange]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
-  const [showAiAssistant, setShowAiAssistant] = useState<boolean>(false);
   const [showNotes, setShowNotes] = useState<boolean>(false);
+  
+  // Handle Android back gesture for settings overlay
+  useEffect(() => {
+    if (showSettings) {
+      window.history.pushState({ readerSettingsOpen: true }, "");
+      const handlePopState = (e: PopStateEvent) => {
+        if (!e.state?.readerSettingsOpen) {
+          setShowSettings(false);
+        }
+      };
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    } else {
+      if (window.history.state?.readerSettingsOpen) {
+        window.history.back();
+      }
+    }
+  }, [showSettings]);
   
   // Highlights & Notes State
   const [chapterNotesData, setChapterNotesData] = useState<Record<number, ChapterNote>>({});
@@ -96,29 +195,53 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [activeNoteText, setActiveNoteText] = useState<string>("");
   const [isSavingNote, setIsSavingNote] = useState<boolean>(false);
 
-  // AI assistant states
-  const [aiResponse, setAiResponse] = useState<string>("");
-  const [aiLoading, setAiLoading] = useState<boolean>(false);
-  const [customAiQuery, setCustomAiQuery] = useState<string>("");
+  // AI/dictionary context states
   const [selectedText, setSelectedText] = useState<string>("");
   const [dictFeedback, setDictFeedback] = useState<string | null>(null);
   const [tapFeedback, setTapFeedback] = useState<"next" | "prev" | null>(null);
+  const [selectMode, setSelectMode] = useState<boolean>(false);
+  const [selectionCoords, setSelectionCoords] = useState<{ x: number; y: number } | null>(null);
+  const [selectionPins, setSelectionPins] = useState<{
+    start: { x: number; y: number; height: number } | null;
+    end: { x: number; y: number; height: number } | null;
+  }>({ start: null, end: null });
+  const [isDraggingSelection, setIsDraggingSelection] = useState<boolean>(false);
+  const [showMoreActions, setShowMoreActions] = useState<boolean>(false);
+  const [showAnalyzer, setShowAnalyzer] = useState<boolean>(false);
+  const [analyzedText, setAnalyzedText] = useState<string>("");
+  const [vocabBreakdown, setVocabBreakdown] = useState<{ word: string; entry: any }[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [activeWordDefinition, setActiveWordDefinition] = useState<any>(null);
 
   // Audiobook / Speech states
   const [showAudiobook, setShowAudiobook] = useState<boolean>(false);
+  const [isAudiobookExpanded, setIsAudiobookExpanded] = useState<boolean>(false);
   const [isPlayingSpeech, setIsPlayingSpeech] = useState<boolean>(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
   const [currentParagraphIdx, setCurrentParagraphIdx] = useState<number>(-1);
 
+  const [externalLinkToOpen, setExternalLinkToOpen] = useState<string | null>(null);
+
   const contentRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
   const zipRef = useRef<JSZip | null>(null);
   const rootDirRef = useRef<string>("");
   const blobUrlsRef = useRef<string[]>([]);
   // Maps an EPUB internal href (normalized) -> spine chapter index, so in-book
   // Table-of-Contents links (e.g. <a href="chapter1.xhtml">) navigate correctly.
   const hrefToIndexRef = useRef<Map<string, number>>(new Map());
+  const pointerStartRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
+  const dragStartRef = useRef<{
+    isDraggingStart: boolean;
+    isDraggingEnd: boolean;
+    originalStartContainer: Node | null;
+    originalStartOffset: number;
+    originalEndContainer: Node | null;
+    originalEndOffset: number;
+  } | null>(null);
+  const isPointerDownRef = useRef<boolean>(false);
 
   // Font choices
   const fontFamilies = [
@@ -146,20 +269,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // whether single- or double-column. Using the padded container width
       // (or half-width+gap) made each page turn overshoot and clip the left
       // column — the "page display" bug.
-      const textWidth = container.offsetWidth;
+      const rect = container.getBoundingClientRect();
+      const textWidth = rect.width;
       if (textWidth <= 0) return;
       
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
       // Column width for the CSS column layout (matches the measured width so
       // the content fills exactly one page stride).
-      const colWidth = doubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      // One page = the full visible article width (single column = whole width;
-      // double column = the whole spread). This is the exact translate stride.
-      const step = textWidth;
-      // With page overlap, every page after the first repeats `pageOverlap` px
-      // from the previous page; account for that when counting pages.
-      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - pageOverlap) / step) + 1);
+      const colWidth = useDoubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
+      // The exact horizontal stride is the full page width plus the column gap (40px)
+      // minus any desired page overlap.
+      const step = textWidth + gapWidth - pageOverlap;
+      // Avoid tiny subpixel overflows from creating a blank page
+      const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
+      const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
@@ -177,14 +301,61 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     lineSpacing,
     marginSize,
     doubleColumns,
+    useDoubleColumns,
+    pageOverlap,
     letterSpacing,
     hyphenation
   ]);
 
+  // Handle asynchronous image loading inside the chapter text.
+  // Re-run recalculateLayout when any image loads to avoid cut-off paragraphs.
   useEffect(() => {
-    window.addEventListener("resize", recalculateLayout);
-    return () => window.removeEventListener("resize", recalculateLayout);
-  }, [doubleColumns]);
+    const container = contentRef.current;
+    if (!container) return;
+
+    const images = container.querySelectorAll("img");
+    const handleImgLoad = () => {
+      recalculateLayout();
+    };
+
+    images.forEach((img) => {
+      if (img.complete) {
+        // Image is already loaded from cache or has layout.
+      } else {
+        img.addEventListener("load", handleImgLoad);
+      }
+    });
+
+    return () => {
+      images.forEach((img) => {
+        img.removeEventListener("load", handleImgLoad);
+      });
+    };
+  }, [currentChapterIdx, chapters]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) {
+      // Fallback
+      window.addEventListener("resize", recalculateLayout);
+      return () => window.removeEventListener("resize", recalculateLayout);
+    }
+
+    let resizeTimer: ReturnType<typeof setTimeout>;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        recalculateLayout();
+      }, 150);
+    });
+
+    observer.observe(viewer);
+
+    return () => {
+      observer.disconnect();
+      clearTimeout(resizeTimer);
+    };
+  }, [useDoubleColumns]);
 
   // Auto-track reading focus session time (Reading Goals)
   useEffect(() => {
@@ -219,11 +390,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       isContinuous,
       brightness,
       doubleColumns,
+      pageOverlap,
       letterSpacing,
-      hyphenation
+      hyphenation,
+      pageTurnMode,
+      pageTransitionEffect,
+      themeManuallySet,
+      grayscaleImages
     };
     localStorage.setItem("kora_reader_prefs", JSON.stringify(prefs));
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, letterSpacing, hyphenation]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages]);
 
   useEffect(() => {
     loadEpubFile();
@@ -290,33 +466,224 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setHighlightsData(prev => prev.filter(h => h.id !== id));
   };
 
-  // Record highlighted/selected text for AI helper
-  useEffect(() => {
-    const handleSelection = () => {
-      const selection = window.getSelection();
-      if (selection && selection.toString().trim().length > 0) {
-        setSelectedText(selection.toString().trim());
+  const getCaretRangeFromPoint = (x: number, y: number): Range | null => {
+    if (document.caretRangeFromPoint) {
+      return document.caretRangeFromPoint(x, y);
+    } else if ((document as any).caretPositionFromPoint) {
+      const pos = (document as any).caretPositionFromPoint(x, y);
+      if (pos && pos.offsetNode) {
+        const range = document.createRange();
+        range.setStart(pos.offsetNode, pos.offset);
+        range.collapse(true);
+        return range;
       }
+    }
+    return null;
+  };
+
+  const handlePinDragStart = (e: React.PointerEvent<HTMLDivElement>, pinType: 'start' | 'end') => {
+    e.preventDefault();
+    e.stopPropagation();
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      dragStartRef.current = {
+        isDraggingStart: pinType === 'start',
+        isDraggingEnd: pinType === 'end',
+        originalStartContainer: range.startContainer,
+        originalStartOffset: range.startOffset,
+        originalEndContainer: range.endContainer,
+        originalEndOffset: range.endOffset,
+      };
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch (err) {
+        console.warn("Failed to set pointer capture", err);
+      }
+      setIsDraggingSelection(true);
+    }
+  };
+
+  const handlePinDragMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragStartRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const { isDraggingStart, isDraggingEnd, originalStartContainer, originalStartOffset, originalEndContainer, originalEndOffset } = dragStartRef.current;
+    if (!originalStartContainer || !originalEndContainer) return;
+    
+    const selection = window.getSelection();
+    if (!selection) return;
+    
+    const caretRange = getCaretRangeFromPoint(e.clientX, e.clientY);
+    if (!caretRange) return;
+    
+    const newRange = document.createRange();
+    
+    try {
+      if (isDraggingStart) {
+        const tempRange = document.createRange();
+        tempRange.setStart(originalEndContainer, originalEndOffset);
+        tempRange.collapse(true);
+        
+        const comparison = caretRange.compareBoundaryPoints(Range.START_TO_START, tempRange);
+        if (comparison <= 0) {
+          newRange.setStart(caretRange.startContainer, caretRange.startOffset);
+          newRange.setEnd(originalEndContainer, originalEndOffset);
+        } else {
+          newRange.setStart(originalEndContainer, originalEndOffset);
+          newRange.setEnd(caretRange.startContainer, caretRange.startOffset);
+        }
+      } else if (isDraggingEnd) {
+        const tempRange = document.createRange();
+        tempRange.setStart(originalStartContainer, originalStartOffset);
+        tempRange.collapse(true);
+        
+        const comparison = caretRange.compareBoundaryPoints(Range.START_TO_START, tempRange);
+        if (comparison >= 0) {
+          newRange.setStart(originalStartContainer, originalStartOffset);
+          newRange.setEnd(caretRange.startContainer, caretRange.startOffset);
+        } else {
+          newRange.setStart(caretRange.startContainer, caretRange.startOffset);
+          newRange.setEnd(originalStartContainer, originalStartOffset);
+        }
+      }
+      
+      selection.removeAllRanges();
+      selection.addRange(newRange);
+    } catch (err) {
+      console.warn("Failed to update drag range:", err);
+    }
+  };
+
+  const handlePinDragEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartRef.current) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        // ignore
+      }
+      dragStartRef.current = null;
+      setIsDraggingSelection(false);
+    }
+  };
+
+  // Record highlighted/selected text for AI helper and handle Selection Mode
+  useEffect(() => {
+    let rafId: number | null = null;
+
+    const handleSelection = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const selection = window.getSelection();
+        if (selection && selection.toString().trim().length > 0) {
+          // If the pointer is down (meaning active dragging/selecting is happening)
+          // and we are NOT dragging a selection pin, defer the heavy calculations until pointerup
+          const isDraggingPin = dragStartRef.current !== null;
+          if (isPointerDownRef.current && !isDraggingPin) {
+            return;
+          }
+
+          try {
+            if (selection.rangeCount > 0) {
+              const range = selection.getRangeAt(0);
+              const container = contentRef.current;
+              // Only trigger selection mode if selecting text inside the book reader content area
+              if (container && (container.contains(range.startContainer) || container.contains(range.endContainer))) {
+                const text = selection.toString().trim();
+                setSelectedText(text);
+                setSelectMode(true);
+                
+                const rect = range.getBoundingClientRect();
+                
+                // Get precise start and end rects for Kindle-style selection pins
+                const rects = range.getClientRects();
+                if (rects.length > 0) {
+                  const firstRect = rects[0];
+                  const lastRect = rects[rects.length - 1];
+                  setSelectionPins({
+                    start: {
+                      x: firstRect.left,
+                      y: firstRect.top,
+                      height: firstRect.height
+                    },
+                    end: {
+                      x: lastRect.right,
+                      y: lastRect.top,
+                      height: lastRect.height
+                    }
+                  });
+                } else {
+                  setSelectionPins({ start: null, end: null });
+                }
+
+                setSelectionCoords({
+                  x: rect.left + rect.width / 2,
+                  y: rect.bottom + 10
+                });
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to get selection coords:", e);
+          }
+        } else {
+          // Clear coords when selection collapses, but keep selectMode active so the user can continue drag-selecting text.
+          setSelectionCoords(null);
+          setSelectionPins({ start: null, end: null });
+          setShowMoreActions(false);
+        }
+      });
     };
 
     document.addEventListener("selectionchange", handleSelection);
     
-    // Dictionary lookup on double tap
+    // Dictionary lookup on double tap -> also enters select mode for convenience!
     const handleDoubleClick = async () => {
       const selection = window.getSelection();
       const word = selection?.toString().trim();
       if (word && word.length > 0 && word.split(/\s+/).length === 1) {
+        setSelectMode(true);
+        setSelectedText(word);
         lookupDictionary(word);
       }
     };
     document.addEventListener("dblclick", handleDoubleClick);
 
-    // Dictionary lookup on long press
+    // Support triple-click (3X) to select a whole sentence/paragraph
+    const handleTripleClick = (e: MouseEvent) => {
+      if (e.detail === 3) {
+        const selection = window.getSelection();
+        const text = selection?.toString().trim();
+        if (text && text.length > 0) {
+          setSelectMode(true);
+          setSelectedText(text);
+        }
+      }
+    };
+    document.addEventListener("click", handleTripleClick);
+
+    // Enter Select Mode and highlight word on long press
     let pressTimer: NodeJS.Timeout | null = null;
     let pressStartX = 0;
     let pressStartY = 0;
 
     const handlePointerDown = (e: PointerEvent) => {
+      isPointerDownRef.current = true;
+
+      // Instantly clear old coords and pins when a new pointerdown selection action begins.
+      // This hides the toolbar and pins during dragging to optimize rendering and reduce UI jitter.
+      setSelectionCoords(null);
+      setSelectionPins({ start: null, end: null });
+
+      if (selectMode) {
+        setIsDraggingSelection(true);
+        return;
+      }
+      
       pressStartX = e.clientX;
       pressStartY = e.clientY;
       pressTimer = setTimeout(() => {
@@ -353,12 +720,31 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 sel.removeAllRanges();
                 sel.addRange(newRange);
                 setSelectedText(word);
+                setSelectMode(true);
+                
+                try {
+                  const rect = newRange.getBoundingClientRect();
+                  const rects = newRange.getClientRects();
+                  if (rects.length > 0) {
+                    const firstRect = rects[0];
+                    const lastRect = rects[rects.length - 1];
+                    setSelectionPins({
+                      start: { x: firstRect.left, y: firstRect.top, height: firstRect.height },
+                      end: { x: lastRect.right, y: lastRect.top, height: lastRect.height }
+                    });
+                  }
+                  setSelectionCoords({
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 10
+                  });
+                } catch (err) {
+                  // fallback
+                }
               }
-              lookupDictionary(word); // Uncommented for automatic lookup on long press
             }
           }
         }
-      }, 800);
+      }, 700);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -373,10 +759,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
 
     const handlePointerUp = () => {
+      isPointerDownRef.current = false;
+      setIsDraggingSelection(false);
       if (pressTimer) {
         clearTimeout(pressTimer);
         pressTimer = null;
       }
+      // Re-evaluate selection immediately on pointer up to position pins and menu
+      handleSelection();
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -387,15 +777,38 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     return () => {
       document.removeEventListener("selectionchange", handleSelection);
       document.removeEventListener("dblclick", handleDoubleClick);
+      document.removeEventListener("click", handleTripleClick);
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
       document.removeEventListener("pointercancel", handlePointerUp);
       if (pressTimer) clearTimeout(pressTimer);
+      if (rafId) cancelAnimationFrame(rafId);
     };
-  }, []);
+  }, [selectMode]);
+
+  // Prevent viewport/body scrolling or rubber-banding while in selection mode or dragging pins
+  useEffect(() => {
+    if (selectMode || isDraggingSelection) {
+      const preventDefaultTouch = (e: TouchEvent) => {
+        // Only prevent touch movements when active selecting or dragging to lock position
+        e.preventDefault();
+      };
+      
+      document.body.style.overflow = "hidden";
+      document.body.style.overscrollBehavior = "none";
+      document.addEventListener("touchmove", preventDefaultTouch, { passive: false });
+      
+      return () => {
+        document.body.style.overflow = "";
+        document.body.style.overscrollBehavior = "";
+        document.removeEventListener("touchmove", preventDefaultTouch);
+      };
+    }
+  }, [selectMode, isDraggingSelection]);
 
   const handleNextPage = () => {
+    playFlipSound();
     setTapFeedback("next");
     setTimeout(() => setTapFeedback(null), 350);
     if (currentPageNum < totalPages) {
@@ -408,6 +821,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   const handlePrevPage = () => {
+    playFlipSound();
     setTapFeedback("prev");
     setTimeout(() => setTapFeedback(null), 350);
     if (currentPageNum > 1) {
@@ -447,7 +861,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
     if (
       target.closest("button") || 
-      target.closest("a") || 
       target.closest("aside") || 
       target.closest("input") || 
       target.closest("select") || 
@@ -456,28 +869,97 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     ) {
       return;
     }
+
+    // Prevent any remaining internal <a> tags (that weren't rewritten to
+    // data-epub-href) from navigating away and restarting the app.
+    const anchor = target.closest("a");
+    if (anchor) {
+      const href = anchor.getAttribute("href") || "";
+      e.preventDefault();
+      if (href.startsWith("http")) {
+        setExternalLinkToOpen(href);
+      }
+      return;
+    }
     
-    // If text is highlighted, clear it and continue to allow page turn
+    // If we are in select mode or have an active selection, dismiss/clear it and stop (do NOT turn the page!)
     const sel = window.getSelection();
-    if (sel && sel.toString().trim().length > 0) {
-      sel.removeAllRanges();
+    if (selectMode || (sel && sel.toString().trim().length > 0)) {
+      if (sel) {
+        sel.removeAllRanges();
+      }
+      setSelectedText("");
+      setSelectMode(false);
+      return; // Prevent page turn on this tap!
     }
     
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
+    const ratio = clickX / rect.width;
     
-    // Zone-based clicking: 
-    // Left 30% -> Prev
-    // Right 30% -> Next
-    // Middle 40% -> Toggle Menu (handled by parent or other click listeners if needed)
-    // But user asked for left/right screen tap, so we'll do 40/20/40 or just 50/50.
-    // Let's stick to 50/50 but ensure it works on the currentTarget's rect.
-    const isLeftSide = clickX < rect.width / 2;
-    
-    if (isLeftSide) {
-      handlePrevPage();
-    } else {
-      handleNextPage();
+    if (pageTurnMode === "fifty-fifty") {
+      if (ratio < 0.5) {
+        handlePrevPage();
+      } else {
+        handleNextPage();
+      }
+    } else if (pageTurnMode === "classic-ereader") {
+      if (ratio < 0.25) {
+        handlePrevPage();
+      } else {
+        handleNextPage();
+      }
+    } else if (pageTurnMode === "margins-only") {
+      if (ratio < 0.15) {
+        handlePrevPage();
+      } else if (ratio > 0.85) {
+        handleNextPage();
+      }
+    }
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selectMode) return;
+    if (!e.isPrimary) return;
+    pointerStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now()
+    };
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (selectMode) return;
+    if (!pointerStartRef.current) return;
+    const start = pointerStartRef.current;
+    pointerStartRef.current = null;
+
+    const diffX = e.clientX - start.x;
+    const diffY = e.clientY - start.y;
+    const duration = Date.now() - start.time;
+
+    // Check if it's a swipe (fast flick or drag)
+    if (duration < 500 && Math.abs(diffX) > 40 && Math.abs(diffY) < 60) {
+      // Swipe from left edge of screen to right -> go back / close reader (native iOS/Android gesture)
+      if (start.x < 50 && diffX > 45) {
+        onClose();
+        return;
+      }
+
+      if (diffX > 40) {
+        // Swipe Right -> Prev Page
+        handlePrevPage();
+        return;
+      } else if (diffX < -40) {
+        // Swipe Left -> Next Page
+        handleNextPage();
+        return;
+      }
+    }
+
+    // Only fire standard tap handler if pointer barely moved (prevent text selection drag conflicts)
+    if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15) {
+      handleContainerClick(e);
     }
   };
 
@@ -515,7 +997,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setDictionaryWord(word);
       
       // 1. Check custom dictionary first
-      const localDef = lookupWord(word);
+      const localDef = await lookupWord(word);
       if (localDef) {
         setDictionaryData({
           word: localDef.word,
@@ -673,6 +1155,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // and read title metadata or HTML headings as title defaults
       const parsedChapters: EpubChapter[] = [];
 
+      // Pre-register all spine hrefs so that in-book TOC links in any chapter
+      // (especially the first chapter, which is often the TOC) can be resolved
+      // to the correct spine index during content processing.
+      for (let i = 0; i < spineItems.length; i++) {
+        const relativeHref = spineItems[i];
+        const norm = pathResolve(rootDir, relativeHref).toLowerCase();
+        hrefToIndexRef.current.set(norm, i);
+        hrefToIndexRef.current.set(relativeHref.toLowerCase(), i);
+      }
+
       for (let i = 0; i < spineItems.length; i++) {
         const relativeHref = spineItems[i];
         const fullChapterPath = `${rootDir}${relativeHref}`;
@@ -683,10 +1175,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           const chapterDoc = parser.parseFromString(rawContent, "text/html");
           
           // Get beautiful title from H1/H2 or title element
-          let chapterTitle = chapterDoc.querySelector("title")?.textContent || 
-                             chapterDoc.querySelector("h1")?.textContent || 
-                             chapterDoc.querySelector("h2")?.textContent || 
-                             `Chapter ${i + 1}`;
+          let chapterTitle = chapterDoc.querySelector("title")?.textContent?.trim() || "";
+          
+          if (!chapterTitle || chapterTitle.toLowerCase() === "unknown" || chapterTitle.toLowerCase() === "untitled") {
+             chapterTitle = chapterDoc.querySelector("h1")?.textContent || 
+                            chapterDoc.querySelector("h2")?.textContent || 
+                            chapterDoc.querySelector("h3")?.textContent ||
+                            `Chapter ${i + 1}`;
+          }
 
           chapterTitle = chapterTitle.trim().replace(/\s+/g, " ");
           if (chapterTitle.length > 50) {
@@ -704,10 +1200,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             content: processedContent,
             fullPath: fullChapterPath
           });
-          // Register spine href (and its basename) -> chapter index for in-book TOC links.
-          const norm = pathResolve(rootDir, relativeHref).toLowerCase();
-          hrefToIndexRef.current.set(norm, i);
-          hrefToIndexRef.current.set(relativeHref.toLowerCase(), i);
         }
       }
 
@@ -717,6 +1209,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
       setChapters(parsedChapters);
       setLoading(false);
+      playBookOpenSound();
     } catch (err: any) {
       console.error("EPUB Loader Error:", err);
       setError(err.message || "Failed to parse EPUB reader file.");
@@ -752,6 +1245,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       return imageMap.get(base) || null;
     };
 
+    // Remove videos, iframes, and audios as requested
+    chapterDoc.querySelectorAll("video, iframe, audio").forEach(el => el.remove());
+
     const images = chapterDoc.querySelectorAll("img, image");
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
@@ -767,14 +1263,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           blobUrlsRef.current.push(localUrl);
           img.setAttribute("src", localUrl);
           img.removeAttribute("xlink:href");
-          img.setAttribute("class", "max-w-full h-auto my-4 mx-auto block rounded shadow-sm");
+          img.setAttribute("class", "max-w-full h-auto my-4 mx-auto block rounded shadow-sm select-none pointer-events-none");
         } catch (e) {
           console.warn("Failed unzipping chapter image:", zipPath, e);
           img.remove();
         }
       } else {
         // Not in the zip — drop it rather than letting the browser 404 on the site origin.
-        console.warn("EPUB image not found, dropping:", relativeSrc);
         img.remove();
       }
     }
@@ -849,10 +1344,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       if (textWidth <= 0) return;
       const scrollWidth = container.scrollWidth;
       const gapWidth = 40;
-      const colWidth = doubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      const step = textWidth;
+      const colWidth = useDoubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
+      // The exact horizontal stride is the full page width plus the column gap (40px)
+      // minus any desired page overlap.
+      const step = textWidth + gapWidth - pageOverlap;
       
-      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - pageOverlap) / step) + 1);
+      // Avoid tiny subpixel overflows from creating a blank page
+      const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
+      const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
@@ -1084,26 +1583,101 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setHighlightsData(prev => [newHighlight, ...prev]);
     setSelectedText("");
     setShowNotes(true);
-    setShowAiAssistant(false);
   };
 
-  async function requestAiAssistant(mode: string, query = "") {
-    setAiLoading(true);
-    setAiResponse("");
-    try {
-      const fullChapterText = chapters[currentChapterIdx]?.content || "";
-      
-      // Simulate highly responsive analytical processing lag (400ms)
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      
-      const response = await runOfflineCompanion(mode, selectedText, fullChapterText, book.title, query);
-      setAiResponse(response);
-    } catch (err: any) {
-      setAiResponse(`Assistant Error: ${err.message || "Failed to analyze book content."}`);
-    } finally {
-      setAiLoading(false);
+  const expandSelectionToSentence = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const textNode = range.startContainer;
+    if (textNode.nodeType !== Node.TEXT_NODE) return;
+    
+    const text = textNode.textContent || "";
+    const startOffset = range.startOffset;
+    const endOffset = range.endOffset;
+    
+    // Scan backward for sentence delimiters: ., !, ? (or start of text)
+    let start = startOffset;
+    while (start > 0) {
+      const prevChar = text[start - 1];
+      if (/[.!?]/.test(prevChar)) {
+        break;
+      }
+      start--;
     }
-  }
+    // Trim leading whitespace
+    while (start < startOffset && /\s/.test(text[start])) {
+      start++;
+    }
+    
+    // Scan forward for sentence delimiters: ., !, ? (or end of text)
+    let end = endOffset;
+    while (end < text.length) {
+      const char = text[end];
+      if (/[.!?]/.test(char)) {
+        end++; // Include punctuation
+        break;
+      }
+      end++;
+    }
+    
+    if (end > start) {
+      const newRange = document.createRange();
+      newRange.setStart(textNode, start);
+      newRange.setEnd(textNode, end);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      const sentenceText = text.slice(start, end).trim();
+      setSelectedText(sentenceText);
+      
+      // Update coordinates
+      try {
+        const rect = newRange.getBoundingClientRect();
+        setSelectionCoords({
+          x: rect.left + rect.width / 2,
+          y: rect.bottom + 10
+        });
+      } catch (e) {
+        console.warn("Failed to get expanded selection coordinates:", e);
+      }
+    }
+  };
+
+  const analyzeSentenceOffline = async (textToAnalyze: string) => {
+    if (!textToAnalyze) return;
+    setIsAnalyzing(true);
+    setAnalyzedText(textToAnalyze);
+    setShowAnalyzer(true);
+    setActiveWordDefinition(null);
+    
+    // Clean and split words
+    const words = textToAnalyze
+      .toLowerCase()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'“”—]/g, " ")
+      .split(/\s+/)
+      .filter(w => w.length > 2);
+      
+    // Filter duplicates
+    const uniqueWords = Array.from(new Set(words));
+    
+    // Common English stop words
+    const stopWords = new Set([
+      "the", "and", "a", "an", "of", "to", "in", "is", "you", "that", "it", "he", "was", "for", "on", "are", "as", "with", "his", "they", "i", "at", "be", "this", "have", "from", "or", "one", "had", "by", "word", "but", "not", "what", "all", "were", "we", "when", "your", "can", "said", "there", "use", "an", "each", "which", "she", "do", "how", "their", "if", "then", "them", "these", "so", "some", "her", "would", "him", "into", "has", "more", "look", "two", "more", "write", "go", "see", "no", "way", "could", "my", "than", "first", "been", "call", "who", "its", "now", "did", "get", "come", "made", "may", "part", "said"
+    ]);
+    
+    const breakdown: { word: string; entry: any }[] = [];
+    
+    for (const word of uniqueWords) {
+      if (stopWords.has(word)) continue;
+      const entry = await lookupWord(word);
+      if (entry) {
+        breakdown.push({ word, entry });
+      }
+    }
+    
+    setVocabBreakdown(breakdown);
+    setIsAnalyzing(false);
+  };
 
   const activeTheme = themes[theme] || themes.sepia;
 
@@ -1130,7 +1704,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         {/* Action Controls */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); setShowAiAssistant(false); }}
+            onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? 'bg-neutral-500/20' : ''}`}
             title="Highlights & Notes"
           >
@@ -1153,7 +1727,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           >
             <Settings className="w-5 h-5" />
           </button>
-
+ 
           <button
             id="toggle-audiobook-btn"
             onClick={() => {
@@ -1164,7 +1738,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               setShowToc(false);
               setShowSettings(false);
               setShowNotes(false);
-              setShowAiAssistant(false);
             }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition relative ${showAudiobook ? 'bg-kindle-accent/20 text-kindle-accent' : ''}`}
             title="Listen"
@@ -1174,23 +1747,35 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               <span className="absolute top-1 right-1 w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
             )}
           </button>
-          
+
           <button
-            id="toggle-ai-assistant"
-            onClick={() => { setShowAiAssistant(!showAiAssistant); setShowNotes(false); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
-            className={`flex items-center gap-2 px-4 py-2 ml-2 rounded-xl bg-kindle-text hover:bg-kindle-accent text-kindle-bg font-sans text-xs font-bold transition shadow-sm ${showAiAssistant ? 'ring-1 ring-kindle-accent' : ''}`}
+            onClick={() => {
+              const newMode = !selectMode;
+              setSelectMode(newMode);
+              if (!newMode) {
+                setSelectedText("");
+                setSelectionCoords(null);
+                const sel = window.getSelection();
+                if (sel) sel.removeAllRanges();
+              }
+              setShowToc(false);
+              setShowSettings(false);
+              setShowAudiobook(false);
+              setShowNotes(false);
+            }}
+            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${selectMode ? 'bg-kindle-accent/20 text-kindle-accent font-semibold' : ''}`}
+            title="Text Selection Mode"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">AI Helper</span>
+            <Highlighter className="w-5 h-5" />
           </button>
         </div>
       </header>
 
       {/* 2. Main Reader Split Board */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex flex-col-reverse md:flex-row overflow-hidden relative">
         {/* Sidebar: Table of Contents */}
         {showToc && (
-          <aside className={`w-full md:w-80 border-b md:border-b-0 border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col absolute md:relative inset-x-0 bottom-0 top-[30%] md:top-auto z-40 md:z-10 shadow-2xl md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200`}>
+          <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col z-40 md:z-10 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
             <div className={`p-4 border-b ${activeTheme.border} flex justify-between items-center`}>
               <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346]">
                 <BookOpen className="w-4 h-4 text-[#5c5346]" />
@@ -1224,20 +1809,48 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
         {/* Sidebar: Reader Settings panel */}
         {showSettings && (
-          <aside className={`w-full md:w-80 border-b md:border-b-0 border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col absolute md:relative inset-x-0 bottom-0 top-[30%] md:top-auto shadow-2xl md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200`}>
+          <>
+            <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} />
+            <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
-              <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346]">
-                <Type className="w-4 h-4 text-[#5c5346]" />
-                Typography Settings
+              <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
+                <Type className="w-4 h-4 text-[#5c5346] dark:text-neutral-300" />
+                Display Settings
               </span>
-              <button onClick={() => setShowSettings(false)} className="text-xs p-1 hover:bg-neutral-500/10 rounded">
+              <button onClick={() => setShowSettings(false)} className="text-xs p-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346] dark:text-neutral-300">
                 Done
               </button>
             </div>
 
+            {/* PRIMARY SETTINGS (Always Visible) */}
+            {/* Reading Modes (Themes) */}
+            <div className="mb-4">
+              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Reading Theme</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                {Object.keys(themes).map((tKey) => {
+                  const th = themes[tKey];
+                  return (
+                    <button
+                      key={tKey}
+                      onClick={() => {
+                        setTheme(tKey);
+                        setThemeManuallySet(true);
+                      }}
+                      className={`h-10 rounded-lg border flex items-center justify-center text-xs font-semibold capitalize ${th.bg} ${th.text} ${
+                        theme === tKey ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
+                      }`}
+                      title={tKey}
+                    >
+                      {tKey[0].toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Font Family Selection */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Font Style</label>
+            <div className="mb-4">
+              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Font Style</label>
               <div className="grid grid-cols-2 gap-2">
                 {fontFamilies.map((ff) => (
                   <button
@@ -1256,9 +1869,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             </div>
 
             {/* Font Size Adjuster */}
-            <div className="mb-5">
+            <div className="mb-4">
               <div className="flex justify-between items-center mb-2">
-                <label className="text-xs opacity-75 font-sans">Font Size</label>
+                <label className="text-xs opacity-75 font-sans font-semibold">Font Size</label>
                 <span className="text-xs font-mono">{fontSize}px</span>
               </div>
               <div className="flex gap-2">
@@ -1277,52 +1890,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </div>
             </div>
 
-            {/* Reading Modes (Themes) */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Reading Theme</label>
-              <div className="grid grid-cols-4 gap-1.5">
-                {Object.keys(themes).map((tKey) => {
-                  const th = themes[tKey];
-                  return (
-                    <button
-                      key={tKey}
-                      onClick={() => setTheme(tKey)}
-                      className={`h-10 rounded-lg border flex items-center justify-center text-xs font-semibold capitalize ${th.bg} ${th.text} ${
-                        theme === tKey ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
-                      }`}
-                      title={tKey}
-                    >
-                      {tKey[0].toUpperCase()}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Line Spacing */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Line Spacing</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[1.2, 1.6, 2.0].map((spacing) => (
-                  <button
-                    key={spacing}
-                    onClick={() => setLineSpacing(spacing)}
-                    className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      lineSpacing === spacing
-                        ? "bg-kindle-text text-kindle-bg border-transparent"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {spacing === 1.2 ? "Compact" : spacing === 1.6 ? "Regular" : "Wide"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Brightness Control */}
             <div className="mb-5">
               <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs opacity-75 font-sans">Brightness</label>
+                <label className="text-xs opacity-75 font-sans font-semibold">Brightness</label>
                 <span className="text-[10px] font-mono">{brightness}%</span>
               </div>
               <input
@@ -1335,102 +1906,220 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               />
             </div>
 
-            {/* Double Column Spread Toggle */}
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold">Dual Page Spread</h4>
-                <p className="text-[10px] text-kindle-text-muted">Show 2 pages side-by-side</p>
-              </div>
-              <button 
-                onClick={() => setDoubleColumns(!doubleColumns)}
-                className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-neutral-300"}`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${doubleColumns ? "translate-x-5.5" : "translate-x-0.5"}`} />
-              </button>
-            </div>
+            {/* COLLAPSIBLE SETTINGS - KEPT FULLY EXPANDED AS REQUESTED */}
+            <div className="space-y-6 border-t border-neutral-500/15 pt-4">
+              {/* Section 1: Typography Details */}
+              <div className="border-b border-neutral-500/10 pb-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-kindle-text-muted py-1.5 select-none">
+                  Typography Details
+                </h3>
+                <div className="mt-3 space-y-4">
+                  {/* Line Spacing */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Line Spacing</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[1.2, 1.6, 2.0].map((spacing) => (
+                        <button
+                          key={spacing}
+                          onClick={() => setLineSpacing(spacing)}
+                          className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
+                            lineSpacing === spacing
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {spacing === 1.2 ? "Compact" : spacing === 1.6 ? "Regular" : "Wide"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Page Overlap (KOReader-style) */}
-            <div className="mb-5">
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs opacity-75 font-sans">Page Overlap</label>
-                <span className="text-[10px] font-mono">{pageOverlap}px</span>
-              </div>
-              <p className="text-[10px] text-kindle-text-muted mb-2">Repeat the last few lines on the next page (like KOReader).</p>
-              <input
-                type="range"
-                min="0"
-                max="60"
-                step="2"
-                value={pageOverlap}
-                onChange={(e) => setPageOverlap(parseInt(e.target.value))}
-                className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
+                  {/* Letter Spacing Selection */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Letter Spacing</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: "Normal", val: "tracking-normal" },
+                        { label: "Wide", val: "tracking-wide" },
+                        { label: "Wider", val: "tracking-wider" }
+                      ].map((ls) => (
+                        <button
+                          key={ls.val}
+                          onClick={() => setLetterSpacing(ls.val)}
+                          className={`p-2 text-[10px] rounded-lg border text-center font-sans transition ${
+                            letterSpacing === ls.val
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {ls.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Letter Spacing Selection */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Letter Spacing</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: "Normal", val: "tracking-normal" },
-                  { label: "Wide", val: "tracking-wide" },
-                  { label: "Wider", val: "tracking-wider" }
-                ].map((ls) => (
-                  <button
-                    key={ls.val}
-                    onClick={() => setLetterSpacing(ls.val)}
-                    className={`p-2 text-[10px] rounded-lg border text-center font-sans transition ${
-                      letterSpacing === ls.val
-                        ? "bg-kindle-text text-kindle-bg border-transparent"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {ls.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+                  {/* Margins */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Margins</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { label: "None", val: "max-w-full" },
+                        { label: "Narrow", val: "max-w-2xl" },
+                        { label: "Wide", val: "max-w-xl" }
+                      ].map((m) => (
+                        <button
+                          key={m.val}
+                          onClick={() => setMarginSize(m.val)}
+                          className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
+                            marginSize === m.val
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            {/* Hyphenation Toggle */}
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold">Auto Hyphenation</h4>
-                <p className="text-[10px] text-kindle-text-muted font-sans">Improve alignment with hyphens</p>
+                  {/* Hyphenation Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Auto Hyphenation</h4>
+                      <p className="text-[10px] text-kindle-text-muted font-sans">Improve alignment with hyphens</p>
+                    </div>
+                    <button 
+                      onClick={() => setHyphenation(!hyphenation)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hyphenation ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                </div>
               </div>
-              <button 
-                onClick={() => setHyphenation(!hyphenation)}
-                className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-kindle-accent" : "bg-neutral-300"}`}
-              >
-                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hyphenation ? "translate-x-5.5" : "translate-x-0.5"}`} />
-              </button>
-            </div>
 
-            {/* Margins */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-2">Margins</label>
-              <div className="grid grid-cols-3 gap-1.5">
-                {[
-                  { label: "None", val: "max-w-full" },
-                  { label: "Narrow", val: "max-w-2xl" },
-                  { label: "Wide", val: "max-w-xl" }
-                ].map((m) => (
-                  <button
-                    key={m.val}
-                    onClick={() => setMarginSize(m.val)}
-                    className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
-                      marginSize === m.val
-                        ? "bg-kindle-text text-kindle-bg border-transparent"
-                        : "border-neutral-500/20 hover:border-neutral-500/50"
-                    }`}
-                  >
-                    {m.label}
-                  </button>
-                ))}
+              {/* Section 2: Layout & Media */}
+              <div className="border-b border-neutral-500/10 pb-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-kindle-text-muted py-1.5 select-none">
+                  Layout & Media
+                </h3>
+                <div className="mt-3 space-y-4">
+                  {/* Double Column Spread Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Dual Page Spread</h4>
+                      <p className="text-[10px] text-kindle-text-muted">Show 2 pages side-by-side</p>
+                    </div>
+                    <button 
+                      onClick={() => setDoubleColumns(!doubleColumns)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${doubleColumns ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+
+                  {/* Grayscale Images Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Grayscale Images</h4>
+                      <p className="text-[10px] text-kindle-text-muted">Convert all book images to b&w</p>
+                    </div>
+                    <button 
+                      onClick={() => setGrayscaleImages(!grayscaleImages)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${grayscaleImages ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${grayscaleImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+
+                  {/* Hide Images Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Hide Images</h4>
+                      <p className="text-[10px] text-kindle-text-muted">Do not display any images in book</p>
+                    </div>
+                    <button 
+                      onClick={() => setHideImages(!hideImages)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hideImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 3: Navigation & Gestures */}
+              <div className="border-b border-neutral-500/10 pb-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-kindle-text-muted py-1.5 select-none">
+                  Navigation & Gestures
+                </h3>
+                <div className="mt-3 space-y-4">
+                  {/* Page Change Control Options */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Page Turn Zones</label>
+                    <div className="space-y-1.5">
+                      {[
+                        { label: "Classic 50/50 Split", val: "fifty-fifty", desc: "Left half goes backward, right half goes forward." },
+                        { label: "Classic E-Reader", val: "classic-ereader", desc: "Left 25% goes backward, right 75% goes forward." },
+                        { label: "Margins Only (15%)", val: "margins-only", desc: "Only tapping outer 15% edges turns pages." },
+                        { label: "Floating Buttons", val: "floating-buttons", desc: "Use on-screen circular buttons to turn pages." },
+                        { label: "Swipe & Keys Only", val: "swipe-only", desc: "Disable tap-to-turn entirely." }
+                      ].map((mode) => (
+                        <button
+                          key={mode.val}
+                          onClick={() => setPageTurnMode(mode.val)}
+                          className={`w-full p-2.5 rounded-xl border text-left font-sans transition flex flex-col gap-0.5 ${
+                            pageTurnMode === mode.val
+                              ? "bg-kindle-text text-kindle-bg border-transparent"
+                              : "border-neutral-500/20 hover:border-neutral-500/50"
+                          }`}
+                        >
+                          <span className="text-xs font-semibold">{mode.label}</span>
+                          <span className={`text-[10px] ${pageTurnMode === mode.val ? "opacity-80" : "text-kindle-text-muted"}`}>{mode.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Page Transition Effect */}
+                  <div>
+                    <label className="text-[10px] opacity-75 font-sans block mb-1.5 uppercase font-bold tracking-wider">Page Transition Effect</label>
+                    <div className="flex gap-2 p-1 bg-neutral-500/10 rounded-xl font-sans text-xs">
+                      {["paper-flip", "spring", "none"].map((effect) => (
+                        <button
+                          key={effect}
+                          onClick={() => setPageTransitionEffect(effect)}
+                          className={`flex-1 py-1.5 rounded-lg transition capitalize ${pageTransitionEffect === effect ? "bg-kindle-text text-kindle-bg shadow" : "hover:bg-neutral-500/10 text-kindle-text-muted hover:text-kindle-text"}`}
+                        >
+                          {effect.replace("-", " ")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Page Overlap (KOReader-style) */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[10px] opacity-75 font-sans uppercase font-bold tracking-wider">Page Overlap</label>
+                      <span className="text-[10px] font-mono">{pageOverlap}px</span>
+                    </div>
+                    <p className="text-[10px] text-kindle-text-muted mb-2 font-sans">Repeat the last few lines on the next page.</p>
+                    <input
+                      type="range"
+                      min="0"
+                      max="60"
+                      step="2"
+                      value={pageOverlap}
+                      onChange={(e) => setPageOverlap(parseInt(e.target.value))}
+                      className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* Export Actions */}
-            <div className="pt-4 border-t border-kindle-border space-y-2">
+            <div className="pt-4 border-t border-kindle-border space-y-2 mt-4">
               <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Export</h4>
               <button
                 onClick={exportToPensieve}
@@ -1440,150 +2129,270 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </button>
             </div>
           </aside>
+          </>
         )}
-
-        {/* Sidebar: Audiobook / Text-To-Speech Player */}
+          {/* Sidebar / Popup: Voice Narrator panel */}
         {showAudiobook && (
-          <aside className={`w-full md:w-80 border-b md:border-b-0 border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col absolute md:relative inset-x-0 bottom-0 top-[25%] md:top-auto shadow-2xl md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200`}>
-            <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
-              <span className="font-sans font-semibold text-sm flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                <Headphones className="w-4 h-4" />
-                Audiobook Narrator
-              </span>
-              <button onClick={() => { stopSpeech(); setShowAudiobook(false); }} className="text-xs p-1 hover:bg-neutral-500/10 rounded">
-                Close
-              </button>
-            </div>
-
-            {/* Equalizer animation when playing */}
-            <div className="flex flex-col items-center justify-center p-6 bg-neutral-500/5 rounded-2xl border border-neutral-500/10 mb-5 relative overflow-hidden">
-              <div className="absolute top-2 right-2 flex items-center gap-1 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[9px] font-mono">
-                <Volume2 className="w-3.5 h-3.5 animate-pulse" />
-                <span>TTS</span>
-              </div>
-
-              {/* Disk / Cassette art */}
-              <div className={`w-20 h-20 rounded-full border-4 border-neutral-500/20 flex items-center justify-center bg-neutral-900 shadow-md ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
-                <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-xs">
-                  A
+          <>
+            <div className={`absolute inset-0 z-30 bg-black/10 md:hidden transition-opacity ${isAudiobookExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setIsAudiobookExpanded(false)} />
+            
+            {/* Desktop Sidebar OR Mobile Expanded Popup OR Mobile Mini Player */}
+            <aside className={`
+              w-full md:w-80 border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0
+              md:relative md:h-auto md:translate-y-0
+              ${isAudiobookExpanded ? 'fixed bottom-0 left-0 right-0 h-[60vh] z-40 rounded-t-3xl p-5' : 'fixed bottom-4 left-4 right-4 h-16 z-40 rounded-2xl shadow-xl flex-row items-center px-4 py-2 border'}
+            `}>
+              
+              {/* Mobile Mini Player Layout */}
+              {!isAudiobookExpanded && (
+                <div className="flex md:hidden items-center justify-between w-full h-full" onClick={() => setIsAudiobookExpanded(true)}>
+                  <div className="flex items-center gap-3 overflow-hidden flex-1">
+                    <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
+                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
+                        A
+                      </div>
+                    </div>
+                    <div className="min-w-0 truncate">
+                      <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate">
+                        {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
+                      </span>
+                      <p className="text-[10px] opacity-70 truncate font-serif">
+                        {currentParagraphIdx >= 0 ? `Section ${currentParagraphIdx + 1}` : "Tap to open"}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={toggleSpeechPlayback}
+                      className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-sm transform active:scale-95 transition"
+                    >
+                      {isPlayingSpeech ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                    </button>
+                    <button 
+                      onClick={() => setShowAudiobook(false)}
+                      className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:text-current rounded-full"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-
-              {/* Animated Equalizer Waves */}
-              {isPlayingSpeech ? (
-                <div className="flex items-end gap-1 h-5 mt-4">
-                  <div className="w-1 bg-amber-500 rounded-full animate-bounce" style={{ height: "60%", animationDelay: "0.1s" }} />
-                  <div className="w-1 bg-amber-600 rounded-full animate-bounce" style={{ height: "100%", animationDelay: "0.3s" }} />
-                  <div className="w-1 bg-amber-400 rounded-full animate-bounce" style={{ height: "40%", animationDelay: "0.5s" }} />
-                  <div className="w-1 bg-amber-500 rounded-full animate-bounce" style={{ height: "80%", animationDelay: "0.2s" }} />
-                  <div className="w-1 bg-amber-400 rounded-full animate-bounce" style={{ height: "50%", animationDelay: "0.4s" }} />
-                </div>
-              ) : (
-                <p className="text-[10px] opacity-60 mt-4 font-sans italic">Narration is paused</p>
               )}
 
-              <p className="text-xs font-semibold text-center mt-3 line-clamp-1 max-w-full font-serif text-current">
-                {currentParagraphIdx >= 0 ? `Reading Section ${currentParagraphIdx + 1}` : "Click play to listen"}
-              </p>
+              {/* Desktop / Expanded Mobile Layout */}
+              <div className={`w-full flex-col h-full ${!isAudiobookExpanded ? 'hidden md:flex' : 'flex'}`}>
+                {/* Drag handle for mobile */}
+                <div className="w-full flex justify-center pb-2 md:hidden" onClick={() => setIsAudiobookExpanded(false)}>
+                  <div className="w-12 h-1.5 bg-current opacity-20 rounded-full" />
+                </div>
+
+                <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center ${isAudiobookExpanded ? '' : 'p-5 md:p-0'}`}>
+                  <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
+                    <Headphones className="w-4 h-4" />
+                    Voice Narrator
+                  </span>
+                  <button 
+                    onClick={() => {
+                      if (isAudiobookExpanded) setIsAudiobookExpanded(false);
+                      else { stopSpeech(); setShowAudiobook(false); }
+                    }} 
+                    className="text-xs p-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346] dark:text-neutral-300"
+                  >
+                    {isAudiobookExpanded ? 'Collapse' : 'Done'}
+                  </button>
+                </div>
+
+                <div className={`flex-1 flex flex-col gap-4 overflow-y-auto ${isAudiobookExpanded ? '' : 'px-5 md:px-0 pb-5 md:pb-0'}`}>
+                  {/* Status Indicator */}
+                  <div className={`p-4 rounded-xl border ${activeTheme.border} bg-white/5 flex items-center gap-3`}>
+                    <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
+                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
+                        A
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1 uppercase tracking-wider">
+                        {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
+                      </span>
+                      <p className="text-xs opacity-70 truncate font-serif mt-0.5">
+                        {currentParagraphIdx >= 0 ? `Reading Section ${currentParagraphIdx + 1}` : "Click play to start"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Primary Playback controls */}
+                  <div className="flex items-center gap-2 justify-center py-2">
+                    <button
+                      onClick={() => speakParagraph(Math.max(0, currentParagraphIdx - 1))}
+                      className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
+                      title="Previous Section"
+                    >
+                      <Rewind className="w-4 h-4 text-kindle-text" />
+                    </button>
+                    <button
+                      onClick={toggleSpeechPlayback}
+                      className="w-12 h-12 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-md transform active:scale-95 transition"
+                      title={isPlayingSpeech ? "Pause" : "Play"}
+                    >
+                      {isPlayingSpeech ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                    </button>
+                    <button
+                      onClick={() => speakParagraph(currentParagraphIdx + 1)}
+                      className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
+                      title="Next Section"
+                    >
+                      <FastForward className="w-4 h-4 text-kindle-text" />
+                    </button>
+                    <button
+                      onClick={stopSpeech}
+                      className="p-2.5 rounded-lg border border-neutral-500/20 text-red-500 hover:bg-red-50/10 transition"
+                      title="Reset Speech"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Settings Block (Voice, Speed, etc) */}
+                  <div className="space-y-4 pt-2">
+                    {/* Voice selector */}
+                    <div>
+                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-60 block mb-1">Voice Accent</label>
+                      <select
+                        value={selectedVoiceName}
+                        onChange={(e) => {
+                          setSelectedVoiceName(e.target.value);
+                          if (isPlayingSpeech) {
+                            setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
+                          }
+                        }}
+                        className="w-full p-2 text-xs rounded-lg border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current"
+                      >
+                        {voices.length === 0 ? (
+                          <option value="">No System Voices</option>
+                        ) : (
+                          voices.map((v) => (
+                            <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
+                              {v.name.slice(0, 24)} ({v.lang.split("-")[0].toUpperCase()})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    {/* Speed */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Speech Speed</label>
+                        <span className="text-xs font-mono font-semibold">{speechRate}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2.0"
+                        step="0.1"
+                        value={speechRate}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          setSpeechRate(val);
+                          if (isPlayingSpeech) {
+                            setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
+                          }
+                        }}
+                        className="w-full accent-amber-500 cursor-pointer h-1 bg-neutral-500/20 rounded-lg appearance-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </>
+        )}
+
+        {/* Sidebar: Highlights & Notes */}
+        {showNotes && (
+          <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col z-40 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
+            <div className={`p-4 border-b ${activeTheme.border} flex justify-between items-center bg-black/5`}>
+              <span className="font-serif font-bold text-sm tracking-tight flex items-center gap-2 text-kindle-text">
+                <FileText className="w-4 h-4 text-emerald-500" />
+                Highlights & Notes
+              </span>
+              <button 
+                onClick={() => setShowNotes(false)}
+                className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition text-kindle-text"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
+            
+            <div className="flex-1 overflow-y-auto no-scrollbar p-5 space-y-8">
+              {/* Chapter Notes Section */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  Chapter Notes
+                </h3>
+                
+                <div className={`p-3 rounded-xl border ${activeTheme.border} bg-white/5`}>
+                  <p className="text-[10px] font-semibold text-kindle-text-muted mb-2 font-sans truncate">
+                    {chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`}
+                  </p>
+                  <textarea
+                    value={activeNoteText}
+                    onChange={(e) => setActiveNoteText(e.target.value)}
+                    placeholder="Add your notes for this chapter..."
+                    className="w-full h-24 bg-transparent resize-none text-sm font-sans focus:outline-none text-kindle-text placeholder:text-kindle-text-muted/50"
+                  />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={handleSaveChapterNote}
+                      disabled={isSavingNote || activeNoteText === chapterNotesData[currentChapterIdx]?.noteText}
+                      className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[10px] font-bold rounded-lg transition flex items-center gap-1"
+                    >
+                      {isSavingNote ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check className="w-3 h-3" />}
+                      Save
+                    </button>
+                  </div>
+                </div>
+              </div>
 
-            {/* Playback Primary Controller */}
-            <div className="flex items-center justify-center gap-4 mb-6">
-              <button
-                onClick={() => speakParagraph(Math.max(0, currentParagraphIdx - 1))}
-                className="p-2.5 rounded-full border border-neutral-500/20 hover:bg-neutral-500/10 transition"
-                title="Previous section"
-              >
-                <Rewind className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={toggleSpeechPlayback}
-                className="w-12 h-12 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-lg transform active:scale-95 transition"
-                title={isPlayingSpeech ? "Pause Narration" : "Play Narration"}
-              >
-                {isPlayingSpeech ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-0.5" />}
-              </button>
-
-              <button
-                onClick={() => speakParagraph(currentParagraphIdx + 1)}
-                className="p-2.5 rounded-full border border-neutral-500/20 hover:bg-neutral-500/10 transition"
-                title="Next section"
-              >
-                <FastForward className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={stopSpeech}
-                className="p-2.5 rounded-full border border-neutral-500/20 text-red-500 hover:bg-red-50/10 transition"
-                title="Stop & Clear"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Narrator Voice Selection */}
-            <div className="mb-5">
-              <label className="text-xs opacity-75 font-sans block mb-1.5 font-semibold">Narrator Voice</label>
-              <select
-                value={selectedVoiceName}
-                onChange={(e) => {
-                  setSelectedVoiceName(e.target.value);
-                  if (isPlayingSpeech) {
-                    setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
-                  }
-                }}
-                className="w-full p-2.5 text-xs rounded-xl border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current"
-              >
-                {voices.length === 0 ? (
-                  <option value="">No System Voices Found</option>
+              {/* Highlights Section */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
+                  <Highlighter className="w-3.5 h-3.5" />
+                  My Highlights
+                </h3>
+                
+                {highlightsData.length === 0 ? (
+                  <div className="text-center p-6 border border-dashed border-kindle-border rounded-xl">
+                    <p className="text-xs text-kindle-text-muted italic">Select text in the book to create highlights.</p>
+                  </div>
                 ) : (
-                  voices.map((v) => (
-                    <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
-                      {v.name} ({v.lang})
-                    </option>
-                  ))
+                  <div className="space-y-3">
+                    {highlightsData.map(h => (
+                      <div key={h.id} className={`p-3 rounded-xl border ${activeTheme.border} bg-white/5 relative group`}>
+                        <p className="text-[9px] font-semibold text-kindle-text-muted/60 mb-1 font-sans truncate pr-6">
+                          {h.chapterTitle}
+                        </p>
+                        <p className={`text-sm italic leading-relaxed text-kindle-text border-l-2 pl-2 ${
+                          h.color === 'yellow' ? 'border-yellow-400' :
+                          h.color === 'green' ? 'border-emerald-400' :
+                          h.color === 'blue' ? 'border-blue-400' :
+                          'border-pink-400'
+                        }`}>
+                          "{h.text}"
+                        </p>
+                        <button
+                          onClick={() => handleDeleteHighlight(h.id)}
+                          className="absolute top-2 right-2 p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition"
+                          title="Delete highlight"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
-              </select>
-            </div>
-
-            {/* Playback Speed (Rate) Slider */}
-            <div className="mb-5">
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs opacity-75 font-sans font-semibold">Reading Speed</label>
-                <span className="text-[11px] font-mono bg-amber-500/10 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded">
-                  {speechRate}x
-                </span>
               </div>
-              <input
-                type="range"
-                min="0.5"
-                max="2.0"
-                step="0.1"
-                value={speechRate}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  setSpeechRate(val);
-                  if (isPlayingSpeech) {
-                    setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
-                  }
-                }}
-                className="w-full accent-amber-500 cursor-pointer h-1 bg-neutral-500/20 rounded-lg appearance-none"
-              />
-              <div className="flex justify-between text-[9px] opacity-50 mt-1 font-mono">
-                <span>0.5x</span>
-                <span>Normal</span>
-                <span>2.0x</span>
-              </div>
-            </div>
-
-            {/* Quick Helper Text */}
-            <div className="mt-auto bg-amber-500/5 border border-amber-500/10 p-3 rounded-xl text-[10px] font-sans leading-relaxed">
-              <p className="font-semibold text-amber-600 dark:text-amber-400 mb-0.5 flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
-                Interactive Narration
-              </p>
-              As the narrator reads, the active passage is highlighted on the screen and scrolled automatically. Tap any paragraph to manually resume reading from there.
             </div>
           </aside>
         )}
@@ -1717,41 +2526,68 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               <p className="text-xs font-sans animate-pulse opacity-75">Unzipping & loading ebook chapters...</p>
             </div>
           ) : error ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-md mx-auto space-y-4">
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex flex-col items-center">
-                <AlertCircle className="w-12 h-12 text-red-500 mb-3" />
-                <h2 className="font-semibold text-base text-[#2d2a26] mb-1">Ebook Failed to Load</h2>
-                <p className="text-xs text-red-700 font-medium leading-relaxed max-w-sm mb-1">{error}</p>
-                <p className="text-[10px] text-[#7c7467] max-w-xs mt-1">
-                  This typically indicates a corrupted EPUB file or that a mirror returned an HTML page (such as a wait countdown or cloudflare block) instead of the actual book file.
-                </p>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-2.5 w-full justify-center">
-                <button 
-                  onClick={loadEpubFile}
-                  className="px-4 py-2 bg-white border border-[#e8e4de] text-[#5c5346] rounded-xl text-xs font-sans hover:bg-[#f0ede8] transition"
-                >
-                  Retry Load File
-                </button>
-                <button 
-                  onClick={async () => {
-                    try {
-                      await deleteBookFile(book.id);
-                      onClose();
-                    } catch (err) {
-                      console.error("Failed to delete local cache", err);
-                    }
-                  }}
-                  className="px-4 py-2 bg-[#5c5346] text-white rounded-xl text-xs font-sans hover:bg-[#4a4237] transition font-semibold"
-                >
-                  Delete File & Re-download
-                </button>
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-lg mx-auto">
+              <div className="w-full bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 rounded-[2rem] p-8 md:p-10 shadow-xl flex flex-col items-center animate-in fade-in zoom-in-95 duration-500">
+                <div className="w-20 h-20 bg-red-100 dark:bg-red-900/40 rounded-full flex items-center justify-center mb-6 shadow-inner">
+                  <AlertTriangle className="w-10 h-10 text-red-600 dark:text-red-400" />
+                </div>
+                
+                <h2 className="text-xl md:text-2xl font-serif font-bold text-red-900 dark:text-red-100 mb-3">
+                  Reader Initialization Failed
+                </h2>
+                
+                <div className="bg-white/50 dark:bg-black/20 rounded-2xl p-4 mb-6 border border-red-200/50 dark:border-red-800/30 w-full">
+                  <p className="text-xs md:text-sm text-red-700 dark:text-red-300 font-mono leading-relaxed break-words">
+                    Error: {error}
+                  </p>
+                </div>
+
+                <div className="space-y-4 text-left w-full">
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400 font-medium px-1 uppercase tracking-widest opacity-70">
+                    Troubleshooting Steps:
+                  </p>
+                  <ul className="grid grid-cols-1 gap-2.5">
+                    {[
+                      { icon: <RefreshCw className="w-3.5 h-3.5" />, text: "Try refreshing the page or restarting the reader." },
+                      { icon: <Database className="w-3.5 h-3.5" />, text: "Clear local cache and re-download (mirror might have failed)." },
+                      { icon: <FileText className="w-3.5 h-3.5" />, text: "Verify the file is a valid EPUB (not an HTML error page)." },
+                      { icon: <Zap className="w-3.5 h-3.5" />, text: "Check if the file is DRM protected (which we cannot decrypt)." }
+                    ].map((step, idx) => (
+                      <li key={idx} className="flex items-start gap-3 p-3 bg-white/40 dark:bg-white/5 rounded-xl border border-white/60 dark:border-white/5 shadow-sm">
+                        <span className="mt-0.5 text-red-500">{step.icon}</span>
+                        <span className="text-[11px] md:text-xs text-red-900 dark:text-red-100 font-medium leading-snug">{step.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 w-full mt-8">
+                  <button 
+                    onClick={loadEpubFile}
+                    className="flex-1 px-6 py-3 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white rounded-2xl text-xs font-bold uppercase tracking-widest hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all flex items-center justify-center gap-2"
+                  >
+                    <RefreshCw className="w-4 h-4" /> Retry
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        await deleteBookFile(book.id);
+                        onClose();
+                      } catch (err) {
+                        console.error("Failed to delete local cache", err);
+                      }
+                    }}
+                    className="flex-1 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-red-600/20 transition-all flex items-center justify-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" /> Reset & Close
+                  </button>
+                </div>
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col overflow-hidden relative">
+            <div className="flex-1 flex flex-col relative overflow-hidden h-full">
               {/* Floating highlighted text helper tip */}
-              {selectedText && (
+              {selectedText && !selectMode && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-[#1e1c19] text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-sans flex items-center gap-3 border border-[#3e3933] animate-fade-in max-w-[90vw] w-max md:max-w-3xl overflow-x-auto no-scrollbar">
                   <span className="font-medium truncate max-w-[100px] md:max-w-xs shrink-0">Selected: "{selectedText}"</span>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -1760,18 +2596,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border border-yellow-500/30"
                     >
                       <Highlighter className="w-3 h-3" /> Highlight
-                    </button>
-                    <button 
-                      onClick={() => { setShowAiAssistant(true); requestAiAssistant("explain"); }}
-                      className="bg-amber-500 hover:bg-amber-600 text-neutral-950 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                    >
-                      Explain
-                    </button>
-                    <button 
-                      onClick={() => { setShowAiAssistant(true); requestAiAssistant("summarize"); }}
-                      className="bg-neutral-800 hover:bg-neutral-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                    >
-                      Summarize
                     </button>
                     <button 
                       onClick={() => {
@@ -1794,6 +2618,29 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 </div>
               )}
 
+              {/* Select Mode Top Banner */}
+              {selectMode && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-[#1e1c19]/90 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-sans flex items-center gap-4 border border-amber-500/20 animate-fade-in w-[90%] md:w-max max-w-xl justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                    <span className="font-semibold tracking-wider text-amber-400 text-[10px] uppercase">Selection Mode Active</span>
+                    <span className="hidden md:inline text-neutral-400">| Drag text or double-click.</span>
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setSelectMode(false);
+                      setSelectedText("");
+                      setSelectionCoords(null);
+                      const sel = window.getSelection();
+                      if (sel) sel.removeAllRanges();
+                    }}
+                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition font-sans"
+                  >
+                    Exit Selection Mode
+                  </button>
+                </div>
+              )}
+
               {/* Dict Saved Feedback Indicator */}
               {dictFeedback && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-emerald-950 text-emerald-100 border border-emerald-500/40 px-4 py-2 rounded-full text-xs font-sans flex items-center gap-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-250">
@@ -1802,367 +2649,815 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 </div>
               )}
 
-              {/* The Chapter Text Container — a strict single-page viewport */}
               <div 
-                onPointerUp={handleContainerClick}
-                className="flex-1 overflow-hidden relative py-6 px-4 md:py-8 md:px-16 flex items-start justify-center select-none cursor-default"
-                style={{ 
-                  height: "calc(100vh - 185px)",
-                  perspective: "1500px",
-                  transformStyle: "preserve-3d"
-                }}
+                ref={viewerRef}
+                onPointerDown={handlePointerDown}
+                onPointerUp={handlePointerUp}
+                className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start select-text cursor-text mx-auto ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
-                {/* Visual page slide feedback */}
-                <AnimatePresence mode="popLayout">
-                  {tapFeedback && (
-                    <motion.div
-                      key={tapFeedback}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 0.15 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.35, ease: "easeOut" }}
-                      className={`absolute inset-y-0 pointer-events-none ${
-                        tapFeedback === "next" ? "right-0" : "left-0"
-                      } w-1/4 pointer-events-none z-10 bg-gradient-to-r ${
-                        tapFeedback === "next" 
-                          ? "from-transparent to-amber-500/40" 
-                          : "from-amber-500/40 to-transparent"
-                      }`}
-                    />
-                  )}
-                </AnimatePresence>
+                <div className="w-full h-full overflow-hidden relative flex items-start justify-start" style={{ perspective: "1200px" }}>
+                  {/* Turn.js style 3D page flip transition */}
+                  {pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && (
+                    <div 
+                      className="absolute inset-0 pointer-events-none z-50 overflow-hidden"
+                      style={{ perspective: "2500px" }}
+                    >
+                      <motion.div
+                        key={`page-turn-${turningChapterIdx}-${turningPageNum}-${currentPageNum}`}
+                        initial={{ rotateY: 0 }}
+                        animate={{ rotateY: turnDirection === "next" ? -180 : 180 }}
+                        transition={{ duration: 0.8, ease: [0.25, 1, 0.5, 1] }}
+                        onAnimationComplete={() => setIsTurningPage(false)}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          bottom: 0,
+                          left: useDoubleColumns 
+                            ? (turnDirection === "next" ? "calc(50% + 20px)" : "0")
+                            : "0",
+                          width: useDoubleColumns ? `${(containerWidth - 40) / 2}px` : "100%",
+                          transformOrigin: useDoubleColumns
+                            ? (turnDirection === "next" ? "left center" : "right center")
+                            : "left center",
+                          transformStyle: "preserve-3d",
+                        }}
+                      >
+                        {/* Front Face: Old Page */}
+                        <div
+                          className={`absolute inset-0 overflow-hidden rounded-md ${activeTheme.bg} ${activeTheme.text}`}
+                          style={{
+                            backfaceVisibility: "hidden",
+                            transform: "rotateY(0deg)",
+                            borderLeft: useDoubleColumns && turnDirection === "next" ? `1px solid ${activeTheme.border.replace('border-', '') || 'rgba(0,0,0,0.1)'}` : "none",
+                            borderRight: useDoubleColumns && turnDirection === "prev" ? `1px solid ${activeTheme.border.replace('border-', '') || 'rgba(0,0,0,0.1)'}` : "none",
+                            boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+                          }}
+                        >
+                          <div
+                            className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"}`}
+                            style={{
+                              fontSize: `${fontSize}px`,
+                              lineHeight: lineSpacing,
+                              columnWidth: `${useDoubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
+                              columnGap: "40px",
+                              height: "100%",
+                              columnFill: "auto",
+                              overflow: "visible",
+                              transform: `translateX(-${(turningPageNum - 1) * pageStepRef.current}px)`,
+                              paddingTop: "12px",
+                              paddingBottom: "12px",
+                              
+                              
+                            }}
+                          >
+                            <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
+                              <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">
+                                Chapter {turningChapterIdx + 1} of {chapters.length}
+                              </span>
+                              <h2 className="font-serif font-bold text-2xl mt-1 leading-tight tracking-tight">
+                                {chapters[turningChapterIdx]?.title}
+                              </h2>
+                            </div>
+                            <div 
+                              className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words`}
+                              dangerouslySetInnerHTML={{ __html: chapters[turningChapterIdx]?.content || "" }}
+                              onClick={(e) => {
+                                const target = e.target as HTMLElement;
+                                const anchor = target.closest("a");
+                                if (anchor) {
+                                  e.preventDefault();
+                                  const href = anchor.getAttribute("href") || "";
+                                  if (href.startsWith("http")) {
+                                    setExternalLinkToOpen(href);
+                                  }
+                                }
+                              }}
+                            />
+                          </div>
+                          {/* Shading / Shadow Overlay during curl fold */}
+                          <motion.div
+                            className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/25 via-transparent to-black/10"
+                            animate={{ opacity: [0, 0.45, 0.15] }}
+                            transition={{ duration: 0.8 }}
+                          />
+                        </div>
 
-                {/* 3D Page turn folding shadow overlay */}
-                {tapFeedback && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: [0, 0.25, 0] }}
-                    transition={{ duration: 0.35, ease: "easeInOut" }}
-                    className={`absolute inset-0 pointer-events-none z-20 ${
-                      tapFeedback === "next"
-                        ? "bg-gradient-to-l from-black/25 via-transparent to-black/5"
-                        : "bg-gradient-to-r from-black/25 via-transparent to-black/5"
-                    }`}
-                  />
+                        {/* Back Face: New Page */}
+                        <div
+                          className={`absolute inset-0 overflow-hidden rounded-md ${activeTheme.bg} ${activeTheme.text}`}
+                          style={{
+                            backfaceVisibility: "hidden",
+                            transform: "rotateY(180deg)",
+                            borderLeft: useDoubleColumns && turnDirection === "prev" ? `1px solid ${activeTheme.border.replace('border-', '') || 'rgba(0,0,0,0.1)'}` : "none",
+                            borderRight: useDoubleColumns && turnDirection === "next" ? `1px solid ${activeTheme.border.replace('border-', '') || 'rgba(0,0,0,0.1)'}` : "none",
+                            boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+                          }}
+                        >
+                          <div
+                            className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"}`}
+                            style={{
+                              fontSize: `${fontSize}px`,
+                              lineHeight: lineSpacing,
+                              columnWidth: `${useDoubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
+                              columnGap: "40px",
+                              height: "100%",
+                              columnFill: "auto",
+                              overflow: "visible",
+                              transform: `translateX(-${
+                                useDoubleColumns && turnDirection === "prev"
+                                  ? (currentPageNum - 1) * pageStepRef.current + ((containerWidth - 40) / 2 + 40)
+                                  : (currentPageNum - 1) * pageStepRef.current
+                              }px)`,
+                              paddingTop: "12px",
+                              paddingBottom: "12px",
+                              
+                              
+                            }}
+                          >
+                            <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
+                              <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">
+                                Chapter {currentChapterIdx + 1} of {chapters.length}
+                              </span>
+                              <h2 className="font-serif font-bold text-2xl mt-1 leading-tight tracking-tight">
+                                {chapters[currentChapterIdx]?.title}
+                              </h2>
+                            </div>
+                            <div 
+                              className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words`}
+                              dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
+                              onClick={(e) => {
+                                const target = e.target as HTMLElement;
+                                const anchor = target.closest("a");
+                                if (anchor) {
+                                  e.preventDefault();
+                                  const href = anchor.getAttribute("href") || "";
+                                  if (href.startsWith("http")) {
+                                    setExternalLinkToOpen(href);
+                                  }
+                                }
+                              }}
+                            />
+                          </div>
+                          {/* Shading / Shadow Overlay during curl fold */}
+                          <motion.div
+                            className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/15 via-transparent to-black/30"
+                            animate={{ opacity: [0.15, 0.45, 0] }}
+                            transition={{ duration: 0.8 }}
+                          />
+                        </div>
+                      </motion.div>
+                    </div>
+                  )}
+
+                  {/* Visual page slide feedback */}
+                  <AnimatePresence mode="popLayout">
+                    {tapFeedback && (
+                      <motion.div
+                        key={tapFeedback}
+                        initial={{ opacity: 0, x: tapFeedback === "next" ? 120 : -120 }}
+                        animate={{ opacity: 0.15, x: 0 }}
+                        exit={{ opacity: 0, x: tapFeedback === "next" ? -60 : 60 }}
+                        transition={{ duration: 0.35, ease: "easeOut" }}
+                        className={`absolute inset-y-0 pointer-events-none ${
+                          tapFeedback === "next" ? "right-0" : "left-0"
+                        } w-1/4 pointer-events-none z-10 bg-gradient-to-r ${
+                          tapFeedback === "next" 
+                            ? "from-transparent to-current" 
+                            : "from-current to-transparent"
+                        }`}
+                        style={{ opacity: 0.05 }}
+                      />
+                    )}
+                  </AnimatePresence>
+                  <motion.article 
+                    ref={contentRef}
+                    animate={{ 
+                      x: -(currentPageNum - 1) * pageStepRef.current,
+                      rotateY: 0,
+                      skewY: 0,
+                      scaleX: 1
+                    }}
+                    transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
+                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
+                    style={{
+                      fontSize: `${fontSize}px`,
+                      lineHeight: lineSpacing,
+                      columnWidth: `${useDoubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
+                      columnGap: '40px',
+                      height: '100%',
+                      columnFill: 'auto',
+                      // Strictly clip to the current page so exactly one page (or one
+                      // 2-page spread) is visible at a time — true page-by-page reading.
+                      overflow: 'visible',
+                      // Center "book spine" gutter between the two columns in 2-col mode
+                      boxShadow: useDoubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none',
+                      transformOrigin: flipDirection === "next" ? "left center" : "right center"
+                    }}
+                  >
+                    <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
+                      <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">
+                        Chapter {currentChapterIdx + 1} of {chapters.length}
+                      </span>
+                      <h2 className="font-serif font-bold text-2xl mt-1 leading-tight tracking-tight">
+                        {chapters[currentChapterIdx]?.title}
+                      </h2>
+                    </div>
+
+                    {/* EPUB HTML Content Injection */}
+                    <div 
+                      id="epub-text-viewer"
+                      className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
+                      dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        const anchor = target.closest("a");
+                        if (anchor) {
+                          e.preventDefault();
+                          const href = anchor.getAttribute("href") || "";
+                          if (href.startsWith("http")) {
+                            setExternalLinkToOpen(href);
+                          }
+                        }
+                      }}
+                    />
+
+                    {/* Bottom Controls */}
+                    <div className={`mt-12 pt-6 border-t ${activeTheme.border} flex justify-between items-center text-xs font-sans opacity-70`}>
+                      <span>End of {chapters[currentChapterIdx]?.title}</span>
+                      <span>{Math.round((currentChapterIdx / chapters.length) * 100)}% read</span>
+                    </div>
+                  </motion.article>
+                </div>
+
+                {/* External Link Intercept Dialog */}
+                {externalLinkToOpen && (
+                  <div className="absolute inset-0 z-[100] flex items-center justify-center p-4 backdrop-blur-sm bg-black/60 animate-in fade-in duration-200">
+                    <div className={`relative w-full max-w-md p-6 ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl flex flex-col space-y-4 animate-in zoom-in-95 duration-250 text-left`}>
+                      <div className="flex items-start gap-3">
+                        <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                          <Globe className="w-6 h-6 animate-pulse" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base font-bold font-sans tracking-tight">External Link Intercepted</h3>
+                          <p className="text-xs opacity-60 font-sans mt-0.5">To prevent accidental navigation while reading, we have blocked direct redirection.</p>
+                        </div>
+                      </div>
+
+                      <div className="bg-current/[0.03] border border-current/10 p-3 rounded-xl font-mono text-xs break-all select-all select-text flex items-center gap-2">
+                        <span className="opacity-80 flex-1">{externalLinkToOpen}</span>
+                      </div>
+
+                      <p className="text-xs opacity-85 leading-relaxed font-sans">
+                        Would you like to open this website in a new browser tab?
+                      </p>
+
+                      <div className="flex items-center gap-3 pt-2">
+                        <button
+                          onClick={() => setExternalLinkToOpen(null)}
+                          className="flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl border border-current/20 hover:bg-current/5 transition"
+                        >
+                          Cancel
+                        </button>
+                        <a
+                          href={externalLinkToOpen}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setExternalLinkToOpen(null)}
+                          className="flex-1 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-center rounded-xl bg-amber-500 text-white hover:bg-amber-600 transition shadow-sm font-sans"
+                        >
+                          Open Site
+                        </a>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
-                <motion.article 
-                  ref={contentRef}
-                  animate={
-                    tapFeedback === "next"
-                      ? {
-                          x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)),
-                          rotateY: [0, -12, 0],
-                          skewY: [0, 1.2, 0],
-                          scale: [1, 0.98, 1],
-                        }
-                      : tapFeedback === "prev"
-                      ? {
-                          x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)),
-                          rotateY: [0, 12, 0],
-                          skewY: [0, -1.2, 0],
-                          scale: [1, 0.98, 1],
-                        }
-                      : {
-                          x: -(((currentPageNum - 1) * pageStepRef.current) - (currentPageNum > 1 ? pageOverlap : 0)),
-                          rotateY: 0,
-                          skewY: 0,
-                          scale: 1,
-                        }
-                  }
-                  transition={
-                    shouldAnimate
-                      ? tapFeedback
-                        ? { duration: 0.35, ease: "easeInOut", times: [0, 0.5, 1] }
-                        : { type: "tween", ease: "easeOut", duration: 0.2 }
-                      : { duration: 0 }
-                  }
-                  className={`w-full mx-auto ${marginSize} ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text`}
-                  style={{
-                    fontSize: `${fontSize}px`,
-                    lineHeight: lineSpacing,
-                    columnWidth: `${doubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
-                    columnGap: '40px',
-                    height: '100%',
-                    columnFill: 'auto',
-                    // Strictly clip to the current page so exactly one page (or one
-                    // 2-page spread) is visible at a time — true page-by-page reading.
-                    overflow: 'hidden',
-                    // Center "book spine" gutter between the two columns in 2-col mode
-                    boxShadow: doubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none',
-                    transformOrigin: tapFeedback === "next" ? "left center" : tapFeedback === "prev" ? "right center" : "center center",
-                    willChange: "transform"
-                  }}
-                >
-                  <div className={`mb-6 border-b ${activeTheme.border} pb-4`} style={{ columnSpan: "all" }}>
-                    <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">
-                      Chapter {currentChapterIdx + 1} of {chapters.length}
-                    </span>
-                    <h2 className="font-serif font-bold text-2xl mt-1 leading-tight tracking-tight">
-                      {chapters[currentChapterIdx]?.title}
-                    </h2>
-                  </div>
+                {/* Offline Selection Analyzer Sheet */}
+                {showAnalyzer && (
+                  <div className="absolute inset-0 z-[80] flex items-end justify-center p-0 md:p-6 animate-in fade-in duration-200">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowAnalyzer(false)} />
+                    <div className={`relative w-full md:max-w-2xl h-[75vh] md:h-auto md:max-h-[85vh] ${activeTheme.card} ${activeTheme.text} border-t md:border ${activeTheme.border} rounded-t-3xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300`}>
+                      
+                      {/* Panel Header */}
+                      <div className="px-6 py-4 border-b border-current/10 flex justify-between items-center bg-current/[0.02]">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-5 h-5 text-amber-500 animate-pulse" />
+                          <div>
+                            <h3 className="text-sm font-black uppercase tracking-widest font-sans">Offline Selection Analyzer</h3>
+                            <p className="text-[10px] opacity-50 font-sans">100% offline dictionary & stats breakdown</p>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => setShowAnalyzer(false)} 
+                          className="p-2 hover:bg-current/5 rounded-xl transition"
+                          title="Close Analyzer"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
 
-                  {/* EPUB HTML Content Injection */}
-                  <div 
-                    id="epub-text-viewer"
-                    className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
-                    dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
-                  />
+                      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar text-left">
+                        {/* 1. Selected passage display with clickable words */}
+                        <div className="space-y-2">
+                          <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 font-sans">Selected Passage (Tap any word to look up definition)</p>
+                          <div className="bg-current/[0.03] border border-current/10 p-5 rounded-2xl">
+                            <p className="text-sm leading-relaxed font-serif italic text-center md:text-left flex flex-wrap gap-x-1.5 gap-y-1 justify-center md:justify-start">
+                              {analyzedText.split(/\s+/).map((word, idx) => {
+                                const cleanWord = word.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"'“”—]/g, "");
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={async () => {
+                                      const entry = await lookupWord(cleanWord);
+                                      if (entry) {
+                                        setActiveWordDefinition(entry);
+                                      } else {
+                                        setActiveWordDefinition({
+                                          word: cleanWord,
+                                          definition: "No offline definition found in StarDict dictionary. Save custom entry to add it!",
+                                          partOfSpeech: "unknown"
+                                        });
+                                      }
+                                    }}
+                                    className="hover:bg-amber-500/20 hover:text-amber-600 dark:hover:text-amber-400 px-1 rounded transition duration-150 border-b border-dashed border-current/20 hover:border-transparent font-medium font-serif"
+                                  >
+                                    {word}
+                                  </button>
+                                );
+                              })}
+                            </p>
+                          </div>
+                        </div>
 
-                  {/* Bottom Controls */}
-                  <div className={`mt-12 pt-6 border-t ${activeTheme.border} flex justify-between items-center text-xs font-sans opacity-70`} style={{ columnSpan: "all" }}>
-                    <span>End of {chapters[currentChapterIdx]?.title}</span>
-                    <span>{Math.round((currentChapterIdx / chapters.length) * 100)}% read</span>
+                        {/* 2. Focused Word Definition Area */}
+                        {activeWordDefinition && (
+                          <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl animate-in zoom-in-95 duration-150 relative">
+                            <button 
+                              onClick={() => setActiveWordDefinition(null)}
+                              className="absolute top-2 right-2 p-1 text-xs opacity-50 hover:opacity-100"
+                              title="Dismiss"
+                            >
+                              ✕
+                            </button>
+                            <span className="text-[8px] uppercase tracking-widest font-bold text-amber-600 dark:text-amber-400 font-sans">Quick Offline Lookup</span>
+                            <div className="flex items-baseline gap-2 mt-0.5 mb-1.5">
+                              <h4 className="text-base font-extrabold font-serif">{activeWordDefinition.word}</h4>
+                              {activeWordDefinition.partOfSpeech && (
+                                <span className="text-[10px] italic opacity-60 font-mono">({activeWordDefinition.partOfSpeech})</span>
+                              )}
+                            </div>
+                            <p className="text-xs leading-relaxed font-sans opacity-85">{activeWordDefinition.definition}</p>
+                            {activeWordDefinition.example && (
+                              <p className="text-[11px] italic opacity-60 mt-1 border-l-2 border-amber-500/30 pl-3 font-sans">"{activeWordDefinition.example}"</p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 3. Text statistics metrics */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="bg-current/[0.02] border border-current/5 p-3 rounded-xl text-center">
+                            <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 font-sans">Words</p>
+                            <p className="text-lg font-black font-mono mt-0.5">{analyzedText.split(/\s+/).filter(Boolean).length}</p>
+                          </div>
+                          <div className="bg-current/[0.02] border border-current/5 p-3 rounded-xl text-center">
+                            <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 font-sans">Characters</p>
+                            <p className="text-lg font-black font-mono mt-0.5">{analyzedText.length}</p>
+                          </div>
+                          <div className="bg-current/[0.02] border border-current/5 p-3 rounded-xl text-center">
+                            <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 font-sans">Est. Reading</p>
+                            <p className="text-xs font-bold font-sans mt-2">
+                              {Math.max(1, Math.round(analyzedText.split(/\s+/).length / 3))} seconds
+                            </p>
+                          </div>
+                          <div className="bg-current/[0.02] border border-current/5 p-3 rounded-xl text-center">
+                            <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 font-sans">Complexity</p>
+                            <p className="text-xs font-bold font-sans mt-2">
+                              {analyzedText.split(/\s+/).length > 15 ? "Moderate" : "Simple"}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* 4. Vocabulary Breakdown */}
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[9px] uppercase font-bold tracking-widest opacity-40 font-sans">Vocabulary Key Terms ({vocabBreakdown.length})</p>
+                            <span className="text-[8px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-widest font-sans">Matched StarDict Dictionaries</span>
+                          </div>
+
+                          {isAnalyzing ? (
+                            <div className="flex items-center justify-center py-8 gap-2">
+                              <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                              <span className="text-xs font-sans opacity-60">Scanning sentence terms...</span>
+                            </div>
+                          ) : vocabBreakdown.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {vocabBreakdown.map(({ word, entry }, index) => (
+                                <div 
+                                  key={index}
+                                  onClick={() => setActiveWordDefinition(entry)}
+                                  className="bg-current/[0.02] hover:bg-current/[0.04] border border-current/5 hover:border-current/10 p-4 rounded-xl cursor-pointer transition duration-150 group"
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <h5 className="font-extrabold font-serif text-sm group-hover:text-amber-500 transition">{word}</h5>
+                                    {entry.partOfSpeech && (
+                                      <span className="text-[9px] font-mono px-1.5 py-0.5 bg-current/5 rounded uppercase opacity-60">{entry.partOfSpeech}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] leading-relaxed mt-1.5 opacity-80 line-clamp-3 font-sans text-left">{entry.definition}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="bg-current/[0.01] border border-current/5 p-8 rounded-2xl text-center">
+                              <p className="text-xs opacity-50 font-sans">No complex vocabulary terms found in StarDict dictionary matching this passage.</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Panel Footer */}
+                      <div className="px-6 py-4 border-t border-current/10 flex justify-between gap-3 bg-current/[0.01]">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(analyzedText);
+                            setDictFeedback("Copied passage!");
+                            setTimeout(() => setDictFeedback(null), 2000);
+                          }}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl border border-current/15 text-xs font-bold uppercase tracking-widest hover:bg-current/5 transition font-sans"
+                        >
+                          <Copy className="w-4 h-4" /> Copy Passage
+                        </button>
+                        <button
+                          onClick={() => setShowAnalyzer(false)}
+                          className="flex-1 py-3 px-4 rounded-xl bg-kindle-text text-kindle-bg hover:opacity-90 font-bold uppercase tracking-widest text-xs transition font-sans"
+                        >
+                          Done Analyzing
+                        </button>
+                      </div>
+
+                    </div>
                   </div>
-                </motion.article>
+                )}
               </div>
+
+
 
               {/* Footer Chapter Navigate Buttons */}
               <footer className={`px-6 py-4 border-t ${activeTheme.border} flex items-center justify-between font-sans shrink-0`}>
-                <button
-                  id="prev-chapter-btn"
-                  disabled={currentChapterIdx === 0 && currentPageNum === 1}
-                  onClick={handlePrevPage}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-neutral-500/10 transition"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                  <span>Prev Page</span>
-                </button>
+                {!(pageTurnMode === "fifty-fifty" || pageTurnMode === "classic-ereader" || pageTurnMode === "margins-only") ? (
+                  <button
+                    id="prev-chapter-btn"
+                    disabled={currentChapterIdx === 0 && currentPageNum === 1}
+                    onClick={handlePrevPage}
+                    className={`flex items-center justify-center p-3 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
+                      theme === "dark"
+                        ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
+                        : "bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50"
+                    } disabled:opacity-30`}
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                ) : (
+                  <div className="w-[100px] hidden sm:block" />
+                )}
 
                 <div className="flex flex-col items-center">
                   <div className="w-48 bg-neutral-200 h-1 rounded-full overflow-hidden mb-1.5">
                     <div 
                       className="bg-kindle-text h-full transition-all duration-500" 
-                      style={{ width: `${Math.round(((currentChapterIdx * totalPages + (currentPageNum - 1)) / (chapters.length * totalPages || 1)) * 100)}%` }}
+                      style={{ 
+                        width: `${Math.min(100, Math.max(0, Math.round(
+                          ((currentChapterIdx + (currentPageNum - 1) / (totalPages || 1)) / (chapters.length || 1)) * 100
+                        )))}%` 
+                      }}
                     />
                   </div>
                   <span className="text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90">
-                    page {currentChapterIdx + 1}.{currentPageNum} of {totalPages} • {Math.round(((currentChapterIdx * totalPages + (currentPageNum - 1)) / (chapters.length * totalPages || 1)) * 100)}%
+                    page {currentPageNum} of {totalPages} (Ch. {currentChapterIdx + 1}) • {Math.min(100, Math.max(0, Math.round(
+                    ((currentChapterIdx + (currentPageNum - 1) / (totalPages || 1)) / (chapters.length || 1)) * 100
+                  )))}%
                   </span>
                 </div>
 
-                <button
-                  onClick={() => setDoubleColumns(!doubleColumns)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
-                  title="Toggle two-column spread (KOReader style)"
-                >
-                  <Layout className="w-3.5 h-3.5" /> 2-Page
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setDoubleColumns(!doubleColumns)}
+                    className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
+                    title="Toggle two-column spread (KOReader style)"
+                  >
+                    <Layout className="w-3.5 h-3.5" /> 2-Page
+                  </button>
 
-                <button
-                  id="next-chapter-btn"
-                  disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
-                  onClick={handleNextPage}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 hover:bg-kindle-accent transition shadow-sm"
-                >
-                  <span>Next Page</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
+                  {!(pageTurnMode === "fifty-fifty" || pageTurnMode === "classic-ereader" || pageTurnMode === "margins-only") && (
+                    <button
+                      id="next-chapter-btn"
+                      disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
+                      onClick={handleNextPage}
+                      className={`flex items-center justify-center p-3 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
+                        theme === "dark"
+                          ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
+                          : "bg-neutral-900 text-white border-neutral-800 hover:bg-neutral-800"
+                      } disabled:opacity-30`}
+                      title="Next Page"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
               </footer>
             </div>
           )}
         </main>
-
-        {/* Sidebar: Highlights & Notes */}
-        {showNotes && (
-          <aside className={`w-80 md:w-96 border-l ${activeTheme.border} ${activeTheme.card} flex flex-col z-10 animate-in slide-in-from-right duration-250`}>
-            <div className={`p-4 border-b ${activeTheme.border} flex justify-between items-center bg-black/5`}>
-              <span className="font-serif font-bold text-sm tracking-tight flex items-center gap-2 text-kindle-text">
-                <FileText className="w-4 h-4 text-emerald-500" />
-                Highlights & Notes
-              </span>
-              <button 
-                onClick={() => setShowNotes(false)}
-                className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-full transition text-kindle-text"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto no-scrollbar p-5 space-y-8">
-              {/* Chapter Notes Section */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
-                  <BookOpen className="w-3.5 h-3.5" />
-                  Chapter Notes
-                </h3>
-                
-                <div className={`p-3 rounded-xl border ${activeTheme.border} bg-white/5`}>
-                  <p className="text-[10px] font-semibold text-kindle-text-muted mb-2 font-sans truncate">
-                    {chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`}
-                  </p>
-                  <textarea
-                    value={activeNoteText}
-                    onChange={(e) => setActiveNoteText(e.target.value)}
-                    placeholder="Add your notes for this chapter..."
-                    className="w-full h-24 bg-transparent resize-none text-sm font-sans focus:outline-none text-kindle-text placeholder:text-kindle-text-muted/50"
-                  />
-                  <div className="flex justify-end mt-2">
-                    <button
-                      onClick={handleSaveChapterNote}
-                      disabled={isSavingNote || activeNoteText === chapterNotesData[currentChapterIdx]?.noteText}
-                      className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-[10px] font-bold rounded-lg transition flex items-center gap-1"
-                    >
-                      {isSavingNote ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check className="w-3 h-3" />}
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Highlights Section */}
-              <div className="space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
-                  <Highlighter className="w-3.5 h-3.5" />
-                  My Highlights
-                </h3>
-                
-                {highlightsData.length === 0 ? (
-                  <div className="text-center p-6 border border-dashed border-kindle-border rounded-xl">
-                    <p className="text-xs text-kindle-text-muted italic">Select text in the book to create highlights.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {highlightsData.map(h => (
-                      <div key={h.id} className={`p-3 rounded-xl border ${activeTheme.border} bg-white/5 relative group`}>
-                        <p className="text-[9px] font-semibold text-kindle-text-muted/60 mb-1 font-sans truncate pr-6">
-                          {h.chapterTitle}
-                        </p>
-                        <p className={`text-sm italic leading-relaxed text-kindle-text border-l-2 pl-2 ${
-                          h.color === 'yellow' ? 'border-yellow-400' :
-                          h.color === 'green' ? 'border-emerald-400' :
-                          h.color === 'blue' ? 'border-blue-400' :
-                          'border-pink-400'
-                        }`}>
-                          "{h.text}"
-                        </p>
-                        <button
-                          onClick={() => handleDeleteHighlight(h.id)}
-                          className="absolute top-2 right-2 p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition"
-                          title="Delete highlight"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </aside>
-        )}
-
-        {/* Sidebar: Gemini AI Assistant */}
-        {showAiAssistant && (
-          <aside className={`w-80 md:w-96 border-l ${activeTheme.border} ${activeTheme.card} flex flex-col z-10 animate-in slide-in-from-right duration-250`}>
-            <div className={`p-5 border-b ${activeTheme.border} flex justify-between items-center`}>
-              <span className="font-serif font-bold text-sm tracking-tight flex items-center gap-2 text-kindle-text">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                Kora Companion
-              </span>
-              <button 
-                onClick={() => setShowAiAssistant(false)} 
-                className="p-1.5 rounded-lg hover:bg-neutral-500/10 text-xs text-kindle-text font-medium"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-5 space-y-5 custom-scrollbar">
-              {/* Context helper */}
-              <div className="bg-[#fcfbf9] dark:bg-neutral-900 rounded-2xl p-4 border border-kindle-border text-[11px] font-sans leading-relaxed text-kindle-text-muted shadow-sm">
-                <div className="font-bold text-kindle-text mb-1.5 flex items-center gap-2 uppercase tracking-widest text-[9px]">
-                  <Info className="w-3.5 h-3.5 text-amber-500" />
-                  E-Ink Intelligent Engine
-                </div>
-                Highlight any word or passage in the text to prompt instant explanation, definition, or summarization. You can also converse directly with Kora below.
-              </div>
-
-              {selectedText && (
-                <div className="p-4 rounded-xl border border-amber-500/20 text-xs font-sans space-y-2 bg-amber-500/5">
-                  <div className="font-bold uppercase tracking-widest text-[9px] text-amber-600 dark:text-amber-400">Target Passage</div>
-                  <p className="italic line-clamp-3 text-kindle-text">"{selectedText}"</p>
-                  <button 
-                    onClick={() => setSelectedText("")} 
-                    className="text-[10px] font-semibold text-neutral-500 hover:text-kindle-text underline block pt-1"
-                  >
-                    Clear selection
-                  </button>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <button
-                  onClick={() => requestAiAssistant("explain")}
-                  disabled={aiLoading}
-                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-500/5 active:bg-neutral-500/10 transition disabled:opacity-30 text-kindle-text"
-                >
-                  Explain
-                </button>
-                <button
-                  onClick={() => requestAiAssistant("summarize")}
-                  disabled={aiLoading}
-                  className="p-3 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-neutral-500/5 active:bg-neutral-500/10 transition disabled:opacity-30 text-kindle-text"
-                >
-                  Summarize
-                </button>
-              </div>
-
-              {/* Core AI Output */}
-              <div className={`p-5 rounded-2xl border border-kindle-border min-h-[220px] relative font-sans text-xs flex flex-col justify-between bg-white dark:bg-neutral-950 shadow-inner overflow-hidden`}>
-                {aiLoading ? (
-                  <div className="absolute inset-0 bg-white/95 dark:bg-neutral-950/95 flex flex-col items-center justify-center gap-3 z-10 rounded-2xl animate-fade-in">
-                    <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest animate-pulse text-kindle-text-muted">Analyzing Text...</span>
-                  </div>
-                ) : null}
-
-                <div className="prose prose-sm dark:prose-invert space-y-3 max-w-full leading-relaxed overflow-x-hidden text-kindle-text">
-                  {aiResponse ? (
-                    <div className="whitespace-pre-wrap leading-relaxed select-text font-serif text-[13px]">{aiResponse}</div>
-                  ) : (
-                    <div className="text-center py-12 text-kindle-text-muted font-medium opacity-60 italic text-xs">
-                      Highlight book content or use the input below to trigger Kora insights.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Custom Ask Query Box */}
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (customAiQuery.trim()) {
-                    requestAiAssistant("chat", customAiQuery);
-                    setCustomAiQuery("");
-                  }
-                }}
-                className="space-y-3 pt-2"
-              >
-                <label className="text-[10px] font-bold uppercase tracking-widest block text-kindle-text-muted">Direct Query</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={customAiQuery}
-                    onChange={(e) => setCustomAiQuery(e.target.value)}
-                    placeholder="Search characters, themes, style..."
-                    className="flex-1 p-3 rounded-xl text-xs border border-kindle-border focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white dark:bg-neutral-900 text-kindle-text"
-                  />
-                  <button
-                    type="submit"
-                    disabled={aiLoading || !customAiQuery.trim()}
-                    className="bg-kindle-text hover:bg-[#2c2a26] disabled:opacity-40 text-kindle-bg px-5 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-sm transition"
-                  >
-                    Send
-                  </button>
-                </div>
-              </form>
-            </div>
-          </aside>
-        )}
       </div>
+
+      {/* Kindle-Style Selection Pin Handles rendered at top level to avoid overflow clipping and CSS transform offsets */}
+      {selectMode && selectionPins.start && (
+        <div 
+          className="fixed bg-amber-500 z-[9999] pointer-events-none transition-all duration-75"
+          style={{
+            left: `${selectionPins.start.x}px`,
+            top: `${selectionPins.start.y - 4}px`,
+            width: "3px",
+            height: `${selectionPins.start.height + 4}px`
+          }}
+        >
+          {/* Start Pin Handle with Enlarged Touch/Pointer Target */}
+          <div 
+            onPointerDown={(e) => handlePinDragStart(e, 'start')}
+            onPointerMove={handlePinDragMove}
+            onPointerUp={handlePinDragEnd}
+            onPointerCancel={handlePinDragEnd}
+            className="absolute -top-6 -left-5 w-10 h-10 flex items-center justify-center pointer-events-auto cursor-col-resize active:scale-110 transition-transform"
+            style={{ touchAction: "none" }}
+            title="Drag to adjust start"
+          >
+            {/* Visual Teardrop/Balloon Pin resembling Kindle/iOS/Android select pin */}
+            <div className="w-4 h-4 rounded-full rounded-tr-none bg-amber-500 shadow-lg border-2 border-white dark:border-neutral-900 rotate-45 transform" />
+          </div>
+        </div>
+      )}
+      {selectMode && selectionPins.end && (
+        <div 
+          className="fixed bg-amber-500 z-[9999] pointer-events-none transition-all duration-75"
+          style={{
+            left: `${selectionPins.end.x}px`,
+            top: `${selectionPins.end.y}px`,
+            width: "3px",
+            height: `${selectionPins.end.height + 4}px`
+          }}
+        >
+          {/* End Pin Handle with Enlarged Touch/Pointer Target */}
+          <div 
+            onPointerDown={(e) => handlePinDragStart(e, 'end')}
+            onPointerMove={handlePinDragMove}
+            onPointerUp={handlePinDragEnd}
+            onPointerCancel={handlePinDragEnd}
+            className="absolute -bottom-6 -left-5 w-10 h-10 flex items-center justify-center pointer-events-auto cursor-col-resize active:scale-110 transition-transform"
+            style={{ touchAction: "none" }}
+            title="Drag to adjust end"
+          >
+            {/* Visual Teardrop/Balloon Pin resembling Kindle/iOS/Android select pin */}
+            <div className="w-4 h-4 rounded-full rounded-bl-none bg-amber-500 shadow-lg border-2 border-white dark:border-neutral-900 -rotate-45 transform" />
+          </div>
+        </div>
+      )}
+
+      {/* Custom Floating Context Selection Toolbar */}
+      {selectMode && selectedText && !isDraggingSelection && (
+        <div 
+          className="fixed z-[9999] bg-[#1e1c19]/95 backdrop-blur-lg text-white rounded-2xl shadow-3xl flex items-center border border-amber-500/30 animate-in fade-in zoom-in-95 duration-200 max-w-[95vw] md:max-w-max"
+          style={{
+            top: selectionCoords ? `${selectionCoords.y}px` : "15%",
+            left: selectionCoords ? `${selectionCoords.x}px` : "50%",
+            transform: selectionCoords ? "translate(-50%, 0)" : "translate(-50%, -50%)",
+            position: "fixed",
+            boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5)"
+          }}
+        >
+          {/* DESKTOP TOOLBAR (md:flex hidden) */}
+          <div className="hidden md:flex items-center gap-1.5 px-3 py-2 overflow-x-auto no-scrollbar">
+            {/* Color Highlighter Dots */}
+            <div className="flex items-center gap-1.5 px-2 border-r border-neutral-800 pr-3 mr-1 shrink-0">
+              {(["yellow", "green", "blue", "pink"] as const).map((color) => {
+                const colorClasses = {
+                  yellow: "bg-yellow-400 hover:scale-110",
+                  green: "bg-emerald-400 hover:scale-110",
+                  blue: "bg-sky-400 hover:scale-110",
+                  pink: "bg-pink-400 hover:scale-110"
+                };
+                return (
+                  <button
+                    key={color}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleSaveHighlight(color)}
+                    className={`w-4 h-4 rounded-full transition-all duration-150 ${colorClasses[color]}`}
+                    title={`Highlight ${color}`}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Actions */}
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => analyzeSentenceOffline(selectedText)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-amber-400 shrink-0"
+              title="Analyze word or sentence offline"
+            >
+              <Sparkles className="w-3.5 h-3.5" /> Analyze (Offline)
+            </button>
+
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={expandSelectionToSentence}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
+              title="Select entire sentence containing current selection"
+            >
+              <Type className="w-3.5 h-3.5" /> Select Sentence
+            </button>
+
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                navigator.clipboard.writeText(selectedText);
+                setDictFeedback("Copied to clipboard!");
+                setTimeout(() => setDictFeedback(null), 2000);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
+              title="Copy selection"
+            >
+              <Copy className="w-3.5 h-3.5" /> Copy
+            </button>
+
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                addDictionaryEntry({
+                  word: selectedText.length > 30 ? selectedText.slice(0, 30) + "..." : selectedText,
+                  definition: `Saved vocabulary from '${book.title}': "${selectedText}"`,
+                  partOfSpeech: "phrase",
+                  isCustom: true
+                });
+                setDictFeedback("Saved to personal dictionary!");
+                setTimeout(() => setDictFeedback(null), 2500);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
+              title="Save to offline dictionary"
+            >
+              <BookMarked className="w-3.5 h-3.5" /> Save Vocab
+            </button>
+
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setActiveNoteText(prev => `${prev}\n"${selectedText}"\n`);
+                setShowNotes(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
+              title="Add to Notes"
+            >
+              <FileText className="w-3.5 h-3.5" /> Add Note
+            </button>
+
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const sel = window.getSelection();
+                if (sel) sel.removeAllRanges();
+                setSelectedText("");
+              }}
+              className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition text-[10px]"
+              title="Clear selection"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* MOBILE TOOLBAR (md:hidden) with 44px Touch Targets, Icons-Only and Expandable Secondary Actions */}
+          <div className="flex md:hidden items-center gap-1 p-1 bg-[#1e1c19]/95 rounded-2xl">
+            {/* Color Highlighter Dots */}
+            <div className="flex items-center gap-2 px-2 border-r border-neutral-800 pr-2 mr-1">
+              {(["yellow", "green", "blue", "pink"] as const).map((color) => {
+                const colorClasses = {
+                  yellow: "bg-yellow-400 active:scale-125",
+                  green: "bg-emerald-400 active:scale-125",
+                  blue: "bg-sky-400 active:scale-125",
+                  pink: "bg-pink-400 active:scale-125"
+                };
+                return (
+                  <button
+                    key={color}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleSaveHighlight(color)}
+                    className={`w-5 h-5 rounded-full transition-transform duration-150 ${colorClasses[color]}`}
+                    title={`Highlight ${color}`}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Primary Mobile Action Buttons (44px x 44px standard touch targets for comfort) */}
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => analyzeSentenceOffline(selectedText)}
+              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-amber-400 transition-colors"
+              title="Analyze (Offline)"
+            >
+              <Sparkles className="w-5 h-5" />
+            </button>
+
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                navigator.clipboard.writeText(selectedText);
+                setDictFeedback("Copied to clipboard!");
+                setTimeout(() => setDictFeedback(null), 2000);
+              }}
+              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
+              title="Copy"
+            >
+              <Copy className="w-5 h-5" />
+            </button>
+
+            {/* Expandable Options Toggle (ellipsis icon) */}
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setShowMoreActions(!showMoreActions)}
+              className={`w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 transition-all ${showMoreActions ? "text-amber-500 bg-white/10 rotate-90" : "text-neutral-300"}`}
+              title="More options"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+
+            {/* Expandable Options Container */}
+            <AnimatePresence>
+              {showMoreActions && (
+                <motion.div
+                  initial={{ width: 0, opacity: 0 }}
+                  animate={{ width: "auto", opacity: 1 }}
+                  exit={{ width: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex items-center gap-1 border-l border-neutral-800 pl-1 ml-1 overflow-hidden shrink-0"
+                >
+                  <button 
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={expandSelectionToSentence}
+                    className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
+                    title="Select sentence"
+                  >
+                    <Type className="w-5 h-5" />
+                  </button>
+
+                  <button 
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      addDictionaryEntry({
+                        word: selectedText.length > 30 ? selectedText.slice(0, 30) + "..." : selectedText,
+                        definition: `Saved vocabulary from '${book.title}': "${selectedText}"`,
+                        partOfSpeech: "phrase",
+                        isCustom: true
+                      });
+                      setDictFeedback("Saved to personal dictionary!");
+                      setTimeout(() => setDictFeedback(null), 2500);
+                    }}
+                    className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
+                    title="Save vocab"
+                  >
+                    <BookMarked className="w-5 h-5" />
+                  </button>
+
+                  <button 
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setActiveNoteText(prev => `${prev}\n"${selectedText}"\n`);
+                      setShowNotes(true);
+                    }}
+                    className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
+                    title="Add note"
+                  >
+                    <FileText className="w-5 h-5" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Clear Selection */}
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const sel = window.getSelection();
+                if (sel) sel.removeAllRanges();
+                setSelectedText("");
+              }}
+              className="w-9 h-9 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors ml-1"
+              title="Clear selection"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

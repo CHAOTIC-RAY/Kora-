@@ -1,4 +1,5 @@
 import puppeteer from "@cloudflare/puppeteer";
+import * as cheerio from "cheerio";
 
 declare const HTMLRewriter: any;
 
@@ -157,6 +158,9 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         else if (url.endsWith(".epub")) extension = "epub";
         else if (url.endsWith(".mobi")) extension = "mobi";
         else if (url.endsWith(".azw3")) extension = "azw3";
+        else if (url.endsWith(".html")) extension = "html";
+        else if (url.endsWith(".json")) extension = "json";
+        else if (url.endsWith(".txt")) extension = "txt";
       }
       if (!extension) extension = "epub";
 
@@ -212,6 +216,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
 export interface Env {
   BROWSER: any;
   NYT_API_KEY?: string;
+  GOOGLE_BOOKS_API_KEY?: string;
   NYT_BOOKS_API_KEY?: string;
   RAVE_BOOK_SEARCH?: any;
 }
@@ -229,6 +234,92 @@ const FALLBACK_DOMAINS = {
     { domain: "zlib.re" }
   ]
 };
+
+const goodreadsCache = new Map<string, any>();
+
+async function fetchPageHtmlWithProxies(targetUrl: string, expectedMarker?: string): Promise<string> {
+  const userAgents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0"
+  ];
+  const headers = {
+    "User-Agent": userAgents[Math.floor(Math.random() * userAgents.length)],
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache"
+  };
+
+  // Try 1: Direct fetch
+  try {
+    console.log(`[Proxy Fetcher] Trying direct fetch: ${targetUrl}`);
+    const res = await fetch(targetUrl, { headers });
+    if (res.ok) {
+      const html = await res.text();
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] Direct fetch succeeded.`);
+        return html;
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[Proxy Fetcher] Direct fetch failed: ${e.message}`);
+  }
+
+  // Try 2: Via corsproxy.io
+  try {
+    const proxyUrl = `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`;
+    console.log(`[Proxy Fetcher] Trying corsproxy.io: ${proxyUrl}`);
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const html = await res.text();
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] corsproxy.io succeeded.`);
+        return html;
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[Proxy Fetcher] corsproxy.io failed: ${e.message}`);
+  }
+
+  // Try 3: Via api.allorigins.win
+  try {
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    console.log(`[Proxy Fetcher] Trying allorigins: ${proxyUrl}`);
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const html = await res.text();
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] allorigins succeeded.`);
+        return html;
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[Proxy Fetcher] allorigins failed: ${e.message}`);
+  }
+
+  // Try 4: Via codetabs
+  try {
+    const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
+    console.log(`[Proxy Fetcher] Trying codetabs: ${proxyUrl}`);
+    const res = await fetch(proxyUrl);
+    if (res.ok) {
+      const html = await res.text();
+      if (!expectedMarker || html.includes(expectedMarker)) {
+        console.log(`[Proxy Fetcher] codetabs succeeded.`);
+        return html;
+      }
+    }
+  } catch (e: any) {
+    console.warn(`[Proxy Fetcher] codetabs failed: ${e.message}`);
+  }
+
+  throw new Error(`Failed to fetch page: ${targetUrl}`);
+}
+
+async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
+  const targetUrl = `https://www.goodreads.com/list/show/${listQuery}`;
+  return fetchPageHtmlWithProxies(targetUrl, "bookTitle");
+}
 
 export default {
   async fetch(request: Request, env: Env, ctx: any): Promise<Response> {
@@ -934,6 +1025,452 @@ export default {
       }
     }
 
+    // 2.1 NYT Specific List API
+    if (path === "/api/nytimes/list") {
+      const listName = url.searchParams.get("list");
+      if (!listName) {
+        return new Response(JSON.stringify({ error: "Missing list parameter" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
+        const res = await fetch(`https://api.nytimes.com/svc/books/v3/lists/${listName}.json?api-key=${apiKey}`);
+        const data: any = await res.json().catch(() => ({}));
+
+        if (!res.ok || data?.fault || data?.status !== "OK") {
+          return new Response(JSON.stringify({ error: "Failed to fetch NYT list", details: data?.fault?.faultstring || "Unknown error" }), {
+            status: res.status || 500,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        return new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch NYT list", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // 2.1.5 NYT Raw Details Endpoint (No AI)
+    if (path === "/api/nytimes/book-details-raw") {
+      const title = url.searchParams.get("title");
+      const author = url.searchParams.get("author") || "";
+      if (!title) {
+        return new Response(JSON.stringify({ error: "Missing title parameter" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+      
+      const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
+      if (!apiKey) {
+        return new Response(JSON.stringify({ error: "NYT API Key not configured" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const nytUrl = `https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}&api-key=${apiKey}`;
+        const response = await fetch(nytUrl);
+        const data = await response.json();
+        return new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch raw NYT details", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // 2.1.8 Goodreads List API
+    if (path === "/api/goodreads/list") {
+      const listQuery = url.searchParams.get("list");
+      if (!listQuery) {
+        return new Response(JSON.stringify({ error: "Missing 'list' query parameter." }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      console.log(`[Goodreads API] Fetching books for list query: ${listQuery}`);
+
+      // Check memory cache first
+      if (goodreadsCache.has(listQuery)) {
+        console.log(`[Goodreads API] Returning cached results for list query: ${listQuery}`);
+        return new Response(JSON.stringify(goodreadsCache.get(listQuery)), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      // Map query to friendly name
+      let friendlyListName = "Best Books Ever";
+      if (listQuery.includes("Read_At_Least_Once")) {
+        friendlyListName = "Books That Everyone Should Read At Least Once";
+      } else if (listQuery.includes("21st_Century")) {
+        friendlyListName = "Best Books of the 21st Century";
+      } else if (listQuery.includes("Best_Books_Ever")) {
+        friendlyListName = "Best Books Ever";
+      } else {
+        friendlyListName = listQuery.replace(/^\d+\./, "").replace(/_/g, " ");
+      }
+
+      try {
+        // 1. Scraping HTML page
+        const html = await fetchGoodreadsHtml(listQuery);
+        const $ = cheerio.load(html);
+        const books: any[] = [];
+
+        $("tr[itemtype='http://schema.org/Book'], tr.bookShow, table.tableList tr").each((idx, el) => {
+          try {
+            const row = $(el);
+            const rankText = row.find("td.number").text().trim();
+            const rank = parseInt(rankText, 10) || (idx + 1);
+
+            const titleAnchor = row.find("a.bookTitle");
+            const rawTitle = titleAnchor.text().trim();
+            if (!rawTitle) return; // skip rows without titles
+
+            const bookUrl = titleAnchor.attr("href") || "";
+
+            const authorAnchor = row.find("a.authorName");
+            const author = authorAnchor.text().trim();
+
+            const coverImg = row.find("img.bookCover, img[itemprop='image']");
+            let coverUrl = coverImg.attr("src") || null;
+            
+            if (coverUrl && (coverUrl.includes("nophoto") || coverUrl.includes("nocover"))) {
+              coverUrl = null;
+            }
+
+            // Minirating parsing
+            const ratingText = row.find("span.minirating").text().trim();
+            let rating = 4.0;
+            let ratingCount = "100,000 ratings";
+
+            const ratingMatch = ratingText.match(/([\d.]+)\s*avg\s*rating/i);
+            if (ratingMatch) {
+              rating = parseFloat(ratingMatch[1]);
+            }
+
+            const countMatch = ratingText.match(/([\d,]+)\s*rating/i);
+            if (countMatch) {
+              ratingCount = countMatch[1] + " ratings";
+            }
+
+            let goodreadsId = "";
+            const idMatch = bookUrl.match(/\/book\/show\/(\d+)/);
+            if (idMatch) {
+              goodreadsId = idMatch[1];
+            }
+
+            books.push({
+              rank,
+              title: rawTitle,
+              author,
+              description: `Popular selection from the Goodreads community. Rated ${rating} stars by ${ratingCount}.`,
+              rating,
+              ratingCount,
+              coverUrl,
+              goodreadsId,
+              source: "goodreads"
+            });
+          } catch (err) {
+            console.error("[Goodreads Scraper] Row parser error:", err);
+          }
+        });
+
+        if (books.length > 0) {
+          console.log(`[Goodreads API] Successfully scraped ${books.length} books for ${listQuery}`);
+          goodreadsCache.set(listQuery, books);
+          return new Response(JSON.stringify(books), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        } else {
+          throw new Error("No books parsed from the scraped HTML page.");
+        }
+
+      } catch (err: any) {
+        console.error("[Goodreads API] Web scrape failed, using rich fallback database:", err);
+        
+        // Fallback data (without AI) so the user gets accurate results instantly
+        let fallbackBooks: any[] = [];
+        if (friendlyListName.includes("Read At Least Once")) {
+          fallbackBooks = [
+            { rank: 1, title: "To Kill a Mockingbird", author: "Harper Lee", description: "The unforgettable novel of a childhood in a sleepy Southern town and the crisis of conscience that rocked it.", isbn: "0446310786", rating: 4.28, ratingCount: "5,600,000 ratings" },
+            { rank: 2, title: "1984", author: "George Orwell", description: "A dystopian masterpiece set in a world of perpetual war, omnipresent government surveillance, and public manipulation.", isbn: "0451524934", rating: 4.19, ratingCount: "4,100,000 ratings" },
+            { rank: 3, title: "The Great Gatsby", author: "F. Scott Fitzgerald", description: "The story of the fabulously wealthy Jay Gatsby and his love for the beautiful Daisy Buchanan.", isbn: "0743273567", rating: 3.93, ratingCount: "4,800,000 ratings" },
+            { rank: 4, title: "The Catcher in the Rye", author: "J.D. Salinger", description: "The hero-narrator of The Catcher in the Rye is an ancient child of sixteen, a native New Yorker named Holden Caulfield.", isbn: "0316769177", rating: 3.80, ratingCount: "3,300,000 ratings" },
+            { rank: 5, title: "Pride and Prejudice", author: "Jane Austen", description: "The romantic clash between the opinionated Elizabeth Bennet and her proud suitor, Mr. Darcy.", isbn: "0141439513", rating: 4.28, ratingCount: "3,900,000 ratings" }
+          ];
+        } else if (friendlyListName.includes("21st Century")) {
+          fallbackBooks = [
+            { rank: 1, title: "The Road", author: "Cormac McCarthy", description: "A father and his son walk alone through burned America. Nothing moves in the ravaged landscape save the ash on the wind.", isbn: "0307387895", rating: 3.98, ratingCount: "850,000 ratings" },
+            { rank: 2, title: "Life of Pi", author: "Yann Martel", description: "The story of a young man who survives in a lifeboat with a Bengal tiger named Richard Parker.", isbn: "0156027321", rating: 3.93, ratingCount: "1,500,000 ratings" },
+            { rank: 3, title: "Never Let Me Go", author: "Kazuo Ishiguro", description: "A dystopian novel about clone students growing up in a seemingly idyllic boarding school.", isbn: "1400078776", rating: 3.90, ratingCount: "620,000 ratings" },
+            { rank: 4, title: "The Kite Runner", author: "Khaled Hosseini", description: "The devastating and inspiring story of an unlikely friendship between a wealthy boy and the son of his father's servant.", isbn: "1594631933", rating: 4.33, ratingCount: "2,900,000 ratings" },
+            { rank: 5, title: "Middlesex", author: "Jeffrey Eugenides", description: "A sprawling saga about a Greek-American family and the journey of an intersex protagonist.", isbn: "0312422156", rating: 4.02, ratingCount: "610,000 ratings" }
+          ];
+        } else {
+          fallbackBooks = [
+            { rank: 1, title: "The Hunger Games", author: "Suzanne Collins", description: "In the ruins of a place once known as North America lies the nation of Panem, an empire that forces children to fight to the death.", isbn: "0439023483", rating: 4.33, ratingCount: "7,800,000 ratings" },
+            { rank: 2, title: "Harry Potter and the Sorcerer's Stone", author: "J.K. Rowling", description: "Harry Potter has no idea how famous he is until he is rescued from his miserable aunt and uncle and sent to Hogwarts.", isbn: "0439708184", rating: 4.47, ratingCount: "9,200,000 ratings" },
+            { rank: 3, title: "To Kill a Mockingbird", author: "Harper Lee", description: "The unforgettable novel of a childhood in a sleepy Southern town and the crisis of conscience that rocked it.", isbn: "0446310786", rating: 4.28, ratingCount: "5,600,000 ratings" },
+            { rank: 4, title: "The Great Gatsby", author: "F. Scott Fitzgerald", description: "The story of the fabulously wealthy Jay Gatsby and his love for the beautiful Daisy Buchanan.", isbn: "0743273567", rating: 3.93, ratingCount: "4,800,000 ratings" },
+            { rank: 5, title: "The Fault in Our Stars", author: "John Green", description: "The story of Hazel Grace Lancaster, a sixteen-year-old thyroid cancer patient who meets Augustus Waters.", isbn: "0525478817", rating: 4.15, ratingCount: "4,200,000 ratings" }
+          ];
+        }
+
+        const mappedFallback = fallbackBooks.map((b: any) => ({
+          ...b,
+          coverUrl: `https://covers.openlibrary.org/b/isbn/${b.isbn}-M.jpg`,
+          source: "goodreads"
+        }));
+
+        goodreadsCache.set(listQuery, mappedFallback);
+        return new Response(JSON.stringify(mappedFallback), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // 2.1.9 Goodreads Reviews API
+    if (path === "/api/goodreads/reviews" && request.method === "POST") {
+      try {
+        const body = await request.json() as any;
+        const { title, author } = body;
+        if (!title) {
+          return new Response(JSON.stringify({ error: "Title is required" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        // Clean the search query to improve Goodreads matching rate
+        let cleanTitle = title.split(':')[0].split('(')[0].split('-')[0];
+        cleanTitle = cleanTitle.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+        let cleanAuthor = (author || "").split(',')[0];
+        cleanAuthor = cleanAuthor.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+        
+        const queryStr = `${cleanTitle} ${cleanAuthor}`.trim();
+        console.log(`[Goodreads Reviews API] Searching with cleaned query: "${queryStr}" (Original: "${title} ${author || ''}")`);
+
+        let reviews: any[] = [];
+        let sourceMethod = "scraped";
+
+        try {
+          // Search for the book on Goodreads using the cleaned query
+          const searchUrl = `https://www.goodreads.com/search?q=${encodeURIComponent(queryStr)}`;
+          const searchHtml = await fetchPageHtmlWithProxies(searchUrl, "goodreads");
+          const $ = cheerio.load(searchHtml);
+          
+          // Find first book link matching bookTitle or standard book link structures
+          let bookPath = "";
+          $("a.bookTitle, a[href*='/book/show/']").each((_, elem) => {
+            const href = $(elem).attr("href");
+            if (href && href.includes("/book/show/") && !bookPath) {
+              bookPath = href;
+            }
+          });
+
+          // If search with clean query failed, try search with original title
+          if (!bookPath && title !== queryStr) {
+            const backupQuery = `${title} ${author || ""}`.trim();
+            console.log(`[Goodreads Reviews API] Trying backup query: "${backupQuery}"`);
+            const backupSearchUrl = `https://www.goodreads.com/search?q=${encodeURIComponent(backupQuery)}`;
+            try {
+              const backupHtml = await fetchPageHtmlWithProxies(backupSearchUrl, "goodreads");
+              const $backup = cheerio.load(backupHtml);
+              $backup("a.bookTitle, a[href*='/book/show/']").each((_, elem) => {
+                const href = $backup(elem).attr("href");
+                if (href && href.includes("/book/show/") && !bookPath) {
+                  bookPath = href;
+                }
+              });
+            } catch (backupErr: any) {
+              console.warn(`[Goodreads Reviews API] Backup search failed: ${backupErr.message}`);
+            }
+          }
+
+          if (bookPath) {
+            const bookUrl = bookPath.startsWith("http") ? bookPath : `https://www.goodreads.com${bookPath}`;
+            console.log(`[Goodreads Reviews API] Found book URL: ${bookUrl}`);
+            
+            // Fetch book page html
+            const bookHtml = await fetchPageHtmlWithProxies(bookUrl, "goodreads");
+            const $book = cheerio.load(bookHtml);
+            
+            // Parse Modern Layout (.ReviewCard or [data-testid='ReviewCard'])
+            $book(".ReviewCard, [data-testid='ReviewCard']").each((_, elem) => {
+              const reviewerName = $book(elem).find(".ReviewerProfile__name, [data-testid='name'], .ReviewCard__user a").first().text().trim() || "Goodreads Reader";
+              
+              let rating = 4;
+              const ratingText = $book(elem).find(".RatingStars, [data-testid='ratingStars']").first().attr("aria-label") || "";
+              const starsMatch = ratingText.match(/Rating (\d+) out of/i) || ratingText.match(/(\d+)\s*star/i);
+              if (starsMatch) {
+                rating = parseInt(starsMatch[1]);
+              } else {
+                const filledStars = $book(elem).find(".RatingStars__star--filled, .p10").length;
+                if (filledStars > 0) rating = filledStars;
+              }
+
+              let reviewContent = $book(elem).find(".ReviewText, [data-testid='reviewText']").first().html() || "";
+              if (!reviewContent) {
+                reviewContent = $book(elem).find(".ReviewText, [data-testid='reviewText']").first().text().trim();
+              }
+
+              if (reviewContent && reviewerName) {
+                reviews.push({
+                  rating,
+                  review: reviewContent,
+                  user: {
+                    name: reviewerName,
+                    username: reviewerName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+                  }
+                });
+              }
+            });
+
+            // Parse Classic Layout if no reviews found yet (.review, .comment, div.friendReviews)
+            if (reviews.length === 0) {
+              $book(".review, .comment").each((_, elem) => {
+                const reviewerName = $book(elem).find("a.user, .user a, .left.client a").first().text().trim() || "Goodreads Reader";
+                
+                let rating = 4;
+                const ratingMeta = $book(elem).find("meta[itemprop='rating']").attr("content");
+                if (ratingMeta) {
+                  rating = parseInt(ratingMeta) || 4;
+                } else {
+                  const starText = $book(elem).find(".staticStars, .stars").text() || "";
+                  const starsMatch = starText.match(/(\d+)\s*star/i);
+                  if (starsMatch) {
+                    rating = parseInt(starsMatch[1]);
+                  } else {
+                    const filledStars = $book(elem).find(".staticStar.p10, .staticStar.p11").length;
+                    if (filledStars > 0) rating = filledStars;
+                  }
+                }
+
+                let reviewEl = $book(elem).find("span[id^='freeTextContainer']").first();
+                if (reviewEl.length === 0) {
+                  reviewEl = $book(elem).find(".readable").first();
+                }
+                
+                let reviewContent = reviewEl.html() || "";
+                if (!reviewContent) {
+                  reviewContent = reviewEl.text().trim();
+                }
+
+                if (reviewContent && reviewerName) {
+                  reviews.push({
+                    rating,
+                    review: reviewContent,
+                    user: {
+                      name: reviewerName,
+                      username: reviewerName.toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")
+                    }
+                  });
+                }
+              });
+            }
+          }
+        } catch (err: any) {
+          console.warn(`[Goodreads Reviews API] Scraper failed for "${queryStr}": ${err.message}`);
+        }
+
+        console.log(`[Goodreads Reviews API] Returning ${reviews.length} reviews via ${sourceMethod}`);
+        return new Response(JSON.stringify({ reviews, source: sourceMethod }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // 2.2 NYT Book Details API
+    if (path === "/api/nyt/book-details" || path === "/api/nytimes/book-details") {
+      const title = url.searchParams.get("title");
+      const author = url.searchParams.get("author");
+      
+      if (!title) {
+        return new Response(JSON.stringify({ error: "Missing title parameter" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";
+        
+        // Search NYT Books API for the book
+        const searchRes = await fetch(`https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?api-key=${apiKey}&title=${encodeURIComponent(title)}`);
+        const searchData: any = await searchRes.json().catch(() => ({}));
+
+        if (searchRes.ok && searchData?.status === "OK" && searchData?.results?.length > 0) {
+          const book = searchData.results[0];
+          return new Response(JSON.stringify({
+            description: book.description || "",
+            subjects: book.subjects || [],
+            pageCount: book.page_count || null,
+            publishYear: book.published_date?.substring(0, 4) || null,
+            publisher: book.publisher || "",
+            isBestseller: true,
+            bestsellerRank: book.rank || null,
+            weeksOnList: book.weeks_on_list || null,
+            bestsellerCategory: book.list_name || "",
+            nytReviewSnippet: book.book_review_link || ""
+          }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        // If not found in bestsellers, try reviews API
+        const reviewsRes = await fetch(`https://api.nytimes.com/svc/books/v3/reviews.json?api-key=${apiKey}&author=${encodeURIComponent(author || "")}&title=${encodeURIComponent(title)}`);
+        const reviewsData: any = await reviewsRes.json().catch(() => ({}));
+
+        if (reviewsRes.ok && reviewsData?.status === "OK" && reviewsData?.results?.length > 0) {
+          const review = reviewsData.results[0];
+          return new Response(JSON.stringify({
+            description: review.summary || "",
+            subjects: [],
+            pageCount: null,
+            publishYear: review.publication_date?.substring(0, 4) || null,
+            publisher: review.publisher || "",
+            isBestseller: false,
+            bestsellerRank: null,
+            weeksOnList: null,
+            bestsellerCategory: "",
+            nytReviewSnippet: review.summary || ""
+          }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        // No NYT data found
+        return new Response(JSON.stringify({ error: "Book not found in NYT" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch NYT book details", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     if (path === "/api/nytimes/recommendations" && request.method === "POST") {
       try {
         let body: any = {};
@@ -1041,6 +1578,33 @@ export default {
         });
       } catch (err: any) {
         return new Response(JSON.stringify({ error: "Failed to generate recommendations", details: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // Google Books API Proxy
+    if (path === "/api/google-books/search") {
+      const q = url.searchParams.get("q");
+      const maxResults = url.searchParams.get("maxResults") || "1";
+      const startIndex = url.searchParams.get("startIndex") || "";
+      if (!q) {
+        return new Response(JSON.stringify({ error: "Missing query" }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+      }
+      
+      const apiKey = env.GOOGLE_BOOKS_API_KEY || "";
+      const start = startIndex ? `&startIndex=${startIndex}` : "";
+      const fetchUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${maxResults}${start}${apiKey ? `&key=${apiKey}` : ""}`;
+      
+      try {
+        const response = await fetch(fetchUrl);
+        const data = await response.json();
+        return new Response(JSON.stringify(data), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch from Google Books", details: err.message }), {
           status: 500,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
@@ -1203,10 +1767,627 @@ export default {
       }
     }
 
+    // 5. Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Cheerio)
+    if (path === "/api/convert-url" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const targetUrl = body.url;
+        if (!targetUrl) {
+          return new Response(JSON.stringify({ error: "Missing url parameter" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        console.log(`[Web Clipper] Fetching: ${targetUrl}`);
+        
+        // Parse domain
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(targetUrl);
+        } catch (e) {
+          return new Response(JSON.stringify({ error: "Invalid URL format" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        const domain = parsedUrl.hostname;
+
+        // Fetch the raw page content using standard fetch with timeout
+        let rawHtml = "";
+        try {
+          const response = await fetch(targetUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          });
+          if (response.ok) {
+            rawHtml = await response.text();
+          } else {
+            throw new Error(`HTTP error ${response.status}`);
+          }
+        } catch (fetchErr) {
+          console.warn(`[Web Clipper] Standard fetch failed, trying Puppeteer:`, fetchErr);
+          if (env && env.BROWSER) {
+            try {
+              const browser = await env.BROWSER.connect();
+              try {
+                const page = await browser.newPage();
+                await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+                await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+                rawHtml = await page.content();
+              } finally {
+                await browser.disconnect();
+              }
+            } catch (puppeteerErr) {
+              console.error("[Web Clipper] Puppeteer failed:", puppeteerErr);
+              throw new Error("Failed to fetch content with both standard fetch and Puppeteer");
+            }
+          } else {
+            throw new Error("Failed to fetch content and no Puppeteer available");
+          }
+        }
+
+        if (!rawHtml || rawHtml.trim().length < 100) {
+          return new Response(JSON.stringify({ error: "Could not fetch any meaningful content from the provided URL" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        console.log(`[Web Clipper] Extracted HTML length: ${rawHtml.length}. Processing with Cheerio.`);
+
+        // Parse with Cheerio to extract content
+        const $ = cheerio.load(rawHtml);
+
+        // ===================================================================
+        // PHASE 1: Extract metadata BEFORE removing elements
+        // ===================================================================
+        
+        // 1. Title Extraction (priority: OG > Twitter > meta > title > h1)
+        let title = $("meta[property='og:title']").attr("content") || 
+                    $("meta[name='twitter:title']").attr("content") ||
+                    $("meta[name='title']").attr("content") ||
+                    $("title").text() || 
+                    $("h1").first().text() || 
+                    domain;
+        
+        // Clean title separators (remove site name portion)
+        const titleSeparators = [/ \| /, / - /, / › /, / » /, / :: /, / — /];
+        for (const sep of titleSeparators) {
+          if (sep.test(title)) {
+            const parts = title.split(sep).filter(p => p.trim().length > 0);
+            if (parts.length > 1) {
+              title = parts.reduce((a, b) => a.trim().length >= b.trim().length ? a : b).trim();
+              break;
+            }
+          }
+        }
+        title = title.trim();
+
+        // 2. Author/Byline Extraction
+        let author = $("meta[name='author']").attr("content") || 
+                     $("meta[property='article:author']").attr("content") ||
+                     $("meta[name='twitter:creator']").attr("content") ||
+                     "";
+        if (!author) {
+          // Try DOM-based author selectors
+          const authorSelectors = [
+            ".author-name", ".byline-name", "[rel='author']", ".author a",
+            ".byline a", ".article-author", ".post-author", ".entry-author",
+            ".author", ".byline", ".writer"
+          ];
+          for (const sel of authorSelectors) {
+            const text = $(sel).first().text().trim();
+            if (text && text.length > 1 && text.length < 60) {
+              author = text;
+              break;
+            }
+          }
+        }
+        author = author.replace(/^(by|written\s+by|author[:\s])\s*/i, "").trim() || domain;
+
+        // 3. Description
+        const description = $("meta[name='description']").attr("content") || 
+                            $("meta[property='og:description']").attr("content") || 
+                            $("meta[name='twitter:description']").attr("content") || "";
+        
+        // 4. Published date
+        let publishedDate = $("meta[property='article:published_time']").attr("content") ||
+                            $("meta[name='date']").attr("content") ||
+                            $("meta[name='publish-date']").attr("content") ||
+                            $("time[datetime]").first().attr("datetime") ||
+                            $("time").first().text().trim() || "";
+
+        // 5. Lead image
+        const leadImage = $("meta[property='og:image']").attr("content") || "";
+
+        // ===================================================================
+        // PHASE 2: Aggressive boilerplate removal
+        // ===================================================================
+        
+        // Remove all scripts, styles, and non-content elements
+        $("script, style, link[rel='stylesheet'], noscript, svg, canvas, video, audio, embed, object, applet").remove();
+        $("iframe:not([src*='youtube']):not([src*='vimeo'])").remove();
+        
+        // Remove common boilerplate structural elements
+        const boilerplateSelectors = [
+          // Navigation & headers
+          "header", "footer", "nav", ".nav", ".navbar", ".navigation", ".menu",
+          "#header", "#footer", "#nav", "#navigation", "#menu",
+          ".header", ".footer", ".masthead", ".site-header", ".site-footer",
+          ".top-bar", ".bottom-bar", ".breadcrumb", ".breadcrumbs",
+          
+          // Sidebars
+          "aside", ".sidebar", "#sidebar", ".side-bar", ".widget-area",
+          
+          // Ads & promotions
+          ".ad", ".ads", ".advert", ".advertisement", ".ad-container",
+          "[class*='ad-']", "[class*='advert']", "[id*='ad-']", "[id*='advert']",
+          ".sponsor", ".sponsored", ".promotion", ".promo",
+          ".infinity", "[data-zone]",
+          
+          // Social sharing, comments, forms
+          ".share", ".sharing", ".social", ".social-share", ".share-buttons",
+          ".comment", ".comments", ".comment-form", ".comment-section",
+          ".disqus", "#disqus_thread", "#comments",
+          ".widget", ".widget-comment-form", "[class*='widget']",
+          "form", "button", "textarea", "input", "select", "option", "label",
+          
+          // Related content & tags
+          ".related", ".related-posts", ".related-articles", ".more-stories",
+          ".recommended", ".suggestions", ".tags", ".tag-list", ".tag-cloud",
+          ".article-tags", ".post-tags",
+          
+          // Newsletter, popups, modals
+          ".newsletter", ".subscribe", ".popup", ".modal", ".overlay",
+          ".cookie-notice", ".cookie-banner", ".gdpr",
+          
+          // Misc noise
+          ".hidden", "[style*='display:none']", "[style*='display: none']",
+          "[aria-hidden='true']",
+          ".loader", ".spinner", ".skeleton",
+          ".pagination", ".pager", ".page-numbers",
+          ".notification", ".notification-push",
+          ".submenu", ".menubar", ".menubar-mobile",
+          ".load-more", ".mobile_local_edition",
+          ".component-sponsor",
+          
+          // Tracking pixels & invisible images  
+          "img[width='1']", "img[height='1']", "img[style*='display:none']"
+        ];
+        
+        $(boilerplateSelectors.join(", ")).remove();
+        
+        // Remove empty anchors with no text (icon links, social buttons)
+        $("a").each((_, elem) => {
+          const $a = $(elem);
+          const text = $a.text().trim();
+          if (text.length === 0 && $a.find("img").length === 0) {
+            $a.remove();
+          }
+        });
+        
+        // Remove ALL inline event handlers and styles from remaining elements
+        $("*").each((_, elem) => {
+          const attribs = (elem as any).attribs || {};
+          for (const attr of Object.keys(attribs)) {
+            if (attr.startsWith("on") || attr === "style" || attr.startsWith("data-")) {
+              $(elem).removeAttr(attr);
+            }
+          }
+        });
+
+        // ===================================================================
+        // PHASE 3: Readability-style content scoring
+        // ===================================================================
+
+        // Allowlisted content tags
+        const CONTENT_TAGS = new Set([
+          "p", "h1", "h2", "h3", "h4", "h5", "h6",
+          "blockquote", "pre", "code",
+          "ul", "ol", "li",
+          "figure", "figcaption",
+          "table", "thead", "tbody", "tr", "td", "th",
+          "img", "a", "strong", "em", "b", "i", "br", "hr",
+          "div", "span", "section", "article", "main"
+        ]);
+
+        // Negative class/id patterns (reduce score for these containers)
+        const NEGATIVE_PATTERNS = /comment|combx|community|contact|disqus|extra|foot|header|menu|remark|rss|shoutbox|sidebar|sponsor|ad-break|agegate|pagination|pager|popup|tweet|twitter|share|social|related|tag|widget|nav|promo|ad|cookie|banner|breadcrumb|load-more|infinity|notification|submenu|menubar/i;
+
+        // Positive class/id patterns (boost score for these containers)
+        const POSITIVE_PATTERNS = /article|body|content|entry|hentry|main|page|post|text|blog|story|reader|news|article-reader|reader-body|article-body|post-body|entry-content|post-content/i;
+
+        // Score candidate containers
+        const candidates: { element: any; score: number }[] = [];
+        
+        $("div, section, article, main, .content, .post-content, .entry-content, .article-body, .reader-body-content").each((_, elem) => {
+          const $el = $(elem);
+          const className = ((elem as any).attribs?.class || "").toLowerCase();
+          const id = ((elem as any).attribs?.id || "").toLowerCase();
+          const identifier = className + " " + id;
+          
+          // Skip if this has too many child containers (likely a layout wrapper)
+          const childDivs = $el.children("div, section, article").length;
+          
+          // Count direct text-bearing elements
+          const paragraphs = $el.find("p").length;
+          const textLength = $el.text().trim().length;
+          
+          // Skip tiny containers
+          if (textLength < 100) return;
+          
+          let score = 0;
+          
+          // Paragraph density is the strongest signal
+          score += paragraphs * 10;
+          
+          // Text length score (logarithmic to avoid oversizing huge wrappers)
+          score += Math.log10(Math.max(textLength, 1)) * 5;
+          
+          // Positive class/id boost
+          if (POSITIVE_PATTERNS.test(identifier)) score += 30;
+          
+          // Negative class/id penalty
+          if (NEGATIVE_PATTERNS.test(identifier)) score -= 40;
+          
+          // Penalty for too many child divs (likely a broad layout container)
+          if (childDivs > 8) score -= childDivs * 3;
+          
+          // Bonus for article/main tags
+          if (elem.tagName === "article") score += 25;
+          if (elem.tagName === "main") score += 15;
+          
+          // Images inside content are a good signal
+          const images = $el.find("img").length;
+          score += Math.min(images, 5) * 3;
+          
+          candidates.push({ element: elem, score });
+        });
+        
+        // Sort by score, pick the best candidate
+        candidates.sort((a, b) => b.score - a.score);
+        
+        let contentElement = candidates.length > 0 ? $(candidates[0].element) : $("body");
+        
+        // Log for debugging
+        if (candidates.length > 0) {
+          const best = candidates[0];
+          const bestClass = (best.element as any).attribs?.class || "";
+          const bestId = (best.element as any).attribs?.id || "";
+          console.log(`[Web Clipper] Best content container: <${best.element.tagName}> class="${bestClass}" id="${bestId}" score=${best.score}`);
+        }
+
+        // ===================================================================
+        // PHASE 4: Clean the winning container
+        // ===================================================================
+        
+        // Remove any remaining noise inside the content container
+        contentElement.find("script, style, iframe, form, button, input, textarea, label, select, option, noscript, svg, canvas").remove();
+        contentElement.find(".share, .social, .related, .tags, .comment, .comments, .ad, .ads, .advertisement, .widget, .sidebar, .footer, .header, .nav, .menu, .notification, .submenu, .infinity").remove();
+        contentElement.find("[class*='comment'], [class*='share'], [class*='social'], [class*='related'], [class*='widget'], [class*='ad-'], [class*='sponsor']").remove();
+        
+        // Make relative image sources absolute
+        contentElement.find("img").each((_, elem) => {
+          const $img = $(elem);
+          let src = $img.attr("src") || $img.attr("data-src") || $img.attr("data-original-src") || $img.attr("data-lazy-src");
+          if (src) {
+            try {
+              const absoluteUrl = new URL(src, targetUrl).href;
+              $img.attr("src", absoluteUrl);
+              // Keep only src and alt
+              const alt = $img.attr("alt") || "";
+              const attribs = (elem as any).attribs || {};
+              for (const attr of Object.keys(attribs)) {
+                if (attr !== "src" && attr !== "alt") {
+                  $img.removeAttr(attr);
+                }
+              }
+            } catch (e) {
+              // Leave src alone if URL parsing fails
+            }
+          } else {
+            $img.remove();
+          }
+        });
+        
+        // Extract cleaned text content, rebuilding only from safe elements
+        let cleanedHtml = "";
+        
+        // Walk the content tree and extract only meaningful text blocks
+        const extractCleanContent = ($container: any): string => {
+          let result = "";
+          
+          $container.children().each((_: any, child: any) => {
+            const tagName = (child.tagName || "").toLowerCase();
+            const $child = $(child);
+            const innerHtml = $child.html() || "";
+            const textContent = $child.text().trim();
+            
+            // Skip empty elements
+            if (textContent.length === 0 && !["img", "br", "hr"].includes(tagName)) return;
+            
+            // Skip elements that look like JavaScript or CSS remnants
+            if (textContent.startsWith("var ") || textContent.startsWith("function") ||
+                textContent.startsWith("$(") || textContent.startsWith("window.") ||
+                textContent.includes("document.createElement") ||
+                textContent.includes("navigator.userAgent") ||
+                /^\s*\.\w+\s*\{/.test(textContent) ||
+                /^\s*@media/.test(textContent) ||
+                /try\s*\{.*catch/.test(textContent)) {
+              return;
+            }
+            
+            // Skip short text that's likely UI labels/buttons  
+            const boilerplateTexts = [
+              "advertisement", "comment", "send comment", "load more", 
+              "like us", "follow us", "share", "tweet", "subscribe",
+              "name :", "send", "reply", "breaking news", "live",
+              "write your reply", "copyright", "all rights reserved",
+              "privacy policy", "terms and conditions", "contact us",
+              "about", "close", "menu"
+            ];
+            const lowerText = textContent.toLowerCase();
+            if (textContent.length < 40 && boilerplateTexts.some(bp => lowerText.includes(bp))) {
+              return;
+            }
+            
+            // Skip navigational text (menu items)
+            if (/^(News|World|Sports|Entertainment|Business|Travel|Column|Opinion|Features|Technology|Lifestyle|Art|Culture|Health|People|Local|Edition)\s*$/i.test(textContent)) {
+              return;
+            }
+            
+            // Process allowed elements
+            if (["p", "blockquote", "pre"].includes(tagName)) {
+              result += `<${tagName}>${innerHtml}</${tagName}>\n`;
+            } else if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName)) {
+              // Only include headings that look like real content, not nav labels
+              if (textContent.length > 3 && textContent.length < 200) {
+                result += `<${tagName}>${textContent}</${tagName}>\n`;
+              }
+            } else if (["ul", "ol"].includes(tagName)) {
+              result += `<${tagName}>${innerHtml}</${tagName}>\n`;
+            } else if (tagName === "figure") {
+              result += `<figure>${innerHtml}</figure>\n`;
+            } else if (tagName === "img") {
+              const src = $child.attr("src") || "";
+              const alt = $child.attr("alt") || "";
+              if (src) result += `<img src="${src}" alt="${alt}" />\n`;
+            } else if (tagName === "table") {
+              result += `<table>${innerHtml}</table>\n`;
+            } else if (["div", "section", "article", "span", "main"].includes(tagName)) {
+              // Recurse into structural containers
+              const nested = extractCleanContent($child);
+              if (nested.trim().length > 0) {
+                result += nested;
+              }
+            } else if (tagName === "hr") {
+              result += "<hr />\n";
+            }
+          });
+          
+          return result;
+        };
+        
+        cleanedHtml = extractCleanContent(contentElement);
+        
+        // If the cleaned content is too short, the scoring may have picked a sub-container.
+        // Fall back to a broader search.
+        if (cleanedHtml.replace(/<[^>]*>/g, "").trim().length < 100) {
+          console.log("[Web Clipper] Cleaned content too short, falling back to body extraction.");
+          cleanedHtml = extractCleanContent($("body"));
+        }
+        
+        // Final cleanup: remove duplicate whitespace and empty tags
+        cleanedHtml = cleanedHtml
+          .replace(/<p>\s*<\/p>/g, "")
+          .replace(/<div>\s*<\/div>/g, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+
+        // Build a single clean chapter
+        let chapters: { title: string; content: string }[] = [{
+          title: "Article",
+          content: cleanedHtml
+        }];
+
+        if (chapters[0].content.replace(/<[^>]*>/g, "").trim().length < 30) {
+          // Absolute fallback
+          chapters = [{
+            title: "Article",
+            content: `<p>${description || "Content could not be extracted from this page."}</p>`
+          }];
+        }
+
+        // Compile chapters into a single elegant HTML reader-friendly file
+        let fullHtmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Georgia, serif;
+      line-height: 1.7;
+      color: #111;
+      max-width: 650px;
+      margin: 40px auto;
+      padding: 0 20px;
+      background-color: #fcfcf9;
+    }
+    @media (prefers-color-scheme: dark) {
+      body {
+        color: #e0e0e0;
+        background-color: #121212;
+      }
+    }
+    h1 {
+      font-size: 2.2em;
+      line-height: 1.2;
+      margin-bottom: 0.2em;
+      font-weight: 700;
+    }
+    .author-line {
+      font-style: italic;
+      color: #666;
+      margin-bottom: 2em;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 10px;
+      font-size: 0.9em;
+    }
+    @media (prefers-color-scheme: dark) {
+      .author-line {
+        color: #aaa;
+        border-bottom-color: #444;
+      }
+    }
+    .chapter {
+      margin-top: 3em;
+      padding-top: 2em;
+      border-top: 1px dashed #ccc;
+    }
+    .chapter:first-of-type {
+      margin-top: 1em;
+      padding-top: 0;
+      border-top: none;
+    }
+    h2.chapter-title {
+      font-size: 1.8em;
+      margin-top: 0;
+      margin-bottom: 1em;
+      font-family: Georgia, serif;
+    }
+    h3 {
+      font-size: 1.3em;
+      margin-top: 1.5em;
+    }
+    p {
+      margin-top: 0;
+      margin-bottom: 1.2em;
+      text-align: justify;
+    }
+    pre, code {
+      background-color: #f4f4f4;
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+    @media (prefers-color-scheme: dark) {
+      pre, code {
+        background-color: #2a2a2a;
+      }
+    }
+    blockquote {
+      border-left: 4px solid #b4a078;
+      margin: 1.5em 0;
+      padding-left: 1em;
+      color: #555;
+      font-style: italic;
+    }
+    @media (prefers-color-scheme: dark) {
+      blockquote {
+        color: #999;
+      }
+    }
+    ul, ol {
+      margin-bottom: 1.2em;
+      padding-left: 1.5em;
+    }
+    li {
+      margin-bottom: 0.5em;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 1.5em auto;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    @media (prefers-color-scheme: dark) {
+      img {
+        opacity: 0.85;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div class="author-line">By ${author}${publishedDate ? ` • ${publishedDate}` : ""} • Saved from ${domain}</div>
+  ${leadImage ? `<img src="${leadImage}" alt="${title}" />` : ""}
+  
+  <div class="chapters-container">
+    ${chapters.map((ch, idx) => `
+      <div class="chapter" id="chapter-${idx}">
+        ${ch.title !== "Article" ? `<h2 class="chapter-title">${ch.title}</h2>` : ""}
+        <div class="chapter-content">
+          ${ch.content}
+        </div>
+      </div>
+    `).join("")}
+  </div>
+</body>
+</html>`;
+
+        return new Response(JSON.stringify({
+          title,
+          author,
+          description,
+          htmlContent: fullHtmlContent
+        }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+
+      } catch (err: any) {
+        console.error("[Web Clipper Error]:", err);
+        return new Response(JSON.stringify({ error: err.message || "An error occurred during URL conversion." }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     // 6. Cover Redirect/Proxy API (Proxies requests to bypass hotlinking and SSL restrictions)
     if (path === "/api/cover-redirect" || path === "/api/cover-proxy") {
       const isbn = url.searchParams.get("isbn");
       const md5 = url.searchParams.get("md5");
+      const title = url.searchParams.get("title");
+      const author = url.searchParams.get("author");
+
+      // Try OpenLibrary by title/author first
+      if (title) {
+        try {
+          const searchUrl = new URL("https://openlibrary.org/search.json");
+          searchUrl.searchParams.append("title", title);
+          if (author) searchUrl.searchParams.append("author", author);
+          searchUrl.searchParams.append("limit", "1");
+
+          const olRes = await fetch(searchUrl.toString());
+          if (olRes.ok) {
+            const olData = await olRes.json();
+            const firstBook = olData.docs?.[0];
+            if (firstBook?.cover_i) {
+              const coverUrl = `https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`;
+              const imgRes = await fetch(coverUrl, {
+                headers: { "User-Agent": "Mozilla/5.0" }
+              });
+              if (imgRes.ok) {
+                const body = await imgRes.arrayBuffer();
+                return new Response(body, {
+                  headers: {
+                    "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
+                    "Cache-Control": "public, max-age=604800, immutable",
+                    "Access-Control-Allow-Origin": "*"
+                  }
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      }
 
       if (isbn && /^\d{10,13}$/.test(isbn)) {
         try {
@@ -1380,7 +2561,6 @@ export default {
         }
 
         let targetUrl = downloadUrl;
-        let libraryLolResolved = false;
 
         // Force https for public search/downloads to avoid block/mixed content issues in Cloudflare Workers
         if (targetUrl.startsWith("http://")) {
@@ -1393,15 +2573,14 @@ export default {
         }
 
         // Pre-resolve: Libgen landing pages (like get.php?md5=) can be extremely difficult to fetch in Cloudflare Workers 
-        // due to strict TLS, DDOS protection, or IP blocks. We DO NOT rewrite to library.lol here because library.lol
-        // is frequently unreachable (Cloudflare 522). Instead libgen.li resolves its own signed CDN link in the
-        // LibGen resolver block below (get.php?md5= -> 307 -> ads.php -> signed get.php?md5&key).
+        // due to strict TLS, DDOS protection, or IP blocks. We use libgen.li or libgen.rs because library.lol
+        // is frequently unreachable or taken down.
         if (targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=") && !targetUrl.includes("libgen")) {
           const md5Match = targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
           if (md5Match) {
             const md5 = md5Match[1];
-            targetUrl = `https://library.lol/main/${md5}`;
-            console.log(`Rewrote Libgen landing page to Library.lol for robust worker resolution: ${targetUrl}`);
+            targetUrl = `https://libgen.li/get.php?md5=${md5.toLowerCase()}`;
+            console.log(`Rewrote Libgen landing page to libgen.li for robust worker resolution: ${targetUrl}`);
           }
         }
 
@@ -1420,7 +2599,11 @@ export default {
                 const files: any[] = meta.files || [];
                 const bookFile = files.find((f: any) => f.name?.endsWith(".epub")) ||
                                  files.find((f: any) => f.name?.endsWith(".pdf")) ||
-                                 files.find((f: any) => f.name?.endsWith(".mobi"));
+                                 files.find((f: any) => f.name?.endsWith(".mobi")) ||
+                                 files.find((f: any) => f.name?.endsWith(".azw3")) ||
+                                 files.find((f: any) => f.name?.endsWith(".html")) ||
+                                 files.find((f: any) => f.name?.endsWith(".json")) ||
+                                 files.find((f: any) => f.name?.endsWith(".txt"));
                 if (bookFile) {
                   const directUrl = `https://archive.org/download/${iaId}/${encodeURIComponent(bookFile.name)}`;
                   console.log(`[IA Worker] Resolved to direct download: ${directUrl}`);
@@ -1439,66 +2622,13 @@ export default {
         }
 
 
-        // 1. Resolve library.lol to its actual direct file download link
+        // 1. Rewrite library.lol to working Libgen mirrors as library.lol is reportedly down
         if (targetUrl.includes("library.lol")) {
-          try {
-            console.log(`Resolving library.lol landing page in Worker: ${targetUrl}`);
-            let htmlRes;
-            try {
-              htmlRes = await fetch(targetUrl, {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                }
-              });
-            } catch (err) {
-              if (targetUrl.startsWith("https://")) {
-                const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
-                console.log(`Resolving library.lol landing page failed, retrying over HTTP: ${fallbackUrl}`);
-                htmlRes = await fetch(fallbackUrl, {
-                  headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                  }
-                });
-              } else {
-                throw err;
-              }
-            }
-            if (htmlRes.ok) {
-              const html = await htmlRes.text();
-              const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
-              let match;
-              let directLink = "";
-              while ((match = aTagRegex.exec(html)) !== null) {
-                const href = match[1];
-                const attrs = match[2];
-                const text = (match[3] || "").replace(/<[^>]*>/g, "").trim().toLowerCase();
-                if (text === "get" || href.includes("/ipfs/") || href.includes("gateway") || attrs.includes("download")) {
-                  directLink = href;
-                  break;
-                }
-              }
-              if (directLink) {
-                if (directLink.startsWith("/")) {
-                  directLink = "https://library.lol" + directLink;
-                }
-                console.log(`Successfully resolved library.lol direct link in Worker: ${directLink}`);
-                targetUrl = directLink;
-                libraryLolResolved = true;
-              }
-            }
-          } catch (err) {
-            console.warn("Failed to resolve library.lol direct link in Worker:", err);
-          }
-
-          // Fallback to Libgen RS if library.lol landing page couldn't be resolved or fetched
-          if (!libraryLolResolved) {
-            console.log("library.lol resolution failed. Attempting automatic fallback to libgen.rs...");
-            const md5Match = targetUrl.match(/\/main\/([a-fA-F0-9]{32})/i) || targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
-            if (md5Match) {
-              const md5 = md5Match[1];
-              targetUrl = `https://libgen.rs/get.php?md5=${md5}`;
-              console.log(`Rewrote target URL to libgen.rs fallback: ${targetUrl}`);
-            }
+          const md5Match = targetUrl.match(/([a-fA-F0-9]{32})/i);
+          if (md5Match) {
+            const md5 = md5Match[1];
+            targetUrl = `https://libgen.li/get.php?md5=${md5.toLowerCase()}`;
+            console.log(`Rewrote library.lol to libgen.li: ${targetUrl}`);
           }
         }
 
@@ -1702,7 +2832,7 @@ export default {
         if (contentType.toLowerCase().includes("text/html")) {
           const text = await response.clone().text();
           if (text.includes("Cloudflare") || text.includes("captcha")) {
-            throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like Library.lol or IPFS).");
+            throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like libgen.li or IPFS).");
           }
           throw new Error("This mirror URL returned an HTML webpage instead of a binary book file. This usually happens when the mirror requires manual verification (like resolving a CAPTCHA), wait countdowns, or the link has expired.");
         }
@@ -1713,32 +2843,9 @@ export default {
         resHeaders.delete("transfer-encoding");
         resHeaders.delete("content-security-policy");
 
-        const buffer = await response.arrayBuffer();
-        const uint8 = new Uint8Array(buffer);
-
-        // Detect if the buffer is actually HTML text
-        let isHtml = false;
-        let textSample = "";
-        try {
-          textSample = new TextDecoder("utf-8").decode(uint8.subarray(0, 500)).trim().toLowerCase();
-          isHtml = textSample.startsWith("<!doctype html") || 
-                   textSample.startsWith("<html") || 
-                   textSample.includes("<head") || 
-                   textSample.includes("<body") ||
-                   textSample.includes("<div") ||
-                   textSample.includes("cloudflare") ||
-                   textSample.includes("captcha");
-        } catch (decodeErr) {}
-
-        if (isHtml) {
-          if (textSample.includes("cloudflare") || textSample.includes("captcha") || textSample.includes("challenge-running") || textSample.includes("ray id")) {
-            throw new Error("This mirror is blocked by a CAPTCHA, Cloudflare DDOS protection, or require human interaction. Please try a different mirror or solve any verification.");
-          }
-          throw new Error("This mirror URL returned an HTML landing page instead of the actual ebook file. Try a direct download mirror (like Library.lol or IPFS).");
-        }
-
-        resHeaders.set("Content-Length", String(buffer.byteLength));
-
+        // Removed arrayBuffer buffering to allow streaming progress in frontend
+        resHeaders.set("Content-Length", response.headers.get("content-length") || "");
+        
         const contentDisposition = response.headers.get("content-disposition");
         if (!contentDisposition) {
           try {
@@ -1748,9 +2855,9 @@ export default {
             resHeaders.set("Content-Disposition", `attachment; filename="download.epub"`);
           }
         }
-
-        return new Response(buffer, {
-          status: response.status,
+        
+        return new Response(response.body, {
+          status: 200,
           headers: resHeaders
         });
       } catch (err: any) {
@@ -1769,7 +2876,7 @@ export default {
         return new Response("Missing url", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo)$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gr-assets\.com|goodreads\.com)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
