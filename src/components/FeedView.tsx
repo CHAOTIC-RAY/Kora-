@@ -120,7 +120,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
 
   return (
     <article
-      className={`bg-kindle-card border rounded-2xl overflow-hidden transition ${cardClass} ${
+      className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition ${cardClass} ${
         item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
       }`}
     >
