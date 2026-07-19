@@ -94,7 +94,9 @@ export async function registerBackgroundCapabilities(): Promise<void> {
 
   if ("sync" in registration) {
     try {
-      await registration.sync.register(DOWNLOAD_SYNC_TAG);
+      await (registration as ServiceWorkerRegistration & {
+        sync: { register: (tag: string) => Promise<void> };
+      }).sync.register(DOWNLOAD_SYNC_TAG);
     } catch {
       // Background Sync may be unavailable
     }
