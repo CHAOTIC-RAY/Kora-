@@ -58,6 +58,10 @@ import {
   AudiobookLiveTranscriber,
   type LiveTranscriberStatus,
 } from "../lib/audiobookLiveTranscriber";
+import {
+  getTranscriptJob,
+  subscribeTranscriptQueue,
+} from "../lib/audiobookTranscriptQueue";
 
 function getInitialAudiobookTrack(
   book: BookMetadata,
@@ -239,6 +243,8 @@ export default function AudiobookPlayer({
   const [transcriberReady, setTranscriberReady] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
   const [liveTranscriberStatus, setLiveTranscriberStatus] = useState<LiveTranscriberStatus>("idle");
+  const [liveTranscriberProgress, setLiveTranscriberProgress] = useState(0);
+  const [liveTranscriberMessage, setLiveTranscriberMessage] = useState("");
   const introSkippedForTrack = useRef<number | null>(null);
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
@@ -447,6 +453,8 @@ export default function AudiobookPlayer({
       liveTranscriberRef.current?.detach(true);
       setLiveTranscript("");
       setLiveTranscriberStatus("idle");
+      setLiveTranscriberProgress(0);
+      setLiveTranscriberMessage("");
 
       const savedResume =
         resumeTime ??
@@ -538,7 +546,17 @@ export default function AudiobookPlayer({
         setLiveTranscript(text);
         setTranscriberReady(Boolean(text.trim()));
       },
-      onStatus: setLiveTranscriberStatus,
+      onStatus: (status) => {
+        setLiveTranscriberStatus(status);
+        if (status !== "processing") {
+          setLiveTranscriberProgress(status === "ready" || status === "listening" ? 100 : 0);
+          setLiveTranscriberMessage("");
+        }
+      },
+      onProgress: (progress, message) => {
+        setLiveTranscriberProgress(Math.max(0, Math.min(100, Math.round(progress))));
+        if (message) setLiveTranscriberMessage(message);
+      },
     });
     liveTranscriberRef.current = transcriber;
 
@@ -549,6 +567,31 @@ export default function AudiobookPlayer({
       }
     };
   }, [isTtsBook]);
+
+  // Keep progress visible for the current chapter even before/while audio is paused.
+  useEffect(() => {
+    if (isTtsBook) return;
+
+    const applyJob = (job: ReturnType<typeof getTranscriptJob>) => {
+      if (!job) return;
+      if (job.status === "pending" || job.status === "processing") {
+        setLiveTranscriberStatus("processing");
+        setLiveTranscriberProgress(Math.max(0, Math.min(100, Math.round(job.progress || 0))));
+        if (job.message) setLiveTranscriberMessage(job.message);
+        setLiveTranscript(
+          job.message ||
+            (job.progress > 5
+              ? `Generating transcript… ${job.progress}%`
+              : "Generating on-device transcript…")
+        );
+      }
+    };
+
+    applyJob(getTranscriptJob(book.id, currentTrack));
+    return subscribeTranscriptQueue((jobs) => {
+      applyJob(jobs.find((entry) => entry.bookId === book.id && entry.trackIndex === currentTrack));
+    });
+  }, [book.id, currentTrack, isTtsBook]);
 
   useEffect(() => {
     if (isTtsBook) {
@@ -931,9 +974,18 @@ export default function AudiobookPlayer({
                   : transcriberText}
               </p>
               {!isTtsBook && liveTranscriberStatus === "processing" && (
-                <p className="text-[10px] text-kindle-text-muted text-center">
-                  On-device transcript generating after download…
-                </p>
+                <div className="mt-1 space-y-1.5">
+                  <div className="h-1.5 w-full rounded-full bg-kindle-border/80 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-kindle-accent transition-[width] duration-300 ease-out"
+                      style={{ width: `${Math.max(liveTranscriberProgress, 3)}%` }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted text-center font-mono tabular-nums">
+                    {liveTranscriberProgress > 0 ? `${liveTranscriberProgress}%` : "Starting…"}
+                    {liveTranscriberMessage ? ` · ${liveTranscriberMessage}` : " · On-device transcript generating…"}
+                  </p>
+                </div>
               )}
               {!isTtsBook && liveTranscriberStatus === "error" && (
                 <p className="text-[10px] text-kindle-text-muted text-center">

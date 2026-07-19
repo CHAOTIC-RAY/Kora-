@@ -21,7 +21,7 @@ export interface AudiobookLiveTranscriberCallbacks {
   onUpdate?: (text: string) => void;
   onStatus?: (status: LiveTranscriberStatus) => void;
   onError?: (message: string) => void;
-  onProgress?: (progress: number) => void;
+  onProgress?: (progress: number, message?: string) => void;
 }
 
 /**
@@ -49,21 +49,23 @@ export class AudiobookLiveTranscriber {
         (entry) => entry.bookId === this.bookId && entry.trackIndex === this.trackIndex
       );
       if (!job) return;
-      this.callbacks.onProgress?.(job.progress);
+      this.callbacks.onProgress?.(job.progress, job.message);
       if (job.status === "processing" || job.status === "pending") {
         this.callbacks.onStatus?.("processing");
         if (!this.cues.length) {
-          this.callbacks.onUpdate?.(
-            job.progress > 5
+          const label =
+            job.message ||
+            (job.progress > 5
               ? `Generating transcript… ${job.progress}%`
-              : "Generating on-device transcript…"
-          );
+              : "Generating on-device transcript…");
+          this.callbacks.onUpdate?.(label);
         }
       } else if (job.status === "done") {
         void this.reloadCues();
       } else if (job.status === "error" && !this.cues.length) {
         this.callbacks.onStatus?.("error");
         this.callbacks.onError?.(job.error || "Transcript generation failed");
+        this.callbacks.onProgress?.(0);
       }
     });
   }
@@ -131,22 +133,25 @@ export class AudiobookLiveTranscriber {
     const job = getTranscriptJob(this.bookId, this.trackIndex);
     if (job && (job.status === "pending" || job.status === "processing")) {
       this.callbacks.onStatus?.("processing");
-      this.callbacks.onProgress?.(job.progress);
+      this.callbacks.onProgress?.(job.progress, job.message);
       this.callbacks.onUpdate?.(
-        job.progress > 5
-          ? `Generating transcript… ${job.progress}%`
-          : "Generating on-device transcript…"
+        job.message ||
+          (job.progress > 5
+            ? `Generating transcript… ${job.progress}%`
+            : "Generating on-device transcript…")
       );
       return;
     }
 
     if (stored?.status === "processing") {
       this.callbacks.onStatus?.("processing");
+      this.callbacks.onProgress?.(stored.progress || 0);
       this.callbacks.onUpdate?.(`Generating transcript… ${stored.progress || 0}%`);
       return;
     }
 
     this.callbacks.onStatus?.("idle");
+    this.callbacks.onProgress?.(0);
     this.callbacks.onUpdate?.(this.trackTitle || "");
   }
 

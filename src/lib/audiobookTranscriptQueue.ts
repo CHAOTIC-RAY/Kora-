@@ -14,6 +14,7 @@ export interface TranscriptJob {
   trackTitle: string;
   status: "pending" | "processing" | "done" | "error";
   progress: number;
+  message?: string;
   error?: string;
 }
 
@@ -94,12 +95,13 @@ export async function processTranscriptQueue(): Promise<void> {
           job.bookId,
           job.trackIndex,
           job.trackTitle,
-          (progress) => {
+          (progress, message) => {
             const latest = loadQueue();
             const current = latest.find((entry) => entry.id === job.id);
             if (!current) return;
             current.progress = progress;
             current.status = "processing";
+            if (message) current.message = message;
             saveQueue(latest.map((entry) => (entry.id === job.id ? { ...current } : entry)));
           }
         );
