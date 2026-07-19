@@ -793,6 +793,11 @@ function DiscoverView({
                 author: b.author,
                 coverUrl: b.book_image,
                 searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
+                // Keep NYT synopsis so Overview is never blank while Google loads.
+                description: b.description || "",
+                isbn13: b.primary_isbn13 || b.isbns?.[0]?.isbn13 || "",
+                isbn10: b.primary_isbn10 || b.isbns?.[0]?.isbn10 || "",
+                publisher: b.publisher || "",
                 source: "nyt",
               });
             }
@@ -967,7 +972,24 @@ function DiscoverView({
     setFeaturedAudiobookSource(null);
     audiobookFetchGen.current += 1;
     setSelectedFeaturedBook(book);
-    fetchFeaturedMetadata(book.title, book.author || "");
+    // Seed overview immediately from list data (NYT synopses, etc.) so the
+    // panel is never empty while Google / Open Library enrich it.
+    if (book?.description) {
+      setFeaturedBookDetails({
+        title: book.title,
+        authors: book.author ? [book.author] : [],
+        description: book.description,
+        publisher: book.publisher,
+        industryIdentifiers: [
+          book.isbn13 ? { type: "ISBN_13", identifier: book.isbn13 } : null,
+          book.isbn10 ? { type: "ISBN_10", identifier: book.isbn10 } : null,
+        ].filter(Boolean),
+        source: book.source === "nyt" ? "New York Times" : book.source || "Catalog",
+      });
+    } else {
+      setFeaturedBookDetails(null);
+    }
+    fetchFeaturedMetadata(book.title, book.author || "", undefined, book.description || "");
   };
 
   const closeBookDetail = () => {
@@ -1063,8 +1085,10 @@ function DiscoverView({
       let description = "";
       if (doc.key) {
         try {
-          // Prefer worker proxy path when available; fall back to direct OL.
-          const workRes = await fetch(`https://openlibrary.org${doc.key}.json`);
+          // Same-origin worker proxy avoids browser CORS / adblock issues.
+          const workRes = await fetch(
+            `/api/open-library/work?key=${encodeURIComponent(doc.key)}`
+          );
           if (workRes.ok) {
             const workData = await workRes.json();
             description =
@@ -1082,14 +1106,20 @@ function DiscoverView({
     }
   };
 
-  const fetchFeaturedMetadata = async (title: string, author: string, forceSource?: "google" | "nyt" | "openlibrary") => {
+  const fetchFeaturedMetadata = async (
+    title: string,
+    author: string,
+    forceSource?: "google" | "nyt" | "openlibrary",
+    seedDescriptionArg?: string
+  ) => {
     setLoadingFeaturedDetails(true);
-    setFeaturedBookDetails(null);
+    // Keep any seeded synopsis visible while we enrich — don't flash empty.
     setSimilarBooks([]);
     setReadMoreExpanded(false);
     const sourceToUse = forceSource || metadataSource;
     const cleanTitle = (title || "").trim();
     const cleanAuthor = (author || "").trim();
+    const seedDescription = seedDescriptionArg || selectedFeaturedBook?.description || "";
     
     try {
       // 1. Google Books (Preferred Default) — worker falls back to Open Library on quota errors.
@@ -1103,21 +1133,25 @@ function DiscoverView({
         let info: any = null;
         let usedFallback = false;
         for (const query of queries) {
-          const res = await fetch(
-            `/api/google-books/search?q=${encodeURIComponent(query)}&maxResults=5`
-          );
-          if (!res.ok) continue;
-          const data = await res.json();
-          if (data?.error || !data?.items?.length) continue;
-          usedFallback = data.source === "openlibrary-fallback";
-          const ranked = [...data.items].sort((a: any, b: any) => {
-            const ad = (a.volumeInfo?.description || "").length;
-            const bd = (b.volumeInfo?.description || "").length;
-            return bd - ad;
-          });
-          info = ranked[0]?.volumeInfo;
-          if (info?.description) break;
-          if (info) break;
+          try {
+            const res = await fetch(
+              `/api/google-books/search?q=${encodeURIComponent(query)}&maxResults=5`
+            );
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (data?.error || !data?.items?.length) continue;
+            usedFallback = data.source === "openlibrary-fallback";
+            const ranked = [...data.items].sort((a: any, b: any) => {
+              const ad = (a.volumeInfo?.description || "").length;
+              const bd = (b.volumeInfo?.description || "").length;
+              return bd - ad;
+            });
+            info = ranked[0]?.volumeInfo;
+            if (info?.description) break;
+            if (info) break;
+          } catch (err) {
+            console.warn("[Overview] Google query failed:", query, err);
+          }
         }
 
         // If Google returned a match without a blurb, pull description from Open Library.
@@ -1126,15 +1160,39 @@ function DiscoverView({
           if (description) info = { ...info, description };
         }
 
+        // Still nothing? Use Open Library as a full fallback for the Google tab.
+        if (!info) {
+          const ol = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
+          if (ol.doc) {
+            info = {
+              title: ol.doc.title || cleanTitle,
+              authors: ol.doc.author_name || (cleanAuthor ? [cleanAuthor] : []),
+              description: ol.description,
+              pageCount: ol.doc.number_of_pages_median || ol.doc.number_of_pages,
+              publishedDate: ol.doc.first_publish_year?.toString(),
+              publisher: ol.doc.publisher?.[0],
+              language: ol.doc.language?.[0],
+              categories: (ol.doc.subject || []).slice(0, 8),
+              industryIdentifiers: (ol.doc.isbn || []).slice(0, 4).map((id: string) => ({
+                type: id.length === 13 ? "ISBN_13" : "ISBN_10",
+                identifier: id,
+              })),
+            };
+            usedFallback = true;
+          }
+        }
+
         if (info) {
+          const description =
+            info.description || seedDescription || selectedFeaturedBook?.description || "";
           setFeaturedBookDetails({
             ...info,
             title: info.title || cleanTitle,
             authors: info.authors || (cleanAuthor ? [cleanAuthor] : []),
-            description: info.description || selectedFeaturedBook?.description || "",
+            description,
             pageCount: info.pageCount,
             publishedDate: info.publishedDate,
-            publisher: info.publisher,
+            publisher: info.publisher || selectedFeaturedBook?.publisher,
             language: info.language,
             industryIdentifiers: info.industryIdentifiers || [],
             categories: info.categories || [],
@@ -1157,6 +1215,19 @@ function DiscoverView({
           if (info.categories && info.categories.length > 0) {
             fetchSimilarBooks(info.categories[0]);
           }
+          setLoadingFeaturedDetails(false);
+          return;
+        }
+
+        // Last resort for Google tab: keep/show the seeded NYT synopsis.
+        if (seedDescription) {
+          setFeaturedBookDetails((prev: any) => ({
+            ...(prev || {}),
+            title: cleanTitle,
+            authors: cleanAuthor ? [cleanAuthor] : [],
+            description: seedDescription,
+            source: prev?.source || "New York Times",
+          }));
           setLoadingFeaturedDetails(false);
           return;
         }

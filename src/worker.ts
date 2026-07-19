@@ -2272,6 +2272,48 @@ export default {
       }
     }
 
+    // Open Library work document (description) — same-origin proxy for the client.
+    if (path === "/api/open-library/work") {
+      try {
+        let key = url.searchParams.get("key") || "";
+        if (!key) {
+          return new Response(JSON.stringify({ error: "Missing key" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        if (!key.startsWith("/")) key = `/${key}`;
+        if (!key.startsWith("/works/") && !key.startsWith("/books/")) {
+          return new Response(JSON.stringify({ error: "Invalid Open Library key" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        const workRes = await fetch(`https://openlibrary.org${key}.json`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!workRes.ok) {
+          return new Response(JSON.stringify({ error: `Open Library ${workRes.status}` }), {
+            status: workRes.status,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        const workData = await workRes.json();
+        return new Response(JSON.stringify(workData), {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=86400",
+          },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+    }
+
     // 5. RSS Feed Discovery & Fetch
     if (path === "/api/feed/discover" && request.method === "POST") {
       try {
