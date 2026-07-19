@@ -1199,6 +1199,30 @@ export default function App() {
     });
   }, [activeTab]);
 
+  // Must be declared before closeReader/closeAudiobook (avoids TDZ blank-page crash).
+  const refreshLibrary = useCallback(async (uid = user?.uid || "") => {
+    setLoadingLibrary(true);
+    try {
+      const data = await loadLibrary(uid);
+      setBooks(data);
+    } catch (err) {
+      console.error("Failed to load library:", err);
+    } finally {
+      setLoadingLibrary(false);
+    }
+  }, [user?.uid]);
+
+  const removeBooksFromLibrary = useCallback((bookIds: string[]) => {
+    if (!bookIds.length) return;
+    const removeSet = new Set(bookIds);
+    setBooks((current) => current.filter((book) => !removeSet.has(book.id)));
+    setCachedBookIds((current) => {
+      const next = new Set(current);
+      bookIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }, []);
+
   const isAudiobookBook = activeBook?.extension?.toLowerCase() === "audiobook";
   const audiobookFullscreen = !!(audiobookPlayback && activeBook?.id === audiobookPlayback.id);
   const readerOpen = !!activeBook && !isAudiobookBook;
@@ -1296,30 +1320,6 @@ export default function App() {
       console.error("Startup folder scan failed:", err);
     }
   }
-
-  // Load books metadata
-  const refreshLibrary = useCallback(async (uid = user?.uid || "") => {
-    setLoadingLibrary(true);
-    try {
-      const data = await loadLibrary(uid);
-      setBooks(data);
-    } catch (err) {
-      console.error("Failed to load library:", err);
-    } finally {
-      setLoadingLibrary(false);
-    }
-  }, [user?.uid]);
-
-  const removeBooksFromLibrary = useCallback((bookIds: string[]) => {
-    if (!bookIds.length) return;
-    const removeSet = new Set(bookIds);
-    setBooks((current) => current.filter((book) => !removeSet.has(book.id)));
-    setCachedBookIds((current) => {
-      const next = new Set(current);
-      bookIds.forEach((id) => next.delete(id));
-      return next;
-    });
-  }, []);
 
   // Handle manual login/signup
   async function handleAuthSubmit(e: React.FormEvent) {
