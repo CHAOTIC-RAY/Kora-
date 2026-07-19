@@ -1,30 +1,19 @@
 /* Kora service worker
- * - Keeps book downloads alive in the background and shows an Android
- *   notification with live progress (streaming fetch).
- * - Uses the Background Fetch API when available (true OS-level download that
- *   survives the SW/process being killed, with a system notification + pause).
- * - Caches the app shell so the reader loads offline (D10).
- *
- * Flow (streaming):
- *   page --postMessage {type:'download-book'}--> SW
- *   SW   fetches /api/proxy-file, streams bytes, writes blob to IndexedDB
- *         (kora_sw_downloads), posts progress + a persistent notification.
- *   page  receives download-complete -> picks up blob via /__kora_sw_pickup__
- *         -> storeBookFile() -> deletes SW copy.
- *
- * Flow (Background Fetch):
- *   page --postMessage {type:'download-book'}--> SW
- *   SW   registration.backgroundFetch.fetch(id, [{request:proxyUrl}])
- *   OS   downloads in the system download manager; SW gets
- *         backgroundfetchsuccess -> stores blob -> posts download-complete.
+ * - Keeps book + audiobook downloads alive in the background
+ * - Resumes partial downloads after the SW is killed
+ * - Daily news-brief notifications via Periodic Background Sync
  */
 
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
+const PREFS_STORE = "prefs";
 const SHELL_CACHE = "kora-shell-v1";
 const API_CACHE = "kora-api-v1";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg"];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
+const PERIODIC_SYNC_TAG = "kora-daily-brief";
+const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
+const PARTIAL_FLUSH_BYTES = 512 * 1024;
 
 async function warmApiCache() {
   const cache = await caches.open(API_CACHE);
@@ -54,30 +43,37 @@ self.addEventListener("activate", (event) => {
       await Promise.all(keys.filter((k) => k !== SHELL_CACHE && k !== API_CACHE).map((k) => caches.delete(k)));
       await self.clients.claim();
       warmApiCache();
+      await resumePartialDownloads();
     })()
   );
 });
 
-/* ---------- IndexedDB for finished blobs ---------- */
+/* ---------- IndexedDB ---------- */
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: "id" });
+    const req = indexedDB.open(DB_NAME, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(PREFS_STORE)) db.createObjectStore(PREFS_STORE, { keyPath: "key" });
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
+
 function putDB(id, record) {
   return openDB().then(
     (db) =>
       new Promise((resolve, reject) => {
         const tx = db.transaction(STORE, "readwrite");
-        tx.objectStore(STORE).put(record);
+        tx.objectStore(STORE).put({ ...record, id });
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
       })
   );
 }
+
 function getDB(id) {
   return openDB().then(
     (db) =>
@@ -89,6 +85,7 @@ function getDB(id) {
       })
   );
 }
+
 function delDB(id) {
   return openDB().then(
     (db) =>
@@ -97,6 +94,42 @@ function delDB(id) {
         tx.objectStore(STORE).delete(id);
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
+      })
+  );
+}
+
+function getAllDB() {
+  return openDB().then(
+    (db) =>
+      new Promise((resolve) => {
+        const tx = db.transaction(STORE, "readonly");
+        const req = tx.objectStore(STORE).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => resolve([]);
+      })
+  );
+}
+
+function putPrefs(key, value) {
+  return openDB().then(
+    (db) =>
+      new Promise((resolve, reject) => {
+        const tx = db.transaction(PREFS_STORE, "readwrite");
+        tx.objectStore(PREFS_STORE).put({ key, value });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      })
+  );
+}
+
+function getPrefs(key) {
+  return openDB().then(
+    (db) =>
+      new Promise((resolve) => {
+        const tx = db.transaction(PREFS_STORE, "readonly");
+        const req = tx.objectStore(PREFS_STORE).get(key);
+        req.onsuccess = () => resolve(req.result ? req.result.value : null);
+        req.onerror = () => resolve(null);
       })
   );
 }
@@ -114,16 +147,25 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
+function absoluteUrl(url) {
+  try {
+    return new URL(url, self.location.origin).href;
+  } catch (e) {
+    return url;
+  }
+}
+
 async function showProgressNotif(payload, percent, transferred, opts = {}) {
   if (!self.registration || !self.registration.showNotification) return;
-  const title = opts.title || `Downloading "${payload.title}"`;
+  const title = opts.title || `Downloading "${payload.title || payload.trackTitle || "file"}"`;
   const body = percent == null ? transferred : `${percent}%  •  ${transferred}`;
+  const downloadId = payload.downloadId || payload.jobId;
   try {
     await self.registration.showNotification(title, {
       body,
-      tag: "kora-dl-" + payload.downloadId,
+      tag: "kora-dl-" + downloadId,
       silent: true,
-      data: { downloadId: payload.downloadId },
+      data: { downloadId, jobId: payload.jobId },
       ...(percent != null ? { progress: Math.max(0, Math.min(100, percent)) } : {}),
       actions: [
         { action: "open", title: "Open" },
@@ -132,26 +174,57 @@ async function showProgressNotif(payload, percent, transferred, opts = {}) {
       ...opts.extra,
     });
   } catch (e) {
-    /* notification may be blocked; ignore */
+    /* notification may be blocked */
   }
 }
 
-/* ---------- Streaming download (fallback / when BGF unavailable) ---------- */
-async function downloadBook(payload) {
+function chunksToBlob(chunks, type) {
+  return new Blob(chunks, { type: type || "application/octet-stream" });
+}
+
+/* ---------- Resumable streaming download ---------- */
+async function savePartialState(id, state) {
+  await putDB(id, { id, ...state, partial: true });
+}
+
+async function resumePartialDownloads() {
+  const all = await getAllDB();
+  const partials = all.filter((r) => r.partial && !r.bgf && (r.payload || r.audiobook));
+  for (const rec of partials) {
+    if (rec.audiobook) {
+      downloadAudiobookTrack(rec.audiobook, rec.received || 0, rec.chunks || [], rec.contentType || "audio/mpeg");
+    } else if (rec.payload) {
+      downloadBook(rec.payload, rec.received || 0, rec.chunks || [], rec.contentType || "");
+    }
+  }
+}
+
+async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownContentType = "") {
   const { downloadId, proxyUrl } = payload;
+  const partialId = "partial-" + downloadId;
   try {
-    const response = await fetch(proxyUrl);
-    if (!response.ok) throw new Error(`Mirror unresponsive (HTTP ${response.status}).`);
-    const contentType = response.headers.get("content-type") || "";
+    const headers = resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {};
+    const response = await fetch(absoluteUrl(proxyUrl), { headers });
+    if (!response.ok && response.status !== 206) throw new Error(`Mirror unresponsive (HTTP ${response.status}).`);
+
+    const contentType = knownContentType || response.headers.get("content-type") || "";
     if (contentType.toLowerCase().includes("text/html"))
       throw new Error("Mirror returned a webpage instead of a book file.");
 
-    const contentLength = +(response.headers.get("Content-Length") || 0);
+    const contentLengthHeader = response.headers.get("Content-Length");
+    const contentRange = response.headers.get("Content-Range");
+    let totalSize = +(contentLengthHeader || 0);
+    if (contentRange) {
+      const match = contentRange.match(/\/(\d+)$/);
+      if (match) totalSize = +match[1];
+    }
+
     const reader = response.body.getReader();
-    const chunks = [];
-    let received = 0;
+    const chunks = existingChunks.slice();
+    let received = resumeFrom;
     const startTime = Date.now();
     let lastNotif = 0;
+    let lastFlush = received;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -159,11 +232,11 @@ async function downloadBook(payload) {
       chunks.push(value);
       received += value.length;
 
-      const percent = contentLength > 0 ? Math.round((received / contentLength) * 100) : null;
+      const percent = totalSize > 0 ? Math.round((received / totalSize) * 100) : null;
       const elapsed = (Date.now() - startTime) / 1000;
       const speed = elapsed > 0 ? received / elapsed : 0;
-      const transferred = contentLength > 0
-        ? `${formatBytes(received)} of ${formatBytes(contentLength)}`
+      const transferred = totalSize > 0
+        ? `${formatBytes(received)} of ${formatBytes(totalSize)}`
         : formatBytes(received);
 
       const now = Date.now();
@@ -172,24 +245,42 @@ async function downloadBook(payload) {
         await postToClients({ type: "download-progress", downloadId, percent, transferred, speed: speed > 0 ? `${formatBytes(speed)}/s` : "" });
         await showProgressNotif(payload, percent, transferred);
       }
+
+      if (received - lastFlush >= PARTIAL_FLUSH_BYTES) {
+        lastFlush = received;
+        await savePartialState(partialId, {
+          payload,
+          received,
+          chunks,
+          contentType,
+          contentLength: totalSize,
+        });
+      }
     }
 
-    const fileBlob = new Blob(chunks, { type: contentType || "application/octet-stream" });
+    const fileBlob = chunksToBlob(chunks, contentType || "application/octet-stream");
+    await delDB(partialId);
     await putDB(downloadId, { id: downloadId, blob: fileBlob, payload, saved: false });
     await finishDownload(payload, fileBlob);
   } catch (err) {
+    await delDB(partialId);
     await delDB(downloadId);
     await postToClients({ type: "download-error", downloadId, error: err.message || "Download failed" });
     if (self.registration && self.registration.showNotification) {
       try {
         await self.registration.showNotification(`Download failed: "${payload.title}"`, {
           body: err.message || "Please try again.",
-          tag: "kora-dl-" + payload.downloadId,
+          tag: "kora-dl-" + downloadId,
           data: { downloadId, error: true },
           actions: [{ action: "retry", title: "Retry" }],
         });
       } catch (e) {}
     }
+    try {
+      if (self.registration && self.registration.sync) {
+        await self.registration.sync.register(DOWNLOAD_SYNC_TAG);
+      }
+    } catch (e) {}
   }
 }
 
@@ -216,43 +307,209 @@ async function finishDownload(payload, fileBlob) {
   }
 }
 
-/* ---------- Background Fetch (true OS-level background download) ---------- */
+async function finishAudiobookDownload(payload, fileBlob) {
+  await postToClients({
+    type: "audiobook-track-complete",
+    jobId: payload.jobId,
+    bookId: payload.bookId,
+    bookTitle: payload.bookTitle,
+    trackIndex: payload.trackIndex,
+    trackTitle: payload.trackTitle,
+    size: formatBytes(fileBlob.size),
+  });
+}
+
+async function downloadAudiobookTrack(payload, resumeFrom = 0, existingChunks = [], knownContentType = "audio/mpeg") {
+  const partialId = "partial-ab-" + payload.jobId;
+  try {
+    const headers = resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {};
+    const response = await fetch(absoluteUrl(payload.proxyUrl), { headers });
+    if (!response.ok && response.status !== 206) throw new Error(`Track download failed (HTTP ${response.status}).`);
+
+    const contentType = knownContentType || response.headers.get("content-type") || "audio/mpeg";
+    const contentLengthHeader = response.headers.get("Content-Length");
+    const contentRange = response.headers.get("Content-Range");
+    let totalSize = +(contentLengthHeader || 0);
+    if (contentRange) {
+      const match = contentRange.match(/\/(\d+)$/);
+      if (match) totalSize = +match[1];
+    }
+
+    const reader = response.body.getReader();
+    const chunks = existingChunks.slice();
+    let received = resumeFrom;
+    let lastNotif = 0;
+    let lastFlush = received;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+
+      const percent = totalSize > 0 ? Math.round((received / totalSize) * 100) : null;
+      const transferred = totalSize > 0
+        ? `${formatBytes(received)} of ${formatBytes(totalSize)}`
+        : formatBytes(received);
+
+      const now = Date.now();
+      if (now - lastNotif > 500) {
+        lastNotif = now;
+        await postToClients({
+          type: "audiobook-track-progress",
+          jobId: payload.jobId,
+          bookId: payload.bookId,
+          percent,
+          transferred,
+        });
+        await showProgressNotif(payload, percent, transferred, {
+          title: `Downloading "${payload.bookTitle}"`,
+        });
+      }
+
+      if (received - lastFlush >= PARTIAL_FLUSH_BYTES) {
+        lastFlush = received;
+        await savePartialState(partialId, {
+          audiobook: payload,
+          received,
+          chunks,
+          contentType,
+          contentLength: totalSize,
+        });
+      }
+    }
+
+    const fileBlob = chunksToBlob(chunks, contentType);
+    await delDB(partialId);
+    await putDB(payload.jobId, { id: payload.jobId, blob: fileBlob, audiobook: payload, saved: false });
+    await finishAudiobookDownload(payload, fileBlob);
+  } catch (err) {
+    await postToClients({
+      type: "audiobook-track-error",
+      jobId: payload.jobId,
+      bookId: payload.bookId,
+      error: err.message || "Download failed",
+    });
+    try {
+      if (self.registration && self.registration.sync) {
+        await self.registration.sync.register(DOWNLOAD_SYNC_TAG);
+      }
+    } catch (e) {}
+  }
+}
+
+/* ---------- Background Fetch ---------- */
 async function downloadBookBGF(payload) {
   const bgfId = "kora-bgf-" + payload.downloadId;
+  const proxyUrl = absoluteUrl(payload.proxyUrl);
   try {
-    // Persist the payload + proxyUrl so the success handler can resolve it.
-    await putDB(bgfId, { id: bgfId, payload, proxyUrl: payload.proxyUrl, saved: false, bgf: true });
-    // Correct Background Fetch API: `requests` is an array of URL strings (or
-    // Request objects), NOT {request, method} objects. A malformed request
-    // throws and silently falls back to the streaming path — which dies when
-    // the app is closed. Using the right shape lets the OS download manager
-    // take over and survive the app being killed.
-    const bgf = await self.registration.backgroundFetch.fetch(bgfId, [payload.proxyUrl], {
+    await putDB(bgfId, { id: bgfId, payload: { ...payload, proxyUrl }, proxyUrl, saved: false, bgf: true });
+    const bgf = await self.registration.backgroundFetch.fetch(bgfId, [proxyUrl], {
       title: `Downloading "${payload.title}"`,
       downloadTotal: 0,
       icons: [{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml" }],
     });
-    // Optimistically tell the page we started (progress comes from the OS).
-    await postToClients({ type: "download-progress", downloadId: payload.downloadId, percent: null, transferred: "downloading in background…", speed: "" });
+    await postToClients({
+      type: "download-progress",
+      downloadId: payload.downloadId,
+      percent: null,
+      transferred: "downloading in background…",
+      speed: "",
+    });
     if (bgf && bgf.failureReason && bgf.failureReason !== "aborted") {
       throw new Error("Background fetch rejected: " + bgf.failureReason);
     }
   } catch (err) {
-    // BGF unavailable or rejected — fall back to the streaming path.
     console.warn("[SW] Background Fetch failed, falling back to streaming:", err);
     await delDB(bgfId);
-    await downloadBook(payload);
+    await downloadBook({ ...payload, proxyUrl });
+  }
+}
+
+/* ---------- Daily news brief ---------- */
+function isNewsBriefItem(item) {
+  const haystack = `${item.title || ""} ${item.link || ""} ${item.summary || ""}`.toLowerCase();
+  if (item.category && /brief|roundup|digest/i.test(item.category)) return true;
+  if (/\/news-in-brief\//i.test(item.link || "")) return true;
+  if (/news[-\s]?in[-\s]?brief/i.test(haystack)) return true;
+  if (/\b(daily|evening)\s+(brief|roundup|digest)\b/i.test(haystack)) return true;
+  if (/\bnews roundup\b/i.test(haystack)) return true;
+  return false;
+}
+
+async function fetchFeedBriefs(subscriptions) {
+  const briefs = [];
+  for (const sub of subscriptions || []) {
+    try {
+      const res = await fetch("/api/feed/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedUrl: sub.feedUrl }),
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      for (const item of data.items || []) {
+        if (!isNewsBriefItem(item)) continue;
+        briefs.push({
+          title: item.title,
+          source: sub.title,
+          link: item.link,
+          publishedAt: item.publishedAt || Date.now(),
+        });
+      }
+    } catch (e) {
+      /* try next feed */
+    }
+  }
+  briefs.sort((a, b) => b.publishedAt - a.publishedAt);
+  return briefs;
+}
+
+async function maybeShowDailyBriefNotification(force = false) {
+  const prefs = (await getPrefs("app")) || {};
+  if (!prefs.dailyNewsBrief) return;
+
+  const today = new Date().toDateString();
+  if (!force && prefs.lastBriefNotified === today) return;
+
+  const briefs = await fetchFeedBriefs(prefs.subscriptions || []);
+  if (!briefs.length) return;
+
+  const headlines = briefs.slice(0, 3).map((b) => `• ${b.source}: ${b.title}`).join("\n");
+  if (self.registration && self.registration.showNotification) {
+    await self.registration.showNotification("Your daily news brief", {
+      body: headlines,
+      tag: "kora-daily-brief",
+      data: { brief: true },
+      actions: [{ action: "open-feed", title: "Read briefs" }],
+    });
+    await putPrefs("app", { ...prefs, lastBriefNotified: today });
+    await postToClients({ type: "brief-notification-shown", date: today });
   }
 }
 
 /* ---------- Message handling ---------- */
 self.addEventListener("message", (event) => {
   const data = event.data || {};
+  if (data.type === "skip-waiting") {
+    self.skipWaiting();
+    return;
+  }
+  if (data.type === "sync-prefs") {
+    event.waitUntil(putPrefs("app", data.prefs || {}));
+    return;
+  }
+  if (data.type === "check-daily-brief") {
+    event.waitUntil(maybeShowDailyBriefNotification(true));
+    return;
+  }
   if (data.type === "download-book") {
     const canBGF = !!(self.registration && self.registration.backgroundFetch);
     event.waitUntil(canBGF ? downloadBookBGF(data.payload) : downloadBook(data.payload));
+  } else if (data.type === "download-audiobook-track") {
+    event.waitUntil(downloadAudiobookTrack(data.payload));
   } else if (data.type === "pickup-complete") {
-    event.waitUntil(delDB(data.downloadId));
+    event.waitUntil(delDB(data.downloadId || data.jobId));
   } else if (data.type === "bgf-cancel") {
     event.waitUntil((async () => {
       try {
@@ -260,6 +517,7 @@ self.addEventListener("message", (event) => {
       } catch (e) {}
       await delDB("kora-bgf-" + data.downloadId);
       await delDB(data.downloadId);
+      await delDB("partial-" + data.downloadId);
       await postToClients({ type: "download-error", downloadId: data.downloadId, error: "Cancelled" });
     })());
   } else if (data.type === "sw-ready") {
@@ -275,7 +533,8 @@ self.addEventListener("backgroundfetchsuccess", (event) => {
       const rec = await getDB(bgfId);
       if (!rec) return;
       try {
-        const match = await event.registration.match(rec.proxyUrl);
+        const proxyUrl = rec.proxyUrl || rec.payload?.proxyUrl;
+        const match = proxyUrl ? await event.registration.match(proxyUrl) : null;
         const response = match || (await event.registration.matchAll())[0];
         if (!response || !response.response) throw new Error("No downloaded response");
         const blob = await response.response.blob();
@@ -296,7 +555,11 @@ self.addEventListener("backgroundfetchfail", (event) => {
     (async () => {
       const rec = await getDB(event.registration.id);
       await delDB(event.registration.id);
-      if (rec) await postToClients({ type: "download-error", downloadId: rec.payload.downloadId, error: "Download failed" });
+      if (rec && rec.payload) {
+        await downloadBook(rec.payload);
+      } else if (rec) {
+        await postToClients({ type: "download-error", downloadId: rec.payload?.downloadId, error: "Download failed" });
+      }
     })()
   );
 });
@@ -306,7 +569,9 @@ self.addEventListener("backgroundfetchabort", (event) => {
     (async () => {
       const rec = await getDB(event.registration.id);
       await delDB(event.registration.id);
-      if (rec) await postToClients({ type: "download-error", downloadId: rec.payload.downloadId, error: "Cancelled" });
+      if (rec && rec.payload) {
+        await postToClients({ type: "download-error", downloadId: rec.payload.downloadId, error: "Cancelled" });
+      }
     })()
   );
 });
@@ -323,12 +588,24 @@ self.addEventListener("backgroundfetchclick", (event) => {
       } else {
         await self.clients.openWindow("/");
       }
-      event.registration.matchAll().then(() => {});
     })()
   );
 });
 
-/* ---------- Notification clicks (Open / Cancel / Retry) ---------- */
+/* ---------- Periodic sync + background sync ---------- */
+self.addEventListener("periodicsync", (event) => {
+  if (event.tag === PERIODIC_SYNC_TAG) {
+    event.waitUntil(maybeShowDailyBriefNotification());
+  }
+});
+
+self.addEventListener("sync", (event) => {
+  if (event.tag === DOWNLOAD_SYNC_TAG) {
+    event.waitUntil(resumePartialDownloads());
+  }
+});
+
+/* ---------- Notification clicks ---------- */
 self.addEventListener("notificationclick", (event) => {
   const data = event.notification.data || {};
   const action = event.action;
@@ -349,18 +626,25 @@ self.addEventListener("notificationclick", (event) => {
         await focus();
         return;
       }
-      // Open / default
+      if (action === "open-feed" || data.brief) {
+        if (clients[0]) {
+          clients[0].focus();
+          clients[0].postMessage({ type: "open-feed-briefs" });
+        } else {
+          await self.clients.openWindow("/?tab=feed&briefs=1");
+        }
+        return;
+      }
       if (data.downloadId) await postToClients({ type: "open-downloads", downloadId: data.downloadId });
       await focus();
     })()
   );
 });
 
-/* ---------- Fetch handling: blob pickup + offline app shell ---------- */
+/* ---------- Fetch handling ---------- */
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  // 1. Blob pickup from the SW store
   if (url.pathname === "/__kora_sw_pickup__") {
     const id = url.searchParams.get("id");
     event.respondWith(
@@ -372,7 +656,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 1b. List finished blobs still waiting to be ingested (C7 sweep)
   if (url.pathname === "/__kora_sw_list__") {
     event.respondWith(
       openDB().then(
@@ -382,7 +665,7 @@ self.addEventListener("fetch", (event) => {
             const req = tx.objectStore(STORE).getAll();
             req.onsuccess = () =>
               resolve(
-                new Response(JSON.stringify(req.result.filter((r) => !r.bgf).map((r) => r.id)), {
+                new Response(JSON.stringify(req.result.filter((r) => !r.bgf && !r.partial && r.blob).map((r) => r.id)), {
                   headers: { "Content-Type": "application/json" },
                 })
               );
@@ -393,7 +676,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2. API warm-cache: stale-while-revalidate for discovery feed endpoints
   if (event.request.method === "GET" && WARM_API_PATHS.includes(url.pathname)) {
     event.respondWith(
       (async () => {
@@ -411,10 +693,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2b. Don't intercept other API or background-fetch network requests
   if (url.pathname.startsWith("/api/")) return;
 
-  // 3. Navigation / same-origin asset: stale-while-revalidate from the shell cache
   if (event.request.method === "GET" && (event.request.mode === "navigate" || url.pathname.startsWith("/assets/") || SHELL_ASSETS.includes(url.pathname))) {
     event.respondWith(
       (async () => {

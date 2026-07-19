@@ -29,9 +29,18 @@ import BookReaderText from "./components/BookReaderText";
 import AudiobookPlayer from "./components/AudiobookPlayer";
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
-import { enqueueAudiobookDownload } from "./lib/audiobookSyncQueue";
+import { enqueueAudiobookDownload, handleAudiobookSwMessage, ingestAudiobookTrackFromSw } from "./lib/audiobookSyncQueue";
 import { useAndroidBackLayer } from "./hooks/useAndroidBackLayer";
 import { removeAndroidBackLayer } from "./lib/androidGestures";
+import {
+  ensureServiceWorkerReady,
+  handoffBookDownload,
+  isDailyNewsBriefEnabled,
+  markBriefNotificationShown,
+  registerBackgroundCapabilities,
+  setDailyNewsBriefEnabled as persistDailyNewsBriefEnabled,
+  syncServiceWorkerPrefs,
+} from "./lib/swBridge";
 import Quote from "./components/Quote";
 import FeedView from "./components/FeedView";
 import DownloadBookBtn from "./components/DownloadBookBtn";
@@ -180,7 +189,18 @@ export default function App() {
   const [dailyRemindersEnabled, setDailyRemindersEnabled] = useState<boolean>(() => {
     return localStorage.getItem("kora_daily_reminders") === "true";
   });
+  const [dailyNewsBriefEnabled, setDailyNewsBriefEnabled] = useState<boolean>(() => isDailyNewsBriefEnabled());
   const [showDailyReminder, setShowDailyReminder] = useState<boolean>(false);
+
+  const handleDailyNewsBriefChange = async (enabled: boolean) => {
+    setDailyNewsBriefEnabled(enabled);
+    persistDailyNewsBriefEnabled(enabled);
+    await syncServiceWorkerPrefs();
+    await registerBackgroundCapabilities();
+    if (enabled && "serviceWorker" in navigator) {
+      navigator.serviceWorker.controller?.postMessage({ type: "check-daily-brief" });
+    }
+  };
 
   useEffect(() => {
     if (dailyRemindersEnabled && !showOnboarding) {
@@ -352,37 +372,31 @@ export default function App() {
     // --- Background download via Service Worker (survives app exit + shows
     // Android progress notification). Falls back to the foreground loop below
     // if the SW isn't controlling the page yet. ---
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      try {
-        if ("Notification" in window && Notification.permission === "default") {
-          try { await Notification.requestPermission(); } catch (e) {}
-        }
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirrorList[0].url)}`;
-        // Stash the book/variant payload so the completion listener can rebuild
-        // BookMetadata (the SW only returns the raw blob).
-        const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
-        payloads[downloadId] = {
-          book: { title: book.title, author: book.author, coverUrl: book.coverUrl, tags: book.tags, language: book.language, description: book.description, publisher: book.publisher, year: book.year },
-          variant: { md5: variant.md5, size: variant.size, extension: variant.extension, format: variant.format, downloadUrl: variant.downloadUrl, directUrl: variant.directUrl },
-          fileExtension: variant.extension || variant.format || "epub"
-        };
-        localStorage.setItem("kora_sw_payloads", JSON.stringify(payloads));
-        navigator.serviceWorker.controller.postMessage({
-          type: "download-book",
-          payload: {
-            downloadId,
-            title: book.title,
-            author: book.author || "Unknown",
-            coverUrl: book.coverUrl || "",
-            md5: variant.md5,
-            fileExtension: variant.extension || variant.format || "epub",
-            proxyUrl
-          }
-        });
-        return; // SW listener (below) drives progress + completion
-      } catch (swErr) {
-        logger.warn("SW download handoff failed, using foreground fallback:", swErr);
+    try {
+      if ("Notification" in window && Notification.permission === "default") {
+        try { await Notification.requestPermission(); } catch (e) {}
       }
+      const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirrorList[0].url)}`;
+      const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
+      payloads[downloadId] = {
+        book: { title: book.title, author: book.author, coverUrl: book.coverUrl, tags: book.tags, language: book.language, description: book.description, publisher: book.publisher, year: book.year },
+        variant: { md5: variant.md5, size: variant.size, extension: variant.extension, format: variant.format, downloadUrl: variant.downloadUrl, directUrl: variant.directUrl },
+        fileExtension: variant.extension || variant.format || "epub"
+      };
+      localStorage.setItem("kora_sw_payloads", JSON.stringify(payloads));
+
+      const handedOff = await handoffBookDownload({
+        downloadId,
+        title: book.title,
+        author: book.author || "Unknown",
+        coverUrl: book.coverUrl || "",
+        md5: variant.md5,
+        fileExtension: variant.extension || variant.format || "epub",
+        proxyUrl,
+      });
+      if (handedOff) return;
+    } catch (swErr) {
+      logger.warn("SW download handoff failed, using foreground fallback:", swErr);
     }
 
     let finalError: any = null;
@@ -718,6 +732,20 @@ export default function App() {
         });
       } else if (data.type === "download-complete") {
         await ingestDownload(data.downloadId, data.title, data.size);
+      } else if (data.type === "audiobook-track-complete") {
+        try {
+          await ingestAudiobookTrackFromSw(data.jobId, data.bookId, data.trackIndex, data.trackTitle);
+          handleAudiobookSwMessage(data);
+        } catch (err) {
+          handleAudiobookSwMessage({
+            type: "audiobook-track-error",
+            jobId: data.jobId,
+            bookId: data.bookId,
+            error: (err as Error).message || "Pickup failed",
+          });
+        }
+      } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
+        handleAudiobookSwMessage(data);
       } else if (data.type === "download-error") {
         setGlobalDownloads(prev => {
           const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl);
@@ -727,6 +755,10 @@ export default function App() {
         toast.error(data.error || "Download failed", { id: data.downloadId });
       } else if (data.type === "open-downloads") {
         setActiveTab("library");
+      } else if (data.type === "open-feed-briefs") {
+        setActiveTab("feed");
+      } else if (data.type === "brief-notification-shown") {
+        markBriefNotificationShown();
       } else if (data.type === "bgf-retry") {
         setActiveTab("library");
         toast.loading("Retry available in your Library downloads");
@@ -741,6 +773,17 @@ export default function App() {
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
   }, [user?.uid, refreshLibrary]);
+
+  useEffect(() => {
+    void (async () => {
+      await ensureServiceWorkerReady();
+      await syncServiceWorkerPrefs();
+      await registerBackgroundCapabilities();
+      if (dailyNewsBriefEnabled && "serviceWorker" in navigator) {
+        navigator.serviceWorker.controller?.postMessage({ type: "check-daily-brief" });
+      }
+    })();
+  }, [dailyNewsBriefEnabled]);
 
   // Pick up a finished blob from the SW store, store it in the library, then
   // tell the SW to delete its copy. Shared by the completion handler and the
@@ -1469,6 +1512,8 @@ export default function App() {
               setDailyRemindersEnabled(enabled);
               localStorage.setItem("kora_daily_reminders", String(enabled));
             }}
+            dailyNewsBriefEnabled={dailyNewsBriefEnabled}
+            onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             onToggleGrayscale={toggleGrayscale}
             onChangeTheme={(theme) => {
               setDisplayTheme(theme);
@@ -1504,6 +1549,8 @@ export default function App() {
               setDailyRemindersEnabled(enabled);
               localStorage.setItem("kora_daily_reminders", String(enabled));
             }}
+            dailyNewsBriefEnabled={dailyNewsBriefEnabled}
+            onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             onChangeTheme={changeTheme}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}

@@ -1,9 +1,12 @@
 /**
  * Background queue for downloading audiobook tracks for offline playback.
- * Persists to localStorage and processes sequentially with retry.
+ * Uses the service worker when available so downloads survive app exit.
  */
 
-import { downloadAudiobookTrack, getAudiobookTrack } from "./audiobookStorage";
+import { downloadAudiobookTrack, getAudiobookTrack, storeAudiobookTrack } from "./audiobookStorage";
+import { refererForMediaUrl } from "./mediaUrl";
+import { getProxiedAudioUrl } from "./audiobookStorage";
+import { handoffAudiobookTrackDownload } from "./swBridge";
 
 const QUEUE_KEY = "kora_audiobook_sync_queue_v1";
 
@@ -14,15 +17,24 @@ export interface AudiobookSyncJob {
   trackIndex: number;
   trackTitle: string;
   src: string;
-  status: "pending" | "downloading" | "done" | "error";
+  status: "pending" | "downloading" | "error" | "done";
   progress: number;
   retries: number;
+  swBacked?: boolean;
 }
 
 type QueueListener = (jobs: AudiobookSyncJob[], overallPct: number) => void;
 
 let processing = false;
 const listeners = new Set<QueueListener>();
+const swJobWaiters = new Map<
+  string,
+  {
+    resolve: () => void;
+    reject: (error: Error) => void;
+    onProgress?: (pct: number) => void;
+  }
+>();
 
 function loadQueue(): AudiobookSyncJob[] {
   try {
@@ -66,6 +78,97 @@ export function getAudiobookSyncProgress(): number {
   return Math.round(((done + partial) / total) * 100);
 }
 
+export function handleAudiobookSwMessage(data: {
+  type: string;
+  jobId?: string;
+  bookId?: string;
+  percent?: number | null;
+  error?: string;
+}) {
+  if (!data.jobId) return;
+
+  if (data.type === "audiobook-track-progress") {
+    const waiter = swJobWaiters.get(data.jobId);
+    waiter?.onProgress?.(typeof data.percent === "number" ? data.percent : 0);
+    const queue = loadQueue();
+    const job = queue.find((j) => j.id === data.jobId);
+    if (job) {
+      job.progress = typeof data.percent === "number" ? data.percent : job.progress;
+      saveQueue(queue);
+      notify();
+    }
+    return;
+  }
+
+  if (data.type === "audiobook-track-error") {
+    const waiter = swJobWaiters.get(data.jobId);
+    waiter?.reject(new Error(data.error || "Download failed"));
+    swJobWaiters.delete(data.jobId);
+    return;
+  }
+
+  if (data.type === "audiobook-track-complete") {
+    const waiter = swJobWaiters.get(data.jobId);
+    waiter?.resolve();
+    swJobWaiters.delete(data.jobId);
+  }
+}
+
+export async function ingestAudiobookTrackFromSw(
+  jobId: string,
+  bookId: string,
+  trackIndex: number,
+  trackTitle: string
+): Promise<void> {
+  const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(jobId)}`);
+  if (!res.ok) throw new Error("Audiobook pickup failed");
+  const blob = await res.blob();
+  await storeAudiobookTrack(bookId, trackIndex, trackTitle, blob);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", jobId });
+  }
+}
+
+async function downloadTrack(job: AudiobookSyncJob, onProgress?: (pct: number) => void): Promise<void> {
+  const proxyUrl = getProxiedAudioUrl(job.src, refererForMediaUrl(job.src));
+  const handedOff = await handoffAudiobookTrackDownload({
+    jobId: job.id,
+    bookId: job.bookId,
+    bookTitle: job.bookTitle,
+    trackIndex: job.trackIndex,
+    trackTitle: job.trackTitle,
+    proxyUrl,
+  });
+
+  if (!handedOff) {
+    await downloadAudiobookTrack(job.bookId, job.trackIndex, job.trackTitle, job.src, onProgress);
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      if (swJobWaiters.has(job.id)) {
+        swJobWaiters.delete(job.id);
+        reject(new Error("Audiobook download timed out"));
+      }
+    }, 30 * 60 * 1000);
+
+    swJobWaiters.set(job.id, {
+      resolve: () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      reject: (error) => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+      onProgress,
+    });
+  });
+
+  await ingestAudiobookTrackFromSw(job.id, job.bookId, job.trackIndex, job.trackTitle);
+}
+
 export async function enqueueAudiobookDownload(
   bookId: string,
   bookTitle: string,
@@ -104,11 +207,12 @@ export async function processAudiobookSyncQueue(): Promise<void> {
 
       job.status = "downloading";
       job.progress = 0;
+      job.swBacked = true;
       saveQueue(queue);
       notify();
 
       try {
-        await downloadAudiobookTrack(job.bookId, job.trackIndex, job.trackTitle, job.src, (pct) => {
+        await downloadTrack(job, (pct) => {
           job.progress = pct;
           saveQueue(loadQueue().map((j) => (j.id === job.id ? { ...job } : j)));
           notify();
@@ -144,10 +248,13 @@ export function clearAudiobookSyncQueue(bookId?: string) {
   notify();
 }
 
-// Resume queue on module load
 if (typeof window !== "undefined") {
   const q = loadQueue();
   if (q.some((j) => j.status === "pending" || j.status === "downloading")) {
+    for (const job of q) {
+      if (job.status === "downloading") job.status = "pending";
+    }
+    saveQueue(q);
     processAudiobookSyncQueue();
   }
 }

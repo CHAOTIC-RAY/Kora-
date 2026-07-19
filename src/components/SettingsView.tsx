@@ -47,6 +47,8 @@ interface SettingsViewProps {
   displayTheme: string;
   dailyRemindersEnabled?: boolean;
   onChangeDailyReminders?: (enabled: boolean) => void;
+  dailyNewsBriefEnabled?: boolean;
+  onChangeDailyNewsBrief?: (enabled: boolean) => void;
   onToggleGrayscale: () => void;
   onToggleHideCovers?: () => void;
   onChangeTheme: (theme: string) => void;
@@ -115,6 +117,8 @@ export default function SettingsView({
   displayTheme,
   dailyRemindersEnabled = false,
   onChangeDailyReminders,
+  dailyNewsBriefEnabled = false,
+  onChangeDailyNewsBrief,
   onToggleGrayscale,
   onToggleHideCovers,
   onChangeTheme,
@@ -845,6 +849,9 @@ export default function SettingsView({
               </Row>
               <Row title="Daily Motivation Reminders" desc="Get a daily quote and reading streak on open">
                 <Toggle on={dailyRemindersEnabled} onClick={() => onChangeDailyReminders?.(!dailyRemindersEnabled)} />
+              </Row>
+              <Row title="Daily News Brief" desc="Morning notification with headlines from your RSS feeds">
+                <Toggle on={dailyNewsBriefEnabled} onClick={() => onChangeDailyNewsBrief?.(!dailyNewsBriefEnabled)} />
               </Row>
             </div>
           )}

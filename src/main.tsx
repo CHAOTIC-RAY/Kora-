@@ -10,9 +10,21 @@ initAndroidGestureNavigation();
 // and shows progress notifications (fixes "download fails after exiting app").
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch((err) => {
-      console.warn("[SW] registration failed:", err);
-    });
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        if (!navigator.serviceWorker.controller) {
+          const worker = registration.installing || registration.waiting;
+          worker?.addEventListener("statechange", () => {
+            if (worker.state === "activated" && !navigator.serviceWorker.controller) {
+              window.location.reload();
+            }
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn("[SW] registration failed:", err);
+      });
   });
 }
 
