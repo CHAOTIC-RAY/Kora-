@@ -30,6 +30,7 @@ const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import { enqueueAudiobookDownload, handleAudiobookSwMessage } from "./lib/audiobookSyncQueue";
+import { enqueueEbookDownload } from "./lib/ebookDownloadQueue";
 import { useAndroidBackLayer } from "./hooks/useAndroidBackLayer";
 import { removeAndroidBackLayer } from "./lib/androidGestures";
 import {
