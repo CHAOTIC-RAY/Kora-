@@ -29,7 +29,6 @@ import {
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./src/lib/libgenProxy";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./src/lib/feedServer";
-import { transcribeAudioBase64 } from "./src/lib/transcribeAudio";
 
 dotenv.config();
 
@@ -694,31 +693,6 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
   } catch (err: any) {
     console.error("[Web Clipper Error]:", err);
     res.status(500).json({ error: err.message || "An error occurred during URL conversion." });
-  }
-});
-
-// Full Oxford English Dictionary Endpoint powered by Gemini
-app.post("/api/transcribe-audio", express.json({ limit: "12mb" }), async (req, res) => {
-  const audio = typeof req.body?.audio === "string" ? req.body.audio : "";
-  const mimeType = typeof req.body?.mimeType === "string" ? req.body.mimeType : "audio/webm";
-  const previousContext =
-    typeof req.body?.previousContext === "string" ? req.body.previousContext : undefined;
-
-  if (!audio) {
-    return res.status(400).json({ error: "Missing audio payload" });
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(503).json({ error: "Transcription service is not configured." });
-  }
-
-  try {
-    const text = await transcribeAudioBase64(audio, mimeType, apiKey, previousContext);
-    return res.json({ text });
-  } catch (err: any) {
-    console.error("Transcribe audio error:", err);
-    return res.status(502).json({ error: err.message || "Transcription failed" });
   }
 });
 

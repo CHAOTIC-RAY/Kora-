@@ -54,15 +54,6 @@ import {
   saveAudiobookSession,
   snapshotFromBook,
 } from "../lib/audiobookSession";
-import {
-  AudiobookLiveTranscriber,
-  type LiveTranscriberStatus,
-} from "../lib/audiobookLiveTranscriber";
-import {
-  getTranscriptJob,
-  subscribeTranscriptQueue,
-} from "../lib/audiobookTranscriptQueue";
-
 function getInitialAudiobookTrack(
   book: BookMetadata,
   tracks: NonNullable<BookMetadata["audiobookTracks"]>,
@@ -120,20 +111,6 @@ function displayAuthor(author?: string): string | null {
   const lower = author.toLowerCase().trim();
   if (["unknown", "audio", "audiobook", "unknown author"].includes(lower)) return null;
   return author;
-}
-
-function liveTranscriberPlaceholder(
-  status: LiveTranscriberStatus,
-  chapterLabel: string,
-  bookTitle: string
-): string {
-  if (status === "unavailable") {
-    return chapterLabel || bookTitle;
-  }
-  if (status === "ready" || status === "listening") return "Listening…";
-  if (status === "processing") return "Generating on-device transcript…";
-  if (status === "error") return "Transcript unavailable — showing chapter title.";
-  return chapterLabel || bookTitle;
 }
 
 function normalizeTrackKey(title: string): string {
@@ -200,7 +177,6 @@ export default function AudiobookPlayer({
   const authorLabel = displayAuthor(book.author);
   const audioRef = useRef<HTMLAudioElement>(null);
   const ttsPlayerRef = useRef<BrowserTtsPlayer | null>(null);
-  const liveTranscriberRef = useRef<AudiobookLiveTranscriber | null>(null);
   const [currentTrack, setCurrentTrack] = useState(() => getInitialAudiobookTrack(book, tracks, isTtsBook));
   const currentPlayableIndex = useMemo(
     () => playableTracks.findIndex((entry) => entry.index === currentTrack),
@@ -241,10 +217,6 @@ export default function AudiobookPlayer({
   }, [viewMode, book.id]);
   const [subtitle, setSubtitle] = useState("");
   const [transcriberReady, setTranscriberReady] = useState(false);
-  const [liveTranscript, setLiveTranscript] = useState("");
-  const [liveTranscriberStatus, setLiveTranscriberStatus] = useState<LiveTranscriberStatus>("idle");
-  const [liveTranscriberProgress, setLiveTranscriberProgress] = useState(0);
-  const [liveTranscriberMessage, setLiveTranscriberMessage] = useState("");
   const introSkippedForTrack = useRef<number | null>(null);
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
@@ -450,11 +422,6 @@ export default function AudiobookPlayer({
       setPlaybackError(null);
       outroSkipTriggered.current = false;
       introSkippedForTrack.current = null;
-      liveTranscriberRef.current?.detach(true);
-      setLiveTranscript("");
-      setLiveTranscriberStatus("idle");
-      setLiveTranscriberProgress(0);
-      setLiveTranscriberMessage("");
 
       const savedResume =
         resumeTime ??
@@ -479,17 +446,6 @@ export default function AudiobookPlayer({
         if (autoPlay) {
           await audioRef.current.play();
           setIsPlaying(true);
-          liveTranscriberRef.current?.attach(audioRef.current, {
-            bookId: book.id,
-            trackIndex: index,
-            trackTitle: tracks[index]?.title || `Part ${index + 1}`,
-          });
-        } else {
-          liveTranscriberRef.current?.attach(audioRef.current, {
-            bookId: book.id,
-            trackIndex: index,
-            trackTitle: tracks[index]?.title || `Part ${index + 1}`,
-          });
         }
         setCurrentTrack(index);
       } catch (err) {
@@ -531,67 +487,10 @@ export default function AudiobookPlayer({
       unsub();
       ttsPlayerRef.current?.destroy();
       ttsPlayerRef.current = null;
-      liveTranscriberRef.current?.destroy();
-      liveTranscriberRef.current = null;
       Object.values(localUrls).forEach((u) => URL.revokeObjectURL(u));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (isTtsBook) return;
-
-    const transcriber = new AudiobookLiveTranscriber({
-      onUpdate: (text) => {
-        setLiveTranscript(text);
-        setTranscriberReady(Boolean(text.trim()));
-      },
-      onStatus: (status) => {
-        setLiveTranscriberStatus(status);
-        if (status !== "processing") {
-          setLiveTranscriberProgress(status === "ready" || status === "listening" ? 100 : 0);
-          setLiveTranscriberMessage("");
-        }
-      },
-      onProgress: (progress, message) => {
-        setLiveTranscriberProgress(Math.max(0, Math.min(100, Math.round(progress))));
-        if (message) setLiveTranscriberMessage(message);
-      },
-    });
-    liveTranscriberRef.current = transcriber;
-
-    return () => {
-      transcriber.destroy();
-      if (liveTranscriberRef.current === transcriber) {
-        liveTranscriberRef.current = null;
-      }
-    };
-  }, [isTtsBook]);
-
-  // Keep progress visible for the current chapter even before/while audio is paused.
-  useEffect(() => {
-    if (isTtsBook) return;
-
-    const applyJob = (job: ReturnType<typeof getTranscriptJob>) => {
-      if (!job) return;
-      if (job.status === "pending" || job.status === "processing") {
-        setLiveTranscriberStatus("processing");
-        setLiveTranscriberProgress(Math.max(0, Math.min(100, Math.round(job.progress || 0))));
-        if (job.message) setLiveTranscriberMessage(job.message);
-        setLiveTranscript(
-          job.message ||
-            (job.progress > 5
-              ? `Generating transcript… ${job.progress}%`
-              : "Generating on-device transcript…")
-        );
-      }
-    };
-
-    applyJob(getTranscriptJob(book.id, currentTrack));
-    return subscribeTranscriptQueue((jobs) => {
-      applyJob(jobs.find((entry) => entry.bookId === book.id && entry.trackIndex === currentTrack));
-    });
-  }, [book.id, currentTrack, isTtsBook]);
 
   useEffect(() => {
     if (isTtsBook) {
@@ -671,7 +570,6 @@ export default function AudiobookPlayer({
       ttsPlayerRef.current?.stop();
     } else {
       audioRef.current?.pause();
-      liveTranscriberRef.current?.detach(false);
     }
     setIsPlaying(false);
     clearAudiobookMediaSession();
@@ -702,7 +600,7 @@ export default function AudiobookPlayer({
   useEffect(() => {
     setupAudiobookMediaSession(
       {
-        title: (isTtsBook ? subtitle : liveTranscript) || currentTrackLabel || book.title,
+        title: (isTtsBook ? subtitle : currentTrackLabel) || book.title,
         artist: authorLabel || book.author || "Kora",
         album: book.title,
         artworkUrl: book.coverUrl,
@@ -729,11 +627,11 @@ export default function AudiobookPlayer({
       }
     );
     return () => clearAudiobookMediaSession();
-  }, [authorLabel, book.coverUrl, book.title, currentTrackLabel, duration, isPlaying, isTtsBook, liveTranscript, speed, stopPlayback, subtitle, tracks.length]);
+  }, [authorLabel, book.coverUrl, book.title, currentTrackLabel, duration, isPlaying, isTtsBook, speed, stopPlayback, subtitle, tracks.length]);
 
   useEffect(() => {
     updateAudiobookMediaSession({
-      title: (isTtsBook ? subtitle : liveTranscript) || currentTrackLabel || book.title,
+      title: (isTtsBook ? subtitle : currentTrackLabel) || book.title,
       artist: authorLabel || book.author || "Kora",
       album: book.title,
       artworkUrl: book.coverUrl,
@@ -742,7 +640,7 @@ export default function AudiobookPlayer({
       playbackRate: speed,
       isPlaying,
     });
-  }, [authorLabel, book.author, book.coverUrl, book.title, currentTime, currentTrackLabel, duration, isPlaying, isTtsBook, liveTranscript, speed, subtitle]);
+  }, [authorLabel, book.author, book.coverUrl, book.title, currentTime, currentTrackLabel, duration, isPlaying, isTtsBook, speed, subtitle]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -793,9 +691,7 @@ export default function AudiobookPlayer({
     return Math.round(((currentTrack + trackFraction) / tracks.length) * 100);
   }, [currentPlayableIndex, currentTime, currentTrack, duration, playableTracks.length, tracks.length]);
 
-  const transcriberText = isTtsBook
-    ? subtitle
-    : liveTranscript || liveTranscriberPlaceholder(liveTranscriberStatus, currentTrackLabel, book.title);
+  const transcriberText = isTtsBook ? subtitle : currentTrackLabel;
 
   return (
     <>
@@ -850,17 +746,9 @@ export default function AudiobookPlayer({
         }}
         onPause={() => {
           setIsPlaying(false);
-          if (!isTtsBook) liveTranscriberRef.current?.detach(false);
         }}
         onPlay={() => {
           setIsPlaying(true);
-          if (!isTtsBook && audioRef.current) {
-            liveTranscriberRef.current?.attach(audioRef.current, {
-              bookId: book.id,
-              trackIndex: currentTrack,
-              trackTitle: tracks[currentTrack]?.title || currentTrackLabel,
-            });
-          }
         }}
         onError={() => {
           setIsPlaying(false);
@@ -884,7 +772,9 @@ export default function AudiobookPlayer({
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-kindle-text truncate">{book.title}</p>
                     <p className="text-[10px] text-kindle-text-muted truncate">
-                      {transcriberText || (isTtsBook ? "Audio transcriber…" : currentTrackLabel)}
+                      {isTtsBook
+                        ? transcriberText || "Audio transcriber…"
+                        : currentTrackLabel || book.title}
                     </p>
                   </div>
                 </button>
@@ -964,35 +854,16 @@ export default function AudiobookPlayer({
               </div>
             </div>
 
-            <div className="w-full rounded-2xl border border-kindle-border bg-kindle-card/80 px-4 py-3 min-h-[4.5rem] flex flex-col justify-center gap-1.5">
-              <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted text-center">
-                Audio Transcriber
-              </p>
-              <p className="text-sm font-serif leading-relaxed text-kindle-text text-center line-clamp-4">
-                {isTtsBook
-                  ? transcriberText || (transcriberReady ? "" : "Preparing transcription…")
-                  : transcriberText}
-              </p>
-              {!isTtsBook && liveTranscriberStatus === "processing" && (
-                <div className="mt-1 space-y-1.5">
-                  <div className="h-1.5 w-full rounded-full bg-kindle-border/80 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-kindle-accent transition-[width] duration-300 ease-out"
-                      style={{ width: `${Math.max(liveTranscriberProgress, 3)}%` }}
-                    />
-                  </div>
-                  <p className="text-[10px] text-kindle-text-muted text-center font-mono tabular-nums">
-                    {liveTranscriberProgress > 0 ? `${liveTranscriberProgress}%` : "Starting…"}
-                    {liveTranscriberMessage ? ` · ${liveTranscriberMessage}` : " · On-device transcript generating…"}
-                  </p>
-                </div>
-              )}
-              {!isTtsBook && liveTranscriberStatus === "error" && (
-                <p className="text-[10px] text-kindle-text-muted text-center">
-                  Transcript unavailable — showing chapter title.
+            {isTtsBook && (
+              <div className="w-full rounded-2xl border border-kindle-border bg-kindle-card/80 px-4 py-3 min-h-[4.5rem] flex flex-col justify-center gap-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted text-center">
+                  Audio Transcriber
                 </p>
-              )}
-            </div>
+                <p className="text-sm font-serif leading-relaxed text-kindle-text text-center line-clamp-4">
+                  {transcriberText || (transcriberReady ? "" : "Preparing transcription…")}
+                </p>
+              </div>
+            )}
 
             <div className="text-center w-full space-y-0.5">
               {authorLabel && <p className="text-sm text-kindle-text-muted font-sans">{authorLabel}</p>}
