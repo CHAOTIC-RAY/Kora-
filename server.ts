@@ -2488,6 +2488,46 @@ app.get("/api/proxy-file", async (req, res) => {
 
   try {
     let targetUrl = fileUrl;
+    const { normalizeMediaUrl, refererForMediaUrl } = await import("./src/lib/mediaUrl");
+    targetUrl = normalizeMediaUrl(targetUrl);
+
+    const isAudioRequest = /\.(mp3|m4a|ogg|wav|aac)(\?|$)/i.test(targetUrl) || /ipaudio/i.test(targetUrl);
+    if (isAudioRequest) {
+      const clientReferer = (req.query.referer as string) || "";
+      const referers = [
+        clientReferer,
+        refererForMediaUrl(targetUrl),
+        `${new URL(targetUrl).origin}/`,
+        "https://hdaudiobooks.com/",
+        "https://fulllengthaudiobooks.com/",
+      ].filter(Boolean);
+      const rangeHeader = req.headers.range;
+
+      for (const referer of referers) {
+        const audioRes = await fetch(targetUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "audio/mpeg,audio/*,*/*",
+            "Referer": referer,
+            ...(rangeHeader ? { Range: rangeHeader } : {}),
+          },
+          redirect: "follow",
+        });
+        if (audioRes.ok || audioRes.status === 206) {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Accept-Ranges", "bytes");
+          res.setHeader("Content-Type", audioRes.headers.get("content-type") || "audio/mpeg");
+          if (audioRes.headers.get("content-length")) {
+            res.setHeader("Content-Length", audioRes.headers.get("content-length")!);
+          }
+          if (audioRes.headers.get("content-range")) {
+            res.setHeader("Content-Range", audioRes.headers.get("content-range")!);
+          }
+          return res.status(audioRes.status).send(Buffer.from(await audioRes.arrayBuffer()));
+        }
+      }
+      return res.status(403).send("Upstream audio error");
+    }
 
     if (targetUrl.includes(".onion")) {
       throw new Error("Onion links are not supported by the proxy. Please use a standard HTTPS mirror.");

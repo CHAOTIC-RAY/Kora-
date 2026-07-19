@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { normalizeMediaUrl } from "./mediaUrl";
 
 export interface AudiobookTrack {
   index: number;
@@ -97,7 +98,7 @@ function parsePapPlaylist(html: string, baseUrl: string): AudiobookTrack[] {
 
     return playlist
       .map((item: any, idx: number) => {
-        const src = toAbsoluteUrl(item.src || item.url || item.file || "", baseUrl);
+        const src = normalizeMediaUrl(toAbsoluteUrl(item.src || item.url || item.file || "", baseUrl));
         if (!src) return null;
         return {
           index: idx,
@@ -128,7 +129,7 @@ function parseAudioElements(html: string, baseUrl: string): AudiobookTrack[] {
       if (dataSrc) src = dataSrc;
     }
 
-    src = toAbsoluteUrl(src, baseUrl);
+    src = normalizeMediaUrl(toAbsoluteUrl(src, baseUrl));
     if (!src || seen.has(src)) return;
     seen.add(src);
 
@@ -150,7 +151,7 @@ function parseMp3LinksFromHtml(html: string, baseUrl: string): AudiobookTrack[] 
 
   let match: RegExpExecArray | null;
   while ((match = mp3Regex.exec(html)) !== null) {
-    const src = toAbsoluteUrl(match[1], baseUrl);
+    const src = normalizeMediaUrl(toAbsoluteUrl(match[1], baseUrl));
     if (seen.has(src)) continue;
     seen.add(src);
     const filename = src.split("/").pop()?.replace(/\.mp3$/i, "") || `Part ${tracks.length + 1}`;

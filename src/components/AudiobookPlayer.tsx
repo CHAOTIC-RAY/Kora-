@@ -18,6 +18,7 @@ import {
   getProxiedAudioUrl,
   isAudiobookFullyDownloaded,
 } from "../lib/audiobookStorage";
+import { refererForMediaUrl } from "../lib/mediaUrl";
 import {
   enqueueAudiobookDownload,
   subscribeAudiobookSyncQueue,
@@ -54,6 +55,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const [offlineReady, setOfflineReady] = useState(!!book.audiobookDownloaded);
   const [localUrls, setLocalUrls] = useState<Record<number, string>>({});
   const [loadingTrack, setLoadingTrack] = useState(false);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const coverSrc = book.coverUrl
     ? book.coverUrl.startsWith("/")
@@ -90,7 +92,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
       }
       const track = tracks[index];
       if (!track) return "";
-      return getProxiedAudioUrl(track.src);
+      return getProxiedAudioUrl(track.src, refererForMediaUrl(track.src));
     },
     [book.id, localUrls, tracks]
   );
@@ -99,6 +101,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     async (index: number, autoPlay = false) => {
       if (!tracks[index] || !audioRef.current) return;
       setLoadingTrack(true);
+      setPlaybackError(null);
       try {
         const url = await resolveTrackUrl(index);
         audioRef.current.src = url;
@@ -113,6 +116,8 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         setCurrentTrack(index);
       } catch (err) {
         console.error("Failed to load track:", err);
+        setPlaybackError("Could not load this track. Try downloading for offline playback.");
+        setIsPlaying(false);
       } finally {
         setLoadingTrack(false);
       }
@@ -216,6 +221,10 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         }}
         onPause={() => setIsPlaying(false)}
         onPlay={() => setIsPlaying(true)}
+        onError={() => {
+          setIsPlaying(false);
+          setPlaybackError("Playback failed — the audio source may be unavailable. Try downloading tracks.");
+        }}
       />
 
       {/* Header */}
@@ -251,6 +260,9 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
             <p className="text-xs text-purple-300/80 mt-2">
               {currentTrack + 1}/{tracks.length} — {tracks[currentTrack].title}
             </p>
+          )}
+          {playbackError && (
+            <p className="text-xs text-red-300/90 mt-2 text-center max-w-sm">{playbackError}</p>
           )}
         </div>
 

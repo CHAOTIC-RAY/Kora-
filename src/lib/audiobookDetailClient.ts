@@ -1,7 +1,8 @@
 import type { AudiobookDetail } from "./audiobookScraper";
 import { titlesRoughlyMatch } from "./audiobookScraper";
+import { normalizeMediaUrl } from "./mediaUrl";
 
-const STORAGE_KEY = "kora_audiobook_detail_cache_v2";
+const STORAGE_KEY = "kora_audiobook_detail_cache_v3";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const memoryCache = new Map<string, { detail: AudiobookDetail; expires: number }>();
@@ -39,6 +40,14 @@ function saveStorage(data: Record<string, { detail: AudiobookDetail; expires: nu
   }
 }
 
+function normalizeDetailTracks(detail: AudiobookDetail): AudiobookDetail {
+  if (!detail.tracks?.length) return detail;
+  return {
+    ...detail,
+    tracks: detail.tracks.map((t) => ({ ...t, src: normalizeMediaUrl(t.src) })),
+  };
+}
+
 function isValidCachedDetail(book: any, detail: AudiobookDetail | null): detail is AudiobookDetail {
   if (!detail?.tracks?.length) return false;
   if (!book?.title) return true;
@@ -60,9 +69,10 @@ export function getCachedAudiobookDetailClient(book: any): AudiobookDetail | nul
 }
 
 export function setCachedAudiobookDetailClient(book: any, detail: AudiobookDetail) {
-  if (!isValidCachedDetail(book, detail)) return;
+  const normalized = normalizeDetailTracks(detail);
+  if (!isValidCachedDetail(book, normalized)) return;
   const key = cacheKeyForBook(book);
-  const entry = { detail, expires: Date.now() + CACHE_TTL_MS };
+  const entry = { detail: normalized, expires: Date.now() + CACHE_TTL_MS };
   memoryCache.set(key, entry);
   const store = loadStorage();
   store[key] = entry;
@@ -102,8 +112,9 @@ export async function fetchAudiobookDetail(
       if (!res.ok) return stale && isValidCachedDetail(book, stale) ? stale : null;
       const data = await res.json();
       if (isValidCachedDetail(book, data)) {
-        setCachedAudiobookDetailClient(book, data);
-        return data as AudiobookDetail;
+        const normalized = normalizeDetailTracks(data as AudiobookDetail);
+        setCachedAudiobookDetailClient(book, normalized);
+        return normalized;
       }
       return stale && isValidCachedDetail(book, stale) ? stale : null;
     } catch (err: any) {

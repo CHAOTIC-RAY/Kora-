@@ -3,6 +3,7 @@
  */
 
 import { getDB, AUDIOBOOK_TRACK_STORE } from "../db/indexedDB";
+import { normalizeMediaUrl } from "./mediaUrl";
 
 const TRACK_STORE = AUDIOBOOK_TRACK_STORE;
 
@@ -87,8 +88,11 @@ export async function isAudiobookFullyDownloaded(bookId: string, totalTracks: nu
   return tracks.length >= totalTracks;
 }
 
-export function getProxiedAudioUrl(src: string): string {
-  return `/api/proxy-file?url=${encodeURIComponent(src)}`;
+export function getProxiedAudioUrl(src: string, referer?: string): string {
+  const normalized = normalizeMediaUrl(src);
+  const params = new URLSearchParams({ url: normalized });
+  if (referer) params.set("referer", referer);
+  return `/api/proxy-file?${params.toString()}`;
 }
 
 export async function downloadAudiobookTrack(

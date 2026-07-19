@@ -12,6 +12,7 @@ import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
+import { refererForMediaUrl } from "../lib/mediaUrl";
 import { titlesRoughlyMatch } from "../lib/audiobookScraper";
 import {
   createSearchSignal,
@@ -748,8 +749,13 @@ export default function DiscoverView({
     }
 
     setPreviewTrackIdx(idx);
-    audio.src = getProxiedAudioUrl(track.src);
-    audio.play().then(() => setPreviewPlaying(true)).catch(() => setPreviewPlaying(false));
+    audio.src = getProxiedAudioUrl(track.src, refererForMediaUrl(track.src));
+    audio.play()
+      .then(() => setPreviewPlaying(true))
+      .catch(() => {
+        setPreviewPlaying(false);
+        toast.error("Preview failed — source may be temporarily unavailable.");
+      });
   };
 
   useEffect(() => {

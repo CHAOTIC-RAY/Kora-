@@ -19,6 +19,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
+import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 
 declare const HTMLRewriter: any;
 
@@ -1433,6 +1434,13 @@ export default {
           });
         }
 
+        if (detail.tracks?.length) {
+          detail.tracks = detail.tracks.map((t: any) => ({
+            ...t,
+            src: normalizeMediaUrl(t.src),
+          }));
+        }
+
         return new Response(JSON.stringify(detail), {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "X-Cache": "MISS" }
         });
@@ -2814,7 +2822,7 @@ export default {
     }
 
     // 11. File Proxy / Z-Library Download Proxy
-    if ((path === "/api/proxy-file" || path === "/api/zlib/download") && (request.method === "GET" || request.method === "POST")) {
+    if ((path === "/api/proxy-file" || path === "/api/zlib/download") && (request.method === "GET" || request.method === "HEAD" || request.method === "POST")) {
       try {
         let downloadUrl = url.searchParams.get("url");
         let userId = "";
@@ -2831,24 +2839,51 @@ export default {
           return new Response(JSON.stringify({ error: "Missing download url" }), { status: 400 });
         }
 
+        downloadUrl = normalizeMediaUrl(downloadUrl);
+
         // Fast path: stream audiobook/audio files with Range support
         const isAudioRequest = /\.(mp3|m4a|ogg|wav|aac)(\?|$)/i.test(downloadUrl) || /ipaudio/i.test(downloadUrl);
         if (isAudioRequest) {
           try {
-            const audioOrigin = new URL(downloadUrl).origin;
+            const audioUrl = normalizeMediaUrl(downloadUrl);
             const rangeHeader = request.headers.get("Range");
-            const audioRes = await fetch(downloadUrl, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                "Accept": "audio/mpeg,audio/*,*/*",
-                "Referer": `${audioOrigin}/`,
-                ...(rangeHeader ? { Range: rangeHeader } : {}),
-              },
-              redirect: "follow",
-            });
-            if (!audioRes.ok && audioRes.status !== 206) {
-              return new Response("Upstream audio error", { status: audioRes.status });
+            const clientReferer = url.searchParams.get("referer") || "";
+            let originReferer = "https://hdaudiobooks.com/";
+            try {
+              originReferer = `${new URL(audioUrl).origin}/`;
+            } catch {
+              /* keep default */
             }
+            const referers = [
+              clientReferer,
+              refererForMediaUrl(audioUrl),
+              originReferer,
+              "https://hdaudiobooks.com/",
+              "https://fulllengthaudiobooks.com/",
+            ].filter(Boolean);
+
+            let audioRes: Response | null = null;
+            for (const referer of referers) {
+              const attempt = await fetch(audioUrl, {
+                method: request.method === "HEAD" ? "HEAD" : "GET",
+                headers: {
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                  "Accept": "audio/mpeg,audio/*,*/*",
+                  "Referer": referer,
+                  ...(rangeHeader ? { Range: rangeHeader } : {}),
+                },
+                redirect: "follow",
+              });
+              if (attempt.ok || attempt.status === 206) {
+                audioRes = attempt;
+                break;
+              }
+            }
+
+            if (!audioRes) {
+              return new Response("Upstream audio error", { status: 403 });
+            }
+
             const outHeaders = new Headers(audioRes.headers);
             outHeaders.set("Access-Control-Allow-Origin", "*");
             outHeaders.set("Accept-Ranges", "bytes");
@@ -2857,7 +2892,10 @@ export default {
             }
             outHeaders.delete("content-security-policy");
             outHeaders.delete("content-encoding");
-            return new Response(audioRes.body, { status: audioRes.status, headers: outHeaders });
+            return new Response(request.method === "HEAD" ? null : audioRes.body, {
+              status: audioRes.status,
+              headers: outHeaders,
+            });
           } catch (err: any) {
             return new Response(JSON.stringify({ error: err.message }), {
               status: 502,
@@ -3182,7 +3220,7 @@ export default {
         return new Response("Missing url", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|goodreads\.com)$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio[0-9]*\.(com|club)|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|goodreads\.com)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
