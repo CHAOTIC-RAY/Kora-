@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import ReactDOM from "react-dom";
 import JSZip from "jszip";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
@@ -897,6 +898,15 @@ export default function DiscoverView({
     setAudiobookDetailError(null);
     setAudiobookDetailLoading(false);
   };
+
+  const dismissDiscoverDetail = useAndroidBackLayer(
+    !!(selectedBook || selectedFeaturedBook),
+    "discover-book-detail",
+    () => {
+      closeBookDetail();
+      onSelectedBookChange(null);
+    }
+  );
 
   const toggleTrackPreview = (track: any, idx: number) => {
     const audio = previewAudioRef.current;
@@ -3277,11 +3287,11 @@ export default function DiscoverView({
       {/* Download Modal - Simplified Download Link Selector */}
       {selectedBook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => onSelectedBookChange(null)} />
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => dismissDiscoverDetail()} />
           <div className="relative w-full max-w-xl bg-kindle-card border border-kindle-border rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
             {/* Close Button */}
             <button 
-              onClick={() => onSelectedBookChange(null)} 
+              onClick={() => dismissDiscoverDetail()} 
               className="absolute top-4 right-4 p-2 bg-kindle-bg/80 hover:bg-kindle-bg border border-kindle-border rounded-full hover:scale-105 transition duration-200 z-10 cursor-pointer"
             >
               <X className="w-4 h-4 text-kindle-text" />
@@ -3495,7 +3505,7 @@ export default function DiscoverView({
       {/* Featured Book Details Preview Modal */}
       {selectedFeaturedBook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={closeBookDetail} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => dismissDiscoverDetail()} />
           <div className="relative bg-kindle-bg w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between p-4 md:p-6 bg-kindle-bg/95 backdrop-blur-md border-b border-kindle-border">

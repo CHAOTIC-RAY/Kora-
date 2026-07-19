@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -233,26 +234,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showNotes, setShowNotes] = useState<boolean>(false);
-  
-  // Handle Android back gesture for settings overlay
-  useEffect(() => {
-    if (showSettings) {
-      window.history.pushState({ readerSettingsOpen: true }, "");
-      const handlePopState = (e: PopStateEvent) => {
-        if (!e.state?.readerSettingsOpen) {
-          setShowSettings(false);
-        }
-      };
-      window.addEventListener("popstate", handlePopState);
-      return () => {
-        window.removeEventListener("popstate", handlePopState);
-      };
-    } else {
-      if (window.history.state?.readerSettingsOpen) {
-        window.history.back();
-      }
-    }
-  }, [showSettings]);
+
+  const dismissReaderSettings = useAndroidBackLayer(showSettings, "reader-settings", () => setShowSettings(false));
+  const dismissReaderToc = useAndroidBackLayer(showToc, "reader-toc", () => setShowToc(false));
+  const dismissReaderNotes = useAndroidBackLayer(showNotes, "reader-notes", () => setShowNotes(false));
   
   // Highlights & Notes State
   const [chapterNotesData, setChapterNotesData] = useState<Record<number, ChapterNote>>({});

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { 
   auth, 
   isRealFirebase, 
@@ -30,6 +30,8 @@ import AudiobookPlayer from "./components/AudiobookPlayer";
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import { enqueueAudiobookDownload } from "./lib/audiobookSyncQueue";
+import { useAndroidBackLayer } from "./hooks/useAndroidBackLayer";
+import { removeAndroidBackLayer } from "./lib/androidGestures";
 import Quote from "./components/Quote";
 import FeedView from "./components/FeedView";
 import DownloadBookBtn from "./components/DownloadBookBtn";
@@ -993,27 +995,6 @@ export default function App() {
     setCachedBookIds(ids);
   }
 
-  // Handle physical/native back button and gesture navigation (iOS/Android/Browser edge-swipe or back button)
-  useEffect(() => {
-    if (activeBook) {
-      // Push history state to block native back navigation from leaving the application,
-      // converting it into a close-reader command instead.
-      window.history.pushState({ isReading: true, bookId: activeBook.id }, "", `#read-${activeBook.id}`);
-      
-      const handlePopState = (event: PopStateEvent) => {
-        if (!event.state || !event.state.isReading) {
-          setActiveBook(null);
-          refreshLibrary();
-        }
-      };
-      
-      window.addEventListener("popstate", handlePopState);
-      return () => {
-        window.removeEventListener("popstate", handlePopState);
-      };
-    }
-  }, [activeBook]);
-
   // Keep track of the active tab before transitioning to settings
   const prevTabRef = useRef<"library" | "discover" | "feed" | "tools" | "settings">("library");
   useEffect(() => {
@@ -1022,29 +1003,52 @@ export default function App() {
     }
   }, [activeTab]);
 
-  // Handle physical/native back button and gesture navigation for the settings tab on mobile
-  const lastTabRef = useRef(activeTab);
-  useEffect(() => {
-    if (activeTab === "settings") {
-      window.history.pushState({ isSettings: true }, "", "#settings");
-      
-      const handlePopState = (event: PopStateEvent) => {
-        if (!event.state || !event.state.isSettings) {
-          setActiveTab(prevTabRef.current);
-        }
-      };
-      
-      window.addEventListener("popstate", handlePopState);
-      return () => {
-        window.removeEventListener("popstate", handlePopState);
-      };
-    } else {
-      if (lastTabRef.current === "settings" && window.history.state && window.history.state.isSettings) {
-        window.history.back();
+  const isAudiobookBook = activeBook?.extension?.toLowerCase() === "audiobook";
+  const audiobookFullscreen = !!(audiobookPlayback && activeBook?.id === audiobookPlayback.id);
+  const readerOpen = !!activeBook && !isAudiobookBook;
+
+  const closeReader = useCallback(() => {
+    setActiveBook(null);
+    refreshLibrary();
+  }, [refreshLibrary]);
+
+  const closeAudiobook = useCallback(() => {
+    setAudiobookPlayback(null);
+    setActiveBook(null);
+    refreshLibrary();
+  }, [refreshLibrary]);
+
+  const minimizeAudiobook = useCallback(() => {
+    setActiveBook(null);
+  }, []);
+
+  const dismissReader = useAndroidBackLayer(readerOpen, `reader-${activeBook?.id || "none"}`, closeReader);
+  const dismissAudiobookFullscreen = useAndroidBackLayer(
+    audiobookFullscreen,
+    `audiobook-fullscreen-${audiobookPlayback?.id || "none"}`,
+    minimizeAudiobook
+  );
+  const dismissAudiobookMini = useAndroidBackLayer(
+    !!audiobookPlayback && !audiobookFullscreen,
+    `audiobook-mini-${audiobookPlayback?.id || "none"}`,
+    closeAudiobook
+  );
+  const dismissSettings = useAndroidBackLayer(activeTab === "settings", "settings", () => {
+    setActiveTab(prevTabRef.current);
+  });
+  const dismissAuthModal = useAndroidBackLayer(showAuthModal, "auth-modal", () => setShowAuthModal(false));
+  const dismissSharingModal = useAndroidBackLayer(sharingStatus === "error", "share-error", () => setSharingStatus("idle"));
+
+  const handleAudiobookClose = useCallback(() => {
+    if (audiobookPlayback) {
+      if (audiobookFullscreen) {
+        removeAndroidBackLayer(`audiobook-fullscreen-${audiobookPlayback.id}`, { navigateBack: true });
+      } else {
+        removeAndroidBackLayer(`audiobook-mini-${audiobookPlayback.id}`, { navigateBack: true });
       }
     }
-    lastTabRef.current = activeTab;
-  }, [activeTab]);
+    closeAudiobook();
+  }, [audiobookFullscreen, audiobookPlayback, closeAudiobook]);
 
   // Startup directory scan trigger
   const hasScannedRef = useRef<boolean>(false);
@@ -1263,9 +1267,9 @@ export default function App() {
   }
 
   return (
-    <div id="app-root-container" className="min-h-screen flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300">
+    <div id="app-root-container" className="min-h-screen min-h-[100dvh] flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300">
       {/* 1. Global Navigation Header - Kora Style */}
-      <header className="border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16">
+      <header className="border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
@@ -1356,7 +1360,7 @@ export default function App() {
       </header>
 
       {/* 2. Main Page View Content */}
-      <main className="flex-1 w-full mx-auto pb-20 md:pb-8 max-w-6xl p-4 md:p-8">
+      <main className="flex-1 w-full mx-auto max-w-6xl p-4 md:p-8 md:pb-8 kora-main-mobile">
         
         {/* Sync loading status indicator */}
         {loadingLibrary && (
@@ -1520,7 +1524,7 @@ export default function App() {
       </main>
 
       {/* Floating Actions for Mobile */}
-      <div className="md:hidden fixed bottom-24 right-6 flex flex-col gap-4 z-50">
+      <div className="md:hidden fixed kora-mobile-fab flex flex-col gap-4 z-50">
         {lastReadBook && activeTab === "library" && (
           <button
             onClick={() => handleOpenBook(lastReadBook)}
@@ -1539,16 +1543,9 @@ export default function App() {
             userId={user?.uid || ""}
             grayscaleCovers={grayscaleCovers}
             viewMode={activeBook?.id === audiobookPlayback.id ? "fullscreen" : "minimized"}
-            onMinimize={() => setActiveBook(null)}
+            onMinimize={() => dismissAudiobookFullscreen()}
             onExpand={() => setActiveBook(audiobookPlayback)}
-            onClose={() => {
-              if (window.history.state && window.history.state.isReading) {
-                window.history.back();
-              }
-              setAudiobookPlayback(null);
-              setActiveBook(null);
-              refreshLibrary();
-            }}
+            onClose={handleAudiobookClose}
             onProgressUpdate={(updatedBook) => {
               setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
               setLastReadBook(updatedBook);
@@ -1563,13 +1560,7 @@ export default function App() {
           <BookReaderPDF
             book={activeBook}
             userId={user?.uid || ""}
-            onClose={() => {
-              if (window.history.state && window.history.state.isReading) {
-                window.history.back();
-              }
-              setActiveBook(null);
-              refreshLibrary();
-            }}
+            onClose={dismissReader}
             onProgressUpdate={(updatedBook) => {
               setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
               setLastReadBook(updatedBook);
@@ -1582,13 +1573,7 @@ export default function App() {
             userId={user?.uid || ""}
             readerPrefs={readerPrefs}
             onReaderPrefsChange={setReaderPrefs}
-            onClose={() => {
-              if (window.history.state && window.history.state.isReading) {
-                window.history.back();
-              }
-              setActiveBook(null);
-              refreshLibrary();
-            }}
+            onClose={dismissReader}
             onProgressUpdate={(updatedBook) => {
               setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
               setLastReadBook(updatedBook);
@@ -1600,13 +1585,7 @@ export default function App() {
             book={activeBook}
             readerPrefs={readerPrefs}
             onReaderPrefsChange={setReaderPrefs}
-            onClose={() => {
-              if (window.history.state && window.history.state.isReading) {
-                window.history.back();
-               }
-               setActiveBook(null);
-               refreshLibrary();
-             }}
+            onClose={dismissReader}
            />
         ) : (
           <div className="fixed inset-0 bg-kindle-bg z-[100] flex flex-col items-center justify-center p-8 text-center animate-in zoom-in-95 duration-300">
@@ -1656,12 +1635,7 @@ export default function App() {
                     <DownloadBookBtn book={activeBook} />
                   </div>
                   <button 
-                    onClick={() => {
-                      if (window.history.state && window.history.state.isReading) {
-                        window.history.back();
-                      }
-                      setActiveBook(null);
-                    }} 
+                    onClick={dismissReader} 
                     className="px-6 py-3 rounded-xl hover:bg-kindle-bg text-[10px] font-bold uppercase tracking-widest transition text-kindle-text-muted hover:text-kindle-text"
                   >
                     Return to Library
@@ -1876,7 +1850,7 @@ export default function App() {
       )}
 
       {/* 5. Modern Floating Mobile Navigation Bar */}
-      <footer className="md:hidden fixed bottom-5 left-4 right-4 z-40 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300">
+      <footer className="md:hidden fixed kora-mobile-footer z-40 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300 kora-safe-bottom">
         <div className="flex justify-around items-center h-14 px-1">
           <button
             onClick={() => setActiveTab("library")}

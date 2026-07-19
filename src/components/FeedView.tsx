@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import {
   Bookmark,
   CheckCircle2,
@@ -231,6 +232,9 @@ export default function FeedView({
   const [addingFeed, setAddingFeed] = useState(false);
   const [readingArticle, setReadingArticle] = useState<FeedItem | null>(null);
 
+  const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
+  const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
+
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
 
   const loadLocalState = useCallback(() => {
@@ -461,7 +465,7 @@ export default function FeedView({
           <div className="w-full max-w-lg bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-lexend font-bold text-kindle-text">Manage Subscriptions</h3>
-              <button onClick={() => setShowManageFeeds(false)} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
+              <button onClick={() => dismissManageFeeds()} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -530,7 +534,7 @@ export default function FeedView({
         <FeedArticleReader
           item={readingArticle}
           userId={userId}
-          onClose={() => setReadingArticle(null)}
+          onClose={() => dismissFeedArticle()}
           onSaved={async () => {
             setItems(getFeedItems());
             await onRefreshLibrary?.();

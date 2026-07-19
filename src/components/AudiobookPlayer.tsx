@@ -734,7 +734,7 @@ export default function AudiobookPlayer({
       />
 
       {viewMode === "minimized" ? (
-        <div className="fixed bottom-[4.75rem] md:bottom-4 left-3 right-3 z-[95] rounded-2xl border border-kindle-border bg-kindle-card/95 backdrop-blur-md shadow-2xl overflow-hidden">
+        <div className="fixed kora-audiobook-mini md:bottom-4 md:left-4 md:right-4 z-[95] rounded-2xl border border-kindle-border bg-kindle-card/95 backdrop-blur-md shadow-2xl overflow-hidden">
           <div className="flex items-center gap-3 px-3 py-2.5">
             <button onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-3 text-left">
               <div className="w-10 h-10 rounded-xl overflow-hidden bg-kindle-bg border border-kindle-border shrink-0">
@@ -774,7 +774,7 @@ export default function AudiobookPlayer({
           </div>
         </div>
       ) : (
-    <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col">
+    <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col kora-safe-top kora-safe-bottom">
       <header className="flex items-center justify-between px-3 sm:px-4 py-3 border-b border-kindle-border shrink-0">
         <button
           onClick={handleExit}

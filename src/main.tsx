@@ -2,6 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { initAndroidGestureNavigation } from "./lib/androidGestures";
+
+initAndroidGestureNavigation();
 
 // Register the service worker that keeps downloads alive in the background
 // and shows progress notifications (fixes "download fails after exiting app").

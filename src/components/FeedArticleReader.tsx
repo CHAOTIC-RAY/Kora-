@@ -73,7 +73,7 @@ export default function FeedArticleReader({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] bg-kindle-bg text-kindle-text flex flex-col">
+    <div className="fixed inset-0 z-[120] bg-kindle-bg text-kindle-text flex flex-col kora-safe-top kora-safe-bottom">
       <header className="shrink-0 border-b border-kindle-border bg-kindle-card/90 backdrop-blur-md px-3 sm:px-4 py-3 flex items-center gap-2">
         <button
           onClick={onClose}

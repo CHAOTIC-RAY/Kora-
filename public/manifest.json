@@ -4,6 +4,7 @@
   "description": "A highly polished, Kindle-inspired next-generation ebook reader with offline capabilities, cloud sync, and direct downloads.",
   "start_url": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#18181B",
   "theme_color": "#18181B",
   "orientation": "portrait-primary",
