@@ -6,6 +6,7 @@ import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, Ci
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
+import AudiobookCassetteCard from "./AudiobookCassetteCard";
 
 interface LibraryManagerProps {
   userId: string;
@@ -742,7 +743,16 @@ export default function LibraryManager({
                         </div>
                       </div>
                     )}
-                    {!hideCovers && book.coverUrl ? (
+                    {book.extension?.toLowerCase() === "audiobook" ? (
+                      <div className="w-full p-3 bg-gradient-to-b from-neutral-900/5 to-neutral-900/10">
+                        <AudiobookCassetteCard
+                          title={book.title}
+                          coverUrl={book.coverUrl}
+                          grayscaleCovers={grayscaleCovers}
+                          hideCovers={hideCovers}
+                        />
+                      </div>
+                    ) : !hideCovers && book.coverUrl ? (
                       <>
                         <img
                           src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
@@ -867,7 +877,7 @@ export default function LibraryManager({
                       <div className="flex items-center gap-1">
                         <span>{progressPercent}%</span>
                         <span>•</span>
-                        <span className="uppercase">{book.extension}</span>
+                        <span className="uppercase">{book.extension?.toLowerCase() === "audiobook" ? "tape" : book.extension}</span>
                         <span>•</span>
                         <span className="uppercase">
                           {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
@@ -1242,7 +1252,14 @@ export default function LibraryManager({
             <div className="w-12 h-1 bg-kindle-border rounded-full mx-auto mb-4 sm:hidden" />
             
             <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-kindle-border/40">
-              {longPressedBook.coverUrl ? (
+              {longPressedBook.extension?.toLowerCase() === "audiobook" ? (
+                <AudiobookCassetteCard
+                  title={longPressedBook.title}
+                  coverUrl={longPressedBook.coverUrl}
+                  grayscaleCovers={grayscaleCovers}
+                  size="thumb"
+                />
+              ) : longPressedBook.coverUrl ? (
                 <>
                   <img
                     src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}

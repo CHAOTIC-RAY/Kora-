@@ -1022,33 +1022,6 @@ export default function SettingsView({
         </section>
 
 
-        {/* System Walkthrough & Legal Guide */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-4">
-          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
-            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-            </div>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">System Walkthrough & Legal Guide</h3>
-          </div>
-
-          <div className="space-y-3">
-            <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-              Review the complete on-screen walkthrough, interactive features, disclaimers, and legal copyright guidelines regarding local book caching.
-            </p>
-            {onOpenOnboarding && (
-              <button
-                type="button"
-                onClick={onOpenOnboarding}
-                className="w-full sm:w-auto py-2.5 px-4 bg-kindle-accent text-kindle-bg hover:opacity-90 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs border border-transparent hover:border-kindle-text-muted/30"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Restart Setup Walkthrough & Legal Pact
-              </button>
-            )}
-          </div>
-        </section>
-
-
         {/* Folder Auto-Ingestion (Directory Access) */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">

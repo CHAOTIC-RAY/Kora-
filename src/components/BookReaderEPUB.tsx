@@ -2670,7 +2670,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         key={`page-turn-${turningChapterIdx}-${turningPageNum}-${currentPageNum}`}
                         initial={{ rotateY: 0 }}
                         animate={{ rotateY: turnDirection === "next" ? -180 : 180 }}
-                        transition={{ duration: 0.8, ease: [0.25, 1, 0.5, 1] }}
+                        transition={{ duration: 0.52, ease: [0.32, 0.72, 0, 1] }}
                         onAnimationComplete={() => setIsTurningPage(false)}
                         style={{
                           position: "absolute",
@@ -2740,9 +2740,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                           </div>
                           {/* Shading / Shadow Overlay during curl fold */}
                           <motion.div
-                            className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/25 via-transparent to-black/10"
-                            animate={{ opacity: [0, 0.45, 0.15] }}
-                            transition={{ duration: 0.8 }}
+                            className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/15 via-transparent to-black/5"
+                            animate={{ opacity: [0, 0.28, 0.08] }}
+                            transition={{ duration: 0.52, ease: [0.32, 0.72, 0, 1] }}
                           />
                         </div>
 
