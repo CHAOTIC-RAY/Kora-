@@ -68,15 +68,28 @@ export default function DevicesSyncPanel({
   };
 
   const patchPrefs = (patch: Partial<CrossDeviceSyncPrefs>) => {
-    const next = { ...prefs, ...patch };
-    savePrefs(next);
-    if (userId && "peerSharingEnabled" in patch) {
-      void registerThisDevice(userId, next.peerSharingEnabled);
-    }
+    setPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveSyncPrefs(next);
+      if (userId && "peerSharingEnabled" in patch) {
+        void registerThisDevice(userId, !!next.peerSharingEnabled).then(() => {
+          toast.success(
+            next.peerSharingEnabled
+              ? "Sharing on — other devices can pull from this one"
+              : "Sharing off on this device"
+          );
+        });
+      }
+      return next;
+    });
   };
 
   const patchWebDav = (patch: Partial<CrossDeviceSyncPrefs["webdav"]>) => {
-    savePrefs({ ...prefs, webdav: { ...prefs.webdav, ...patch } });
+    setPrefs((prev) => {
+      const next = { ...prev, webdav: { ...prev.webdav, ...patch } };
+      saveSyncPrefs(next);
+      return next;
+    });
   };
 
   const onlineOthers = devices.filter(
@@ -181,26 +194,38 @@ export default function DevicesSyncPanel({
                 ["preferWebDav", "Prefer WebDAV archive before public mirrors"],
                 ["pushToWebDav", "Back up newly cached files to WebDAV"],
               ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-kindle-text">{label}</span>
-                <button
-                  type="button"
-                  onClick={() => patchPrefs({ [key]: !prefs[key] })}
-                  className={`w-11 h-6 rounded-full relative transition-colors ${
-                    prefs[key] ? "bg-kindle-accent" : "bg-kindle-accent/25"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${
-                      prefs[key]
-                        ? "translate-x-6 bg-kindle-bg"
-                        : "translate-x-1 bg-kindle-text/70"
+            ).map(([key, label]) => {
+              const on = !!prefs[key];
+              return (
+                // Use div (not label>button) — label+button double-fires on mobile and
+                // immediately toggles sharing back off, so both devices stayed "sharing off".
+                <div key={key} className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-kindle-text min-w-0">{label}</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={label}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      patchPrefs({ [key]: !on });
+                    }}
+                    className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
+                      on ? "bg-kindle-text" : "bg-kindle-border"
                     }`}
-                  />
-                </button>
-              </label>
-            ))}
+                  >
+                    <span
+                      className={`absolute top-0.5 w-5 h-5 rounded-full shadow-sm transition-transform ${
+                        on
+                          ? "translate-x-[1.35rem] bg-kindle-bg"
+                          : "translate-x-0.5 bg-kindle-text/50"
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           <div className="border-t border-kindle-border/50 pt-4 space-y-3">
@@ -278,7 +303,9 @@ export default function DevicesSyncPanel({
             </ul>
             {onlineOthers.length === 0 && (
               <p className="text-[10px] text-kindle-text-muted">
-                Open Kora on another signed-in device to enable peer file pull.
+                {devices.some((d) => d.id !== myId && isDeviceOnline(d) && !isPeerSharingOn(d))
+                  ? "Another device is online but sharing is off — turn on “Share cached files” on that device."
+                  : "Turn on “Share cached files” on both devices, then use Pull missing."}
               </p>
             )}
           </div>
@@ -290,24 +317,31 @@ export default function DevicesSyncPanel({
             <p className="text-[10px] text-kindle-text-muted leading-relaxed">
               Optional personal storage (Nextcloud, ownCloud, etc.). Kora never uploads your books to Firebase Storage.
             </p>
-            <label className="flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center justify-between gap-3 text-xs">
               <span>Enable WebDAV</span>
               <button
                 type="button"
-                onClick={() => patchWebDav({ enabled: !prefs.webdav.enabled })}
-                className={`w-11 h-6 rounded-full relative transition-colors ${
-                  prefs.webdav.enabled ? "bg-kindle-accent" : "bg-kindle-accent/25"
+                role="switch"
+                aria-checked={!!prefs.webdav.enabled}
+                aria-label="Enable WebDAV"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  patchWebDav({ enabled: !prefs.webdav.enabled });
+                }}
+                className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
+                  prefs.webdav.enabled ? "bg-kindle-text" : "bg-kindle-border"
                 }`}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${
+                  className={`absolute top-0.5 w-5 h-5 rounded-full shadow-sm transition-transform ${
                     prefs.webdav.enabled
-                      ? "translate-x-6 bg-kindle-bg"
-                      : "translate-x-1 bg-kindle-text/70"
+                      ? "translate-x-[1.35rem] bg-kindle-bg"
+                      : "translate-x-0.5 bg-kindle-text/50"
                   }`}
                 />
               </button>
-            </label>
+            </div>
             <input
               placeholder="https://cloud.example.com/remote.php/dav/files/you"
               value={prefs.webdav.baseUrl}

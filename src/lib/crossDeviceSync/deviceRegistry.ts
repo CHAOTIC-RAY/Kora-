@@ -66,7 +66,16 @@ export async function registerThisDevice(
   };
   if (!isRealFirebase || !userId || !db) return device;
   try {
-    await setDoc(doc(db, "users", userId, "devices", device.id), device, { merge: true });
+    // Always write an explicit boolean so remote devices never read a stale "off".
+    await setDoc(
+      doc(db, "users", userId, "devices", device.id),
+      {
+        ...device,
+        peerSharingEnabled: device.peerSharingEnabled === true,
+        lastSeen: Date.now(),
+      },
+      { merge: true }
+    );
   } catch (err) {
     console.warn("Device register deferred:", err);
   }

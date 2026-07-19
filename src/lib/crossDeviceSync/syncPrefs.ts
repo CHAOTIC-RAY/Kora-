@@ -37,6 +37,13 @@ export const DEFAULT_SYNC_PREFS: CrossDeviceSyncPrefs = {
   },
 };
 
+function asBool(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  if (value === "true" || value === 1) return true;
+  if (value === "false" || value === 0) return false;
+  return fallback;
+}
+
 export function loadSyncPrefs(): CrossDeviceSyncPrefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
@@ -45,6 +52,10 @@ export function loadSyncPrefs(): CrossDeviceSyncPrefs {
     return {
       ...DEFAULT_SYNC_PREFS,
       ...parsed,
+      autoHydrateLibrary: asBool(parsed.autoHydrateLibrary, DEFAULT_SYNC_PREFS.autoHydrateLibrary),
+      pushToWebDav: asBool(parsed.pushToWebDav, DEFAULT_SYNC_PREFS.pushToWebDav),
+      preferWebDav: asBool(parsed.preferWebDav, DEFAULT_SYNC_PREFS.preferWebDav),
+      peerSharingEnabled: asBool(parsed.peerSharingEnabled, DEFAULT_SYNC_PREFS.peerSharingEnabled),
       webdav: { ...DEFAULT_SYNC_PREFS.webdav, ...(parsed.webdav || {}) },
     };
   } catch {
