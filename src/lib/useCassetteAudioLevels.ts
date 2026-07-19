@@ -13,7 +13,7 @@ function getAnalyser(audio: HTMLAudioElement): AnalyserNode | null {
       analyser.fftSize = 64;
       analyser.smoothingTimeConstant = 0.75;
       source.connect(analyser);
-      analyser.connect(ctx.destination);
+      source.connect(ctx.destination);
       graph = { ctx, analyser };
       audioGraphs.set(audio, graph);
     }

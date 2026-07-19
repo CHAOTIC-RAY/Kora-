@@ -19,7 +19,7 @@ import {
   isAudiobookFullyDownloaded,
 } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
-import { isBrowserTtsTrack } from "../lib/browserTtsAudiobook";
+import { isBrowserTtsTrack, loadTtsChapterText } from "../lib/browserTtsAudiobook";
 import { BrowserTtsPlayer } from "../lib/browserTtsPlayer";
 import {
   formatEstimatedRemaining,
@@ -176,7 +176,6 @@ export default function AudiobookPlayer({
   const trackTitles = useMemo(() => tracks.map((track) => track.title), [tracks]);
   const authorLabel = displayAuthor(book.author);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const silentAudioRef = useRef<HTMLAudioElement>(null);
   const ttsPlayerRef = useRef<BrowserTtsPlayer | null>(null);
   const [currentTrack, setCurrentTrack] = useState(() => getInitialAudiobookTrack(book, tracks, isTtsBook));
   const currentPlayableIndex = useMemo(
@@ -281,11 +280,7 @@ export default function AudiobookPlayer({
       resumeTimeForTrack.current = savedResume ?? null;
 
       try {
-        const stored = await getAudiobookTrack(book.id, index);
-        if (!stored?.blob) {
-          throw new Error("Chapter text is missing. Recreate the read-aloud audiobook from Settings.");
-        }
-        const text = await stored.blob.text();
+        const text = await loadTtsChapterText(book, index);
         if (!ttsPlayerRef.current) {
           ttsPlayerRef.current = new BrowserTtsPlayer({
             onTimeUpdate: (time, trackDuration, remaining) => {
@@ -479,23 +474,40 @@ export default function AudiobookPlayer({
   }, [speed, isTtsBook]);
 
   const togglePlay = async () => {
+    if (loadingTrack) return;
+
     if (isTtsBook) {
+      if (!ttsPlayerRef.current) {
+        await loadTtsTrack(currentTrack, true);
+        return;
+      }
       if (isPlaying) {
-        ttsPlayerRef.current?.pause();
-        void persistProgress(currentTrack, ttsPlayerRef.current?.currentTime || currentTime, undefined, false);
+        ttsPlayerRef.current.pause();
+        void persistProgress(currentTrack, ttsPlayerRef.current.currentTime || currentTime, undefined, false);
       } else {
-        await ttsPlayerRef.current?.play();
+        try {
+          await ttsPlayerRef.current.play();
+        } catch (err) {
+          console.error("TTS play failed:", err);
+          setPlaybackError("Could not start playback.");
+          setIsPlaying(false);
+        }
       }
       return;
     }
+
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
-      setIsPlaying(false);
       void persistProgress(currentTrack, audioRef.current.currentTime, undefined, false);
     } else {
-      await audioRef.current.play();
-      setIsPlaying(true);
+      try {
+        await audioRef.current.play();
+      } catch (err) {
+        console.error("Audio play failed:", err);
+        setPlaybackError("Could not start playback. Try downloading tracks for offline listening.");
+        setIsPlaying(false);
+      }
     }
   };
   togglePlayRef.current = togglePlay;
@@ -571,8 +583,12 @@ export default function AudiobookPlayer({
         isPlaying,
       },
       {
-        onPlay: () => void togglePlayRef.current?.(),
-        onPause: () => togglePlayRef.current?.(),
+        onPlay: () => {
+          if (!isPlayingRef.current) void togglePlayRef.current?.();
+        },
+        onPause: () => {
+          if (isPlayingRef.current) void togglePlayRef.current?.();
+        },
         onSeek: (position) => {
           if (isTtsBook) ttsPlayerRef.current?.seek(position);
           else if (audioRef.current) audioRef.current.currentTime = position;
@@ -598,19 +614,6 @@ export default function AudiobookPlayer({
       isPlaying,
     });
   }, [authorLabel, book.author, book.coverUrl, book.title, currentTime, currentTrackLabel, duration, isPlaying, isTtsBook, speed, subtitle]);
-
-  // Keep Android lock-screen / notification controls alive during browser TTS playback.
-  useEffect(() => {
-    const silent = silentAudioRef.current;
-    if (!isTtsBook || !silent) return;
-    if (isPlaying) {
-      silent.play().catch(() => {
-        // autoplay may require a prior user gesture
-      });
-    } else {
-      silent.pause();
-    }
-  }, [isPlaying, isTtsBook]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -675,14 +678,6 @@ export default function AudiobookPlayer({
 
   return (
     <>
-      <audio
-        ref={silentAudioRef}
-        className="hidden"
-        loop
-        playsInline
-        preload="auto"
-        src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAAAAAA=="
-      />
       <audio
         ref={audioRef}
         className={isTtsBook ? "hidden" : undefined}
@@ -811,9 +806,8 @@ export default function AudiobookPlayer({
                   coverUrl={book.coverUrl}
                   size="player"
                   playing={isPlaying}
-                  voiceMode={isTtsBook}
+                  voiceMode
                   grayscaleCovers={grayscaleCovers}
-                  getAudioElement={() => audioRef.current}
                 />
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { BookMetadata, syncBookToCloud } from "./firebase";
-import { storeAudiobookTrack } from "./audiobookStorage";
+import { getBookFile } from "../db/indexedDB";
+import { storeAudiobookTrack, getAudiobookTrack } from "./audiobookStorage";
 import { extractEpubChapters, extractTxtChapters, TextChapter } from "./epubTextExtract";
 import { pregenerateBookChapters } from "./neuralTtsCache";
 import { getTtsSettings } from "./ttsSettings";
@@ -8,6 +9,51 @@ export const BROWSER_TTS_PREFIX = "browser-tts://";
 
 export function isBrowserTtsTrack(src: string): boolean {
   return src.startsWith(BROWSER_TTS_PREFIX);
+}
+
+export function resolveTtsTrackStorageIndex(
+  track: { index?: number; src?: string } | undefined,
+  arrayIndex: number
+): number {
+  if (track?.src) {
+    const match = track.src.match(new RegExp(`${BROWSER_TTS_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[^/]+/(\\d+)`));
+    if (match?.[1]) return parseInt(match[1], 10);
+  }
+  if (typeof track?.index === "number") return track.index;
+  return arrayIndex;
+}
+
+export async function loadTtsChapterText(
+  book: BookMetadata,
+  arrayIndex: number
+): Promise<string> {
+  const track = book.audiobookTracks?.[arrayIndex];
+  const storageIndex = resolveTtsTrackStorageIndex(track, arrayIndex);
+  const stored = await getAudiobookTrack(book.id, storageIndex);
+  if (stored?.blob) {
+    const text = await stored.blob.text();
+    if (text.trim()) return text;
+  }
+
+  const sourceBookId = book.id.replace(/-tts-audiobook$/, "");
+  if (!sourceBookId || sourceBookId === book.id) {
+    throw new Error("Chapter text is missing. Recreate the read-aloud audiobook from Settings.");
+  }
+
+  const cached = await getBookFile(sourceBookId);
+  if (!cached?.blob) {
+    throw new Error("Chapter text is missing. Open the source book once, then recreate read-aloud from Settings.");
+  }
+
+  const ext = (cached.extension || "epub").toLowerCase();
+  const chapters = await extractBookChapters(cached.blob, ext, book.title.replace(/ \(Read Aloud\)$/i, ""));
+  const chapter = chapters.find((entry) => entry.index === storageIndex) || chapters[arrayIndex];
+  if (!chapter?.text?.trim()) {
+    throw new Error("Chapter text is missing. Recreate the read-aloud audiobook from Settings.");
+  }
+
+  await storeAudiobookTrack(book.id, storageIndex, chapter.title, new Blob([chapter.text], { type: "text/plain;charset=utf-8" }));
+  return chapter.text;
 }
 
 export async function extractBookChapters(
