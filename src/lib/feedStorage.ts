@@ -53,6 +53,62 @@ export const DEFAULT_FEED_SUBSCRIPTIONS: Omit<FeedSubscription, "id" | "addedAt"
   },
 ];
 
+export const INTERNATIONAL_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = [
+  {
+    title: "BBC World",
+    siteUrl: "https://www.bbc.com/news/world",
+    feedUrl: "https://feeds.bbci.co.uk/news/world/rss.xml",
+  },
+  {
+    title: "The Guardian World",
+    siteUrl: "https://www.theguardian.com/world",
+    feedUrl: "https://www.theguardian.com/world/rss",
+  },
+  {
+    title: "Reuters World",
+    siteUrl: "https://www.reuters.com/world/",
+    feedUrl: "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
+  },
+  {
+    title: "Al Jazeera",
+    siteUrl: "https://www.aljazeera.com/",
+    feedUrl: "https://www.aljazeera.com/xml/rss/all.xml",
+  },
+  {
+    title: "NPR News",
+    siteUrl: "https://www.npr.org/",
+    feedUrl: "https://feeds.npr.org/1001/rss.xml",
+  },
+  {
+    title: "The Verge",
+    siteUrl: "https://www.theverge.com/",
+    feedUrl: "https://www.theverge.com/rss/index.xml",
+  },
+];
+
+export const CURATED_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = [
+  ...DEFAULT_FEED_SUBSCRIPTIONS,
+  ...INTERNATIONAL_FEED_OPTIONS,
+];
+
+export function makeFeedSubscriptionId(feedUrl: string): string {
+  return `feed-${feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`;
+}
+
+/** Replace default seeding with an explicit selection of curated feed URLs. */
+export function applySelectedFeedSources(feedUrls: string[]): FeedSubscription[] {
+  const selected = CURATED_FEED_OPTIONS.filter((option) => feedUrls.includes(option.feedUrl));
+  const sources = selected.length ? selected : DEFAULT_FEED_SUBSCRIPTIONS;
+  const seeded = sources.map((sub) => ({
+    ...sub,
+    id: makeFeedSubscriptionId(sub.feedUrl),
+    addedAt: Date.now(),
+  }));
+  saveFeedSubscriptions(seeded);
+  localStorage.setItem(FEED_MIGRATION_KEY, "1");
+  return seeded;
+}
+
 const REMOVED_DEFAULT_FEED_URLS = new Set([
   "https://hnrss.org/frontpage",
   "https://rss.arxiv.org/rss/cs",
@@ -139,7 +195,7 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
   if (!existing.length) {
     const seeded = DEFAULT_FEED_SUBSCRIPTIONS.map((sub) => ({
       ...sub,
-      id: `feed-${sub.feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`,
+      id: makeFeedSubscriptionId(sub.feedUrl),
       addedAt: Date.now(),
     }));
     saveFeedSubscriptions(seeded);
@@ -152,7 +208,7 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
     const knownUrls = new Set(existing.map((sub) => sub.feedUrl));
     const additions = DEFAULT_FEED_SUBSCRIPTIONS.filter((sub) => !knownUrls.has(sub.feedUrl)).map((sub) => ({
       ...sub,
-      id: `feed-${sub.feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`,
+      id: makeFeedSubscriptionId(sub.feedUrl),
       addedAt: Date.now(),
     }));
     existing = migrateMaldivesIndependentFeed([...additions, ...existing]);

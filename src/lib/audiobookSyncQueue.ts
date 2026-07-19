@@ -120,13 +120,35 @@ export async function ingestAudiobookTrackFromSw(
   trackIndex: number,
   trackTitle: string
 ): Promise<void> {
-  const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(jobId)}`);
-  if (!res.ok) throw new Error("Audiobook pickup failed");
-  const blob = await res.blob();
-  await storeAudiobookTrack(bookId, trackIndex, trackTitle, blob);
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", jobId });
+  if (!navigator.serviceWorker?.controller) {
+    throw new Error("Service worker not controlling page");
   }
+
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(jobId)}`);
+      if (!res.ok) {
+        lastError = new Error(`Audiobook pickup failed (${res.status})`);
+        await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+        continue;
+      }
+      const blob = await res.blob();
+      if (!blob.size) {
+        lastError = new Error("Empty audiobook pickup blob");
+        await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+        continue;
+      }
+      await storeAudiobookTrack(bookId, trackIndex, trackTitle, blob);
+      navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", jobId });
+      return;
+    } catch (error) {
+      lastError = error as Error;
+      await new Promise((resolve) => setTimeout(resolve, 120 * (attempt + 1)));
+    }
+  }
+
+  throw lastError || new Error("Audiobook pickup failed");
 }
 
 async function downloadTrack(job: AudiobookSyncJob, onProgress?: (pct: number) => void): Promise<void> {
@@ -145,28 +167,34 @@ async function downloadTrack(job: AudiobookSyncJob, onProgress?: (pct: number) =
     return;
   }
 
-  await new Promise<void>((resolve, reject) => {
-    const timeout = window.setTimeout(() => {
-      if (swJobWaiters.has(job.id)) {
-        swJobWaiters.delete(job.id);
-        reject(new Error("Audiobook download timed out"));
-      }
-    }, 30 * 60 * 1000);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        if (swJobWaiters.has(job.id)) {
+          swJobWaiters.delete(job.id);
+          reject(new Error("Audiobook download timed out"));
+        }
+      }, 30 * 60 * 1000);
 
-    swJobWaiters.set(job.id, {
-      resolve: () => {
-        window.clearTimeout(timeout);
-        resolve();
-      },
-      reject: (error) => {
-        window.clearTimeout(timeout);
-        reject(error);
-      },
-      onProgress,
+      swJobWaiters.set(job.id, {
+        resolve: () => {
+          window.clearTimeout(timeout);
+          resolve();
+        },
+        reject: (error) => {
+          window.clearTimeout(timeout);
+          reject(error);
+        },
+        onProgress,
+      });
     });
-  });
 
-  await ingestAudiobookTrackFromSw(job.id, job.bookId, job.trackIndex, job.trackTitle);
+    await ingestAudiobookTrackFromSw(job.id, job.bookId, job.trackIndex, job.trackTitle);
+  } catch (error) {
+    // SW handoff/pickup failed — fall back to direct client download once.
+    swJobWaiters.delete(job.id);
+    await downloadAudiobookTrack(job.bookId, job.trackIndex, job.trackTitle, job.src, onProgress);
+  }
 }
 
 export async function enqueueAudiobookDownload(

@@ -29,7 +29,7 @@ import BookReaderText from "./components/BookReaderText";
 import AudiobookPlayer from "./components/AudiobookPlayer";
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
-import { enqueueAudiobookDownload, handleAudiobookSwMessage, ingestAudiobookTrackFromSw } from "./lib/audiobookSyncQueue";
+import { enqueueAudiobookDownload, handleAudiobookSwMessage } from "./lib/audiobookSyncQueue";
 import { useAndroidBackLayer } from "./hooks/useAndroidBackLayer";
 import { removeAndroidBackLayer } from "./lib/androidGestures";
 import {
@@ -41,6 +41,7 @@ import {
   setDailyNewsBriefEnabled as persistDailyNewsBriefEnabled,
   syncServiceWorkerPrefs,
 } from "./lib/swBridge";
+import { applySelectedFeedSources } from "./lib/feedStorage";
 import Quote from "./components/Quote";
 import FeedView from "./components/FeedView";
 import DownloadBookBtn from "./components/DownloadBookBtn";
@@ -221,6 +222,7 @@ export default function App() {
     dailyGoal: number;
     autoCache: boolean;
     dailyReminders: boolean;
+    selectedFeedUrls: string[];
   }) => {
     localStorage.setItem("kora_onboarding_completed", "true");
     localStorage.setItem("kora_user_nickname", prefs.nickname);
@@ -246,6 +248,8 @@ export default function App() {
     };
     setSearchPrefs(updatedSearch);
     localStorage.setItem("kora_search_prefs", JSON.stringify(updatedSearch));
+
+    applySelectedFeedSources(prefs.selectedFeedUrls);
 
     setShowOnboarding(false);
     toast.success(`Welcome, ${prefs.nickname}! Your reading identity has been forged.`);
@@ -733,17 +737,9 @@ export default function App() {
       } else if (data.type === "download-complete") {
         await ingestDownload(data.downloadId, data.title, data.size);
       } else if (data.type === "audiobook-track-complete") {
-        try {
-          await ingestAudiobookTrackFromSw(data.jobId, data.bookId, data.trackIndex, data.trackTitle);
-          handleAudiobookSwMessage(data);
-        } catch (err) {
-          handleAudiobookSwMessage({
-            type: "audiobook-track-error",
-            jobId: data.jobId,
-            bookId: data.bookId,
-            error: (err as Error).message || "Pickup failed",
-          });
-        }
+        // Only notify the queue waiter — ingest happens once in audiobookSyncQueue
+        // after the waiter resolves (avoids double pickup → 404 spam).
+        handleAudiobookSwMessage(data);
       } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
         handleAudiobookSwMessage(data);
       } else if (data.type === "download-error") {
@@ -849,6 +845,8 @@ export default function App() {
         if (!res.ok) return;
         const pending: string[] = await res.json();
         for (const id of pending) {
+          // Skip audiobook track pickups (handled by audiobookSyncQueue).
+          if (String(id).includes("::") || String(id).startsWith("audiobook-")) continue;
           await ingestDownload(id, "Downloaded book");
         }
       } catch (e) {

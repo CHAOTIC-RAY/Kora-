@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v1";
-const API_CACHE = "kora-api-v1";
+const SHELL_CACHE = "kora-shell-v2";
+const API_CACHE = "kora-api-v2";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg"];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
 const PERIODIC_SYNC_TAG = "kora-daily-brief";
@@ -677,10 +677,20 @@ self.addEventListener("fetch", (event) => {
   if (url.pathname === "/__kora_sw_pickup__") {
     const id = url.searchParams.get("id");
     event.respondWith(
-      getDB(id).then((rec) => {
-        if (!rec) return new Response("not found", { status: 404 });
-        return new Response(rec.blob, { headers: { "Content-Type": rec.blob.type || "application/octet-stream" } });
-      })
+      (async () => {
+        if (!id) return new Response("missing id", { status: 400 });
+        // Brief retry — blob may still be committing to IndexedDB.
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const rec = await getDB(id);
+          if (rec?.blob) {
+            return new Response(rec.blob, {
+              headers: { "Content-Type": rec.blob.type || "application/octet-stream" },
+            });
+          }
+          await new Promise((resolve) => setTimeout(resolve, 80 * (attempt + 1)));
+        }
+        return new Response("not found", { status: 404 });
+      })()
     );
     return;
   }
@@ -694,9 +704,16 @@ self.addEventListener("fetch", (event) => {
             const req = tx.objectStore(STORE).getAll();
             req.onsuccess = () =>
               resolve(
-                new Response(JSON.stringify(req.result.filter((r) => !r.bgf && !r.partial && r.blob).map((r) => r.id)), {
+                new Response(
+                  JSON.stringify(
+                    req.result
+                      .filter((r) => !r.bgf && !r.partial && !r.audiobook && r.blob)
+                      .map((r) => r.id)
+                  ),
+                  {
                   headers: { "Content-Type": "application/json" },
-                })
+                  }
+                )
               );
             req.onerror = () => resolve(new Response("[]", { headers: { "Content-Type": "application/json" } }));
           })

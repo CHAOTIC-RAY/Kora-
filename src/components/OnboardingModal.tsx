@@ -1,10 +1,15 @@
 import React, { useState } from "react";
 import { 
   Book, Glasses, Sparkles, Coffee, Bookmark, Check, ChevronRight, 
-  ChevronLeft, Info, Shield, Heart, Smile, Star, BookOpen, Settings, Compass, Download, Award
+  ChevronLeft, Info, Shield, Heart, Smile, Star, BookOpen, Settings, Compass, Download, Award, Rss, Globe
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
+import {
+  CURATED_FEED_OPTIONS,
+  DEFAULT_FEED_SUBSCRIPTIONS,
+  INTERNATIONAL_FEED_OPTIONS,
+} from "../lib/feedStorage";
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -16,6 +21,7 @@ interface OnboardingModalProps {
     dailyGoal: number;
     autoCache: boolean;
     dailyReminders: boolean;
+    selectedFeedUrls: string[];
   }) => void;
   currentTheme: string;
   onThemeChange: (theme: string) => void;
@@ -105,6 +111,9 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
   const [dailyReminders, setDailyReminders] = useState(false);
   const [agreedToLicenses, setAgreedToLicenses] = useState(false);
   const [showFullLicense, setShowFullLicense] = useState(false);
+  const [selectedFeedUrls, setSelectedFeedUrls] = useState<string[]>(() =>
+    DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl)
+  );
 
   // Walkthrough step within step 3
   const [walkthroughIndex, setWalkthroughIndex] = useState(0);
@@ -139,8 +148,17 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
       fontSize,
       dailyGoal,
       autoCache,
-      dailyReminders
+      dailyReminders,
+      selectedFeedUrls: selectedFeedUrls.length
+        ? selectedFeedUrls
+        : DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl),
     });
+  };
+
+  const toggleFeed = (feedUrl: string) => {
+    setSelectedFeedUrls((prev) =>
+      prev.includes(feedUrl) ? prev.filter((url) => url !== feedUrl) : [...prev, feedUrl]
+    );
   };
 
   const walkthroughSteps = [
@@ -150,6 +168,13 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
       icon: BookOpen,
       color: "text-emerald-500",
       bg: "bg-emerald-500/10"
+    },
+    {
+      title: "News Feed Sources",
+      desc: "Pick Maldives and international RSS sources for your Read tab. Your Daily News Brief uses these selections.",
+      icon: Rss,
+      color: "text-sky-500",
+      bg: "bg-sky-500/10"
     },
     {
       title: "Discover & Search Feeds",
@@ -173,6 +198,8 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
       bg: "bg-purple-500/10"
     }
   ];
+
+  const isNewsFeedsStep = walkthroughIndex === 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
@@ -443,20 +470,20 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                 </div>
 
                 {/* Curated Interactive walkthrough tabs */}
-                <div className="grid grid-cols-4 gap-1.5 bg-kindle-card p-1 border border-kindle-border rounded-xl">
+                <div className="grid grid-cols-5 gap-1 bg-kindle-card p-1 border border-kindle-border rounded-xl">
                   {walkthroughSteps.map((wStep, idx) => {
                     const StepIcon = wStep.icon;
                     return (
                       <button
                         key={idx}
                         onClick={() => setWalkthroughIndex(idx)}
-                        className={`py-2 px-1 rounded-lg text-[10px] font-bold font-sans flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                        className={`py-2 px-1 rounded-lg text-[9px] font-bold font-sans flex flex-col items-center gap-1 transition-all cursor-pointer ${
                           walkthroughIndex === idx
                             ? "bg-kindle-accent text-kindle-bg"
                             : "text-kindle-text-muted hover:text-kindle-text"
                         }`}
                       >
-                        <StepIcon className="w-4 h-4" />
+                        <StepIcon className="w-3.5 h-3.5" />
                         <span className="truncate w-full text-center">{wStep.title.split(" ")[0]}</span>
                       </button>
                     );
@@ -464,20 +491,110 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                 </div>
 
                 {/* Active Walkthrough Card */}
-                <div className="p-6 bg-kindle-card border border-kindle-border rounded-xl flex flex-col md:flex-row items-center gap-6 min-h-[160px]">
-                  <div className={`p-4 rounded-full shrink-0 ${walkthroughSteps[walkthroughIndex].bg}`}>
-                    {React.createElement(walkthroughSteps[walkthroughIndex].icon, {
-                      className: `w-10 h-10 ${walkthroughSteps[walkthroughIndex].color}`
-                    })}
+                <div className="p-5 bg-kindle-card border border-kindle-border rounded-xl space-y-4">
+                  <div className="flex flex-col md:flex-row items-center gap-4">
+                    <div className={`p-4 rounded-full shrink-0 ${walkthroughSteps[walkthroughIndex].bg}`}>
+                      {React.createElement(walkthroughSteps[walkthroughIndex].icon, {
+                        className: `w-9 h-9 ${walkthroughSteps[walkthroughIndex].color}`
+                      })}
+                    </div>
+                    <div className="space-y-2 text-center md:text-left">
+                      <h3 className="font-display font-bold text-sm text-kindle-text uppercase tracking-wider">
+                        {walkthroughSteps[walkthroughIndex].title}
+                      </h3>
+                      <p className="text-xs text-kindle-text-muted font-sans leading-relaxed">
+                        {walkthroughSteps[walkthroughIndex].desc}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-2 text-center md:text-left">
-                    <h3 className="font-display font-bold text-sm text-kindle-text uppercase tracking-wider">
-                      {walkthroughSteps[walkthroughIndex].title}
-                    </h3>
-                    <p className="text-xs text-kindle-text-muted font-sans leading-relaxed">
-                      {walkthroughSteps[walkthroughIndex].desc}
-                    </p>
-                  </div>
+
+                  {isNewsFeedsStep && (
+                    <div className="space-y-4 border-t border-kindle-border pt-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                          Select sources
+                        </p>
+                        <p className="text-[10px] font-mono text-kindle-text-muted">
+                          {selectedFeedUrls.length} selected
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-kindle-text">
+                          <Rss className="w-3.5 h-3.5 text-sky-500" />
+                          Maldives
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => {
+                            const selected = selectedFeedUrls.includes(feed.feedUrl);
+                            return (
+                              <button
+                                key={feed.feedUrl}
+                                type="button"
+                                onClick={() => toggleFeed(feed.feedUrl)}
+                                className={`text-left px-3 py-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
+                                  selected
+                                    ? "border-kindle-accent bg-kindle-accent/10 text-kindle-text"
+                                    : "border-kindle-border bg-kindle-bg/40 text-kindle-text-muted hover:text-kindle-text"
+                                }`}
+                              >
+                                <span className="text-xs font-bold truncate">{feed.title}</span>
+                                {selected && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-kindle-text">
+                          <Globe className="w-3.5 h-3.5 text-amber-500" />
+                          International
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {INTERNATIONAL_FEED_OPTIONS.map((feed) => {
+                            const selected = selectedFeedUrls.includes(feed.feedUrl);
+                            return (
+                              <button
+                                key={feed.feedUrl}
+                                type="button"
+                                onClick={() => toggleFeed(feed.feedUrl)}
+                                className={`text-left px-3 py-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
+                                  selected
+                                    ? "border-kindle-accent bg-kindle-accent/10 text-kindle-text"
+                                    : "border-kindle-border bg-kindle-bg/40 text-kindle-text-muted hover:text-kindle-text"
+                                }`}
+                              >
+                                <span className="text-xs font-bold truncate">{feed.title}</span>
+                                {selected && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedFeedUrls(DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl))
+                          }
+                          className="px-3 py-1.5 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text"
+                        >
+                          Maldives only
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSelectedFeedUrls(CURATED_FEED_OPTIONS.map((feed) => feed.feedUrl))
+                          }
+                          className="px-3 py-1.5 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text"
+                        >
+                          Select all
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-center gap-1.5">
