@@ -28,7 +28,6 @@ async function getWhisper() {
       env.allowLocalModels = false;
       env.useBrowserCache = true;
       return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en", {
-        // @ts-expect-error quantized is supported by xenova runtime
         quantized: true,
       });
     })().catch((error) => {
@@ -120,7 +119,6 @@ export async function transcribeDownloadedTrack(
       if (chunk.length < TARGET_SAMPLE_RATE * 0.4) continue;
 
       const result = await asr(chunk, {
-        // @ts-expect-error xenova options
         return_timestamps: true,
         chunk_length_s: CHUNK_SECONDS,
         stride_length_s: 4,
