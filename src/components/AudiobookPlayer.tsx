@@ -741,7 +741,7 @@ export default function AudiobookPlayer({
             <button onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-3 text-left">
               <div className="w-10 h-10 rounded-xl overflow-hidden bg-kindle-bg border border-kindle-border shrink-0">
                 {book.coverUrl ? (
-                  <img src={book.coverUrl} alt="" className="w-full h-full object-cover" />
+                  <img src={book.coverUrl} alt="" className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-[10px] font-bold">AB</div>
                 )}
