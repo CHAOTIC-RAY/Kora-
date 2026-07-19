@@ -59,23 +59,26 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
               role="dialog"
               aria-modal="true"
               aria-label="Today's News Brief"
-              className="relative flex flex-col w-full h-full min-h-0 overflow-hidden bg-kindle-bg kora-safe-top kora-safe-bottom sm:h-auto sm:max-h-[88vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-kindle-border sm:bg-kindle-card sm:shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+              className="relative flex flex-col w-full h-full min-h-0 overflow-hidden bg-kindle-bg sm:h-auto sm:max-h-[88vh] sm:max-w-lg sm:rounded-2xl sm:border sm:border-kindle-border sm:bg-kindle-card sm:shadow-2xl sm:kora-safe-top sm:kora-safe-bottom animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
               onClick={(e) => e.stopPropagation()}
             >
-              <header className="flex items-start gap-2 px-3 sm:px-5 pt-3 sm:pt-4 pb-3 border-b border-kindle-border shrink-0 bg-kindle-bg sm:bg-transparent">
-                <button
-                  type="button"
-                  onClick={() => dismiss()}
-                  className="sm:hidden p-2 -ml-1 rounded-xl text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card transition shrink-0"
-                  aria-label="Back"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
+              {/* Mobile: no top chrome — only a floating back control */}
+              <button
+                type="button"
+                onClick={() => dismiss()}
+                className="sm:hidden absolute z-20 left-[max(0.5rem,var(--kora-safe-left))] top-[max(0.5rem,var(--kora-safe-top))] p-2.5 rounded-full bg-kindle-card/90 border border-kindle-border text-kindle-text shadow-lg backdrop-blur-md"
+                aria-label="Back"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+
+              {/* Desktop / tablet header */}
+              <header className="hidden sm:flex items-start gap-2 px-5 pt-4 pb-3 border-b border-kindle-border shrink-0">
                 <div className="min-w-0 flex-1 pt-0.5">
                   <p className="text-[9px] font-bold uppercase tracking-widest text-sky-400 mb-1">
                     Daily News Brief
                   </p>
-                  <h2 className="text-lg sm:text-base font-lexend font-bold text-kindle-text">
+                  <h2 className="text-base font-lexend font-bold text-kindle-text">
                     Today&apos;s News Brief
                   </h2>
                   <p className="text-[10px] text-kindle-text-muted font-mono mt-1">
@@ -85,14 +88,26 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
                 <button
                   type="button"
                   onClick={() => dismiss()}
-                  className="hidden sm:inline-flex p-2 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text shrink-0"
+                  className="inline-flex p-2 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text shrink-0"
                   aria-label="Close"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </header>
 
-              <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 py-4 space-y-5 min-h-0 pb-6">
+              <div className="flex-1 overflow-y-auto overscroll-contain px-4 sm:px-5 pt-[calc(var(--kora-safe-top)+3.25rem)] sm:pt-4 pb-[calc(var(--kora-safe-bottom)+1.5rem)] sm:pb-6 space-y-5 min-h-0">
+                <div className="sm:hidden space-y-1 mb-1">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-sky-400">
+                    Daily News Brief
+                  </p>
+                  <h2 className="text-xl font-lexend font-bold text-kindle-text">
+                    Today&apos;s News Brief
+                  </h2>
+                  <p className="text-[10px] text-kindle-text-muted font-mono">
+                    {storyCount} stories · {brief.sections.length} sources
+                  </p>
+                </div>
+
                 <p className="text-sm text-kindle-text leading-relaxed">{brief.lead}</p>
 
                 {brief.sections.map((section) => (

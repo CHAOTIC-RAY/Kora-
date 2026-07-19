@@ -6,9 +6,17 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
+import {
+  loadNewsReaderPrefs,
+  NEWS_READER_FONT_OPTIONS,
+  NEWS_READER_MARGIN_OPTIONS,
+  NEWS_READER_THEME_OPTIONS,
+  patchNewsReaderPrefs,
+  type NewsReaderPrefs,
+} from "../lib/newsReaderPrefs";
 import { 
   getSavedDirectoryHandle, saveDirectoryHandle, clearDirectoryHandle, scanDirectoryForNewBooks,
   getVirtualDirectoryPath, setVirtualDirectoryPath, getVirtualDirectoryFiles, addVirtualDirectoryFile,
@@ -151,6 +159,7 @@ export default function SettingsView({
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
     appearance: true,
     reading: false,
+    newsReading: false,
     import: false,
     search: false,
     dictionary: false,
@@ -158,6 +167,11 @@ export default function SettingsView({
     tts: false,
     about: false,
   });
+
+  const [newsReaderPrefs, setNewsReaderPrefs] = useState<NewsReaderPrefs>(() => loadNewsReaderPrefs());
+  const setNRP = (patch: Partial<NewsReaderPrefs>) => {
+    setNewsReaderPrefs(patchNewsReaderPrefs(patch));
+  };
 
   const toggleCategory = (key: string) => {
     setExpandedCategories(prev => ({
@@ -818,6 +832,155 @@ export default function SettingsView({
                 <input
                   type="range" min={40} max={100} step={5} value={readerPrefs.brightness}
                   onChange={(e) => setRP({ brightness: Number(e.target.value) })}
+                  className="w-full accent-kindle-accent cursor-pointer"
+                />
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* News Reader */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+          <div
+            onClick={() => toggleCategory("newsReading")}
+            className="flex items-center justify-between cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+                <Newspaper className="w-4 h-4 text-kindle-text" />
+              </div>
+              <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">News Reader</h3>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-kindle-text-muted transition-transform duration-200 ${expandedCategories.newsReading ? "rotate-180" : ""}`} />
+          </div>
+
+          {expandedCategories.newsReading && (
+            <div className="mt-4 pt-4 border-t border-kindle-border/40 space-y-5 animate-in slide-in-from-top-2 duration-200">
+              <p className="text-[10px] text-kindle-text-muted">
+                Controls font size, spacing, width, and theme for Feed articles. You can also adjust these while reading.
+              </p>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold">Font Size</h4>
+                  <span className="text-[10px] font-mono text-kindle-text-muted">{newsReaderPrefs.fontSize}px</span>
+                </div>
+                <input
+                  type="range"
+                  min={12}
+                  max={36}
+                  step={1}
+                  value={newsReaderPrefs.fontSize}
+                  onChange={(e) => setNRP({ fontSize: Number(e.target.value) })}
+                  className="w-full accent-kindle-accent cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold">Line Spacing</h4>
+                  <span className="text-[10px] font-mono text-kindle-text-muted">{newsReaderPrefs.lineSpacing.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min={1.2}
+                  max={2.6}
+                  step={0.1}
+                  value={newsReaderPrefs.lineSpacing}
+                  onChange={(e) => setNRP({ lineSpacing: Number(e.target.value) })}
+                  className="w-full accent-kindle-accent cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold">Paragraph Spacing</h4>
+                  <span className="text-[10px] font-mono text-kindle-text-muted">{newsReaderPrefs.paragraphSpacing.toFixed(1)}em</span>
+                </div>
+                <input
+                  type="range"
+                  min={0.6}
+                  max={2.2}
+                  step={0.1}
+                  value={newsReaderPrefs.paragraphSpacing}
+                  onChange={(e) => setNRP({ paragraphSpacing: Number(e.target.value) })}
+                  className="w-full accent-kindle-accent cursor-pointer"
+                />
+              </div>
+
+              <div className="space-y-2.5">
+                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Font Family</h4>
+                <div className="flex flex-wrap gap-2">
+                  {NEWS_READER_FONT_OPTIONS.map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setNRP({ fontFamily: f.id })}
+                      className={`px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${
+                        newsReaderPrefs.fontFamily === f.id
+                          ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                          : "border-kindle-border text-kindle-text-muted hover:bg-kindle-bg"
+                      }`}
+                    >
+                      <span className={f.id}>{f.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Page Width</h4>
+                <div className="flex gap-2">
+                  {NEWS_READER_MARGIN_OPTIONS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setNRP({ marginSize: m.id })}
+                      className={`flex-1 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${
+                        newsReaderPrefs.marginSize === m.id
+                          ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                          : "border-kindle-border text-kindle-text-muted hover:bg-kindle-bg"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Reader Theme</h4>
+                <div className="grid grid-cols-4 gap-2">
+                  {NEWS_READER_THEME_OPTIONS.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setNRP({ theme: t.id })}
+                      className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition ${
+                        newsReaderPrefs.theme === t.id
+                          ? "border-kindle-accent ring-1 ring-kindle-accent/30"
+                          : "border-kindle-border hover:bg-kindle-bg"
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-md ${t.bg} ring-1 ${t.ring}`} />
+                      <span className="text-[8px] font-bold uppercase tracking-widest">{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold">Brightness</h4>
+                  <span className="text-[10px] font-mono text-kindle-text-muted">{newsReaderPrefs.brightness}%</span>
+                </div>
+                <input
+                  type="range"
+                  min={40}
+                  max={100}
+                  step={5}
+                  value={newsReaderPrefs.brightness}
+                  onChange={(e) => setNRP({ brightness: Number(e.target.value) })}
                   className="w-full accent-kindle-accent cursor-pointer"
                 />
               </div>

@@ -220,6 +220,27 @@
   color: var(--theme-accent);
   text-decoration: underline;
 }
+
+.feed-article-content p {
+  margin-top: 0;
+  margin-bottom: var(--news-paragraph-gap, 1em);
+}
+
+.feed-article-content h1,
+.feed-article-content h2,
+.feed-article-content h3,
+.feed-article-content h4 {
+  line-height: 1.25;
+  margin-top: 1.4em;
+  margin-bottom: 0.55em;
+  font-family: "Lexend", sans-serif;
+}
+
+.feed-article-content h1:first-child,
+.feed-article-content h2:first-child,
+.feed-article-content h3:first-child {
+  margin-top: 0;
+}
 .reader-select-surface ::selection {
   background: rgba(51, 144, 255, 0.38);
   color: inherit;
