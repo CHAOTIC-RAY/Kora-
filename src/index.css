@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 /* Hover styles only on devices with a fine pointer (not touch/mobile) */
@@ -25,6 +25,7 @@
   --font-display: "Lexend", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-lexend: "Lexend", sans-serif;
+  --font-thaana: "Noto Sans Thaana", "MV Waheed", sans-serif;
 
   --color-kindle-bg: var(--theme-bg);
   --color-kindle-text: var(--theme-text);
@@ -349,6 +350,14 @@ h1, h2, h3, h4 {
 
 /* Wordmark / brand text should always be Lexend */
 .font-display { font-family: var(--font-lexend); }
+.font-thaana { font-family: var(--font-thaana); }
+
+[dir="rtl"] .font-thaana,
+.font-thaana[dir="rtl"],
+[dir="rtl"] .text-thaana {
+  font-family: var(--font-thaana);
+  line-height: 1.8;
+}
 
 /* Custom fine scrollbar matching minimalism */
 ::-webkit-scrollbar {

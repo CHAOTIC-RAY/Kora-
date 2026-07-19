@@ -29,21 +29,35 @@ const ITEMS_KEY = "kora_feed_items";
 
 export const DEFAULT_FEED_SUBSCRIPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = [
   {
-    title: "Hacker News",
-    siteUrl: "https://news.ycombinator.com",
-    feedUrl: "https://hnrss.org/frontpage",
+    title: "Maldives Independent",
+    siteUrl: "https://maldivesindependent.com",
+    feedUrl: "https://maldivesindependent.com/api/rss/news",
   },
   {
-    title: "ArXiv CS",
-    siteUrl: "https://arxiv.org/list/cs/recent",
-    feedUrl: "https://rss.arxiv.org/rss/cs",
+    title: "PSM News",
+    siteUrl: "https://psmnews.mv/en/",
+    feedUrl: "https://psmnews.mv/en/feed/",
   },
   {
-    title: "The Verge",
-    siteUrl: "https://www.theverge.com",
-    feedUrl: "https://www.theverge.com/rss/index.xml",
+    title: "Edition",
+    siteUrl: "https://edition.mv/",
+    feedUrl: "kora://edition.mv/latest",
+  },
+  {
+    title: "Mihaaru",
+    siteUrl: "https://mihaaru.com/",
+    feedUrl: "kora://mihaaru.com/latest",
   },
 ];
+
+const REMOVED_DEFAULT_FEED_URLS = new Set([
+  "https://hnrss.org/frontpage",
+  "https://rss.arxiv.org/rss/cs",
+  "https://news.ycombinator.com",
+  "https://arxiv.org/list/cs/recent",
+]);
+
+const FEED_MIGRATION_KEY = "kora_feed_migration_v2";
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -77,15 +91,36 @@ export function saveFeedItems(items: FeedItem[]): void {
 
 export function ensureDefaultSubscriptions(): FeedSubscription[] {
   const existing = getFeedSubscriptions();
-  if (existing.length) return existing;
+  if (!existing.length) {
+    const seeded = DEFAULT_FEED_SUBSCRIPTIONS.map((sub) => ({
+      ...sub,
+      id: `feed-${sub.feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`,
+      addedAt: Date.now(),
+    }));
+    saveFeedSubscriptions(seeded);
+    localStorage.setItem(FEED_MIGRATION_KEY, "1");
+    return seeded;
+  }
 
-  const seeded = DEFAULT_FEED_SUBSCRIPTIONS.map((sub) => ({
-    ...sub,
-    id: `feed-${sub.feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`,
-    addedAt: Date.now(),
-  }));
-  saveFeedSubscriptions(seeded);
-  return seeded;
+  if (!localStorage.getItem(FEED_MIGRATION_KEY)) {
+    const filtered = existing.filter(
+      (sub) =>
+        !REMOVED_DEFAULT_FEED_URLS.has(sub.feedUrl) &&
+        !/hacker news|arxiv/i.test(sub.title)
+    );
+    const knownUrls = new Set(filtered.map((sub) => sub.feedUrl));
+    const additions = DEFAULT_FEED_SUBSCRIPTIONS.filter((sub) => !knownUrls.has(sub.feedUrl)).map((sub) => ({
+      ...sub,
+      id: `feed-${sub.feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`,
+      addedAt: Date.now(),
+    }));
+    const migrated = [...additions, ...filtered];
+    saveFeedSubscriptions(migrated);
+    localStorage.setItem(FEED_MIGRATION_KEY, "1");
+    return migrated;
+  }
+
+  return existing;
 }
 
 export function addFeedSubscription(sub: Omit<FeedSubscription, "id" | "addedAt">): FeedSubscription {

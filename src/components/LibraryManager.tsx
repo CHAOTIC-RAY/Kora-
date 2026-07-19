@@ -873,7 +873,7 @@ export default function LibraryManager({
                       <MoreVertical className="w-3.5 h-3.5" />
                     </button>
 
-                    <div className="absolute top-2 right-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute top-2 right-2 hidden md:flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
                       {isCached && <DownloadBookBtn book={book} />}
                       <button
                         onClick={(e) => {

@@ -19,7 +19,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
-import { discoverFeedFromUrl, fetchFeedFromUrl } from "./lib/feedServer";
+import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 
 declare const HTMLRewriter: any;
@@ -2061,6 +2061,43 @@ export default {
         });
       } catch (err: any) {
         return new Response(JSON.stringify({ error: err.message || "Feed fetch failed" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    if (path === "/api/feed/preview" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const articleUrl = body.url;
+        if (!articleUrl) {
+          return new Response(JSON.stringify({ error: "Missing url parameter" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        const result = await fetchArticlePreview(articleUrl);
+        return new Response(JSON.stringify(result), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Preview failed" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    if (path === "/api/feed/image") {
+      const imageUrl = url.searchParams.get("url");
+      if (!imageUrl) {
+        return new Response("Missing url", { status: 400 });
+      }
+      try {
+        return await proxyFeedImage(imageUrl);
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message }), {
           status: 500,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });

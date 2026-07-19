@@ -3,6 +3,7 @@ import { Bookmark, ExternalLink, Loader2, X } from "lucide-react";
 import { clipUrlToLibrary } from "../lib/feedClipper";
 import type { FeedItem } from "../lib/feedStorage";
 import { markFeedItemSaved } from "../lib/feedStorage";
+import { textDirection } from "../lib/textDirection";
 
 interface FeedArticleReaderProps {
   item: FeedItem;
@@ -85,7 +86,7 @@ export default function FeedArticleReader({
           <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate">
             {item.subscriptionTitle}
           </p>
-          <h1 className="text-sm font-lexend font-bold truncate">{articleTitle}</h1>
+          <h1 dir={textDirection(articleTitle)} className={`text-sm font-lexend font-bold truncate ${textDirection(articleTitle) === "rtl" ? "font-thaana" : ""}`}>{articleTitle}</h1>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button
@@ -130,7 +131,8 @@ export default function FeedArticleReader({
         ) : (
           <article className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
             <div
-              className="feed-article-content prose prose-neutral dark:prose-invert max-w-none font-serif leading-relaxed"
+              dir="auto"
+              className="feed-article-content prose prose-neutral dark:prose-invert max-w-none font-serif leading-relaxed [&_*]:[unicode-bidi:plaintext]"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           </article>

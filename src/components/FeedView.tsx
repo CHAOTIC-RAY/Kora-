@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { BookMetadata } from "../lib/firebase";
+import { prefetchFeedArticles } from "../lib/feedArticle";
 import {
   addFeedSubscription,
   ensureDefaultSubscriptions,
@@ -19,13 +20,13 @@ import {
   FeedSubscription,
   getFeedItems,
   markFeedItemRead,
-  markFeedItemSaved,
   mergeFeedItems,
   removeFeedSubscription,
   saveFeedSubscriptions,
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
-import { resolveCoverImageSrc } from "../lib/coverImage";
+import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
+import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
 
 interface FeedViewProps {
@@ -37,6 +38,7 @@ interface FeedViewProps {
 }
 
 type FeedFilter = "all" | "unread" | "saved";
+type BentoVariant = "featured" | "square" | "wide" | "default";
 
 function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;
@@ -61,14 +63,11 @@ function displayTitle(item: FeedItem): string {
   }
 }
 
-function getItemThumbnail(item: FeedItem): string | null {
-  if (item.imageUrl) return resolveCoverImageSrc(item.imageUrl);
-  try {
-    const host = new URL(item.link).hostname;
-    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`;
-  } catch {
-    return null;
-  }
+function getBentoVariant(index: number): BentoVariant {
+  if (index === 0) return "featured";
+  if (index % 6 === 3) return "wide";
+  if (index % 3 === 1) return "square";
+  return "default";
 }
 
 function FeedArticleCard({
@@ -76,6 +75,7 @@ function FeedArticleCard({
   cover,
   busy,
   title,
+  variant,
   onRead,
   onToggleRead,
 }: {
@@ -83,79 +83,123 @@ function FeedArticleCard({
   cover: string | null;
   busy: boolean;
   title: string;
+  variant: BentoVariant;
   onRead: () => void;
   onToggleRead: () => void;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
+  const showThumb = cover && !thumbFailed;
+  const dir = textDirection(title);
+
+  const cardClass =
+    variant === "featured" || variant === "wide" ? "col-span-2" : "col-span-1";
+
+  const layoutClass =
+    variant === "wide"
+      ? "flex flex-col sm:flex-row sm:items-stretch"
+      : "flex flex-col h-full";
+
+  const imageClass =
+    variant === "featured"
+      ? "w-full aspect-[21/9]"
+      : variant === "wide"
+        ? "w-full sm:w-40 shrink-0 aspect-[16/10] sm:aspect-auto sm:min-h-[8.5rem]"
+        : variant === "square"
+          ? "w-full aspect-square"
+          : "w-full aspect-[4/3]";
 
   return (
     <article
-      className={`bg-kindle-card border rounded-2xl overflow-hidden transition hover:shadow-md ${
+      className={`bg-kindle-card border rounded-2xl overflow-hidden transition ${cardClass} ${
         item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
       }`}
     >
-      <div className="p-4 space-y-3">
-        <div className="flex items-start gap-3">
-          <div className="w-16 h-16 rounded-xl border border-kindle-border bg-kindle-bg shrink-0 overflow-hidden flex items-center justify-center">
-            {cover && !thumbFailed ? (
-              <img
-                src={cover}
-                alt=""
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-                onError={() => setThumbFailed(true)}
-              />
-            ) : (
-              <Rss className="w-5 h-5 text-kindle-text-muted/50" />
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              {!item.read && <span className="w-1.5 h-1.5 rounded-full bg-kindle-text shrink-0" />}
-              <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate">
-                {item.subscriptionTitle} · {formatRelativeTime(item.publishedAt)}
-              </p>
+      <div className={layoutClass}>
+        <button
+          type="button"
+          onClick={onRead}
+          className={`relative bg-kindle-bg border-b sm:border-b-0 sm:border-r border-kindle-border overflow-hidden text-left ${imageClass}`}
+        >
+          {showThumb ? (
+            <img
+              src={cover}
+              alt=""
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              onError={() => setThumbFailed(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
+              <Rss className="w-6 h-6 text-kindle-text-muted/40" />
             </div>
-            <h3 className="text-sm font-lexend font-bold leading-snug text-kindle-text line-clamp-3">{title}</h3>
+          )}
+          {!item.read && (
+            <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-kindle-text shadow-sm" />
+          )}
+        </button>
+
+        <div className="flex flex-col flex-1 p-3 sm:p-4 gap-2 sm:gap-3 min-w-0">
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate mb-1">
+              {item.subscriptionTitle} · {formatRelativeTime(item.publishedAt)}
+            </p>
+            <h3
+              dir={dir}
+              className={`font-lexend font-bold leading-snug text-kindle-text ${
+                dir === "rtl" ? "font-thaana" : ""
+              } ${
+                variant === "featured" ? "text-base sm:text-lg line-clamp-3" : "text-sm line-clamp-3"
+              }`}
+            >
+              {title}
+            </h3>
             {item.summary && !/^(article url|comments url)/i.test(item.summary) && (
-              <p className="text-[11px] text-kindle-text-muted mt-1 line-clamp-2 leading-relaxed">{item.summary}</p>
+              <p
+                dir={textDirection(item.summary)}
+                className={`text-kindle-text-muted mt-1.5 leading-relaxed ${
+                  variant === "featured" ? "text-xs line-clamp-2" : "text-[11px] line-clamp-2"
+                }`}
+              >
+                {item.summary}
+              </p>
             )}
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onRead}
-            disabled={busy}
-            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50"
-          >
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Newspaper className="w-3.5 h-3.5" />}
-            Read
-          </button>
-          <button
-            onClick={onToggleRead}
-            className="px-3 py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
-            title={item.read ? "Mark unread" : "Mark read"}
-          >
-            {item.read ? "Unread" : "Done"}
-          </button>
-          <a
-            href={item.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-2.5 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
-            title="Open original"
-          >
-            <ExternalLink className="w-4 h-4" />
-          </a>
-        </div>
+          <div className="flex items-center gap-2 mt-auto">
+            <button
+              onClick={onRead}
+              disabled={busy}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Newspaper className="w-3.5 h-3.5" />}
+              Read
+            </button>
+            <button
+              onClick={onToggleRead}
+              className="px-3 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
+              title={item.read ? "Mark unread" : "Mark read"}
+            >
+              {item.read ? "Unread" : "Done"}
+            </button>
+            <a
+              href={item.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-2 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
+              title="Open original"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </a>
+          </div>
 
-        {item.savedBookId && (
-          <p className="text-[9px] text-emerald-600 flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3" />
-            Saved to library
-          </p>
-        )}
+          {item.savedBookId && (
+            <p className="text-[9px] text-emerald-600 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              Saved to library
+            </p>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -177,7 +221,6 @@ export default function FeedView({
   const [addFeedUrl, setAddFeedUrl] = useState("");
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
   const [addingFeed, setAddingFeed] = useState(false);
-  const [shareClipping, setShareClipping] = useState(false);
   const [readingArticle, setReadingArticle] = useState<FeedItem | null>(null);
 
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
@@ -186,6 +229,16 @@ export default function FeedView({
     const subs = ensureDefaultSubscriptions();
     setSubscriptions(subs);
     setItems(getFeedItems());
+  }, []);
+
+  const enrichFeedItems = useCallback(async (merged: FeedItem[]) => {
+    try {
+      const withPreviews = await prefetchFeedPreviews(merged, 20);
+      setItems(withPreviews);
+      void prefetchFeedArticles(withPreviews.slice(0, 5), 5);
+    } catch {
+      setItems(merged);
+    }
   }, []);
 
   const refreshFeeds = useCallback(async () => {
@@ -197,12 +250,13 @@ export default function FeedView({
       const merged = mergeFeedItems(incoming);
       setItems(merged);
       saveFeedSubscriptions(subs.map((sub) => ({ ...sub, lastFetchedAt: Date.now() })));
+      void enrichFeedItems(merged);
     } catch (error) {
       console.error("Feed refresh failed:", error);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [enrichFeedItems]);
 
   useEffect(() => {
     loadLocalState();
@@ -277,7 +331,7 @@ export default function FeedView({
             )}
           </div>
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">
-            Subscribe to sources and read articles fullscreen — save to library only when you want.
+            Maldives news and more — tap to read fullscreen.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -298,13 +352,6 @@ export default function FeedView({
           </button>
         </div>
       </header>
-
-      {shareClipping && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] text-kindle-text-muted">
-          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-          Clipping shared link into your library…
-        </div>
-      )}
 
       <div className="flex flex-wrap gap-2">
         {[
@@ -367,8 +414,8 @@ export default function FeedView({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {visibleItems.map((item) => {
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 auto-rows-fr">
+          {visibleItems.map((item, index) => {
             const cover = getItemThumbnail(item);
             const title = displayTitle(item);
             return (
@@ -378,6 +425,7 @@ export default function FeedView({
                 cover={cover}
                 busy={false}
                 title={title}
+                variant={getBentoVariant(index)}
                 onRead={() => void handleReadArticle(item)}
                 onToggleRead={() => {
                   markFeedItemRead(item.id, !item.read);

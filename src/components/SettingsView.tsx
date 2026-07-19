@@ -5,7 +5,8 @@ import {
   User as UserIcon, ShieldCheck, BookOpen,
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
-  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones
+  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
+  FileText, Files, Scissors, Wrench, FolderOpen
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import { 
@@ -404,7 +405,8 @@ export default function SettingsView({
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
     { id: "font-sans", label: "Sans" },
-    { id: "font-mono", label: "Mono" }
+    { id: "font-mono", label: "Mono" },
+    { id: "font-thaana", label: "Dhivehi" },
   ];
   const readerThemes = [
     { id: "light", label: "Light", bg: "bg-white", ring: "ring-neutral-300" },
@@ -559,111 +561,149 @@ export default function SettingsView({
 
         {view === "tools" && (
         <>
-        {/* Bento Widget Grid (local ingest + cloud) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-3">
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Upload className="w-4 h-4 text-kindle-accent" />
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Local File Ingestion</h4>
-              </div>
-              <p className="text-[10px] text-kindle-text-muted leading-relaxed mb-2">
-                Drag and drop your local ebook files to import them directly into your browser's private offline database.
-              </p>
-            </div>
-            
-            <div 
-              id="drag-and-drop-box"
-              onDragEnter={handleDrag}
-              onDragOver={handleDrag}
-              onDragLeave={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 h-32 ${
-                isDragActive 
-                  ? "border-kindle-accent bg-kindle-accent/5" 
-                  : "border-kindle-border hover:border-kindle-text-muted bg-kindle-bg/40"
-              }`}
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-kindle-accent" />
+            <h2 className="text-2xl font-lexend font-bold text-kindle-text">Tools</h2>
+          </div>
+          <p className="text-[11px] text-kindle-text-muted leading-relaxed max-w-2xl">
+            Import, convert, and manage your ebooks. EPUB and PDF utilities live here.
+          </p>
+        </section>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { id: "import", icon: Upload, label: "Import", desc: "Add files" },
+            { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox" },
+            { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch" },
+            { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert" },
+          ].map((tool) => (
+            <button
+              key={tool.id}
+              onClick={() => {
+                if (tool.id === "cloud") setShowCloudImport(true);
+                else if (tool.id === "folder") toggleCategory("folder");
+                else if (tool.id === "tts") toggleCategory("tts");
+                else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileUpload(e.target.files[0]);
-                  }
-                }}
-                className="hidden"
-              />
+              <div className="p-2 rounded-xl bg-kindle-bg border border-kindle-border w-fit">
+                <tool.icon className="w-4 h-4 text-kindle-accent" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
+                <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
 
-              {uploading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-widest animate-pulse">Syncing to storage...</p>
-                </>
-              ) : (
-                <>
-                  <div className="p-1.5 bg-kindle-card border border-kindle-border rounded-lg text-kindle-text-muted">
-                    <Upload className="w-4 h-4 text-kindle-text" />
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[9px] font-bold uppercase tracking-wider">Drag & Drop or Click to Add File</p>
-                    <p className="text-[8px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB, PDF, HTML, JSON, TXT</p>
-                  </div>
-                </>
-              )}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {[
+            { icon: FileText, label: "EPUB Tools", desc: "Merge, split, metadata — coming soon", soon: true },
+            { icon: Files, label: "PDF Tools", desc: "Extract, compress, rotate — coming soon", soon: true },
+            { icon: Scissors, label: "Clip & Convert", desc: "Web pages to ebook — coming soon", soon: true },
+          ].map((tool) => (
+            <div
+              key={tool.label}
+              className="bg-kindle-card/60 border border-kindle-border/70 rounded-2xl p-4 flex flex-col gap-2 opacity-70"
+            >
+              <div className="p-2 rounded-xl bg-kindle-bg/80 border border-kindle-border w-fit">
+                <tool.icon className="w-4 h-4 text-kindle-text-muted" />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
+                <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
+              </div>
             </div>
+          ))}
+        </div>
 
-            {uploadError && (
-              <p className="text-[8px] text-red-500 font-bold uppercase tracking-wider text-center bg-red-500/5 py-1 rounded-lg border border-red-500/10">
-                {uploadError}
-              </p>
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Upload className="w-4 h-4 text-kindle-accent" />
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Import Files</h3>
+          </div>
+          <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+            Drag and drop local ebooks into your private offline library.
+          </p>
+          <div 
+            id="drag-and-drop-box"
+            onDragEnter={handleDrag}
+            onDragOver={handleDrag}
+            onDragLeave={handleDrag}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${
+              isDragActive 
+                ? "border-kindle-accent bg-kindle-accent/5" 
+                : "border-kindle-border hover:border-kindle-text-muted bg-kindle-bg/40"
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  handleFileUpload(e.target.files[0]);
+                }
+              }}
+              className="hidden"
+            />
+
+            {uploading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-widest animate-pulse">Syncing to storage...</p>
+              </>
+            ) : (
+              <>
+                <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text-muted">
+                  <Upload className="w-5 h-5 text-kindle-text" />
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider">Drag & Drop or Tap to Add</p>
+                  <p className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB · PDF · HTML · TXT</p>
+                </div>
+              </>
             )}
           </div>
 
-          {/* Tile 2: Cloud Ingestion (Drive & Dropbox) */}
-          <div className="md:col-span-1 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-3">
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Cloud className="w-4 h-4 text-blue-500" />
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Cloud Sync Ingestion</h4>
+          {uploadError && (
+            <p className="text-[9px] text-red-500 font-bold uppercase tracking-wider text-center bg-red-500/5 py-2 rounded-lg border border-red-500/10">
+              {uploadError}
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+            <button 
+              onClick={() => setShowCloudImport(true)}
+              className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition w-full text-left"
+            >
+              <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg shrink-0">
+                <Cloud className="w-4 h-4" />
               </div>
-              <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-                Connect external cloud accounts to pull and sideload ebooks directly.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <button 
-                onClick={() => setShowCloudImport(true)}
-                className="p-2.5 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-2.5 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition shadow-xs group cursor-pointer w-full text-left"
-              >
-                <div className="p-1.5 bg-blue-500/10 text-blue-500 rounded-lg group-hover:scale-105 transition shrink-0">
-                  <Cloud className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text truncate">Google Drive</p>
-                  <p className="text-[7px] text-kindle-text-muted font-mono uppercase">Direct Import</p>
-                </div>
-              </button>
-              
-              <button 
-                onClick={() => setShowCloudImport(true)}
-                className="p-2.5 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-2.5 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition shadow-xs group cursor-pointer w-full text-left"
-              >
-                <div className="p-1.5 bg-indigo-500/10 text-indigo-500 rounded-lg group-hover:scale-105 transition shrink-0">
-                  <HardDrive className="w-3.5 h-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text truncate">Dropbox</p>
-                  <p className="text-[7px] text-kindle-text-muted font-mono uppercase">Cloud Sideload</p>
-                </div>
-              </button>
-            </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text">Cloud Import</p>
+                <p className="text-[9px] text-kindle-text-muted">Google Drive or Dropbox</p>
+              </div>
+            </button>
+            <button
+              onClick={() => toggleCategory("folder")}
+              className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition w-full text-left"
+            >
+              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg shrink-0">
+                <FolderOpen className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text">Folder Watch</p>
+                <p className="text-[9px] text-kindle-text-muted">Auto-ingest new files</p>
+              </div>
+            </button>
           </div>
-
-        </div>
+        </section>
         </>
         )}
 
@@ -1090,13 +1130,18 @@ export default function SettingsView({
 
         {view === "tools" && (
         <>
-        {/* Folder Auto-Ingestion (Directory Access) */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
-          <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
-            <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-              <BookMarked className="w-4 h-4 text-emerald-500" />
+        {expandedCategories.folder && (
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between gap-3 border-b border-kindle-border pb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+                <FolderOpen className="w-4 h-4 text-emerald-500" />
+              </div>
+              <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Folder Auto-Ingestion</h3>
             </div>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Folder Auto-Ingestion</h3>
+            <button onClick={() => toggleCategory("folder")} className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
+              Close
+            </button>
           </div>
 
           <p className="text-[11px] text-kindle-text-muted leading-relaxed">
@@ -1264,7 +1309,7 @@ export default function SettingsView({
             )}
           </div>
         </section>
-
+        )}
 
         {/* Read Aloud — collapsed by default, near bottom */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">

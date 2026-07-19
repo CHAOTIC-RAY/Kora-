@@ -26,7 +26,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./src/lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
-import { discoverFeedFromUrl, fetchFeedFromUrl } from "./src/lib/feedServer";
+import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./src/lib/feedServer";
 
 dotenv.config();
 
@@ -79,6 +79,37 @@ app.post("/api/feed/fetch", express.json(), async (req, res) => {
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message || "Feed fetch failed" });
+  }
+});
+
+app.post("/api/feed/preview", express.json(), async (req, res) => {
+  const articleUrl = req.body.url;
+  if (!articleUrl) {
+    return res.status(400).json({ error: "Missing url parameter" });
+  }
+  try {
+    const result = await fetchArticlePreview(articleUrl);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Preview failed" });
+  }
+});
+
+app.get("/api/feed/image", async (req, res) => {
+  const imageUrl = req.query.url as string;
+  if (!imageUrl) {
+    return res.status(400).send("Missing url");
+  }
+  try {
+    const upstream = await proxyFeedImage(imageUrl);
+    res.status(upstream.status);
+    upstream.headers.forEach((value, key) => {
+      if (key.toLowerCase() !== "transfer-encoding") res.setHeader(key, value);
+    });
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res.send(buffer);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Image proxy failed" });
   }
 });
 

@@ -318,6 +318,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     { name: "Lora Serif", value: "font-serif" },
     { name: "Inter Sans", value: "font-sans" },
     { name: "JetBrains Mono", value: "font-mono" },
+    { name: "Dhivehi", value: "font-thaana" },
     { name: "Lexend (Readable)", value: "font-lexend" }
   ];
 

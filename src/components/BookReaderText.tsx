@@ -50,7 +50,8 @@ function injectReaderStyles(
   const fontMap: Record<string, string> = {
     "font-serif": "'Lora', 'Georgia', serif",
     "font-sans": "'Inter', system-ui, -apple-system, sans-serif",
-    "font-mono": "'JetBrains Mono', 'Fira Code', monospace"
+    "font-mono": "'JetBrains Mono', 'Fira Code', monospace",
+    "font-thaana": "'Noto Sans Thaana', 'MV Waheed', sans-serif",
   };
   const fontCss = fontMap[fontFamily] || fontMap["font-serif"];
 
@@ -197,7 +198,8 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
   const fontFamilies = [
     { name: "Lora Serif", value: "font-serif" },
     { name: "Inter Sans", value: "font-sans" },
-    { name: "JetBrains Mono", value: "font-mono" }
+    { name: "JetBrains Mono", value: "font-mono" },
+    { name: "Dhivehi", value: "font-thaana" },
   ];
 
   async function load() {
