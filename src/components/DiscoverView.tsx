@@ -21,6 +21,7 @@ import {
   streamEbookSearch,
   getCachedSearch,
 } from "../lib/searchClient";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 
 interface DiscoverViewProps {
   userId: string;
@@ -177,11 +178,7 @@ export default function DiscoverView({
   onTriggerDownload,
   onPlayAudiobook
 }: DiscoverViewProps) {
-  const getAudiobookCoverSrc = (coverUrl?: string | null) => {
-    if (!coverUrl) return null;
-    if (coverUrl.startsWith("/")) return coverUrl;
-    return `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`;
-  };
+  const getAudiobookCoverSrc = (coverUrl?: string | null) => resolveCoverImageSrc(coverUrl);
   const stripHtml = (html: string) => {
     if (!html) return "";
     return html.replace(/<[^>]*>?/gm, "").trim();
@@ -2570,7 +2567,7 @@ export default function DiscoverView({
                   <div className={`aspect-[2/3] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
                     {!hideCovers && book.coverUrl ? (
                       <img
-                        src={book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
+                        src={resolveCoverImageSrc(book.coverUrl) || ""}
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                         referrerPolicy="no-referrer"
@@ -2764,7 +2761,7 @@ export default function DiscoverView({
                         src={
                           viewingCategory.source === "audiobook"
                             ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl)
-                            : (book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`)
+                            : resolveCoverImageSrc(book.coverUrl) || ""
                         }
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -3014,7 +3011,7 @@ export default function DiscoverView({
                           )}
                           {!hideCovers && book.coverUrl ? (
                             <img
-                              src={cat.source === "audiobook" ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl) : (book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`)}
+                              src={cat.source === "audiobook" ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl) : (resolveCoverImageSrc(book.coverUrl) || "")}
                               alt={book.title}
                               className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                               referrerPolicy="no-referrer"

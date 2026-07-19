@@ -2239,6 +2239,9 @@ app.get("/api/proxy-image", async (req, res) => {
     if (!imageUrl) {
       return res.status(400).send("Missing image URL");
     }
+    if (/^data:/i.test(imageUrl) || /^blob:/i.test(imageUrl)) {
+      return res.status(400).send("Inline image URLs cannot be proxied");
+    }
 
     // Fix book cover quality: automatically upgrade Open Library medium covers to large
     if (imageUrl.includes("openlibrary.org") && imageUrl.includes("-M.jpg")) {

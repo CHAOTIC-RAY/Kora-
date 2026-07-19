@@ -3219,6 +3219,9 @@ export default {
       if (!target) {
         return new Response("Missing url", { status: 400 });
       }
+      if (/^data:/i.test(target) || /^blob:/i.test(target)) {
+        return new Response("Inline image URLs cannot be proxied", { status: 400 });
+      }
       // Only allow image hosts; block everything else (no open proxy).
       const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio[0-9]*\.(com|club)|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|goodreads\.com)$/i;
       let parsed: URL;

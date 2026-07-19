@@ -1,15 +1,16 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { 
-  initializeFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  getDocs, 
-  deleteDoc, 
-  query, 
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  deleteDoc,
+  query,
   where,
-  onSnapshot
 } from "firebase/firestore";
 import { 
   getAuth, 
@@ -37,16 +38,65 @@ let isRealFirebase = false;
 
 let initialized = false;
 
+function createFirestoreInstance(app: ReturnType<typeof initializeApp>) {
+  const dbId = (rawFirebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId;
+  const settings = {
+    experimentalForceLongPolling: true,
+    ignoreUndefinedProperties: true,
+  };
+
+  try {
+    return initializeFirestore(
+      app,
+      {
+        ...settings,
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      },
+      dbId || "(default)"
+    );
+  } catch (cacheError) {
+    console.warn("Firestore persistent cache unavailable, using memory cache.", cacheError);
+    return initializeFirestore(app, settings, dbId || "(default)");
+  }
+}
+
+function isRecoverableFirestoreError(error: unknown): boolean {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: string }).code)
+      : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const blocked =
+    message.includes("ERR_BLOCKED_BY_CLIENT") ||
+    message.includes("network-request-failed") ||
+    message.includes("Failed to fetch") ||
+    message.includes("NetworkError");
+
+  if (blocked) return true;
+  return ![
+    "permission-denied",
+    "unauthenticated",
+    "failed-precondition",
+    "invalid-argument",
+  ].includes(code);
+}
+
+function noteFirestoreSyncIssue(error: unknown, context: string) {
+  if (isRecoverableFirestoreError(error)) {
+    console.warn(`Firestore sync deferred (${context}):`, error);
+    return;
+  }
+  console.error(`Firestore sync failed (${context}):`, error);
+  disableFirebase();
+}
+
 export function initFirebase() {
   if (initialized) return;
-  
+
   try {
     if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyFakeKey" && firebaseConfig.projectId) {
       app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-      const dbId = (rawFirebaseConfig as any).firestoreDatabaseId;
-      db = initializeFirestore(app, {
-        experimentalForceLongPolling: true,
-      }, dbId || "(default)");
+      db = createFirestoreInstance(app);
       auth = getAuth(app);
       isRealFirebase = true;
       console.log("Firebase initialized successfully. Real Firestore enabled.");
@@ -63,25 +113,13 @@ export function initFirebase() {
 }
 
 export function disableFirebase() {
+  if (!isRealFirebase) return;
   isRealFirebase = false;
-  db = null;
-  auth = null;
-  console.log("Firebase disabled due to network or configuration errors.");
+  console.warn("Firebase cloud sync disabled; continuing with offline local storage.");
 }
 
 try {
-  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyFakeKey" && firebaseConfig.projectId) {
-    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    const dbId = (rawFirebaseConfig as any).firestoreDatabaseId;
-    db = initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-    }, dbId || "(default)");
-    auth = getAuth(app);
-    isRealFirebase = true;
-    console.log("Firebase initialized successfully. Real Firestore enabled.");
-  } else {
-    isRealFirebase = false;
-  }
+  initFirebase();
 } catch (error) {
   console.error("Firebase failed to initialize. Falling back to local state sync.", error);
   isRealFirebase = false;
@@ -179,8 +217,7 @@ export async function syncBookToCloud(userId: string, book: BookMetadata): Promi
       const docRef = doc(db, "users", userId, "library", cleanedBook.id);
       await setDoc(docRef, cleanedBook, { merge: true });
     } catch (err) {
-      console.warn("Failed to sync book to Firestore cloud:", err);
-      disableFirebase();
+      noteFirestoreSyncIssue(err, "syncBookToCloud");
     }
   }
 }
@@ -213,8 +250,7 @@ export async function syncDeleteBook(userId: string, bookId: string): Promise<vo
       const docRef = doc(db, "users", userId, "library", bookId);
       await deleteDoc(docRef);
     } catch (err) {
-      console.warn("Failed to delete book from Firestore cloud:", err);
-      disableFirebase();
+      noteFirestoreSyncIssue(err, "syncDeleteBook");
     }
   }
 }
@@ -246,8 +282,7 @@ export async function loadLibrary(userId: string): Promise<BookMetadata[]> {
         return merged;
       }
     } catch (err) {
-      console.warn("Failed to load library from Firestore cloud, using offline copy:", err);
-      disableFirebase();
+      noteFirestoreSyncIssue(err, "loadLibrary");
     }
   }
 
@@ -277,8 +312,7 @@ export async function saveCustomTags(userId: string, tags: string[]): Promise<vo
       const docRef = doc(db, "users", userId, "config", "tags");
       await setDoc(docRef, { tags }, { merge: true });
     } catch (err) {
-      console.warn("Failed to sync custom tags to cloud:", err);
-      disableFirebase();
+      noteFirestoreSyncIssue(err, "saveCustomTags");
     }
   }
 }
@@ -299,7 +333,6 @@ export enum OperationType {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  disableFirebase();
   const errInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -308,9 +341,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       emailVerified: auth?.currentUser?.emailVerified,
     },
     operationType,
-    path
+    path,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+
+  if (isRecoverableFirestoreError(error)) {
+    console.warn("Firestore Error (recoverable): ", JSON.stringify(errInfo));
+    return;
+  }
+
+  console.error("Firestore Error: ", JSON.stringify(errInfo));
+  disableFirebase();
   throw new Error(JSON.stringify(errInfo));
 }
 

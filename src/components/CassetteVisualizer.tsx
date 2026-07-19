@@ -1,5 +1,6 @@
 import React from "react";
 import { Headphones } from "lucide-react";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 
 export interface CassetteVisualizerProps {
   title: string;
@@ -85,11 +86,7 @@ export default function CassetteVisualizer({
   const isThumb = size === "thumb";
   const isPlayer = size === "player";
 
-  const coverSrc = coverUrl
-    ? coverUrl.startsWith("http")
-      ? `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`
-      : coverUrl
-    : null;
+  const coverSrc = resolveCoverImageSrc(coverUrl);
 
   const shellRadius = isThumb ? "rounded-[6px]" : isPlayer ? "rounded-[18px]" : "rounded-[14px]";
   const labelSize = isThumb ? "text-[4px]" : isPlayer ? "text-[8px]" : "text-[6.5px]";

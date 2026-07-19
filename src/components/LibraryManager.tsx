@@ -7,6 +7,7 @@ import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
 import AudiobookCassetteCard from "./AudiobookCassetteCard";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 
 interface LibraryManagerProps {
   userId: string;
@@ -790,7 +791,7 @@ export default function LibraryManager({
                     ) : !hideCovers && book.coverUrl ? (
                       <>
                         <img
-                          src={book.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
+                          src={resolveCoverImageSrc(book.coverUrl) || ""}
                           className={`w-full aspect-[2/3] object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
                           referrerPolicy="no-referrer"
                           onContextMenu={(e) => e.preventDefault()}
@@ -825,7 +826,7 @@ export default function LibraryManager({
                           {/* Light grayscale book thumbnail */}
                           {!hideCovers && book.coverUrl ? (
                             <img
-                              src={book.coverUrl.startsWith("http") ? `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}` : book.coverUrl}
+                              src={resolveCoverImageSrc(book.coverUrl) || ""}
                               className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale"
                               referrerPolicy="no-referrer"
                               alt=""
@@ -1297,7 +1298,7 @@ export default function LibraryManager({
               ) : longPressedBook.coverUrl ? (
                 <>
                   <img
-                    src={longPressedBook.coverUrl.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(longPressedBook.coverUrl)}` : longPressedBook.coverUrl}
+                    src={resolveCoverImageSrc(longPressedBook.coverUrl) || ""}
                     className={`w-12 aspect-[2/3] object-cover rounded-lg border border-kindle-border/60 shadow-sm ${grayscaleCovers ? "grayscale-app" : ""}`}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
