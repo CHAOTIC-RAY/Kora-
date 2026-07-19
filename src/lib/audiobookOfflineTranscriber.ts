@@ -27,6 +27,7 @@ function configureTransformersEnv(env: {
   allowRemoteModels?: boolean;
   remoteHost?: string;
   remotePathTemplate?: string;
+  backends?: { onnx?: { logLevel?: string } };
 }) {
   env.allowLocalModels = false;
   env.useBrowserCache = true;
@@ -36,12 +37,41 @@ function configureTransformersEnv(env: {
   if (typeof window !== "undefined" && window.location?.origin) {
     env.remoteHost = `${window.location.origin}/api/hf-model/`;
   }
+  // Drop ORT "Removing initializer…" noise (harmless graph cleanup on Whisper ONNX).
+  if (env.backends?.onnx) {
+    env.backends.onnx.logLevel = "error";
+  }
+}
+
+/**
+ * onnxruntime-web still emits CleanUnusedInitializers warnings via console.warn
+ * even when logLevel is error (session create defaults to severity 2). Filter those.
+ */
+function silenceOrtUnusedInitializerSpam() {
+  if (typeof console === "undefined") return;
+  const consoleAny = console as Console & { __koraOrtFilter?: boolean };
+  if (consoleAny.__koraOrtFilter) return;
+
+  const originalWarn = console.warn.bind(console);
+  console.warn = (...args: unknown[]) => {
+    const text = args.map((arg) => (typeof arg === "string" ? arg : String(arg ?? ""))).join(" ");
+    if (
+      text.includes("CleanUnusedInitializersAndNodeArgs") ||
+      text.includes("Removing initializer") ||
+      (text.includes("onnxruntime") && text.includes("not used by any node"))
+    ) {
+      return;
+    }
+    originalWarn(...args);
+  };
+  consoleAny.__koraOrtFilter = true;
 }
 
 async function getWhisper() {
   if (whisperPipeline) return whisperPipeline;
   if (!whisperLoading) {
     whisperLoading = (async () => {
+      silenceOrtUnusedInitializerSpam();
       const { pipeline, env } = await import("@xenova/transformers");
       configureTransformersEnv(env);
       return pipeline("automatic-speech-recognition", WHISPER_MODEL, {
