@@ -129,18 +129,22 @@ export default function NewsInBriefPanel({ items, selectedSourceId, onRead }: Ne
               onClick={() => setSelectedPeriodKey(chip.key)}
               className={`relative shrink-0 w-[4.5rem] h-[4.75rem] rounded-xl border flex flex-col items-center justify-center transition ${
                 selected
-                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 shadow-sm"
-                  : "border-kindle-border bg-kindle-card text-kindle-text hover:border-kindle-text"
+                  ? "border-kindle-text bg-kindle-text text-kindle-bg shadow-sm"
+                  : "border-kindle-border bg-kindle-card text-kindle-text hover:border-kindle-text/50"
               }`}
             >
               {hasBriefs && !selected ? (
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-400" />
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-kindle-text/45" />
               ) : null}
               {selected ? (
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-blue-600" />
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-kindle-bg/80" />
               ) : null}
               <span className="text-2xl font-lexend font-bold leading-none">{chip.dayLabel}</span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted mt-1">
+              <span
+                className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${
+                  selected ? "text-kindle-bg/70" : "text-kindle-text-muted"
+                }`}
+              >
                 {chip.monthLabel}
               </span>
             </button>

@@ -134,7 +134,7 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="space-y-1">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-sky-400">
+                    <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
                       Daily News Brief
                     </p>
                     <h2
@@ -159,7 +159,7 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
                       style={{ marginTop: `${prefs.paragraphSpacing * 0.6}em` }}
                     >
                       <div className="flex items-baseline justify-between gap-2">
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest text-sky-300">
+                        <h3 className={`text-[10px] font-bold uppercase tracking-widest ${theme.muted}`}>
                           {section.source}
                         </h3>
                         <span className={`font-mono shrink-0 ${theme.muted}`} style={metaStyle}>
@@ -214,11 +214,13 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full text-left bg-gradient-to-br from-sky-950/40 to-kindle-card border border-sky-500/30 rounded-2xl p-4 hover:border-sky-400/50 transition"
+        className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-4 hover:border-kindle-text/35 transition"
       >
         <div className="flex items-center gap-2 mb-1">
-          <Newspaper className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-          <p className="text-[9px] font-bold uppercase tracking-widest text-sky-400">Daily News Brief</p>
+          <Newspaper className="w-3.5 h-3.5 text-kindle-text-muted shrink-0" />
+          <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+            Daily News Brief
+          </p>
         </div>
         <h3 className="text-sm font-lexend font-bold text-kindle-text mb-2">Today&apos;s News Brief</h3>
         <p className="text-xs text-kindle-text-muted leading-relaxed line-clamp-2">{brief.lead}</p>

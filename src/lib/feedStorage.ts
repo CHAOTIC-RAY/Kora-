@@ -51,6 +51,11 @@ export const DEFAULT_FEED_SUBSCRIPTIONS: Omit<FeedSubscription, "id" | "addedAt"
     siteUrl: "https://mihaaru.com/",
     feedUrl: "kora://mihaaru.com/latest",
   },
+  {
+    title: "MV Crisis",
+    siteUrl: "https://t.me/MvCrisis",
+    feedUrl: "kora://telegram/MvCrisis",
+  },
 ];
 
 export const INTERNATIONAL_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = [
@@ -117,7 +122,7 @@ const REMOVED_DEFAULT_FEED_URLS = new Set([
   "https://feeds.feedburner.com/ycombinator",
 ]);
 
-const FEED_MIGRATION_KEY = "kora_feed_migration_v5";
+const FEED_MIGRATION_KEY = "kora_feed_migration_v6";
 const MALDIVES_INDEPENDENT_OLD_FEED = "https://maldivesindependent.com/api/rss/news";
 const MALDIVES_INDEPENDENT_FEED = "https://maldivesindependent.com/api/rss";
 
