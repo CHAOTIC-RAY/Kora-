@@ -259,8 +259,9 @@
   -webkit-touch-callout: default;
 }
 
+/* Allow native text selection gestures; pan-y alone made column hit-testing worse on Android */
 #epub-reader-container .reader-select-surface {
-  touch-action: pan-y;
+  touch-action: auto;
 }
 
 .player-chapter-scroll {

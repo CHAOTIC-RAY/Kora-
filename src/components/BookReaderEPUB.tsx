@@ -53,6 +53,132 @@ function extractLookupWord(text: string): string {
     .replace(/^[^a-zA-Z0-9'-]+|[^a-zA-Z0-9'-]+$/g, "");
 }
 
+/** Distance from a point to the nearest edge of a rect (0 if inside). */
+function distPointToRect(x: number, y: number, rect: DOMRect): number {
+  const dx = x < rect.left ? rect.left - x : x > rect.right ? x - rect.right : 0;
+  const dy = y < rect.top ? rect.top - y : y > rect.bottom ? y - rect.bottom : 0;
+  return Math.hypot(dx, dy);
+}
+
+function isCollapsedRangeNearPoint(range: Range, x: number, y: number, maxDist = 36): boolean {
+  try {
+    const probe = range.cloneRange();
+    if (probe.collapsed && probe.startContainer.nodeType === Node.TEXT_NODE) {
+      const node = probe.startContainer as Text;
+      const off = probe.startOffset;
+      probe.setStart(node, Math.max(0, off > 0 ? off - 1 : off));
+      probe.setEnd(node, Math.min(node.length, off === 0 ? 1 : off));
+    }
+    const rects = probe.getClientRects();
+    for (let i = 0; i < rects.length; i++) {
+      if (distPointToRect(x, y, rects[i]) <= maxDist) return true;
+    }
+    const br = probe.getBoundingClientRect();
+    return br.width + br.height > 0 && distPointToRect(x, y, br) <= maxDist;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hit-test a caret in reader content. Native caretRangeFromPoint is unreliable
+ * with CSS multi-column pagination (often snaps to the chapter start).
+ */
+function findCaretRangeAtPoint(x: number, y: number, root: HTMLElement | null): Range | null {
+  if (!root) return null;
+
+  let native: Range | null = null;
+  if (document.caretRangeFromPoint) {
+    native = document.caretRangeFromPoint(x, y);
+  } else if ((document as any).caretPositionFromPoint) {
+    const pos = (document as any).caretPositionFromPoint(x, y);
+    if (pos?.offsetNode) {
+      native = document.createRange();
+      native.setStart(pos.offsetNode, pos.offset);
+      native.collapse(true);
+    }
+  }
+  if (
+    native &&
+    root.contains(native.startContainer) &&
+    isCollapsedRangeNearPoint(native, x, y, 40)
+  ) {
+    return native;
+  }
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.textContent && /\S/.test(node.textContent)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+
+  let best: { node: Text; offset: number; dist: number } | null = null;
+  let current: Node | null;
+  while ((current = walker.nextNode())) {
+    const textNode = current as Text;
+    const len = textNode.length;
+    if (!len) continue;
+
+    // Probe whole node fragments first (cheap reject for off-screen column pages).
+    const whole = document.createRange();
+    whole.selectNodeContents(textNode);
+    const nodeRects = whole.getClientRects();
+    let nodeNear = false;
+    for (let i = 0; i < nodeRects.length; i++) {
+      if (distPointToRect(x, y, nodeRects[i]) <= 48) {
+        nodeNear = true;
+        break;
+      }
+    }
+    if (!nodeNear) continue;
+
+    // Walk characters in steps for speed, then refine locally.
+    const step = Math.max(1, Math.floor(len / 80));
+    for (let i = 0; i < len; i += step) {
+      const end = Math.min(len, i + Math.max(step, 1));
+      const slice = document.createRange();
+      slice.setStart(textNode, i);
+      slice.setEnd(textNode, end);
+      const rects = slice.getClientRects();
+      for (let r = 0; r < rects.length; r++) {
+        const rect = rects[r];
+        if (rect.width < 0.5 && rect.height < 0.5) continue;
+        const dist = distPointToRect(x, y, rect);
+        if (!best || dist < best.dist) {
+          const ratio = rect.width > 0 ? (x - rect.left) / rect.width : 0;
+          const offset = i + Math.round(Math.min(1, Math.max(0, ratio)) * (end - i));
+          best = { node: textNode, offset: Math.min(len, Math.max(0, offset)), dist };
+        }
+      }
+    }
+  }
+
+  if (!best || best.dist > 48) return null;
+  const range = document.createRange();
+  range.setStart(best.node, best.offset);
+  range.collapse(true);
+  return range;
+}
+
+function buildRangeFromCarets(a: Range, b: Range): Range | null {
+  try {
+    const range = document.createRange();
+    const cmp = a.compareBoundaryPoints(Range.START_TO_START, b);
+    if (cmp <= 0) {
+      range.setStart(a.startContainer, a.startOffset);
+      range.setEnd(b.startContainer, b.startOffset);
+    } else {
+      range.setStart(b.startContainer, b.startOffset);
+      range.setEnd(a.startContainer, a.startOffset);
+    }
+    return range;
+  } catch {
+    return null;
+  }
+}
+
 function clearNativeSelection() {
   const sel = window.getSelection();
   if (sel) sel.removeAllRanges();
@@ -620,18 +746,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   const getCaretRangeFromPoint = (x: number, y: number): Range | null => {
-    if (document.caretRangeFromPoint) {
-      return document.caretRangeFromPoint(x, y);
-    } else if ((document as any).caretPositionFromPoint) {
-      const pos = (document as any).caretPositionFromPoint(x, y);
-      if (pos && pos.offsetNode) {
-        const range = document.createRange();
-        range.setStart(pos.offsetNode, pos.offset);
-        range.collapse(true);
-        return range;
-      }
-    }
-    return null;
+    return findCaretRangeAtPoint(x, y, contentRef.current);
   };
 
   const handlePinDragStart = (e: React.PointerEvent<HTMLDivElement>, pinType: 'start' | 'end') => {
@@ -867,96 +982,136 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
     document.addEventListener("click", handleTripleClick);
 
-    // Enter Select Mode and highlight word on long press
-    let pressTimer: NodeJS.Timeout | null = null;
+    // Long-press word select + correct CSS-column selection that snaps to chapter top
+    let pressTimer: ReturnType<typeof setTimeout> | null = null;
     let pressStartX = 0;
     let pressStartY = 0;
+    let lastX = 0;
+    let lastY = 0;
+    let movedDuringPress = false;
+    let pressInsideContent = false;
+
+    const selectWordAtPoint = (x: number, y: number) => {
+      const container = contentRef.current;
+      const caret = findCaretRangeAtPoint(x, y, container);
+      if (!caret || caret.startContainer.nodeType !== Node.TEXT_NODE) return false;
+
+      const textNode = caret.startContainer as Text;
+      const offset = caret.startOffset;
+      const text = textNode.textContent || "";
+
+      let start = offset;
+      while (start > 0 && /[\w'’\-]/.test(text[start - 1])) start--;
+      let end = offset;
+      while (end < text.length && /[\w'’\-]/.test(text[end])) end++;
+      if (end <= start) return false;
+
+      const word = text
+        .slice(start, end)
+        .replace(/[’‘]/g, "'")
+        .replace(/^[^a-zA-Z0-9\-']+|[^a-zA-Z0-9\-']+$/g, "");
+      if (!word) return false;
+
+      const newRange = document.createRange();
+      newRange.setStart(textNode, start);
+      newRange.setEnd(textNode, end);
+      if (!isCollapsedRangeNearPoint(newRange, x, y, 48)) return false;
+
+      const sel = window.getSelection();
+      if (!sel) return false;
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+      setSelectedText(word);
+      try {
+        const rect = newRange.getBoundingClientRect();
+        const rects = newRange.getClientRects();
+        if (rects.length > 0) {
+          const firstRect = rects[0];
+          const lastRect = rects[rects.length - 1];
+          setSelectionPins({
+            start: { x: firstRect.left, y: firstRect.top, height: firstRect.height },
+            end: { x: lastRect.right, y: lastRect.top, height: lastRect.height },
+          });
+        }
+        setSelectionCoords({
+          x: rect.left + rect.width / 2,
+          y: rect.bottom + 10,
+          top: rect.top,
+          bottom: rect.bottom,
+        });
+        void prefetchSelectionDictionary(word);
+        lookupDictionary(word);
+      } catch {
+        /* ignore */
+      }
+      return true;
+    };
+
+    /** CSS columns often anchor native selection at chapter start — rebuild from touch points. */
+    const correctSelectionFromGesture = () => {
+      if (!pressInsideContent || !movedDuringPress) return;
+      const container = contentRef.current;
+      if (!container) return;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+
+      const current = sel.getRangeAt(0);
+      if (!container.contains(current.startContainer) && !container.contains(current.endContainer)) {
+        return;
+      }
+
+      const startCaret = findCaretRangeAtPoint(pressStartX, pressStartY, container);
+      const endCaret = findCaretRangeAtPoint(lastX, lastY, container);
+      if (!startCaret || !endCaret) return;
+
+      // If the native anchor is already near where the user started, keep it.
+      if (isCollapsedRangeNearPoint(current, pressStartX, pressStartY, 40)) return;
+
+      const fixed = buildRangeFromCarets(startCaret, endCaret);
+      if (!fixed || fixed.collapsed) return;
+      const text = fixed.toString();
+      if (!text.trim()) return;
+
+      try {
+        sel.removeAllRanges();
+        sel.addRange(fixed);
+      } catch {
+        /* ignore */
+      }
+    };
 
     const handlePointerDown = (e: PointerEvent) => {
       isPointerDownRef.current = true;
+      movedDuringPress = false;
+      pressStartX = lastX = e.clientX;
+      pressStartY = lastY = e.clientY;
 
       const container = contentRef.current;
       const target = e.target as Node;
-      if (!container?.contains(target)) {
+      pressInsideContent = !!(container && container.contains(target));
+      if (!pressInsideContent) {
         setSelectionCoords(null);
         setSelectionPins({ start: null, end: null });
+        return;
       }
-      
-      pressStartX = e.clientX;
-      pressStartY = e.clientY;
-      pressTimer = setTimeout(() => {
-        let range: Range | null = null;
-        if (document.caretRangeFromPoint) {
-          range = document.caretRangeFromPoint(e.clientX, e.clientY);
-        } else if ((document as any).caretPositionFromPoint) {
-          const pos = (document as any).caretPositionFromPoint(e.clientX, e.clientY);
-          if (pos && pos.offsetNode) {
-            range = document.createRange();
-            range.setStart(pos.offsetNode, pos.offset);
-            range.collapse(true);
-          }
-        }
 
-        if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
-          const textNode = range.startContainer;
-          const offset = range.startOffset;
-          const text = textNode.textContent || "";
-          
-          let start = offset;
-          while (start > 0 && /[\w\-]/.test(text[start - 1])) start--;
-          let end = offset;
-          while (end < text.length && /[\w\-]/.test(text[end])) end++;
-          
-          if (end > start) {
-            const word = text
-              .slice(start, end)
-              .replace(/[’‘]/g, "'")
-              .replace(/^[^a-zA-Z0-9\-']+|[^a-zA-Z0-9\-']+$/g, "");
-            // Allow short words (a, I, to, almost…) — previously length > 1 blocked many lookups.
-            if (word && word.length >= 1) {
-              const newRange = document.createRange();
-              newRange.setStart(textNode, start);
-              newRange.setEnd(textNode, end);
-              const sel = window.getSelection();
-              if (sel) {
-                sel.removeAllRanges();
-                sel.addRange(newRange);
-                setSelectedText(word);
-                
-                try {
-                  const rect = newRange.getBoundingClientRect();
-                  const rects = newRange.getClientRects();
-                  if (rects.length > 0) {
-                    const firstRect = rects[0];
-                    const lastRect = rects[rects.length - 1];
-                    setSelectionPins({
-                      start: { x: firstRect.left, y: firstRect.top, height: firstRect.height },
-                      end: { x: lastRect.right, y: lastRect.top, height: lastRect.height }
-                    });
-                  }
-                  setSelectionCoords({
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 10,
-                    top: rect.top,
-                    bottom: rect.bottom,
-                  });
-                  void prefetchSelectionDictionary(word);
-                  lookupDictionary(word);
-                } catch (err) {
-                  // fallback
-                }
-              }
-            }
-          }
-        }
-      }, 420);
+      if (pressTimer) clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        // Don't hijack an in-progress drag selection
+        if (movedDuringPress || !isPointerDownRef.current) return;
+        selectWordAtPoint(pressStartX, pressStartY);
+      }, 500);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
-      if (pressTimer) {
-        const dx = Math.abs(e.clientX - pressStartX);
-        const dy = Math.abs(e.clientY - pressStartY);
-        if (dx > 10 || dy > 10) {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      const dx = Math.abs(e.clientX - pressStartX);
+      const dy = Math.abs(e.clientY - pressStartY);
+      if (dx > 8 || dy > 8) {
+        movedDuringPress = true;
+        if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
         }
@@ -970,8 +1125,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         clearTimeout(pressTimer);
         pressTimer = null;
       }
-      // Re-evaluate selection immediately on pointer up to position pins and menu
+      correctSelectionFromGesture();
       handleSelection();
+      pressInsideContent = false;
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
