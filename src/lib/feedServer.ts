@@ -1,3 +1,4 @@
+import { canonicalFeedItemId } from "./feedNormalize";
 import { COMMON_FEED_PATHS, discoverFeedUrlFromHtml, normalizeFeedArticleLink, parseFeedXml } from "./rssParser";
 
 const USER_AGENT =
@@ -115,43 +116,43 @@ function extractArticlesFromEditionPayload(data: unknown, found: Array<Record<st
 }
 
 async function fetchEditionMvFeed(): Promise<{ title: string; link: string; items: ReturnType<typeof mapCustomItem>[] }> {
-  const html = await fetchText("https://edition.mv/");
-  const payloadMatch = html.match(/href="(\/_payload\.json[^"]+)"/i);
-  const payloadPath = payloadMatch?.[1] || "/_payload.json";
-  const payloadUrl = new URL(payloadPath, "https://edition.mv/").toString();
-  const payloadRaw = await fetchText(payloadUrl);
-  const payload = JSON.parse(payloadRaw) as unknown;
-  const articles = extractArticlesFromEditionPayload(payload);
+  const response = await fetch(
+    "https://edge-api.edition.mv/api/edition/articles?per_page=25&sort=latest&page=1",
+    {
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "application/json",
+      },
+    }
+  );
+  if (!response.ok) throw new Error(`Edition API failed: HTTP ${response.status}`);
 
-  const seen = new Set<string>();
-  const items = articles
-    .filter((article) => {
-      const url = String(article.article_url || "");
-      if (!url || seen.has(url)) return false;
-      seen.add(url);
-      return true;
-    })
-    .slice(0, 40)
-    .map((article) => {
-      const media = Array.isArray(article.media) ? article.media[0] as Record<string, unknown> | undefined : undefined;
-      const photo = media?.photo as Record<string, unknown> | undefined;
-      const variants = photo?.variants as Record<string, string> | undefined;
-      const imageUrl =
-        (media?.proxy_file_url as string | undefined) ||
-        variants?.large ||
-        variants?.medium ||
-        (photo?.public_file as string | undefined);
+  const data = await response.json() as { data?: Array<Record<string, unknown>> };
+  const articles = data.data || [];
 
-      return mapCustomItem({
-        title: String(article.headline || "Untitled"),
-        link: String(article.article_url).startsWith("http")
-          ? String(article.article_url)
-          : new URL(String(article.article_url), "https://edition.mv/").toString(),
-        summary: typeof article.summary === "string" ? article.summary : undefined,
-        publishedAt: parseDateLoose(String(article.datetime || article.created_at || "")),
-        imageUrl: typeof imageUrl === "string" ? imageUrl.replace(/\\u002F/g, "/") : undefined,
-      });
+  const items = articles.map((article) => {
+    const media = Array.isArray(article.media) ? article.media[0] as Record<string, unknown> | undefined : undefined;
+    const photo = media?.photo as Record<string, unknown> | undefined;
+    const variants = photo?.variants as Record<string, string> | undefined;
+    const imageUrl =
+      (media?.proxy_file_url as string | undefined) ||
+      variants?.large ||
+      variants?.medium ||
+      (photo?.public_file as string | undefined);
+
+    const articleUrl = String(article.article_url || "");
+    const link = articleUrl.startsWith("http")
+      ? articleUrl
+      : `https://edition.mv${articleUrl.startsWith("/") ? articleUrl : `/${articleUrl}`}`;
+
+    return mapCustomItem({
+      title: String(article.latin_headline || article.short_headline || article.headline || "Untitled"),
+      link,
+      summary: typeof article.summary === "string" ? article.summary : undefined,
+      publishedAt: parseDateLoose(String(article.datetime || article.created_at || "")),
+      imageUrl: typeof imageUrl === "string" ? imageUrl.replace(/\\u002F/g, "/") : undefined,
     });
+  });
 
   return { title: "Edition", link: "https://edition.mv/", items };
 }
@@ -205,7 +206,7 @@ function mapCustomItem(item: {
   author?: string;
 }) {
   return {
-    id: `${item.link}::${item.title}`.slice(0, 240),
+    id: canonicalFeedItemId(item.link),
     title: item.title,
     link: item.link,
     author: item.author,

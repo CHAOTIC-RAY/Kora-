@@ -849,7 +849,11 @@ export default function SettingsView({
             </div>
           )}
         </section>
+        </>
+        )}
 
+        {(view === "settings" || view === "tools") && (
+        <>
         {/* Personal Dictionary Section */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="flex items-center justify-between border-b border-kindle-border pb-3">
@@ -990,9 +994,11 @@ export default function SettingsView({
             </div>
           </div>
         </section>
+        </>
+        )}
 
-
-
+        {view === "settings" && (
+        <>
         {showCloudImport && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
             <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />

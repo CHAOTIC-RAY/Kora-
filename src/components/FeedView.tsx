@@ -54,7 +54,7 @@ function formatRelativeTime(timestamp: number): string {
 
 function displayTitle(item: FeedItem): string {
   const title = item.title.trim();
-  if (!/^(article url|comments url|link)$/i.test(title)) return title;
+  if (title && !/^(article url|comments url|link|untitled)$/i.test(title)) return title;
   try {
     const host = new URL(item.link).hostname.replace(/^www\./, "");
     return host || title;

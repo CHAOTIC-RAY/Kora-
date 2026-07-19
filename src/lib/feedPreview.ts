@@ -1,4 +1,5 @@
 import { FeedItem, getFeedItems, saveFeedItems } from "./feedStorage";
+import { dedupeFeedItems } from "./feedNormalize";
 
 export interface FeedArticlePreview {
   title?: string;
@@ -102,8 +103,9 @@ export function updateFeedItemFromPreview(itemId: string, preview: FeedArticlePr
     if (item.id !== itemId) return item;
     return applyPreviewToItem(item, preview);
   });
-  saveFeedItems(items);
-  return items;
+  const merged = dedupeFeedItems(items);
+  saveFeedItems(merged);
+  return merged;
 }
 
 export async function prefetchFeedPreviews(items: FeedItem[], limit = 16): Promise<FeedItem[]> {

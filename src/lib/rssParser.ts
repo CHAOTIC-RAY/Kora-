@@ -1,3 +1,5 @@
+import { canonicalFeedItemId } from "./feedNormalize";
+
 export interface ParsedFeedItem {
   id: string;
   title: string;
@@ -72,7 +74,7 @@ function parseDate(value?: string): number {
 }
 
 function itemId(link: string, title: string): string {
-  return `${link}::${title}`.slice(0, 240);
+  return canonicalFeedItemId(link);
 }
 
 function extractImageUrl(block: string, descriptionHtml?: string): string | undefined {
@@ -83,6 +85,7 @@ function extractImageUrl(block: string, descriptionHtml?: string): string | unde
     block.match(/<enclosure[^>]*url=["']([^"']+)["'][^>]*type=["']image/i)?.[1],
     block.match(/<image[^>]*>[\s\S]*?<url[^>]*>([\s\S]*?)<\/url>/i)?.[1],
     descriptionHtml?.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1],
+    descriptionHtml?.match(/src=["']([^"']+)["']/i)?.[1],
     descriptionHtml?.match(/property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1],
     descriptionHtml?.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1],
   ];
@@ -162,11 +165,11 @@ function parseAtom(xml: string): ParsedFeed {
     const updated = block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i)?.[1];
     const published = block.match(/<published[^>]*>([\s\S]*?)<\/published>/i)?.[1];
     const summary =
-      block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)?.[1] ||
-      block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1] ||
-      "";
+      block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)?.[1] || "";
+    const content =
+      block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1] || "";
     const author = stripTags(block.match(/<name[^>]*>([\s\S]*?)<\/name>/i)?.[1] || "");
-    const imageUrl = extractImageUrl(block, summary);
+    const imageUrl = extractImageUrl(block, content || summary);
 
     items.push({
       id: itemId(link, title),
