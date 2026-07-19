@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
@@ -10,6 +11,7 @@ import AudiobookCassetteCard from "./AudiobookCassetteCard";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue } from "../lib/audiobookSyncQueue";
+import FluidOverlay from "./FluidOverlay";
 
 function findActiveDownload(book: { id?: string; md5?: string; downloadId?: string }, downloads: any[] = []) {
   const bookKeys = new Set(
@@ -1239,12 +1241,16 @@ export default function LibraryManager({
         />
       )}
 
-      {activeBookForDelete && (
-        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xl text-kindle-text animate-fade-in">
+      <FluidOverlay
+        open={!!activeBookForDelete}
+        onClose={() => setActiveBookForDelete(null)}
+        variant="dialog"
+        zIndexClassName="z-[100]"
+        panelClassName="p-6 max-w-sm"
+      >
             <h3 className="font-sans font-bold text-base text-red-700 mb-2">Delete Ebook?</h3>
             <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-5">
-              Are you sure you want to delete <strong>"{activeBookForDelete.title}"</strong>?<br/>
+              Are you sure you want to delete <strong>"{activeBookForDelete?.title}"</strong>?<br/>
               This will permanently delete both the locally cached file and your cloud-synced progress.
             </p>
 
@@ -1262,13 +1268,15 @@ export default function LibraryManager({
                 Delete Permanently
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </FluidOverlay>
 
-      {showBulkDeleteConfirm && (
-        <div className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xl text-kindle-text animate-fade-in">
+      <FluidOverlay
+        open={showBulkDeleteConfirm}
+        onClose={() => setShowBulkDeleteConfirm(false)}
+        variant="dialog"
+        zIndexClassName="z-[100]"
+        panelClassName="p-6 max-w-sm"
+      >
             <h3 className="font-sans font-bold text-base text-red-700 mb-2">Delete {selectedBookIds.size} Ebooks?</h3>
             <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-5">
               Are you sure you want to permanently delete the {selectedBookIds.size} selected books?<br/>
@@ -1289,9 +1297,7 @@ export default function LibraryManager({
                 Delete Permanently
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </FluidOverlay>
 
       {editingMetadataBook && (
         <BookMetadataEditor
@@ -1411,13 +1417,15 @@ export default function LibraryManager({
       )}
 
       {/* 7. Mobile Long Press Action Sheet */}
-      {longPressedBook && (
-        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setLongPressedBook(null)} />
-          <div className="relative w-full sm:max-w-sm bg-kindle-card border-t sm:border border-kindle-border rounded-t-3xl sm:rounded-2xl shadow-2xl p-6 sm:p-6 text-kindle-text animate-in slide-in-from-bottom-10 sm:zoom-in duration-300">
-            {/* Grab handle for mobile bottom sheet feel */}
-            <div className="w-12 h-1 bg-kindle-border rounded-full mx-auto mb-4 sm:hidden" />
-            
+      <FluidOverlay
+        open={!!longPressedBook}
+        onClose={() => setLongPressedBook(null)}
+        variant="sheet"
+        zIndexClassName="z-[110]"
+        panelClassName="p-6 sm:max-w-sm"
+      >
+            {longPressedBook && (
+            <>
             <div className="flex items-center gap-3.5 mb-6 pb-4 border-b border-kindle-border/40">
               {longPressedBook.extension?.toLowerCase() === "audiobook" ? (
                 <AudiobookCassetteCard
@@ -1561,14 +1569,18 @@ export default function LibraryManager({
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+            </>
+            )}
+      </FluidOverlay>
 
       {/* Bulk Tag Selection Modal */}
-      {bulkTagModalOpen && (
-        <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-2xl text-kindle-text font-sans">
+      <FluidOverlay
+        open={bulkTagModalOpen}
+        onClose={() => setBulkTagModalOpen(false)}
+        variant="dialog"
+        zIndexClassName="z-[120]"
+        panelClassName="p-6 max-w-sm font-sans"
+      >
             <h3 className="font-bold text-sm uppercase tracking-wider mb-2 flex items-center gap-2">
               <Tag className="w-4 h-4 text-kindle-accent" />
               Add Collection Tag ({selectedBookIds.size})
@@ -1605,13 +1617,17 @@ export default function LibraryManager({
                 Cancel
               </button>
             </div>
-          </div>
-        </div>
-      )}
+      </FluidOverlay>
 
       {/* Floating Action Bar for Manage Mode */}
       {isManageMode && selectedBookIds.size > 0 && (
-        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[calc(100%-2rem)] animate-in fade-in slide-in-from-bottom-4 duration-300">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 12 }}
+          transition={{ type: "spring", stiffness: 420, damping: 34 }}
+          className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[100] max-w-lg w-[calc(100%-2rem)]"
+        >
           <div className="bg-kindle-card border border-kindle-border/80 rounded-2xl shadow-2xl p-3 flex items-center justify-between gap-3 text-sans">
             <div className="flex items-center gap-1.5 pl-2">
               <span className="text-[10px] font-extrabold text-kindle-bg bg-kindle-accent px-2 py-0.5 rounded-md uppercase tracking-wider">
@@ -1658,7 +1674,7 @@ export default function LibraryManager({
               </button>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

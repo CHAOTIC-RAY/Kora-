@@ -375,6 +375,25 @@ html.kora-android body {
   right: calc(1rem + var(--kora-safe-right));
 }
 
+.kora-tab-bar {
+  place-items: stretch;
+}
+
+.kora-tab-item {
+  min-width: 0;
+  line-height: 1;
+}
+
+.kora-tab-panel {
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kora-tab-panel {
+    will-change: auto;
+  }
+}
+
 .kora-mobile-fab {
   bottom: calc(var(--kora-mobile-footer-stack) + 0.75rem);
   right: calc(1.5rem + var(--kora-safe-right));

@@ -58,6 +58,15 @@ import {
   RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench
 } from "lucide-react";
 import JSZip from "jszip";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
+import FluidOverlay, { koraEase, koraSpring } from "./components/FluidOverlay";
+
+const MOBILE_TABS = [
+  { id: "library" as const, label: "Library", Icon: Library },
+  { id: "discover" as const, label: "Discover", Icon: Compass },
+  { id: "feed" as const, label: "Read", Icon: Rss },
+  { id: "tools" as const, label: "Tools", Icon: Wrench },
+];
 
 async function injectMetadataIntoEpub(
   fileBlob: Blob,
@@ -1481,6 +1490,15 @@ export default function App() {
         )}
 
         {/* Tab Displays */}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={activeTab}
+            className="kora-tab-panel"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.28, ease: koraEase }}
+          >
         {activeTab === "library" && (
           <LibraryManager
             userId={user?.uid || ""}
@@ -1637,6 +1655,8 @@ export default function App() {
             onOpenOnboarding={() => setShowOnboarding(true)}
           />
         )}
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Mobile media dock: mini player (left) + Continue (right), joined as one control */}
@@ -1817,9 +1837,16 @@ export default function App() {
           },
         }
       }} />
-      {showAuthModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-kindle p-6 shadow-2xl text-kindle-text">
+      <FluidOverlay
+        open={showAuthModal}
+        onClose={() => {
+          setShowAuthModal(false);
+          setAuthError(null);
+        }}
+        variant="dialog"
+        zIndexClassName="z-50"
+        panelClassName="p-6 rounded-kindle max-w-sm"
+      >
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-sans font-bold text-lg">
                 {isSignUp ? "Create Account" : "Sign In"}
@@ -1929,14 +1956,16 @@ export default function App() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
+      </FluidOverlay>
 
       {/* 4. Settings Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-kindle p-6 shadow-2xl text-kindle-text">
+      <FluidOverlay
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        variant="dialog"
+        zIndexClassName="z-50"
+        panelClassName="p-6 rounded-kindle max-w-sm"
+      >
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-sans font-bold text-lg">Settings</h3>
               <button 
@@ -1983,53 +2012,45 @@ export default function App() {
             <div className="mt-8 text-center">
               <p className="text-[10px] text-kindle-text-muted">v2.4.0 • Kindle Modern Edition</p>
             </div>
-          </div>
-        </div>
-      )}
+      </FluidOverlay>
 
       {/* 5. Modern Floating Mobile Navigation Bar */}
-      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300 kora-safe-bottom">
-        <div className="flex justify-around items-center h-14 px-1">
-          <button
-            onClick={() => setActiveTab("library")}
-            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "library" ? "text-kindle-text" : "text-kindle-text-muted"
-            }`}
-          >
-            <Library className={`w-5 h-5 transition-all duration-300 ${activeTab === "library" ? "scale-110" : "opacity-80"}`} />
-            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Library</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("discover")}
-            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "discover" ? "text-kindle-text" : "text-kindle-text-muted"
-            }`}
-          >
-            <Compass className={`w-5 h-5 transition-all duration-300 ${activeTab === "discover" ? "scale-110" : "opacity-80"}`} />
-            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Discover</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("feed")}
-            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "feed" ? "text-kindle-text" : "text-kindle-text-muted"
-            }`}
-          >
-            <Rss className={`w-5 h-5 transition-all duration-300 ${activeTab === "feed" ? "scale-110" : "opacity-80"}`} />
-            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Read</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("tools")}
-            className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "tools" ? "text-kindle-text" : "text-kindle-text-muted"
-            }`}
-          >
-            <Wrench className={`w-5 h-5 transition-all duration-300 ${activeTab === "tools" ? "scale-110" : "opacity-80"}`} />
-            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Tools</span>
-          </button>
-        </div>
+      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] kora-safe-bottom">
+        <LayoutGroup id="kora-mobile-tabs">
+          <nav className="kora-tab-bar grid grid-cols-4 h-14 px-1.5 py-1" aria-label="Main">
+            {MOBILE_TABS.map(({ id, label, Icon }) => {
+              const isActive = activeTab === id || (id === "tools" && activeTab === "settings");
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  className={`kora-tab-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${
+                    isActive ? "text-kindle-text" : "text-kindle-text-muted"
+                  }`}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="kora-tab-pill"
+                      className="absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
+                      transition={koraSpring}
+                    />
+                  )}
+                  <Icon
+                    className={`relative z-[1] w-5 h-5 shrink-0 transition-transform duration-300 ${
+                      isActive ? "scale-105" : "opacity-80"
+                    }`}
+                    strokeWidth={isActive ? 2.25 : 2}
+                  />
+                  <span className="relative z-[1] text-[8px] font-sans font-bold uppercase tracking-wider leading-none text-center">
+                    {label}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </LayoutGroup>
       </footer>
 
       {/* 6. Compact Desktop Footer */}

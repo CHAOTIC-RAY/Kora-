@@ -3,6 +3,7 @@ import { ExternalLink, Newspaper, X } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { collectTodayBriefArticles, buildTodayDailyBrief } from "../lib/dailyNewsBriefClient";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
+import FluidOverlay from "./FluidOverlay";
 
 interface TodayNewsBriefCardProps {
   items: FeedItem[];
@@ -52,18 +53,13 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
         </p>
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <button
-            type="button"
-            className="absolute inset-0"
-            aria-label="Close brief"
-            onClick={() => setOpen(false)}
-          />
-          <div className="relative w-full sm:max-w-lg max-h-[88vh] bg-kindle-card border border-kindle-border rounded-t-3xl sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-8 sm:zoom-in duration-200">
-            <div className="w-12 h-1 bg-kindle-border rounded-full mx-auto mt-3 sm:hidden shrink-0" />
-
-            <header className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-kindle-border shrink-0">
+      <FluidOverlay
+        open={open}
+        onClose={() => setOpen(false)}
+        variant="sheet"
+        panelClassName="sm:max-w-lg max-h-[88vh] flex flex-col !overflow-hidden"
+      >
+            <header className="flex items-start justify-between gap-3 px-5 pt-2 sm:pt-4 pb-3 border-b border-kindle-border shrink-0">
               <div className="min-w-0">
                 <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400 mb-1">
                   Daily News Brief
@@ -85,7 +81,7 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
               </button>
             </header>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5 min-h-0">
               <p className="text-sm text-kindle-text leading-relaxed">{brief.lead}</p>
 
               {brief.sections.map((section) => (
@@ -132,9 +128,7 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
                 </section>
               ))}
             </div>
-          </div>
-        </div>
-      )}
+      </FluidOverlay>
     </>
   );
 }
