@@ -17,6 +17,25 @@
   --color-kindle-card: var(--theme-card);
 }
 
+/* Cassette reel spin — used by audiobook player & library cards */
+@keyframes cassette-reel-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes cassette-tape-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.9; }
+}
+
+.cassette-reel-spin {
+  animation: cassette-reel-spin 2.8s linear infinite;
+}
+
+.cassette-tape-pulse {
+  animation: cassette-tape-pulse 1.6s ease-in-out infinite;
+}
+
 /* Shimmer sweep used by the download progress overlay in the library */
 @keyframes shimmer {
   0% { transform: translateX(0); }

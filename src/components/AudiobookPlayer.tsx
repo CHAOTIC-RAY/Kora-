@@ -14,7 +14,6 @@ import {
 import type { BookMetadata } from "../lib/firebase";
 import {
   getAudiobookTrack,
-  getAudiobookTracksForBook,
   getProxiedAudioUrl,
   isAudiobookFullyDownloaded,
 } from "../lib/audiobookStorage";
@@ -24,6 +23,7 @@ import {
   subscribeAudiobookSyncQueue,
   getAudiobookSyncProgress,
 } from "../lib/audiobookSyncQueue";
+import CassetteVisualizer from "./CassetteVisualizer";
 
 interface AudiobookPlayerProps {
   book: BookMetadata;
@@ -56,12 +56,6 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const [localUrls, setLocalUrls] = useState<Record<number, string>>({});
   const [loadingTrack, setLoadingTrack] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
-
-  const coverSrc = book.coverUrl
-    ? book.coverUrl.startsWith("/")
-      ? book.coverUrl
-      : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`
-    : null;
 
   const persistProgress = useCallback(
     (trackIdx: number, time: number, percent?: number) => {
@@ -201,7 +195,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
       : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-gradient-to-b from-[#1a1a2e] to-[#0f0f1a] text-white flex flex-col">
+    <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col">
       <audio
         ref={audioRef}
         onTimeUpdate={() => {
@@ -227,46 +221,42 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         }}
       />
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-        <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-kindle-border bg-kindle-card/80 backdrop-blur-sm">
+        <button onClick={onClose} className="p-2 rounded-full hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text">
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/60">
-          <Headphones className="w-4 h-4 text-purple-400" />
+        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">
+          <Headphones className="w-4 h-4 text-kindle-text" />
           Audiobook
         </div>
-        <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition">
+        <button onClick={onClose} className="p-2 rounded-full hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text">
           <X className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Main player */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-6 overflow-y-auto py-6">
-        <div className="w-48 sm:w-56 aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-white/5">
-          {coverSrc ? (
-            <img src={coverSrc} alt={book.title} className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <Headphones className="w-16 h-16 text-purple-400/50" />
-            </div>
-          )}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5 overflow-y-auto py-6">
+        <div className="w-full max-w-sm px-2">
+          <CassetteVisualizer
+            title={book.title}
+            coverUrl={book.coverUrl}
+            size="player"
+            playing={isPlaying}
+          />
         </div>
 
         <div className="text-center max-w-md space-y-1">
-          <h2 className="text-lg font-bold font-serif leading-snug">{book.title}</h2>
-          <p className="text-sm text-white/60">{book.author}</p>
+          <h2 className="text-lg font-bold font-serif leading-snug text-kindle-text">{book.title}</h2>
+          <p className="text-sm text-kindle-text-muted">{book.author}</p>
           {tracks[currentTrack] && (
-            <p className="text-xs text-purple-300/80 mt-2">
+            <p className="text-xs text-kindle-text-muted/90 mt-2 font-mono">
               {currentTrack + 1}/{tracks.length} — {tracks[currentTrack].title}
             </p>
           )}
           {playbackError && (
-            <p className="text-xs text-red-300/90 mt-2 text-center max-w-sm">{playbackError}</p>
+            <p className="text-xs text-red-400 mt-2 text-center max-w-sm">{playbackError}</p>
           )}
         </div>
 
-        {/* Progress */}
         <div className="w-full max-w-md space-y-2">
           <input
             type="range"
@@ -278,57 +268,57 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               if (audioRef.current) audioRef.current.currentTime = t;
               setCurrentTime(t);
             }}
-            className="w-full accent-purple-500"
+            className="w-full accent-neutral-400"
           />
-          <div className="flex justify-between text-[10px] text-white/50 font-mono">
+          <div className="flex justify-between text-[10px] text-kindle-text-muted font-mono">
             <span>{formatTime(currentTime)}</span>
             <span>{formatTime(duration)}</span>
           </div>
-          <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-purple-500 transition-all" style={{ width: `${overallPercent}%` }} />
+          <div className="h-1 bg-kindle-border rounded-full overflow-hidden">
+            <div className="h-full bg-kindle-text/70 transition-all" style={{ width: `${overallPercent}%` }} />
           </div>
-          <p className="text-[9px] text-center text-white/40 uppercase tracking-widest">
+          <p className="text-[9px] text-center text-kindle-text-muted uppercase tracking-widest">
             Overall {overallPercent}% complete
           </p>
         </div>
 
-        {/* Controls */}
         <div className="flex items-center gap-4 sm:gap-6">
-          <button onClick={() => skip(-10)} className="p-3 rounded-full hover:bg-white/10 transition" title="Back 10s">
+          <button onClick={() => skip(-10)} className="p-3 rounded-full hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text" title="Back 10s">
             <RotateCcw className="w-5 h-5" />
           </button>
-          <button onClick={() => goToTrack(currentTrack - 1)} disabled={currentTrack === 0} className="p-3 rounded-full hover:bg-white/10 transition disabled:opacity-30">
+          <button onClick={() => goToTrack(currentTrack - 1)} disabled={currentTrack === 0} className="p-3 rounded-full hover:bg-kindle-card transition disabled:opacity-30 text-kindle-text-muted hover:text-kindle-text">
             <SkipBack className="w-6 h-6" />
           </button>
           <button
             onClick={togglePlay}
             disabled={loadingTrack || tracks.length === 0}
-            className="w-16 h-16 rounded-full bg-purple-600 hover:bg-purple-500 flex items-center justify-center shadow-lg shadow-purple-900/50 transition disabled:opacity-50"
+            className="w-16 h-16 rounded-full bg-kindle-accent text-kindle-bg hover:opacity-90 flex items-center justify-center shadow-lg transition disabled:opacity-50 border border-kindle-border"
           >
             {loadingTrack ? (
-              <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-6 h-6 border-2 border-kindle-bg/30 border-t-kindle-bg rounded-full animate-spin" />
             ) : isPlaying ? (
               <Pause className="w-7 h-7 fill-current" />
             ) : (
               <Play className="w-7 h-7 fill-current ml-1" />
             )}
           </button>
-          <button onClick={() => goToTrack(currentTrack + 1)} disabled={currentTrack >= tracks.length - 1} className="p-3 rounded-full hover:bg-white/10 transition disabled:opacity-30">
+          <button onClick={() => goToTrack(currentTrack + 1)} disabled={currentTrack >= tracks.length - 1} className="p-3 rounded-full hover:bg-kindle-card transition disabled:opacity-30 text-kindle-text-muted hover:text-kindle-text">
             <SkipForward className="w-6 h-6" />
           </button>
-          <button onClick={() => skip(30)} className="p-3 rounded-full hover:bg-white/10 transition" title="Forward 30s">
+          <button onClick={() => skip(30)} className="p-3 rounded-full hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text" title="Forward 30s">
             <RotateCw className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Speed */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-center">
           {SPEEDS.map((s) => (
             <button
               key={s}
               onClick={() => setSpeed(s)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition ${
-                speed === s ? "bg-purple-600 text-white" : "bg-white/10 text-white/60 hover:bg-white/20"
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition border ${
+                speed === s
+                  ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
+                  : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
               }`}
             >
               {s}x
@@ -336,32 +326,34 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
           ))}
         </div>
 
-        {/* Download */}
         <button
           onClick={handleDownloadAll}
           disabled={downloading || offlineReady || tracks.length === 0}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-xs font-bold uppercase tracking-widest transition disabled:opacity-50"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-kindle-card hover:bg-kindle-border/40 border border-kindle-border text-xs font-bold uppercase tracking-widest transition disabled:opacity-50 text-kindle-text"
         >
           <Download className="w-4 h-4" />
           {offlineReady ? "Downloaded for Offline" : downloading ? `Downloading ${downloadProgress}%` : "Download for Offline"}
         </button>
 
-        {/* Track list */}
         {tracks.length > 0 && (
-          <div className="w-full max-w-md space-y-2 mt-4">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">Chapters</p>
-            <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-white/10 bg-white/5 p-2">
+          <div className="w-full max-w-md space-y-2 mt-2">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Chapters</p>
+            <div className="max-h-40 overflow-y-auto space-y-1 rounded-xl border border-kindle-border bg-kindle-card p-2">
               {tracks.map((track, idx) => (
                 <button
                   key={idx}
                   onClick={() => goToTrack(idx)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-xs transition flex items-center gap-2 ${
-                    idx === currentTrack ? "bg-purple-600/30 text-purple-200" : "hover:bg-white/10 text-white/70"
+                    idx === currentTrack
+                      ? "bg-kindle-bg border border-kindle-border text-kindle-text"
+                      : "hover:bg-kindle-bg/60 text-kindle-text-muted"
                   }`}
                 >
-                  <span className="text-[10px] font-mono text-white/40 w-5">{idx + 1}</span>
+                  <span className="text-[10px] font-mono text-kindle-text-muted w-5">{idx + 1}</span>
                   <span className="truncate flex-1">{track.title}</span>
-                  {idx === currentTrack && isPlaying && <span className="text-purple-400 text-[9px]">▶</span>}
+                  {idx === currentTrack && isPlaying && (
+                    <span className="text-kindle-text text-[9px] cassette-tape-pulse">▶</span>
+                  )}
                 </button>
               ))}
             </div>
