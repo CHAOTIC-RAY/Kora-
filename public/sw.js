@@ -7,10 +7,12 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v5";
-const API_CACHE = "kora-api-v5";
+const SHELL_CACHE = "kora-shell-v6";
+const API_CACHE = "kora-api-v6";
 const COVER_CACHE = "kora-covers-v1";
-const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
+// Do NOT cache sw.js / version.json — those must always hit the network so
+// redeploys are detected without a manual hard refresh.
+const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
 const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
@@ -47,6 +49,13 @@ self.addEventListener("activate", (event) => {
       const keep = new Set([SHELL_CACHE, API_CACHE, COVER_CACHE]);
       await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
       await self.clients.claim();
+      // Tell open tabs a new worker is live so they can reload onto the new build.
+      try {
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const client of clients) {
+          client.postMessage({ type: "SW_ACTIVATED", cache: SHELL_CACHE });
+        }
+      } catch (e) {}
       warmApiCache();
       await resumePartialDownloads();
     })()
@@ -798,6 +807,15 @@ self.addEventListener("notificationclick", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
+  // Always bypass the SW for update probes and the worker script itself.
+  if (
+    url.pathname === "/sw.js" ||
+    url.pathname === "/version.json" ||
+    url.pathname.startsWith("/version.json")
+  ) {
+    return;
+  }
+
   if (url.pathname === "/__kora_sw_pickup__") {
     const id = url.searchParams.get("id");
     event.respondWith(
@@ -883,20 +901,55 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/api/")) return;
 
-  if (event.request.method === "GET" && (event.request.mode === "navigate" || url.pathname.startsWith("/assets/") || SHELL_ASSETS.includes(url.pathname))) {
+  // Navigations: network-first so redeploys show up without a hard refresh.
+  if (event.request.method === "GET" && event.request.mode === "navigate") {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(SHELL_CACHE);
+        try {
+          const res = await fetch(event.request);
+          if (res && res.status === 200) {
+            cache.put("/index.html", res.clone());
+            cache.put("/", res.clone());
+          }
+          return res;
+        } catch (e) {
+          return (
+            (await cache.match(event.request)) ||
+            (await cache.match("/index.html")) ||
+            (await cache.match("/")) ||
+            new Response("Offline", { status: 503, statusText: "Offline" })
+          );
+        }
+      })()
+    );
+    return;
+  }
+
+  // Hashed /assets/* are immutable — cache-first is safe.
+  // Other shell assets: network-first with cache fallback.
+  if (
+    event.request.method === "GET" &&
+    (url.pathname.startsWith("/assets/") || SHELL_ASSETS.includes(url.pathname))
+  ) {
     event.respondWith(
       (async () => {
         const cache = await caches.open(SHELL_CACHE);
         const cached = await cache.match(event.request);
-        const network = fetch(event.request)
-          .then((res) => {
-            if (res && res.status === 200 && (url.pathname.startsWith("/assets/") || SHELL_ASSETS.includes(url.pathname))) {
-              cache.put(event.request, res.clone());
-            }
-            return res;
-          })
-          .catch(() => cached);
-        return cached || network;
+
+        if (url.pathname.startsWith("/assets/") && cached) {
+          return cached;
+        }
+
+        try {
+          const res = await fetch(event.request);
+          if (res && res.status === 200) {
+            cache.put(event.request, res.clone());
+          }
+          return res;
+        } catch (e) {
+          return cached || new Response("", { status: 504 });
+        }
       })()
     );
   }
