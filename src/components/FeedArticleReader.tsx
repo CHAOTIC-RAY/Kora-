@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Bookmark, ChevronLeft, ExternalLink, Loader2, Settings2 } from "lucide-react";
+import { prepareFeedArticleHtml } from "../lib/feedArticle";
 import { clipUrlToLibrary } from "../lib/feedClipper";
 import type { FeedItem } from "../lib/feedStorage";
 import { markFeedItemSaved } from "../lib/feedStorage";
@@ -79,6 +80,10 @@ export default function FeedArticleReader({
   }, [item.link, item.title, item.summary, item.imageUrl, isTelegram]);
 
   const theme = useMemo(() => newsReaderThemeClasses(prefs.theme), [prefs.theme]);
+  const displayHtml = useMemo(
+    () => prepareFeedArticleHtml(html, articleTitle || item.title),
+    [html, articleTitle, item.title]
+  );
 
   const handleSave = async () => {
     setSaving(true);
@@ -207,7 +212,7 @@ export default function FeedArticleReader({
                 lineHeight: prefs.lineSpacing,
                 ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
               }}
-              dangerouslySetInnerHTML={{ __html: html }}
+              dangerouslySetInnerHTML={{ __html: displayHtml }}
             />
           </article>
         )}

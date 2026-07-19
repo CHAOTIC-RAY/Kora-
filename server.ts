@@ -537,6 +537,24 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
       .replace(/\n{3,}/g, "\n\n")
       .trim();
 
+    // Drop a leading heading that repeats the article title (reader/UI already shows it).
+    {
+      const normalizeTitle = (value: string) =>
+        value
+          .toLowerCase()
+          .replace(/<[^>]+>/g, " ")
+          .replace(/[^\p{L}\p{N}\s]+/gu, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      const titleKey = normalizeTitle(title);
+      if (titleKey.length >= 12) {
+        cleanedHtml = cleanedHtml.replace(
+          /^\s*<(h[1-4])(?:\s[^>]*)?>([\s\S]*?)<\/\1>\s*/i,
+          (match, _tag, inner) => (normalizeTitle(String(inner)) === titleKey ? "" : match)
+        );
+      }
+    }
+
     // Build a single clean chapter
     let chapters: { title: string; content: string }[] = [{
       title: "Article",
