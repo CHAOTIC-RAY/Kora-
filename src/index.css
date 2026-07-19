@@ -1,6 +1,23 @@
 @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
+/* Hover styles only on devices with a fine pointer (not touch/mobile) */
+@custom-variant hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      @slot;
+    }
+  }
+}
+
+@custom-variant group-hover {
+  @media (hover: hover) and (pointer: fine) {
+    &:is(:where(.group):hover *) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   /* Use Lora as the primary body font — matching the Kora wordmark's serif personality */
   --font-sans: "Lora", "Inter", ui-serif, Georgia, serif;
@@ -212,8 +229,10 @@
   border-radius: 999px;
 }
 
-.player-chapter-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28);
+@media (hover: hover) and (pointer: fine) {
+  .player-chapter-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.28);
+  }
 }
 
 /* Shimmer sweep used by the download progress overlay in the library */
@@ -343,8 +362,10 @@ h1, h2, h3, h4 {
   background: var(--color-kindle-border);
   border-radius: 10px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-kindle-text-muted);
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-kindle-text-muted);
+  }
 }
 
 /* Hide scrollbars completely on mobile (screens 768px and under) */

@@ -22,6 +22,7 @@ import {
   getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import { canHover } from "../lib/canHover";
 import { GoodreadsIcon, NytIcon } from "./BrandIcons";
 
 interface DiscoverViewProps {
@@ -2463,7 +2464,7 @@ export default function DiscoverView({
               {audiobookResults.map((book, idx) => (
                 <div
                   key={idx}
-                  onMouseEnter={() => prefetchAudiobookDetail(book)}
+                  onMouseEnter={() => { if (canHover()) prefetchAudiobookDetail(book); }}
                   onFocus={() => prefetchAudiobookDetail(book)}
                   onClick={() => openBookDetail(book)}
                   className="group block space-y-2 cursor-pointer"
@@ -2751,7 +2752,7 @@ export default function DiscoverView({
                 {categoryBooks.map((book, idx) => (
                 <div
                   key={idx}
-                  onMouseEnter={() => prefetchAudiobookDetail(book)}
+                  onMouseEnter={() => { if (canHover()) prefetchAudiobookDetail(book); }}
                   onFocus={() => prefetchAudiobookDetail(book)}
                   onClick={() => openBookDetail(book)}
                   className="group cursor-pointer space-y-2 p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl transition-all duration-300 border border-transparent hover:bg-kindle-card/50"
@@ -3000,7 +3001,7 @@ export default function DiscoverView({
                     {books.map((book, idx) => (
                       <div
                         key={idx}
-                        onMouseEnter={() => prefetchAudiobookDetail(book)}
+                        onMouseEnter={() => { if (canHover()) prefetchAudiobookDetail(book); }}
                         onFocus={() => prefetchAudiobookDetail(book)}
                         onClick={() => openBookDetail(book)}
                         className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start"

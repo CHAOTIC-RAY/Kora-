@@ -158,8 +158,10 @@ function injectReaderStyles(
       background: ${theme === 'dark' ? '#333333' : '#cccccc'} !important;
       border-radius: 5px !important;
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background: ${theme === 'dark' ? '#444444' : '#aaaaaa'} !important;
+    @media (hover: hover) and (pointer: fine) {
+      ::-webkit-scrollbar-thumb:hover {
+        background: ${theme === 'dark' ? '#444444' : '#aaaaaa'} !important;
+      }
     }
   `;
 
