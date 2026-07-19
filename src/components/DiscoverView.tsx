@@ -126,11 +126,11 @@ const ALL_CATEGORIES = [
   { id: "advice-how-to",        title: "Advice & How-To",           query: "advice-how-to", source: "nyt" },
   { id: "childrens-middle-grade-hardcover", title: "Middle Grade", query: "childrens-middle-grade-hardcover", source: "nyt" },
   { id: "young-adult-hardcover", title: "Young Adult", query: "young-adult-hardcover", source: "nyt" },
-  { id: "audiobooks-popular",   title: "🎧 Popular Audiobooks",    query: "audiobooks-popular", source: "audiobook" },
   { id: "goodreads-weekly-blog", title: "Goodreads: Trending This Week", query: "goodreads-blog-3182-weekly", source: "goodreads" },
   { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
   { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
   { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
+  { id: "audiobooks-popular",   title: "🎧 Popular Audiobooks",    query: "audiobooks-popular", source: "audiobook" },
 ];
 
 export default function DiscoverView({ 
@@ -161,6 +161,7 @@ export default function DiscoverView({
   const [searchMode, setSearchMode] = useState<boolean>(false);
   const [featuredData, setFeaturedData] = useState<Record<string, any[]>>({});
   const [selectedFeaturedBook, setSelectedFeaturedBook] = useState<any | null>(null);
+  const [selectedAudiobook, setSelectedAudiobook] = useState<any | null>(null);
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
@@ -2731,8 +2732,12 @@ export default function DiscoverView({
                       <div
                         key={idx}
                         onClick={() => {
-                          setSelectedFeaturedBook(book);
-                          fetchFeaturedMetadata(book.title, book.author || "");
+                          if (cat.source === "audiobook") {
+                            setSelectedAudiobook(book);
+                          } else {
+                            setSelectedFeaturedBook(book);
+                            fetchFeaturedMetadata(book.title, book.author || "");
+                          }
                         }}
                         className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start"
                       >
@@ -3065,6 +3070,117 @@ export default function DiscoverView({
         document.body
       )}
 
+
+      {/* Audiobook Listen Panel */}
+      {selectedAudiobook && ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedAudiobook(null)} />
+          <div className="relative bg-kindle-bg w-full max-w-md rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-kindle-border bg-kindle-bg/95 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <Headphones className="w-4 h-4 text-purple-500" />
+                <span className="text-xs font-bold uppercase tracking-widest text-kindle-text">Audiobook</span>
+              </div>
+              <button onClick={() => setSelectedAudiobook(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition">
+                <X className="w-4 h-4 text-kindle-text" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex gap-5 p-5">
+              {/* Cover */}
+              <div className="flex-shrink-0 w-24 aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden shadow-md">
+                {selectedAudiobook.coverUrl ? (
+                  <img
+                    src={selectedAudiobook.coverUrl.startsWith('/') ? selectedAudiobook.coverUrl : `/api/proxy-image?url=${encodeURIComponent(selectedAudiobook.coverUrl)}`}
+                    alt={selectedAudiobook.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <Headphones className="w-8 h-8 text-purple-400 opacity-50" />
+                  </div>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0 space-y-2">
+                <div>
+                  <h3 className="text-sm font-bold font-serif leading-snug line-clamp-2">{selectedAudiobook.title}</h3>
+                  <p className="text-xs text-kindle-text-muted mt-0.5">{selectedAudiobook.author}</p>
+                </div>
+                {selectedAudiobook.rating && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-amber-500 text-xs font-bold">★ {selectedAudiobook.rating}</span>
+                    <span className="text-[10px] text-kindle-text-muted">/ 5</span>
+                  </div>
+                )}
+                {selectedAudiobook.description && (
+                  <p className="text-[11px] text-kindle-text-muted line-clamp-3 leading-relaxed">{selectedAudiobook.description}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="px-5 pb-5 space-y-2.5">
+              {/* Listen on HD Audiobooks */}
+              <a
+                href={selectedAudiobook.listenUrl || `https://hdaudiobooks.com/?s=${encodeURIComponent(selectedAudiobook.title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition shadow-sm"
+              >
+                <Headphones className="w-4 h-4" />
+                Listen on HDAudiobooks
+                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+              </a>
+
+              {/* Listen on Full Length Audiobooks */}
+              <a
+                href={selectedAudiobook.listenUrlAlt || `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(selectedAudiobook.title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-kindle-card hover:bg-kindle-border border border-kindle-border text-kindle-text text-xs font-bold uppercase tracking-widest rounded-xl transition"
+              >
+                <Headphones className="w-4 h-4 text-purple-400" />
+                Full Length Audiobooks
+                <ExternalLink className="w-3.5 h-3.5 opacity-50" />
+              </a>
+
+              {/* Add to Library */}
+              {onBookAdded && (
+                <button
+                  onClick={() => {
+                    onBookAdded({
+                      id: `audiobook-${Date.now()}`,
+                      title: selectedAudiobook.title,
+                      author: selectedAudiobook.author,
+                      coverUrl: selectedAudiobook.coverUrl || undefined,
+                      source: "audiobook",
+                      rating: selectedAudiobook.rating,
+                      description: selectedAudiobook.description,
+                      extension: "audiobook",
+                      size: "",
+                      tags: ["audiobook"],
+                      status: "to-read" as const,
+                      progress: { percent: 0, lastReadTime: Date.now() },
+                      dateAdded: Date.now(),
+                    });
+                    setSelectedAudiobook(null);
+                  }}
+                  className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-kindle-card hover:bg-kindle-border border border-kindle-border text-kindle-text text-xs font-bold uppercase tracking-widest rounded-xl transition"
+                >
+                  <Library className="w-4 h-4 text-kindle-accent" />
+                  Add to Library
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Featured Book Details Preview Modal */}
       {selectedFeaturedBook && ReactDOM.createPortal(

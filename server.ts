@@ -1634,14 +1634,14 @@ async function fetchGoodreadsTrendingBooks(): Promise<any[]> {
 
 // Popular audiobooks — static curated list used as fallback/baseline
 const POPULAR_AUDIOBOOKS = [
-  { rank: 1, title: "Atomic Habits", author: "James Clear", description: "Practical strategies for building good habits — one of the most downloaded audiobooks of all time.", rating: 4.8, source: "audiobook" },
-  { rank: 2, title: "Project Hail Mary", author: "Andy Weir", description: "Award-winning sci-fi narrated by Ray Porter — a solo astronaut's mission to save Earth.", rating: 4.9, source: "audiobook" },
-  { rank: 3, title: "Where the Crawdads Sing", author: "Delia Owens", description: "One of the most downloaded audiobooks — a murder mystery and coming-of-age story.", rating: 4.7, source: "audiobook" },
-  { rank: 4, title: "Educated", author: "Tara Westover", description: "Narrated by the author — a gripping memoir about seeking education against all odds.", rating: 4.7, source: "audiobook" },
-  { rank: 5, title: "Daisy Jones & The Six", author: "Taylor Jenkins Reid", description: "Full cast production — the rise and fall of a 1970s rock band, narrated like a documentary.", rating: 4.6, source: "audiobook" },
-  { rank: 6, title: "Dune", author: "Frank Herbert", description: "Full cast production of the sci-fi classic — an unparalleled listening experience.", rating: 4.6, source: "audiobook" },
-  { rank: 7, title: "The Midnight Library", author: "Matt Haig", description: "Narrated by Carey Mulligan — a novel about choices and the lives we could have lived.", rating: 4.5, source: "audiobook" },
-  { rank: 8, title: "The Great Alone", author: "Kristin Hannah", description: "A powerful story of love and survival in the Alaskan wilderness.", rating: 4.6, source: "audiobook" },
+  { rank: 1, title: "Atomic Habits", author: "James Clear", isbn: "9780735211292", description: "Practical strategies for building good habits — one of the most downloaded audiobooks of all time.", rating: 4.8, source: "audiobook" },
+  { rank: 2, title: "Project Hail Mary", author: "Andy Weir", isbn: "9780593135204", description: "Award-winning sci-fi narrated by Ray Porter — a solo astronaut's mission to save Earth.", rating: 4.9, source: "audiobook" },
+  { rank: 3, title: "Where the Crawdads Sing", author: "Delia Owens", isbn: "9780735224292", description: "One of the most downloaded audiobooks — a murder mystery and coming-of-age story.", rating: 4.7, source: "audiobook" },
+  { rank: 4, title: "Educated", author: "Tara Westover", isbn: "9780399590504", description: "Narrated by the author — a gripping memoir about seeking education against all odds.", rating: 4.7, source: "audiobook" },
+  { rank: 5, title: "Daisy Jones & The Six", author: "Taylor Jenkins Reid", isbn: "9781524798628", description: "Full cast production — the rise and fall of a 1970s rock band, narrated like a documentary.", rating: 4.6, source: "audiobook" },
+  { rank: 6, title: "Dune", author: "Frank Herbert", isbn: "9780441013593", description: "Full cast production of the sci-fi classic — an unparalleled listening experience.", rating: 4.6, source: "audiobook" },
+  { rank: 7, title: "The Midnight Library", author: "Matt Haig", isbn: "9780525559474", description: "Narrated by Carey Mulligan — a novel about choices and the lives we could have lived.", rating: 4.5, source: "audiobook" },
+  { rank: 8, title: "The Great Alone", author: "Kristin Hannah", isbn: "9781250301697", description: "A powerful story of love and survival in the Alaskan wilderness.", rating: 4.6, source: "audiobook" },
 ];
 
 app.get("/api/goodreads/list", async (req, res) => {
@@ -1798,9 +1798,15 @@ app.get("/api/goodreads/list", async (req, res) => {
 
 // Audiobooks: popular titles for discovery feed
 app.get("/api/audiobooks/popular", async (_req, res) => {
-  const withCovers = POPULAR_AUDIOBOOKS.map(b => ({
+  const withCovers = POPULAR_AUDIOBOOKS.map((b: any) => ({
     ...b,
-    coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+    // Use ISBN cover from OpenLibrary for reliable thumbnail loading
+    coverUrl: b.isbn
+      ? `https://covers.openlibrary.org/b/isbn/${b.isbn}-M.jpg`
+      : `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+    // Search URL on hdaudiobooks for the listen button
+    listenUrl: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+    listenUrlAlt: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
   }));
   res.json(withCovers);
 });
