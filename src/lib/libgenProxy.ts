@@ -50,12 +50,24 @@ export function isLibgenUrl(url: string): boolean {
   return /libgen\.|library\.lol/i.test(url) || /get\.php\?md5=/i.test(url);
 }
 
+function signedUrlFromLibgenHtml(html: string, pageUrl: string): string | null {
+  const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
+  if (!m) return null;
+  try {
+    const parsed = new URL(pageUrl);
+    return `${parsed.protocol}//${parsed.host}/${m[0]}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchBinaryWithLibgenMirrors(
   url: string,
   headers: Record<string, string>
 ): Promise<Response> {
   const candidates = isLibgenUrl(url) ? libgenMirrorCandidates(url) : [url];
   let lastStatus = 0;
+  let lastError = "";
 
   for (const candidate of candidates) {
     const attempts = candidate.startsWith("https://")
@@ -70,15 +82,35 @@ export async function fetchBinaryWithLibgenMirrors(
             Referer: `${new URL(attemptUrl).origin}/`,
           },
           redirect: "follow",
+          signal: AbortSignal.timeout(18000),
         });
         lastStatus = response.status;
         if (!response.ok) continue;
 
-        const contentType = response.headers.get("content-type") || "";
-        if (contentType.toLowerCase().includes("text/html")) continue;
+        const contentType = (response.headers.get("content-type") || "").toLowerCase();
+        // Unsigned get.php often returns an HTML interstitial with the signed CDN link.
+        if (contentType.includes("text/html")) {
+          const html = await response.text();
+          const signed = signedUrlFromLibgenHtml(html, attemptUrl);
+          if (!signed) continue;
+          const bin = await fetch(signed, {
+            headers: {
+              ...headers,
+              Referer: `${new URL(signed).origin}/`,
+              Accept: "application/octet-stream,application/epub+zip,application/pdf,*/*",
+            },
+            redirect: "follow",
+            signal: AbortSignal.timeout(30000),
+          });
+          lastStatus = bin.status;
+          if (!bin.ok) continue;
+          const binType = (bin.headers.get("content-type") || "").toLowerCase();
+          if (binType.includes("text/html")) continue;
+          return bin;
+        }
         return response;
-      } catch {
-        // try next mirror
+      } catch (err: any) {
+        lastError = err?.message || String(err);
       }
     }
   }
@@ -86,6 +118,6 @@ export async function fetchBinaryWithLibgenMirrors(
   throw new Error(
     lastStatus === 403
       ? "Access Forbidden (403) by mirror host. Try another mirror from download options."
-      : `All libgen mirrors failed${lastStatus ? ` (last status ${lastStatus})` : ""}.`
+      : `All libgen mirrors failed${lastStatus ? ` (last status ${lastStatus})` : ""}${lastError ? `: ${lastError}` : "."}`
   );
 }

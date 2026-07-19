@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
@@ -42,6 +42,7 @@ import {
 import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
+import { applyHighlightsToHtml } from "../lib/readerHighlights";
 
 function extractLookupWord(text: string): string {
   const trimmed = text.trim();
@@ -295,6 +296,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const useDoubleColumns = doubleColumns && !isMobile;
   const useScrollLayout = isContinuous;
   const columnGapPx = useDoubleColumns ? 40 : 0;
+  // Full-width tap zones fight touch text selection on phones — keep turns in the margins.
+  const effectivePageTurnMode =
+    isMobile && (pageTurnMode === "fifty-fifty" || pageTurnMode === "classic-ereader")
+      ? "margins-only"
+      : pageTurnMode;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -388,6 +394,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [activeNoteText, setActiveNoteText] = useState<string>("");
   const [isSavingNote, setIsSavingNote] = useState<boolean>(false);
 
+  const chapterHtmlWithHighlights = useMemo(() => {
+    const raw = chapters[currentChapterIdx]?.content || "";
+    return applyHighlightsToHtml(raw, highlightsData, currentChapterIdx);
+  }, [chapters, currentChapterIdx, highlightsData]);
+
   // AI/dictionary context states
   const [selectedText, setSelectedText] = useState<string>("");
   const [dictFeedback, setDictFeedback] = useState<string | null>(null);
@@ -433,6 +444,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   // Table-of-Contents links (e.g. <a href="chapter1.xhtml">) navigate correctly.
   const hrefToIndexRef = useRef<Map<string, number>>(new Map());
   const pointerStartRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
+  /** Set when a selection is created so the same gesture's pointerup doesn't dismiss it. */
+  const justSelectedAtRef = useRef<number>(0);
   const dragStartRef = useRef<{
     isDraggingStart: boolean;
     isDraggingEnd: boolean;
@@ -908,8 +921,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               const range = selection.getRangeAt(0);
               const container = contentRef.current;
               // Only trigger selection mode if selecting text inside the book reader content area
-              if (container && (container.contains(range.startContainer) || container.contains(range.endContainer))) {
+                if (container && (container.contains(range.startContainer) || container.contains(range.endContainer))) {
                 const text = selection.toString().trim();
+                justSelectedAtRef.current = Date.now();
                 setSelectedText(text);
                 
                 const rect = range.getBoundingClientRect();
@@ -1021,6 +1035,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       if (!sel) return false;
       sel.removeAllRanges();
       sel.addRange(newRange);
+      justSelectedAtRef.current = Date.now();
       setSelectedText(word);
       try {
         const rect = newRange.getBoundingClientRect();
@@ -1075,6 +1090,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       try {
         sel.removeAllRanges();
         sel.addRange(fixed);
+        justSelectedAtRef.current = Date.now();
       } catch {
         /* ignore */
       }
@@ -1114,7 +1130,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         // Don't hijack an in-progress drag selection
         if (movedDuringPress || !isPointerDownRef.current) return;
         selectWordAtPoint(pressStartX, pressStartY);
-      }, 500);
+      }, 380);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -1122,7 +1138,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       lastY = e.clientY;
       const dx = Math.abs(e.clientX - pressStartX);
       const dy = Math.abs(e.clientY - pressStartY);
-      if (dx > 8 || dy > 8) {
+      // Allow finger jitter before canceling long-press / treating as drag.
+      if (dx > 16 || dy > 16) {
         movedDuringPress = true;
         if (pressTimer) {
           clearTimeout(pressTimer);
@@ -1279,30 +1296,30 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const clickX = e.clientX - rect.left;
     const ratio = clickX / rect.width;
     
-    if (pageTurnMode === "fifty-fifty") {
+    if (effectivePageTurnMode === "fifty-fifty") {
       if (ratio < 0.5) {
         handlePrevPage();
       } else {
         handleNextPage();
       }
-    } else if (pageTurnMode === "classic-ereader") {
+    } else if (effectivePageTurnMode === "classic-ereader") {
       if (ratio < 0.25) {
         handlePrevPage();
       } else {
         handleNextPage();
       }
-    } else if (pageTurnMode === "margins-only") {
-      if (ratio < 0.15) {
+    } else if (effectivePageTurnMode === "margins-only") {
+      // Wider dead-zone in the middle for comfortable touch selection on mobile.
+      const edge = isMobile ? 0.18 : 0.15;
+      if (ratio < edge) {
         handlePrevPage();
-      } else if (ratio > 0.85) {
+      } else if (ratio > 1 - edge) {
         handleNextPage();
       }
     }
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    const sel = window.getSelection();
-    if (sel && sel.toString().trim().length > 0) return;
     if (!e.isPrimary) return;
     pointerStartRef.current = {
       x: e.clientX,
@@ -1312,8 +1329,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    const sel = window.getSelection();
-    if (sel && sel.toString().trim().length > 0) return;
     if (!pointerStartRef.current) return;
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
@@ -1321,9 +1336,29 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const diffX = e.clientX - start.x;
     const diffY = e.clientY - start.y;
     const duration = Date.now() - start.time;
+    const sel = window.getSelection();
+    const hasSelection =
+      (sel && sel.toString().trim().length > 0) || selectedText.trim().length > 0;
+
+    if (hasSelection) {
+      // Don't dismiss on the same gesture that created the selection (long-press / drag).
+      if (Date.now() - justSelectedAtRef.current < 500) return;
+      if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15) {
+        const target = e.target as HTMLElement;
+        if (!target.closest?.("[data-kora-selection-ui]")) {
+          dismissSelection();
+        }
+      }
+      return;
+    }
+
+    // On phones, ignore horizontal swipes over the text body — they fight selection.
+    // Keep edge-swipe-to-close and narrow margin page swipes only.
+    const edgeSwipe = start.x < 28 || start.x > (typeof window !== "undefined" ? window.innerWidth - 28 : 9999);
+    const allowPageSwipe = !isMobile || edgeSwipe;
 
     // Check if it's a swipe (fast flick or drag)
-    if (duration < 500 && Math.abs(diffX) > 40 && Math.abs(diffY) < 60) {
+    if (allowPageSwipe && duration < 500 && Math.abs(diffX) > 40 && Math.abs(diffY) < 60) {
       // Swipe from left edge of screen to right -> go back / close reader (native iOS/Android gesture)
       if (start.x < 50 && diffX > 45) {
         onClose();
@@ -2001,7 +2036,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
     setHighlightsData((prev) => [newHighlight, ...prev]);
     dismissSelection();
-    setShowNotes(true);
+    // Stay in the book so the mark is visible (notes panel lists highlights separately).
     setDictFeedback("Highlight saved");
     window.setTimeout(() => setDictFeedback(null), 2000);
 
@@ -3280,7 +3315,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             </div>
                             <div 
                               className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
-                              dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
+                              dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
                               onClick={(e) => {
                                 const target = e.target as HTMLElement;
                                 const anchor = target.closest("a");
@@ -3371,7 +3406,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     <div 
                       id="epub-text-viewer"
                       className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
-                      dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
+                      dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
                         const anchor = target.closest("a");

@@ -377,6 +377,10 @@ export default function App() {
   const [globalDownloads, setGlobalDownloads] = useState<any[]>(() => loadDownloadsLog());
   const foregroundDownloadAborts = useRef<Map<string, AbortController>>(new Map());
   const swProgressThrottleRef = useRef<Map<string, number>>(new Map());
+  /** If SW download fails, retry these mirrors in the foreground. */
+  const swDownloadFallbackRef = useRef<
+    Map<string, { book: any; mirrors: any[]; variant: any }>
+  >(new Map());
 
   const removeDownloadEntry = useCallback((downloadId: string) => {
     setGlobalDownloads((prev) => {
@@ -429,68 +433,95 @@ export default function App() {
   );
 
   // Background download handler
-  async function startBackgroundDownload(book: any, mirrors: any | any[], variant: any) {
+  async function startBackgroundDownload(
+    book: any,
+    mirrors: any | any[],
+    variant: any,
+    options?: { reuseDownloadId?: string; skipServiceWorker?: boolean }
+  ) {
     const mirrorList = Array.isArray(mirrors) ? mirrors : [mirrors];
     if (!mirrorList || mirrorList.length === 0) {
       toast.error("No valid download mirrors available for auto-download.");
       return;
     }
     
-    const downloadId = Math.random().toString(36).substring(7);
-    const newDl = {
-      id: downloadId,
-      md5: variant.md5,
-      title: book.title,
-      author: book.author || "Unknown",
-      coverUrl: book.coverUrl || "",
-      size: variant.size || "Unknown",
-      status: "downloading",
-      percent: 0,
-      timestamp: Date.now()
-    };
+    const downloadId = options?.reuseDownloadId || Math.random().toString(36).substring(7);
+    if (!options?.reuseDownloadId) {
+      const newDl = {
+        id: downloadId,
+        md5: variant.md5,
+        title: book.title,
+        author: book.author || "Unknown",
+        coverUrl: book.coverUrl || "",
+        size: variant.size || "Unknown",
+        status: "downloading",
+        percent: 0,
+        timestamp: Date.now()
+      };
 
-    setGlobalDownloads(prev => {
-      const updated = [newDl, ...prev];
-      persistDownloadsLogNow(updated);
-      return updated;
-    });
+      setGlobalDownloads(prev => {
+        const updated = [newDl, ...prev];
+        persistDownloadsLogNow(updated);
+        return updated;
+      });
+    } else {
+      setGlobalDownloads((prev) => {
+        const updated = prev.map((dl) =>
+          dl.id === downloadId
+            ? { ...dl, status: "downloading", percent: 0, error: undefined, speed: "Retrying…", eta: "" }
+            : dl
+        );
+        persistDownloadsLogNow(updated);
+        return updated;
+      });
+    }
 
     toast.loading(`Downloading ${book.title}...`, { id: downloadId });
 
     // --- Background download via Service Worker (survives app exit + shows
     // Android progress notification). Falls back to the foreground loop below
     // if the SW isn't controlling the page yet. ---
-    try {
-      if ("Notification" in window && Notification.permission === "default") {
-        try { await Notification.requestPermission(); } catch (e) {}
-      }
-      const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirrorList[0].url)}`;
-      const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
-      payloads[downloadId] = {
-        book: { title: book.title, author: book.author, coverUrl: book.coverUrl, tags: book.tags, language: book.language, description: book.description, publisher: book.publisher, year: book.year },
-        variant: { md5: variant.md5, size: variant.size, extension: variant.extension, format: variant.format, downloadUrl: variant.downloadUrl, directUrl: variant.directUrl },
-        fileExtension: variant.extension || variant.format || "epub"
-      };
-      localStorage.setItem("kora_sw_payloads", JSON.stringify(payloads));
+    if (!options?.skipServiceWorker) {
+      try {
+        if ("Notification" in window && Notification.permission === "default") {
+          try { await Notification.requestPermission(); } catch (e) {}
+        }
+        const proxyUrls = mirrorList.map(
+          (m) => `/api/proxy-file?url=${encodeURIComponent(m.url)}`
+        );
+        const proxyUrl = proxyUrls[0];
+        const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
+        payloads[downloadId] = {
+          book: { title: book.title, author: book.author, coverUrl: book.coverUrl, tags: book.tags, language: book.language, description: book.description, publisher: book.publisher, year: book.year },
+          variant: { md5: variant.md5, size: variant.size, extension: variant.extension, format: variant.format, downloadUrl: variant.downloadUrl, directUrl: variant.directUrl },
+          fileExtension: variant.extension || variant.format || "epub"
+        };
+        localStorage.setItem("kora_sw_payloads", JSON.stringify(payloads));
 
-      const handedOff = await handoffBookDownload({
-        downloadId,
-        title: book.title,
-        author: book.author || "Unknown",
-        coverUrl: book.coverUrl || "",
-        md5: variant.md5,
-        fileExtension: variant.extension || variant.format || "epub",
-        proxyUrl,
-      });
-      enqueueEbookDownload({
-        id: downloadId,
-        bookId: book.id || variant.md5 || downloadId,
-        title: book.title,
-        url: proxyUrl,
-      });
-      if (handedOff) return;
-    } catch (swErr) {
-      logger.warn("SW download handoff failed, using foreground fallback:", swErr);
+        const handedOff = await handoffBookDownload({
+          downloadId,
+          title: book.title,
+          author: book.author || "Unknown",
+          coverUrl: book.coverUrl || "",
+          md5: variant.md5,
+          fileExtension: variant.extension || variant.format || "epub",
+          proxyUrl,
+          proxyUrls,
+        });
+        enqueueEbookDownload({
+          id: downloadId,
+          bookId: book.id || variant.md5 || downloadId,
+          title: book.title,
+          url: proxyUrl,
+        });
+        if (handedOff) {
+          // Keep full mirror list so a SW failure can retry in the foreground.
+          swDownloadFallbackRef.current.set(downloadId, { book, mirrors: mirrorList, variant });
+          return;
+        }
+      } catch (swErr) {
+        logger.warn("SW download handoff failed, using foreground fallback:", swErr);
+      }
     }
 
     let finalError: any = null;
@@ -518,32 +549,182 @@ export default function App() {
         const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
         const abortController = new AbortController();
         foregroundDownloadAborts.current.set(downloadId, abortController);
-        
-        const response = await fetch(proxyUrl, { signal: abortController.signal });
-        if (!response.ok) {
-          let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
-          try {
-            const errData = await response.json();
-            if (errData && errData.error) {
-              errMsg = errData.error;
-            }
-          } catch (e) {
-            try {
-              const errText = await response.text();
-              if (errText && errText.length < 200) errMsg = errText;
-            } catch (e2) {}
+
+        const formatBytes = (bytes: number) => {
+          if (bytes === 0) return "0 B";
+          const k = 1024;
+          const sizes = ["B", "KB", "MB", "GB"];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+        };
+
+        // Stream with Range resume — diagnostic logs showed "network error" at ~99%.
+        const chunks: Uint8Array[] = [];
+        let receivedLength = 0;
+        let contentLength = 0;
+        let contentType = "";
+        let contentDisposition = "";
+        const maxStreamRetries = 4;
+        let streamDone = false;
+
+        for (let attempt = 0; attempt < maxStreamRetries && !streamDone; attempt++) {
+          const headers: Record<string, string> = {};
+          if (receivedLength > 0) {
+            headers["Range"] = `bytes=${receivedLength}-`;
           }
-          throw new Error(errMsg);
+          let response: Response;
+          try {
+            response = await fetch(proxyUrl, {
+              signal: abortController.signal,
+              headers,
+            });
+          } catch (fetchErr: any) {
+            if (abortController.signal.aborted) throw fetchErr;
+            if (receivedLength > 0 && attempt < maxStreamRetries - 1) {
+              logger.warn(`Download stream interrupted at ${receivedLength} bytes; resuming…`, fetchErr);
+              await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+              continue;
+            }
+            throw fetchErr;
+          }
+
+          if (!response.ok && response.status !== 206) {
+            let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
+            try {
+              const errData = await response.json();
+              if (errData && errData.error) {
+                errMsg = errData.error;
+              }
+            } catch (e) {
+              try {
+                const errText = await response.text();
+                if (errText && errText.length < 200) errMsg = errText;
+              } catch (e2) {}
+            }
+            throw new Error(errMsg);
+          }
+
+          if (receivedLength > 0 && response.status === 200) {
+            // Mirror does not support Range — restart.
+            chunks.length = 0;
+            receivedLength = 0;
+          }
+
+          contentDisposition = response.headers.get("content-disposition") || contentDisposition;
+          contentType = response.headers.get("content-type") || contentType;
+
+          if (contentType && contentType.toLowerCase().includes("text/html")) {
+            throw new Error("Mirror returned a webpage instead of a book file. Trying next link...");
+          }
+
+          const contentLengthHeader = +(response.headers.get("Content-Length") || 0);
+          const contentRange = response.headers.get("Content-Range");
+          if (contentRange) {
+            const match = contentRange.match(/\/(\d+)$/);
+            if (match) contentLength = +match[1];
+          } else if (response.status === 200) {
+            contentLength = contentLengthHeader;
+          } else if (contentLengthHeader > 0 && receivedLength > 0) {
+            contentLength = receivedLength + contentLengthHeader;
+          }
+
+          const reader = response.body?.getReader();
+          if (!reader) {
+            throw new Error("Mirror returned an empty body.");
+          }
+
+          const startTime = Date.now();
+          let lastUpdateTime = Date.now();
+
+          try {
+            while (true) {
+              if (abortController.signal.aborted) {
+                try { await reader.cancel(); } catch { /* ignore */ }
+                throw new DOMException("Cancelled", "AbortError");
+              }
+              const { done, value } = await reader.read();
+              if (done) {
+                streamDone = true;
+                break;
+              }
+              chunks.push(value);
+              receivedLength += value.length;
+
+              const percent = contentLength > 0
+                ? Math.round((receivedLength / contentLength) * 100)
+                : null;
+
+              const now = Date.now();
+              if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
+                lastUpdateTime = now;
+                const elapsed = (now - startTime) / 1000;
+                const speedBytes = elapsed > 0 ? receivedLength / elapsed : 0;
+                const speedStr = speedBytes > 1024 * 1024
+                  ? `${(speedBytes / (1024 * 1024)).toFixed(1)} MB/s`
+                  : speedBytes > 1024
+                    ? `${(speedBytes / 1024).toFixed(0)} KB/s`
+                    : `${Math.round(speedBytes)} B/s`;
+
+                let etaStr = "";
+                if (contentLength > 0 && speedBytes > 0) {
+                  const remainingBytes = contentLength - receivedLength;
+                  const remainingSeconds = Math.round(remainingBytes / speedBytes);
+                  if (remainingSeconds > 60) {
+                    const mins = Math.floor(remainingSeconds / 60);
+                    const secs = remainingSeconds % 60;
+                    etaStr = `${mins}m ${secs}s remaining`;
+                  } else if (remainingSeconds > 0) {
+                    etaStr = `${remainingSeconds}s remaining`;
+                  } else {
+                    etaStr = "finishing...";
+                  }
+                } else {
+                  etaStr = "downloading...";
+                }
+
+                const transferredStr = contentLength > 0
+                  ? `${formatBytes(receivedLength)} of ${formatBytes(contentLength)}`
+                  : formatBytes(receivedLength);
+
+                setGlobalDownloads((prev) => {
+                  const updated = prev.map((dl) =>
+                    dl.id === downloadId
+                      ? {
+                          ...dl,
+                          percent,
+                          speed: speedStr,
+                          transferred: transferredStr,
+                          eta: etaStr,
+                        }
+                      : dl
+                  );
+                  schedulePersistDownloadsLog(updated);
+                  return updated;
+                });
+              }
+            }
+          } catch (readErr: any) {
+            if (abortController.signal.aborted) throw readErr;
+            const msg = String(readErr?.message || readErr || "");
+            const retriable = /network|fetch|Failed to fetch|Load failed|timeout/i.test(msg) ||
+              readErr?.name === "TypeError";
+            if (retriable && receivedLength > 0 && attempt < maxStreamRetries - 1) {
+              logger.warn(
+                `Download stream error at ${receivedLength}/${contentLength || "?"} bytes; resuming…`,
+                readErr
+              );
+              await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+              continue;
+            }
+            throw readErr;
+          }
+        }
+
+        if (!streamDone) {
+          throw new Error("network error");
         }
 
         // Determine the correct file extension based on response headers, metadata, and URL
-        const contentDisposition = response.headers.get("content-disposition");
-        const contentType = response.headers.get("content-type");
-        
-        if (contentType && contentType.toLowerCase().includes("text/html")) {
-          throw new Error("Mirror returned a webpage instead of a book file. Trying next link...");
-        }
-
         let fileExtension = "epub"; // safe fallback
 
         // 1. Check Content-Disposition first
@@ -589,85 +770,6 @@ export default function App() {
               fileExtension = ext;
             }
           } catch (e) {}
-        }
-
-        const reader = response.body?.getReader();
-        const contentLength = +(response.headers.get('Content-Length') || 0);
-        let receivedLength = 0;
-        const chunks = [];
-
-        const formatBytes = (bytes: number) => {
-          if (bytes === 0) return "0 B";
-          const k = 1024;
-          const sizes = ["B", "KB", "MB", "GB"];
-          const i = Math.floor(Math.log(bytes) / Math.log(k));
-          return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-        };
-
-        if (reader) {
-          const startTime = Date.now();
-          let lastUpdateTime = Date.now();
-
-          while(true) {
-            if (abortController.signal.aborted) {
-              try { await reader.cancel(); } catch { /* ignore */ }
-              throw new DOMException("Cancelled", "AbortError");
-            }
-            const {done, value} = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            receivedLength += value.length;
-            
-            const percent = contentLength > 0 
-              ? Math.round((receivedLength / contentLength) * 100) 
-              : null;
-              
-            const now = Date.now();
-            // Throttle state updates to once every 150ms for buttery-smooth UI rendering
-            if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
-              lastUpdateTime = now;
-              const elapsed = (now - startTime) / 1000; // seconds
-              const speedBytes = elapsed > 0 ? (receivedLength / elapsed) : 0;
-              const speedStr = speedBytes > 1024 * 1024 
-                ? `${(speedBytes / (1024 * 1024)).toFixed(1)} MB/s` 
-                : speedBytes > 1024 
-                  ? `${(speedBytes / 1024).toFixed(0)} KB/s` 
-                  : `${Math.round(speedBytes)} B/s`;
-
-              let etaStr = "";
-              if (contentLength > 0 && speedBytes > 0) {
-                const remainingBytes = contentLength - receivedLength;
-                const remainingSeconds = Math.round(remainingBytes / speedBytes);
-                if (remainingSeconds > 60) {
-                  const mins = Math.floor(remainingSeconds / 60);
-                  const secs = remainingSeconds % 60;
-                  etaStr = `${mins}m ${secs}s remaining`;
-                } else if (remainingSeconds > 0) {
-                  etaStr = `${remainingSeconds}s remaining`;
-                } else {
-                  etaStr = "finishing...";
-                }
-              } else {
-                etaStr = "downloading...";
-              }
-
-              const transferredStr = contentLength > 0 
-                ? `${formatBytes(receivedLength)} of ${formatBytes(contentLength)}`
-                : formatBytes(receivedLength);
-
-              setGlobalDownloads(prev => {
-                const updated = prev.map(dl => dl.id === downloadId ? { 
-                  ...dl, 
-                  percent,
-                  speed: speedStr,
-                  transferred: transferredStr,
-                  eta: etaStr
-                } : dl);
-                schedulePersistDownloadsLog(updated);
-                return updated;
-              });
-            }
-          }
         }
 
         let fileBlob = new Blob(chunks);
@@ -933,7 +1035,21 @@ export default function App() {
         handleAudiobookSwMessage(data);
       } else if (data.type === "download-error") {
         if (data.error === "Cancelled") {
+          swDownloadFallbackRef.current.delete(data.downloadId);
           removeDownloadEntry(data.downloadId);
+          return;
+        }
+        const fallback = swDownloadFallbackRef.current.get(data.downloadId);
+        if (fallback) {
+          swDownloadFallbackRef.current.delete(data.downloadId);
+          logger.warn(
+            `SW download failed (${data.error}); retrying ${fallback.mirrors.length} mirror(s) in foreground`
+          );
+          toast.loading(`Retrying ${fallback.book.title}…`, { id: data.downloadId });
+          void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
+            reuseDownloadId: data.downloadId,
+            skipServiceWorker: true,
+          });
           return;
         }
         setGlobalDownloads((prev) => {

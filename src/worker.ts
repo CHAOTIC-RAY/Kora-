@@ -76,19 +76,36 @@ async function buildRaveFallbackFeed(): Promise<any> {
 // Hosts are raced in parallel so a single slow mirror cannot block the UI.
 async function resolveLibgenSigned(md5: string, timeoutMs = 2800): Promise<string> {
   const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
-  const hosts = ["libgen.li", "libgen.is", "libgen.rs"];
+  const hosts = [
+    "libgen.li",
+    "libgen.vg",
+    "libgen.la",
+    "libgen.bz",
+    "libgen.gl",
+    "libgen.gs",
+    "libgen.st",
+    "libgen.is",
+    "libgen.rs",
+  ];
 
   const tryHost = async (host: string): Promise<string> => {
-    const res = await fetch(`https://${host}/get.php?md5=${md5}`, {
-      headers: { "User-Agent": ua },
-      redirect: "follow",
-      signal: AbortSignal.timeout(timeoutMs)
-    });
-    if (!res.ok) throw new Error(`libgen ${host} status ${res.status}`);
-    const html = await res.text();
-    const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
-    if (!m) throw new Error(`libgen ${host} no signed key`);
-    return `https://${host}/${m[0]}`;
+    for (const proto of ["https", "http"] as const) {
+      try {
+        const res = await fetch(`${proto}://${host}/get.php?md5=${md5}`, {
+          headers: { "User-Agent": ua },
+          redirect: "follow",
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) continue;
+        const html = await res.text();
+        const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
+        if (!m) continue;
+        return `${proto}://${host}/${m[0]}`;
+      } catch {
+        /* try next proto */
+      }
+    }
+    throw new Error(`libgen ${host} no signed key`);
   };
 
   try {
@@ -3291,60 +3308,77 @@ export default {
         // 2. Resolve Libgen landing page to its actual direct file download link
         const isLibgenLanding = targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=");
         if (isLibgenLanding) {
-          try {
-            console.log(`Resolving Libgen landing page in Worker: ${targetUrl}`);
-            let htmlRes;
+          const md5Match = targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
+          // Prefer parallel signed-key resolution (avoids HTML/captcha traps that yield HTTP 500).
+          if (md5Match) {
             try {
-              htmlRes = await fetch(targetUrl, {
-                headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                },
-                redirect: "follow"
-              });
+              const signed = await resolveLibgenSigned(md5Match[1], 8000);
+              if (signed) {
+                console.log(`Resolved Libgen signed CDN via race: ${signed}`);
+                targetUrl = signed;
+              }
             } catch (err) {
-              if (targetUrl.startsWith("https://")) {
-                const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
-                console.log(`Resolving Libgen landing page failed, retrying over HTTP: ${fallbackUrl}`);
-                htmlRes = await fetch(fallbackUrl, {
+              console.warn("resolveLibgenSigned failed:", err);
+            }
+          }
+          if (!targetUrl.includes("&key=")) {
+            try {
+              console.log(`Resolving Libgen landing page in Worker: ${targetUrl}`);
+              let htmlRes;
+              try {
+                htmlRes = await fetch(targetUrl, {
                   headers: {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-                  }
+                  },
+                  redirect: "follow",
+                  signal: AbortSignal.timeout(12000),
                 });
-              } else {
-                throw err;
+              } catch (err) {
+                if (targetUrl.startsWith("https://")) {
+                  const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
+                  console.log(`Resolving Libgen landing page failed, retrying over HTTP: ${fallbackUrl}`);
+                  htmlRes = await fetch(fallbackUrl, {
+                    headers: {
+                      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                    },
+                    signal: AbortSignal.timeout(12000),
+                  });
+                } else {
+                  throw err;
+                }
               }
+              if (htmlRes.ok) {
+                const html = await htmlRes.text();
+                const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
+                let match;
+                let directLink = "";
+                while ((match = aTagRegex.exec(html)) !== null) {
+                  const href = match[1];
+                  const text = (match[3] || "").replace(/<[^>]*>/g, "").trim().toLowerCase();
+                  if (href.includes("get.php?md5=") && href.includes("&key=")) {
+                    directLink = href;
+                    break;
+                  }
+                  if (text === "get" || text.includes("get")) {
+                    directLink = href;
+                  }
+                }
+                if (directLink) {
+                  const parsedUrl = new URL(targetUrl);
+                  if (directLink.startsWith("/")) {
+                    directLink = `${parsedUrl.protocol}//${parsedUrl.host}${directLink}`;
+                  } else if (!directLink.startsWith("http")) {
+                    const pathname = parsedUrl.pathname;
+                    const baseDir = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+                    directLink = `${parsedUrl.protocol}//${parsedUrl.host}${baseDir}${directLink}`;
+                  }
+                  console.log(`Successfully resolved Libgen direct link in Worker: ${directLink}`);
+                  targetUrl = directLink;
+                }
+              }
+            } catch (err) {
+              console.warn("Failed to resolve Libgen direct link in Worker:", err);
             }
-            if (htmlRes.ok) {
-              const html = await htmlRes.text();
-              const aTagRegex = /<a\s+(?:[^>]*?\s+)?href=["']([^"']+)["']([^>]*?)>([\s\S]*?)<\/a>/gi;
-              let match;
-              let directLink = "";
-              while ((match = aTagRegex.exec(html)) !== null) {
-                const href = match[1];
-                const text = (match[3] || "").replace(/<[^>]*>/g, "").trim().toLowerCase();
-                if (href.includes("get.php?md5=") && href.includes("&key=")) {
-                  directLink = href;
-                  break;
-                }
-                if (text === "get" || text.includes("get")) {
-                  directLink = href;
-                }
-              }
-              if (directLink) {
-                const parsedUrl = new URL(targetUrl);
-                if (directLink.startsWith("/")) {
-                  directLink = `${parsedUrl.protocol}//${parsedUrl.host}${directLink}`;
-                } else if (!directLink.startsWith("http")) {
-                  const pathname = parsedUrl.pathname;
-                  const baseDir = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-                  directLink = `${parsedUrl.protocol}//${parsedUrl.host}${baseDir}${directLink}`;
-                }
-                console.log(`Successfully resolved Libgen direct link in Worker: ${directLink}`);
-                targetUrl = directLink;
-              }
-            }
-          } catch (err) {
-            console.warn("Failed to resolve Libgen direct link in Worker:", err);
           }
         }
 

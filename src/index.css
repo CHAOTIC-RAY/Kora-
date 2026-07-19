@@ -264,6 +264,32 @@
   touch-action: auto;
 }
 
+/* In-book highlight marks — beat EPUB inline styles / Tailwind preflight */
+.epub-content mark.kora-hl,
+mark.kora-hl {
+  color: inherit !important;
+  border-radius: 0.15em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding: 0.05em 0;
+}
+.epub-content mark.kora-hl-yellow,
+mark.kora-hl-yellow {
+  background: rgba(250, 204, 21, 0.55) !important;
+}
+.epub-content mark.kora-hl-green,
+mark.kora-hl-green {
+  background: rgba(52, 211, 153, 0.5) !important;
+}
+.epub-content mark.kora-hl-blue,
+mark.kora-hl-blue {
+  background: rgba(56, 189, 248, 0.5) !important;
+}
+.epub-content mark.kora-hl-pink,
+mark.kora-hl-pink {
+  background: rgba(244, 114, 182, 0.5) !important;
+}
+
 .player-chapter-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;

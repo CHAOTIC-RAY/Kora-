@@ -111,20 +111,27 @@ export async function handoffBookDownload(payload: {
   md5?: string;
   fileExtension: string;
   proxyUrl: string;
+  /** Alternate proxy URLs to try if the first mirror fails mid-transfer. */
+  proxyUrls?: string[];
 }): Promise<boolean> {
   const registration = await ensureServiceWorkerReady();
   const controller = navigator.serviceWorker.controller || registration?.active;
   if (!controller) return false;
 
-  const absoluteProxyUrl = payload.proxyUrl.startsWith("http")
-    ? payload.proxyUrl
-    : `${window.location.origin}${payload.proxyUrl}`;
+  const toAbsolute = (url: string) =>
+    url.startsWith("http") ? url : `${window.location.origin}${url}`;
+
+  const absoluteProxyUrl = toAbsolute(payload.proxyUrl);
+  const absoluteProxyUrls = (payload.proxyUrls?.length ? payload.proxyUrls : [payload.proxyUrl]).map(
+    toAbsolute
+  );
 
   controller.postMessage({
     type: "download-book",
     payload: {
       ...payload,
       proxyUrl: absoluteProxyUrl,
+      proxyUrls: absoluteProxyUrls,
     },
   });
   return true;

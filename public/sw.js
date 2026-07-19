@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v3";
-const API_CACHE = "kora-api-v3";
+const SHELL_CACHE = "kora-shell-v4";
+const API_CACHE = "kora-api-v4";
 const COVER_CACHE = "kora-covers-v1";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
@@ -205,85 +205,154 @@ async function resumePartialDownloads() {
 }
 
 async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownContentType = "") {
-  const { downloadId, proxyUrl } = payload;
+  const { downloadId } = payload;
+  const proxyUrls = Array.isArray(payload.proxyUrls) && payload.proxyUrls.length
+    ? payload.proxyUrls
+    : [payload.proxyUrl];
   const partialId = "partial-" + downloadId;
   const abortController = new AbortController();
   activeBookDownloads.set(downloadId, { abortController, reader: null });
+
+  let chunks = existingChunks.slice();
+  let received = resumeFrom;
+  let contentType = knownContentType || "";
+  let lastError = null;
+  const maxStreamRetries = 3;
+
   try {
-    const headers = resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {};
-    const response = await fetch(absoluteUrl(proxyUrl), {
-      headers,
-      signal: abortController.signal,
-    });
-    if (!response.ok && response.status !== 206) throw new Error(`Mirror unresponsive (HTTP ${response.status}).`);
+    for (let urlIdx = 0; urlIdx < proxyUrls.length; urlIdx++) {
+      const proxyUrl = proxyUrls[urlIdx];
+      for (let attempt = 0; attempt < maxStreamRetries; attempt++) {
+        if (abortController.signal.aborted) {
+          throw new DOMException("Cancelled", "AbortError");
+        }
+        try {
+          const headers = received > 0 ? { Range: `bytes=${received}-` } : {};
+          const response = await fetch(absoluteUrl(proxyUrl), {
+            headers,
+            signal: abortController.signal,
+          });
+          if (!response.ok && response.status !== 206) {
+            throw new Error(`Mirror unresponsive (HTTP ${response.status}).`);
+          }
 
-    const contentType = knownContentType || response.headers.get("content-type") || "";
-    if (contentType.toLowerCase().includes("text/html"))
-      throw new Error("Mirror returned a webpage instead of a book file.");
+          // Server ignored Range and resent the whole file — restart accumulation.
+          if (received > 0 && response.status === 200) {
+            chunks = [];
+            received = 0;
+          }
 
-    const contentLengthHeader = response.headers.get("Content-Length");
-    const contentRange = response.headers.get("Content-Range");
-    let totalSize = +(contentLengthHeader || 0);
-    if (contentRange) {
-      const match = contentRange.match(/\/(\d+)$/);
-      if (match) totalSize = +match[1];
+          contentType = contentType || response.headers.get("content-type") || "";
+          if (contentType.toLowerCase().includes("text/html")) {
+            throw new Error("Mirror returned a webpage instead of a book file.");
+          }
+
+          const contentLengthHeader = response.headers.get("Content-Length");
+          const contentRange = response.headers.get("Content-Range");
+          let totalSize = +(contentLengthHeader || 0);
+          if (contentRange) {
+            const match = contentRange.match(/\/(\d+)$/);
+            if (match) totalSize = +match[1];
+          } else if (received > 0 && totalSize > 0) {
+            totalSize = received + totalSize;
+          }
+
+          const reader = response.body.getReader();
+          const active = activeBookDownloads.get(downloadId);
+          if (active) active.reader = reader;
+          const startTime = Date.now();
+          let lastNotif = 0;
+          let lastFlush = received;
+
+          while (true) {
+            if (abortController.signal.aborted) {
+              try { await reader.cancel(); } catch (e) {}
+              throw new DOMException("Cancelled", "AbortError");
+            }
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+
+            const percent = totalSize > 0 ? Math.round((received / totalSize) * 100) : null;
+            const elapsed = (Date.now() - startTime) / 1000;
+            const speed = elapsed > 0 ? received / elapsed : 0;
+            const transferred = totalSize > 0
+              ? `${formatBytes(received)} of ${formatBytes(totalSize)}`
+              : formatBytes(received);
+
+            const now = Date.now();
+            if (now - lastNotif > 400 || percent === 100) {
+              lastNotif = now;
+              await postToClients({
+                type: "download-progress",
+                downloadId,
+                percent,
+                transferred,
+                speed: speed > 0 ? `${formatBytes(speed)}/s` : "",
+              });
+              await showProgressNotif(payload, percent, transferred);
+            }
+
+            if (received - lastFlush >= PARTIAL_FLUSH_BYTES) {
+              lastFlush = received;
+              await savePartialState(partialId, {
+                payload: { ...payload, proxyUrl, proxyUrls },
+                received,
+                chunks,
+                contentType,
+                contentLength: totalSize,
+              });
+            }
+          }
+
+          const fileBlob = chunksToBlob(chunks, contentType || "application/octet-stream");
+          await delDB(partialId);
+          await putDB(downloadId, { id: downloadId, blob: fileBlob, payload, saved: false });
+          await finishDownload(payload, fileBlob);
+          return;
+        } catch (err) {
+          lastError = err;
+          const cancelled =
+            err?.name === "AbortError" ||
+            /abort|cancel/i.test(String(err?.message || ""));
+          if (cancelled) throw err;
+
+          // Persist progress so a mid-stream "network error" near 99% can resume.
+          if (received > 0 && chunks.length) {
+            try {
+              await savePartialState(partialId, {
+                payload: { ...payload, proxyUrl, proxyUrls },
+                received,
+                chunks,
+                contentType,
+              });
+            } catch (e) {}
+          }
+
+          const retriable = /network|fetch|Failed to fetch|Load failed|timeout|HTTP 5/i.test(
+            String(err?.message || err || "")
+          );
+          if (retriable && attempt < maxStreamRetries - 1 && received > 0) {
+            await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+            continue;
+          }
+          // Try next mirror URL (keep bytes if Range will work; else next attempt resets on 200).
+          break;
+        }
+      }
     }
 
-    const reader = response.body.getReader();
-    const active = activeBookDownloads.get(downloadId);
-    if (active) active.reader = reader;
-    const chunks = existingChunks.slice();
-    let received = resumeFrom;
-    const startTime = Date.now();
-    let lastNotif = 0;
-    let lastFlush = received;
-
-    while (true) {
-      if (abortController.signal.aborted) {
-        try { await reader.cancel(); } catch (e) {}
-        throw new DOMException("Cancelled", "AbortError");
-      }
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      received += value.length;
-
-      const percent = totalSize > 0 ? Math.round((received / totalSize) * 100) : null;
-      const elapsed = (Date.now() - startTime) / 1000;
-      const speed = elapsed > 0 ? received / elapsed : 0;
-      const transferred = totalSize > 0
-        ? `${formatBytes(received)} of ${formatBytes(totalSize)}`
-        : formatBytes(received);
-
-      const now = Date.now();
-      if (now - lastNotif > 400 || percent === 100) {
-        lastNotif = now;
-        await postToClients({ type: "download-progress", downloadId, percent, transferred, speed: speed > 0 ? `${formatBytes(speed)}/s` : "" });
-        await showProgressNotif(payload, percent, transferred);
-      }
-
-      if (received - lastFlush >= PARTIAL_FLUSH_BYTES) {
-        lastFlush = received;
-        await savePartialState(partialId, {
-          payload,
-          received,
-          chunks,
-          contentType,
-          contentLength: totalSize,
-        });
-      }
-    }
-
-    const fileBlob = chunksToBlob(chunks, contentType || "application/octet-stream");
-    await delDB(partialId);
-    await putDB(downloadId, { id: downloadId, blob: fileBlob, payload, saved: false });
-    await finishDownload(payload, fileBlob);
+    throw lastError || new Error("Download failed");
   } catch (err) {
     const cancelled =
       err?.name === "AbortError" ||
       /abort|cancel/i.test(String(err?.message || ""));
-    await delDB(partialId);
-    await delDB(downloadId);
+    if (cancelled) {
+      await delDB(partialId);
+      await delDB(downloadId);
+    }
+    // Keep partials on non-cancel failures so background sync / foreground fallback can resume.
     await postToClients({
       type: "download-error",
       downloadId,
