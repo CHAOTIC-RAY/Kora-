@@ -40,6 +40,23 @@ import {
   type SmartSkipSettings,
 } from "../lib/audiobookSmartSkip";
 import CassetteVisualizer from "./CassetteVisualizer";
+import { isFrontMatterTitle } from "../lib/audiobookTextFilter";
+
+function getInitialAudiobookTrack(
+  book: BookMetadata,
+  tracks: NonNullable<BookMetadata["audiobookTracks"]>,
+  isTtsBook: boolean
+): number {
+  const savedTrack = book.audiobookCurrentTrack ?? 0;
+  const hasProgress =
+    (book.audiobookCurrentTime ?? 0) > 5 ||
+    (book.progress?.percent ?? 0) > 2;
+
+  if (!isTtsBook || hasProgress) return savedTrack;
+
+  const narrativeIdx = tracks.findIndex((track) => !isFrontMatterTitle(track.title || ""));
+  return narrativeIdx >= 0 ? narrativeIdx : savedTrack;
+}
 
 interface AudiobookPlayerProps {
   book: BookMetadata;
@@ -120,7 +137,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const authorLabel = displayAuthor(book.author);
   const audioRef = useRef<HTMLAudioElement>(null);
   const ttsPlayerRef = useRef<BrowserTtsPlayer | null>(null);
-  const [currentTrack, setCurrentTrack] = useState(book.audiobookCurrentTrack || 0);
+  const [currentTrack, setCurrentTrack] = useState(() => getInitialAudiobookTrack(book, tracks, isTtsBook));
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(book.audiobookCurrentTime || 0);
   const [duration, setDuration] = useState(0);

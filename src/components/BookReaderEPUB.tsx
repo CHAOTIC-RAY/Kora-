@@ -111,6 +111,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const useDoubleColumns = doubleColumns && !isMobile;
+  const useScrollLayout = isMobile || isContinuous;
+  const columnGapPx = useDoubleColumns ? 40 : 0;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -282,27 +284,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setTimeout(() => {
       const container = contentRef.current;
       if (!container) return;
-      
-      // Use the article's actual rendered width (border-box, excludes the
-      // container's own padding). This is the true on-screen width of one page,
-      // whether single- or double-column. Using the padded container width
-      // (or half-width+gap) made each page turn overshoot and clip the left
-      // column — the "page display" bug.
+
       const rect = container.getBoundingClientRect();
       const textWidth = rect.width;
       if (textWidth <= 0) return;
-      
+
+      if (useScrollLayout) {
+        setTotalPages(1);
+        setContainerWidth(textWidth);
+        pageStepRef.current = textWidth;
+        if (currentPageNum !== 1) setCurrentPageNum(1);
+        return;
+      }
+
       const scrollWidth = container.scrollWidth;
-      const gapWidth = 40;
-      // Column width for the CSS column layout (matches the measured width so
-      // the content fills exactly one page stride).
-      const colWidth = useDoubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      // The exact horizontal stride is the full page width (the article's
-      // rendered width), minus any requested page overlap. Adding the column
-      // gap here was the bug — it over-shifted every page turn and clipped the
-      // left column. Page overlap REPEATS the last N px, so we subtract it.
       const step = textWidth - pageOverlap;
-      // Avoid tiny subpixel overflows from creating a blank page
       const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
       const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
@@ -323,6 +319,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     marginSize,
     doubleColumns,
     useDoubleColumns,
+    useScrollLayout,
     pageOverlap,
     letterSpacing,
     hyphenation
@@ -376,7 +373,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       observer.disconnect();
       clearTimeout(resizeTimer);
     };
-  }, [useDoubleColumns]);
+  }, [useDoubleColumns, useScrollLayout]);
 
   // Auto-track reading focus session time (Reading Goals)
   useEffect(() => {
@@ -832,6 +829,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     playFlipSound();
     setTapFeedback("next");
     setTimeout(() => setTapFeedback(null), 350);
+    if (useScrollLayout) {
+      if (currentChapterIdx < chapters.length - 1) {
+        updateProgress(currentChapterIdx + 1, false);
+      }
+      return;
+    }
     if (currentPageNum < totalPages) {
       setCurrentPageNum(prev => prev + 1);
     } else {
@@ -845,6 +848,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     playFlipSound();
     setTapFeedback("prev");
     setTimeout(() => setTapFeedback(null), 350);
+    if (useScrollLayout) {
+      if (currentChapterIdx > 0) {
+        updateProgress(currentChapterIdx - 1, true);
+      }
+      return;
+    }
     if (currentPageNum > 1) {
       setCurrentPageNum(prev => prev - 1);
     } else {
@@ -1361,18 +1370,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setTimeout(() => {
       const container = contentRef.current;
       if (!container) return;
-      const textWidth = container.offsetWidth;
+      const textWidth = container.getBoundingClientRect().width;
       if (textWidth <= 0) return;
+
+      if (useScrollLayout) {
+        setTotalPages(1);
+        setContainerWidth(textWidth);
+        pageStepRef.current = textWidth;
+        setCurrentPageNum(1);
+        setTimeout(() => setShouldAnimate(true), 150);
+        return;
+      }
+
       const scrollWidth = container.scrollWidth;
-      const gapWidth = 40;
-      const colWidth = useDoubleColumns ? (textWidth - gapWidth) / 2 : textWidth;
-      // The exact horizontal stride is the full page width (the article's
-      // rendered width), minus any requested page overlap. Adding the column
-      // gap was the bug — it over-shifted every page turn and clipped the
-      // left column. Page overlap REPEATS the last N px, so we subtract it.
       const step = textWidth - pageOverlap;
-      
-      // Avoid tiny subpixel overflows from creating a blank page
       const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
       const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
@@ -2679,9 +2690,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 onPointerUp={handlePointerUp}
                 className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start select-text cursor-text mx-auto ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
-                <div className="w-full h-full overflow-hidden relative flex items-start justify-start" style={{ perspective: "1200px" }}>
+                <div className={`w-full h-full ${useScrollLayout ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden"} relative flex items-start justify-start`} style={{ perspective: "1200px" }}>
                   {/* Turn.js style 3D page flip transition */}
-                  {pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
+                  {!useScrollLayout && pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
                     <div 
                       className="absolute inset-0 pointer-events-none z-50 overflow-hidden"
                       style={{ perspective: "2500px" }}
@@ -2723,8 +2734,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             style={{
                               fontSize: `${fontSize}px`,
                               lineHeight: lineSpacing,
-                              columnWidth: `${useDoubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
-                              columnGap: "40px",
+                              columnWidth: `${useDoubleColumns ? (containerWidth - columnGapPx) / 2 : containerWidth}px`,
+                              columnGap: `${columnGapPx}px`,
                               height: "100%",
                               columnFill: "auto",
                               overflow: "visible",
@@ -2799,8 +2810,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             style={{
                               fontSize: `${fontSize}px`,
                               lineHeight: lineSpacing,
-                              columnWidth: `${useDoubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
-                              columnGap: "40px",
+                              columnWidth: `${useDoubleColumns ? (containerWidth - columnGapPx) / 2 : containerWidth}px`,
+                              columnGap: `${columnGapPx}px`,
                               height: "100%",
                               columnFill: "auto",
                               overflow: "visible",
@@ -2873,7 +2884,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   <motion.article 
                     ref={contentRef}
                     animate={{ 
-                      x: -(currentPageNum - 1) * pageStepRef.current,
+                      x: useScrollLayout ? 0 : -(currentPageNum - 1) * pageStepRef.current,
                       rotateY: 0,
                       skewY: 0,
                       scaleX: 1
@@ -2883,16 +2894,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,
-                      columnWidth: `${useDoubleColumns ? (containerWidth - 40) / 2 : containerWidth}px`,
-                      columnGap: '40px',
-                      height: '100%',
-                      columnFill: 'auto',
-                      // Strictly clip to the current page so exactly one page (or one
-                      // 2-page spread) is visible at a time — true page-by-page reading.
-                      overflow: 'visible',
-                      // Center "book spine" gutter between the two columns in 2-col mode
-                      boxShadow: useDoubleColumns ? 'inset 50% 0 0 -20px rgba(0,0,0,0.10)' : 'none',
-                      transformOrigin: flipDirection === "next" ? "left center" : "right center"
+                      ...(useScrollLayout
+                        ? {
+                            height: "auto",
+                            minHeight: "100%",
+                            overflow: "visible",
+                          }
+                        : {
+                            columnWidth: `${useDoubleColumns ? (containerWidth - columnGapPx) / 2 : containerWidth}px`,
+                            columnGap: `${columnGapPx}px`,
+                            height: "100%",
+                            columnFill: "auto",
+                            overflow: "visible",
+                            boxShadow: useDoubleColumns ? "inset 50% 0 0 -20px rgba(0,0,0,0.10)" : "none",
+                            transformOrigin: flipDirection === "next" ? "left center" : "right center",
+                          }),
                     }}
                   >
                     <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
@@ -3175,9 +3191,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     />
                   </div>
                   <span className="text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90">
-                    page {currentPageNum} of {totalPages} (Ch. {currentChapterIdx + 1}) • {Math.min(100, Math.max(0, Math.round(
+                    {useScrollLayout
+                      ? `chapter ${currentChapterIdx + 1} of ${chapters.length} • ${Math.min(100, Math.max(0, Math.round(((currentChapterIdx + 1) / (chapters.length || 1)) * 100)))}%`
+                      : `page ${currentPageNum} of ${totalPages} (Ch. ${currentChapterIdx + 1}) • ${Math.min(100, Math.max(0, Math.round(
                     ((currentChapterIdx + (currentPageNum - 1) / (totalPages || 1)) / (chapters.length || 1)) * 100
-                  )))}%
+                  )))}%`}
                   </span>
                 </div>
 

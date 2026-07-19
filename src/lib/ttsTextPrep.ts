@@ -1,4 +1,5 @@
 import { TtsQualityPreset } from "./ttsSettings";
+import { isGibberishLine, isGibberishParagraph } from "./audiobookTextFilter";
 
 export interface SpeakChunk {
   text: string;
@@ -31,6 +32,19 @@ const BOILERPLATE_PATTERNS = [
   /^acknowledg(e)?ments$/i,
   /^license$/i,
   /^isbn[:\s]/i,
+  /^prologue$/i,
+  /^preface$/i,
+  /^foreword$/i,
+  /^introduction$/i,
+  /^cover$/i,
+  /^title page$/i,
+  /^also by\b/i,
+  /^praise for\b/i,
+  /^about the author$/i,
+  /^list of (illustrations|characters|tables)$/i,
+  /^printed in\b/i,
+  /^published by\b/i,
+  /^first (edition|published)/i,
 ];
 
 function isBoilerplateLine(line: string): boolean {
@@ -38,6 +52,8 @@ function isBoilerplateLine(line: string): boolean {
   if (!trimmed) return true;
   if (/^\d+$/.test(trimmed)) return true;
   if (/^page\s+\d+/i.test(trimmed)) return true;
+  if (/\.{2,}\s*\d+\s*$/.test(trimmed)) return true;
+  if (isGibberishLine(trimmed)) return true;
   return BOILERPLATE_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
@@ -61,6 +77,34 @@ function stripBoilerplate(text: string): string {
   const lines = text.split("\n");
   const kept = lines.filter((line) => !isBoilerplateLine(line));
   return kept.join("\n").trim();
+}
+
+function stripLeadingBoilerplateBlocks(text: string): string {
+  const paragraphs = text.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  let start = 0;
+
+  while (start < paragraphs.length) {
+    const paragraph = paragraphs[start];
+    const lines = paragraph.split("\n").map((line) => line.trim()).filter(Boolean);
+    const mostlyBoilerplate =
+      lines.length > 0 && lines.filter((line) => isBoilerplateLine(line)).length / lines.length >= 0.6;
+    if (mostlyBoilerplate || isGibberishParagraph(paragraph)) {
+      start += 1;
+      continue;
+    }
+    break;
+  }
+
+  return paragraphs.slice(start).join("\n\n").trim();
+}
+
+function stripGibberishParagraphs(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((part) => part.replace(/\n+/g, " ").trim())
+    .filter((part) => part && !isGibberishParagraph(part))
+    .join("\n\n")
+    .trim();
 }
 
 function applyDirectorRules(text: string): string {
@@ -124,6 +168,8 @@ export function prepareTextForNarration(
 ): string {
   let text = normalizeWhitespace(rawText);
   text = stripBoilerplate(text);
+  text = stripLeadingBoilerplateBlocks(text);
+  text = stripGibberishParagraphs(text);
   text = expandAbbreviations(text);
   text = applyDirectorRules(text);
 
@@ -153,23 +199,25 @@ export function buildSpeakChunks(
   const chunks: SpeakChunk[] = [];
 
   for (const paragraph of paragraphs) {
+    if (isGibberishParagraph(paragraph)) continue;
     const kind = classifyParagraph(paragraph);
     const pieces = chunkParagraph(paragraph, maxChars);
     for (let i = 0; i < pieces.length; i++) {
       const text = pieces[i];
+      if (isGibberishLine(text)) continue;
       chunks.push({
         text,
         pauseAfterMs:
-          kind === "scene-break" ? 900 : kind === "dialogue" ? 280 : kind === "list" ? 220 : 180,
+          kind === "scene-break" ? 850 : kind === "dialogue" ? 320 : kind === "list" ? 260 : 240,
         rateMultiplier:
-          kind === "scene-break" ? 0.85 : kind === "dialogue" ? 0.98 : kind === "list" ? 0.94 : 1,
-        pitchMultiplier: kind === "dialogue" ? 1.04 : 1,
+          kind === "scene-break" ? 0.88 : kind === "dialogue" ? 0.96 : kind === "list" ? 0.92 : 0.98,
+        pitchMultiplier: kind === "dialogue" ? 1.02 : 1,
         kind,
       });
     }
   }
 
-  return chunks.filter((chunk) => chunk.text.trim().length > 0);
+  return chunks.filter((chunk) => chunk.text.trim().length > 2 && !isGibberishLine(chunk.text));
 }
 
 export function estimateChunkDurationSeconds(

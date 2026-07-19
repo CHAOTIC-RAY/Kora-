@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { isFrontMatterChapter } from "./audiobookTextFilter";
 import { prepareTextForNarration } from "./ttsTextPrep";
 
 export interface TextChapter {
@@ -81,7 +82,8 @@ function mergeShortChapters(chapters: TextChapter[], minChars = 500): TextChapte
       buffer = { ...chapter };
       continue;
     }
-    if (buffer.text.length < minChars) {
+    const bufferIsFrontMatter = isFrontMatterChapter(buffer.title, buffer.text);
+    if (!bufferIsFrontMatter && buffer.text.length < minChars) {
       buffer.text = `${buffer.text}\n\n${chapter.text}`;
       buffer.title = buffer.title || chapter.title;
     } else {
@@ -91,6 +93,12 @@ function mergeShortChapters(chapters: TextChapter[], minChars = 500): TextChapte
   }
   if (buffer) merged.push({ ...buffer, index: merged.length + 1 });
   return merged;
+}
+
+function filterFrontMatterChapters(chapters: TextChapter[]): TextChapter[] {
+  const filtered = chapters.filter((chapter) => !isFrontMatterChapter(chapter.title, chapter.text));
+  if (!filtered.length) return chapters;
+  return filtered.map((chapter, index) => ({ ...chapter, index: index + 1 }));
 }
 
 export async function extractEpubChapters(blob: Blob): Promise<TextChapter[]> {
@@ -150,7 +158,7 @@ export async function extractEpubChapters(blob: Blob): Promise<TextChapter[]> {
   }
 
   if (!chapters.length) throw new Error("No readable text found in this EPUB.");
-  return mergeShortChapters(chapters);
+  return mergeShortChapters(filterFrontMatterChapters(chapters));
 }
 
 export async function extractTxtChapters(blob: Blob, fallbackTitle = "Chapter 1"): Promise<TextChapter[]> {
@@ -164,16 +172,17 @@ export async function extractTxtChapters(blob: Blob, fallbackTitle = "Chapter 1"
     .filter((part) => part.length > 40);
 
   if (parts.length <= 1) {
-    return [
+    const prepared = prepareTextForNarration(normalized, { chapterTitle: fallbackTitle, quality: "balanced" });
+    return filterFrontMatterChapters([
       {
         index: 1,
         title: fallbackTitle,
-        text: prepareTextForNarration(normalized, { chapterTitle: fallbackTitle, quality: "balanced" }),
+        text: prepared,
       },
-    ];
+    ]);
   }
 
-  return parts.map((text, idx) => {
+  const chapters = parts.map((text, idx) => {
     const firstLine = text.split("\n")[0]?.trim() || `Chapter ${idx + 1}`;
     const title = firstLine.length > 60 ? `Chapter ${idx + 1}` : firstLine;
     return {
@@ -182,6 +191,8 @@ export async function extractTxtChapters(blob: Blob, fallbackTitle = "Chapter 1"
       text: prepareTextForNarration(text, { chapterTitle: title, quality: "balanced" }),
     };
   });
+
+  return mergeShortChapters(filterFrontMatterChapters(chapters));
 }
 
 export function estimateSpeechDurationSeconds(text: string, rate = 1): number {
