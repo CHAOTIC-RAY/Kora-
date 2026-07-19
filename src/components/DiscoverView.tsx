@@ -310,6 +310,74 @@ function DiscoverView({
     }
   });
 
+  /** Instant mirrors from known md5 / directUrl — shown before the API finishes. */
+  function buildInstantMirrors(variant: any): any[] {
+    if (!variant) return [];
+    const links: any[] = [];
+    const directUrl = variant.downloadUrl || "";
+    if (directUrl && /get\.php\?md5=.+&key=/i.test(directUrl)) {
+      links.push({
+        label: "Rave Direct (LibGen CDN)",
+        url: directUrl,
+        isDirect: true,
+        sourceId: "rave"
+      });
+    } else if (directUrl && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
+      links.push({
+        label: "Direct Download",
+        url: directUrl,
+        isDirect: true,
+        sourceId: variant.sourceId || "rave"
+      });
+    }
+    const md5 = (variant.md5 || "").toLowerCase();
+    if (/^[a-f0-9]{32}$/.test(md5)) {
+      links.push({
+        label: "Libgen Mirror (libgen.li)",
+        url: `https://libgen.li/get.php?md5=${md5}`,
+        isDirect: true,
+        sourceId: "libgen"
+      });
+      links.push({
+        label: "Anna's Archive",
+        url: `https://annas-archive.org/md5/${md5}`,
+        isDirect: false,
+        sourceId: "annas"
+      });
+    }
+    if (variant.iaId) {
+      links.push({
+        label: "Internet Archive",
+        url: `https://archive.org/details/${variant.iaId}`,
+        isDirect: false,
+        sourceId: "ia"
+      });
+    }
+    return links;
+  }
+
+  /** Race fast archive sources; fall back to full "all" search with a hard timeout. */
+  async function searchDownloadVariants(query: string): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
+    const q = query.trim();
+    if (!q) return { books: [], totalCount: 0, hasMore: false };
+
+    const firstHit = async (source: string) => {
+      const page = await fetchPage(q, source, 1);
+      if (!page.books?.length) throw new Error(`empty:${source}`);
+      return page;
+    };
+
+    try {
+      return await Promise.any([firstHit("libgen"), firstHit("annas-archive")]);
+    } catch {
+      try {
+        return await fetchPage(q, "all", 1);
+      } catch {
+        return { books: [], totalCount: 0, hasMore: false };
+      }
+    }
+  }
+
   function sortMirrors(mirrors: any[]): any[] {
     // Filter out library.lol as it is reportedly taken down
     // Also filter duplicates by exact URL
@@ -404,7 +472,7 @@ function DiscoverView({
     
     try {
       const q = `${title} ${author || ""}`.trim();
-      const result = await fetchPage(q, "all", 1);
+      const result = await searchDownloadVariants(q);
       const rawBooks = result.books || [];
       const uniqueVariants = rawBooks.reduce((acc: any[], current: any) => {
         const key = `${(current.extension || "").toLowerCase()}-${current.size || ""}-${current.source || ""}-${current.language || ""}`;
@@ -432,8 +500,17 @@ function DiscoverView({
     setFetchingFeaturedMirrors(true);
     setFeaturedMirrors([]);
     setFeaturedMirrorError(null);
+
+    // Paint usable mirrors immediately from md5 / directUrl while the API enriches.
+    const instant = buildInstantMirrors(variant);
+    if (instant.length > 0) {
+      setFeaturedMirrors(sortMirrors(instant));
+      setFetchingFeaturedMirrors(false);
+    }
+
     try {
       if (variant.sourceId === "zlib") {
+        setFetchingFeaturedMirrors(true);
         let userId = undefined;
         let userKey = undefined;
 
@@ -465,7 +542,8 @@ function DiscoverView({
             baseUrl: zlibConfig?.baseUrl,
             user_id: userId,
             user_key: userKey
-          })
+          }),
+          signal: AbortSignal.timeout(10000)
         });
         const data = await zRes.json();
         if (data.error) throw new Error(data.error.message || data.error);
@@ -473,25 +551,30 @@ function DiscoverView({
           setFeaturedMirrors([{ url: data.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }]);
         } else if (data.file && data.file.download_link) {
           setFeaturedMirrors([{ url: data.file.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }]);
-        } else {
+        } else if (instant.length === 0) {
           setFeaturedMirrorError("No download link found for this book.");
         }
       } else {
         const iaParam = variant.iaId ? `&iaId=${encodeURIComponent(variant.iaId)}` : "";
         const directParam = variant.downloadUrl ? `&url=${encodeURIComponent(variant.downloadUrl)}` : "";
-        const res = await fetch(`/api/annas-archive/download?md5=${variant.md5}${iaParam}${directParam}`);
+        const res = await fetch(`/api/annas-archive/download?md5=${variant.md5}${iaParam}${directParam}`, {
+          signal: AbortSignal.timeout(8000)
+        });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
         const links = data.downloadLinks || data.options || [];
-        setFeaturedMirrors(sortMirrors(links));
-        if (links.length === 0) {
+        if (links.length > 0) {
+          setFeaturedMirrors(sortMirrors([...instant, ...links]));
+        } else if (instant.length === 0) {
           setFeaturedMirrorError("No download mirrors found for this variant.");
         }
       }
     } catch (err: any) {
       console.error(err);
-      setFeaturedMirrorError(err.message || "Failed to fetch download mirrors.");
+      if (instant.length === 0) {
+        setFeaturedMirrorError(err.message || "Failed to fetch download mirrors.");
+      }
     } finally {
       setFetchingFeaturedMirrors(false);
     }
@@ -1116,7 +1199,10 @@ function DiscoverView({
   };
 
   async function fetchPage(term: string, source: string, page: number): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
-    const res = await fetch(`/api/annas-archive/search?q=${encodeURIComponent(term.trim())}&source=${source}&page=${page}`);
+    const res = await fetch(
+      `/api/annas-archive/search?q=${encodeURIComponent(term.trim())}&source=${source}&page=${page}`,
+      { signal: AbortSignal.timeout(14000) }
+    );
     if (!res.ok) throw new Error(`Search failed with status: ${res.status}`);
     const data = await res.json();
     const books = (data.books || data.results || []).map((b: any) => ({
@@ -1712,12 +1798,12 @@ function DiscoverView({
     // Grab details from verified source asynchronously
     fetchVerifiedDetails(activeBook.title, activeBook.author);
 
-    // If this is a featured book (NYT or Goodreads or Google), search all sources for download links first
+    // Featured/catalog books need an archive search before mirrors exist.
+    // Race fast sources instead of blocking on a full multi-source "all" scan.
     if ((activeBook.isNYTBook || activeBook.isGoogleBook || activeBook.source === 'nyt' || activeBook.source === 'google' || activeBook.source === 'goodreads') && activeBook.searchQuery) {
       try {
-        const searchResult = await fetchPage(activeBook.searchQuery, "all", 1);
+        const searchResult = await searchDownloadVariants(activeBook.searchQuery);
         if (searchResult.books.length > 0) {
-          // Update the book with download links from all sources
           activeBook = {
             ...activeBook,
             variants: searchResult.books,
@@ -1732,6 +1818,7 @@ function DiscoverView({
       }
     }
 
+    let hadUsableMirrors = false;
     try {
       if (activeVariant.sourceId === "zlib") {
         let userId = undefined;
@@ -1765,7 +1852,8 @@ function DiscoverView({
             baseUrl: zlibConfig?.baseUrl,
             user_id: userId,
             user_key: userKey
-          })
+          }),
+          signal: AbortSignal.timeout(10000)
         });
         const data = await zRes.json();
         
@@ -1773,36 +1861,56 @@ function DiscoverView({
         if (data.download_link) {
           const m = [{ url: data.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }];
           setMirrors(m);
+          hadUsableMirrors = true;
           if (autoDownload) setTimeout(() => handleAutoDownload(m), 50);
         } else if (data.file && data.file.download_link) {
           const m = [{ url: data.file.download_link, label: "Z-Library Direct Download", isDirect: true, sourceId: "zlib", zlibUserId: userId, zlibUserKey: userKey }];
           setMirrors(m);
+          hadUsableMirrors = true;
           if (autoDownload) setTimeout(() => handleAutoDownload(m), 50);
         } else {
           setMirrorError("No download link found for this book.");
         }
       } else {
+        const instant = buildInstantMirrors(activeVariant);
+        if (instant.length > 0) {
+          const sortedInstant = sortMirrors(instant);
+          setMirrors(sortedInstant);
+          hadUsableMirrors = true;
+          setFetchingMirrors(false);
+          if (autoDownload) {
+            setTimeout(() => handleAutoDownload(sortedInstant), 50);
+          }
+        }
+
         const iaParam = activeVariant.iaId ? `&iaId=${encodeURIComponent(activeVariant.iaId)}` : "";
         // Pass Rave's real signed direct URL through so the worker uses the same
         // direct-download method as ravebooksearch.com (get.php?md5&key -> CDN).
         const directParam = activeVariant.downloadUrl ? `&url=${encodeURIComponent(activeVariant.downloadUrl)}` : "";
-        const res = await fetch(`/api/annas-archive/download?md5=${activeVariant.md5}${iaParam}${directParam}`);
+        const res = await fetch(`/api/annas-archive/download?md5=${activeVariant.md5}${iaParam}${directParam}`, {
+          signal: AbortSignal.timeout(8000)
+        });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
         const links = data.downloadLinks || data.options || [];
-        const sorted = sortMirrors(links);
-        setMirrors(sorted);
+        const sorted = sortMirrors([...instant, ...links]);
+        if (links.length > 0 || instant.length === 0) {
+          setMirrors(sorted);
+        }
+        if (sorted.length > 0) hadUsableMirrors = true;
         
-        if (links.length === 0) {
+        if (sorted.length === 0) {
           setMirrorError("No download mirrors found for this variant. Try another format or mirror.");
-        } else if (autoDownload) {
-          // If autoDownload is true, trigger the download immediately with the fetched mirrors
+        } else if (autoDownload && instant.length === 0) {
+          // Instant path already auto-downloaded; only trigger if we had nothing before.
           setTimeout(() => handleAutoDownload(sorted), 50);
         }
       }
     } catch (err: any) {
-      setMirrorError(err.message || "Failed to retrieve download mirrors.");
+      if (!hadUsableMirrors) {
+        setMirrorError(err.message || "Failed to retrieve download mirrors.");
+      }
     } finally {
       setFetchingMirrors(false);
     }

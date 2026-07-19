@@ -72,22 +72,30 @@ async function buildRaveFallbackFeed(): Promise<any> {
 
 // signed CDN download link (get.php?md5=<h>&key=<t>). LibGen 307-redirects the
 // keyless link to an ads page that embeds the signed link in an <a href>.
-// Returns "" if it cannot be resolved.
-async function resolveLibgenSigned(md5: string): Promise<string> {
+// Returns "" if it cannot be resolved within timeoutMs.
+// Hosts are raced in parallel so a single slow mirror cannot block the UI.
+async function resolveLibgenSigned(md5: string, timeoutMs = 2800): Promise<string> {
   const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
-  for (const host of ["libgen.li", "libgen.is", "libgen.rs"]) {
-    try {
-      const res = await fetch(`https://${host}/get.php?md5=${md5}`, {
-        headers: { "User-Agent": ua },
-        redirect: "follow"
-      });
-      if (!res.ok) continue;
-      const html = await res.text();
-      const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
-      if (m) return `https://${host}/${m[0]}`;
-    } catch (_) { /* try next host */ }
+  const hosts = ["libgen.li", "libgen.is", "libgen.rs"];
+
+  const tryHost = async (host: string): Promise<string> => {
+    const res = await fetch(`https://${host}/get.php?md5=${md5}`, {
+      headers: { "User-Agent": ua },
+      redirect: "follow",
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!res.ok) throw new Error(`libgen ${host} status ${res.status}`);
+    const html = await res.text();
+    const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
+    if (!m) throw new Error(`libgen ${host} no signed key`);
+    return `https://${host}/${m[0]}`;
+  };
+
+  try {
+    return await Promise.any(hosts.map(tryHost));
+  } catch (_) {
+    return "";
   }
-  return "";
 }
 
 function parseCookies(cookieHeader: string | null | undefined): Record<string, string> {
@@ -132,22 +140,19 @@ function resolveUrl(href: string, base: string): string {
 
 async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
   const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(query)}&mode=${mode}&source=${source}&page=${page}`;
+  const raveHeaders = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+  };
+  // Bound search latency so book-detail "scanning" cannot hang indefinitely.
+  const raveInit: RequestInit = { headers: raveHeaders, signal: AbortSignal.timeout(12000) };
   try {
     let res;
     if (env && env.RAVE_BOOK_SEARCH) {
       console.log("Using Cloudflare Service Binding RAVE_BOOK_SEARCH");
-      res = await env.RAVE_BOOK_SEARCH.fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-        }
-      });
+      res = await env.RAVE_BOOK_SEARCH.fetch(url, raveInit);
     } else {
       console.log("Falling back to public fetch for Rave Book Search");
-      res = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-        }
-      });
+      res = await fetch(url, raveInit);
     }
 
     if (!res.ok) {
@@ -1908,25 +1913,9 @@ export default {
       }
 
       if (isRealMd5) {
-        // Prefer the signed LibGen CDN link (get.php?md5&key) resolved server-side,
-        // so downloads work even when the frontend has no Rave directUrl.
-        let signed = "";
-        if (raveDirect && /get\.php\?md5=.+&key=/.test(raveDirect)) {
-          signed = raveDirect;
-        } else {
-          signed = await resolveLibgenSigned(md5);
-        }
-        if (signed) {
-          downloadLinks.push({
-            label: "Direct Mirror (LibGen CDN)",
-            url: signed,
-            isDirect: true,
-            sourceId: "libgen"
-          });
-        }
-        // Reliable fallbacks (kept last; library.lol is often unreachable, so
-        // it is intentionally deprioritized behind the signed CDN link).
-        downloadLinks.push(
+        // Instant mirrors first so the client never waits on LibGen HTML scraping.
+        // Signed CDN resolution is best-effort with a short parallel timeout.
+        const instantMirrors = [
           {
             label: "Libgen Mirror (libgen.li)",
             url: `https://libgen.li/get.php?md5=${md5.toLowerCase()}`,
@@ -1937,7 +1926,26 @@ export default {
             url: `https://annas-archive.org/md5/${md5}`,
             isDirect: false
           }
-        );
+        ];
+
+        const alreadySigned =
+          (raveDirect && /get\.php\?md5=.+&key=/i.test(raveDirect) && raveDirect) ||
+          downloadLinks.find((l) => /get\.php\?md5=.+&key=/i.test(l.url || ""))?.url ||
+          "";
+        const signed = alreadySigned || (await resolveLibgenSigned(md5, 2800));
+        if (signed && !downloadLinks.some((l) => l.url === signed)) {
+          downloadLinks.unshift({
+            label: "Direct Mirror (LibGen CDN)",
+            url: signed,
+            isDirect: true,
+            sourceId: "libgen"
+          });
+        }
+        for (const mirror of instantMirrors) {
+          if (!downloadLinks.some((l) => l.url === mirror.url)) {
+            downloadLinks.push(mirror);
+          }
+        }
       } else if (iaId && downloadLinks.length === 0) {
         // Internet Archive item with known iaId — proxy through /api/proxy-file
         downloadLinks = [
