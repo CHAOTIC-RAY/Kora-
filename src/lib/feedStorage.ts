@@ -21,6 +21,7 @@ export interface FeedItem {
   summary?: string;
   publishedAt: number;
   imageUrl?: string;
+  category?: string;
   read: boolean;
   savedBookId?: string;
   clippedAt?: number;

@@ -29,6 +29,7 @@ import { isFeedItemWithinRetention } from "../lib/feedNormalize";
 import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
 import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
+import NewsInBriefPanel from "./NewsInBriefPanel";
 
 interface FeedViewProps {
   userId?: string;
@@ -38,7 +39,7 @@ interface FeedViewProps {
   onClearInitialUrl?: () => void;
 }
 
-type FeedFilter = "all" | "unread" | "saved";
+type FeedFilter = "all" | "unread" | "saved" | "briefs";
 type BentoVariant = "featured" | "square" | "wide" | "default";
 
 function formatFeedDate(timestamp: number): string {
@@ -290,6 +291,7 @@ export default function FeedView({
     return items
       .filter((item) => isFeedItemWithinRetention(item))
       .filter((item) => {
+        if (filter === "briefs") return false;
         if (selectedSubscriptionId && item.subscriptionId !== selectedSubscriptionId) return false;
         if (filter === "unread" && item.read) return false;
         if (filter === "saved" && !item.savedBookId) return false;
@@ -366,6 +368,7 @@ export default function FeedView({
       <div className="flex flex-wrap gap-2">
         {[
           { id: "all", label: "All" },
+          { id: "briefs", label: "Briefs" },
           { id: "unread", label: "Unread" },
           { id: "saved", label: "Saved" },
         ].map((chip) => (
@@ -410,7 +413,13 @@ export default function FeedView({
         ))}
       </div>
 
-      {refreshing && items.length === 0 ? (
+      {filter === "briefs" ? (
+        <NewsInBriefPanel
+          items={items.filter((item) => isFeedItemWithinRetention(item))}
+          selectedSourceId={selectedSubscriptionId}
+          onRead={handleReadArticle}
+        />
+      ) : refreshing && items.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-kindle-text-muted">
           <Loader2 className="w-8 h-8 animate-spin mb-3" />
           <p className="text-sm">Fetching your feeds…</p>

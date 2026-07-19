@@ -49,6 +49,7 @@ export function mapParsedItems(
     summary: item.summary,
     publishedAt: item.publishedAt,
     imageUrl: item.imageUrl,
+    category: item.category,
     read: false,
   }));
 }

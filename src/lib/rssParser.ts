@@ -8,6 +8,7 @@ export interface ParsedFeedItem {
   summary?: string;
   publishedAt: number;
   imageUrl?: string;
+  category?: string;
 }
 
 export interface ParsedFeed {
@@ -129,6 +130,7 @@ function parseRss(xml: string): ParsedFeed {
         block.match(/<author[^>]*>([\s\S]*?)<\/author>/i)?.[1] ||
         ""
     );
+    const category = stripTags(block.match(/<category[^>]*>([\s\S]*?)<\/category>/i)?.[1] || "");
     const imageUrl = extractImageUrl(block, description);
 
     items.push({
@@ -139,6 +141,7 @@ function parseRss(xml: string): ParsedFeed {
       summary: stripTags(description).slice(0, 500) || undefined,
       publishedAt: parseDate(newsPubDate || pubDate),
       imageUrl,
+      category: category || undefined,
     });
   }
 

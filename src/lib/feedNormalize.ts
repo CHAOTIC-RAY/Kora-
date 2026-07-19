@@ -72,6 +72,7 @@ export function dedupeFeedItems(items: FeedItem[]): FeedItem[] {
       summary: preferred.summary || fallback.summary,
       imageUrl: preferred.imageUrl || fallback.imageUrl,
       author: preferred.author || fallback.author,
+      category: preferred.category || fallback.category,
       publishedAt: Math.max(preferred.publishedAt, fallback.publishedAt),
     });
   }
