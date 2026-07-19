@@ -60,8 +60,8 @@ export function buildAudiobookProbeUrls(input: {
     input.link,
     input.listenUrl,
     input.listenUrlAlt,
-    input.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
     input.title ? `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
+    input.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
   ].filter(Boolean) as string[];
   return [...new Set(urls)];
 }

@@ -650,7 +650,7 @@ export default function DiscoverView({
             source: "audiobook",
             listenUrl: b.listenUrl,
             listenUrlAlt: b.listenUrlAlt,
-            link: b.listenUrl,
+            link: b.link || b.listenUrl,
             isbn: b.isbn,
           }));
           return { id: cat.id, books: mapped };

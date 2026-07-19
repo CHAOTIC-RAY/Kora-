@@ -187,34 +187,163 @@ export function parseAudiobookDetailHtml(html: string, pageUrl: string): Audiobo
 export function parseAudiobookSearchHtml(html: string, sourceName: string, baseUrl: string, maxResults = 16): AudiobookSearchResult[] {
   const $ = cheerio.load(html);
   const results: AudiobookSearchResult[] = [];
+  const seen = new Set<string>();
 
+  const pushResult = (rawTitle: string, link: string, coverUrl: string | null, authorHint = "") => {
+    if (results.length >= maxResults || !rawTitle || rawTitle.length < 3) return;
+    const absoluteLink = link.startsWith("http") ? link : `${baseUrl}${link}`;
+    if (seen.has(absoluteLink)) return;
+    seen.add(absoluteLink);
+    const { title, author } = parseAudiobookTitleAuthor(rawTitle, authorHint);
+    if (coverUrl) coverUrl = toAbsoluteUrl(coverUrl, baseUrl);
+    results.push({ title, author, coverUrl, link: absoluteLink, source: sourceName });
+  };
+
+  // HD Audiobooks feed/search layout
+  $("article.post, article[class*='post-']").each((_i, el) => {
+    const item = $(el);
+    const titleEl = item.find("h2 a").first();
+    const rawTitle = (titleEl.attr("title") || titleEl.text()).trim();
+    const link = titleEl.attr("href") || "";
+    const coverUrl = item.find("img.wp-post-image, img.thumbnail, img").first().attr("src") || null;
+    if (rawTitle && link) pushResult(rawTitle, link, coverUrl);
+  });
+
+  // FullLength Audiobooks + generic WordPress
   $("article, .post, .entry, .book-item, .product").each((_i, el) => {
     if (results.length >= maxResults) return false as any;
     const item = $(el);
-    const titleEl = item.find("h2 a, h3 a, .entry-title a, .post-title a, h2, h3").first();
-    const title = titleEl.text().trim();
+    const titleEl = item.find("h2.entry-title a, h2.post-title a, h2 a, h3 a, .entry-title a, .post-title a").first();
+    const rawTitle = titleEl.text().trim();
     const link = titleEl.attr("href") || item.find("a").first().attr("href") || "";
-    let coverUrl = item.find("img").first().attr("src") || item.find("img").first().attr("data-src") || null;
+    let coverUrl = item.find("img.wp-post-image, img").first().attr("src") || item.find("img").first().attr("data-src") || null;
     const author = item.find(".author, .book-author, .entry-meta").first().text().replace(/by\s+/i, "").trim() || "";
-    if (!title || title.length < 3) return;
-    const absoluteLink = link.startsWith("http") ? link : `${baseUrl}${link}`;
-    if (coverUrl) coverUrl = toAbsoluteUrl(coverUrl, baseUrl);
-    results.push({ title, author, coverUrl, link: absoluteLink, source: sourceName });
+    if (!rawTitle || rawTitle.length < 3) return;
+    pushResult(rawTitle, link, coverUrl, author);
   });
+
+  return results;
+}
+
+/** Parse "Title Audiobook – Author" or "Author – Title Audiobook Free" formats */
+export function parseAudiobookTitleAuthor(raw: string, authorHint = ""): { title: string; author: string } {
+  const cleaned = raw.replace(/&#8211;/g, "–").replace(/&amp;/g, "&").trim();
+  const audiobookMatch = cleaned.match(/^(.+?)\s+Audiobook\s*[–-]\s*(.+)$/i);
+  if (audiobookMatch) {
+    return { title: audiobookMatch[1].trim(), author: audiobookMatch[2].replace(/\s*Free$/i, "").trim() };
+  }
+  const authorFirstMatch = cleaned.match(/^(.+?)\s*[–-]\s*(.+?)\s+Audiobook/i);
+  if (authorFirstMatch) {
+    return { title: authorFirstMatch[2].trim(), author: authorFirstMatch[1].trim() };
+  }
+  return { title: cleaned.replace(/\s+Audiobook.*$/i, "").trim(), author: authorHint };
+}
+
+/** Scrape homepage feed from hdaudiobooks.com */
+export function parseHdAudiobooksFeed(html: string, baseUrl = "https://hdaudiobooks.com"): AudiobookSearchResult[] {
+  return parseAudiobookSearchHtml(html, "hdaudiobooks", baseUrl, 12);
+}
+
+/** Scrape homepage feed from fulllengthaudiobooks.com */
+export function parseFullLengthAudiobooksFeed(html: string, baseUrl = "https://fulllengthaudiobooks.com"): AudiobookSearchResult[] {
+  return parseAudiobookSearchHtml(html, "fulllengthaudiobooks", baseUrl, 12);
+}
+
+/** Search both audiobook sources; tries fulllength first (better hit rate). */
+export async function searchAudiobooksFromSources(
+  fetchHtml: (url: string) => Promise<string>,
+  q: string,
+  maxResults = 16
+): Promise<AudiobookSearchResult[]> {
+  const results: AudiobookSearchResult[] = [];
+  const seen = new Set<string>();
+
+  const addBatch = (books: AudiobookSearchResult[]) => {
+    for (const b of books) {
+      if (results.length >= maxResults || seen.has(b.link)) continue;
+      seen.add(b.link);
+      results.push(b);
+    }
+  };
+
+  const sources = [
+    { name: "fulllengthaudiobooks", url: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://fulllengthaudiobooks.com" },
+    { name: "hdaudiobooks", url: `https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://hdaudiobooks.com" },
+  ];
+
+  await Promise.allSettled(
+    sources.map(async (src) => {
+      try {
+        const html = await fetchHtml(src.url);
+        addBatch(parseAudiobookSearchHtml(html, src.name, src.base, maxResults));
+      } catch {
+        /* skip failed source */
+      }
+    })
+  );
+
+  return results;
+}
+
+export async function scrapePopularAudiobooks(
+  fetchHtml: (url: string) => Promise<string>
+): Promise<any[]> {
+  const results: any[] = [];
+  const seen = new Set<string>();
+
+  const addBooks = (books: AudiobookSearchResult[], source: string) => {
+    for (const b of books) {
+      if (results.length >= 12 || seen.has(b.link)) continue;
+      seen.add(b.link);
+      results.push({
+        rank: results.length + 1,
+        title: b.title,
+        author: b.author || "Unknown",
+        description: `Listen free on ${source === "hdaudiobooks" ? "HDAudiobooks" : "FullLengthAudiobooks"}.`,
+        rating: 4.5,
+        ratingCount: "Popular audiobook",
+        coverUrl: b.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author || "")}`,
+        link: b.link,
+        listenUrl: b.link,
+        listenUrlAlt: b.link,
+        source: "audiobook",
+      });
+    }
+  };
+
+  await Promise.allSettled([
+    fetchHtml("https://hdaudiobooks.com/")
+      .then((html) => addBooks(parseHdAudiobooksFeed(html), "hdaudiobooks"))
+      .catch(() => {}),
+    fetchHtml("https://fulllengthaudiobooks.com/")
+      .then((html) => addBooks(parseFullLengthAudiobooksFeed(html), "fulllengthaudiobooks"))
+      .catch(() => {}),
+  ]);
 
   return results;
 }
 
 /** If given a search URL, extract the first book detail page link from search results. */
 export function extractFirstBookLinkFromSearch(html: string, baseUrl: string): string | null {
-  const results = parseAudiobookSearchHtml(html, "", baseUrl, 1);
-  return results[0]?.link || null;
+  const results = parseAudiobookSearchHtml(html, "", baseUrl, 5);
+  // Prefer links that look like book detail pages, not search/category pages
+  const detail = results.find((r) =>
+    r.link &&
+    !r.link.includes("?s=") &&
+    !r.link.includes("/search/") &&
+    !r.link.includes("/page/") &&
+    !r.link.includes("/category/") &&
+    !r.link.includes("/author/")
+  );
+  return detail?.link || results[0]?.link || null;
 }
 
 export function isAudiobookSearchUrl(pageUrl: string): boolean {
   try {
     const u = new URL(pageUrl);
-    return u.searchParams.has("s") && (u.pathname === "/" || u.pathname === "");
+    if (u.searchParams.has("s") && (u.pathname === "/" || u.pathname === "")) return true;
+    if (u.pathname.includes("/search/")) return true;
+    return false;
   } catch {
     return false;
   }
@@ -223,10 +352,9 @@ export function isAudiobookSearchUrl(pageUrl: string): boolean {
 export function mapPopularAudiobooks() {
   return POPULAR_AUDIOBOOKS.map((b: any) => ({
     ...b,
-    coverUrl: b.isbn
-      ? `https://covers.openlibrary.org/b/isbn/${b.isbn}-M.jpg`
-      : `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
-    listenUrl: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-    listenUrlAlt: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+    coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+    link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+    listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+    listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
   }));
 }

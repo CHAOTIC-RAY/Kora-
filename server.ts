@@ -15,6 +15,8 @@ import {
   parseAudiobookSearchHtml,
   extractFirstBookLinkFromSearch,
   isAudiobookSearchUrl,
+  scrapePopularAudiobooks,
+  searchAudiobooksFromSources,
 } from "./src/lib/audiobookScraper";
 import {
   getCachedAudiobookDetail,
@@ -23,6 +25,7 @@ import {
   resolveAudiobookDetailParallel,
   resolveAudiobookDetailFromPage,
 } from "./src/lib/audiobookServer";
+import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
 
 dotenv.config();
 
@@ -1583,68 +1586,11 @@ async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
   return fetchPageHtmlWithProxies(targetUrl, "bookTitle");
 }
 
-// Fallback curated list: Goodreads "Week in Books" blog post #3182 (July 17, 2026)
-const GOODREADS_BLOG_3182_BOOKS = [
-  { rank: 1, title: "The Calamity Club", author: "Kathryn Stockett", description: "Trending #1 on Goodreads this week — the highly anticipated new novel from the author of The Help.", rating: 4.2, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 2, title: "Yesteryear", author: "Caro Claire Burke", description: "Trending #2 on Goodreads — also the NYT #1 Hardcover Fiction bestseller this week.", rating: 4.1, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 3, title: "The Correspondent", author: "Virginia Evans", description: "Trending #3 on Goodreads this week.", rating: 4.0, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 4, title: "Whistler", author: "Ann Patchett", description: "Trending #4 on Goodreads — the latest novel from beloved author Ann Patchett.", rating: 4.1, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 5, title: "Dolly All the Time", author: "Annabel Monaghan", description: "Trending #5 on Goodreads — a GMA Book Club Pick and instant NYT bestseller.", rating: 4.0, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 6, title: "Theo of Golden", author: "Allen Levi", description: "Trending #6 on Goodreads — a national bestseller about faith, community, and a small-town coffee shop.", rating: 4.3, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 7, title: "The Shampoo Effect", author: "Jenny Jackson", description: "Trending #7 on Goodreads this week — from the author of Pineapple Street.", rating: 4.0, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 8, title: "Heart the Lover", author: "Lily King", description: "Trending #8 on Goodreads — an instant NYT bestseller and PEN/Faulkner Award finalist.", rating: 4.1, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
-  { rank: 9, title: "A Football Odyssey", author: "Rob Potts", description: "Featured in Goodreads' Week in Books: passion, politics, and the beautiful game.", rating: 4.0, ratingCount: "Featured pick", goodreadsId: "", source: "goodreads" },
-];
-
-// Daily Goodreads Trending Cache — refreshes once per calendar day
-let goodreadsTrendingCache: any[] | null = null;
-let goodreadsTrendingCacheDate = "";
-
-async function fetchGoodreadsTrendingBooks(): Promise<any[]> {
-  const today = new Date().toISOString().split("T")[0];
-  if (goodreadsTrendingCache && goodreadsTrendingCacheDate === today) {
-    console.log("[Goodreads Trending] Cache hit for", today);
-    return goodreadsTrendingCache;
-  }
-  console.log("[Goodreads Trending] Fetching fresh data from goodreads.com/book/most_read …");
-  try {
-    const html = await fetchPageHtmlWithProxies("https://www.goodreads.com/book/most_read", "bookTitle");
-    const $ = cheerio.load(html);
-    const books: any[] = [];
-    $("tr").each((_idx, el) => {
-      if (books.length >= 12) return false as any;
-      const row = $(el);
-      const title = (row.find("a.bookTitle span").text() || row.find(".bookTitle").text()).trim();
-      const author = (row.find("a.authorName span").text() || row.find(".authorName").text()).trim();
-      if (!title) return;
-      let coverUrl: string | null = row.find("img.bookCover, img[itemprop='image']").attr("src") || null;
-      if (coverUrl && (coverUrl.includes("nophoto") || coverUrl.includes("nocover"))) coverUrl = null;
-      books.push({
-        rank: books.length + 1,
-        title,
-        author,
-        description: "Currently trending on Goodreads — one of the most-read books this week.",
-        rating: 4.0,
-        ratingCount: "Trending this week",
-        coverUrl: coverUrl || `/api/cover-redirect?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author || "")}`,
-        goodreadsId: "",
-        source: "goodreads",
-      });
-    });
-    if (books.length >= 3) {
-      goodreadsTrendingCache = books;
-      goodreadsTrendingCacheDate = today;
-      console.log(`[Goodreads Trending] Cached ${books.length} books for ${today}.`);
-      return books;
-    }
-    throw new Error(`Only ${books.length} books parsed — insufficient.`);
-  } catch (err: any) {
-    console.warn("[Goodreads Trending] Scrape failed, using static fallback:", err.message);
-    return GOODREADS_BLOG_3182_BOOKS.map(b => ({
-      ...b,
-      coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
-    }));
-  }
+// Fallback curated list when live Goodreads scrape is unavailable
+async function fetchGoodreadsTrendingBooksLocal(): Promise<any[]> {
+  const books = await fetchGoodreadsTrendingBooks(fetchPageHtmlWithProxies);
+  if (books.length >= 3) return books;
+  return mapGoodreadsTrendingFallback();
 }
 
 app.get("/api/goodreads/list", async (req, res) => {
@@ -1656,7 +1602,7 @@ app.get("/api/goodreads/list", async (req, res) => {
 
     // Special case: daily-refreshed Goodreads trending list
     if (listQuery === "goodreads-blog-3182-weekly") {
-      const books = await fetchGoodreadsTrendingBooks();
+      const books = await fetchGoodreadsTrendingBooksLocal();
       return res.json(books);
     }
 
@@ -1799,8 +1745,16 @@ app.get("/api/goodreads/list", async (req, res) => {
   }
 });
 
-// Audiobooks: popular titles for discovery feed
+// Audiobooks: popular titles scraped live from source sites
 app.get("/api/audiobooks/popular", async (_req, res) => {
+  try {
+    const scraped = await scrapePopularAudiobooks(fetchPageHtmlWithProxies);
+    if (scraped.length >= 4) {
+      return res.json(scraped);
+    }
+  } catch (err: any) {
+    console.warn("[Audiobooks Popular] Scrape failed, using fallback:", err.message);
+  }
   res.json(mapPopularAudiobooks());
 });
 
@@ -1812,20 +1766,7 @@ app.get("/api/audiobooks/search", async (req, res) => {
   const cached = getCachedAudiobookSearch(q);
   if (cached) return res.json(cached);
 
-  const results: any[] = [];
-
-  await Promise.allSettled([
-    fetchPageHtmlWithProxies(`https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`)
-      .then(html => results.push(...parseAudiobookSearchHtml(html, "fulllengthaudiobooks", "https://fulllengthaudiobooks.com")))
-      .catch(err => console.warn("[Audiobook] fulllengthaudiobooks search failed:", err.message)),
-    fetchPageHtmlWithProxies(`https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`)
-      .then(html => results.push(...parseAudiobookSearchHtml(html, "hdaudiobooks", "https://hdaudiobooks.com")))
-      .catch(err => console.warn("[Audiobook] hdaudiobooks search failed:", err.message)),
-  ]);
-
-  const deduped = results.filter((r, i, arr) =>
-    arr.findIndex(x => x.link === r.link) === i
-  ).slice(0, 16);
+  const deduped = await searchAudiobooksFromSources(fetchPageHtmlWithProxies, q, 16);
 
   if (deduped.length === 0) {
     const lower = q.toLowerCase();
@@ -1835,8 +1776,10 @@ app.get("/api/audiobooks/search", async (req, res) => {
       deduped.push({
         ...b,
         coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
-        link: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-        source: "hdaudiobooks",
+        link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+        listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+        listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+        source: "fulllengthaudiobooks",
       });
     });
   }
@@ -1893,8 +1836,10 @@ app.get("/api/audiobooks/search/stream", async (req, res) => {
     ).map(b => ({
       ...b,
       coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
-      link: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-      source: "hdaudiobooks",
+      link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+      listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+      listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+      source: "fulllengthaudiobooks",
     }));
     if (fallback.length) {
       all.push(...fallback);
@@ -2200,6 +2145,21 @@ app.get("/api/cover-redirect", async (req, res) => {
           }
         } catch (_) {}
       }
+    }
+
+    // 5. Try Google Books API fallback
+    if (title) {
+      try {
+        const gUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(`intitle:${title as string} ${author ? `inauthor:${author}` : ""}`)}&maxResults=1`;
+        const gRes = await fetch(gUrl);
+        if (gRes.ok) {
+          const gData = await gRes.json();
+          const thumb = gData.items?.[0]?.volumeInfo?.imageLinks?.thumbnail?.replace("http:", "https:");
+          if (thumb) {
+            return res.redirect(thumb);
+          }
+        }
+      } catch (_) {}
     }
 
     // Return 404 placeholder

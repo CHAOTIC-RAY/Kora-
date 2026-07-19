@@ -59,8 +59,8 @@ export function buildProbeUrls(book: any): string[] {
     book.link,
     book.listenUrl,
     book.listenUrlAlt,
-    book.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(book.title)}` : "",
     book.title ? `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(book.title)}` : "",
+    book.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(book.title)}` : "",
   ].filter(Boolean);
 }
 

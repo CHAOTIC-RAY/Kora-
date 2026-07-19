@@ -7,6 +7,8 @@ import {
   parseAudiobookSearchHtml,
   extractFirstBookLinkFromSearch,
   isAudiobookSearchUrl,
+  scrapePopularAudiobooks,
+  searchAudiobooksFromSources,
 } from "./lib/audiobookScraper";
 import {
   getCachedAudiobookDetail,
@@ -15,6 +17,7 @@ import {
   resolveAudiobookDetailParallel,
   resolveAudiobookDetailFromPage,
 } from "./lib/audiobookServer";
+import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
 
 declare const HTMLRewriter: any;
 
@@ -1117,6 +1120,15 @@ export default {
         });
       }
 
+      // Special case: daily-refreshed Goodreads trending list
+      if (listQuery === "goodreads-blog-3182-weekly") {
+        const books = await fetchGoodreadsTrendingBooks(fetchPageHtmlWithProxies);
+        const payload = books.length >= 3 ? books : mapGoodreadsTrendingFallback();
+        return new Response(JSON.stringify(payload), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
       console.log(`[Goodreads API] Fetching books for list query: ${listQuery}`);
 
       // Check memory cache first
@@ -1260,6 +1272,16 @@ export default {
 
     // 2.1.85 Audiobooks API
     if (path === "/api/audiobooks/popular") {
+      try {
+        const scraped = await scrapePopularAudiobooks(fetchPageHtmlWithProxies);
+        if (scraped.length >= 4) {
+          return new Response(JSON.stringify(scraped), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+      } catch (err: any) {
+        console.warn("[Audiobooks Popular] Scrape failed:", err.message);
+      }
       return new Response(JSON.stringify(mapPopularAudiobooks()), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
@@ -1281,19 +1303,7 @@ export default {
         });
       }
 
-      const results: any[] = [];
-      await Promise.allSettled([
-        fetchPageHtmlWithProxies(`https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`)
-          .then(html => results.push(...parseAudiobookSearchHtml(html, "fulllengthaudiobooks", "https://fulllengthaudiobooks.com")))
-          .catch(err => console.warn("[Audiobook] fulllengthaudiobooks search failed:", err.message)),
-        fetchPageHtmlWithProxies(`https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`)
-          .then(html => results.push(...parseAudiobookSearchHtml(html, "hdaudiobooks", "https://hdaudiobooks.com")))
-          .catch(err => console.warn("[Audiobook] hdaudiobooks search failed:", err.message)),
-      ]);
-
-      const deduped = results.filter((r, i, arr) =>
-        arr.findIndex(x => x.link === r.link) === i
-      ).slice(0, 16);
+      const deduped = await searchAudiobooksFromSources(fetchPageHtmlWithProxies, q, 16);
 
       if (deduped.length === 0) {
         const lower = q.toLowerCase();
@@ -1303,8 +1313,10 @@ export default {
           deduped.push({
             ...b,
             coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
-            link: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-            source: "hdaudiobooks",
+            link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+            listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+            listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+            source: "fulllengthaudiobooks",
           });
         });
       }
@@ -2657,6 +2669,31 @@ export default {
         }
       }
 
+      // Try Google Books API fallback
+      if (title) {
+        try {
+          const gUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(`intitle:${title} ${author ? `inauthor:${author}` : ""}`)}&maxResults=1`;
+          const gRes = await fetch(gUrl);
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const thumb = gData.items?.[0]?.volumeInfo?.imageLinks?.thumbnail?.replace("http:", "https:");
+            if (thumb) {
+              const imgRes = await fetch(thumb, { headers: { "User-Agent": "Mozilla/5.0" } });
+              if (imgRes.ok) {
+                const body = await imgRes.arrayBuffer();
+                return new Response(body, {
+                  headers: {
+                    "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
+                    "Cache-Control": "public, max-age=604800, immutable",
+                    "Access-Control-Allow-Origin": "*"
+                  }
+                });
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       // If all fails, return a 404
       return new Response("No cover found", { status: 404 });
     }
@@ -3100,7 +3137,7 @@ export default {
         return new Response("Missing url", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|covers\.openlibrary\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gr-assets\.com|goodreads\.com)$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|goodreads\.com)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
