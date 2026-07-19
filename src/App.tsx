@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { 
   auth, 
   isRealFirebase, 
@@ -23,10 +23,10 @@ import { inferBookTags } from "./lib/tagsHelper";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
-import BookReaderEPUB from "./components/BookReaderEPUB";
-import BookReaderPDF from "./components/BookReaderPDF";
-import BookReaderText from "./components/BookReaderText";
-import AudiobookPlayer from "./components/AudiobookPlayer";
+const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
+const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
+const BookReaderText = lazy(() => import("./components/BookReaderText"));
+const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import { enqueueAudiobookDownload, handleAudiobookSwMessage } from "./lib/audiobookSyncQueue";
@@ -48,6 +48,10 @@ import DownloadBookBtn from "./components/DownloadBookBtn";
 import OnboardingModal from "./components/OnboardingModal";
 import DailyReminderModal from "./components/DailyReminderModal";
 import KoraLoading from "./components/KoraLoading";
+import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
+import AnnotationsHub from "./components/AnnotationsHub";
+import { enqueueEbookDownload } from "./lib/ebookDownloadQueue";
+import { mergeReadingProgress } from "./lib/progressMerge";
 import { toast, Toaster } from "react-hot-toast";
 import { logger } from "./lib/logger";
 import { 
@@ -200,6 +204,7 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     return localStorage.getItem("kora_onboarding_completed") !== "true";
   });
+  const [showAnnotationsHub, setShowAnnotationsHub] = useState(false);
   const [userNickname, setUserNickname] = useState<string>(() => {
     return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
   });
@@ -464,6 +469,12 @@ export default function App() {
         md5: variant.md5,
         fileExtension: variant.extension || variant.format || "epub",
         proxyUrl,
+      });
+      enqueueEbookDownload({
+        id: downloadId,
+        bookId: book.id || variant.md5 || downloadId,
+        title: book.title,
+        url: proxyUrl,
       });
       if (handedOff) return;
     } catch (swErr) {
@@ -1545,6 +1556,7 @@ export default function App() {
             downloads={globalDownloads}
             onCancelDownload={cancelBackgroundDownload}
             onDismissDownload={dismissDownload}
+            onOpenAnnotations={() => setShowAnnotationsHub(true)}
             onSearchTrigger={(query) => {
               setDiscoverInitialQuery(query);
               setActiveTab("discover");
@@ -1729,6 +1741,7 @@ export default function App() {
 
       {/* 3. Full-Screen Reader Component Viewports */}
       {audiobookPlayback && (
+        <Suspense fallback={null}>
           <AudiobookPlayer
             book={audiobookPlayback}
             userId={user?.uid || ""}
@@ -1745,9 +1758,11 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
+        </Suspense>
         )}
       {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
-        activeBook.extension?.toLowerCase() === "pdf" ? (
+        <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading /></div>}>
+        {activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
             book={activeBook}
             userId={user?.uid || ""}
@@ -1835,7 +1850,8 @@ export default function App() {
               </div>
             </div>
           </div>
-        )
+        )}
+        </Suspense>
       )}
 
       {/* Settings Modal */}
@@ -2161,6 +2177,20 @@ export default function App() {
         currentTheme={displayTheme}
         onThemeChange={(newTheme) => changeTheme(newTheme)}
       />
+
+      <PwaLifecycleBanner />
+
+      {showAnnotationsHub && (
+        <AnnotationsHub
+          books={books}
+          userId={user?.uid || ""}
+          onClose={() => setShowAnnotationsHub(false)}
+          onOpenBook={(book) => {
+            setShowAnnotationsHub(false);
+            handleOpenBook(book);
+          }}
+        />
+      )}
     </div>
   );
 }

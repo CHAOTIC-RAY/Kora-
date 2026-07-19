@@ -136,6 +136,7 @@ interface LibraryManagerProps {
   onCancelDownload?: (downloadId: string) => void;
   onDismissDownload?: (downloadId: string) => void;
   onSearchTrigger?: (query: string) => void;
+  onOpenAnnotations?: () => void;
 }
 
 function calculateStreak(stats: Record<string, { minutes: number }>): number {
@@ -186,7 +187,8 @@ export default function LibraryManager({
   downloads = [],
   onCancelDownload,
   onDismissDownload,
-  onSearchTrigger
+  onSearchTrigger,
+  onOpenAnnotations,
 }: LibraryManagerProps) {
   // Filters & sorting
   const [search, setSearch] = useState<string>("");
@@ -715,13 +717,7 @@ export default function LibraryManager({
   const totalBooks = books.length;
   const completedBooks = books.filter(b => b.status === "completed").length;
   const activeReading = books.filter(b => b.status === "reading").length;
-  
-  // Calculate a mock reading streak based on lastReadTime timestamps
-  const readingStreak = books.some(b => {
-    const lastRead = b.progress?.lastReadTime ?? 0;
-    const diffHours = (Date.now() - lastRead) / (1000 * 60 * 60);
-    return diffHours < 24;
-  }) ? 3 : 1; // standard streak mock or fallback
+  const readingStreak = calculatedStreak;
 
   return (
     <div id="library-manager-section" className="space-y-6 md:space-y-10 pb-4 md:pb-10">
@@ -733,6 +729,17 @@ export default function LibraryManager({
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Focus &amp; Collections</p>
         </div>
 
+        <div className="flex items-center gap-2">
+          {onOpenAnnotations && (
+            <button
+              type="button"
+              onClick={onOpenAnnotations}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider hover:bg-kindle-bg transition"
+              aria-label="Open annotations hub"
+            >
+              Annotations
+            </button>
+          )}
         {/* Manage Library Button (Mobile) */}
         <button
           onClick={() => {
@@ -748,6 +755,7 @@ export default function LibraryManager({
         >
           {isManageMode ? "Cancel" : "Manage Library"}
         </button>
+        </div>
       </header>
 
       {/* 3. Full Library Section with Search/Filter */}
@@ -883,6 +891,7 @@ export default function LibraryManager({
               return (
                 <div
                   key={cardKey}
+                  style={{ contentVisibility: "auto", containIntrinsicSize: "auto 280px" }}
                   onTouchStart={(e) => !isManageMode && startLongPress(book, e)}
                   onTouchEnd={isManageMode ? undefined : endLongPress}
                   onTouchMove={isManageMode ? undefined : handleTouchMove}
@@ -1109,6 +1118,29 @@ export default function LibraryManager({
             <div className="kindle-card p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Streak</h4>
               <div className="text-xl font-bold">{readingStreak} <span className="text-xs font-normal">days</span></div>
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mb-2">Last 28 days</p>
+            <div className="flex flex-wrap gap-1" aria-label="Reading streak calendar">
+              {Array.from({ length: 28 }).map((_, i) => {
+                const d = new Date();
+                d.setDate(d.getDate() - (27 - i));
+                const keyIso = d.toISOString().slice(0, 10);
+                const keyLegacy = d.toDateString();
+                let minutes = 0;
+                try {
+                  const stats = JSON.parse(localStorage.getItem("kora_reading_stats") || "{}");
+                  minutes = Math.max(stats[keyIso]?.minutes || 0, stats[keyLegacy]?.minutes || 0);
+                } catch { /* ignore */ }
+                return (
+                  <div
+                    key={keyIso}
+                    title={`${keyIso}: ${minutes} min`}
+                    className={`w-2.5 h-2.5 rounded-sm ${minutes > 0 ? "bg-kindle-accent" : "bg-kindle-border/60"}`}
+                  />
+                );
+              })}
             </div>
           </div>
         </div>

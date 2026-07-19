@@ -411,14 +411,19 @@ export default function SettingsView({
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
     { id: "font-sans", label: "Sans" },
+    { id: "font-lexend", label: "Lexend" },
+    { id: "font-opendyslexic", label: "OpenDyslexic" },
     { id: "font-mono", label: "Mono" },
     { id: "font-thaana", label: "Dhivehi" },
   ];
   const readerThemes = [
-    { id: "light", label: "Light", bg: "bg-white", ring: "ring-neutral-300" },
     { id: "sepia", label: "Sepia", bg: "bg-[#f4ecd8]", ring: "ring-[#cbb994]" },
+    { id: "night", label: "Night", bg: "bg-[#1c1f26]", ring: "ring-[#3a4050]" },
+    { id: "paper", label: "Paper", bg: "bg-[#faf7f2]", ring: "ring-[#e4ddd2]" },
+    { id: "oled", label: "OLED", bg: "bg-black", ring: "ring-neutral-700" },
+    { id: "light", label: "Light", bg: "bg-white", ring: "ring-neutral-300" },
     { id: "dark", label: "Dark", bg: "bg-[#1a1a1a]", ring: "ring-neutral-600" },
-    { id: "green", label: "Green", bg: "bg-[#c7edcc]", ring: "ring-[#7fb987]" }
+    { id: "green", label: "Green", bg: "bg-[#c7edcc]", ring: "ring-[#7fb987]" },
   ];
   const marginOptions = [
     { id: "max-w-xl px-4", label: "Narrow" },

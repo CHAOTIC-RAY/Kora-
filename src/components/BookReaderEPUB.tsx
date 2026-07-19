@@ -24,7 +24,22 @@ import {
 } from "../lib/ttsSettings";
 import { prepareTextForNarration } from "../lib/ttsTextPrep";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal } from "lucide-react";
+import {
+  PRIMARY_READER_THEME_KEYS,
+  READER_FONTS,
+  READER_THEMES,
+  LINE_HEIGHT_PRESETS,
+  MARGIN_PRESETS,
+  resolveReaderTheme,
+} from "../lib/readerThemes";
+import { downloadMarkdown, highlightsToMarkdown } from "../lib/annotationsExport";
+import {
+  estimateTimeLeftMinutes,
+  formatTimeLeft,
+  recordPagesRead,
+  recordReadingMinute,
+} from "../lib/readingStats";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
 
@@ -276,6 +291,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
   const [currentParagraphIdx, setCurrentParagraphIdx] = useState<number>(-1);
+  const [locationHistory, setLocationHistory] = useState<{ chapterIdx: number; pageNum: number }[]>([]);
+  const [timeLeftLabel, setTimeLeftLabel] = useState<string>("");
 
   const [externalLinkToOpen, setExternalLinkToOpen] = useState<string | null>(null);
 
@@ -298,22 +315,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   } | null>(null);
   const isPointerDownRef = useRef<boolean>(false);
 
-  // Font choices
-  const fontFamilies = [
-    { name: "Lora Serif", value: "font-serif" },
-    { name: "Inter Sans", value: "font-sans" },
-    { name: "JetBrains Mono", value: "font-mono" },
-    { name: "Dhivehi", value: "font-thaana" },
-    { name: "Lexend (Readable)", value: "font-lexend" }
-  ];
-
-  // Theme specs
-  const themes: Record<string, { bg: string; text: string; card: string; border: string }> = {
-    light: { bg: "bg-[#FFFFFF]", text: "text-[#1A1A1A]", card: "bg-[#F9F9F9]", border: "border-[#E5E5E5]" },
-    sepia: { bg: "bg-[#F4ECD8]", text: "text-[#5B4636]", card: "bg-[#EFE3C5]", border: "border-[#DBCDA4]" },
-    green: { bg: "bg-[#E3EDD3]", text: "text-[#2D3E1E]", card: "bg-[#D9E6C3]", border: "border-[#C5D6A8]" },
-    dark: { bg: "bg-[#1A1A1A]", text: "text-[#E5E5E5]", card: "bg-[#262626]", border: "border-[#333333]" }
-  };
+  // Font & theme presets (KOReader-aligned)
+  const fontFamilies = READER_FONTS;
+  const themes = Object.fromEntries(
+    Object.entries(READER_THEMES).map(([k, v]) => [k, { bg: v.bg, text: v.text, card: v.card, border: v.border }])
+  );
 
   const recalculateLayout = () => {
     setTimeout(() => {
@@ -416,23 +422,113 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   useEffect(() => {
     const interval = setInterval(() => {
       try {
-        const todayStr = new Date().toDateString();
-        const savedStats = localStorage.getItem("kora_reading_stats");
-        let stats = savedStats ? JSON.parse(savedStats) : {};
-        
-        if (!stats[todayStr]) {
-          stats[todayStr] = { minutes: 0, date: todayStr };
-        }
-        stats[todayStr].minutes = (stats[todayStr].minutes || 0) + 1;
-        
-        localStorage.setItem("kora_reading_stats", JSON.stringify(stats));
+        recordReadingMinute(book.id);
       } catch (e) {
         console.error("Failed to log reading timer progress:", e);
       }
-    }, 60000); // every minute
-    
+    }, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [book.id]);
+
+  // Restore page within chapter from saved progress
+  useEffect(() => {
+    const savedPage = book.progress?.pageNumber;
+    if (typeof savedPage === "number" && savedPage > 1 && !loading && chapters.length) {
+      const t = setTimeout(() => {
+        setCurrentPageNum(Math.min(savedPage, totalPages || savedPage));
+      }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [loading, chapters.length]);
+
+  // Persist page position + estimate time left
+  useEffect(() => {
+    if (loading || !chapters.length) return;
+
+    const overall =
+      ((currentChapterIdx + (currentPageNum - 1) / Math.max(1, totalPages)) / Math.max(1, chapters.length)) * 100;
+    const remainingFraction = Math.max(0, 1 - overall / 100);
+    // Rough remaining words from remaining chapters × avg chapter length heuristic
+    const viewer = document.getElementById("epub-text-viewer");
+    const chapterWords = (viewer?.textContent || "").split(/\s+/).filter(Boolean).length || 400;
+    const remainingChapters = Math.max(0, chapters.length - currentChapterIdx - 1);
+    const remainingWords =
+      chapterWords * (1 - (currentPageNum - 1) / Math.max(1, totalPages)) + remainingChapters * chapterWords;
+    setTimeLeftLabel(formatTimeLeft(estimateTimeLeftMinutes(remainingWords)));
+
+    const updated: BookMetadata = {
+      ...book,
+      status: overall >= 99.5 ? "completed" : "reading",
+      progress: {
+        ...(book.progress || {}),
+        chapterIndex: currentChapterIdx,
+        chapterTitle: chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`,
+        pageNumber: currentPageNum,
+        percent: Math.min(100, Math.max(0, Math.round(overall))),
+        lastReadTime: Date.now(),
+      },
+    };
+    const t = setTimeout(() => {
+      onProgressUpdate(updated);
+      void syncBookToCloud(userId, updated);
+    }, 800);
+    return () => clearTimeout(t);
+  }, [currentPageNum, currentChapterIdx, totalPages, chapters.length, loading]);
+
+  // Track page turns for pages/day stats
+  const prevPageRef = useRef(currentPageNum);
+  useEffect(() => {
+    if (currentPageNum > prevPageRef.current) {
+      recordPagesRead(currentPageNum - prevPageRef.current, book.id);
+    }
+    prevPageRef.current = currentPageNum;
+  }, [currentPageNum, book.id]);
+
+  const pushLocation = (chapterIdx: number, pageNum: number) => {
+    setLocationHistory((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.chapterIdx === chapterIdx && last.pageNum === pageNum) return prev;
+      return [...prev.slice(-19), { chapterIdx, pageNum }];
+    });
+  };
+
+  const goBackLocation = () => {
+    setLocationHistory((prev) => {
+      if (prev.length < 2) return prev;
+      const next = [...prev];
+      next.pop();
+      const target = next[next.length - 1];
+      if (target) {
+        if (target.chapterIdx !== currentChapterIdx) {
+          void updateProgress(target.chapterIdx, false, { skipHistory: true }).then(() => {
+            setTimeout(() => setCurrentPageNum(target.pageNum), 200);
+          });
+        } else {
+          setCurrentPageNum(target.pageNum);
+        }
+      }
+      return next;
+    });
+  };
+
+  const scrubToPercent = (pct: number) => {
+    const clamped = Math.max(0, Math.min(100, pct)) / 100;
+    const exact = clamped * Math.max(1, chapters.length);
+    const chapterIdx = Math.min(chapters.length - 1, Math.floor(exact));
+    const chapterFrac = exact - chapterIdx;
+    pushLocation(currentChapterIdx, currentPageNum);
+    if (chapterIdx !== currentChapterIdx) {
+      void updateProgress(chapterIdx, false).then(() => {
+        setTimeout(() => {
+          const page = Math.max(1, Math.min(totalPages, Math.round(chapterFrac * Math.max(1, totalPages)) || 1));
+          setCurrentPageNum(page);
+        }, 250);
+      });
+    } else if (!useScrollLayout) {
+      const page = Math.max(1, Math.min(totalPages, Math.round(chapterFrac * Math.max(1, totalPages)) || 1));
+      setCurrentPageNum(page);
+    }
+  };
 
   // Persist customized reader preferences on change
   useEffect(() => {
@@ -1436,9 +1532,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   }
 
   // Trigger progress updates and firestore syncs
-  async function updateProgress(newChapterIdx: number, goToLastPage = false) {
+  async function updateProgress(newChapterIdx: number, goToLastPage = false, opts?: { skipHistory?: boolean }) {
     if (newChapterIdx < 0 || newChapterIdx >= chapters.length) return;
-    
+
+    if (!opts?.skipHistory) {
+      pushLocation(currentChapterIdx, currentPageNum);
+    }
+
     // Disable transition temporarily and reset page index synchronously
     setShouldAnimate(false);
     setCurrentPageNum(goToLastPage ? 999 : 1);
@@ -1487,6 +1587,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       progress: {
         chapterIndex: newChapterIdx,
         chapterTitle: chapters[newChapterIdx]?.title || `Chapter ${newChapterIdx + 1}`,
+        pageNumber: goToLastPage ? undefined : 1,
         percent,
         lastReadTime: Date.now()
       }
@@ -1811,9 +1912,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             onClick={handleClose} 
             className="p-2 rounded-xl hover:bg-neutral-500/10 transition text-kindle-text"
             title="Back to Library"
+            aria-label="Back to library"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
+          {locationHistory.length > 1 && (
+            <button
+              type="button"
+              onClick={goBackLocation}
+              className="p-2 rounded-xl hover:bg-neutral-500/10 transition text-kindle-text"
+              title="Back to previous location"
+              aria-label="Back to previous reading location"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+          )}
           <div className="hidden sm:block">
             <h1 className="font-sans font-bold text-xs uppercase tracking-widest text-kindle-text-muted">
               {book.title}
@@ -1827,6 +1940,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? 'bg-neutral-500/20' : ''}`}
             title="Highlights & Notes"
+            aria-label="Highlights and notes"
+            aria-pressed={showNotes}
           >
             <FileText className="w-5 h-5" />
           </button>
@@ -1939,21 +2054,48 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             <div className="mb-4">
               <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Reading Theme</label>
               <div className="grid grid-cols-4 gap-1.5">
-                {Object.keys(themes).map((tKey) => {
-                  const th = themes[tKey];
+                {PRIMARY_READER_THEME_KEYS.map((tKey) => {
+                  const th = resolveReaderTheme(tKey);
                   return (
                     <button
                       key={tKey}
+                      type="button"
                       onClick={() => {
                         setTheme(tKey);
                         setThemeManuallySet(true);
                       }}
-                      className={`h-10 rounded-lg border flex items-center justify-center text-xs font-semibold capitalize ${th.bg} ${th.text} ${
+                      aria-label={`${th.label} theme`}
+                      aria-pressed={theme === tKey}
+                      className={`h-10 rounded-lg border flex items-center justify-center text-[10px] font-semibold ${
                         theme === tKey ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
                       }`}
-                      title={tKey}
+                      style={{ background: th.previewBg, color: th.previewText }}
+                      title={th.label}
                     >
-                      {tKey[0].toUpperCase()}
+                      {th.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+                {(["light", "green", "dark"] as const).map((tKey) => {
+                  const th = resolveReaderTheme(tKey);
+                  return (
+                    <button
+                      key={tKey}
+                      type="button"
+                      onClick={() => {
+                        setTheme(tKey);
+                        setThemeManuallySet(true);
+                      }}
+                      aria-label={`${th.label} theme`}
+                      aria-pressed={theme === tKey}
+                      className={`h-8 rounded-lg border flex items-center justify-center text-[9px] font-semibold ${
+                        theme === tKey ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
+                      }`}
+                      style={{ background: th.previewBg, color: th.previewText }}
+                    >
+                      {th.label}
                     </button>
                   );
                 })}
@@ -1967,8 +2109,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 {fontFamilies.map((ff) => (
                   <button
                     key={ff.value}
+                    type="button"
                     onClick={() => setFontFamily(ff.value)}
-                    className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
+                    aria-pressed={fontFamily === ff.value}
+                    className={`p-2 text-xs rounded-lg border text-center transition ${ff.value} ${
                       fontFamily === ff.value
                         ? "border-[#5c5346] bg-[#5c5346]/10 font-semibold"
                         : "border-neutral-500/20 hover:border-neutral-500/50"
@@ -2485,10 +2629,35 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               {/* Highlights Section */}
               <div className="space-y-4">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
-                  <Highlighter className="w-3.5 h-3.5" />
-                  My Highlights
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text-muted flex items-center gap-2">
+                    <Highlighter className="w-3.5 h-3.5" />
+                    My Highlights
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const md = highlightsToMarkdown({
+                        book,
+                        highlights: highlightsData,
+                        notes: activeNoteText.trim()
+                          ? [{
+                              chapterIdx: currentChapterIdx,
+                              chapterTitle: chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`,
+                              noteText: activeNoteText,
+                              updatedAt: Date.now(),
+                            }]
+                          : [],
+                      });
+                      downloadMarkdown(`${book.title} — annotations.md`, md);
+                    }}
+                    className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg border border-kindle-border flex items-center gap-1 hover:bg-black/5"
+                    aria-label="Export highlights to Markdown"
+                  >
+                    <Download className="w-3 h-3" />
+                    MD
+                  </button>
+                </div>
                 
                 {highlightsData.length === 0 ? (
                   <div className="text-center p-6 border border-dashed border-kindle-border rounded-xl">
@@ -3217,23 +3386,35 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   <div className="w-[100px] hidden sm:block" />
                 )}
 
-                <div className="flex flex-col items-center">
-                  <div className="w-48 bg-neutral-200 h-1 rounded-full overflow-hidden mb-1.5">
-                    <div 
-                      className="bg-kindle-text h-full transition-all duration-500" 
-                      style={{ 
-                        width: `${Math.min(100, Math.max(0, Math.round(
-                          ((currentChapterIdx + (currentPageNum - 1) / (totalPages || 1)) / (chapters.length || 1)) * 100
-                        )))}%` 
-                      }}
-                    />
-                  </div>
-                  <span className="text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90">
+                <div className="flex flex-col items-center min-w-0 flex-1 max-w-md px-2">
+                  <label className="sr-only" htmlFor="reader-progress-scrubber">Reading progress</label>
+                  <input
+                    id="reader-progress-scrubber"
+                    type="range"
+                    min={0}
+                    max={1000}
+                    value={Math.round(
+                      Math.min(
+                        1000,
+                        Math.max(
+                          0,
+                          ((currentChapterIdx + (currentPageNum - 1) / Math.max(1, totalPages)) /
+                            Math.max(1, chapters.length)) *
+                            1000
+                        )
+                      )
+                    )}
+                    onChange={(e) => scrubToPercent((parseInt(e.target.value, 10) / 1000) * 100)}
+                    className="w-full max-w-xs accent-kindle-accent h-1.5 bg-neutral-200 rounded-full appearance-none cursor-pointer"
+                    aria-valuetext={timeLeftLabel}
+                  />
+                  <span className="text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90 mt-1.5 text-center">
                     {useScrollLayout
                       ? `chapter ${currentChapterIdx + 1} of ${chapters.length} • ${Math.min(100, Math.max(0, Math.round(((currentChapterIdx + 1) / (chapters.length || 1)) * 100)))}%`
                       : `page ${currentPageNum} of ${totalPages} (Ch. ${currentChapterIdx + 1}) • ${Math.min(100, Math.max(0, Math.round(
                     ((currentChapterIdx + (currentPageNum - 1) / (totalPages || 1)) / (chapters.length || 1)) * 100
                   )))}%`}
+                    {timeLeftLabel ? ` · ${timeLeftLabel}` : ""}
                   </span>
                 </div>
 

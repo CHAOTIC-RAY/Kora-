@@ -19,6 +19,7 @@ import {
   signOut,
   User
 } from "firebase/auth";
+import { mergeReadingProgress } from "./progressMerge";
 import rawFirebaseConfig from "../../firebase-applet-config.json";
 
 // Resilient configuration loading using local config
@@ -274,9 +275,14 @@ export async function loadLibrary(userId: string): Promise<BookMetadata[]> {
         localBooks.forEach(b => mergedMap.set(b.id, b));
         cloudBooks.forEach(cb => {
           const existing = mergedMap.get(cb.id);
-          if (!existing || cb.progress.lastReadTime > existing.progress.lastReadTime) {
+          if (!existing) {
             mergedMap.set(cb.id, cb);
+            return;
           }
+          const { progress } = mergeReadingProgress(existing.progress, cb.progress);
+          const preferCloud = (cb.progress?.lastReadTime || 0) >= (existing.progress?.lastReadTime || 0);
+          const chosen = preferCloud ? cb : existing;
+          mergedMap.set(cb.id, { ...chosen, progress: { ...chosen.progress, ...progress } });
         });
         const merged = Array.from(mergedMap.values());
         saveLocalLibrary(merged);

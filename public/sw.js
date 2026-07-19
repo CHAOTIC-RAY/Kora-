@@ -7,9 +7,10 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v2";
-const API_CACHE = "kora-api-v2";
-const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg"];
+const SHELL_CACHE = "kora-shell-v3";
+const API_CACHE = "kora-api-v3";
+const COVER_CACHE = "kora-covers-v1";
+const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
 const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
@@ -43,7 +44,8 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== SHELL_CACHE && k !== API_CACHE).map((k) => caches.delete(k)));
+      const keep = new Set([SHELL_CACHE, API_CACHE, COVER_CACHE]);
+      await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
       await self.clients.claim();
       warmApiCache();
       await resumePartialDownloads();
@@ -545,7 +547,7 @@ async function maybeShowDailyBriefNotification(force = false) {
 /* ---------- Message handling ---------- */
 self.addEventListener("message", (event) => {
   const data = event.data || {};
-  if (data.type === "skip-waiting") {
+  if (data.type === "skip-waiting" || data.type === "SKIP_WAITING") {
     self.skipWaiting();
     return;
   }
@@ -765,6 +767,24 @@ self.addEventListener("fetch", (event) => {
           })
           .catch(() => cached);
         return cached || network;
+      })()
+    );
+    return;
+  }
+
+  if (url.pathname.startsWith("/api/proxy-image")) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(COVER_CACHE);
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        try {
+          const res = await fetch(event.request);
+          if (res && res.ok) cache.put(event.request, res.clone());
+          return res;
+        } catch (e) {
+          return cached || new Response("", { status: 504 });
+        }
       })()
     );
     return;
