@@ -5,7 +5,7 @@ import {
   User as UserIcon, ShieldCheck, BookOpen,
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
-  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github
+  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import { 
@@ -133,14 +133,14 @@ export default function SettingsView({
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
 
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    account: true,      // Expanded by default
-    appearance: true,   // Expanded by default
-    reading: false,     // Collapsed by default
-    import: false,      // Collapsed by default
-    search: false,      // Collapsed by default
-    dictionary: false,  // Collapsed by default
-    data: false,        // Collapsed by default
-    about: false,       // Collapsed by default
+    appearance: true,
+    reading: false,
+    import: false,
+    search: false,
+    dictionary: false,
+    data: false,
+    tts: false,
+    about: false,
   });
 
   const toggleCategory = (key: string) => {
@@ -434,15 +434,70 @@ export default function SettingsView({
       </header>
 
       <div className="space-y-6">
-        {/* Bento Widget Grid (audiobook converters, Add Books & Cloud Sync Ingestion) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <BuiltInAudiobookConverter
-            books={(books as BookMetadata[]) || []}
-            userId={userId}
-            onRefreshLibrary={onRefreshLibrary}
-          />
+        {/* Appearance — first */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+          <div 
+            onClick={() => toggleCategory("appearance")}
+            className="flex items-center justify-between cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+                <Monitor className="w-4 h-4 text-kindle-text" />
+              </div>
+              <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Appearance Settings</h3>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-kindle-text-muted transition-transform duration-200 ${expandedCategories.appearance ? "rotate-180" : ""}`} />
+          </div>
 
-          {/* Tile 1: Local Ingestion (Drag & Drop) */}
+          {expandedCategories.appearance && (
+            <div className="mt-4 pt-4 border-t border-kindle-border/40 space-y-5 animate-in slide-in-from-top-2 duration-200">
+              <Row title="Grayscale Covers" desc="Classic e-ink aesthetic for book covers">
+                <Toggle on={grayscaleCovers} onClick={onToggleGrayscale} />
+              </Row>
+
+              <Row title="Hide Cover Images" desc="Do not show any cover images in lists and carousels">
+                <Toggle on={hideCovers} onClick={onToggleHideCovers || (() => {})} />
+              </Row>
+
+              <div className="space-y-2.5">
+                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => onChangeTheme("theme-light-white")}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-white' ? 'bg-kindle-card border-kindle-accent shadow-xs ring-1 ring-kindle-accent/30' : 'border-kindle-border hover:bg-kindle-card opacity-65'}`}
+                  >
+                    <Sun className="w-4 h-4" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest">White</span>
+                  </button>
+                  <button
+                    onClick={() => onChangeTheme("theme-light-yellow")}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-yellow' ? 'bg-[#f7f3e3] border-[#6b6459] shadow-xs ring-1 ring-[#6b6459]/30' : 'border-[#d6d2c3] hover:bg-[#f7f3e3] opacity-65'}`}
+                  >
+                    <Sun className="w-4 h-4 text-yellow-700" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-yellow-900">Yellow</span>
+                  </button>
+                  <button
+                    onClick={() => onChangeTheme("theme-dark-grey")}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#18181b] cursor-pointer ${displayTheme === 'theme-dark-grey' ? 'border-[#f4f4f5] shadow-xs ring-1 ring-[#f4f4f5]/30' : 'border-[#3f3f46] hover:bg-[#27272a] opacity-65'}`}
+                  >
+                    <Moon className="w-4 h-4 text-[#f4f4f5]" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#f4f4f5]">Grey</span>
+                  </button>
+                  <button
+                    onClick={() => onChangeTheme("theme-dark-blue")}
+                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#0b1120] cursor-pointer ${displayTheme === 'theme-dark-blue' ? 'border-[#38bdf8] shadow-xs ring-1 ring-[#38bdf8]/30' : 'border-[#1e3a5f] hover:bg-[#0f1f38] opacity-65'}`}
+                  >
+                    <Moon className="w-4 h-4 text-[#38bdf8]" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#38bdf8]">Blue</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Bento Widget Grid (local ingest + cloud) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-3">
             <div>
               <div className="flex items-center gap-2 mb-1.5">
@@ -546,68 +601,6 @@ export default function SettingsView({
           </div>
 
         </div>
-
-        {/* Appearance */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
-          <div 
-            onClick={() => toggleCategory("appearance")}
-            className="flex items-center justify-between cursor-pointer select-none"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-                <Monitor className="w-4 h-4 text-kindle-text" />
-              </div>
-              <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Appearance Settings</h3>
-            </div>
-            <ChevronDown className={`w-4 h-4 text-kindle-text-muted transition-transform duration-200 ${expandedCategories.appearance ? "rotate-180" : ""}`} />
-          </div>
-
-          {expandedCategories.appearance && (
-            <div className="mt-4 pt-4 border-t border-kindle-border/40 space-y-5 animate-in slide-in-from-top-2 duration-200">
-              <Row title="Grayscale Covers" desc="Classic e-ink aesthetic for book covers">
-                <Toggle on={grayscaleCovers} onClick={onToggleGrayscale} />
-              </Row>
-
-              <Row title="Hide Cover Images" desc="Do not show any cover images in lists and carousels">
-                <Toggle on={hideCovers} onClick={onToggleHideCovers || (() => {})} />
-              </Row>
-
-              <div className="space-y-2.5">
-                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => onChangeTheme("theme-light-white")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-white' ? 'bg-kindle-card border-kindle-accent shadow-xs ring-1 ring-kindle-accent/30' : 'border-kindle-border hover:bg-kindle-card opacity-65'}`}
-                  >
-                    <Sun className="w-4 h-4" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest">White</span>
-                  </button>
-                  <button
-                    onClick={() => onChangeTheme("theme-light-yellow")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-yellow' ? 'bg-[#f7f3e3] border-[#6b6459] shadow-xs ring-1 ring-[#6b6459]/30' : 'border-[#d6d2c3] hover:bg-[#f7f3e3] opacity-65'}`}
-                  >
-                    <Sun className="w-4 h-4 text-yellow-700" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-yellow-900">Yellow</span>
-                  </button>
-                  <button
-                    onClick={() => onChangeTheme("theme-dark-grey")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#18181b] cursor-pointer ${displayTheme === 'theme-dark-grey' ? 'border-[#f4f4f5] shadow-xs ring-1 ring-[#f4f4f5]/30' : 'border-[#3f3f46] hover:bg-[#27272a] opacity-65'}`}
-                  >
-                    <Moon className="w-4 h-4 text-[#f4f4f5]" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#f4f4f5]">Grey</span>
-                  </button>
-                  <button
-                    onClick={() => onChangeTheme("theme-dark-blue")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#0b1120] cursor-pointer ${displayTheme === 'theme-dark-blue' ? 'border-[#38bdf8] shadow-xs ring-1 ring-[#38bdf8]/30' : 'border-[#1e3a5f] hover:bg-[#0f1f38] opacity-65'}`}
-                  >
-                    <Moon className="w-4 h-4 text-[#38bdf8]" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#38bdf8]">Blue</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
 
         {/* Reading */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
@@ -1203,6 +1196,35 @@ export default function SettingsView({
           </div>
         </section>
 
+
+        {/* Read Aloud — collapsed by default, near bottom */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+          <div
+            onClick={() => toggleCategory("tts")}
+            className="flex items-center justify-between cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+                <Headphones className="w-4 h-4 text-kindle-text" />
+              </div>
+              <div>
+                <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Read Aloud</h3>
+                <p className="text-[9px] text-kindle-text-muted mt-0.5">Built-in audiobook converter &amp; voice settings</p>
+              </div>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-kindle-text-muted transition-transform duration-200 ${expandedCategories.tts ? "rotate-180" : ""}`} />
+          </div>
+
+          {expandedCategories.tts && (
+            <div className="mt-4 pt-4 border-t border-kindle-border/40 animate-in slide-in-from-top-2 duration-200">
+              <BuiltInAudiobookConverter
+                books={(books as BookMetadata[]) || []}
+                userId={userId}
+                onRefreshLibrary={onRefreshLibrary}
+              />
+            </div>
+          )}
+        </section>
 
         {/* About */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-4">

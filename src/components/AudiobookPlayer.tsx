@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ChevronLeft,
   Download,
-  Headphones,
   Pause,
   Play,
   RotateCcw,
@@ -136,6 +135,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const [estimatedRemaining, setEstimatedRemaining] = useState(0);
   const [ttsVoiceName, setTtsVoiceName] = useState("");
   const [showTtsSettings, setShowTtsSettings] = useState(false);
+  const [subtitle, setSubtitle] = useState("");
   const introSkippedForTrack = useRef<number | null>(null);
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
@@ -242,6 +242,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               setPlaybackError(message);
               setIsPlaying(false);
             },
+            onSubtitleUpdate: (text) => setSubtitle(text),
           });
         }
 
@@ -476,6 +477,12 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     trackTitles
   );
 
+  useEffect(() => {
+    if (!isTtsBook) {
+      setSubtitle(currentTrackLabel);
+    }
+  }, [isTtsBook, currentTrackLabel]);
+
   return (
     <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col">
       <audio
@@ -535,21 +542,21 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         }}
       />
 
-      <header className="flex items-center justify-between px-4 py-3 border-b border-kindle-border bg-kindle-card/90 backdrop-blur-sm shrink-0">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-kindle-border/80 bg-kindle-card/95 backdrop-blur-md shrink-0">
         <button
           onClick={onClose}
-          className="p-2 rounded-full hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text"
+          className="p-2 rounded-xl hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text"
           aria-label="Back"
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted font-lexend">
-          <Headphones className="w-4 h-4 text-kindle-text" />
-          Now Playing
+        <div className="text-center min-w-0 px-2">
+          <p className="text-[9px] font-bold uppercase tracking-[0.25em] text-kindle-text-muted font-lexend">Audiobook</p>
+          <p className="text-xs font-lexend font-bold text-kindle-text truncate max-w-[12rem] sm:max-w-xs">{book.title}</p>
         </div>
         <button
           onClick={onClose}
-          className="p-2 rounded-full hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text"
+          className="p-2 rounded-xl hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text"
           aria-label="Close player"
         >
           <X className="w-5 h-5" />
@@ -558,9 +565,9 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
 
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto">
-          <div className="flex flex-col items-center px-5 py-6 gap-5 max-w-md mx-auto w-full">
-            <div className="w-full shrink-0">
-              <div className="p-3 sm:p-4 rounded-2xl bg-kindle-card border border-kindle-border shadow-lg">
+          <div className="flex flex-col items-center px-4 sm:px-5 py-5 gap-4 max-w-lg mx-auto w-full">
+            <div className="w-full max-w-sm shrink-0">
+              <div className="p-3 sm:p-4 rounded-3xl bg-gradient-to-b from-kindle-card to-kindle-bg border border-kindle-border shadow-xl">
                 <CassetteVisualizer
                   title={book.title}
                   coverUrl={book.coverUrl}
@@ -570,30 +577,28 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               </div>
             </div>
 
-            <div className="text-center w-full space-y-1">
-              <h2 className="text-xl font-lexend font-bold leading-snug text-kindle-text line-clamp-2">
-                {book.title}
-              </h2>
-              {authorLabel && (
-                <p className="text-sm text-kindle-text-muted font-sans">{authorLabel}</p>
-              )}
+            <div className="w-full rounded-2xl border border-kindle-border bg-kindle-card/80 px-4 py-3 min-h-[4.5rem] flex items-center justify-center">
+              <p className="text-sm font-serif leading-relaxed text-kindle-text text-center line-clamp-3">
+                {subtitle || currentTrackLabel || book.title}
+              </p>
+            </div>
+
+            <div className="text-center w-full space-y-0.5">
+              {authorLabel && <p className="text-sm text-kindle-text-muted font-sans">{authorLabel}</p>}
               {isTtsBook && (
-                <p className="text-[10px] text-kindle-text-muted/90 font-lexend uppercase tracking-widest">
+                <p className="text-[10px] text-kindle-text-muted font-lexend uppercase tracking-widest">
                   Read aloud · {ttsVoiceName || "device voice"}
                 </p>
               )}
               {tracks.length > 0 && (
-                <p className="text-[11px] text-kindle-text-muted/80 font-lexend uppercase tracking-widest pt-1">
-                  Track {currentTrack + 1} of {tracks.length}
-                  {currentTrackLabel !== `Part ${currentTrack + 1}` ? ` · ${currentTrackLabel}` : ""}
+                <p className="text-[10px] text-kindle-text-muted/80 font-mono tabular-nums">
+                  Chapter {currentTrack + 1} / {tracks.length}
                 </p>
               )}
-              {playbackError && (
-                <p className="text-xs text-red-400 mt-2 text-center">{playbackError}</p>
-              )}
+              {playbackError && <p className="text-xs text-red-400 mt-2">{playbackError}</p>}
             </div>
 
-            <div className="w-full space-y-2">
+            <div className="w-full rounded-2xl border border-kindle-border bg-kindle-card/60 p-4 space-y-3">
               <input
                 type="range"
                 min={0}
@@ -610,89 +615,66 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                   introSkippedForTrack.current = currentTrack;
                   outroSkipTriggered.current = false;
                 }}
-                className="w-full h-1.5 appearance-none rounded-full bg-kindle-border accent-white cursor-pointer"
+                className="w-full h-1.5 appearance-none rounded-full bg-kindle-border accent-kindle-text cursor-pointer"
                 style={{
-                  background: `linear-gradient(to right, rgba(255,255,255,0.85) ${duration ? (currentTime / duration) * 100 : 0}%, rgba(255,255,255,0.12) ${duration ? (currentTime / duration) * 100 : 0}%)`,
+                  background: `linear-gradient(to right, var(--theme-text) ${duration ? (currentTime / duration) * 100 : 0}%, color-mix(in srgb, var(--theme-text) 15%, transparent) ${duration ? (currentTime / duration) * 100 : 0}%)`,
                 }}
               />
               <div className="flex justify-between text-[11px] text-kindle-text-muted font-mono tabular-nums">
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>
               </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1.5 bg-kindle-border rounded-full overflow-hidden">
+                  <div className="h-full bg-kindle-text transition-all duration-300" style={{ width: `${overallPercent}%` }} />
+                </div>
+                <span className="text-[10px] text-kindle-text-muted font-mono tabular-nums shrink-0">{overallPercent}%</span>
+              </div>
               {isTtsBook && (
-                <p className="text-[10px] text-kindle-text-muted/80 text-center font-lexend">
-                  ~{formatEstimatedRemaining(estimatedRemaining)} remaining (estimated)
+                <p className="text-[10px] text-kindle-text-muted text-center font-lexend">
+                  ~{formatEstimatedRemaining(estimatedRemaining)} left
                 </p>
               )}
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-1 bg-kindle-border rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-white/70 transition-all duration-300"
-                    style={{ width: `${overallPercent}%` }}
-                  />
-                </div>
-                <span className="text-[10px] text-kindle-text-muted font-lexend uppercase tracking-wider shrink-0">
-                  {overallPercent}%
-                </span>
-              </div>
             </div>
 
-            <div className="flex items-center gap-3 sm:gap-5">
-              <button
-                onClick={() => skip(-10)}
-                className="p-2.5 rounded-full hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text"
-                title="Back 10 seconds"
-              >
+            <div className="flex items-center justify-center gap-4 sm:gap-6 w-full">
+              <button onClick={() => skip(-10)} className="p-2 rounded-xl hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text" title="Back 10 seconds">
                 <RotateCcw className="w-5 h-5" />
               </button>
-              <button
-                onClick={() => goToTrack(currentTrack - 1)}
-                disabled={currentTrack === 0}
-                className="p-2.5 rounded-full hover:bg-kindle-card transition disabled:opacity-30 text-kindle-text-muted hover:text-kindle-text"
-                title="Previous track"
-              >
+              <button onClick={() => goToTrack(currentTrack - 1)} disabled={currentTrack === 0} className="p-2 rounded-xl hover:bg-kindle-card transition disabled:opacity-30 text-kindle-text-muted hover:text-kindle-text" title="Previous">
                 <SkipBack className="w-6 h-6" />
               </button>
               <button
                 onClick={togglePlay}
                 disabled={loadingTrack || tracks.length === 0}
-                className="w-16 h-16 rounded-full bg-white text-black hover:bg-neutral-100 flex items-center justify-center shadow-lg transition disabled:opacity-50"
+                className="w-[4.5rem] h-[4.5rem] rounded-full bg-kindle-text text-kindle-bg hover:opacity-90 flex items-center justify-center shadow-lg transition disabled:opacity-50"
                 title={isPlaying ? "Pause" : "Play"}
               >
                 {loadingTrack ? (
-                  <div className="w-6 h-6 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                  <div className="w-6 h-6 border-2 border-kindle-bg/30 border-t-kindle-bg rounded-full animate-spin" />
                 ) : isPlaying ? (
                   <Pause className="w-7 h-7 fill-current" />
                 ) : (
                   <Play className="w-7 h-7 fill-current ml-0.5" />
                 )}
               </button>
-              <button
-                onClick={() => goToTrack(currentTrack + 1)}
-                disabled={currentTrack >= tracks.length - 1}
-                className="p-2.5 rounded-full hover:bg-kindle-card transition disabled:opacity-30 text-kindle-text-muted hover:text-kindle-text"
-                title="Next track"
-              >
+              <button onClick={() => goToTrack(currentTrack + 1)} disabled={currentTrack >= tracks.length - 1} className="p-2 rounded-xl hover:bg-kindle-card transition disabled:opacity-30 text-kindle-text-muted hover:text-kindle-text" title="Next">
                 <SkipForward className="w-6 h-6" />
               </button>
-              <button
-                onClick={() => skip(30)}
-                className="p-2.5 rounded-full hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text"
-                title="Forward 30 seconds"
-              >
+              <button onClick={() => skip(30)} className="p-2 rounded-xl hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text" title="Forward 30 seconds">
                 <RotateCw className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="flex items-center gap-1.5 flex-wrap justify-center">
+            <div className="flex items-center gap-1.5 flex-wrap justify-center w-full">
               {SPEEDS.map((s) => (
                 <button
                   key={s}
                   onClick={() => setSpeed(s)}
                   className={`min-w-[3rem] px-2.5 py-1.5 rounded-lg text-[10px] font-bold font-lexend transition border ${
                     speed === s
-                      ? "bg-white text-black border-white"
-                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text hover:border-kindle-text/30"
+                      ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
                   }`}
                 >
                   {s}x
@@ -700,100 +682,71 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               ))}
             </div>
 
-            {isTtsBook && (
-              <div className="w-full space-y-2">
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={toggleSmartSkip}
+                className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border text-left transition ${
+                  smartSkip.enabled
+                    ? "bg-kindle-text/10 border-kindle-text/20 text-kindle-text"
+                    : "bg-kindle-card border-kindle-border text-kindle-text-muted"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[9px] font-bold uppercase tracking-widest font-lexend">Smart Skip</span>
+                </div>
+                <span className="text-[9px] font-bold uppercase">{smartSkip.enabled ? "On" : "Off"}</span>
+              </button>
+
+              {!isTtsBook && (
+                <button
+                  onClick={handleDownloadAll}
+                  disabled={downloading || offlineReady || tracks.length === 0}
+                  className="relative overflow-hidden flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-kindle-card border border-kindle-border text-[9px] font-bold uppercase tracking-widest font-lexend transition disabled:opacity-60 text-kindle-text"
+                >
+                  {downloading && <span className="absolute inset-y-0 left-0 bg-kindle-text/10 transition-all" style={{ width: `${downloadProgress}%` }} />}
+                  <span className="relative flex items-center gap-1.5">
+                    <Download className="w-3.5 h-3.5" />
+                    {offlineReady ? "Offline" : downloading ? `${downloadProgress}%` : "Download"}
+                  </span>
+                </button>
+              )}
+
+              {isTtsBook && (
                 <button
                   type="button"
                   onClick={() => setShowTtsSettings((open) => !open)}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-kindle-border bg-kindle-card text-left"
+                  className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border border-kindle-border bg-kindle-card text-left"
                 >
-                  <span className="text-[10px] font-bold uppercase tracking-widest font-lexend">
-                    Narrator Settings
-                  </span>
-                  <span className="text-[10px] text-kindle-text-muted">{showTtsSettings ? "Hide" : "Show"}</span>
+                  <span className="text-[9px] font-bold uppercase tracking-widest font-lexend">Narrator</span>
+                  <span className="text-[9px] text-kindle-text-muted">{showTtsSettings ? "Hide" : "Show"}</span>
                 </button>
-                {showTtsSettings && (
-                  <TtsVoiceSettings
-                    compact
-                    showQualityPresets
-                    showTestButton
-                    onSettingsChange={() => {
-                      ttsPlayerRef.current?.refreshVoice();
-                      setTtsVoiceName(ttsPlayerRef.current?.voiceName || getTtsSettings().voiceName);
-                    }}
-                  />
-                )}
-              </div>
-            )}
+              )}
+            </div>
 
-            <button
-              type="button"
-              onClick={toggleSmartSkip}
-              className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left transition ${
-                smartSkip.enabled
-                  ? "bg-white/10 border-white/20 text-kindle-text"
-                  : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text"
-              }`}
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Sparkles className={`w-4 h-4 shrink-0 ${smartSkip.enabled ? "text-white" : ""}`} />
-                <div className="min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-widest font-lexend">Smart Skip</p>
-                  <p className="text-[10px] text-kindle-text-muted truncate">
-                    {smartSkip.enabled
-                      ? `Skip ${smartSkip.introSeconds}s intros and ${smartSkip.outroSeconds}s outros`
-                      : "Off — plays full track intros and outros"}
-                  </p>
-                </div>
-              </div>
-              <span
-                className={`shrink-0 text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border ${
-                  smartSkip.enabled
-                    ? "bg-white text-black border-white"
-                    : "border-kindle-border"
-                }`}
-              >
-                {smartSkip.enabled ? "On" : "Off"}
-              </span>
-            </button>
-
-            {!isTtsBook && (
-              <button
-                onClick={handleDownloadAll}
-                disabled={downloading || offlineReady || tracks.length === 0}
-                className="relative overflow-hidden w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-kindle-card hover:bg-kindle-border/30 border border-kindle-border text-[10px] font-bold uppercase tracking-widest font-lexend transition disabled:opacity-60 text-kindle-text"
-              >
-                {downloading && (
-                  <span
-                    className="absolute inset-y-0 left-0 bg-white/10 transition-all duration-300"
-                    style={{ width: `${downloadProgress}%` }}
-                  />
-                )}
-                <span className="relative flex items-center gap-2">
-                  <Download className="w-4 h-4" />
-                  {offlineReady
-                    ? "Saved for Offline"
-                    : downloading
-                      ? `Downloading ${downloadProgress}%`
-                      : "Download for Offline"}
-                </span>
-              </button>
+            {isTtsBook && showTtsSettings && (
+              <TtsVoiceSettings
+                compact
+                showQualityPresets
+                showTestButton
+                onSettingsChange={() => {
+                  ttsPlayerRef.current?.refreshVoice();
+                  setTtsVoiceName(ttsPlayerRef.current?.voiceName || getTtsSettings().voiceName);
+                }}
+              />
             )}
           </div>
         </div>
 
         {tracks.length > 0 && (
-          <section className="shrink-0 border-t border-kindle-border bg-kindle-card/50 backdrop-blur-sm px-5 py-4">
-            <div className="max-w-md mx-auto space-y-2">
+          <section className="shrink-0 border-t border-kindle-border bg-kindle-card/80 backdrop-blur-sm px-4 py-3">
+            <div className="max-w-lg mx-auto space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted font-lexend">
-                  Chapters
-                </p>
-                <span className="text-[10px] text-kindle-text-muted font-mono tabular-nums">
-                  {tracks.length} tracks
-                </span>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted font-lexend">Chapters</p>
+                <span className="text-[10px] text-kindle-text-muted font-mono tabular-nums">{tracks.length}</span>
               </div>
-              <div className="max-h-44 overflow-y-auto player-chapter-scroll space-y-1 rounded-xl border border-kindle-border bg-kindle-bg/80 p-2">
+              <div className="max-h-36 overflow-y-auto player-chapter-scroll space-y-1 rounded-xl border border-kindle-border bg-kindle-bg/80 p-1.5">
                 {tracks.map((track, idx) => {
                   const label = cleanTrackTitle(track.title, idx, book.title, book.author, trackTitles);
                   const active = idx === currentTrack;
@@ -801,23 +754,17 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                     <button
                       key={idx}
                       onClick={() => goToTrack(idx)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg text-xs transition flex items-center gap-3 ${
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition flex items-center gap-3 ${
                         active
-                          ? "bg-white/10 border border-white/15 text-kindle-text"
-                          : "hover:bg-kindle-card text-kindle-text-muted"
+                          ? "bg-kindle-text/10 border border-kindle-border text-kindle-text"
+                          : "hover:bg-kindle-card text-kindle-text-muted border border-transparent"
                       }`}
                     >
-                      <span
-                        className={`text-[10px] font-mono tabular-nums w-5 shrink-0 ${
-                          active ? "text-white" : "text-kindle-text-muted"
-                        }`}
-                      >
+                      <span className={`text-[10px] font-mono tabular-nums w-5 shrink-0 ${active ? "text-kindle-text" : ""}`}>
                         {idx + 1}
                       </span>
                       <span className="truncate flex-1 font-sans">{label}</span>
-                      {active && isPlaying && (
-                        <Play className="w-3 h-3 text-white shrink-0 fill-current" />
-                      )}
+                      {active && isPlaying && <Play className="w-3 h-3 shrink-0 fill-current" />}
                     </button>
                   );
                 })}

@@ -116,6 +116,7 @@ export function disableFirebase() {
   if (!isRealFirebase) return;
   isRealFirebase = false;
   console.warn("Firebase cloud sync disabled; continuing with offline local storage.");
+  // Keep auth available even when Firestore sync is blocked (e.g. ad blockers).
 }
 
 try {

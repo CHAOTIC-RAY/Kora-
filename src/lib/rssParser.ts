@@ -41,6 +41,28 @@ function itemId(link: string, title: string): string {
   return `${link}::${title}`.slice(0, 240);
 }
 
+function extractImageUrl(block: string, descriptionHtml?: string): string | undefined {
+  const candidates = [
+    block.match(/<media:thumbnail[^>]*url=["']([^"']+)["']/i)?.[1],
+    block.match(/<media:content[^>]*url=["']([^"']+)["'][^>]*(?:medium=["']image["']|type=["']image)/i)?.[1],
+    block.match(/<media:content[^>]*(?:medium=["']image["']|type=["']image)[^>]*url=["']([^"']+)["']/i)?.[1],
+    block.match(/<enclosure[^>]*url=["']([^"']+)["'][^>]*type=["']image/i)?.[1],
+    block.match(/<image[^>]*>[\s\S]*?<url[^>]*>([\s\S]*?)<\/url>/i)?.[1],
+    descriptionHtml?.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1],
+    descriptionHtml?.match(/property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1],
+    descriptionHtml?.match(/content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1],
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const cleaned = decodeEntities(candidate.trim());
+    if (cleaned && !/1x1|pixel|spacer|blank\.gif/i.test(cleaned)) {
+      return cleaned;
+    }
+  }
+  return undefined;
+}
+
 function parseRss(xml: string): ParsedFeed {
   const channelMatch = xml.match(/<channel[^>]*>([\s\S]*?)<\/channel>/i);
   const channel = channelMatch?.[1] || xml;
@@ -69,9 +91,7 @@ function parseRss(xml: string): ParsedFeed {
         block.match(/<author[^>]*>([\s\S]*?)<\/author>/i)?.[1] ||
         ""
     );
-    const imageUrl =
-      block.match(/<media:thumbnail[^>]*url="([^"]+)"/i)?.[1] ||
-      block.match(/<enclosure[^>]*url="([^"]+)"[^>]*type="image/i)?.[1];
+    const imageUrl = extractImageUrl(block, description);
 
     items.push({
       id: itemId(link, title),
@@ -112,6 +132,7 @@ function parseAtom(xml: string): ParsedFeed {
       block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1] ||
       "";
     const author = stripTags(block.match(/<name[^>]*>([\s\S]*?)<\/name>/i)?.[1] || "");
+    const imageUrl = extractImageUrl(block, summary);
 
     items.push({
       id: itemId(link, title),
@@ -120,6 +141,7 @@ function parseAtom(xml: string): ParsedFeed {
       author: author || undefined,
       summary: stripTags(summary).slice(0, 500) || undefined,
       publishedAt: parseDate(published || updated),
+      imageUrl,
     });
   }
 

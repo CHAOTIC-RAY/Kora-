@@ -3,13 +3,11 @@ import {
   Bookmark,
   CheckCircle2,
   ExternalLink,
-  Globe,
   Loader2,
   Newspaper,
   Plus,
   RefreshCw,
   Rss,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -32,7 +30,7 @@ import { resolveCoverImageSrc } from "../lib/coverImage";
 
 interface FeedViewProps {
   userId?: string;
-  onRefreshLibrary?: () => void;
+  onRefreshLibrary?: () => void | Promise<void>;
   onOpenBook?: (book: BookMetadata) => void;
   initialUrl?: string | null;
   onClearInitialUrl?: () => void;
@@ -52,6 +50,117 @@ function formatRelativeTime(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
+function displayTitle(item: FeedItem): string {
+  const title = item.title.trim();
+  if (!/^(article url|comments url|link)$/i.test(title)) return title;
+  try {
+    const host = new URL(item.link).hostname.replace(/^www\./, "");
+    return host || title;
+  } catch {
+    return title;
+  }
+}
+
+function getItemThumbnail(item: FeedItem): string | null {
+  if (item.imageUrl) return resolveCoverImageSrc(item.imageUrl);
+  try {
+    const host = new URL(item.link).hostname;
+    return `/api/proxy-image?url=${encodeURIComponent(`https://www.google.com/s2/favicons?domain=${host}&sz=128`)}`;
+  } catch {
+    return null;
+  }
+}
+
+function FeedArticleCard({
+  item,
+  cover,
+  busy,
+  title,
+  onRead,
+  onToggleRead,
+}: {
+  item: FeedItem;
+  cover: string | null;
+  busy: boolean;
+  title: string;
+  onRead: () => void;
+  onToggleRead: () => void;
+}) {
+  const [thumbFailed, setThumbFailed] = useState(false);
+
+  return (
+    <article
+      className={`bg-kindle-card border rounded-2xl overflow-hidden transition hover:shadow-md ${
+        item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
+      }`}
+    >
+      <div className="p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="w-16 h-16 rounded-xl border border-kindle-border bg-kindle-bg shrink-0 overflow-hidden flex items-center justify-center">
+            {cover && !thumbFailed ? (
+              <img
+                src={cover}
+                alt=""
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+                onError={() => setThumbFailed(true)}
+              />
+            ) : (
+              <Rss className="w-5 h-5 text-kindle-text-muted/50" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              {!item.read && <span className="w-1.5 h-1.5 rounded-full bg-kindle-text shrink-0" />}
+              <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate">
+                {item.subscriptionTitle} · {formatRelativeTime(item.publishedAt)}
+              </p>
+            </div>
+            <h3 className="text-sm font-lexend font-bold leading-snug text-kindle-text line-clamp-3">{title}</h3>
+            {item.summary && !/^(article url|comments url)/i.test(item.summary) && (
+              <p className="text-[11px] text-kindle-text-muted mt-1 line-clamp-2 leading-relaxed">{item.summary}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onRead}
+            disabled={busy}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Newspaper className="w-3.5 h-3.5" />}
+            Read
+          </button>
+          <button
+            onClick={onToggleRead}
+            className="px-3 py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
+            title={item.read ? "Mark unread" : "Mark read"}
+          >
+            {item.read ? "Unread" : "Done"}
+          </button>
+          <a
+            href={item.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-2.5 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
+            title="Open original"
+          >
+            <ExternalLink className="w-4 h-4" />
+          </a>
+        </div>
+
+        {item.savedBookId && (
+          <p className="text-[9px] text-emerald-600 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            Saved to library
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export default function FeedView({
   userId = "",
   onRefreshLibrary,
@@ -64,14 +173,12 @@ export default function FeedView({
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [clipperUrl, setClipperUrl] = useState("");
-  const [clipStatus, setClipStatus] = useState<"idle" | "working" | "success" | "error">("idle");
-  const [clipError, setClipError] = useState<string | null>(null);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [addFeedUrl, setAddFeedUrl] = useState("");
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
   const [addingFeed, setAddingFeed] = useState(false);
   const [workingItemId, setWorkingItemId] = useState<string | null>(null);
+  const [shareClipping, setShareClipping] = useState(false);
 
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
 
@@ -103,11 +210,26 @@ export default function FeedView({
   }, [loadLocalState, refreshFeeds]);
 
   useEffect(() => {
-    if (initialUrl) {
-      setClipperUrl(initialUrl);
-      onClearInitialUrl?.();
-    }
-  }, [initialUrl, onClearInitialUrl]);
+    if (!initialUrl?.trim()) return;
+    const url = initialUrl.trim();
+    onClearInitialUrl?.();
+    setShareClipping(true);
+    void (async () => {
+      try {
+        const book = await clipUrlToLibrary({
+          url,
+          userId,
+          tags: ["Feed", "Shared"],
+        });
+        await onRefreshLibrary?.();
+        onOpenBook?.(book);
+      } catch (err) {
+        console.error("Shared link clip failed:", err);
+      } finally {
+        setShareClipping(false);
+      }
+    })();
+  }, [initialUrl, onClearInitialUrl, onOpenBook, onRefreshLibrary, userId]);
 
   const visibleItems = useMemo(() => {
     return items.filter((item) => {
@@ -117,28 +239,6 @@ export default function FeedView({
       return true;
     });
   }, [items, filter, selectedSubscriptionId]);
-
-  const handleClipUrl = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clipperUrl.trim()) return;
-    setClipStatus("working");
-    setClipError(null);
-    try {
-      const book = await clipUrlToLibrary({
-        url: clipperUrl.trim(),
-        userId,
-        tags: ["Feed", "Clipped"],
-      });
-      setClipStatus("success");
-      setClipperUrl("");
-      await onRefreshLibrary?.();
-      onOpenBook?.(book);
-      setTimeout(() => setClipStatus("idle"), 2500);
-    } catch (err) {
-      setClipError((err as Error).message || "Failed to clip article.");
-      setClipStatus("error");
-    }
-  };
 
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,26 +285,26 @@ export default function FeedView({
   };
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
-      <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans gap-3">
+    <div className="space-y-5 md:space-y-7 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
+      <header className="flex items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Rss className="w-5 h-5 text-kindle-accent shrink-0" />
             <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Feed</h1>
             {unreadCount > 0 && (
-              <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-kindle-accent/10 text-kindle-accent border border-kindle-accent/20">
+              <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-kindle-text/10 text-kindle-text border border-kindle-border">
                 {unreadCount} unread
               </span>
             )}
           </div>
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">
-            Your reading queue from the web — subscribe, clip, and read offline.
+            Subscribe to sources and read articles offline in your library.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setShowAddFeed(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider hover:bg-kindle-bg transition"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition"
           >
             <Plus className="w-3.5 h-3.5" />
             Add
@@ -212,7 +312,7 @@ export default function FeedView({
           <button
             onClick={() => void refreshFeeds()}
             disabled={refreshing}
-            className="p-2 rounded-xl border border-kindle-border bg-kindle-card hover:bg-kindle-bg transition disabled:opacity-50"
+            className="p-2 rounded-xl border border-kindle-border bg-kindle-card hover:bg-kindle-bg transition disabled:opacity-50 text-kindle-text"
             title="Refresh feeds"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -220,44 +320,12 @@ export default function FeedView({
         </div>
       </header>
 
-      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-kindle-accent/[0.08] border border-kindle-accent/20 rounded-xl">
-            <Globe className="w-5 h-5 text-kindle-accent" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold text-kindle-text font-lexend">Clip Article or Feed URL</h2>
-            <p className="text-[10px] text-kindle-text-muted">
-              Paste any article link to read offline, or paste a site URL when adding subscriptions.
-            </p>
-          </div>
+      {shareClipping && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] text-kindle-text-muted">
+          <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          Clipping shared link into your library…
         </div>
-        <form onSubmit={handleClipUrl} className="flex gap-2">
-          <input
-            type="url"
-            value={clipperUrl}
-            onChange={(e) => setClipperUrl(e.target.value)}
-            placeholder="https://example.com/article-or-feed"
-            className="flex-1 bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2.5 text-xs text-kindle-text placeholder:text-kindle-text-muted/60 focus:outline-none focus:ring-1 focus:ring-kindle-accent"
-          />
-          <button
-            type="submit"
-            disabled={clipStatus === "working"}
-            className="px-5 py-2.5 bg-kindle-accent hover:bg-kindle-accent-hover disabled:opacity-50 text-white rounded-xl text-xs font-bold font-lexend transition-all shadow-sm flex items-center gap-2"
-          >
-            {clipStatus === "working" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-            Clip
-          </button>
-        </form>
-        {clipStatus === "error" && clipError && (
-          <p className="text-[10px] text-red-500 bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2">{clipError}</p>
-        )}
-        {clipStatus === "success" && (
-          <p className="text-[10px] text-emerald-600 bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
-            Article clipped and opened in the reader.
-          </p>
-        )}
-      </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {[
@@ -270,7 +338,7 @@ export default function FeedView({
             onClick={() => setFilter(chip.id as FeedFilter)}
             className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition ${
               filter === chip.id
-                ? "bg-white text-black border-white"
+                ? "bg-kindle-text text-kindle-bg border-kindle-text"
                 : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
             }`}
           >
@@ -279,13 +347,13 @@ export default function FeedView({
         ))}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
         <button
           onClick={() => setSelectedSubscriptionId(null)}
           className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition ${
             !selectedSubscriptionId
-              ? "bg-kindle-accent text-white border-kindle-accent"
-              : "bg-kindle-card text-kindle-text-muted border-kindle-border"
+              ? "bg-kindle-text text-kindle-bg border-kindle-text"
+              : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
           }`}
         >
           All Sources
@@ -296,8 +364,8 @@ export default function FeedView({
             onClick={() => setSelectedSubscriptionId(sub.id)}
             className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition max-w-[10rem] truncate ${
               selectedSubscriptionId === sub.id
-                ? "bg-kindle-accent text-white border-kindle-accent"
-                : "bg-kindle-card text-kindle-text-muted border-kindle-border"
+                ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
             }`}
             title={sub.title}
           >
@@ -316,90 +384,28 @@ export default function FeedView({
           <Newspaper className="w-12 h-12 text-kindle-text-muted mx-auto mb-4 opacity-50" />
           <h3 className="text-lg font-lexend font-bold mb-2">No articles here yet</h3>
           <p className="text-sm text-kindle-text-muted max-w-md mx-auto">
-            Add a feed source or clip an article URL above. Your subscriptions will appear here as a reading queue.
+            Add a feed source with the Add button above, or share an article link to Kora from your browser.
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {visibleItems.map((item) => {
-            const cover = item.imageUrl ? resolveCoverImageSrc(item.imageUrl) : null;
+            const cover = getItemThumbnail(item);
             const busy = workingItemId === item.id;
+            const title = displayTitle(item);
             return (
-              <article
+              <FeedArticleCard
                 key={item.id}
-                className={`bg-kindle-card border rounded-2xl overflow-hidden transition hover:shadow-md ${
-                  item.read ? "border-kindle-border opacity-80" : "border-kindle-border shadow-sm"
-                }`}
-              >
-                <div className="p-4 space-y-3">
-                  <div className="flex items-start gap-3">
-                    {cover ? (
-                      <img
-                        src={cover}
-                        alt=""
-                        className="w-14 h-14 rounded-lg object-cover border border-kindle-border shrink-0 bg-kindle-bg"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-14 h-14 rounded-lg border border-kindle-border bg-kindle-bg flex items-center justify-center shrink-0">
-                        <Rss className="w-5 h-5 text-kindle-text-muted/50" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        {!item.read && <span className="w-1.5 h-1.5 rounded-full bg-kindle-accent shrink-0" />}
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate">
-                          {item.subscriptionTitle} · {formatRelativeTime(item.publishedAt)}
-                        </p>
-                      </div>
-                      <h3 className="text-sm font-lexend font-bold leading-snug text-kindle-text line-clamp-2">
-                        {item.title}
-                      </h3>
-                      {item.summary && (
-                        <p className="text-[11px] text-kindle-text-muted mt-1 line-clamp-2 leading-relaxed">
-                          {item.summary}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => void handleReadArticle(item)}
-                      disabled={busy}
-                      className="flex-1 min-w-[7rem] flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-kindle-accent text-white text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50"
-                    >
-                      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Newspaper className="w-3.5 h-3.5" />}
-                      Read
-                    </button>
-                    <button
-                      onClick={() => {
-                        markFeedItemRead(item.id, !item.read);
-                        setItems(getFeedItems());
-                      }}
-                      className="px-3 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text transition"
-                    >
-                      {item.read ? "Unread" : "Read"}
-                    </button>
-                    <a
-                      href={item.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-2 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text transition"
-                      title="Open original"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  </div>
-
-                  {item.savedBookId && (
-                    <p className="text-[9px] text-emerald-600 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Saved to library
-                    </p>
-                  )}
-                </div>
-              </article>
+                item={item}
+                cover={cover}
+                busy={busy}
+                title={title}
+                onRead={() => void handleReadArticle(item)}
+                onToggleRead={() => {
+                  markFeedItemRead(item.id, !item.read);
+                  setItems(getFeedItems());
+                }}
+              />
             );
           })}
         </div>
@@ -440,8 +446,8 @@ export default function FeedView({
         <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-lexend font-bold">Add Feed Source</h3>
-              <button onClick={() => setShowAddFeed(false)} className="p-1.5 rounded-lg hover:bg-kindle-bg">
+              <h3 className="text-sm font-lexend font-bold text-kindle-text">Add Feed Source</h3>
+              <button onClick={() => setShowAddFeed(false)} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -455,7 +461,7 @@ export default function FeedView({
                 value={addFeedUrl}
                 onChange={(e) => setAddFeedUrl(e.target.value)}
                 placeholder="https://example.com or feed.xml"
-                className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2.5 text-xs"
+                className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2.5 text-xs text-kindle-text"
               />
               {addFeedError && (
                 <p className="text-[10px] text-red-500 bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2">
@@ -465,7 +471,7 @@ export default function FeedView({
               <button
                 type="submit"
                 disabled={addingFeed}
-                className="w-full py-2.5 rounded-xl bg-kindle-accent text-white text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {addingFeed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />}
                 Subscribe

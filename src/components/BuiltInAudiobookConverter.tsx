@@ -168,7 +168,7 @@ export default function BuiltInAudiobookConverter({
           <button
             onClick={handleConvert}
             disabled={!selectedBook}
-            className="flex-1 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider py-2.5 rounded-xl bg-kindle-accent text-white hover:opacity-90 transition disabled:opacity-40"
+            className="flex-1 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider py-2.5 rounded-xl bg-kindle-text text-kindle-bg hover:opacity-90 transition disabled:opacity-40"
           >
             <BookOpen className="w-3.5 h-3.5" />
             Create Read-Aloud Audiobook

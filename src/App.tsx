@@ -1084,9 +1084,14 @@ export default function App() {
   // Handle manual login/signup
   async function handleAuthSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!auth) {
+      setAuthError("Authentication is unavailable. Check your connection or disable ad blockers for this site.");
+      return;
+    }
     if (!authEmail.trim() || !authPassword.trim()) return;
 
     setAuthError(null);
+    setLoadingAuth(true);
     try {
       if (isSignUp) {
         await createUserWithEmailAndPassword(auth, authEmail, authPassword);
@@ -1098,12 +1103,19 @@ export default function App() {
       setAuthPassword("");
     } catch (err: any) {
       setAuthError(err.message || "Authentication failed. Check credentials.");
+    } finally {
+      setLoadingAuth(false);
     }
   }
 
   // Handle Google Sign-In
   async function handleGoogleSignIn() {
+    if (!auth) {
+      setAuthError("Authentication is unavailable. Check your connection or disable ad blockers for this site.");
+      return;
+    }
     setAuthError(null);
+    setLoadingAuth(true);
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
@@ -1114,6 +1126,8 @@ export default function App() {
       if (err.code !== "auth/popup-closed-by-user") {
         setAuthError(err.message || "Google Sign-In failed.");
       }
+    } finally {
+      setLoadingAuth(false);
     }
   }
 
@@ -1614,7 +1628,7 @@ export default function App() {
           },
         }
       }} />
-      {showSettings && (
+      {showAuthModal && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 animate-fade-in">
           <div className="w-full max-w-sm bg-kindle-card border border-kindle-border rounded-kindle p-6 shadow-2xl text-kindle-text">
             <div className="flex items-center justify-between mb-6">

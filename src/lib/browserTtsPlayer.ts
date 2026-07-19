@@ -15,6 +15,7 @@ export interface BrowserTtsPlayerCallbacks {
   onPause?: () => void;
   onError?: (message: string) => void;
   onPositionChange?: (position: TtsPlaybackPosition) => void;
+  onSubtitleUpdate?: (text: string) => void;
 }
 
 interface LoadedChapter {
@@ -24,6 +25,25 @@ interface LoadedChapter {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractSentenceAround(text: string, charIndex: number): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+
+  const sentences = normalized.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [normalized];
+  let position = 0;
+  for (const sentence of sentences) {
+    const end = position + sentence.length;
+    if (charIndex >= position && charIndex <= end) {
+      return sentence.trim();
+    }
+    position = end;
+  }
+
+  const start = Math.max(0, charIndex - 80);
+  const snippet = normalized.slice(start, start + 160).trim();
+  return snippet.length > 140 ? `${snippet.slice(0, 137)}…` : snippet;
 }
 
 export class BrowserTtsPlayer {
@@ -306,6 +326,15 @@ export class BrowserTtsPlayer {
     }
   }
 
+  private emitSubtitle(charIndex = this.charOffset): void {
+    const chunk = this.chunks[this.chunkIndex];
+    if (!chunk?.text) {
+      this.callbacks.onSubtitleUpdate?.("");
+      return;
+    }
+    this.callbacks.onSubtitleUpdate?.(extractSentenceAround(chunk.text, charIndex));
+  }
+
   private emitTime() {
     this.callbacks.onTimeUpdate?.(this.currentTime, this.duration, this.estimatedRemaining);
     this.emitPosition();
@@ -352,7 +381,13 @@ export class BrowserTtsPlayer {
         const chunkDuration = this.chunkDurations[index] || 1;
         const ratio = spokenText.length ? event.charIndex / spokenText.length : 0;
         this.boundaryTime = chunkDuration * ratio;
+        this.emitSubtitle(this.charOffset);
         this.emitTime();
+      };
+
+      utterance.onstart = () => {
+        this.chunkIndex = index;
+        this.emitSubtitle(this.charOffset);
       };
 
       utterance.onend = async () => {
