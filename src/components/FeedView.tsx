@@ -386,8 +386,8 @@ export default function FeedView({
             onClick={() => setFilter(chip.id as FeedFilter)}
             className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition ${
               filter === chip.id
-                ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
+                ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-sm"
+                : "bg-kindle-bg text-kindle-text border-kindle-border hover:bg-kindle-card"
             }`}
           >
             {chip.label}
@@ -400,8 +400,8 @@ export default function FeedView({
           onClick={() => setSelectedSubscriptionId(null)}
           className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition ${
             !selectedSubscriptionId
-              ? "bg-kindle-text text-kindle-bg border-kindle-text"
-              : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
+              ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-sm"
+              : "bg-kindle-bg text-kindle-text border-kindle-border hover:bg-kindle-card"
           }`}
         >
           All Sources
@@ -412,8 +412,8 @@ export default function FeedView({
             onClick={() => setSelectedSubscriptionId(sub.id)}
             className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition max-w-[10rem] truncate ${
               selectedSubscriptionId === sub.id
-                ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text"
+                ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-sm"
+                : "bg-kindle-bg text-kindle-text border-kindle-border hover:bg-kindle-card"
             }`}
             title={sub.title}
           >

@@ -183,11 +183,11 @@ export default function DevicesSyncPanel({
                   type="button"
                   onClick={() => patchPrefs({ [key]: !prefs[key] })}
                   className={`w-11 h-6 rounded-full relative transition-colors ${
-                    prefs[key] ? "bg-kindle-accent" : "bg-neutral-300 dark:bg-neutral-700"
+                    prefs[key] ? "bg-emerald-500" : "bg-kindle-border"
                   }`}
                 >
                   <span
-                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
                       prefs[key] ? "translate-x-6" : "translate-x-1"
                     }`}
                   />
@@ -282,11 +282,11 @@ export default function DevicesSyncPanel({
                 type="button"
                 onClick={() => patchWebDav({ enabled: !prefs.webdav.enabled })}
                 className={`w-11 h-6 rounded-full relative transition-colors ${
-                  prefs.webdav.enabled ? "bg-kindle-accent" : "bg-neutral-300 dark:bg-neutral-700"
+                  prefs.webdav.enabled ? "bg-emerald-500" : "bg-kindle-border"
                 }`}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
                     prefs.webdav.enabled ? "translate-x-6" : "translate-x-1"
                   }`}
                 />

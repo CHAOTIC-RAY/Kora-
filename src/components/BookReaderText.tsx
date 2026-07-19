@@ -432,7 +432,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
                     </div>
                     <button 
                       onClick={() => setHideImages(!hideImages)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-[#5c5346]" : "bg-neutral-300"}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-emerald-500" : "bg-kindle-border"}`}
                     >
                       <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hideImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
                     </button>

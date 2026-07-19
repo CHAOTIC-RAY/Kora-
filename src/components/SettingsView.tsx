@@ -83,15 +83,23 @@ function getRemainingGuestDays(user: User | null): number {
   }
 }
 
-// Reusable toggle switch
+// Reusable toggle switch — on uses emerald so it stays clear on every theme
+// (kindle-accent is near-white on dark-grey and looks identical to off).
 function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${on ? "bg-kindle-accent" : "bg-neutral-300"}`}
+      className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${
+        on ? "bg-emerald-500" : "bg-kindle-border"
+      }`}
       aria-pressed={on}
     >
-      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${on ? "translate-x-5.5" : "translate-x-0.5"}`} />
+      <div
+        className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
+          on ? "translate-x-5.5" : "translate-x-0.5"
+        }`}
+      />
     </button>
   );
 }
