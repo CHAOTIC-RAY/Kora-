@@ -30,7 +30,7 @@ export async function fetchGoodreadsTrendingBooks(
   }
 
   try {
-    const html = await fetchHtml("https://www.goodreads.com/book/most_read", "bookTitle");
+    const html = await fetchHtml("https://www.goodreads.com/book/most_read");
     const $ = cheerio.load(html);
     const books: any[] = [];
 

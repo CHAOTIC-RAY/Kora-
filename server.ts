@@ -1603,6 +1603,7 @@ app.get("/api/goodreads/list", async (req, res) => {
     // Special case: daily-refreshed Goodreads trending list
     if (listQuery === "goodreads-blog-3182-weekly") {
       const books = await fetchGoodreadsTrendingBooksLocal();
+      res.setHeader("Cache-Control", "no-store, max-age=0");
       return res.json(books);
     }
 

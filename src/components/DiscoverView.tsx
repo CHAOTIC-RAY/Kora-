@@ -5,12 +5,13 @@ import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones } from "lucide-react";
+import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
 import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
-import { fetchAudiobookDetail, prefetchAudiobookDetail } from "../lib/audiobookDetailClient";
+import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
+import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import {
   createSearchSignal,
   abortActiveSearch,
@@ -180,6 +181,10 @@ export default function DiscoverView({
   const [audiobookDetail, setAudiobookDetail] = useState<any | null>(null);
   const [audiobookDetailLoading, setAudiobookDetailLoading] = useState(false);
   const [audiobookDetailError, setAudiobookDetailError] = useState<string | null>(null);
+  const [previewTrackIdx, setPreviewTrackIdx] = useState<number | null>(null);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const audiobookFetchGen = React.useRef(0);
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
@@ -688,11 +693,12 @@ export default function DiscoverView({
     }
   }
 
-  const fetchAudiobookDetailForBook = async (book: any) => {
+  const fetchAudiobookDetailForBook = async (book: any, generation: number) => {
     setAudiobookDetailLoading(true);
     setAudiobookDetailError(null);
 
     const stale = await fetchAudiobookDetail(book, { staleWhileRevalidate: true });
+    if (generation !== audiobookFetchGen.current) return;
     if (stale?.tracks?.length) {
       setAudiobookDetail(stale);
       setAudiobookDetailLoading(false);
@@ -700,6 +706,7 @@ export default function DiscoverView({
     }
 
     const fresh = await fetchAudiobookDetail(book, { staleWhileRevalidate: false });
+    if (generation !== audiobookFetchGen.current) return;
     if (fresh?.tracks?.length) {
       setAudiobookDetail(fresh);
     } else {
@@ -708,21 +715,55 @@ export default function DiscoverView({
     setAudiobookDetailLoading(false);
   };
 
-  useEffect(() => {
-    if (selectedAudiobook) {
-      fetchAudiobookDetailForBook(selectedAudiobook);
-    } else {
-      setAudiobookDetail(null);
-      setAudiobookDetailError(null);
+  const openAudiobookDetail = (book: any) => {
+    previewAudioRef.current?.pause();
+    setPreviewTrackIdx(null);
+    setPreviewPlaying(false);
+    setAudiobookDetail(null);
+    setAudiobookDetailError(null);
+    setAudiobookDetailLoading(true);
+    audiobookFetchGen.current += 1;
+    setSelectedAudiobook(book);
+  };
+
+  const closeAudiobookDetail = () => {
+    previewAudioRef.current?.pause();
+    setPreviewTrackIdx(null);
+    setPreviewPlaying(false);
+    setSelectedAudiobook(null);
+    setAudiobookDetail(null);
+    setAudiobookDetailError(null);
+    setAudiobookDetailLoading(false);
+  };
+
+  const toggleTrackPreview = (track: any, idx: number) => {
+    const audio = previewAudioRef.current;
+    if (!audio) return;
+
+    if (previewTrackIdx === idx && previewPlaying) {
+      audio.pause();
+      setPreviewPlaying(false);
+      return;
     }
-  }, [selectedAudiobook]);
+
+    setPreviewTrackIdx(idx);
+    audio.src = getProxiedAudioUrl(track.src);
+    audio.play().then(() => setPreviewPlaying(true)).catch(() => setPreviewPlaying(false));
+  };
+
+  useEffect(() => {
+    if (!selectedAudiobook) return;
+    const generation = audiobookFetchGen.current;
+    fetchAudiobookDetailForBook(selectedAudiobook, generation);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAudiobook?.link, selectedAudiobook?.title, selectedAudiobook?.listenUrl]);
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const { data } = (e as CustomEvent).detail || {};
-      if (data?.tracks?.length && selectedAudiobook) {
-        setAudiobookDetail(data);
-      }
+      const { key, data } = (e as CustomEvent).detail || {};
+      if (!data?.tracks?.length || !selectedAudiobook) return;
+      if (key !== cacheKeyForBook(selectedAudiobook)) return;
+      setAudiobookDetail(data);
     };
     window.addEventListener("kora-audiobook-detail-updated", handler);
     return () => window.removeEventListener("kora-audiobook-detail-updated", handler);
@@ -992,12 +1033,12 @@ export default function DiscoverView({
 
 
   async function fetchGoodreadsCategory(query: string): Promise<any[]> {
-    const cacheKey = `goodreads_list_${query}`;
+    const cacheKey = `goodreads_list_${query}_v3`;
     const cached = tempStorage.get<any[]>(cacheKey);
     if (cached && Array.isArray(cached)) return cached;
 
     try {
-      const res = await fetch(`/api/goodreads/list?list=${encodeURIComponent(query)}`);
+      const res = await fetch(`/api/goodreads/list?list=${encodeURIComponent(query)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`Goodreads list fetch failed with status: ${res.status}`);
       const books = await res.json();
       
@@ -1016,10 +1057,16 @@ export default function DiscoverView({
           .replace(/\s+/g, ' ')
           .trim();
 
+        const coverUrl = book.coverUrl?.startsWith("/")
+          ? book.coverUrl
+          : book.coverUrl
+            ? book.coverUrl
+            : `/api/cover-redirect?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || "")}`;
+
         return {
           title: book.title,
           author: book.author,
-          coverUrl: book.coverUrl || (book.isbn ? `https://covers.openlibrary.org/b/isbn/${book.isbn}-M.jpg` : null),
+          coverUrl,
           searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
           description: book.description,
           rating: book.rating,
@@ -2205,8 +2252,8 @@ export default function DiscoverView({
                   }}
                   className={`px-3.5 py-1.5 md:py-3.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     isAudiobookSearch
-                      ? "bg-purple-500/10 border-purple-500 text-purple-500"
-                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-purple-400/40 hover:text-purple-500"
+                      ? "bg-kindle-card border-kindle-text text-kindle-text"
+                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-text/30 hover:text-kindle-text"
                   }`}
                 >
                   <Headphones className="w-3.5 h-3.5" />
@@ -2317,7 +2364,7 @@ export default function DiscoverView({
         <section className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-lexend font-bold flex items-center gap-2">
-              <Headphones className="w-5 h-5 text-purple-500" />
+              <Headphones className="w-5 h-5 text-kindle-text" />
               {audiobookLoading ? "Searching audiobook sites…" : `Audiobooks for "${query}"`}
             </h3>
             <button
@@ -2347,7 +2394,7 @@ export default function DiscoverView({
                   key={idx}
                   onMouseEnter={() => prefetchAudiobookDetail(book)}
                   onFocus={() => prefetchAudiobookDetail(book)}
-                  onClick={() => setSelectedAudiobook(book)}
+                  onClick={() => openAudiobookDetail(book)}
                   className="group block space-y-2 cursor-pointer"
                 >
                   <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-300">
@@ -2370,7 +2417,7 @@ export default function DiscoverView({
                       />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center p-3 bg-kindle-card">
-                        <Headphones className="w-6 h-6 text-purple-400 mb-1.5 opacity-50" />
+                        <Headphones className="w-6 h-6 text-kindle-text-muted mb-1.5 opacity-50" />
                         <span className="text-[7px] font-bold text-kindle-text-muted uppercase text-center line-clamp-3">{book.title}</span>
                       </div>
                     )}
@@ -2382,9 +2429,9 @@ export default function DiscoverView({
                     </div>
                   </div>
                   <div className="space-y-0.5">
-                    <h4 className="text-[10px] font-bold font-serif line-clamp-2 leading-snug group-hover:text-purple-500 transition">{book.title}</h4>
+                    <h4 className="text-[10px] font-bold font-serif line-clamp-2 leading-snug group-hover:text-kindle-accent transition">{book.title}</h4>
                     {book.author && <p className="text-[9px] text-kindle-text-muted font-sans truncate">{book.author}</p>}
-                    <p className="text-[8px] text-purple-500/70 font-bold uppercase tracking-wider">🎧 Audiobook</p>
+                    <p className="text-[8px] text-kindle-text-muted font-bold uppercase tracking-wider">🎧 Audiobook</p>
                   </div>
                 </div>
               ))}
@@ -2793,7 +2840,7 @@ export default function DiscoverView({
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                <Headphones className="w-3.5 h-3.5 text-purple-500" />
+                <Headphones className="w-3.5 h-3.5 text-kindle-text" />
                 Audiobooks
               </button>
             </div>
@@ -2847,7 +2894,7 @@ export default function DiscoverView({
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-kindle-card rounded-xl border border-kindle-border">
                           {cat.source === "audiobook" ? (
-                            <Headphones className="w-4 h-4 text-purple-500" />
+                            <Headphones className="w-4 h-4 text-kindle-text" />
                           ) : cat.source === "goodreads" ? (
                             <Library className="w-4 h-4 text-amber-500" />
                           ) : cat.id.includes("fiction") ? (
@@ -2870,11 +2917,11 @@ export default function DiscoverView({
                     {books.map((book, idx) => (
                       <div
                         key={idx}
-                        onMouseEnter={() => prefetchAudiobookDetail(book)}
-                        onFocus={() => prefetchAudiobookDetail(book)}
+                        onMouseEnter={() => cat.source === "audiobook" && prefetchAudiobookDetail(book)}
+                        onFocus={() => cat.source === "audiobook" && prefetchAudiobookDetail(book)}
                         onClick={() => {
                           if (cat.source === "audiobook") {
-                            setSelectedAudiobook(book);
+                            openAudiobookDetail(book);
                           } else {
                             setSelectedFeaturedBook(book);
                             fetchFeaturedMetadata(book.title, book.author || "");
@@ -3215,14 +3262,14 @@ export default function DiscoverView({
       {/* Audiobook Detail Panel — audio tracks + library */}
       {selectedAudiobook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedAudiobook(null)} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeAudiobookDetail} />
           <div className="relative bg-kindle-bg w-full max-w-md max-h-[90vh] rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-kindle-border bg-kindle-bg/95 backdrop-blur-md shrink-0">
               <div className="flex items-center gap-2">
-                <Headphones className="w-4 h-4 text-purple-500" />
+                <Headphones className="w-4 h-4 text-kindle-text" />
                 <span className="text-xs font-bold uppercase tracking-widest text-kindle-text">Audiobook</span>
               </div>
-              <button onClick={() => setSelectedAudiobook(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition">
+              <button onClick={closeAudiobookDetail} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition">
                 <X className="w-4 h-4 text-kindle-text" />
               </button>
             </div>
@@ -3241,7 +3288,7 @@ export default function DiscoverView({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
-                    <Headphones className="w-8 h-8 text-purple-400 opacity-50" />
+                    <Headphones className="w-8 h-8 text-kindle-text-muted opacity-50" />
                   </div>
                 )}
               </div>
@@ -3262,7 +3309,7 @@ export default function DiscoverView({
               <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Audio Tracks</p>
               {audiobookDetailLoading ? (
                 <div className="py-8 flex flex-col items-center gap-3">
-                  <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
+                  <Loader2 className="w-6 h-6 animate-spin text-kindle-text-muted" />
                   <p className="text-[10px] text-kindle-text-muted uppercase tracking-widest">Extracting audio links…</p>
                 </div>
               ) : audiobookDetailError ? (
@@ -3270,8 +3317,8 @@ export default function DiscoverView({
                   <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto opacity-70" />
                   <p className="text-xs text-kindle-text-muted">{audiobookDetailError}</p>
                   <button
-                    onClick={() => fetchAudiobookDetailForBook(selectedAudiobook)}
-                    className="text-[10px] font-bold uppercase tracking-widest text-purple-500 hover:underline"
+                    onClick={() => fetchAudiobookDetailForBook(selectedAudiobook, audiobookFetchGen.current)}
+                    className="text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:underline"
                   >
                     Retry
                   </button>
@@ -3279,16 +3326,22 @@ export default function DiscoverView({
               ) : audiobookDetail?.tracks?.length > 0 ? (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-xl border border-kindle-border bg-kindle-card/50 p-2">
                   {audiobookDetail.tracks.map((track: any, idx: number) => (
-                    <a
+                    <button
                       key={idx}
-                      href={`/api/proxy-file?url=${encodeURIComponent(track.src)}`}
-                      download
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-kindle-bg transition text-left group"
+                      type="button"
+                      onClick={() => toggleTrackPreview(track, idx)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition text-left group w-full ${
+                        previewTrackIdx === idx ? "bg-kindle-bg border border-kindle-border" : "hover:bg-kindle-bg"
+                      }`}
                     >
                       <span className="text-[10px] font-mono text-kindle-text-muted w-5 shrink-0">{idx + 1}</span>
                       <span className="text-xs text-kindle-text truncate flex-1">{track.title}</span>
-                      <Download className="w-3.5 h-3.5 text-purple-500 opacity-0 group-hover:opacity-100 transition shrink-0" />
-                    </a>
+                      {previewTrackIdx === idx && previewPlaying ? (
+                        <Pause className="w-3.5 h-3.5 text-kindle-text shrink-0" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5 text-kindle-text opacity-60 group-hover:opacity-100 transition shrink-0" />
+                      )}
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -3296,15 +3349,24 @@ export default function DiscoverView({
               )}
             </div>
 
+            <audio
+              ref={previewAudioRef}
+              className="hidden"
+              onEnded={() => setPreviewPlaying(false)}
+              onPause={() => setPreviewPlaying(false)}
+              onPlay={() => setPreviewPlaying(true)}
+            />
+
             <div className="px-5 pb-5 pt-2 space-y-2.5 shrink-0 border-t border-kindle-border">
               {audiobookDetail?.tracks?.length > 0 && onPlayAudiobook && (
                 <button
                   onClick={() => {
+                    previewAudioRef.current?.pause();
                     const entry = buildAudiobookLibraryEntry(selectedAudiobook, audiobookDetail.tracks);
                     onPlayAudiobook(entry);
-                    setSelectedAudiobook(null);
+                    closeAudiobookDetail();
                   }}
-                  className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition shadow-sm"
+                  className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-white/90 hover:bg-white text-black text-xs font-bold uppercase tracking-widest rounded-xl transition shadow-sm"
                 >
                   <Headphones className="w-4 h-4" />
                   Play in App
@@ -3315,7 +3377,7 @@ export default function DiscoverView({
                   onClick={() => {
                     onBookAdded(buildAudiobookLibraryEntry(selectedAudiobook, audiobookDetail.tracks));
                     toast.success("Added to library");
-                    setSelectedAudiobook(null);
+                    closeAudiobookDetail();
                   }}
                   className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-kindle-card hover:bg-kindle-border border border-kindle-border text-kindle-text text-xs font-bold uppercase tracking-widest rounded-xl transition"
                 >

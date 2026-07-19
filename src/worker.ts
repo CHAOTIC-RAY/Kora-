@@ -1125,7 +1125,11 @@ export default {
         const books = await fetchGoodreadsTrendingBooks(fetchPageHtmlWithProxies);
         const payload = books.length >= 3 ? books : mapGoodreadsTrendingFallback();
         return new Response(JSON.stringify(payload), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "no-store, max-age=0",
+          }
         });
       }
 

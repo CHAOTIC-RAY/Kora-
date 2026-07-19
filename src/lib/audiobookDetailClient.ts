@@ -6,9 +6,16 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const memoryCache = new Map<string, { detail: AudiobookDetail; expires: number }>();
 const inflight = new Map<string, Promise<AudiobookDetail | null>>();
 
-function cacheKeyForBook(book: { title?: string; link?: string; listenUrl?: string }): string {
-  return (book.link || book.listenUrl || book.title || "").toLowerCase().trim();
+function cacheKeyForBook(book: { title?: string; author?: string; link?: string; listenUrl?: string }): string {
+  const parts = [
+    (book.title || "").toLowerCase().trim(),
+    (book.author || "").toLowerCase().trim(),
+    (book.link || book.listenUrl || "").toLowerCase().trim(),
+  ].filter(Boolean);
+  return parts.join("|") || "unknown";
 }
+
+export { cacheKeyForBook };
 
 function loadStorage(): Record<string, { detail: AudiobookDetail; expires: number }> {
   try {
