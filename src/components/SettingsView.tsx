@@ -18,7 +18,8 @@ import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
-import CastwrightConverter from "./CastwrightConverter";
+import VoxLibriConverter from "./VoxLibriConverter";
+import VocalbookConverter from "./VocalbookConverter";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -434,9 +435,14 @@ export default function SettingsView({
       </header>
 
       <div className="space-y-6">
-        {/* Bento Widget Grid (Castwright, Add Books & Cloud Sync Ingestion) */}
+        {/* Bento Widget Grid (audiobook converters, Add Books & Cloud Sync Ingestion) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <CastwrightConverter
+          <VoxLibriConverter
+            books={(books as BookMetadata[]) || []}
+            userId={userId}
+            onRefreshLibrary={onRefreshLibrary}
+          />
+          <VocalbookConverter
             books={(books as BookMetadata[]) || []}
             userId={userId}
             onRefreshLibrary={onRefreshLibrary}

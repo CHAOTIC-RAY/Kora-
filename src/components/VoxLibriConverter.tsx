@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -9,42 +9,35 @@ import {
   Server,
   Wand2,
 } from "lucide-react";
-import { BookMetadata, syncBookToCloud } from "../lib/firebase";
-import { getBookFile } from "../db/indexedDB";
-import { storeAudiobookTrack } from "../lib/audiobookStorage";
+import { BookMetadata } from "../lib/firebase";
 import {
-  CastwrightModelKey,
   ConversionProgress,
-  checkCastwrightHealth,
-  convertBookWithCastwright,
-  getCastwrightUrl,
-  setCastwrightUrl,
-} from "../lib/castwrightClient";
+  extractAudioTracksFromBlob,
+  getEligibleConverterBooks,
+  importConvertedAudiobook,
+  loadCachedBookBlob,
+  pollConversionJob,
+} from "../lib/audiobookConverterImport";
+import {
+  checkVoxLibriHealth,
+  downloadVoxLibriJob,
+  getVoxLibriJob,
+  getVoxLibriUrl,
+  setVoxLibriUrl,
+  startVoxLibriConversion,
+} from "../lib/voxlibriClient";
 
-const SUPPORTED_EXTENSIONS = new Set(["epub", "pdf", "mobi", "azw3", "txt"]);
-const MODEL_OPTIONS: { id: CastwrightModelKey; label: string }[] = [
-  { id: "kokoro-v1", label: "Kokoro (local, recommended)" },
-  { id: "qwen3-tts-0.6b", label: "Qwen 0.6B (fast)" },
-  { id: "qwen3-tts-1.7b", label: "Qwen 1.7B (quality)" },
-  { id: "coqui-xtts-v2", label: "Coqui XTTS" },
-  { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { id: "gemini-3.1-flash", label: "Gemini 3.1 Flash" },
-];
-
-interface CastwrightConverterProps {
+interface VoxLibriConverterProps {
   books: BookMetadata[];
   userId?: string;
   onRefreshLibrary?: (uid?: string) => void;
 }
 
-export default function CastwrightConverter({
-  books,
-  userId,
-  onRefreshLibrary,
-}: CastwrightConverterProps) {
-  const [serverUrl, setServerUrl] = useState(getCastwrightUrl);
+export default function VoxLibriConverter({ books, userId, onRefreshLibrary }: VoxLibriConverterProps) {
+  const [serverUrl, setServerUrl] = useState(getVoxLibriUrl);
   const [selectedBookId, setSelectedBookId] = useState("");
-  const [modelKey, setModelKey] = useState<CastwrightModelKey>("kokoro-v1");
+  const [language, setLanguage] = useState("eng");
+  const [ttsEngine, setTtsEngine] = useState<"xtts" | "fairseq">("xtts");
   const [healthStatus, setHealthStatus] = useState<"unknown" | "ok" | "error">("unknown");
   const [healthDetail, setHealthDetail] = useState<string | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
@@ -54,22 +47,12 @@ export default function CastwrightConverter({
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const eligibleBooks = useMemo(
-    () =>
-      books.filter(
-        (b) =>
-          b.extension?.toLowerCase() !== "audiobook" &&
-          SUPPORTED_EXTENSIONS.has((b.extension || "").toLowerCase())
-      ),
-    [books]
-  );
-
-  const selectedBook = eligibleBooks.find((b) => b.id === selectedBookId);
+  const eligibleBooks = getEligibleConverterBooks(books);
+  const selectedBook = eligibleBooks.find((book) => book.id === selectedBookId);
 
   const runHealthCheck = useCallback(async (url = serverUrl) => {
     setCheckingHealth(true);
-    setHealthDetail(null);
-    const result = await checkCastwrightHealth(url);
+    const result = await checkVoxLibriHealth(url);
     setHealthStatus(result.ok ? "ok" : "error");
     setHealthDetail(result.detail || null);
     setCheckingHealth(false);
@@ -79,79 +62,53 @@ export default function CastwrightConverter({
     runHealthCheck();
   }, [runHealthCheck]);
 
-  const handleSaveUrl = () => {
-    setCastwrightUrl(serverUrl);
-    runHealthCheck(serverUrl);
-  };
-
-  const handleUseDevProxy = () => {
-    const proxyUrl = "/castwright-api";
-    setServerUrl(proxyUrl);
-    setCastwrightUrl(proxyUrl);
-    runHealthCheck(proxyUrl);
-  };
-
   const handleConvert = async () => {
     if (!selectedBook) return;
     setConverting(true);
     setError(null);
     setLastSuccess(null);
-    setProgress({ stage: "importing", message: "Starting…", percent: 0 });
+    setProgress({ stage: "uploading", message: "Uploading manuscript…", percent: 5 });
     abortRef.current = new AbortController();
 
     try {
-      const cached = await getBookFile(selectedBook.id);
-      if (!cached?.blob) {
-        throw new Error("Book file is not cached offline. Open the book once to download it, then retry.");
-      }
-
-      const ext = (selectedBook.extension || "epub").toLowerCase();
-      const fileName = cached.fileName || `${selectedBook.title}.${ext}`;
-
-      const { tracks } = await convertBookWithCastwright({
-        file: cached.blob,
+      const { blob, fileName } = await loadCachedBookBlob(selectedBook);
+      const jobId = await startVoxLibriConversion({
+        file: blob,
         fileName,
-        title: selectedBook.title,
-        author: selectedBook.author || "Unknown",
-        modelKey,
+        language,
+        ttsEngine,
         baseUrl: serverUrl,
         signal: abortRef.current.signal,
-        onProgress: setProgress,
       });
 
-      const audiobookId = `${selectedBook.id}-audiobook`;
-      for (const track of tracks) {
-        await storeAudiobookTrack(audiobookId, track.index, track.title, track.blob);
-      }
+      await pollConversionJob(() => getVoxLibriJob(jobId, serverUrl), {
+        signal: abortRef.current.signal,
+        onProgress: (job) => {
+          setProgress({
+            stage: "converting",
+            message: job.message || "Converting with VoxLibri…",
+            percent: Math.max(10, Math.min(90, job.progress || 10)),
+          });
+        },
+      });
 
-      const audiobookTracks = tracks.map((t) => ({
-        index: t.index,
-        title: t.title,
-        src: `castwright://${audiobookId}/${t.index}`,
-      }));
+      setProgress({ stage: "downloading", message: "Downloading converted audio…", percent: 92 });
+      const audioBlob = await downloadVoxLibriJob(jobId, serverUrl);
+      const tracks = await extractAudioTracksFromBlob(audioBlob, "audiobook.zip");
+      if (!tracks.length) throw new Error("No audio tracks found in VoxLibri output");
 
-      const audiobookEntry: BookMetadata = {
-        id: audiobookId,
-        title: `${selectedBook.title} (Audiobook)`,
-        author: selectedBook.author || "Unknown",
-        coverUrl: selectedBook.coverUrl,
-        extension: "audiobook",
-        size: "",
-        tags: ["audiobook", "castwright", ...(selectedBook.tags || []).filter((t) => t !== "audiobook")],
-        status: "to-read",
-        progress: { percent: 0, lastReadTime: Date.now() },
-        dateAdded: Date.now(),
-        source: "castwright",
-        description: `Converted from "${selectedBook.title}" using Castwright.`,
-        audiobookTracks,
-        audiobookDownloaded: true,
-      };
-
-      await syncBookToCloud(userId || "", audiobookEntry);
-      onRefreshLibrary?.(userId);
-      setLastSuccess(`Added "${audiobookEntry.title}" with ${tracks.length} chapters.`);
+      setProgress({ stage: "importing", message: "Adding to your library…", percent: 97 });
+      const entry = await importConvertedAudiobook({
+        sourceBook: selectedBook,
+        tracks,
+        engine: "voxlibri",
+        userId,
+        onRefreshLibrary,
+      });
+      setProgress({ stage: "done", message: "Done", percent: 100 });
+      setLastSuccess(`Added "${entry.title}" with ${tracks.length} track(s).`);
     } catch (err) {
-      if ((err as Error).name === "AbortError") {
+      if ((err as Error).name === "AbortError" || (err as Error).message === "Cancelled") {
         setError("Conversion cancelled.");
       } else {
         setError((err as Error).message || "Conversion failed.");
@@ -162,10 +119,6 @@ export default function CastwrightConverter({
     }
   };
 
-  const handleCancel = () => {
-    abortRef.current?.abort();
-  };
-
   return (
     <div className="md:col-span-3 bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
@@ -173,21 +126,22 @@ export default function CastwrightConverter({
           <div className="flex items-center gap-2 mb-1.5">
             <Wand2 className="w-4 h-4 text-kindle-accent" />
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">
-              Castwright — Book to Audiobook
+              VoxLibri — Book to Audiobook
             </h4>
           </div>
           <p className="text-[10px] text-kindle-text-muted leading-relaxed max-w-2xl">
-            Convert ebooks from your library into a personal audiobook using a local{" "}
+            Neural ebook-to-audiobook conversion via local{" "}
             <a
-              href="https://github.com/dudarenok-maker/Castwright"
+              href="https://github.com/Vasanth2005kk/VoxLibri"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-kindle-text inline-flex items-center gap-0.5"
             >
-              Castwright
+              VoxLibri
               <ExternalLink className="w-2.5 h-2.5" />
-            </a>{" "}
-            instance. Castwright runs on your machine (Node + Python TTS sidecar) — Kora sends the manuscript and imports the finished MP3 chapters.
+            </a>
+            . Run the Kora API wrapper in <code className="text-[9px]">services/voxlibri-api</code> with{" "}
+            <code className="text-[9px]">VOXLIBRI_HOME</code> set. GPU recommended for XTTS.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -213,32 +167,40 @@ export default function CastwrightConverter({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="space-y-1.5 md:col-span-2">
           <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1">
             <Server className="w-3 h-3" />
-            Castwright Server URL
+            VoxLibri API URL
           </label>
           <div className="flex gap-2">
             <input
               type="text"
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
-              placeholder="http://localhost:8080"
+              placeholder="http://localhost:7861"
               className="flex-1 text-[11px] bg-kindle-bg border border-kindle-border rounded-lg px-3 py-2 font-mono"
             />
             <button
-              onClick={handleSaveUrl}
+              onClick={() => {
+                setVoxLibriUrl(serverUrl);
+                runHealthCheck(serverUrl);
+              }}
               className="text-[9px] font-bold uppercase tracking-wider px-3 py-2 rounded-lg border border-kindle-border hover:bg-kindle-bg transition"
             >
               Save
             </button>
           </div>
           <button
-            onClick={handleUseDevProxy}
+            onClick={() => {
+              const proxyUrl = "/voxlibri-api";
+              setServerUrl(proxyUrl);
+              setVoxLibriUrl(proxyUrl);
+              runHealthCheck(proxyUrl);
+            }}
             className="text-[8px] text-kindle-text-muted underline hover:text-kindle-text"
           >
-            Use dev proxy (/castwright-api) to avoid CORS
+            Use dev proxy (/voxlibri-api)
           </button>
           {healthDetail && healthStatus === "error" && (
             <p className="text-[8px] text-amber-600 leading-relaxed">{healthDetail}</p>
@@ -246,20 +208,24 @@ export default function CastwrightConverter({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
-            TTS Model
-          </label>
+          <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">Engine</label>
           <select
-            value={modelKey}
-            onChange={(e) => setModelKey(e.target.value as CastwrightModelKey)}
+            value={ttsEngine}
+            onChange={(e) => setTtsEngine(e.target.value as "xtts" | "fairseq")}
             disabled={converting}
             className="w-full text-[11px] bg-kindle-bg border border-kindle-border rounded-lg px-3 py-2"
           >
-            {MODEL_OPTIONS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
+            <option value="xtts">XTTS v2 (voice clone)</option>
+            <option value="fairseq">Fairseq</option>
+          </select>
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            disabled={converting}
+            className="w-full text-[11px] bg-kindle-bg border border-kindle-border rounded-lg px-3 py-2"
+          >
+            <option value="eng">English</option>
+            <option value="tam">Tamil</option>
           </select>
         </div>
       </div>
@@ -278,9 +244,9 @@ export default function CastwrightConverter({
           <option value="">
             {eligibleBooks.length ? "Select a book…" : "No eligible books in library"}
           </option>
-          {eligibleBooks.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.title} — {b.author} ({b.extension?.toUpperCase()})
+          {eligibleBooks.map((book) => (
+            <option key={book.id} value={book.id}>
+              {book.title} — {book.author} ({book.extension?.toUpperCase()})
             </option>
           ))}
         </select>
@@ -293,10 +259,7 @@ export default function CastwrightConverter({
             <span className="text-kindle-accent">{progress.percent}%</span>
           </div>
           <div className="h-1.5 bg-kindle-bg rounded-full overflow-hidden border border-kindle-border">
-            <div
-              className="h-full bg-kindle-accent transition-all duration-300"
-              style={{ width: `${progress.percent}%` }}
-            />
+            <div className="h-full bg-kindle-accent transition-all duration-300" style={{ width: `${progress.percent}%` }} />
           </div>
         </div>
       )}
@@ -306,7 +269,6 @@ export default function CastwrightConverter({
           {error}
         </p>
       )}
-
       {lastSuccess && (
         <p className="text-[9px] text-emerald-600 font-medium bg-emerald-500/5 border border-emerald-500/10 rounded-lg px-3 py-2">
           {lastSuccess}
@@ -318,14 +280,14 @@ export default function CastwrightConverter({
           <button
             onClick={handleConvert}
             disabled={!selectedBook || healthStatus !== "ok"}
-            className="flex-1 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider py-2.5 rounded-xl bg-kindle-accent text-white hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-wider py-2.5 rounded-xl bg-kindle-accent text-white hover:opacity-90 transition disabled:opacity-40"
           >
             <Wand2 className="w-3.5 h-3.5" />
-            Convert to Audiobook
+            Convert with VoxLibri
           </button>
         ) : (
           <button
-            onClick={handleCancel}
+            onClick={() => abortRef.current?.abort()}
             className="flex-1 text-[10px] font-bold uppercase tracking-wider py-2.5 rounded-xl border border-red-500/30 text-red-500 hover:bg-red-500/5 transition"
           >
             Cancel

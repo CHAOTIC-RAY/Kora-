@@ -17,10 +17,15 @@ export default defineConfig(() => {
       // Allow Replit's proxied iframe to reach the dev server
       allowedHosts: true as true,
       proxy: {
-        '/castwright-api': {
-          target: 'http://localhost:8080',
+        '/voxlibri-api': {
+          target: 'http://localhost:7861',
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/castwright-api/, ''),
+          rewrite: (path) => path.replace(/^\/voxlibri-api/, ''),
+        },
+        '/vocalbook-api': {
+          target: 'http://localhost:7862',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/vocalbook-api/, ''),
         },
       },
     },
