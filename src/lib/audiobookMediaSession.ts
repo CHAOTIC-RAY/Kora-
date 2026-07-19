@@ -28,7 +28,7 @@ function artworkSrc(url?: string): MediaImage[] {
 }
 
 function bindHandlers(session: MediaSession): void {
-  const bind = (action: MediaSessionAction, handler?: () => void) => {
+  const bind = (action: MediaSessionAction, handler?: MediaSessionActionHandler) => {
     try {
       if (handler) session.setActionHandler(action, handler);
       else session.setActionHandler(action, null);

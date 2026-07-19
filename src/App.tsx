@@ -1015,7 +1015,7 @@ export default function App() {
   }, [activeBook]);
 
   // Keep track of the active tab before transitioning to settings
-  const prevTabRef = useRef<"library" | "discover" | "feed" | "settings">("library");
+  const prevTabRef = useRef<"library" | "discover" | "feed" | "tools" | "settings">("library");
   useEffect(() => {
     if (activeTab !== "settings") {
       prevTabRef.current = activeTab;

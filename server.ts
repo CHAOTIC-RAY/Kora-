@@ -16,6 +16,7 @@ import {
   extractFirstBookLinkFromSearch,
   isAudiobookSearchUrl,
   scrapePopularAudiobooks,
+  searchAudiobooksFromSources,
   titlesRoughlyMatch,
 } from "./src/lib/audiobookScraper";
 import {

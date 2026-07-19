@@ -22,6 +22,8 @@ export interface AudiobookSearchResult {
   coverUrl: string | null;
   link: string;
   source: string;
+  listenUrl?: string;
+  listenUrlAlt?: string;
 }
 
 export const POPULAR_AUDIOBOOKS = [
