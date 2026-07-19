@@ -1,4 +1,6 @@
 import { CachedFeedArticle, getCachedFeedArticle, setCachedFeedArticle } from "./feedArticleCache";
+import type { FeedItem } from "./feedStorage";
+import { isTelegramArticleLink, telegramPostHtml } from "./telegramFeed";
 
 function normalizeHeadingText(value: string): string {
   return value
@@ -279,8 +281,37 @@ export async function loadFeedArticle(itemId: string, url: string): Promise<Cach
   return article;
 }
 
+/** Resolve article HTML for a feed item (Telegram local, others via convert-url cache). */
+export async function resolveFeedArticle(item: FeedItem): Promise<CachedFeedArticle> {
+  const cached = getCachedFeedArticle(item.id);
+  if (cached) return cached;
+
+  if (isTelegramArticleLink(item.link)) {
+    const article: CachedFeedArticle = {
+      url: item.link,
+      title: item.title,
+      description: item.summary,
+      htmlContent: telegramPostHtml({
+        title: item.title,
+        summary: item.summary,
+        imageUrl: item.imageUrl,
+        link: item.link,
+      }),
+      fetchedAt: Date.now(),
+    };
+    setCachedFeedArticle(item.id, article);
+    return article;
+  }
+
+  return loadFeedArticle(item.id, item.link);
+}
+
+export function peekFeedArticle(item: FeedItem): CachedFeedArticle | null {
+  return getCachedFeedArticle(item.id);
+}
+
 export async function prefetchFeedArticles(
-  items: { id: string; link: string }[],
+  items: Array<Pick<FeedItem, "id" | "link" | "title"> & Partial<Pick<FeedItem, "summary" | "imageUrl">>>,
   limit = 5
 ): Promise<void> {
   const targets = items.slice(0, limit);
@@ -288,7 +319,7 @@ export async function prefetchFeedArticles(
     targets.map(async (item) => {
       if (getCachedFeedArticle(item.id)) return;
       try {
-        await loadFeedArticle(item.id, item.link);
+        await resolveFeedArticle(item as FeedItem);
       } catch {
         // best-effort background prefetch
       }

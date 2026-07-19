@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bookmark, ChevronLeft, ExternalLink, Loader2, Settings2 } from "lucide-react";
-import { prepareFeedArticleHtml, prefetchFeedArticles } from "../lib/feedArticle";
+import {
+  peekFeedArticle,
+  prepareFeedArticleHtml,
+  prefetchFeedArticles,
+  resolveFeedArticle,
+} from "../lib/feedArticle";
 import { clipUrlToLibrary } from "../lib/feedClipper";
 import type { FeedItem } from "../lib/feedStorage";
 import { markFeedItemSaved } from "../lib/feedStorage";
 import { textDirection } from "../lib/textDirection";
 import { newsReaderThemeClasses } from "../lib/newsReaderPrefs";
-import { isTelegramArticleLink, telegramPostHtml } from "../lib/telegramFeed";
+import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { useNewsReaderPrefs } from "../hooks/useNewsReaderPrefs";
 import NewsReaderSettingsPanel from "./NewsReaderSettingsPanel";
 
@@ -19,6 +24,34 @@ interface FeedArticleReaderProps {
   onSaved?: () => void | Promise<void>;
 }
 
+interface StackEntry {
+  item: FeedItem;
+  title: string;
+  html: string;
+  ready: boolean;
+  error?: string;
+}
+
+function entryFromCache(feedItem: FeedItem): StackEntry | null {
+  const cached = peekFeedArticle(feedItem);
+  if (!cached) return null;
+  return {
+    item: feedItem,
+    title: cached.title || feedItem.title,
+    html: cached.htmlContent || "",
+    ready: true,
+  };
+}
+
+function placeholderEntry(feedItem: FeedItem): StackEntry {
+  return {
+    item: feedItem,
+    title: feedItem.title,
+    html: "",
+    ready: false,
+  };
+}
+
 export default function FeedArticleReader({
   item,
   queue = [],
@@ -27,125 +60,189 @@ export default function FeedArticleReader({
   onOpenItem,
   onSaved,
 }: FeedArticleReaderProps) {
-  const [html, setHtml] = useState("");
-  const [articleTitle, setArticleTitle] = useState(item.title);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [stack, setStack] = useState<StackEntry[]>([]);
   const [saving, setSaving] = useState(false);
   const { prefs, updatePrefs } = useNewsReaderPrefs();
   const [showSettings, setShowSettings] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
+
   const scrollRef = useRef<HTMLDivElement>(null);
-  const nextSentinelRef = useRef<HTMLDivElement>(null);
-  const hasScrolledRef = useRef(false);
-  const advancingRef = useRef(false);
+  const articleNodeRefs = useRef(new Map<string, HTMLElement>());
+  const syncFromScrollRef = useRef(false);
+  const hasUserScrolledRef = useRef(false);
+  const sessionStartIdRef = useRef(item.id);
+  const loadingIdsRef = useRef(new Set<string>());
 
-  const isTelegram = isTelegramArticleLink(item.link);
+  const theme = useMemo(() => newsReaderThemeClasses(prefs.theme), [prefs.theme]);
 
-  const nextItem = useMemo(() => {
-    if (!queue.length || !onOpenItem) return null;
-    const idx = queue.findIndex((entry) => entry.id === item.id);
-    if (idx < 0 || idx >= queue.length - 1) return null;
-    return queue[idx + 1];
-  }, [queue, item.id, onOpenItem]);
+  const activeEntry = useMemo(
+    () => stack.find((entry) => entry.item.id === item.id) || stack[0] || null,
+    [stack, item.id]
+  );
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      setArticleTitle(item.title);
-      setHtml("");
-      hasScrolledRef.current = false;
-      advancingRef.current = false;
-      scrollRef.current?.scrollTo({ top: 0 });
-
-      if (isTelegram) {
-        setHtml(
-          telegramPostHtml({
-            title: item.title,
-            summary: item.summary,
-            imageUrl: item.imageUrl,
-            link: item.link,
-          })
+  const fillEntry = useCallback(async (feedItem: FeedItem) => {
+    if (loadingIdsRef.current.has(feedItem.id)) return;
+    loadingIdsRef.current.add(feedItem.id);
+    try {
+      const resolved = await resolveFeedArticle(feedItem);
+      setStack((prev) => {
+        if (!prev.some((entry) => entry.item.id === feedItem.id)) return prev;
+        return prev.map((entry) =>
+          entry.item.id === feedItem.id
+            ? {
+                item: feedItem,
+                title: resolved.title || feedItem.title,
+                html: resolved.htmlContent || "",
+                ready: true,
+              }
+            : entry
         );
-        if (!cancelled) setLoading(false);
-        return;
-      }
+      });
+    } catch (err) {
+      setStack((prev) =>
+        prev.map((entry) =>
+          entry.item.id === feedItem.id
+            ? {
+                ...entry,
+                ready: true,
+                error: (err as Error).message || "Could not load this article.",
+              }
+            : entry
+        )
+      );
+    } finally {
+      loadingIdsRef.current.delete(feedItem.id);
+    }
+  }, []);
 
-      try {
-        const response = await fetch("/api/convert-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: item.link }),
-        });
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `HTTP error ${response.status}`);
-        }
-        const data = await response.json();
-        if (cancelled) return;
-        setHtml(data.htmlContent || "");
-        setArticleTitle(data.title || item.title);
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message || "Could not load this article.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [item.link, item.title, item.summary, item.imageUrl, isTelegram]);
-
+  // Fresh open / jump to an article that isn't already in the continuous stack.
   useEffect(() => {
-    if (!nextItem) return;
-    void prefetchFeedArticles([nextItem], 1);
-  }, [nextItem]);
+    const alreadyStacked = stack.some((entry) => entry.item.id === item.id);
+    if (alreadyStacked) return;
 
-  const goToNext = useCallback(() => {
-    if (!nextItem || !onOpenItem || advancingRef.current) return;
-    advancingRef.current = true;
-    onOpenItem(nextItem);
-  }, [nextItem, onOpenItem]);
+    sessionStartIdRef.current = item.id;
+    hasUserScrolledRef.current = false;
+    const cached = entryFromCache(item);
+    setStack([cached || placeholderEntry(item)]);
+    scrollRef.current?.scrollTo({ top: 0 });
 
+    if (!cached) {
+      void fillEntry(item);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to external item jumps
+  }, [item.id, fillEntry]);
+
+  // Grow the stack forward so the next stories are already rendered below.
   useEffect(() => {
-    if (!nextItem || loading || error || showSettings) return;
-    const sentinel = nextSentinelRef.current;
-    const scroller = scrollRef.current;
-    if (!sentinel || !scroller) return;
+    if (!queue.length) return;
+    const last = stack[stack.length - 1];
+    if (!last) return;
+
+    const lastIdx = queue.findIndex((entry) => entry.id === last.item.id);
+    if (lastIdx < 0) return;
+
+    const upcoming = queue.slice(lastIdx + 1, lastIdx + 3);
+    const missing = upcoming.filter((entry) => !stack.some((s) => s.item.id === entry.id));
+    if (!missing.length) return;
+
+    setStack((prev) => {
+      const next = [...prev];
+      for (const feedItem of missing) {
+        if (next.some((entry) => entry.item.id === feedItem.id)) continue;
+        next.push(entryFromCache(feedItem) || placeholderEntry(feedItem));
+      }
+      return next;
+    });
+
+    for (const feedItem of missing) {
+      if (!peekFeedArticle(feedItem)) {
+        void fillEntry(feedItem);
+      }
+    }
+  }, [stack, queue, fillEntry]);
+
+  // Prefetch a couple ahead in the background (cache warm even before stack append).
+  useEffect(() => {
+    const idx = queue.findIndex((entry) => entry.id === item.id);
+    if (idx < 0) return;
+    void prefetchFeedArticles(queue.slice(idx + 1, idx + 4), 3);
+  }, [queue, item.id]);
+
+  // As the user scrolls, the most visible article becomes the active one — no remount.
+  useEffect(() => {
+    if (!onOpenItem || stack.length < 2) return;
+    const root = scrollRef.current;
+    if (!root) return;
+
+    const ratios = new Map<string, number>();
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const entry = entries[0];
-        if (!entry?.isIntersecting) return;
-        if (!hasScrolledRef.current) return;
-        if (entry.intersectionRatio < 0.55) return;
-        goToNext();
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.articleId;
+          if (!id) continue;
+          ratios.set(id, entry.isIntersecting ? entry.intersectionRatio : 0);
+        }
+
+        let bestId: string | null = null;
+        let bestRatio = 0;
+        for (const [id, ratio] of ratios) {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestId = id;
+          }
+        }
+
+        if (!bestId || bestRatio < 0.35 || bestId === item.id) return;
+        // Avoid jumping active story while the opening article is still settling.
+        if (!hasUserScrolledRef.current && bestId !== sessionStartIdRef.current) return;
+        const next = stack.find((entry) => entry.item.id === bestId);
+        if (!next?.ready || next.error) return;
+
+        syncFromScrollRef.current = true;
+        onOpenItem(next.item);
       },
-      { root: scroller, threshold: [0.55, 0.85] }
+      {
+        root,
+        threshold: [0.15, 0.35, 0.55, 0.75],
+        rootMargin: "-18% 0px -42% 0px",
+      }
     );
 
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [nextItem, loading, error, showSettings, goToNext, item.id]);
+    for (const entry of stack) {
+      const node = articleNodeRefs.current.get(entry.item.id);
+      if (node) observer.observe(node);
+    }
 
-  const theme = useMemo(() => newsReaderThemeClasses(prefs.theme), [prefs.theme]);
-  const displayHtml = useMemo(
-    () => prepareFeedArticleHtml(html, articleTitle || item.title),
-    [html, articleTitle, item.title]
-  );
+    return () => observer.disconnect();
+  }, [stack, item.id, onOpenItem]);
+
+  // If parent changes active item without scroll (e.g. tap next card), ease to it.
+  useEffect(() => {
+    if (syncFromScrollRef.current) {
+      syncFromScrollRef.current = false;
+      return;
+    }
+    const node = articleNodeRefs.current.get(item.id);
+    if (!node || !stack.some((entry) => entry.item.id === item.id)) return;
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [item.id, stack]);
 
   const handleSave = async () => {
+    const target = activeEntry?.item || item;
     setSaving(true);
     try {
       const book = await clipUrlToLibrary({
-        url: item.link,
+        url: target.link,
         userId,
-        tags: ["Feed", item.subscriptionTitle, ...(isTelegram ? ["Telegram"] : [])],
-        sourceLabel: item.subscriptionTitle,
+        tags: [
+          "Feed",
+          target.subscriptionTitle,
+          ...(isTelegramArticleLink(target.link) ? ["Telegram"] : []),
+        ],
+        sourceLabel: target.subscriptionTitle,
       });
-      markFeedItemSaved(item.id, book.id);
+      markFeedItemSaved(target.id, book.id);
       await onSaved?.();
     } catch (err) {
       alert((err as Error).message || "Could not save to library.");
@@ -153,6 +250,24 @@ export default function FeedArticleReader({
       setSaving(false);
     }
   };
+
+  const jumpToEntry = useCallback(
+    (feedItem: FeedItem) => {
+      if (!onOpenItem) return;
+      const node = articleNodeRefs.current.get(feedItem.id);
+      if (node) {
+        syncFromScrollRef.current = true;
+        onOpenItem(feedItem);
+        node.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      onOpenItem(feedItem);
+    },
+    [onOpenItem]
+  );
+
+  const bootstrapping = stack.length === 0 || (stack.length === 1 && !stack[0].ready && !stack[0].error);
+  const activeLink = activeEntry?.item.link || item.link;
 
   return (
     <div
@@ -164,9 +279,8 @@ export default function FeedArticleReader({
         filter: prefs.brightness < 100 ? `brightness(${prefs.brightness}%)` : undefined,
       }}
     >
-      {/* Floating chrome only — no fixed top bar */}
       <div
-        className={`absolute z-20 left-0 right-0 top-0 flex items-start justify-between gap-2 px-[max(0.5rem,var(--kora-safe-left))] pt-[max(0.5rem,var(--kora-safe-top))] pr-[max(0.5rem,var(--kora-safe-right))] pointer-events-none transition-opacity ${
+        className={`absolute z-20 left-0 right-0 top-0 flex items-start justify-between gap-2 px-[max(0.5rem,var(--kora-safe-left))] pt-[max(0.5rem,var(--kora-safe-top))] pr-[max(0.5rem,var(--kora-safe-right))] pointer-events-none transition-opacity duration-200 ${
           chromeVisible || showSettings ? "opacity-100" : "opacity-0"
         }`}
       >
@@ -191,14 +305,14 @@ export default function FeedArticleReader({
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={saving || loading || !!error}
+            disabled={saving || !activeEntry?.ready || !!activeEntry?.error}
             className={`p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md disabled:opacity-50`}
             aria-label="Save to library"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />}
           </button>
           <a
-            href={item.link}
+            href={activeLink}
             target="_blank"
             rel="noopener noreferrer"
             className={`p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md`}
@@ -213,105 +327,146 @@ export default function FeedArticleReader({
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto overscroll-contain min-h-0"
+        className="flex-1 overflow-y-auto overscroll-y-contain min-h-0 scroll-smooth"
         onScroll={() => {
-          const el = scrollRef.current;
-          if (!el) return;
-          if (el.scrollTop > 80) hasScrolledRef.current = true;
+          if ((scrollRef.current?.scrollTop || 0) > 48) {
+            hasUserScrolledRef.current = true;
+          }
         }}
         onClick={() => {
           if (showSettings) return;
           setChromeVisible((v) => !v);
         }}
       >
-        {loading ? (
+        {bootstrapping ? (
           <div className={`h-full flex flex-col items-center justify-center gap-3 ${theme.muted}`}>
             <Loader2 className="w-8 h-8 animate-spin" />
             <p className="text-xs font-sans">Loading article…</p>
           </div>
-        ) : error ? (
-          <div className="max-w-lg mx-auto p-8 text-center space-y-4 pt-24">
-            <p className="text-sm text-red-400">{error}</p>
-            <a
-              href={item.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-text text-kindle-bg text-xs font-bold uppercase tracking-wider"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Open in browser
-            </a>
-            {nextItem ? (
-              <button
-                type="button"
-                onClick={goToNext}
-                className={`block w-full text-xs font-bold uppercase tracking-wider ${theme.muted}`}
-              >
-                Skip to next article
-              </button>
-            ) : null}
-          </div>
         ) : (
           <>
-            <article
-              className={`mx-auto pt-[calc(var(--kora-safe-top)+3.5rem)] pb-6 ${prefs.marginSize}`}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mb-5 space-y-1">
-                <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
-                  {item.subscriptionTitle}
-                  {isTelegram ? " · Telegram" : ""}
-                </p>
-                <h1
-                  dir={textDirection(articleTitle)}
-                  className={`text-xl md:text-2xl font-lexend font-bold leading-snug ${
-                    textDirection(articleTitle) === "rtl" ? "font-thaana" : ""
-                  }`}
+            {stack.map((entry, index) => {
+              const isTelegram = isTelegramArticleLink(entry.item.link);
+              const displayHtml = entry.ready
+                ? prepareFeedArticleHtml(entry.html, entry.title || entry.item.title)
+                : "";
+              const titleDir = textDirection(entry.title || entry.item.title);
+
+              return (
+                <section
+                  key={entry.item.id}
+                  data-article-id={entry.item.id}
+                  ref={(node) => {
+                    if (node) articleNodeRefs.current.set(entry.item.id, node);
+                    else articleNodeRefs.current.delete(entry.item.id);
+                  }}
+                  className={`mx-auto ${prefs.marginSize} ${
+                    index === 0 ? "pt-[calc(var(--kora-safe-top)+3.5rem)]" : "pt-10"
+                  } ${index < stack.length - 1 ? "pb-8 border-b border-kindle-border/40" : "pb-4"}`}
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  {articleTitle}
-                </h1>
-              </div>
-              <div
-                dir="auto"
-                className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext]`}
-                style={{
-                  fontSize: `${prefs.fontSize}px`,
-                  lineHeight: prefs.lineSpacing,
-                  ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
-                }}
-                dangerouslySetInnerHTML={{ __html: displayHtml }}
-              />
-            </article>
+                  <div className="mb-5 space-y-1">
+                    <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
+                      {entry.item.subscriptionTitle}
+                      {isTelegram ? " · Telegram" : ""}
+                    </p>
+                    <h1
+                      dir={titleDir}
+                      className={`text-xl md:text-2xl font-lexend font-bold leading-snug ${
+                        titleDir === "rtl" ? "font-thaana" : ""
+                      }`}
+                    >
+                      {entry.title || entry.item.title}
+                    </h1>
+                  </div>
+
+                  {!entry.ready ? (
+                    <div className={`flex items-center gap-2 py-10 ${theme.muted}`}>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <p className="text-xs font-sans">Loading…</p>
+                    </div>
+                  ) : entry.error ? (
+                    <div className="space-y-3 py-6">
+                      <p className="text-sm text-red-400">{entry.error}</p>
+                      <a
+                        href={entry.item.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        Open in browser
+                      </a>
+                    </div>
+                  ) : (
+                    <div
+                      dir="auto"
+                      className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext] animate-in fade-in duration-200`}
+                      style={{
+                        fontSize: `${prefs.fontSize}px`,
+                        lineHeight: prefs.lineSpacing,
+                        ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
+                      }}
+                      dangerouslySetInnerHTML={{ __html: displayHtml }}
+                    />
+                  )}
+                </section>
+              );
+            })}
 
             <div
-              ref={nextSentinelRef}
-              className={`mx-auto px-6 pb-[calc(var(--kora-safe-bottom)+4rem)] pt-4 ${prefs.marginSize}`}
+              className={`mx-auto px-6 pb-[calc(var(--kora-safe-bottom)+4rem)] pt-2 ${prefs.marginSize}`}
               onClick={(e) => e.stopPropagation()}
             >
-              {nextItem ? (
-                <button
-                  type="button"
-                  onClick={goToNext}
-                  className={`w-full text-left rounded-2xl border ${theme.border} ${theme.header} px-4 py-4 shadow-sm`}
-                >
-                  <p className={`text-[9px] font-bold uppercase tracking-[0.2em] ${theme.muted}`}>
-                    Scroll for next
+              {(() => {
+                const last = stack[stack.length - 1];
+                const lastIdx = last ? queue.findIndex((entry) => entry.id === last.item.id) : -1;
+                const nextQueued =
+                  lastIdx >= 0 && lastIdx < queue.length - 1 ? queue[lastIdx + 1] : null;
+                const nextInStack = nextQueued
+                  ? stack.find((entry) => entry.item.id === nextQueued.id)
+                  : null;
+
+                if (nextInStack && !nextInStack.ready) {
+                  return (
+                    <div className={`flex items-center justify-center gap-2 py-6 ${theme.muted}`}>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <p className="text-[10px] font-bold uppercase tracking-widest">
+                        Preparing next…
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (nextQueued) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => jumpToEntry(nextQueued)}
+                      className={`w-full text-left rounded-2xl border ${theme.border} ${theme.header} px-4 py-4 shadow-sm transition-transform active:scale-[0.99]`}
+                    >
+                      <p className={`text-[9px] font-bold uppercase tracking-[0.2em] ${theme.muted}`}>
+                        Up next
+                      </p>
+                      <p
+                        dir={textDirection(nextQueued.title)}
+                        className={`mt-1 text-sm font-lexend font-bold leading-snug line-clamp-2 ${
+                          textDirection(nextQueued.title) === "rtl" ? "font-thaana" : ""
+                        }`}
+                      >
+                        {nextQueued.title}
+                      </p>
+                      <p className={`mt-1 text-[10px] ${theme.muted}`}>{nextQueued.subscriptionTitle}</p>
+                    </button>
+                  );
+                }
+
+                return (
+                  <p className={`text-center text-[10px] font-bold uppercase tracking-widest ${theme.muted}`}>
+                    End of feed
                   </p>
-                  <p
-                    dir={textDirection(nextItem.title)}
-                    className={`mt-1 text-sm font-lexend font-bold leading-snug line-clamp-2 ${
-                      textDirection(nextItem.title) === "rtl" ? "font-thaana" : ""
-                    }`}
-                  >
-                    {nextItem.title}
-                  </p>
-                  <p className={`mt-1 text-[10px] ${theme.muted}`}>{nextItem.subscriptionTitle}</p>
-                </button>
-              ) : (
-                <p className={`text-center text-[10px] font-bold uppercase tracking-widest ${theme.muted}`}>
-                  End of feed
-                </p>
-              )}
+                );
+              })()}
             </div>
           </>
         )}
