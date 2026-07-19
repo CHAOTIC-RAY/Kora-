@@ -4,6 +4,7 @@ export type TtsGenerationMode = "live" | "pregenerate";
 
 export interface TtsSettings {
   voiceName: string;
+  voiceLang: string;
   rate: number;
   pitch: number;
   qualityPreset: TtsQualityPreset;
@@ -12,6 +13,7 @@ export interface TtsSettings {
 }
 
 export const TTS_VOICE_KEY = "kora_tts_voice";
+export const TTS_VOICE_LANG_KEY = "kora_tts_voice_lang";
 export const TTS_RATE_KEY = "kora_tts_rate";
 export const TTS_PITCH_KEY = "kora_tts_pitch";
 export const TTS_QUALITY_KEY = "kora_tts_quality";
@@ -20,6 +22,7 @@ export const TTS_GENERATION_KEY = "kora_tts_generation";
 
 const DEFAULT_SETTINGS: TtsSettings = {
   voiceName: "",
+  voiceLang: "",
   rate: 1,
   pitch: 1,
   qualityPreset: "balanced",
@@ -44,6 +47,7 @@ export function getTtsSettings(): TtsSettings {
   try {
     return {
       voiceName: localStorage.getItem(TTS_VOICE_KEY) || DEFAULT_SETTINGS.voiceName,
+      voiceLang: localStorage.getItem(TTS_VOICE_LANG_KEY) || DEFAULT_SETTINGS.voiceLang,
       rate: parseFloat(localStorage.getItem(TTS_RATE_KEY) || "1") || 1,
       pitch: parseFloat(localStorage.getItem(TTS_PITCH_KEY) || "1") || 1,
       qualityPreset:
@@ -64,6 +68,7 @@ export function saveTtsSettings(patch: Partial<TtsSettings>) {
   const next = { ...current, ...patch };
   try {
     if (patch.voiceName !== undefined) localStorage.setItem(TTS_VOICE_KEY, next.voiceName);
+    if (patch.voiceLang !== undefined) localStorage.setItem(TTS_VOICE_LANG_KEY, next.voiceLang);
     if (patch.rate !== undefined) localStorage.setItem(TTS_RATE_KEY, String(next.rate));
     if (patch.pitch !== undefined) localStorage.setItem(TTS_PITCH_KEY, String(next.pitch));
     if (patch.qualityPreset !== undefined) localStorage.setItem(TTS_QUALITY_KEY, next.qualityPreset);
@@ -100,26 +105,78 @@ export function pickDefaultVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesi
   );
 }
 
-export function resolveSpeechVoice(voiceName?: string): SpeechSynthesisVoice | null {
+export function resolveSpeechVoice(voiceName?: string, voiceLang?: string): SpeechSynthesisVoice | null {
   const voices = getSpeechVoices();
   if (!voices.length) return null;
 
-  if (voiceName) {
-    const exact = voices.find((v) => v.name === voiceName);
+  const settings = getTtsSettings();
+  const targetName = voiceName ?? settings.voiceName;
+  const targetLang = voiceLang ?? settings.voiceLang;
+
+  if (targetName) {
+    const exact = voices.find(
+      (v) => v.name === targetName && (!targetLang || v.lang === targetLang || v.lang.startsWith(`${targetLang}-`))
+    );
     if (exact) return exact;
+    const byName = voices.find((v) => v.name === targetName);
+    if (byName) return byName;
   }
 
-  const settings = getTtsSettings();
-  if (settings.voiceName) {
-    const saved = voices.find((v) => v.name === settings.voiceName);
-    if (saved) return saved;
+  const langPool = targetLang
+    ? voices.filter((v) => v.lang === targetLang || v.lang.startsWith(`${targetLang.split("-")[0]}-`))
+    : voices;
+
+  if (targetLang && langPool.length) {
+    const picked = pickDefaultVoice(langPool);
+    if (picked) return picked;
   }
 
   const picked = pickDefaultVoice(voices);
   if (picked && !settings.voiceName) {
-    saveTtsSettings({ voiceName: picked.name });
+    saveTtsSettings({ voiceName: picked.name, voiceLang: picked.lang });
   }
   return picked;
+}
+
+export function getUniqueVoiceLanguages(voices: SpeechSynthesisVoice[]): Array<{ code: string; label: string }> {
+  const codes = new Set<string>();
+  for (const voice of voices) {
+    if (voice.lang) codes.add(voice.lang);
+  }
+  return Array.from(codes)
+    .sort((a, b) => a.localeCompare(b))
+    .map((code) => ({
+      code,
+      label: formatVoiceLanguageLabel(code),
+    }));
+}
+
+export function formatVoiceLanguageLabel(langCode: string): string {
+  try {
+    const [language, region] = langCode.split("-");
+    const languageName =
+      new Intl.DisplayNames(["en"], { type: "language" }).of(language) || language;
+    if (!region) return `${languageName} (${langCode})`;
+    const regionName = new Intl.DisplayNames(["en"], { type: "region" }).of(region) || region;
+    return `${languageName} (${regionName})`;
+  } catch {
+    return langCode;
+  }
+}
+
+export function getVoicesForLanguage(
+  voices: SpeechSynthesisVoice[],
+  langCode: string
+): SpeechSynthesisVoice[] {
+  if (!langCode) return voices;
+  const base = langCode.split("-")[0];
+  return voices
+    .filter((v) => v.lang === langCode || v.lang.startsWith(`${base}-`))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export function formatVoiceOptionLabel(voice: SpeechSynthesisVoice): string {
+  return voice.name.replace(/\s+Online\s+\(Natural\)/i, "").replace(/Multilingual/i, " Multilingual").trim();
 }
 
 export function getEffectiveSpeechRate(baseRate = 1): number {
@@ -181,7 +238,7 @@ export async function speakTestPhrase(phrase = "This is how your narrator will s
     throw new Error("Text-to-speech is not supported in this browser.");
   }
   const settings = getTtsSettings();
-  const voice = resolveSpeechVoice(settings.voiceName);
+  const voice = resolveSpeechVoice(settings.voiceName, settings.voiceLang);
   window.speechSynthesis.cancel();
   await new Promise<void>((resolve, reject) => {
     const utterance = new SpeechSynthesisUtterance(phrase);

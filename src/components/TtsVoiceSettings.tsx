@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Volume2 } from "lucide-react";
 import {
-  getSpeechVoices,
+  formatVoiceOptionLabel,
   getQualityPresetLabel,
+  getSpeechVoices,
   getTtsSettings,
-  groupVoicesByLanguage,
+  getUniqueVoiceLanguages,
+  getVoicesForLanguage,
   saveTtsSettings,
   speakTestPhrase,
   subscribeToVoicesChanged,
@@ -37,10 +39,46 @@ export default function TtsVoiceSettings({
     return subscribeToVoicesChanged(() => setVoices(getSpeechVoices()));
   }, []);
 
+  const languageOptions = useMemo(() => getUniqueVoiceLanguages(voices), [voices]);
+  const voicesForLanguage = useMemo(
+    () => getVoicesForLanguage(voices, settings.voiceLang),
+    [voices, settings.voiceLang]
+  );
+
+  useEffect(() => {
+    if (!voices.length) return;
+    if (!settings.voiceLang && languageOptions.length) {
+      const nextLang = languageOptions.find((opt) => opt.code.startsWith("en"))?.code || languageOptions[0].code;
+      const next = saveTtsSettings({ voiceLang: nextLang });
+      setSettings(next);
+      return;
+    }
+    if (
+      settings.voiceName &&
+      !voicesForLanguage.some((voice) => voice.name === settings.voiceName)
+    ) {
+      const fallback = voicesForLanguage[0];
+      const next = saveTtsSettings({
+        voiceName: fallback?.name || "",
+        voiceLang: fallback?.lang || settings.voiceLang,
+      });
+      setSettings(next);
+    }
+  }, [languageOptions, settings.voiceLang, settings.voiceName, voices.length, voicesForLanguage]);
+
   const update = (patch: Partial<typeof settings>) => {
     const next = saveTtsSettings(patch);
     setSettings(next);
     onSettingsChange?.();
+  };
+
+  const handleLanguageChange = (langCode: string) => {
+    const pool = getVoicesForLanguage(voices, langCode);
+    const keepCurrent = pool.find((voice) => voice.name === settings.voiceName);
+    update({
+      voiceLang: langCode,
+      voiceName: keepCurrent?.name || pool[0]?.name || "",
+    });
   };
 
   const handleTest = async () => {
@@ -55,8 +93,6 @@ export default function TtsVoiceSettings({
     }
   };
 
-  const voiceGroups = groupVoicesByLanguage(voices);
-
   return (
     <div className={`space-y-3 ${compact ? "" : "rounded-xl border border-kindle-border bg-kindle-bg/60 p-3"}`}>
       <div className="space-y-1.5">
@@ -64,22 +100,48 @@ export default function TtsVoiceSettings({
           <Volume2 className="w-3 h-3" />
           Narrator Voice
         </label>
-        <select
-          value={settings.voiceName}
-          onChange={(e) => update({ voiceName: e.target.value })}
-          className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
-        >
-          <option value="">Best available voice</option>
-          {voiceGroups.map((group) => (
-            <optgroup key={group.language} label={group.language}>
-              {group.voices.map((voice) => (
-                <option key={`${voice.name}-${voice.lang}`} value={voice.name}>
-                  {voice.name.replace(/\s+Online\s+\(Natural\)/i, "").trim()} ({voice.lang})
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <label className="text-[8px] font-bold uppercase tracking-wider text-kindle-text-muted/80">Language</label>
+            <select
+              value={settings.voiceLang}
+              onChange={(e) => handleLanguageChange(e.target.value)}
+              className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
+            >
+              {languageOptions.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.label}
                 </option>
               ))}
-            </optgroup>
-          ))}
-        </select>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[8px] font-bold uppercase tracking-wider text-kindle-text-muted/80">Voice</label>
+            <select
+              value={settings.voiceName}
+              onChange={(e) => {
+                const selected = voicesForLanguage.find((voice) => voice.name === e.target.value);
+                update({
+                  voiceName: e.target.value,
+                  voiceLang: selected?.lang || settings.voiceLang,
+                });
+              }}
+              className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
+            >
+              {voicesForLanguage.length === 0 ? (
+                <option value="">No voices for this language</option>
+              ) : (
+                voicesForLanguage.map((voice) => (
+                  <option key={`${voice.name}-${voice.lang}`} value={voice.name}>
+                    {formatVoiceOptionLabel(voice)}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">

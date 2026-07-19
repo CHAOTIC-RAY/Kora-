@@ -19,7 +19,7 @@ import {
   isAudiobookFullyDownloaded,
 } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
-import { isBrowserTtsTrack, loadTtsChapterText } from "../lib/browserTtsAudiobook";
+import { isBrowserTtsTrack, loadTtsChapterText, resolveTtsTrackStorageIndex } from "../lib/browserTtsAudiobook";
 import { BrowserTtsPlayer } from "../lib/browserTtsPlayer";
 import {
   formatEstimatedRemaining,
@@ -197,6 +197,7 @@ export default function AudiobookPlayer({
   const [ttsVoiceName, setTtsVoiceName] = useState("");
   const [showTtsSettings, setShowTtsSettings] = useState(false);
   const [subtitle, setSubtitle] = useState("");
+  const [transcriberReady, setTranscriberReady] = useState(false);
   const introSkippedForTrack = useRef<number | null>(null);
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
@@ -321,7 +322,10 @@ export default function AudiobookPlayer({
               setPlaybackError(message);
               setIsPlaying(false);
             },
-            onSubtitleUpdate: (text) => setSubtitle(text),
+            onSubtitleUpdate: (text) => {
+              setSubtitle(text);
+              setTranscriberReady(Boolean(text.trim()));
+            },
           });
         }
 
@@ -329,10 +333,12 @@ export default function AudiobookPlayer({
         ttsPlayerRef.current.setRate(speed);
         await ttsPlayerRef.current.loadText(text, savedPosition || savedResume || 0, {
           bookId: book.id,
-          trackIndex: index,
+          trackIndex: resolveTtsTrackStorageIndex(tracks[index], index),
           chapterTitle: tracks[index]?.title,
           quality: getTtsSettings().qualityPreset,
         });
+        setTranscriberReady(false);
+        setSubtitle("");
         setTtsVoiceName(ttsPlayerRef.current.voiceName);
 
         if (smartSkip.enabled && savedResume == null) {
@@ -664,17 +670,9 @@ export default function AudiobookPlayer({
     return Math.round(((currentTrack + trackFraction) / tracks.length) * 100);
   }, [currentPlayableIndex, currentTime, currentTrack, duration, playableTracks.length, tracks.length]);
 
-  useEffect(() => {
-    if (!isTtsBook) {
-      const trackCaption = currentTrackLabel || book.title;
-      const description = book.description?.replace(/\s+/g, " ").trim();
-      if (description && trackCaption !== description) {
-        setSubtitle(`${trackCaption} — ${description.slice(0, 220)}`);
-      } else {
-        setSubtitle(trackCaption);
-      }
-    }
-  }, [book.description, book.title, currentTrackLabel, isTtsBook]);
+  const transcriberText = isTtsBook
+    ? subtitle
+    : currentTrackLabel;
 
   return (
     <>
@@ -748,7 +746,9 @@ export default function AudiobookPlayer({
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-kindle-text truncate">{book.title}</p>
-                <p className="text-[10px] text-kindle-text-muted truncate">{subtitle || currentTrackLabel}</p>
+                <p className="text-[10px] text-kindle-text-muted truncate">
+                  {isTtsBook ? (transcriberText || "Audio transcriber…") : currentTrackLabel}
+                </p>
               </div>
             </button>
             <button
@@ -812,9 +812,14 @@ export default function AudiobookPlayer({
               </div>
             </div>
 
-            <div className="w-full rounded-2xl border border-kindle-border bg-kindle-card/80 px-4 py-3 min-h-[4.5rem] flex items-center justify-center">
-              <p className="text-sm font-serif leading-relaxed text-kindle-text text-center line-clamp-3">
-                {subtitle || currentTrackLabel || book.title}
+            <div className="w-full rounded-2xl border border-kindle-border bg-kindle-card/80 px-4 py-3 min-h-[4.5rem] flex flex-col justify-center gap-1.5">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted text-center">
+                Audio Transcriber
+              </p>
+              <p className="text-sm font-serif leading-relaxed text-kindle-text text-center line-clamp-4">
+                {isTtsBook
+                  ? transcriberText || (transcriberReady ? "" : "Preparing transcription…")
+                  : transcriberText || book.title}
               </p>
             </div>
 

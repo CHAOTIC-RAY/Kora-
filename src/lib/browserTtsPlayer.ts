@@ -22,23 +22,39 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function extractSentenceAround(text: string, charIndex: number): string {
+function extractTranscriptWindow(text: string, charIndex: number, maxChars = 200): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return "";
 
+  const safeIndex = Math.max(0, Math.min(charIndex, normalized.length));
+
+  // Prefer the full sentence being spoken.
   const sentences = normalized.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [normalized];
   let position = 0;
   for (const sentence of sentences) {
     const end = position + sentence.length;
-    if (charIndex >= position && charIndex <= end) {
+    if (safeIndex >= position && safeIndex <= end) {
       return sentence.trim();
     }
     position = end;
   }
 
-  const start = Math.max(0, charIndex - 80);
-  const snippet = normalized.slice(start, start + 160).trim();
-  return snippet.length > 140 ? `${snippet.slice(0, 137)}…` : snippet;
+  // Fall back to a word-aligned window around the current position.
+  let start = safeIndex;
+  while (start > 0 && normalized[start - 1] !== " ") start--;
+  start = Math.max(0, start - 24);
+
+  let end = safeIndex;
+  while (end < normalized.length && normalized[end] !== " ") end++;
+  end = Math.min(normalized.length, Math.max(end + maxChars, safeIndex + 80));
+
+  const lastSpace = normalized.lastIndexOf(" ", end);
+  if (lastSpace > safeIndex + 20) end = lastSpace;
+
+  const excerpt = normalized.slice(start, end).trim();
+  const prefix = start > 0 ? "…" : "";
+  const suffix = end < normalized.length ? "…" : "";
+  return `${prefix}${excerpt}${suffix}`;
 }
 
 export class BrowserTtsPlayer {
@@ -99,7 +115,7 @@ export class BrowserTtsPlayer {
 
   refreshVoice() {
     const settings = getTtsSettings();
-    this.selectedVoice = resolveSpeechVoice(settings.voiceName);
+    this.selectedVoice = resolveSpeechVoice(settings.voiceName, settings.voiceLang);
     this.pitch = settings.pitch;
   }
 
@@ -252,7 +268,7 @@ export class BrowserTtsPlayer {
     const chunks = buildSpeakChunks(text, {
       chapterTitle,
       quality: this.quality,
-      maxChars: this.quality === "instant" ? 220 : 170,
+      maxChars: this.quality === "instant" ? 180 : this.quality === "studio" ? 120 : 140,
     });
     if (!chunks.length) {
       throw new Error("No speakable text found in this chapter.");
@@ -341,9 +357,8 @@ export class BrowserTtsPlayer {
       this.callbacks.onSubtitleUpdate?.("");
       return;
     }
-    const sentence = extractSentenceAround(chunk.text, charIndex);
-    const text = sentence || chunk.text.trim();
-    this.callbacks.onSubtitleUpdate?.(text.length > 220 ? `${text.slice(0, 217)}…` : text);
+    const text = extractTranscriptWindow(chunk.text, charIndex);
+    this.callbacks.onSubtitleUpdate?.(text);
   }
 
   private emitTime() {
@@ -390,10 +405,8 @@ export class BrowserTtsPlayer {
       return;
     }
 
-    const spokenText =
-      index === this.chunkIndex && this.charOffset > 0
-        ? chunk.text.slice(this.charOffset)
-        : chunk.text;
+    const sliceStart = index === this.chunkIndex && this.charOffset > 0 ? this.charOffset : 0;
+    const spokenText = chunk.text.slice(sliceStart);
 
     await new Promise<void>((resolve) => {
       const utterance = new SpeechSynthesisUtterance(spokenText);
@@ -405,19 +418,20 @@ export class BrowserTtsPlayer {
 
       utterance.onboundary = (event) => {
         if (event.name !== "word" && event.name !== "sentence") return;
+        const absoluteOffset = sliceStart + event.charIndex;
         this.chunkIndex = index;
-        this.charOffset = (index === this.chunkIndex ? this.charOffset : 0) + event.charIndex;
+        this.charOffset = absoluteOffset;
         const chunkDuration = this.chunkDurations[index] || 1;
         const ratio = spokenText.length ? event.charIndex / spokenText.length : 0;
         this.boundaryTime = chunkDuration * ratio;
-        this.emitSubtitle(this.charOffset);
+        this.emitSubtitle(absoluteOffset);
         this.emitTime();
       };
 
       utterance.onstart = () => {
         this.chunkIndex = index;
-        this.charOffset = index === this.chunkIndex ? this.charOffset : 0;
-        this.emitSubtitle(this.charOffset);
+        this.charOffset = sliceStart;
+        this.emitSubtitle(sliceStart);
       };
 
       utterance.onend = async () => {
