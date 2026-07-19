@@ -2073,6 +2073,72 @@ export default {
       }
     }
 
+    if (path === "/api/oxford-dictionary") {
+      try {
+        const word = (url.searchParams.get("word") || "").trim();
+        if (!word) {
+          return new Response(JSON.stringify({ error: "Missing word parameter" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        const wordClean = word.replace(/[^a-zA-Z\s'-]/g, "").toLowerCase();
+        if (!wordClean) {
+          return new Response(JSON.stringify({ error: "Invalid word parameter" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+
+        const apiRes = await fetch(
+          `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordClean)}`
+        );
+        if (!apiRes.ok) {
+          return new Response(JSON.stringify({ error: "Word definition could not be located." }), {
+            status: apiRes.status === 404 ? 404 : 502,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+
+        const data = await apiRes.json();
+        const entry = Array.isArray(data) ? data[0] : data;
+        if (!entry) {
+          return new Response(JSON.stringify({ error: "Word definition could not be located." }), {
+            status: 404,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+
+        const phonetic =
+          entry.phonetic ||
+          (Array.isArray(entry.phonetics) && entry.phonetics.find((p: any) => p?.text)?.text) ||
+          "";
+
+        return new Response(
+          JSON.stringify({
+            word: entry.word || wordClean,
+            phonetic,
+            origin: entry.origin,
+            meanings: entry.meanings || [],
+            synonyms: entry.meanings?.flatMap((m: any) => m.synonyms || []).slice(0, 8) || [],
+            antonyms: entry.meanings?.flatMap((m: any) => m.antonyms || []).slice(0, 8) || [],
+          }),
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "public, max-age=86400",
+            },
+          }
+        );
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message || "Dictionary lookup failed" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+    }
+
     if (path === "/api/transcribe-audio" && request.method === "POST") {
       try {
         const body = await request.json();

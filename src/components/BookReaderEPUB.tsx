@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
@@ -24,6 +25,8 @@ import {
 } from "../lib/ttsSettings";
 import { prepareTextForNarration } from "../lib/ttsTextPrep";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
+import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "../lib/epubToc";
+import { applyHighlightsToHtml } from "../lib/epubHighlights";
 import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
@@ -1105,12 +1108,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   }, [currentChapterIdx, chapters.length, currentPageNum, totalPages]);
 
   async function lookupDictionary(word: string) {
+    const cleaned = (word || "").trim();
+    if (!cleaned) return;
+
+    // Hide selection menu so the dictionary panel is not buried under z-[9999].
+    dismissSelection();
+    setDictLoading(true);
+    setDictionaryWord(cleaned);
+    setDictionaryData(null);
+
     try {
-      setDictLoading(true);
-      setDictionaryWord(word);
-      
-      // 1. Check custom dictionary first
-      const localDef = await lookupWord(word);
+      // 1. Check custom / bundled dictionary first
+      const localDef = await lookupWord(cleaned);
       if (localDef) {
         setDictionaryData({
           word: localDef.word,
@@ -1130,8 +1139,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
-      // 2. Fall back to online dictionary
-      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(word)}`);
+      // 2. Fall back to online dictionary (Worker / Express proxy)
+      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(cleaned)}`);
       if (res.ok) {
         const data = await res.json();
         setDictionaryData(data);
@@ -1263,9 +1272,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         }
       });
 
-      // Parse Table of Contents labels (EPUB 3 navigation, fallback to NCX)
-      // For this lightweight parser, we'll map spine indices as chapters, 
-      // and read title metadata or HTML headings as title defaults
+      // Parse Table of Contents labels (EPUB 3 nav + NCX) for real chapter names
+      const tocLabels = await loadEpubTocLabels(zip, opfDoc, rootDir);
       const parsedChapters: EpubChapter[] = [];
 
       // Pre-register all spine hrefs so that in-book TOC links in any chapter
@@ -1273,37 +1281,29 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // to the correct spine index during content processing.
       for (let i = 0; i < spineItems.length; i++) {
         const relativeHref = spineItems[i];
-        const norm = pathResolve(rootDir, relativeHref).toLowerCase();
+        const norm = resolveEpubPath(rootDir, relativeHref).toLowerCase();
         hrefToIndexRef.current.set(norm, i);
         hrefToIndexRef.current.set(relativeHref.toLowerCase(), i);
       }
 
       for (let i = 0; i < spineItems.length; i++) {
         const relativeHref = spineItems[i];
-        const fullChapterPath = `${rootDir}${relativeHref}`;
-        const chapterFile = zip.file(fullChapterPath);
+        const fullChapterPath = resolveEpubPath(rootDir, relativeHref);
+        const chapterFile = zip.file(fullChapterPath) || zip.file(`${rootDir}${relativeHref}`);
 
         if (chapterFile) {
           const rawContent = await chapterFile.async("string");
-          const chapterDoc = parser.parseFromString(rawContent, "text/html");
-          
-          // Get beautiful title from H1/H2 or title element
-          let chapterTitle = chapterDoc.querySelector("title")?.textContent?.trim() || "";
-          
-          if (!chapterTitle || chapterTitle.toLowerCase() === "unknown" || chapterTitle.toLowerCase() === "untitled") {
-             chapterTitle = chapterDoc.querySelector("h1")?.textContent || 
-                            chapterDoc.querySelector("h2")?.textContent || 
-                            chapterDoc.querySelector("h3")?.textContent ||
-                            `Chapter ${i + 1}`;
-          }
-
-          chapterTitle = chapterTitle.trim().replace(/\s+/g, " ");
-          if (chapterTitle.length > 50) {
-            chapterTitle = chapterTitle.substring(0, 47) + "...";
-          }
+          let chapterTitle = resolveChapterTitle(
+            tocLabels,
+            rootDir,
+            relativeHref,
+            rawContent,
+            `Chapter ${i + 1}`
+          );
 
           // Process chapter document images and style links in-memory
           // Find all images, retrieve binary blobs, and map to local blob URLs
+          const chapterDoc = parser.parseFromString(rawContent, "text/html");
           const processedContent = await resolveInternalAssets(chapterDoc, zip, rootDir, relativeHref);
 
           parsedChapters.push({
@@ -1683,25 +1683,36 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     onClose();
   };
 
-  // Request AI companion assistance using our offline engine (No keys/API needed!)
   const handleSaveHighlight = async (color: "yellow" | "green" | "blue" | "pink") => {
-    if (!selectedText) return;
+    const text = (selectedText || "").trim();
+    if (!text) return;
     const highlightId = Date.now().toString();
     const chapterTitle = chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`;
     const newHighlight: BookHighlight = {
       id: highlightId,
-      text: selectedText,
+      text,
       color,
       chapterIdx: currentChapterIdx,
       chapterTitle,
       createdAt: Date.now()
     };
-    
+
     await syncBookHighlight(userId, book.id, newHighlight);
-    setHighlightsData(prev => [newHighlight, ...prev]);
+    setHighlightsData((prev) => [newHighlight, ...prev]);
     dismissSelection();
     setShowNotes(true);
   };
+
+  const highlightedChapterHtml = useMemo(() => {
+    const raw = chapters[currentChapterIdx]?.content || "";
+    return applyHighlightsToHtml(raw, highlightsData, currentChapterIdx);
+  }, [chapters, currentChapterIdx, highlightsData]);
+
+  const highlightedTurningHtml = useMemo(() => {
+    if (turningChapterIdx == null || turningChapterIdx < 0) return "";
+    const raw = chapters[turningChapterIdx]?.content || "";
+    return applyHighlightsToHtml(raw, highlightsData, turningChapterIdx);
+  }, [chapters, turningChapterIdx, highlightsData]);
 
   const expandSelectionToSentence = () => {
     const sel = window.getSelection();
@@ -2533,17 +2544,17 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             style={{ opacity: `${(100 - brightness) * 0.7}%` }} 
           />
 
-          {/* Dictionary Modal */}
-          {dictionaryWord && (
-            <div className="absolute inset-0 z-[70] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
-              <div className="absolute inset-0 bg-black/40" onClick={() => setDictionaryWord(null)} />
+          {/* Dictionary Modal — portaled above selection menu (z-9999) */}
+          {dictionaryWord && createPortal(
+            <div className="fixed inset-0 z-[10050] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
+              <div className="absolute inset-0 bg-black/50" onClick={() => { setDictionaryWord(null); setDictionaryData(null); }} />
               <div className={`relative w-full max-w-sm ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-6 overflow-hidden`}>
                 <div className="flex justify-between items-center mb-3">
                   <div>
                     <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Oxford Dictionary</span>
                     <h3 className="text-xl font-extrabold font-serif leading-tight mt-0.5">{dictionaryWord}</h3>
                   </div>
-                  <button onClick={() => setDictionaryWord(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition">
+                  <button onClick={() => { setDictionaryWord(null); setDictionaryData(null); }} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -2566,11 +2577,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       </div>
                     )}
 
-                    {dictionaryData.meanings.map((meaning: any, i: number) => (
+                    {(dictionaryData.meanings || []).map((meaning: any, i: number) => (
                       <div key={i} className="space-y-2">
                         <p className="text-[9px] uppercase font-bold tracking-widest text-amber-600 dark:text-amber-400 font-sans">{meaning.partOfSpeech}</p>
                         <ul className="space-y-3">
-                          {meaning.definitions.slice(0, 3).map((def: any, j: number) => (
+                          {(meaning.definitions || []).slice(0, 3).map((def: any, j: number) => (
                             <li key={j} className="text-xs leading-relaxed">
                               <span className="font-semibold opacity-40 mr-1.5 font-sans">{j + 1}.</span>
                               {def.definition}
@@ -2619,7 +2630,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   </button>
                   <button
                     onClick={() => {
-                      const text = selectedText || dictionaryWord || "";
+                      const text = dictionaryWord || "";
                       if (text) {
                         addDictionaryEntry({
                           word: text.length > 30 ? text.slice(0, 30) + "..." : text,
@@ -2631,22 +2642,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         setTimeout(() => setDictFeedback(null), 2500);
                       }
                       setDictionaryWord(null);
+                      setDictionaryData(null);
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30 text-[10px] font-bold uppercase tracking-widest transition"
-                    title="Highlight selection"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-current/15 text-[10px] font-bold uppercase tracking-widest hover:bg-current/5 transition"
+                    title="Save to personal dictionary"
                   >
-                    <Highlighter className="w-3.5 h-3.5" /> Highlight
-                  </button>
-                  <button
-                    onClick={() => setDictionaryWord(null)}
-                    className="px-3 py-2 rounded-lg bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest hover:opacity-80 transition"
-                    title="Close"
-                  >
-                    Close
+                    <Highlighter className="w-3.5 h-3.5" /> Save
                   </button>
                 </div>
+                {dictFeedback && (
+                  <p className="mt-2 text-[10px] text-amber-600 dark:text-amber-400 font-sans text-center">{dictFeedback}</p>
+                )}
               </div>
-            </div>
+            </div>,
+            document.body
           )}
           {loading ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3">
@@ -2794,7 +2803,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             </div>
                             <div 
                               className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
-                              dangerouslySetInnerHTML={{ __html: chapters[turningChapterIdx]?.content || "" }}
+                              dangerouslySetInnerHTML={{ __html: highlightedTurningHtml }}
                               onClick={(e) => {
                                 const target = e.target as HTMLElement;
                                 const anchor = target.closest("a");
@@ -2874,7 +2883,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             </div>
                             <div 
                               className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
-                              dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
+                              dangerouslySetInnerHTML={{ __html: highlightedChapterHtml }}
                               onClick={(e) => {
                                 const target = e.target as HTMLElement;
                                 const anchor = target.closest("a");
@@ -2962,7 +2971,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     <div 
                       id="epub-text-viewer"
                       className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
-                      dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
+                      dangerouslySetInnerHTML={{ __html: highlightedChapterHtml }}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
                         const anchor = target.closest("a");
@@ -3339,6 +3348,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             {(selectionDictPreview || selectionDictLoading) && (
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => lookupDictionary(selectionDictPreview?.word || extractLookupWord(selectedText))}
                 className="w-full text-left px-3.5 py-2.5 border-b border-neutral-800/80 hover:bg-white/5 transition"
@@ -3366,6 +3376,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             <div className="flex items-center gap-0.5 p-1.5">
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => lookupDictionary(selectionDictPreview?.word || extractLookupWord(selectedText) || selectedText)}
                 className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 active:scale-[0.98] transition"
@@ -3377,6 +3388,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setShowHighlightColors((open) => !open)}
                 className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition text-neutral-200"
@@ -3388,6 +3400,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   setActiveNoteText((prev) => `${prev}${prev ? "\n" : ""}"${selectedText}"\n`);
@@ -3403,6 +3416,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   window.open(`https://www.google.com/search?q=${encodeURIComponent(selectedText)}`, "_blank", "noopener,noreferrer");
@@ -3417,6 +3431,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={dismissSelection}
                 className="w-9 h-full flex items-center justify-center rounded-xl text-neutral-500 hover:text-white hover:bg-white/5 transition"
@@ -3446,6 +3461,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         <button
                           key={color}
                           type="button"
+                          onPointerDown={(e) => e.preventDefault()}
                           onMouseDown={(e) => e.preventDefault()}
                           onClick={() => handleSaveHighlight(color)}
                           className={`w-8 h-8 rounded-full border-2 border-white/20 shadow-md active:scale-110 transition ${colorClasses[color]}`}

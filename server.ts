@@ -734,7 +734,7 @@ app.get("/api/oxford-dictionary", async (req, res) => {
       return res.status(400).json({ error: "Invalid word parameter" });
     }
     
-    // Check free dictionary API as a baseline
+    // Check free dictionary API as a baseline (always available; Gemini is optional enrichment)
     let freeData: any = null;
     try {
       const apiRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordClean)}`);
@@ -748,7 +748,34 @@ app.get("/api/oxford-dictionary", async (req, res) => {
       console.warn("Free dictionary baseline call failed:", apiErr);
     }
 
-    const ai = getGeminiClient();
+    // Prefer free dictionary immediately so Worker-like deploys without Gemini still work.
+    // Gemini enrichment is best-effort below.
+    const freeEntry = freeData
+      ? {
+          word: freeData.word || wordClean,
+          phonetic:
+            freeData.phonetic ||
+            (Array.isArray(freeData.phonetics) && freeData.phonetics.find((p: any) => p?.text)?.text) ||
+            "",
+          origin: freeData.origin,
+          meanings: freeData.meanings || [],
+          synonyms: freeData.meanings?.flatMap((m: any) => m.synonyms || []).slice(0, 8) || [],
+          antonyms: freeData.meanings?.flatMap((m: any) => m.antonyms || []).slice(0, 8) || [],
+        }
+      : null;
+
+    let ai: ReturnType<typeof getGeminiClient> | null = null;
+    try {
+      ai = getGeminiClient();
+    } catch {
+      ai = null;
+    }
+
+    if (!ai) {
+      if (freeEntry) return res.json(freeEntry);
+      return res.status(404).json({ error: "Word definition could not be located or generated." });
+    }
+
     const systemPrompt = `You are the Oxford English Dictionary (OED) lookup engine. 
 Provide an extremely authoritative, detailed, academic, and comprehensive OED dictionary entry for the word. 
 Include phonetic spelling, origin/etymology (historical development of the word), grammatical classifications (parts of speech), definitions, and elegant usage example sentences.`;
@@ -756,6 +783,7 @@ Include phonetic spelling, origin/etymology (historical development of the word)
     const userPrompt = `Return a comprehensive Oxford English Dictionary entry for the word: "${wordClean}".
 Baseline data (optional): ${freeData ? JSON.stringify(freeData) : "None"}`;
 
+    try {
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash-exp",
       contents: userPrompt,
@@ -801,11 +829,15 @@ Baseline data (optional): ${freeData ? JSON.stringify(freeData) : "None"}`;
     if (resultText) {
       const dictionaryEntry = JSON.parse(resultText);
       return res.json(dictionaryEntry);
-    } else if (freeData) {
-      // Fallback
-      return res.json(freeData);
+    } else if (freeEntry) {
+      return res.json(freeEntry);
     } else {
       return res.status(404).json({ error: "Word definition could not be located or generated." });
+    }
+    } catch (geminiErr: any) {
+      console.warn("Gemini dictionary enrichment failed, using free dictionary:", geminiErr?.message);
+      if (freeEntry) return res.json(freeEntry);
+      return res.status(500).json({ error: geminiErr.message || "Failed to search Oxford dictionary" });
     }
   } catch (err: any) {
     console.error("Oxford Dictionary API Error:", err);

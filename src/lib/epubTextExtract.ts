@@ -1,22 +1,12 @@
 import JSZip from "jszip";
 import { isFrontMatterChapter } from "./audiobookTextFilter";
 import { prepareTextForNarration } from "./ttsTextPrep";
+import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "./epubToc";
 
 export interface TextChapter {
   index: number;
   title: string;
   text: string;
-}
-
-function pathResolve(base: string, href: string): string {
-  if (href.startsWith("/")) return href.slice(1);
-  if (!base) return href;
-  const stack = base.split("/").filter(Boolean);
-  for (const part of href.split("/")) {
-    if (part === "..") stack.pop();
-    else if (part !== "." && part !== "") stack.push(part);
-  }
-  return stack.join("/");
 }
 
 function htmlToStructuredText(html: string): { title: string; text: string } {
@@ -42,34 +32,6 @@ function htmlToStructuredText(html: string): { title: string; text: string } {
     : (doc.body?.textContent || "").replace(/\s+/g, " ").trim();
 
   return { title: title.replace(/\s+/g, " ").trim(), text };
-}
-
-
-async function parseNcxTitles(
-  zip: JSZip,
-  opfDoc: Document,
-  manifestItems: Record<string, string>,
-  rootDir: string
-): Promise<Record<string, string>> {
-  const titles: Record<string, string> = {};
-  const ncxId = opfDoc.querySelector("spine")?.getAttribute("toc");
-  const ncxHref = ncxId ? manifestItems[ncxId] : Object.values(manifestItems).find((href) => /\.ncx$/i.test(href));
-  if (!ncxHref) return titles;
-
-  const ncxPath = pathResolve(rootDir, ncxHref);
-  const ncxText = await zip.file(ncxPath)?.async("string");
-  if (!ncxText) return titles;
-
-  const ncxDoc = new DOMParser().parseFromString(ncxText, "text/xml");
-  ncxDoc.querySelectorAll("navPoint").forEach((point) => {
-    const label = point.querySelector("navLabel > text")?.textContent?.trim();
-    const content = point.querySelector("content")?.getAttribute("src");
-    if (!label || !content) return;
-    const href = content.split("#")[0];
-    titles[pathResolve(rootDir, href)] = label;
-    titles[href] = label;
-  });
-  return titles;
 }
 
 function mergeShortChapters(chapters: TextChapter[], minChars = 500): TextChapter[] {
@@ -126,7 +88,7 @@ export async function extractEpubChapters(blob: Blob): Promise<TextChapter[]> {
     if (id && href) manifestItems[id] = href;
   });
 
-  const navTitles = await parseNcxTitles(zip, opfDoc, manifestItems, rootDir);
+  const navTitles = await loadEpubTocLabels(zip, opfDoc, rootDir);
 
   const spineItems: string[] = [];
   opfDoc.querySelectorAll("spine > itemref, itemref").forEach((itemref) => {
@@ -137,19 +99,13 @@ export async function extractEpubChapters(blob: Blob): Promise<TextChapter[]> {
   const chapters: TextChapter[] = [];
   for (let i = 0; i < spineItems.length; i++) {
     const relativeHref = spineItems[i];
-    const fullChapterPath = pathResolve(rootDir, relativeHref);
+    const fullChapterPath = resolveEpubPath(rootDir, relativeHref);
     const chapterFile = zip.file(fullChapterPath) || zip.file(`${rootDir}${relativeHref}`);
     if (!chapterFile) continue;
 
     const rawContent = await chapterFile.async("string");
     const structured = htmlToStructuredText(rawContent);
-    let title =
-      navTitles[fullChapterPath] ||
-      navTitles[relativeHref] ||
-      structured.title ||
-      `Chapter ${i + 1}`;
-    title = title.replace(/\s+/g, " ").trim();
-    if (title.length > 60) title = `${title.slice(0, 57)}…`;
+    let title = resolveChapterTitle(navTitles, rootDir, relativeHref, rawContent, `Chapter ${i + 1}`);
 
     const text = prepareTextForNarration(structured.text, { chapterTitle: title, quality: "balanced" });
     if (text.length < 40) continue;
