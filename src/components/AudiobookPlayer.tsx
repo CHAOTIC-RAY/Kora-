@@ -682,6 +682,11 @@ export default function AudiobookPlayer({
     }
   };
 
+  const chapterPercent = useMemo(() => {
+    if (!(duration > 0) || currentTime <= 0) return 0;
+    return Math.min(100, Math.max(1, Math.round((currentTime / duration) * 100)));
+  }, [currentTime, duration]);
+
   const overallPercent = useMemo(() => {
     const trackFraction = duration > 0 ? currentTime / duration : 0;
     if (playableTracks.length > 0 && currentPlayableIndex >= 0) {
@@ -690,6 +695,14 @@ export default function AudiobookPlayer({
     if (!tracks.length) return 0;
     return Math.round(((currentTrack + trackFraction) / tracks.length) * 100);
   }, [currentPlayableIndex, currentTime, currentTrack, duration, playableTracks.length, tracks.length]);
+
+  // Whole-book % can round to 0 early in a long title — show "<1%" once playback has started.
+  const overallPercentLabel = useMemo(() => {
+    if (overallPercent > 0) return `${overallPercent}%`;
+    const started =
+      currentTime > 0.5 || currentPlayableIndex > 0 || currentTrack > 0;
+    return started ? "<1%" : "0%";
+  }, [overallPercent, currentTime, currentPlayableIndex, currentTrack]);
 
   const transcriberText = isTtsBook ? subtitle : currentTrackLabel;
 
@@ -904,13 +917,29 @@ export default function AudiobookPlayer({
               />
               <div className="flex justify-between text-[11px] text-kindle-text-muted font-mono tabular-nums">
                 <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
+                <span>
+                  {formatTime(duration)}
+                  {duration > 0 ? ` · ${chapterPercent}%` : ""}
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-1.5 bg-kindle-border rounded-full overflow-hidden">
-                  <div className="h-full bg-kindle-text transition-all duration-300" style={{ width: `${overallPercent}%` }} />
+                  <div
+                    className="h-full bg-kindle-text transition-all duration-300"
+                    style={{
+                      width: `${
+                        overallPercent > 0
+                          ? overallPercent
+                          : currentTime > 0.5 || currentPlayableIndex > 0 || currentTrack > 0
+                            ? 1
+                            : 0
+                      }%`,
+                    }}
+                  />
                 </div>
-                <span className="text-[10px] text-kindle-text-muted font-mono tabular-nums shrink-0">{overallPercent}%</span>
+                <span className="text-[10px] text-kindle-text-muted font-mono tabular-nums shrink-0">
+                  Book {overallPercentLabel}
+                </span>
               </div>
               {isTtsBook && (
                 <p className="text-[10px] text-kindle-text-muted text-center font-lexend">
