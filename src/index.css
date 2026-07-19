@@ -359,6 +359,13 @@ h1, h2, h3, h4 {
   line-height: 1.8;
 }
 
+.feed-article-content [dir="rtl"],
+.feed-article-content [style*="Thaana"],
+.feed-article-content :lang(dv) {
+  font-family: var(--font-thaana);
+  line-height: 1.85;
+}
+
 /* Custom fine scrollbar matching minimalism */
 ::-webkit-scrollbar {
   width: 5px;
