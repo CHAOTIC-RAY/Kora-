@@ -570,102 +570,173 @@ export default function DiscoverView({
   async function loadFeaturedContent(forceRefresh = false) {
     setLoadingFeatured(true);
     setError(null);
-    try {
-      const todayString = new Date().toDateString();
-      const cachedDate = localStorage.getItem("kora_nyt_featured_date");
-      const cachedFeed = localStorage.getItem("kora_nyt_featured_feed");
 
-      let nytOverviewJson: any = null;
-      let nytError: string | null = null;
+    const FEATURED_CACHE_KEY = "kora_discover_featured_cache";
+    const FEATURED_CACHE_DATE_KEY = "kora_discover_featured_cache_date";
+    const todayString = new Date().toDateString();
 
-      // 1. Load or Fetch NYT overview
-      try {
-        if (!forceRefresh && cachedDate === todayString && cachedFeed) {
-          console.log("[NYT Cache] Loaded daily discover feed from localStorage");
-          nytOverviewJson = JSON.parse(cachedFeed);
-        } else {
-          console.log("[NYT Cache] Fetching fresh NYT overview...");
-          const res = await fetch("/api/nytimes/overview");
-          if (!res.ok) throw new Error("Failed to fetch NYT overview");
-          nytOverviewJson = await res.json();
-
-          // Detect upstream NYT fault
-          if (nytOverviewJson?.fault || (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length)) {
-            nytError = `The NYT Best Sellers API is unavailable.`;
+    if (!forceRefresh) {
+      const cachedDate = localStorage.getItem(FEATURED_CACHE_DATE_KEY);
+      const cachedPayload = localStorage.getItem(FEATURED_CACHE_KEY);
+      if (cachedDate === todayString && cachedPayload) {
+        try {
+          const parsed = JSON.parse(cachedPayload);
+          if (parsed && typeof parsed === "object") {
+            setFeaturedData(parsed);
+            setLoadingFeatured(false);
+            void refreshFeaturedContentInBackground(forceRefresh);
+            return;
           }
-
-          const isFallback = nytOverviewJson?.source === "rave-fallback" || nytOverviewJson?.fault || (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length);
-          if (!isFallback && nytOverviewJson) {
-            localStorage.setItem("kora_nyt_featured_date", todayString);
-            localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(nytOverviewJson));
-          } else if (isFallback) {
-            localStorage.removeItem("kora_nyt_featured_date");
-            localStorage.removeItem("kora_nyt_featured_feed");
-          }
+        } catch {
+          // fall through to full load
         }
-      } catch (err: any) {
-        console.error("NYT overview fetch failed:", err);
-        nytError = err.message || "Failed to fetch NYT overview";
       }
+    }
 
-      const mergedData: Record<string, any[]> = {};
+    try {
+      const { mergedData, nytError, nytOverviewJson } = await buildNytFeaturedData(forceRefresh);
+      setFeaturedData(mergedData);
+      setLoadingFeatured(false);
 
-      // 2. Process NYT lists if available
-      if (nytOverviewJson && !nytOverviewJson.fault) {
-        const lists = nytOverviewJson.results?.lists || [];
-        ALL_CATEGORIES.filter(cat => cat.source === "nyt").forEach(cat => {
-          const nytList = lists.find((l: any) => l.list_name_encoded === cat.query);
-          if (nytList) {
-            const seen = new Set<string>();
-            const uniqueBooks: any[] = [];
-            (nytList.books || []).forEach((b: any) => {
-              const key = `${(b.title || "").toLowerCase().trim()}___${(b.author || "").toLowerCase().trim()}`;
-              if (!seen.has(key)) {
-                seen.add(key);
-                
-                const cleanTitle = (b.title || "")
-                  .split(':')[0]
-                  .replace(/\b\d{10,13}\b/g, '') // Remove ISBNs
-                  .replace(/\(.*\)/g, '')
-                  .replace(/volume\s+\d+/gi, '')
-                  .replace(/book\s+\d+/gi, '')
-                  .replace(/[^\w\s-]/gi, ' ')
-                  .replace(/\s+/g, ' ')
-                  .trim();
-                  
-                const cleanAuthor = (b.author || "")
-                  .split(',')[0]
-                  .replace(/\b\d{4}-\d{4}\b/g, '') // 1922-2012
-                  .replace(/\bUnknown\b/gi, '')
-                  .replace(/\(.*\)/g, '')
-                  .replace(/[^\w\s-]/gi, ' ')
-                  .replace(/\s+/g, ' ')
-                  .trim();
-
-                uniqueBooks.push({
-                  title: b.title,
-                  author: b.author,
-                  coverUrl: b.book_image,
-                  searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
-                  source: 'nyt'
-                });
-              }
-            });
-            mergedData[cat.id] = uniqueBooks;
-          } else {
-            mergedData[cat.id] = [];
-          }
-        });
+      if (nytError) {
+        setFeedNotice("NYT Best Sellers API currently unavailable — loading other picks.");
       } else {
-        // Populate empty lists for NYT if it failed
-        ALL_CATEGORIES.filter(cat => cat.source === "nyt").forEach(cat => {
-          mergedData[cat.id] = [];
-        });
+        setFeedNotice(
+          nytOverviewJson?.notice ||
+            (nytOverviewJson?.source === "rave-fallback"
+              ? "NYT Best Sellers API unavailable — showing popular picks via Rave Engine."
+              : null)
+        );
+        setError(null);
       }
 
-      // 3. Fetch Goodreads categories concurrently
-      const goodreadsCats = ALL_CATEGORIES.filter(cat => cat.source === "goodreads");
-      const goodreadsPromises = goodreadsCats.map(async (cat) => {
+      await loadSecondaryFeaturedContent(mergedData, nytError);
+    } catch (err: any) {
+      console.error("Failed to load featured content:", err);
+      setError(`Failed to load featured content: ${err.message || err}`);
+      setLoadingFeatured(false);
+    }
+  }
+
+  async function refreshFeaturedContentInBackground(forceRefresh = false) {
+    try {
+      const { mergedData } = await buildNytFeaturedData(forceRefresh);
+      setFeaturedData((prev) => ({ ...prev, ...mergedData }));
+      await loadSecondaryFeaturedContent({ ...mergedData }, null, true);
+    } catch (err) {
+      console.warn("Background discover refresh failed:", err);
+    }
+  }
+
+  async function buildNytFeaturedData(forceRefresh = false): Promise<{
+    mergedData: Record<string, any[]>;
+    nytError: string | null;
+    nytOverviewJson: any;
+  }> {
+    const todayString = new Date().toDateString();
+    const cachedDate = localStorage.getItem("kora_nyt_featured_date");
+    const cachedFeed = localStorage.getItem("kora_nyt_featured_feed");
+
+    let nytOverviewJson: any = null;
+    let nytError: string | null = null;
+
+    try {
+      if (!forceRefresh && cachedDate === todayString && cachedFeed) {
+        console.log("[NYT Cache] Loaded daily discover feed from localStorage");
+        nytOverviewJson = JSON.parse(cachedFeed);
+      } else {
+        console.log("[NYT Cache] Fetching fresh NYT overview...");
+        const res = await fetch("/api/nytimes/overview");
+        if (!res.ok) throw new Error("Failed to fetch NYT overview");
+        nytOverviewJson = await res.json();
+
+        if (nytOverviewJson?.fault || (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length)) {
+          nytError = "The NYT Best Sellers API is unavailable.";
+        }
+
+        const isFallback =
+          nytOverviewJson?.source === "rave-fallback" ||
+          nytOverviewJson?.fault ||
+          (nytOverviewJson?.error && !nytOverviewJson?.results?.lists?.length);
+        if (!isFallback && nytOverviewJson) {
+          localStorage.setItem("kora_nyt_featured_date", todayString);
+          localStorage.setItem("kora_nyt_featured_feed", JSON.stringify(nytOverviewJson));
+        } else if (isFallback) {
+          localStorage.removeItem("kora_nyt_featured_date");
+          localStorage.removeItem("kora_nyt_featured_feed");
+        }
+      }
+    } catch (err: any) {
+      console.error("NYT overview fetch failed:", err);
+      nytError = err.message || "Failed to fetch NYT overview";
+    }
+
+    const mergedData: Record<string, any[]> = {};
+
+    if (nytOverviewJson && !nytOverviewJson.fault) {
+      const lists = nytOverviewJson.results?.lists || [];
+      ALL_CATEGORIES.filter((cat) => cat.source === "nyt").forEach((cat) => {
+        const nytList = lists.find((l: any) => l.list_name_encoded === cat.query);
+        if (nytList) {
+          const seen = new Set<string>();
+          const uniqueBooks: any[] = [];
+          (nytList.books || []).forEach((b: any) => {
+            const key = `${(b.title || "").toLowerCase().trim()}___${(b.author || "").toLowerCase().trim()}`;
+            if (!seen.has(key)) {
+              seen.add(key);
+
+              const cleanTitle = (b.title || "")
+                .split(":")[0]
+                .replace(/\b\d{10,13}\b/g, "")
+                .replace(/\(.*\)/g, "")
+                .replace(/volume\s+\d+/gi, "")
+                .replace(/book\s+\d+/gi, "")
+                .replace(/[^\w\s-]/gi, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+
+              const cleanAuthor = (b.author || "")
+                .split(",")[0]
+                .replace(/\b\d{4}-\d{4}\b/g, "")
+                .replace(/\bUnknown\b/gi, "")
+                .replace(/\(.*\)/g, "")
+                .replace(/[^\w\s-]/gi, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+
+              uniqueBooks.push({
+                title: b.title,
+                author: b.author,
+                coverUrl: b.book_image,
+                searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
+                source: "nyt",
+              });
+            }
+          });
+          mergedData[cat.id] = uniqueBooks;
+        } else {
+          mergedData[cat.id] = [];
+        }
+      });
+    } else {
+      ALL_CATEGORIES.filter((cat) => cat.source === "nyt").forEach((cat) => {
+        mergedData[cat.id] = [];
+      });
+    }
+
+    return { mergedData, nytError, nytOverviewJson };
+  }
+
+  async function loadSecondaryFeaturedContent(
+    baseData: Record<string, any[]>,
+    nytError: string | null,
+    background = false
+  ) {
+    const mergedData = { ...baseData };
+
+    const goodreadsCats = ALL_CATEGORIES.filter((cat) => cat.source === "goodreads");
+    const goodreadsResults = await Promise.all(
+      goodreadsCats.map(async (cat) => {
         try {
           const gBooks = await fetchGoodreadsCategory(cat.query);
           return { id: cat.id, books: gBooks };
@@ -673,16 +744,16 @@ export default function DiscoverView({
           console.error(`Failed to background fetch Goodreads ${cat.title}:`, err);
           return { id: cat.id, books: [] };
         }
-      });
+      })
+    );
+    goodreadsResults.forEach((res) => {
+      mergedData[res.id] = res.books;
+    });
+    setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(goodreadsResults.map((res) => [res.id, res.books])) }));
 
-      const goodreadsResults = await Promise.all(goodreadsPromises);
-      goodreadsResults.forEach(res => {
-        mergedData[res.id] = res.books;
-      });
-
-      // 4. Fetch Audiobook categories concurrently
-      const audiobookCats = ALL_CATEGORIES.filter(cat => cat.source === "audiobook");
-      const audiobookPromises = audiobookCats.map(async (cat) => {
+    const audiobookCats = ALL_CATEGORIES.filter((cat) => cat.source === "audiobook");
+    const audiobookResults = await Promise.all(
+      audiobookCats.map(async (cat) => {
         try {
           const books = await fetchAudiobookCategory(cat);
           return { id: cat.id, books };
@@ -690,42 +761,37 @@ export default function DiscoverView({
           console.error(`Failed to load audiobooks for ${cat.title}:`, err);
           return { id: cat.id, books: [] };
         }
-      });
-      const audiobookResults = await Promise.all(audiobookPromises);
-      audiobookResults.forEach(res => {
-        mergedData[res.id] = res.books;
-      });
+      })
+    );
+    audiobookResults.forEach((res) => {
+      mergedData[res.id] = res.books;
+    });
+    setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(audiobookResults.map((res) => [res.id, res.books])) }));
 
-      await Promise.all(
-        ALL_CATEGORIES.filter((cat) => cat.source === "nyt").map(async (cat) => {
-          const books = mergedData[cat.id];
-          if (!books?.length) return;
-          mergedData[cat.id] = await enrichBooksWithRatings(books, titlesRoughlyMatch, 6);
-        })
-      );
-
-      // Update states
-      setFeaturedData(mergedData);
-
-      // Handle notices & errors gracefully
-      if (nytError) {
-        const hasGoodreads = goodreadsResults.some(res => res.books.length > 0);
-        if (hasGoodreads) {
-          setFeedNotice("NYT Best Sellers API currently unavailable — displaying Goodreads picks and popular archives.");
-          setError(null);
-        } else {
-          setError(`Featured content unavailable. ${nytError}`);
-        }
-      } else {
-        setFeedNotice(nytOverviewJson?.notice || (nytOverviewJson?.source === "rave-fallback" ? "NYT Best Sellers API unavailable — showing popular picks via Rave Engine." : null));
+    if (nytError) {
+      const hasGoodreads = goodreadsResults.some((res) => res.books.length > 0);
+      if (hasGoodreads) {
+        setFeedNotice("NYT Best Sellers API currently unavailable — displaying Goodreads picks and popular archives.");
         setError(null);
+      } else if (!background) {
+        setError(`Featured content unavailable. ${nytError}`);
       }
-    } catch (err: any) {
-      console.error("Failed to load featured content:", err);
-      setError(`Failed to load featured content: ${err.message || err}`);
-    } finally {
-      setLoadingFeatured(false);
     }
+
+    void Promise.all(
+      ALL_CATEGORIES.filter((cat) => cat.source === "nyt").map(async (cat) => {
+        const books = mergedData[cat.id];
+        if (!books?.length) return;
+        const enriched = await enrichBooksWithRatings(books, titlesRoughlyMatch, 6);
+        setFeaturedData((prev) => ({ ...prev, [cat.id]: enriched }));
+      })
+    ).then(() => {
+      setFeaturedData((current) => {
+        localStorage.setItem("kora_discover_featured_cache", JSON.stringify(current));
+        localStorage.setItem("kora_discover_featured_cache_date", new Date().toDateString());
+        return current;
+      });
+    });
   }
 
   const openAudiobookLibrary = () => {
@@ -2327,38 +2393,36 @@ export default function DiscoverView({
             )}
           </div>
 
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col md:flex-row md:items-center gap-4">
-              <form onSubmit={handleSearch} className="relative group w-full md:max-w-2xl">
-                <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
-                <input
-                  type="text"
-                  placeholder="Search millions of books, authors, ISBNs..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full pl-12 pr-32 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                  {searchMode && (
-                    <button
-                      type="button"
-                      onClick={clearSearch}
-                      className="p-2 rounded-xl hover:bg-kindle-bg text-kindle-text-muted transition"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
+          <div className="flex flex-col gap-3">
+            <form onSubmit={handleSearch} className="relative group w-full">
+              <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
+              <input
+                type="text"
+                placeholder="Search millions of books, authors, ISBNs..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full pl-12 pr-32 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {searchMode && (
                   <button
-                    type="submit"
-                    className="px-5 py-2 bg-kindle-text text-kindle-bg rounded-xl font-bold text-[11px] uppercase tracking-widest hover:bg-kindle-accent transition"
+                    type="button"
+                    onClick={clearSearch}
+                    className="p-2 rounded-xl hover:bg-kindle-bg text-kindle-text-muted transition"
                   >
-                    Search
+                    <X className="w-4 h-4" />
                   </button>
-                </div>
-              </form>
+                )}
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-kindle-text text-kindle-bg rounded-xl font-bold text-[11px] uppercase tracking-widest hover:bg-kindle-accent transition"
+                >
+                  Search
+                </button>
+              </div>
+            </form>
 
-              {/* Advanced Search Toggle */}
-              <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -2406,7 +2470,6 @@ export default function DiscoverView({
                   <Database className="w-3 h-3" />
                   Advanced Search
                 </button>
-              </div>
             </div>
 
             {/* Source & Topic Filters - Positioned directly under search bar */}

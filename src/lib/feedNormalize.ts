@@ -1,5 +1,11 @@
 import { FeedItem } from "./feedStorage";
 
+export const FEED_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function isFeedItemWithinRetention(item: Pick<FeedItem, "publishedAt">): boolean {
+  return Date.now() - item.publishedAt <= FEED_MAX_AGE_MS;
+}
+
 export function canonicalFeedItemId(link: string): string {
   try {
     const url = new URL(link.trim());
@@ -72,5 +78,6 @@ export function dedupeFeedItems(items: FeedItem[]): FeedItem[] {
 
   return Array.from(map.values())
     .filter((item) => hasMeaningfulTitle(item.title))
+    .filter(isFeedItemWithinRetention)
     .sort((a, b) => b.publishedAt - a.publishedAt);
 }

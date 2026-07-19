@@ -1,4 +1,4 @@
-import { dedupeFeedItems, isRemovedFeedItem } from "./feedNormalize";
+import { dedupeFeedItems, isFeedItemWithinRetention, isRemovedFeedItem } from "./feedNormalize";
 
 export interface FeedSubscription {
   id: string;
@@ -33,7 +33,7 @@ export const DEFAULT_FEED_SUBSCRIPTIONS: Omit<FeedSubscription, "id" | "addedAt"
   {
     title: "Maldives Independent",
     siteUrl: "https://maldivesindependent.com",
-    feedUrl: "https://maldivesindependent.com/api/rss/news",
+    feedUrl: "https://maldivesindependent.com/api/rss",
   },
   {
     title: "PSM News",
@@ -60,12 +60,24 @@ const REMOVED_DEFAULT_FEED_URLS = new Set([
   "https://feeds.feedburner.com/ycombinator",
 ]);
 
-const FEED_MIGRATION_KEY = "kora_feed_migration_v4";
+const FEED_MIGRATION_KEY = "kora_feed_migration_v5";
+const MALDIVES_INDEPENDENT_OLD_FEED = "https://maldivesindependent.com/api/rss/news";
+const MALDIVES_INDEPENDENT_FEED = "https://maldivesindependent.com/api/rss";
 
 function isRemovedFeedSubscription(sub: FeedSubscription): boolean {
   if (REMOVED_DEFAULT_FEED_URLS.has(sub.feedUrl)) return true;
   const haystack = `${sub.title} ${sub.feedUrl} ${sub.siteUrl}`.toLowerCase();
   return /hacker\s*news|hnrss|ycombinator|news\.ycombinator|arxiv/i.test(haystack);
+}
+
+function migrateMaldivesIndependentFeed(subscriptions: FeedSubscription[]): FeedSubscription[] {
+  return subscriptions.map((sub) => {
+    if (sub.feedUrl !== MALDIVES_INDEPENDENT_OLD_FEED) return sub;
+    return {
+      ...sub,
+      feedUrl: MALDIVES_INDEPENDENT_FEED,
+    };
+  });
 }
 
 function purgeRemovedFeedData(subscriptions: FeedSubscription[]): FeedSubscription[] {
@@ -103,7 +115,7 @@ export function saveFeedSubscriptions(subscriptions: FeedSubscription[]): void {
 }
 
 export function getFeedItems(): FeedItem[] {
-  return dedupeFeedItems(readJson<FeedItem[]>(ITEMS_KEY, []));
+  return dedupeFeedItems(readJson<FeedItem[]>(ITEMS_KEY, [])).filter(isFeedItemWithinRetention);
 }
 
 export function saveFeedItems(items: FeedItem[]): void {
@@ -112,7 +124,16 @@ export function saveFeedItems(items: FeedItem[]): void {
 }
 
 export function ensureDefaultSubscriptions(): FeedSubscription[] {
-  let existing = purgeRemovedFeedData(getFeedSubscriptions());
+  const raw = purgeRemovedFeedData(getFeedSubscriptions());
+  let existing = migrateMaldivesIndependentFeed(raw);
+
+  const subscriptionsChanged =
+    existing.length !== raw.length ||
+    existing.some((sub, idx) => sub.feedUrl !== raw[idx]?.feedUrl);
+  if (subscriptionsChanged) {
+    saveFeedSubscriptions(existing);
+    saveFeedItems(dedupeFeedItems(readJson<FeedItem[]>(ITEMS_KEY, [])));
+  }
 
   if (!existing.length) {
     const seeded = DEFAULT_FEED_SUBSCRIPTIONS.map((sub) => ({
@@ -133,15 +154,11 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
       id: `feed-${sub.feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`,
       addedAt: Date.now(),
     }));
-    const migrated = [...additions, ...existing];
-    saveFeedSubscriptions(migrated);
-    saveFeedItems(dedupeFeedItems(getFeedItems()));
-    localStorage.setItem(FEED_MIGRATION_KEY, "1");
-    return migrated;
-  }
-
-  if (existing.length !== getFeedSubscriptions().length) {
+    existing = migrateMaldivesIndependentFeed([...additions, ...existing]);
     saveFeedSubscriptions(existing);
+    saveFeedItems(dedupeFeedItems(readJson<FeedItem[]>(ITEMS_KEY, [])));
+    localStorage.setItem(FEED_MIGRATION_KEY, "1");
+    return existing;
   }
 
   return existing;

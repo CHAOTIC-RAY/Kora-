@@ -119,6 +119,7 @@ function parseRss(xml: string): ParsedFeed {
     );
     if (!link) continue;
     const pubDate = block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1];
+    const newsPubDate = block.match(/<news:publication_date[^>]*>([\s\S]*?)<\/news:publication_date>/i)?.[1];
     const description =
       block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1] ||
       block.match(/<content:encoded[^>]*>([\s\S]*?)<\/content:encoded>/i)?.[1] ||
@@ -136,7 +137,7 @@ function parseRss(xml: string): ParsedFeed {
       link,
       author: author || undefined,
       summary: stripTags(description).slice(0, 500) || undefined,
-      publishedAt: parseDate(pubDate),
+      publishedAt: parseDate(newsPubDate || pubDate),
       imageUrl,
     });
   }

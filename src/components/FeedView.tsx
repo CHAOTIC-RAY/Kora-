@@ -25,6 +25,7 @@ import {
   saveFeedSubscriptions,
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
+import { isFeedItemWithinRetention } from "../lib/feedNormalize";
 import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
 import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
@@ -40,7 +41,9 @@ interface FeedViewProps {
 type FeedFilter = "all" | "unread" | "saved";
 type BentoVariant = "featured" | "square" | "wide" | "default";
 
-function formatRelativeTime(timestamp: number): string {
+function formatFeedDate(timestamp: number): string {
+  const date = new Date(timestamp);
+  const now = new Date();
   const diff = Date.now() - timestamp;
   const minutes = Math.floor(diff / 60000);
   if (minutes < 1) return "just now";
@@ -49,7 +52,11 @@ function formatRelativeTime(timestamp: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(timestamp).toLocaleDateString();
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
 }
 
 function displayTitle(item: FeedItem): string {
@@ -142,7 +149,7 @@ function FeedArticleCard({
         <div className="flex flex-col flex-1 p-3 sm:p-4 gap-2 sm:gap-3 min-w-0">
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate mb-1">
-              {item.subscriptionTitle} · {formatRelativeTime(item.publishedAt)}
+              {item.subscriptionTitle} · {formatFeedDate(item.publishedAt)}
             </p>
             <h3
               dir={dir}
@@ -280,12 +287,15 @@ export default function FeedView({
   }, [initialUrl, onClearInitialUrl]);
 
   const visibleItems = useMemo(() => {
-    return items.filter((item) => {
-      if (selectedSubscriptionId && item.subscriptionId !== selectedSubscriptionId) return false;
-      if (filter === "unread" && item.read) return false;
-      if (filter === "saved" && !item.savedBookId) return false;
-      return true;
-    });
+    return items
+      .filter((item) => isFeedItemWithinRetention(item))
+      .filter((item) => {
+        if (selectedSubscriptionId && item.subscriptionId !== selectedSubscriptionId) return false;
+        if (filter === "unread" && item.read) return false;
+        if (filter === "saved" && !item.savedBookId) return false;
+        return true;
+      })
+      .sort((a, b) => b.publishedAt - a.publishedAt);
   }, [items, filter, selectedSubscriptionId]);
 
   const handleAddSubscription = async (e: React.FormEvent) => {

@@ -663,10 +663,15 @@ export default function AudiobookPlayer({
 
   useEffect(() => {
     if (!isTtsBook) {
-      const timeLabel = duration > 0 ? `${formatTime(currentTime)} / ${formatTime(duration)}` : "";
-      setSubtitle(timeLabel ? `${currentTrackLabel} · ${timeLabel}` : currentTrackLabel);
+      const trackCaption = currentTrackLabel || book.title;
+      const description = book.description?.replace(/\s+/g, " ").trim();
+      if (description && trackCaption !== description) {
+        setSubtitle(`${trackCaption} — ${description.slice(0, 220)}`);
+      } else {
+        setSubtitle(trackCaption);
+      }
     }
-  }, [currentTime, currentTrackLabel, duration, isTtsBook]);
+  }, [book.description, book.title, currentTrackLabel, isTtsBook]);
 
   return (
     <>
