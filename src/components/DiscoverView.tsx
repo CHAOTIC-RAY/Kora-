@@ -25,6 +25,7 @@ interface DiscoverViewProps {
   onClearInitialQuery?: () => void;
   onOpenBrowser?: (url: string) => void;
   onTriggerDownload?: (book: any, mirrors: any | any[], variant: any) => void;
+  onPlayAudiobook?: (book: BookMetadata) => void;
 }
 
 async function injectMetadataIntoEpub(
@@ -146,8 +147,14 @@ export default function DiscoverView({
   initialQuery = null,
   onClearInitialQuery,
   onOpenBrowser,
-  onTriggerDownload
+  onTriggerDownload,
+  onPlayAudiobook
 }: DiscoverViewProps) {
+  const getAudiobookCoverSrc = (coverUrl?: string | null) => {
+    if (!coverUrl) return null;
+    if (coverUrl.startsWith("/")) return coverUrl;
+    return `/api/proxy-image?url=${encodeURIComponent(coverUrl)}`;
+  };
   const stripHtml = (html: string) => {
     if (!html) return "";
     return html.replace(/<[^>]*>?/gm, "").trim();
@@ -162,6 +169,9 @@ export default function DiscoverView({
   const [featuredData, setFeaturedData] = useState<Record<string, any[]>>({});
   const [selectedFeaturedBook, setSelectedFeaturedBook] = useState<any | null>(null);
   const [selectedAudiobook, setSelectedAudiobook] = useState<any | null>(null);
+  const [audiobookDetail, setAudiobookDetail] = useState<any | null>(null);
+  const [audiobookDetailLoading, setAudiobookDetailLoading] = useState(false);
+  const [audiobookDetailError, setAudiobookDetailError] = useState<string | null>(null);
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
@@ -630,6 +640,10 @@ export default function DiscoverView({
             ratingCount: b.ratingCount || "Popular audiobook",
             rank: b.rank,
             source: "audiobook",
+            listenUrl: b.listenUrl,
+            listenUrlAlt: b.listenUrlAlt,
+            link: b.listenUrl,
+            isbn: b.isbn,
           }));
           return { id: cat.id, books: mapped };
         } catch (err) {
@@ -665,6 +679,65 @@ export default function DiscoverView({
       setLoadingFeatured(false);
     }
   }
+
+  const fetchAudiobookDetail = async (book: any) => {
+    setAudiobookDetailLoading(true);
+    setAudiobookDetailError(null);
+    setAudiobookDetail(null);
+
+    const urls = [
+      book.link,
+      book.listenUrl,
+      book.listenUrlAlt,
+      `https://hdaudiobooks.com/?s=${encodeURIComponent(book.title)}`,
+      `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(book.title)}`,
+    ].filter(Boolean);
+
+    for (const detailUrl of urls) {
+      try {
+        const res = await fetch(`/api/audiobooks/detail?url=${encodeURIComponent(detailUrl)}`);
+        const data = await res.json();
+        if (res.ok && data.tracks?.length > 0) {
+          setAudiobookDetail(data);
+          setAudiobookDetailLoading(false);
+          return;
+        }
+      } catch {
+        /* try next source */
+      }
+    }
+
+    setAudiobookDetailError("Could not extract audio tracks from source sites");
+    setAudiobookDetailLoading(false);
+  };
+
+  useEffect(() => {
+    if (selectedAudiobook) {
+      fetchAudiobookDetail(selectedAudiobook);
+    } else {
+      setAudiobookDetail(null);
+      setAudiobookDetailError(null);
+    }
+  }, [selectedAudiobook]);
+
+  const buildAudiobookLibraryEntry = (book: any, tracks: any[]): BookMetadata => ({
+    id: book.id || `audiobook-${(audiobookDetail?.title || book.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}`,
+    title: audiobookDetail?.title || book.title,
+    author: audiobookDetail?.author || book.author || "Unknown",
+    coverUrl: audiobookDetail?.coverUrl || book.coverUrl || undefined,
+    source: "audiobook",
+    rating: book.rating,
+    description: book.description || audiobookDetail?.description,
+    extension: "audiobook",
+    size: "",
+    tags: ["audiobook"],
+    status: "reading",
+    progress: { percent: 0, lastReadTime: Date.now() },
+    dateAdded: Date.now(),
+    audiobookTracks: tracks,
+    audiobookSourceUrl: audiobookDetail?.sourceUrl || book.link,
+    audiobookDownloaded: false,
+  });
 
   const fetchFeaturedMetadata = async (title: string, author: string, forceSource?: "google" | "nyt" | "openlibrary") => {
     setLoadingFeaturedDetails(true);
@@ -2214,22 +2287,26 @@ export default function DiscoverView({
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {audiobookResults.map((book, idx) => (
-                <a
+                <div
                   key={idx}
-                  href={book.link}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  onClick={() => setSelectedAudiobook(book)}
                   className="group block space-y-2 cursor-pointer"
                 >
                   <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-300">
                     {book.coverUrl ? (
                       <img
-                        src={book.coverUrl}
+                        src={getAudiobookCoverSrc(book.coverUrl) || book.coverUrl}
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           const t = e.target as HTMLImageElement;
+                          const attempt = parseInt(t.dataset.attempt || "0");
+                          t.dataset.attempt = String(attempt + 1);
+                          if (attempt === 0) {
+                            t.src = `/api/cover-redirect?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || "")}`;
+                            return;
+                          }
                           t.style.display = "none";
                         }}
                       />
@@ -2241,8 +2318,8 @@ export default function DiscoverView({
                     )}
                     <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition">
                       <span className="text-[8px] font-bold text-white uppercase tracking-wider flex items-center gap-1">
-                        <ExternalLink className="w-2.5 h-2.5" />
-                        {book.source === "fulllengthaudiobooks" ? "FullLengthAudiobooks" : "HDAudiobooks"}
+                        <Headphones className="w-2.5 h-2.5" />
+                        View Tracks
                       </span>
                     </div>
                   </div>
@@ -2251,7 +2328,7 @@ export default function DiscoverView({
                     {book.author && <p className="text-[9px] text-kindle-text-muted font-sans truncate">{book.author}</p>}
                     <p className="text-[8px] text-purple-500/70 font-bold uppercase tracking-wider">🎧 Audiobook</p>
                   </div>
-                </a>
+                </div>
               ))}
             </div>
           )}
@@ -2682,6 +2759,10 @@ export default function DiscoverView({
               const filteredCategories = ALL_CATEGORIES.filter(cat => {
                 if (feedFilter === "all") return true;
                 return cat.source === feedFilter;
+              }).sort((a, b) => {
+                if (a.source === "audiobook" && b.source !== "audiobook") return 1;
+                if (b.source === "audiobook" && a.source !== "audiobook") return -1;
+                return 0;
               });
               const totalBooks = filteredCategories.reduce((n, c) => n + (featuredData[c.id]?.length || 0), 0);
               if (totalBooks === 0) {
@@ -2750,7 +2831,7 @@ export default function DiscoverView({
                           )}
                           {!hideCovers && book.coverUrl ? (
                             <img
-                              src={book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`}
+                              src={cat.source === "audiobook" ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl) : (book.coverUrl.startsWith('/') ? book.coverUrl : `/api/proxy-image?url=${encodeURIComponent(book.coverUrl)}`)}
                               alt={book.title}
                               className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                               referrerPolicy="no-referrer"
@@ -3071,13 +3152,12 @@ export default function DiscoverView({
       )}
 
 
-      {/* Audiobook Listen Panel */}
+      {/* Audiobook Detail Panel — audio tracks + library */}
       {selectedAudiobook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedAudiobook(null)} />
-          <div className="relative bg-kindle-bg w-full max-w-md rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-kindle-border bg-kindle-bg/95 backdrop-blur-md">
+          <div className="relative bg-kindle-bg w-full max-w-md max-h-[90vh] rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-kindle-border bg-kindle-bg/95 backdrop-blur-md shrink-0">
               <div className="flex items-center gap-2">
                 <Headphones className="w-4 h-4 text-purple-500" />
                 <span className="text-xs font-bold uppercase tracking-widest text-kindle-text">Audiobook</span>
@@ -3087,16 +3167,17 @@ export default function DiscoverView({
               </button>
             </div>
 
-            {/* Content */}
-            <div className="flex gap-5 p-5">
-              {/* Cover */}
+            <div className="flex gap-5 p-5 shrink-0">
               <div className="flex-shrink-0 w-24 aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden shadow-md">
-                {selectedAudiobook.coverUrl ? (
+                {(audiobookDetail?.coverUrl || selectedAudiobook.coverUrl) ? (
                   <img
-                    src={selectedAudiobook.coverUrl.startsWith('/') ? selectedAudiobook.coverUrl : `/api/proxy-image?url=${encodeURIComponent(selectedAudiobook.coverUrl)}`}
+                    src={getAudiobookCoverSrc(audiobookDetail?.coverUrl || selectedAudiobook.coverUrl) || ""}
                     alt={selectedAudiobook.title}
                     className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    onError={(e) => {
+                      const t = e.target as HTMLImageElement;
+                      t.src = `/api/cover-redirect?title=${encodeURIComponent(selectedAudiobook.title)}&author=${encodeURIComponent(selectedAudiobook.author || "")}`;
+                    }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center">
@@ -3104,70 +3185,76 @@ export default function DiscoverView({
                   </div>
                 )}
               </div>
-
-              {/* Info */}
               <div className="flex-1 min-w-0 space-y-2">
                 <div>
-                  <h3 className="text-sm font-bold font-serif leading-snug line-clamp-2">{selectedAudiobook.title}</h3>
-                  <p className="text-xs text-kindle-text-muted mt-0.5">{selectedAudiobook.author}</p>
+                  <h3 className="text-sm font-bold font-serif leading-snug line-clamp-2">{audiobookDetail?.title || selectedAudiobook.title}</h3>
+                  <p className="text-xs text-kindle-text-muted mt-0.5">{audiobookDetail?.author || selectedAudiobook.author}</p>
                 </div>
                 {selectedAudiobook.rating && (
                   <div className="flex items-center gap-1">
                     <span className="text-amber-500 text-xs font-bold">★ {selectedAudiobook.rating}</span>
-                    <span className="text-[10px] text-kindle-text-muted">/ 5</span>
                   </div>
-                )}
-                {selectedAudiobook.description && (
-                  <p className="text-[11px] text-kindle-text-muted line-clamp-3 leading-relaxed">{selectedAudiobook.description}</p>
                 )}
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="px-5 pb-5 space-y-2.5">
-              {/* Listen on HD Audiobooks */}
-              <a
-                href={selectedAudiobook.listenUrl || `https://hdaudiobooks.com/?s=${encodeURIComponent(selectedAudiobook.title)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition shadow-sm"
-              >
-                <Headphones className="w-4 h-4" />
-                Listen on HDAudiobooks
-                <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-              </a>
+            <div className="flex-1 overflow-y-auto px-5 pb-2 space-y-3 min-h-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Audio Tracks</p>
+              {audiobookDetailLoading ? (
+                <div className="py-8 flex flex-col items-center gap-3">
+                  <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
+                  <p className="text-[10px] text-kindle-text-muted uppercase tracking-widest">Extracting audio links…</p>
+                </div>
+              ) : audiobookDetailError ? (
+                <div className="py-6 text-center space-y-2">
+                  <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto opacity-70" />
+                  <p className="text-xs text-kindle-text-muted">{audiobookDetailError}</p>
+                  <button
+                    onClick={() => fetchAudiobookDetail(selectedAudiobook)}
+                    className="text-[10px] font-bold uppercase tracking-widest text-purple-500 hover:underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : audiobookDetail?.tracks?.length > 0 ? (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto rounded-xl border border-kindle-border bg-kindle-card/50 p-2">
+                  {audiobookDetail.tracks.map((track: any, idx: number) => (
+                    <a
+                      key={idx}
+                      href={`/api/proxy-file?url=${encodeURIComponent(track.src)}`}
+                      download
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-kindle-bg transition text-left group"
+                    >
+                      <span className="text-[10px] font-mono text-kindle-text-muted w-5 shrink-0">{idx + 1}</span>
+                      <span className="text-xs text-kindle-text truncate flex-1">{track.title}</span>
+                      <Download className="w-3.5 h-3.5 text-purple-500 opacity-0 group-hover:opacity-100 transition shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-kindle-text-muted py-4 text-center">No tracks found</p>
+              )}
+            </div>
 
-              {/* Listen on Full Length Audiobooks */}
-              <a
-                href={selectedAudiobook.listenUrlAlt || `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(selectedAudiobook.title)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-kindle-card hover:bg-kindle-border border border-kindle-border text-kindle-text text-xs font-bold uppercase tracking-widest rounded-xl transition"
-              >
-                <Headphones className="w-4 h-4 text-purple-400" />
-                Full Length Audiobooks
-                <ExternalLink className="w-3.5 h-3.5 opacity-50" />
-              </a>
-
-              {/* Add to Library */}
-              {onBookAdded && (
+            <div className="px-5 pb-5 pt-2 space-y-2.5 shrink-0 border-t border-kindle-border">
+              {audiobookDetail?.tracks?.length > 0 && onPlayAudiobook && (
                 <button
                   onClick={() => {
-                    onBookAdded({
-                      id: `audiobook-${Date.now()}`,
-                      title: selectedAudiobook.title,
-                      author: selectedAudiobook.author,
-                      coverUrl: selectedAudiobook.coverUrl || undefined,
-                      source: "audiobook",
-                      rating: selectedAudiobook.rating,
-                      description: selectedAudiobook.description,
-                      extension: "audiobook",
-                      size: "",
-                      tags: ["audiobook"],
-                      status: "to-read" as const,
-                      progress: { percent: 0, lastReadTime: Date.now() },
-                      dateAdded: Date.now(),
-                    });
+                    const entry = buildAudiobookLibraryEntry(selectedAudiobook, audiobookDetail.tracks);
+                    onPlayAudiobook(entry);
+                    setSelectedAudiobook(null);
+                  }}
+                  className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold uppercase tracking-widest rounded-xl transition shadow-sm"
+                >
+                  <Headphones className="w-4 h-4" />
+                  Play in App
+                </button>
+              )}
+              {onBookAdded && audiobookDetail?.tracks?.length > 0 && (
+                <button
+                  onClick={() => {
+                    onBookAdded(buildAudiobookLibraryEntry(selectedAudiobook, audiobookDetail.tracks));
+                    toast.success("Added to library");
                     setSelectedAudiobook(null);
                   }}
                   className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-kindle-card hover:bg-kindle-border border border-kindle-border text-kindle-text text-xs font-bold uppercase tracking-widest rounded-xl transition"

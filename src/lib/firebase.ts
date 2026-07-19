@@ -130,6 +130,12 @@ export interface BookMetadata {
   description?: string;
   series?: string;
   seriesNumber?: string;
+  /** Audiobook-specific metadata */
+  audiobookTracks?: { index: number; title: string; src: string }[];
+  audiobookSourceUrl?: string;
+  audiobookDownloaded?: boolean;
+  audiobookCurrentTrack?: number;
+  audiobookCurrentTime?: number;
 }
 
 // LocalStorage helpers

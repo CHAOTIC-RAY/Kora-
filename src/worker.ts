@@ -1,5 +1,13 @@
 import puppeteer from "@cloudflare/puppeteer";
 import * as cheerio from "cheerio";
+import {
+  POPULAR_AUDIOBOOKS,
+  mapPopularAudiobooks,
+  parseAudiobookDetailHtml,
+  parseAudiobookSearchHtml,
+  extractFirstBookLinkFromSearch,
+  isAudiobookSearchUrl,
+} from "./lib/audiobookScraper";
 
 declare const HTMLRewriter: any;
 
@@ -1238,6 +1246,106 @@ export default {
 
         goodreadsCache.set(listQuery, mappedFallback);
         return new Response(JSON.stringify(mappedFallback), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // 2.1.85 Audiobooks API
+    if (path === "/api/audiobooks/popular") {
+      return new Response(JSON.stringify(mapPopularAudiobooks()), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+    }
+
+    if (path === "/api/audiobooks/search") {
+      const q = (url.searchParams.get("q") || "").trim();
+      if (!q) {
+        return new Response(JSON.stringify({ error: "Missing query parameter 'q'" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      const results: any[] = [];
+      await Promise.allSettled([
+        fetchPageHtmlWithProxies(`https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`)
+          .then(html => results.push(...parseAudiobookSearchHtml(html, "fulllengthaudiobooks", "https://fulllengthaudiobooks.com")))
+          .catch(err => console.warn("[Audiobook] fulllengthaudiobooks search failed:", err.message)),
+        fetchPageHtmlWithProxies(`https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`)
+          .then(html => results.push(...parseAudiobookSearchHtml(html, "hdaudiobooks", "https://hdaudiobooks.com")))
+          .catch(err => console.warn("[Audiobook] hdaudiobooks search failed:", err.message)),
+      ]);
+
+      const deduped = results.filter((r, i, arr) =>
+        arr.findIndex(x => x.link === r.link) === i
+      ).slice(0, 16);
+
+      if (deduped.length === 0) {
+        const lower = q.toLowerCase();
+        POPULAR_AUDIOBOOKS.filter(b =>
+          b.title.toLowerCase().includes(lower) || b.author.toLowerCase().includes(lower)
+        ).forEach(b => {
+          deduped.push({
+            ...b,
+            coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+            link: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+            source: "hdaudiobooks",
+          });
+        });
+      }
+
+      return new Response(JSON.stringify(deduped), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+    }
+
+    if (path === "/api/audiobooks/detail") {
+      const pageUrl = (url.searchParams.get("url") || "").trim();
+      if (!pageUrl) {
+        return new Response(JSON.stringify({ error: "Missing query parameter 'url'" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+
+      try {
+        const allowedHosts = ["hdaudiobooks.com", "fulllengthaudiobooks.com", "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com"];
+        const host = new URL(pageUrl).hostname.replace(/^www\./, "");
+        if (!allowedHosts.some(h => h.replace(/^www\./, "") === host)) {
+          return new Response(JSON.stringify({ error: "Unsupported audiobook source URL" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        const html = await fetchPageHtmlWithProxies(pageUrl);
+        let resolvedUrl = pageUrl;
+        let detail = parseAudiobookDetailHtml(html, pageUrl);
+
+        if (detail.tracks.length === 0 && isAudiobookSearchUrl(pageUrl)) {
+          const baseUrl = new URL(pageUrl).origin;
+          const bookLink = extractFirstBookLinkFromSearch(html, baseUrl);
+          if (bookLink) {
+            const bookHtml = await fetchPageHtmlWithProxies(bookLink);
+            resolvedUrl = bookLink;
+            detail = parseAudiobookDetailHtml(bookHtml, bookLink);
+          }
+        }
+
+        if (detail.tracks.length === 0) {
+          return new Response(JSON.stringify({ error: "No audio tracks found on this page", ...detail, sourceUrl: resolvedUrl }), {
+            status: 404,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
+        return new Response(JSON.stringify({ ...detail, sourceUrl: resolvedUrl }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to load audiobook details", message: err.message }), {
+          status: 500,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }

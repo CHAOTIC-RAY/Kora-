@@ -26,6 +26,7 @@ import SettingsView from "./components/SettingsView";
 import BookReaderEPUB from "./components/BookReaderEPUB";
 import BookReaderPDF from "./components/BookReaderPDF";
 import BookReaderText from "./components/BookReaderText";
+import AudiobookPlayer from "./components/AudiobookPlayer";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import KoraLoading from "./components/KoraLoading";
 import Quote from "./components/Quote";
@@ -1158,6 +1159,17 @@ export default function App() {
 
   // Handle book selection for reading
   async function handleOpenBook(book: BookMetadata) {
+    if (book.extension?.toLowerCase() === "audiobook") {
+      if (!book.audiobookTracks?.length) {
+        alert("This audiobook has no tracks. Open it from Discover to load audio files.");
+        return;
+      }
+      setActiveBook(book);
+      setLastReadBook(book);
+      localStorage.setItem("kindle_last_read", JSON.stringify(book));
+      return;
+    }
+
     if (!cachedBookIds.has(book.id)) {
       if (book.downloadUrl) {
         try {
@@ -1367,11 +1379,22 @@ export default function App() {
                 }
                 return updated;
               });
-              setActiveTab("library");
+              if (book.extension !== "audiobook") {
+                setActiveTab("library");
+              }
               
               // Enrich metadata in background after addition
               const enriched = await enrichBookMetadata(user?.uid || "", book);
               setBooks(prev => prev.map(b => b.id === enriched.id ? enriched : b));
+            }}
+            onPlayAudiobook={(book) => {
+              setBooks(prev => {
+                if (prev.some(b => b.id === book.id)) return prev;
+                return [...prev, book];
+              });
+              setActiveBook(book);
+              setLastReadBook(book);
+              localStorage.setItem("kindle_last_read", JSON.stringify(book));
             }}
             cachedBookIds={cachedBookIds}
             grayscaleCovers={grayscaleCovers}
@@ -1427,7 +1450,24 @@ export default function App() {
 
       {/* 3. Full-Screen Reader Component Viewports */}
       {activeBook && (
-        activeBook.extension?.toLowerCase() === "pdf" ? (
+        activeBook.extension?.toLowerCase() === "audiobook" ? (
+          <AudiobookPlayer
+            book={activeBook}
+            onClose={() => {
+              if (window.history.state && window.history.state.isReading) {
+                window.history.back();
+              }
+              setActiveBook(null);
+              refreshLibrary();
+            }}
+            onProgressUpdate={(updatedBook) => {
+              setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+              setLastReadBook(updatedBook);
+              setActiveBook(updatedBook);
+              localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+            }}
+          />
+        ) : activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
             book={activeBook}
             userId={user?.uid || ""}

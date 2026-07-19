@@ -8,6 +8,14 @@ import puppeteer from "puppeteer";
 import crypto from "crypto";
 import { GoogleGenAI, Type } from "@google/genai";
 import zlibRouter from "./zlib-proxy";
+import {
+  POPULAR_AUDIOBOOKS,
+  mapPopularAudiobooks,
+  parseAudiobookDetailHtml,
+  parseAudiobookSearchHtml,
+  extractFirstBookLinkFromSearch,
+  isAudiobookSearchUrl,
+} from "./src/lib/audiobookScraper";
 
 dotenv.config();
 
@@ -1632,18 +1640,6 @@ async function fetchGoodreadsTrendingBooks(): Promise<any[]> {
   }
 }
 
-// Popular audiobooks — static curated list used as fallback/baseline
-const POPULAR_AUDIOBOOKS = [
-  { rank: 1, title: "Atomic Habits", author: "James Clear", isbn: "9780735211292", description: "Practical strategies for building good habits — one of the most downloaded audiobooks of all time.", rating: 4.8, source: "audiobook" },
-  { rank: 2, title: "Project Hail Mary", author: "Andy Weir", isbn: "9780593135204", description: "Award-winning sci-fi narrated by Ray Porter — a solo astronaut's mission to save Earth.", rating: 4.9, source: "audiobook" },
-  { rank: 3, title: "Where the Crawdads Sing", author: "Delia Owens", isbn: "9780735224292", description: "One of the most downloaded audiobooks — a murder mystery and coming-of-age story.", rating: 4.7, source: "audiobook" },
-  { rank: 4, title: "Educated", author: "Tara Westover", isbn: "9780399590504", description: "Narrated by the author — a gripping memoir about seeking education against all odds.", rating: 4.7, source: "audiobook" },
-  { rank: 5, title: "Daisy Jones & The Six", author: "Taylor Jenkins Reid", isbn: "9781524798628", description: "Full cast production — the rise and fall of a 1970s rock band, narrated like a documentary.", rating: 4.6, source: "audiobook" },
-  { rank: 6, title: "Dune", author: "Frank Herbert", isbn: "9780441013593", description: "Full cast production of the sci-fi classic — an unparalleled listening experience.", rating: 4.6, source: "audiobook" },
-  { rank: 7, title: "The Midnight Library", author: "Matt Haig", isbn: "9780525559474", description: "Narrated by Carey Mulligan — a novel about choices and the lives we could have lived.", rating: 4.5, source: "audiobook" },
-  { rank: 8, title: "The Great Alone", author: "Kristin Hannah", isbn: "9781250301697", description: "A powerful story of love and survival in the Alaskan wilderness.", rating: 4.6, source: "audiobook" },
-];
-
 app.get("/api/goodreads/list", async (req, res) => {
   try {
     const listQuery = req.query.list as string;
@@ -1798,17 +1794,7 @@ app.get("/api/goodreads/list", async (req, res) => {
 
 // Audiobooks: popular titles for discovery feed
 app.get("/api/audiobooks/popular", async (_req, res) => {
-  const withCovers = POPULAR_AUDIOBOOKS.map((b: any) => ({
-    ...b,
-    // Use ISBN cover from OpenLibrary for reliable thumbnail loading
-    coverUrl: b.isbn
-      ? `https://covers.openlibrary.org/b/isbn/${b.isbn}-M.jpg`
-      : `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
-    // Search URL on hdaudiobooks for the listen button
-    listenUrl: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-    listenUrlAlt: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-  }));
-  res.json(withCovers);
+  res.json(mapPopularAudiobooks());
 });
 
 // Audiobooks: search fulllengthaudiobooks.com and hdaudiobooks.com
@@ -1818,38 +1804,25 @@ app.get("/api/audiobooks/search", async (req, res) => {
 
   const results: any[] = [];
 
-  const parseAudiobookHtml = (html: string, sourceName: string, baseUrl: string) => {
-    const $ = cheerio.load(html);
-    $("article, .post, .entry, .book-item, .product").each((_i, el) => {
-      if (results.length >= 16) return false as any;
-      const item = $(el);
-      const titleEl = item.find("h2 a, h3 a, .entry-title a, .post-title a, h2, h3").first();
-      const title = titleEl.text().trim();
-      const link = titleEl.attr("href") || item.find("a").first().attr("href") || "";
-      const coverUrl = item.find("img").first().attr("src") || null;
-      const author = item.find(".author, .book-author, .entry-meta").first().text().replace(/by\s+/i, "").trim() || "";
-      if (!title || title.length < 3) return;
-      const absoluteLink = link.startsWith("http") ? link : `${baseUrl}${link}`;
-      results.push({ title, author, coverUrl, link: absoluteLink, source: sourceName });
-    });
-  };
-
   await Promise.allSettled([
     fetchPageHtmlWithProxies(`https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`)
-      .then(html => parseAudiobookHtml(html, "fulllengthaudiobooks", "https://fulllengthaudiobooks.com"))
+      .then(html => results.push(...parseAudiobookSearchHtml(html, "fulllengthaudiobooks", "https://fulllengthaudiobooks.com")))
       .catch(err => console.warn("[Audiobook] fulllengthaudiobooks search failed:", err.message)),
     fetchPageHtmlWithProxies(`https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`)
-      .then(html => parseAudiobookHtml(html, "hdaudiobooks", "https://hdaudiobooks.com"))
+      .then(html => results.push(...parseAudiobookSearchHtml(html, "hdaudiobooks", "https://hdaudiobooks.com")))
       .catch(err => console.warn("[Audiobook] hdaudiobooks search failed:", err.message)),
   ]);
 
-  // If scraping returned nothing, fall back to matching popular audiobooks by title
-  if (results.length === 0) {
+  const deduped = results.filter((r, i, arr) =>
+    arr.findIndex(x => x.link === r.link) === i
+  ).slice(0, 16);
+
+  if (deduped.length === 0) {
     const lower = q.toLowerCase();
     POPULAR_AUDIOBOOKS.filter(b =>
       b.title.toLowerCase().includes(lower) || b.author.toLowerCase().includes(lower)
     ).forEach(b => {
-      results.push({
+      deduped.push({
         ...b,
         coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
         link: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
@@ -1858,7 +1831,44 @@ app.get("/api/audiobooks/search", async (req, res) => {
     });
   }
 
-  res.json(results);
+  res.json(deduped);
+});
+
+// Audiobooks: scrape detail page for audio track URLs (pap-player data-playlist, audio elements)
+app.get("/api/audiobooks/detail", async (req, res) => {
+  const pageUrl = (req.query.url as string || "").trim();
+  if (!pageUrl) return res.status(400).json({ error: "Missing query parameter 'url'" });
+
+  try {
+    const allowedHosts = ["hdaudiobooks.com", "fulllengthaudiobooks.com", "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com"];
+    const host = new URL(pageUrl).hostname.replace(/^www\./, "");
+    if (!allowedHosts.some(h => h.replace(/^www\./, "") === host)) {
+      return res.status(400).json({ error: "Unsupported audiobook source URL" });
+    }
+
+    const html = await fetchPageHtmlWithProxies(pageUrl);
+    let resolvedUrl = pageUrl;
+    let detail = parseAudiobookDetailHtml(html, pageUrl);
+
+    if (detail.tracks.length === 0 && isAudiobookSearchUrl(pageUrl)) {
+      const baseUrl = new URL(pageUrl).origin;
+      const bookLink = extractFirstBookLinkFromSearch(html, baseUrl);
+      if (bookLink) {
+        const bookHtml = await fetchPageHtmlWithProxies(bookLink);
+        resolvedUrl = bookLink;
+        detail = parseAudiobookDetailHtml(bookHtml, bookLink);
+      }
+    }
+
+    if (detail.tracks.length === 0) {
+      return res.status(404).json({ error: "No audio tracks found on this page", ...detail, sourceUrl: resolvedUrl });
+    }
+
+    res.json({ ...detail, sourceUrl: resolvedUrl });
+  } catch (err: any) {
+    console.error("[Audiobook Detail] Failed:", err.message);
+    res.status(500).json({ error: "Failed to load audiobook details", message: err.message });
+  }
 });
 
 // Goodreads reviews endpoint
