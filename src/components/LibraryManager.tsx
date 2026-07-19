@@ -540,6 +540,8 @@ export default function LibraryManager({
     void (async () => {
       try {
         await Promise.all(ids.map(async (id) => {
+          clearAudiobookSyncQueue(id);
+          await deleteAudiobookTracks(id).catch(() => undefined);
           await deleteBookFile(id);
           await syncDeleteBook(userId, id);
         }));
