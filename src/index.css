@@ -337,7 +337,13 @@
   --kora-safe-bottom: env(safe-area-inset-bottom, 0px);
   --kora-safe-left: env(safe-area-inset-left, 0px);
   --kora-safe-right: env(safe-area-inset-right, 0px);
-  --kora-mobile-nav-offset: calc(5.5rem + var(--kora-safe-bottom));
+  /* Floating nav: 1.25rem from bottom + h-14 (3.5rem) + safe padding */
+  --kora-mobile-footer-stack: calc(
+    1.25rem + 3.5rem + max(var(--kora-safe-bottom), 0.5rem) + var(--kora-safe-bottom)
+  );
+  /* Mini player sits above nav with a clear gap */
+  --kora-audiobook-mini-bottom: calc(var(--kora-mobile-footer-stack) + 0.6rem);
+  --kora-mobile-nav-offset: calc(var(--kora-mobile-footer-stack) + 0.75rem);
 }
 
 html {
@@ -370,7 +376,7 @@ html.kora-android body {
 }
 
 .kora-mobile-fab {
-  bottom: calc(6rem + var(--kora-safe-bottom));
+  bottom: calc(var(--kora-mobile-footer-stack) + 0.75rem);
   right: calc(1.5rem + var(--kora-safe-right));
 }
 
@@ -378,16 +384,25 @@ html.kora-android body {
   padding-bottom: var(--kora-mobile-nav-offset);
 }
 
+.kora-main-mobile.has-audiobook-mini {
+  padding-bottom: calc(var(--kora-audiobook-mini-bottom) + 4.25rem);
+}
+
 @media (min-width: 768px) {
   .kora-main-mobile {
+    padding-bottom: 2rem;
+  }
+
+  .kora-main-mobile.has-audiobook-mini {
     padding-bottom: 2rem;
   }
 }
 
 .kora-audiobook-mini {
-  bottom: calc(4.75rem + var(--kora-safe-bottom));
+  bottom: var(--kora-audiobook-mini-bottom);
   left: calc(0.75rem + var(--kora-safe-left));
   right: calc(0.75rem + var(--kora-safe-right));
+  z-index: 45; /* above content, below fullscreen overlays; clear of nav */
 }
 
 .kora-edge-guard {

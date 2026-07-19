@@ -1401,7 +1401,9 @@ export default function App() {
       </header>
 
       {/* 2. Main Page View Content */}
-      <main className="flex-1 w-full mx-auto max-w-6xl p-4 md:p-8 md:pb-8 kora-main-mobile">
+      <main className={`flex-1 w-full mx-auto max-w-6xl p-4 md:p-8 md:pb-8 kora-main-mobile${
+        audiobookPlayback && activeBook?.id !== audiobookPlayback.id ? " has-audiobook-mini" : ""
+      }`}>
         
         {/* Sync loading status indicator */}
         {loadingLibrary && (
@@ -1895,7 +1897,7 @@ export default function App() {
       )}
 
       {/* 5. Modern Floating Mobile Navigation Bar */}
-      <footer className="md:hidden fixed kora-mobile-footer z-40 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300 kora-safe-bottom">
+      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] transition-all duration-300 kora-safe-bottom">
         <div className="flex justify-around items-center h-14 px-1">
           <button
             onClick={() => setActiveTab("library")}
