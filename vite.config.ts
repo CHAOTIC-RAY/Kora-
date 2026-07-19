@@ -16,18 +16,6 @@ export default defineConfig(() => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
       // Allow Replit's proxied iframe to reach the dev server
       allowedHosts: true as true,
-      proxy: {
-        '/voxlibri-api': {
-          target: 'http://localhost:7861',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/voxlibri-api/, ''),
-        },
-        '/vocalbook-api': {
-          target: 'http://localhost:7862',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/vocalbook-api/, ''),
-        },
-      },
     },
   };
 });

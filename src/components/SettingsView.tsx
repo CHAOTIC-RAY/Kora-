@@ -18,8 +18,7 @@ import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
-import VoxLibriConverter from "./VoxLibriConverter";
-import VocalbookConverter from "./VocalbookConverter";
+import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -437,12 +436,7 @@ export default function SettingsView({
       <div className="space-y-6">
         {/* Bento Widget Grid (audiobook converters, Add Books & Cloud Sync Ingestion) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <VoxLibriConverter
-            books={(books as BookMetadata[]) || []}
-            userId={userId}
-            onRefreshLibrary={onRefreshLibrary}
-          />
-          <VocalbookConverter
+          <BuiltInAudiobookConverter
             books={(books as BookMetadata[]) || []}
             userId={userId}
             onRefreshLibrary={onRefreshLibrary}

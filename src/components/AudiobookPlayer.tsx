@@ -19,6 +19,8 @@ import {
   isAudiobookFullyDownloaded,
 } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
+import { isBrowserTtsTrack } from "../lib/browserTtsAudiobook";
+import { BrowserTtsPlayer } from "../lib/browserTtsPlayer";
 import {
   enqueueAudiobookDownload,
   subscribeAudiobookSyncQueue,
@@ -107,9 +109,11 @@ function cleanTrackTitle(
 
 export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: AudiobookPlayerProps) {
   const tracks = book.audiobookTracks || [];
+  const isTtsBook = book.source === "browser-tts" || tracks.some((track) => isBrowserTtsTrack(track.src));
   const trackTitles = useMemo(() => tracks.map((track) => track.title), [tracks]);
   const authorLabel = displayAuthor(book.author);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const ttsPlayerRef = useRef<BrowserTtsPlayer | null>(null);
   const [currentTrack, setCurrentTrack] = useState(book.audiobookCurrentTrack || 0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(book.audiobookCurrentTime || 0);
@@ -117,7 +121,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const [speed, setSpeed] = useState(1);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [offlineReady, setOfflineReady] = useState(!!book.audiobookDownloaded);
+  const [offlineReady, setOfflineReady] = useState(!!book.audiobookDownloaded || isTtsBook);
   const [localUrls, setLocalUrls] = useState<Record<number, string>>({});
   const [loadingTrack, setLoadingTrack] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
@@ -126,6 +130,9 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
   const pendingTrackLoad = useRef<{ index: number; resumeTime?: number } | null>(null);
+  const currentTrackRef = useRef(currentTrack);
+  const goToTrackRef = useRef<(index: number) => void>(() => {});
+  currentTrackRef.current = currentTrack;
 
   const persistProgress = useCallback(
     (trackIdx: number, time: number, percent?: number) => {
@@ -147,6 +154,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
 
   const resolveTrackUrl = useCallback(
     async (index: number): Promise<string> => {
+      if (isTtsBook) return "";
       if (localUrls[index]) return localUrls[index];
       const stored = await getAudiobookTrack(book.id, index);
       if (stored) {
@@ -158,7 +166,104 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
       if (!track) return "";
       return getProxiedAudioUrl(track.src, refererForMediaUrl(track.src));
     },
-    [book.id, localUrls, tracks]
+    [book.id, isTtsBook, localUrls, tracks]
+  );
+
+  const loadTtsTrack = useCallback(
+    async (index: number, autoPlay = false, resumeTime?: number) => {
+      if (!tracks[index]) return;
+      setLoadingTrack(true);
+      setPlaybackError(null);
+      outroSkipTriggered.current = false;
+      introSkippedForTrack.current = null;
+
+      const savedResume =
+        resumeTime ??
+        (book.audiobookCurrentTrack === index && book.audiobookCurrentTime
+          ? book.audiobookCurrentTime
+          : undefined);
+      resumeTimeForTrack.current = savedResume ?? null;
+
+      try {
+        const stored = await getAudiobookTrack(book.id, index);
+        if (!stored?.blob) {
+          throw new Error("Chapter text is missing. Recreate the read-aloud audiobook from Settings.");
+        }
+        const text = await stored.blob.text();
+        if (!ttsPlayerRef.current) {
+          ttsPlayerRef.current = new BrowserTtsPlayer({
+            onTimeUpdate: (time, trackDuration) => {
+              setCurrentTime(time);
+              setDuration(trackDuration);
+              const idx = currentTrackRef.current;
+              if (
+                smartSkip.enabled &&
+                !outroSkipTriggered.current &&
+                shouldAutoAdvancePastOutro(
+                  time,
+                  trackDuration,
+                  smartSkip.outroSeconds,
+                  idx < tracks.length - 1
+                )
+              ) {
+                outroSkipTriggered.current = true;
+                goToTrackRef.current(idx + 1);
+              }
+            },
+            onEnded: () => {
+              const idx = currentTrackRef.current;
+              if (idx < tracks.length - 1) {
+                goToTrackRef.current(idx + 1);
+              } else {
+                setIsPlaying(false);
+                persistProgress(idx, 0, 100);
+              }
+            },
+            onPlay: () => setIsPlaying(true),
+            onPause: () => setIsPlaying(false),
+            onError: (message) => {
+              setPlaybackError(message);
+              setIsPlaying(false);
+            },
+          });
+        }
+
+        ttsPlayerRef.current.setRate(speed);
+        await ttsPlayerRef.current.loadText(text, savedResume ?? 0);
+
+        if (smartSkip.enabled && savedResume == null) {
+          const trackDuration = ttsPlayerRef.current.duration;
+          if (shouldApplyIntroSkip(trackDuration, savedResume, smartSkip.introSeconds)) {
+            ttsPlayerRef.current.seek(smartSkip.introSeconds);
+            introSkippedForTrack.current = index;
+          }
+        }
+
+        setCurrentTrack(index);
+        setDuration(ttsPlayerRef.current.duration);
+        setCurrentTime(ttsPlayerRef.current.currentTime);
+
+        if (autoPlay) {
+          await ttsPlayerRef.current.play();
+        }
+      } catch (err) {
+        console.error("Failed to load TTS track:", err);
+        setPlaybackError((err as Error).message || "Could not load this chapter.");
+        setIsPlaying(false);
+      } finally {
+        setLoadingTrack(false);
+      }
+    },
+    [
+      tracks,
+      book.id,
+      book.audiobookCurrentTrack,
+      book.audiobookCurrentTime,
+      speed,
+      smartSkip,
+      currentTrack,
+      persistProgress,
+    ]
   );
 
   const applyIntroSkip = useCallback(
@@ -178,7 +283,12 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
 
   const loadTrack = useCallback(
     async (index: number, autoPlay = false, resumeTime?: number) => {
-      if (!tracks[index] || !audioRef.current) return;
+      if (!tracks[index]) return;
+      if (isTtsBook) {
+        await loadTtsTrack(index, autoPlay, resumeTime);
+        return;
+      }
+      if (!audioRef.current) return;
       setLoadingTrack(true);
       setPlaybackError(null);
       outroSkipTriggered.current = false;
@@ -212,6 +322,8 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     },
     [
       tracks,
+      isTtsBook,
+      loadTtsTrack,
       resolveTrackUrl,
       speed,
       book.audiobookCurrentTrack,
@@ -236,16 +348,31 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     });
     return () => {
       unsub();
+      ttsPlayerRef.current?.destroy();
+      ttsPlayerRef.current = null;
       Object.values(localUrls).forEach((u) => URL.revokeObjectURL(u));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (audioRef.current) audioRef.current.playbackRate = speed;
-  }, [speed]);
+    if (isTtsBook) {
+      ttsPlayerRef.current?.setRate(speed);
+    } else if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+    }
+  }, [speed, isTtsBook]);
 
   const togglePlay = async () => {
+    if (isTtsBook) {
+      if (isPlaying) {
+        ttsPlayerRef.current?.pause();
+        persistProgress(currentTrack, ttsPlayerRef.current?.currentTime || currentTime);
+      } else {
+        await ttsPlayerRef.current?.play();
+      }
+      return;
+    }
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
@@ -258,6 +385,11 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   };
 
   const skip = (delta: number) => {
+    if (isTtsBook) {
+      ttsPlayerRef.current?.skip(delta);
+      setCurrentTime(ttsPlayerRef.current?.currentTime || 0);
+      return;
+    }
     if (!audioRef.current) return;
     audioRef.current.currentTime = Math.max(
       0,
@@ -267,9 +399,16 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
 
   const goToTrack = (index: number) => {
     if (index < 0 || index >= tracks.length) return;
-    persistProgress(currentTrack, audioRef.current?.currentTime || 0);
+    const time = isTtsBook
+      ? ttsPlayerRef.current?.currentTime || currentTime
+      : audioRef.current?.currentTime || 0;
+    persistProgress(currentTrack, time);
+    if (isTtsBook) {
+      ttsPlayerRef.current?.stop(false);
+    }
     loadTrack(index, isPlaying);
   };
+  goToTrackRef.current = goToTrack;
 
   const toggleSmartSkip = () => {
     const next = { ...smartSkip, enabled: !smartSkip.enabled };
@@ -317,6 +456,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col">
       <audio
         ref={audioRef}
+        className={isTtsBook ? "hidden" : undefined}
         onTimeUpdate={() => {
           if (!audioRef.current) return;
           const time = audioRef.current.currentTime;
@@ -395,7 +535,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex-1 overflow-y-auto">
           <div className="flex flex-col items-center px-5 py-6 gap-5 max-w-md mx-auto w-full">
-            <div className="w-full">
+            <div className="w-full shrink-0">
               <div className="p-3 sm:p-4 rounded-2xl bg-kindle-card border border-kindle-border shadow-lg">
                 <CassetteVisualizer
                   title={book.title}
@@ -412,6 +552,11 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               </h2>
               {authorLabel && (
                 <p className="text-sm text-kindle-text-muted font-sans">{authorLabel}</p>
+              )}
+              {isTtsBook && (
+                <p className="text-[10px] text-kindle-text-muted/90 font-lexend uppercase tracking-widest">
+                  Read aloud · device voice
+                </p>
               )}
               {tracks.length > 0 && (
                 <p className="text-[11px] text-kindle-text-muted/80 font-lexend uppercase tracking-widest pt-1">
@@ -432,7 +577,11 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                 value={currentTime}
                 onChange={(e) => {
                   const t = parseFloat(e.target.value);
-                  if (audioRef.current) audioRef.current.currentTime = t;
+                  if (isTtsBook) {
+                    ttsPlayerRef.current?.seek(t);
+                  } else if (audioRef.current) {
+                    audioRef.current.currentTime = t;
+                  }
                   setCurrentTime(t);
                   introSkippedForTrack.current = currentTrack;
                   outroSkipTriggered.current = false;
@@ -553,26 +702,28 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               </span>
             </button>
 
-            <button
-              onClick={handleDownloadAll}
-              disabled={downloading || offlineReady || tracks.length === 0}
-              className="relative overflow-hidden w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-kindle-card hover:bg-kindle-border/30 border border-kindle-border text-[10px] font-bold uppercase tracking-widest font-lexend transition disabled:opacity-60 text-kindle-text"
-            >
-              {downloading && (
-                <span
-                  className="absolute inset-y-0 left-0 bg-white/10 transition-all duration-300"
-                  style={{ width: `${downloadProgress}%` }}
-                />
-              )}
-              <span className="relative flex items-center gap-2">
-                <Download className="w-4 h-4" />
-                {offlineReady
-                  ? "Saved for Offline"
-                  : downloading
-                    ? `Downloading ${downloadProgress}%`
-                    : "Download for Offline"}
-              </span>
-            </button>
+            {!isTtsBook && (
+              <button
+                onClick={handleDownloadAll}
+                disabled={downloading || offlineReady || tracks.length === 0}
+                className="relative overflow-hidden w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-kindle-card hover:bg-kindle-border/30 border border-kindle-border text-[10px] font-bold uppercase tracking-widest font-lexend transition disabled:opacity-60 text-kindle-text"
+              >
+                {downloading && (
+                  <span
+                    className="absolute inset-y-0 left-0 bg-white/10 transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                )}
+                <span className="relative flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  {offlineReady
+                    ? "Saved for Offline"
+                    : downloading
+                      ? `Downloading ${downloadProgress}%`
+                      : "Download for Offline"}
+                </span>
+              </button>
+            )}
           </div>
         </div>
 

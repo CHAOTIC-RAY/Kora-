@@ -102,16 +102,16 @@ export default function CassetteVisualizer({
 
   return (
     <div
-      className={`relative flex flex-col items-center justify-center w-full ${
+      className={`relative flex flex-col items-center justify-center w-full shrink-0 ${
         isPlayer
-          ? "max-w-md w-full aspect-[10/6.2] min-h-[148px] sm:min-h-[168px]"
+          ? "max-w-md w-full h-[168px] sm:h-[188px]"
           : isThumb
             ? "w-16 h-11"
             : "aspect-[10/6.2] min-h-[92px]"
       } ${className}`}
     >
       <div
-        className={`cassette-shell relative w-full h-full min-h-[148px] sm:min-h-[168px] overflow-hidden ${shellRadius} ${
+        className={`cassette-shell relative w-full h-full overflow-hidden ${shellRadius} ${
           playing ? "cassette-shell-active" : ""
         }`}
       >
