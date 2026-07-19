@@ -343,6 +343,57 @@ export default function App() {
     const saved = localStorage.getItem("kora_downloads_log");
     return saved ? JSON.parse(saved) : [];
   });
+  const foregroundDownloadAborts = useRef<Map<string, AbortController>>(new Map());
+
+  const removeDownloadEntry = useCallback((downloadId: string) => {
+    setGlobalDownloads((prev) => {
+      const updated = prev.filter((dl) => dl.id !== downloadId);
+      localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+      return updated;
+    });
+    try {
+      const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
+      delete payloads[downloadId];
+      localStorage.setItem("kora_sw_payloads", JSON.stringify(payloads));
+    } catch {
+      /* ignore */
+    }
+    try {
+      toast.dismiss(downloadId);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const cancelBackgroundDownload = useCallback(
+    (downloadId: string) => {
+      const fg = foregroundDownloadAborts.current.get(downloadId);
+      if (fg) {
+        try {
+          fg.abort();
+        } catch {
+          /* ignore */
+        }
+        foregroundDownloadAborts.current.delete(downloadId);
+      }
+      if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: "bgf-cancel",
+          downloadId,
+        });
+      }
+      removeDownloadEntry(downloadId);
+      toast("Download stopped", { id: downloadId });
+    },
+    [removeDownloadEntry]
+  );
+
+  const dismissDownload = useCallback(
+    (downloadId: string) => {
+      removeDownloadEntry(downloadId);
+    },
+    [removeDownloadEntry]
+  );
 
   // Background download handler
   async function startBackgroundDownload(book: any, mirrors: any | any[], variant: any) {
@@ -426,8 +477,10 @@ export default function App() {
         });
 
         const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        const abortController = new AbortController();
+        foregroundDownloadAborts.current.set(downloadId, abortController);
         
-        const response = await fetch(proxyUrl);
+        const response = await fetch(proxyUrl, { signal: abortController.signal });
         if (!response.ok) {
           let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
           try {
@@ -517,6 +570,10 @@ export default function App() {
           let lastUpdateTime = Date.now();
 
           while(true) {
+            if (abortController.signal.aborted) {
+              try { await reader.cancel(); } catch { /* ignore */ }
+              throw new DOMException("Cancelled", "AbortError");
+            }
             const {done, value} = await reader.read();
             if (done) break;
             chunks.push(value);
@@ -689,9 +746,19 @@ export default function App() {
         success = true;
         break; // Stop iterating on success
       } catch (err: any) {
+        const cancelled =
+          err?.name === "AbortError" ||
+          /abort|cancel/i.test(String(err?.message || ""));
+        if (cancelled) {
+          foregroundDownloadAborts.current.delete(downloadId);
+          removeDownloadEntry(downloadId);
+          return;
+        }
         logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error: ${err.message || err}`);
         finalError = err;
         // Proceed to the next mirror if this one failed
+      } finally {
+        foregroundDownloadAborts.current.delete(downloadId);
       }
     }
     
@@ -743,6 +810,10 @@ export default function App() {
       } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
         handleAudiobookSwMessage(data);
       } else if (data.type === "download-error") {
+        if (data.error === "Cancelled") {
+          removeDownloadEntry(data.downloadId);
+          return;
+        }
         setGlobalDownloads(prev => {
           const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl);
           localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
@@ -759,11 +830,7 @@ export default function App() {
         setActiveTab("library");
         toast.loading("Retry available in your Library downloads");
       } else if (data.type === "bgf-cancel") {
-        setGlobalDownloads(prev => {
-          const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: "Cancelled" } : dl);
-          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
-          return updated;
-        });
+        removeDownloadEntry(data.downloadId);
       }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
@@ -1425,6 +1492,8 @@ export default function App() {
             onCachedIdsChanged={updateCachedBookIndex}
             grayscaleCovers={grayscaleCovers}
             downloads={globalDownloads}
+            onCancelDownload={cancelBackgroundDownload}
+            onDismissDownload={dismissDownload}
             onSearchTrigger={(query) => {
               setDiscoverInitialQuery(query);
               setActiveTab("discover");

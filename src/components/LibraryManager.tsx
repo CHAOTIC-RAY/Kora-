@@ -2,12 +2,14 @@ import React, { useState, useRef, useEffect } from "react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
 import AudiobookCassetteCard from "./AudiobookCassetteCard";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import { deleteAudiobookTracks } from "../lib/audiobookStorage";
+import { clearAudiobookSyncQueue } from "../lib/audiobookSyncQueue";
 
 function findActiveDownload(book: { id?: string; md5?: string; downloadId?: string }, downloads: any[] = []) {
   const bookKeys = new Set(
@@ -15,7 +17,7 @@ function findActiveDownload(book: { id?: string; md5?: string; downloadId?: stri
   );
   return (
     downloads.find((download) => {
-      if (download.status !== "downloading") return false;
+      if (download.status !== "downloading" && download.status !== "error") return false;
       return [download.id, download.md5].filter(Boolean).some((key) => bookKeys.has(String(key)));
     }) ?? null
   );
@@ -25,12 +27,17 @@ function LibraryDownloadOverlay({
   book,
   download,
   hideCovers,
+  onStop,
+  onDelete,
 }: {
   book: { coverUrl?: string };
-  download: { percent?: number };
+  download: { percent?: number; status?: string; error?: string };
   hideCovers?: boolean;
+  onStop?: () => void;
+  onDelete?: () => void;
 }) {
   const pct = typeof download.percent === "number" ? download.percent : 0;
+  const isError = download.status === "error";
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-kindle-card/70 backdrop-blur-[1px]">
       {!hideCovers && book.coverUrl ? (
@@ -42,30 +49,72 @@ function LibraryDownloadOverlay({
         />
       ) : null}
       <div className="absolute inset-0 overflow-hidden">
-        <div
-          className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-          style={{ animation: "shimmer 1.4s infinite" }}
-        />
+        {!isError && (
+          <div
+            className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+            style={{ animation: "shimmer 1.4s infinite" }}
+          />
+        )}
+      </div>
+      <div className="absolute top-2 left-2 z-30 flex gap-1.5">
+        {!isError && onStop && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onStop();
+            }}
+            className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-red-500/15 hover:text-red-500 active:scale-90 transition"
+            title="Stop download"
+            aria-label="Stop download"
+          >
+            <Square className="w-3.5 h-3.5 fill-current" />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onDelete();
+            }}
+            className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-red-500/15 hover:text-red-500 active:scale-90 transition"
+            title={isError ? "Remove download" : "Stop and remove"}
+            aria-label={isError ? "Remove download" : "Stop and remove download"}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
       <div className="relative w-14 h-14 rounded-full flex items-center justify-center bg-kindle-bg/80 border border-kindle-border shadow">
-        <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
-          <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-kindle-border" />
-          <circle
-            cx="18"
-            cy="18"
-            r="15.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            className="text-kindle-accent transition-all duration-300"
-            strokeDasharray={97.4}
-            strokeDashoffset={97.4 - (97.4 * Math.max(0, Math.min(100, pct))) / 100}
-          />
-        </svg>
-        <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
+        {isError ? (
+          <AlertTriangle className="w-6 h-6 text-red-500" />
+        ) : (
+          <>
+            <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+              <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-kindle-border" />
+              <circle
+                cx="18"
+                cy="18"
+                r="15.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+                className="text-kindle-accent transition-all duration-300"
+                strokeDasharray={97.4}
+                strokeDashoffset={97.4 - (97.4 * Math.max(0, Math.min(100, pct))) / 100}
+              />
+            </svg>
+            <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
+          </>
+        )}
       </div>
-      <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">Downloading…</span>
+      <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted px-2 text-center">
+        {isError ? (download.error === "Cancelled" ? "Stopped" : "Failed") : "Downloading…"}
+      </span>
     </div>
   );
 }
@@ -81,6 +130,8 @@ interface LibraryManagerProps {
   grayscaleCovers?: boolean;
   hideCovers?: boolean;
   downloads?: any[];
+  onCancelDownload?: (downloadId: string) => void;
+  onDismissDownload?: (downloadId: string) => void;
   onSearchTrigger?: (query: string) => void;
 }
 
@@ -130,6 +181,8 @@ export default function LibraryManager({
   grayscaleCovers = false,
   hideCovers = false,
   downloads = [],
+  onCancelDownload,
+  onDismissDownload,
   onSearchTrigger
 }: LibraryManagerProps) {
   // Filters & sorting
@@ -427,6 +480,8 @@ export default function LibraryManager({
     onBooksRemoved?.([bookId]);
     void (async () => {
       try {
+        clearAudiobookSyncQueue(bookId);
+        await deleteAudiobookTracks(bookId).catch(() => undefined);
         await deleteBookFile(bookId);
         await syncDeleteBook(userId, bookId);
         onCachedIdsChanged();
@@ -435,6 +490,15 @@ export default function LibraryManager({
         onRefreshLibrary();
       }
     })();
+  }
+
+  function stopOrRemoveDownload(download: { id?: string; status?: string } | null) {
+    if (!download?.id) return;
+    if (download.status === "downloading") {
+      onCancelDownload?.(download.id);
+    } else {
+      onDismissDownload?.(download.id);
+    }
   }
 
   // Bulk Status Update for Selected Books
@@ -906,6 +970,16 @@ export default function LibraryManager({
                         book={book}
                         download={activeDownload}
                         hideCovers={hideCovers}
+                        onStop={
+                          activeDownload.status === "downloading" && onCancelDownload
+                            ? () => onCancelDownload(activeDownload.id)
+                            : undefined
+                        }
+                        onDelete={
+                          onCancelDownload || onDismissDownload
+                            ? () => stopOrRemoveDownload(activeDownload)
+                            : undefined
+                        }
                       />
                     )}
 
@@ -1382,61 +1456,99 @@ export default function LibraryManager({
             </div>
 
             <div className="space-y-1.5 font-sans">
-              <button
-                onClick={() => {
-                  const book = longPressedBook;
-                  setLongPressedBook(null);
-                  onBookSelected(book);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
-              >
-                <BookOpen className="w-4 h-4 text-kindle-text-muted" />
-                Open & Read Book
-              </button>
-              
-              <button
-                onClick={() => {
-                  setEditingCoverBook(longPressedBook);
-                  setLongPressedBook(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
-              >
-                <ImageIcon className="w-4 h-4 text-kindle-text-muted" />
-                Change Book Cover
-              </button>
+              {(longPressedBook as any)?.isDownloadingCard ||
+              findActiveDownload(longPressedBook as any, downloads) ? (
+                (() => {
+                  const dl =
+                    (longPressedBook as any).activeDownload ||
+                    findActiveDownload(longPressedBook as any, downloads);
+                  const downloading = dl?.status === "downloading";
+                  return (
+                    <>
+                      {downloading && onCancelDownload && (
+                        <button
+                          onClick={() => {
+                            onCancelDownload(dl.id);
+                            setLongPressedBook(null);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                        >
+                          <Square className="w-4 h-4 text-kindle-text-muted fill-current" />
+                          Stop download
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          stopOrRemoveDownload(dl);
+                          setLongPressedBook(null);
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 text-red-600 rounded-xl text-left text-xs font-semibold transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-500" />
+                        {downloading ? "Stop & remove" : "Remove from library"}
+                      </button>
+                    </>
+                  );
+                })()
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      const book = longPressedBook;
+                      setLongPressedBook(null);
+                      onBookSelected(book);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                  >
+                    <BookOpen className="w-4 h-4 text-kindle-text-muted" />
+                    Open & Read Book
+                  </button>
 
-              <button
-                onClick={() => {
-                  setEditingMetadataBook(longPressedBook);
-                  setLongPressedBook(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
-              >
-                <Edit2 className="w-4 h-4 text-kindle-text-muted" />
-                Edit Metadata
-              </button>
+                  <button
+                    onClick={() => {
+                      setEditingCoverBook(longPressedBook);
+                      setLongPressedBook(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                  >
+                    <ImageIcon className="w-4 h-4 text-kindle-text-muted" />
+                    Change Book Cover
+                  </button>
 
-              <button
-                onClick={() => {
-                  setActiveBookForTags(longPressedBook);
-                  setLongPressedBook(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
-              >
-                <Tag className="w-4 h-4 text-kindle-text-muted" />
-                Organize Tags
-              </button>
+                  <button
+                    onClick={() => {
+                      setEditingMetadataBook(longPressedBook);
+                      setLongPressedBook(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4 text-kindle-text-muted" />
+                    Edit Metadata
+                  </button>
 
-              <button
-                onClick={() => {
-                  setActiveBookForDelete(longPressedBook);
-                  setLongPressedBook(null);
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 text-red-600 rounded-xl text-left text-xs font-semibold transition-colors mt-2"
-              >
-                <Trash2 className="w-4 h-4 text-red-500" />
-                Delete Book
-              </button>
+                  <button
+                    onClick={() => {
+                      setActiveBookForTags(longPressedBook);
+                      setLongPressedBook(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                  >
+                    <Tag className="w-4 h-4 text-kindle-text-muted" />
+                    Organize Tags
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setActiveBookForDelete(longPressedBook);
+                      setLongPressedBook(null);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/10 text-red-600 rounded-xl text-left text-xs font-semibold transition-colors mt-2"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                    Delete Book
+                  </button>
+                </>
+              )}
 
               <div className="pt-2 border-t border-kindle-border/40 mt-3">
                 <button

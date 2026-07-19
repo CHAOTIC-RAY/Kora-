@@ -15,6 +15,9 @@ const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
 const PARTIAL_FLUSH_BYTES = 512 * 1024;
 
+/** Active streaming downloads that can be aborted via bgf-cancel */
+const activeBookDownloads = new Map(); // downloadId -> { abortController, reader }
+
 async function warmApiCache() {
   const cache = await caches.open(API_CACHE);
   await Promise.allSettled(
@@ -202,9 +205,14 @@ async function resumePartialDownloads() {
 async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownContentType = "") {
   const { downloadId, proxyUrl } = payload;
   const partialId = "partial-" + downloadId;
+  const abortController = new AbortController();
+  activeBookDownloads.set(downloadId, { abortController, reader: null });
   try {
     const headers = resumeFrom > 0 ? { Range: `bytes=${resumeFrom}-` } : {};
-    const response = await fetch(absoluteUrl(proxyUrl), { headers });
+    const response = await fetch(absoluteUrl(proxyUrl), {
+      headers,
+      signal: abortController.signal,
+    });
     if (!response.ok && response.status !== 206) throw new Error(`Mirror unresponsive (HTTP ${response.status}).`);
 
     const contentType = knownContentType || response.headers.get("content-type") || "";
@@ -220,6 +228,8 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
     }
 
     const reader = response.body.getReader();
+    const active = activeBookDownloads.get(downloadId);
+    if (active) active.reader = reader;
     const chunks = existingChunks.slice();
     let received = resumeFrom;
     const startTime = Date.now();
@@ -227,6 +237,10 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
     let lastFlush = received;
 
     while (true) {
+      if (abortController.signal.aborted) {
+        try { await reader.cancel(); } catch (e) {}
+        throw new DOMException("Cancelled", "AbortError");
+      }
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
@@ -263,10 +277,17 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
     await putDB(downloadId, { id: downloadId, blob: fileBlob, payload, saved: false });
     await finishDownload(payload, fileBlob);
   } catch (err) {
+    const cancelled =
+      err?.name === "AbortError" ||
+      /abort|cancel/i.test(String(err?.message || ""));
     await delDB(partialId);
     await delDB(downloadId);
-    await postToClients({ type: "download-error", downloadId, error: err.message || "Download failed" });
-    if (self.registration && self.registration.showNotification) {
+    await postToClients({
+      type: "download-error",
+      downloadId,
+      error: cancelled ? "Cancelled" : (err.message || "Download failed"),
+    });
+    if (!cancelled && self.registration && self.registration.showNotification) {
       try {
         await self.registration.showNotification(`Download failed: "${payload.title}"`, {
           body: err.message || "Please try again.",
@@ -276,11 +297,15 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
         });
       } catch (e) {}
     }
-    try {
-      if (self.registration && self.registration.sync) {
-        await self.registration.sync.register(DOWNLOAD_SYNC_TAG);
-      }
-    } catch (e) {}
+    if (!cancelled) {
+      try {
+        if (self.registration && self.registration.sync) {
+          await self.registration.sync.register(DOWNLOAD_SYNC_TAG);
+        }
+      } catch (e) {}
+    }
+  } finally {
+    activeBookDownloads.delete(downloadId);
   }
 }
 
@@ -544,6 +569,12 @@ self.addEventListener("message", (event) => {
       try {
         await self.registration.backgroundFetch.get("kora-bgf-" + data.downloadId)?.abort();
       } catch (e) {}
+      const active = activeBookDownloads.get(data.downloadId);
+      if (active) {
+        try { active.abortController.abort(); } catch (e) {}
+        try { await active.reader?.cancel(); } catch (e) {}
+        activeBookDownloads.delete(data.downloadId);
+      }
       await delDB("kora-bgf-" + data.downloadId);
       await delDB(data.downloadId);
       await delDB("partial-" + data.downloadId);
