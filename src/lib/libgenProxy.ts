@@ -61,6 +61,11 @@ function signedUrlFromLibgenHtml(html: string, pageUrl: string): string | null {
   }
 }
 
+/** Connect timeout for landing pages; binary streams need a much longer budget. */
+const LIBGEN_CONNECT_MS = 20_000;
+/** Slow mirrors (~20KB/s) need several minutes for a multi‑MB ebook. */
+const LIBGEN_STREAM_MS = 12 * 60 * 1000;
+
 export async function fetchBinaryWithLibgenMirrors(
   url: string,
   headers: Record<string, string>
@@ -76,13 +81,16 @@ export async function fetchBinaryWithLibgenMirrors(
 
     for (const attemptUrl of attempts) {
       try {
+        // Already-signed CDN links go straight to the file — use the long stream budget.
+        const alreadySigned = /[?&]key=/i.test(attemptUrl);
         const response = await fetch(attemptUrl, {
           headers: {
             ...headers,
             Referer: `${new URL(attemptUrl).origin}/`,
+            Accept: "application/octet-stream,application/epub+zip,application/pdf,*/*",
           },
           redirect: "follow",
-          signal: AbortSignal.timeout(18000),
+          signal: AbortSignal.timeout(alreadySigned ? LIBGEN_STREAM_MS : LIBGEN_CONNECT_MS),
         });
         lastStatus = response.status;
         if (!response.ok) continue;
@@ -100,7 +108,8 @@ export async function fetchBinaryWithLibgenMirrors(
               Accept: "application/octet-stream,application/epub+zip,application/pdf,*/*",
             },
             redirect: "follow",
-            signal: AbortSignal.timeout(30000),
+            // Must not use a short timeout — AbortSignal aborts the whole body stream.
+            signal: AbortSignal.timeout(LIBGEN_STREAM_MS),
           });
           lastStatus = bin.status;
           if (!bin.ok) continue;

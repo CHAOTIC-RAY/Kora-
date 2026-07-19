@@ -3492,6 +3492,11 @@ export default {
           }
 
           if (isLibgenUrl(targetUrl)) {
+            try {
+              finalHeaders["Referer"] = `${new URL(targetUrl).origin}/`;
+            } catch {
+              finalHeaders["Referer"] = "https://libgen.li/";
+            }
             response = await fetchBinaryWithLibgenMirrors(targetUrl, finalHeaders);
             resolvedFinalUrl = targetUrl;
           } else {

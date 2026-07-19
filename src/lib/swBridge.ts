@@ -115,7 +115,9 @@ export async function handoffBookDownload(payload: {
   proxyUrls?: string[];
 }): Promise<boolean> {
   const registration = await ensureServiceWorkerReady();
-  const controller = navigator.serviceWorker.controller || registration?.active;
+  // Prefer the controlling SW — posting only to registration.active can miss
+  // the page when a stale/broken SW failed to claim clients.
+  const controller = navigator.serviceWorker.controller;
   if (!controller) return false;
 
   const toAbsolute = (url: string) =>
@@ -126,15 +128,49 @@ export async function handoffBookDownload(payload: {
     toAbsolute
   );
 
-  controller.postMessage({
-    type: "download-book",
-    payload: {
-      ...payload,
-      proxyUrl: absoluteProxyUrl,
-      proxyUrls: absoluteProxyUrls,
-    },
+  // Require an ACK from the SW. Previously we returned true after postMessage
+  // even when the SW was dead (update fetch failures / closed message ports),
+  // which left downloads stuck at 0% forever.
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        channel.port1.onmessage = null;
+        channel.port1.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(ok);
+    };
+
+    const channel = new MessageChannel();
+    const timer = window.setTimeout(() => finish(false), 2500);
+    channel.port1.onmessage = (event) => {
+      if (event.data?.type === "download-accepted" && event.data?.downloadId === payload.downloadId) {
+        finish(true);
+      }
+    };
+
+    try {
+      controller.postMessage(
+        {
+          type: "download-book",
+          payload: {
+            ...payload,
+            proxyUrl: absoluteProxyUrl,
+            proxyUrls: absoluteProxyUrls,
+          },
+        },
+        [channel.port2]
+      );
+    } catch (err) {
+      console.warn("[SW] handoffBookDownload postMessage failed:", err);
+      finish(false);
+    }
   });
-  return true;
 }
 
 export async function handoffAudiobookTrackDownload(payload: {

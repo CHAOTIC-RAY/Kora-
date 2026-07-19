@@ -387,6 +387,9 @@ export default function App() {
   const swDownloadFallbackRef = useRef<
     Map<string, { book: any; mirrors: any[]; variant: any }>
   >(new Map());
+  /** Download IDs that have received real SW byte progress (not just "Starting…"). */
+  const swMadeProgressRef = useRef<Set<string>>(new Set());
+  const swWatchdogTimersRef = useRef<Map<string, number>>(new Map());
 
   const removeDownloadEntry = useCallback((downloadId: string) => {
     setGlobalDownloads((prev) => {
@@ -458,14 +461,53 @@ export default function App() {
     for (const m of seed) {
       const url = m?.url;
       if (!url) continue;
+      // Prefer the original URL first; only expand LibGen hosts for alternates.
       const candidates = isLibgenUrl(url) ? libgenMirrorCandidates(url) : [url];
       for (const candidate of candidates) {
         if (seen.has(candidate)) continue;
         seen.add(candidate);
         expanded.push({ ...m, url: candidate });
+        // Cap so a stuck SW/foreground loop doesn't try dozens of hosts.
+        if (expanded.length >= 10) return expanded;
       }
     }
     return expanded.length > 0 ? expanded : mirrors;
+  }
+
+  function clearSwDownloadWatchdog(downloadId: string) {
+    const timer = swWatchdogTimersRef.current.get(downloadId);
+    if (timer) {
+      window.clearTimeout(timer);
+      swWatchdogTimersRef.current.delete(downloadId);
+    }
+  }
+
+  function armSwDownloadWatchdog(downloadId: string) {
+    clearSwDownloadWatchdog(downloadId);
+    const timer = window.setTimeout(() => {
+      swWatchdogTimersRef.current.delete(downloadId);
+      if (swMadeProgressRef.current.has(downloadId)) return;
+      const fallback = swDownloadFallbackRef.current.get(downloadId);
+      if (!fallback) return;
+      swDownloadFallbackRef.current.delete(downloadId);
+      logger.warn(
+        `SW download for ${downloadId} stuck at 0% with no progress; retrying in foreground`
+      );
+      try {
+        navigator.serviceWorker?.controller?.postMessage({
+          type: "bgf-cancel",
+          downloadId,
+        });
+      } catch {
+        /* ignore */
+      }
+      toast.loading(`Retrying ${fallback.book.title}…`, { id: downloadId });
+      void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
+        reuseDownloadId: downloadId,
+        skipServiceWorker: true,
+      });
+    }, 12000);
+    swWatchdogTimersRef.current.set(downloadId, timer);
   }
 
   // Background download handler
@@ -552,10 +594,13 @@ export default function App() {
           url: proxyUrl,
         });
         if (handedOff) {
-          // Keep full mirror list so a SW failure can retry in the foreground.
+          // Keep full mirror list so a SW failure / stuck-at-0% can retry in the foreground.
+          swMadeProgressRef.current.delete(downloadId);
           swDownloadFallbackRef.current.set(downloadId, { book, mirrors: mirrorList, variant });
+          armSwDownloadWatchdog(downloadId);
           return;
         }
+        logger.warn("SW download handoff not acknowledged; using foreground download");
       } catch (swErr) {
         logger.warn("SW download handoff failed, using foreground fallback:", swErr);
       }
@@ -1045,6 +1090,15 @@ export default function App() {
     const onMessage = async (event: MessageEvent) => {
       const data = event.data || {};
       if (data.type === "download-progress") {
+        const transferred = String(data.transferred || "");
+        const percent = typeof data.percent === "number" ? data.percent : 0;
+        const realProgress =
+          percent > 0 ||
+          (/\d/.test(transferred) && !/starting|connecting|background/i.test(transferred));
+        if (realProgress) {
+          swMadeProgressRef.current.add(data.downloadId);
+          clearSwDownloadWatchdog(data.downloadId);
+        }
         const now = Date.now();
         const last = swProgressThrottleRef.current.get(data.downloadId) || 0;
         if (now - last < 250) return;
@@ -1065,12 +1119,17 @@ export default function App() {
           return updated;
         });
       } else if (data.type === "download-complete") {
+        clearSwDownloadWatchdog(data.downloadId);
+        swMadeProgressRef.current.delete(data.downloadId);
+        swDownloadFallbackRef.current.delete(data.downloadId);
         await ingestDownloadRef.current(data.downloadId, data.title, data.size);
       } else if (data.type === "audiobook-track-complete") {
         handleAudiobookSwMessage(data);
       } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
         handleAudiobookSwMessage(data);
       } else if (data.type === "download-error") {
+        clearSwDownloadWatchdog(data.downloadId);
+        swMadeProgressRef.current.delete(data.downloadId);
         if (data.error === "Cancelled") {
           swDownloadFallbackRef.current.delete(data.downloadId);
           removeDownloadEntry(data.downloadId);

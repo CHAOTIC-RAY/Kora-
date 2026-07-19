@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v4";
-const API_CACHE = "kora-api-v4";
+const SHELL_CACHE = "kora-shell-v5";
+const API_CACHE = "kora-api-v5";
 const COVER_CACHE = "kora-covers-v1";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
@@ -629,8 +629,30 @@ self.addEventListener("message", (event) => {
     return;
   }
   if (data.type === "download-book") {
-    const canBGF = !!(self.registration && self.registration.backgroundFetch);
-    event.waitUntil(canBGF ? downloadBookBGF(data.payload) : downloadBook(data.payload));
+    // ACK immediately so the page knows the SW is alive (prevents stuck 0% UI).
+    try {
+      const port = event.ports && event.ports[0];
+      if (port) {
+        port.postMessage({
+          type: "download-accepted",
+          downloadId: data.payload && data.payload.downloadId,
+        });
+      }
+    } catch (e) {}
+    // Use streaming download — Background Fetch often registers then never
+    // reports progress on desktop / flaky SW updates, leaving UI at 0%.
+    event.waitUntil(
+      (async () => {
+        await postToClients({
+          type: "download-progress",
+          downloadId: data.payload.downloadId,
+          percent: 0,
+          transferred: "Starting…",
+          speed: "",
+        });
+        await downloadBook(data.payload);
+      })()
+    );
   } else if (data.type === "download-audiobook-track") {
     event.waitUntil(downloadAudiobookTrack(data.payload));
   } else if (data.type === "pickup-complete") {
