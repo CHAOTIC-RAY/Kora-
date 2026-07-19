@@ -1,12 +1,12 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-/main/public/kora_banner.jpg" alt="Kora - Next-Gen Ebook Reader" width="100%" />
+  <img src="https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-/main/public/kora_banner.svg" alt="Kora - Next-Gen Ebook Reader" width="100%" />
 
   # 📖 Kora - Next-Gen Ebook Reader
 
   ### *“I have always imagined that Paradise will be a kind of library.” — Jorge Luis Borges*
 
   <p align="center">
-    <a href="https://github.com/CHAOTIC-RAY/Kora-/blob/main/LICENSE"><img src="https://img.shields.io/github/license/CHAOTIC-RAY/Kora-?style=flat-square&color=2D2D2D" alt="License" /></a>
+    <a href="https://github.com/CHAOTIC-RAY/Kora-/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-2D2D2D?style=flat-square" alt="License" /></a>
     <img src="https://img.shields.io/badge/React-19-blue?style=flat-square&logo=react&color=27272A" alt="React 19" />
     <img src="https://img.shields.io/badge/Vite-6-purple?style=flat-square&logo=vite&color=27272A" alt="Vite 6" />
     <img src="https://img.shields.io/badge/Tailwind-4-38BDF8?style=flat-square&logo=tailwind-css&color=27272A" alt="Tailwind 4" />
