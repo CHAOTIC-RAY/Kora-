@@ -1,6 +1,7 @@
 import type { AudiobookDetail } from "./audiobookScraper";
+import { titlesRoughlyMatch } from "./audiobookScraper";
 
-const STORAGE_KEY = "kora_audiobook_detail_cache_v1";
+const STORAGE_KEY = "kora_audiobook_detail_cache_v2";
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 const memoryCache = new Map<string, { detail: AudiobookDetail; expires: number }>();
@@ -38,14 +39,20 @@ function saveStorage(data: Record<string, { detail: AudiobookDetail; expires: nu
   }
 }
 
+function isValidCachedDetail(book: any, detail: AudiobookDetail | null): detail is AudiobookDetail {
+  if (!detail?.tracks?.length) return false;
+  if (!book?.title) return true;
+  return titlesRoughlyMatch(book.title, detail.title);
+}
+
 export function getCachedAudiobookDetailClient(book: any): AudiobookDetail | null {
   const key = cacheKeyForBook(book);
   const mem = memoryCache.get(key);
-  if (mem && mem.expires > Date.now()) return mem.detail;
+  if (mem && mem.expires > Date.now() && isValidCachedDetail(book, mem.detail)) return mem.detail;
 
   const store = loadStorage();
   const entry = store[key];
-  if (entry && entry.expires > Date.now()) {
+  if (entry && entry.expires > Date.now() && isValidCachedDetail(book, entry.detail)) {
     memoryCache.set(key, entry);
     return entry.detail;
   }
@@ -53,6 +60,7 @@ export function getCachedAudiobookDetailClient(book: any): AudiobookDetail | nul
 }
 
 export function setCachedAudiobookDetailClient(book: any, detail: AudiobookDetail) {
+  if (!isValidCachedDetail(book, detail)) return;
   const key = cacheKeyForBook(book);
   const entry = { detail, expires: Date.now() + CACHE_TTL_MS };
   memoryCache.set(key, entry);
@@ -62,10 +70,10 @@ export function setCachedAudiobookDetailClient(book: any, detail: AudiobookDetai
 }
 
 export function buildProbeUrls(book: any): string[] {
+  const direct = [book.link, book.listenUrl, book.listenUrlAlt].filter(Boolean);
+  if (direct.length > 0) return [...new Set(direct)];
+
   return [
-    book.link,
-    book.listenUrl,
-    book.listenUrlAlt,
     book.title ? `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(book.title)}` : "",
     book.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(book.title)}` : "",
   ].filter(Boolean);
@@ -80,26 +88,27 @@ export async function fetchAudiobookDetail(
 
   if (inflight.has(key)) {
     const result = await inflight.get(key)!;
-    return result || stale;
+    return isValidCachedDetail(book, result) ? result : stale;
   }
 
   const urls = buildProbeUrls(book);
+  const titleParam = book.title ? `&title=${encodeURIComponent(book.title)}` : "";
   const promise = (async () => {
     try {
       const res = await fetch(
-        `/api/audiobooks/detail?urls=${encodeURIComponent(urls.join(","))}`,
+        `/api/audiobooks/detail?urls=${encodeURIComponent(urls.join(","))}${titleParam}`,
         { signal: options?.signal }
       );
-      if (!res.ok) return stale;
+      if (!res.ok) return stale && isValidCachedDetail(book, stale) ? stale : null;
       const data = await res.json();
-      if (data?.tracks?.length) {
+      if (isValidCachedDetail(book, data)) {
         setCachedAudiobookDetailClient(book, data);
         return data as AudiobookDetail;
       }
-      return stale;
+      return stale && isValidCachedDetail(book, stale) ? stale : null;
     } catch (err: any) {
-      if (err?.name === "AbortError") return stale;
-      return stale;
+      if (err?.name === "AbortError") return stale && isValidCachedDetail(book, stale) ? stale : null;
+      return stale && isValidCachedDetail(book, stale) ? stale : null;
     } finally {
       inflight.delete(key);
     }
@@ -109,7 +118,7 @@ export async function fetchAudiobookDetail(
 
   if (stale) {
     promise.then((fresh) => {
-      if (fresh && fresh !== stale) {
+      if (fresh && fresh !== stale && isValidCachedDetail(book, fresh)) {
         window.dispatchEvent(new CustomEvent("kora-audiobook-detail-updated", { detail: { key, data: fresh } }));
       }
     });
@@ -120,6 +129,7 @@ export async function fetchAudiobookDetail(
 }
 
 export function prefetchAudiobookDetail(book: any): void {
+  if (!book?.link && !book?.listenUrl) return;
   if (getCachedAudiobookDetailClient(book)) return;
   const key = cacheKeyForBook(book);
   if (inflight.has(key)) return;

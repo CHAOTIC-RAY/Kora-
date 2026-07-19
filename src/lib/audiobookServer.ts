@@ -1,7 +1,8 @@
 import {
   parseAudiobookDetailHtml,
-  extractFirstBookLinkFromSearch,
+  extractBestBookLinkFromSearch,
   isAudiobookSearchUrl,
+  titlesRoughlyMatch,
   type AudiobookDetail,
 } from "./audiobookScraper";
 
@@ -56,23 +57,30 @@ export function buildAudiobookProbeUrls(input: {
   listenUrlAlt?: string;
   title?: string;
 }): string[] {
-  const urls = [
-    input.link,
-    input.listenUrl,
-    input.listenUrlAlt,
+  const direct = [input.link, input.listenUrl, input.listenUrlAlt].filter(Boolean) as string[];
+  const uniqueDirect = [...new Set(direct)];
+  if (uniqueDirect.length > 0) return uniqueDirect;
+
+  return [
     input.title ? `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
     input.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
   ].filter(Boolean) as string[];
-  return [...new Set(urls)];
+}
+
+function isValidDetail(detail: AudiobookDetail | null, expectedTitle?: string): detail is AudiobookDetail {
+  if (!detail?.tracks?.length) return false;
+  if (!expectedTitle) return true;
+  return titlesRoughlyMatch(expectedTitle, detail.title);
 }
 
 export async function resolveAudiobookDetailFromPage(
   pageUrl: string,
-  fetchHtml: (url: string) => Promise<string>
+  fetchHtml: (url: string) => Promise<string>,
+  expectedTitle?: string
 ): Promise<AudiobookDetail | null> {
   const cacheKey = pageUrl.split("?")[0];
   const cached = getCachedAudiobookDetail(cacheKey);
-  if (cached) return cached;
+  if (isValidDetail(cached, expectedTitle)) return cached;
 
   const html = await fetchHtml(pageUrl);
   let resolvedUrl = pageUrl;
@@ -80,7 +88,9 @@ export async function resolveAudiobookDetailFromPage(
 
   if (detail.tracks.length === 0 && isAudiobookSearchUrl(pageUrl)) {
     const baseUrl = new URL(pageUrl).origin;
-    const bookLink = extractFirstBookLinkFromSearch(html, baseUrl);
+    const bookLink = expectedTitle
+      ? extractBestBookLinkFromSearch(html, baseUrl, expectedTitle)
+      : null;
     if (bookLink) {
       const bookHtml = await fetchHtml(bookLink);
       resolvedUrl = bookLink;
@@ -88,7 +98,7 @@ export async function resolveAudiobookDetailFromPage(
     }
   }
 
-  if (detail.tracks.length === 0) return null;
+  if (!isValidDetail(detail, expectedTitle)) return null;
 
   const result = { ...detail, sourceUrl: resolvedUrl };
   setCachedAudiobookDetail(cacheKey, result);
@@ -96,36 +106,30 @@ export async function resolveAudiobookDetailFromPage(
   return result;
 }
 
-/** Probe multiple URLs in parallel; returns first successful detail. */
+/** Probe URLs sequentially — direct detail pages first, search fallbacks last. */
 export async function resolveAudiobookDetailParallel(
   urls: string[],
-  fetchHtml: (url: string) => Promise<string>
+  fetchHtml: (url: string) => Promise<string>,
+  expectedTitle?: string
 ): Promise<AudiobookDetail | null> {
   const unique = [...new Set(urls.filter(Boolean))];
   if (unique.length === 0) return null;
 
-  for (const url of unique) {
+  const directUrls = unique.filter((u) => !isAudiobookSearchUrl(u));
+  const searchUrls = unique.filter((u) => isAudiobookSearchUrl(u));
+  const ordered = [...directUrls, ...searchUrls];
+
+  for (const url of ordered) {
     const cached = getCachedAudiobookDetail(url.split("?")[0]);
-    if (cached?.tracks?.length) return cached;
+    if (isValidDetail(cached, expectedTitle)) return cached;
+
+    try {
+      const detail = await resolveAudiobookDetailFromPage(url, fetchHtml, expectedTitle);
+      if (isValidDetail(detail, expectedTitle)) return detail;
+    } catch {
+      /* try next URL */
+    }
   }
 
-  return new Promise((resolve) => {
-    let settled = false;
-    let pending = unique.length;
-
-    unique.forEach(async (url) => {
-      try {
-        const detail = await resolveAudiobookDetailFromPage(url, fetchHtml);
-        if (!settled && detail?.tracks?.length) {
-          settled = true;
-          resolve(detail);
-        }
-      } catch {
-        /* try others */
-      } finally {
-        pending--;
-        if (!settled && pending === 0) resolve(null);
-      }
-    });
-  });
+  return null;
 }

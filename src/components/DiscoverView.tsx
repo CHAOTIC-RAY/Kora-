@@ -12,6 +12,7 @@ import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
+import { titlesRoughlyMatch } from "../lib/audiobookScraper";
 import {
   createSearchSignal,
   abortActiveSearch,
@@ -769,24 +770,31 @@ export default function DiscoverView({
     return () => window.removeEventListener("kora-audiobook-detail-updated", handler);
   }, [selectedAudiobook]);
 
-  const buildAudiobookLibraryEntry = (book: any, tracks: any[]): BookMetadata => ({
-    id: book.id || `audiobook-${(audiobookDetail?.title || book.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}`,
-    title: audiobookDetail?.title || book.title,
-    author: audiobookDetail?.author || book.author || "Unknown",
-    coverUrl: audiobookDetail?.coverUrl || book.coverUrl || undefined,
-    source: "audiobook",
-    rating: book.rating,
-    description: book.description || audiobookDetail?.description,
-    extension: "audiobook",
-    size: "",
-    tags: ["audiobook"],
-    status: "reading",
-    progress: { percent: 0, lastReadTime: Date.now() },
-    dateAdded: Date.now(),
-    audiobookTracks: tracks,
-    audiobookSourceUrl: audiobookDetail?.sourceUrl || book.link,
-    audiobookDownloaded: false,
-  });
+  const buildAudiobookLibraryEntry = (book: any, tracks: any[]): BookMetadata => {
+    const cardTitle = book.title;
+    const cardAuthor = book.author || "Unknown";
+    const detailTitle = audiobookDetail?.title;
+    const useDetailMeta = detailTitle && titlesRoughlyMatch(cardTitle, detailTitle);
+
+    return {
+      id: book.id || `audiobook-${cardTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}`,
+      title: cardTitle,
+      author: useDetailMeta ? (audiobookDetail?.author || cardAuthor) : cardAuthor,
+      coverUrl: (useDetailMeta ? audiobookDetail?.coverUrl : null) || book.coverUrl || undefined,
+      source: "audiobook",
+      rating: book.rating,
+      description: book.description || (useDetailMeta ? audiobookDetail?.description : undefined),
+      extension: "audiobook",
+      size: "",
+      tags: ["audiobook"],
+      status: "reading",
+      progress: { percent: 0, lastReadTime: Date.now() },
+      dateAdded: Date.now(),
+      audiobookTracks: tracks,
+      audiobookSourceUrl: audiobookDetail?.sourceUrl || book.link,
+      audiobookDownloaded: false,
+    };
+  };
 
   const fetchFeaturedMetadata = async (title: string, author: string, forceSource?: "google" | "nyt" | "openlibrary") => {
     setLoadingFeaturedDetails(true);
@@ -3294,8 +3302,16 @@ export default function DiscoverView({
               </div>
               <div className="flex-1 min-w-0 space-y-2">
                 <div>
-                  <h3 className="text-sm font-bold font-serif leading-snug line-clamp-2">{audiobookDetail?.title || selectedAudiobook.title}</h3>
-                  <p className="text-xs text-kindle-text-muted mt-0.5">{audiobookDetail?.author || selectedAudiobook.author}</p>
+                  <h3 className="text-sm font-bold font-serif leading-snug line-clamp-2">
+                    {audiobookDetail?.title && titlesRoughlyMatch(selectedAudiobook.title, audiobookDetail.title)
+                      ? audiobookDetail.title
+                      : selectedAudiobook.title}
+                  </h3>
+                  <p className="text-xs text-kindle-text-muted mt-0.5">
+                    {audiobookDetail?.author && titlesRoughlyMatch(selectedAudiobook.title, audiobookDetail.title)
+                      ? audiobookDetail.author
+                      : selectedAudiobook.author}
+                  </p>
                 </div>
                 {selectedAudiobook.rating && (
                   <div className="flex items-center gap-1">
@@ -3376,7 +3392,7 @@ export default function DiscoverView({
                 <button
                   onClick={() => {
                     onBookAdded(buildAudiobookLibraryEntry(selectedAudiobook, audiobookDetail.tracks));
-                    toast.success("Added to library");
+                    toast.success("Added to library — downloading tracks…");
                     closeAudiobookDetail();
                   }}
                   className="flex items-center justify-center gap-2.5 w-full px-4 py-3 bg-kindle-card hover:bg-kindle-border border border-kindle-border text-kindle-text text-xs font-bold uppercase tracking-widest rounded-xl transition"

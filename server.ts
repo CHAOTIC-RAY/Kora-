@@ -16,7 +16,7 @@ import {
   extractFirstBookLinkFromSearch,
   isAudiobookSearchUrl,
   scrapePopularAudiobooks,
-  searchAudiobooksFromSources,
+  titlesRoughlyMatch,
 } from "./src/lib/audiobookScraper";
 import {
   getCachedAudiobookDetail,
@@ -1861,6 +1861,8 @@ app.get("/api/audiobooks/detail", async (req, res) => {
 
   if (urls.length === 0) return res.status(400).json({ error: "Missing query parameter 'url' or 'urls'" });
 
+  const expectedTitle = (req.query.title as string || "").trim();
+
   try {
     const allowedHosts = ["hdaudiobooks.com", "fulllengthaudiobooks.com", "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com"];
     for (const u of urls) {
@@ -1870,19 +1872,22 @@ app.get("/api/audiobooks/detail", async (req, res) => {
       }
     }
 
+    const isValid = (detail: any) =>
+      detail?.tracks?.length && (!expectedTitle || titlesRoughlyMatch(expectedTitle, detail.title));
+
     for (const u of urls) {
       const cached = getCachedAudiobookDetail(u.split("?")[0]);
-      if (cached?.tracks?.length) {
+      if (isValid(cached)) {
         res.setHeader("X-Cache", "HIT");
         return res.json(cached);
       }
     }
 
     const detail = urls.length > 1
-      ? await resolveAudiobookDetailParallel(urls, fetchPageHtmlWithProxies)
-      : await resolveAudiobookDetailFromPage(urls[0], fetchPageHtmlWithProxies);
+      ? await resolveAudiobookDetailParallel(urls, fetchPageHtmlWithProxies, expectedTitle || undefined)
+      : await resolveAudiobookDetailFromPage(urls[0], fetchPageHtmlWithProxies, expectedTitle || undefined);
 
-    if (!detail || detail.tracks.length === 0) {
+    if (!isValid(detail)) {
       return res.status(404).json({ error: "No audio tracks found on this page" });
     }
 

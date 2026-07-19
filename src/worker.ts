@@ -9,6 +9,7 @@ import {
   isAudiobookSearchUrl,
   scrapePopularAudiobooks,
   searchAudiobooksFromSources,
+  titlesRoughlyMatch,
 } from "./lib/audiobookScraper";
 import {
   getCachedAudiobookDetail,
@@ -1395,6 +1396,8 @@ export default {
         });
       }
 
+      const expectedTitle = (url.searchParams.get("title") || "").trim();
+
       try {
         const allowedHosts = ["hdaudiobooks.com", "fulllengthaudiobooks.com", "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com"];
         for (const u of urls) {
@@ -1407,9 +1410,12 @@ export default {
           }
         }
 
+        const isValid = (detail: any) =>
+          detail?.tracks?.length && (!expectedTitle || titlesRoughlyMatch(expectedTitle, detail.title));
+
         for (const u of urls) {
           const cached = getCachedAudiobookDetail(u.split("?")[0]);
-          if (cached?.tracks?.length) {
+          if (isValid(cached)) {
             return new Response(JSON.stringify(cached), {
               headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "X-Cache": "HIT" }
             });
@@ -1417,10 +1423,10 @@ export default {
         }
 
         const detail = urls.length > 1
-          ? await resolveAudiobookDetailParallel(urls, fetchPageHtmlWithProxies)
-          : await resolveAudiobookDetailFromPage(urls[0], fetchPageHtmlWithProxies);
+          ? await resolveAudiobookDetailParallel(urls, fetchPageHtmlWithProxies, expectedTitle || undefined)
+          : await resolveAudiobookDetailFromPage(urls[0], fetchPageHtmlWithProxies, expectedTitle || undefined);
 
-        if (!detail || detail.tracks.length === 0) {
+        if (!isValid(detail)) {
           return new Response(JSON.stringify({ error: "No audio tracks found on this page" }), {
             status: 404,
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
@@ -2823,6 +2829,41 @@ export default {
 
         if (!downloadUrl) {
           return new Response(JSON.stringify({ error: "Missing download url" }), { status: 400 });
+        }
+
+        // Fast path: stream audiobook/audio files with Range support
+        const isAudioRequest = /\.(mp3|m4a|ogg|wav|aac)(\?|$)/i.test(downloadUrl) || /ipaudio/i.test(downloadUrl);
+        if (isAudioRequest) {
+          try {
+            const audioOrigin = new URL(downloadUrl).origin;
+            const rangeHeader = request.headers.get("Range");
+            const audioRes = await fetch(downloadUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "Accept": "audio/mpeg,audio/*,*/*",
+                "Referer": `${audioOrigin}/`,
+                ...(rangeHeader ? { Range: rangeHeader } : {}),
+              },
+              redirect: "follow",
+            });
+            if (!audioRes.ok && audioRes.status !== 206) {
+              return new Response("Upstream audio error", { status: audioRes.status });
+            }
+            const outHeaders = new Headers(audioRes.headers);
+            outHeaders.set("Access-Control-Allow-Origin", "*");
+            outHeaders.set("Accept-Ranges", "bytes");
+            if (!outHeaders.get("Content-Type")?.includes("audio")) {
+              outHeaders.set("Content-Type", "audio/mpeg");
+            }
+            outHeaders.delete("content-security-policy");
+            outHeaders.delete("content-encoding");
+            return new Response(audioRes.body, { status: audioRes.status, headers: outHeaders });
+          } catch (err: any) {
+            return new Response(JSON.stringify({ error: err.message }), {
+              status: 502,
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+            });
+          }
         }
 
         let targetUrl = downloadUrl;

@@ -349,6 +349,43 @@ export function isAudiobookSearchUrl(pageUrl: string): boolean {
   }
 }
 
+export function normalizeAudiobookTitle(title: string): string {
+  return (title || "")
+    .toLowerCase()
+    .replace(/&#8211;/g, " ")
+    .replace(/&amp;/g, "and")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\baudiobook\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Fuzzy title match — avoids returning the wrong book from search results. */
+export function titlesRoughlyMatch(expected: string, actual: string): boolean {
+  const a = normalizeAudiobookTitle(expected);
+  const b = normalizeAudiobookTitle(actual);
+  if (!a || !b) return true;
+  if (a === b) return true;
+  if (b.includes(a) || a.includes(b)) return true;
+  const aWords = a.split(" ").filter((w) => w.length > 2);
+  const bWords = new Set(b.split(" ").filter((w) => w.length > 2));
+  if (!aWords.length) return true;
+  const overlap = aWords.filter((w) => bWords.has(w)).length;
+  return overlap >= Math.max(1, Math.ceil(aWords.length * 0.6));
+}
+
+/** Pick the search result that best matches the expected title. */
+export function extractBestBookLinkFromSearch(
+  html: string,
+  baseUrl: string,
+  expectedTitle: string
+): string | null {
+  const results = parseAudiobookSearchHtml(html, "", baseUrl, 12);
+  const match = results.find((r) => titlesRoughlyMatch(expectedTitle, r.title));
+  if (match?.link) return match.link;
+  return extractFirstBookLinkFromSearch(html, baseUrl);
+}
+
 export function mapPopularAudiobooks() {
   return POPULAR_AUDIOBOOKS.map((b: any) => ({
     ...b,

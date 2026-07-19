@@ -28,7 +28,7 @@ import BookReaderPDF from "./components/BookReaderPDF";
 import BookReaderText from "./components/BookReaderText";
 import AudiobookPlayer from "./components/AudiobookPlayer";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
-import KoraLoading from "./components/KoraLoading";
+import { enqueueAudiobookDownload } from "./lib/audiobookSyncQueue";
 import Quote from "./components/Quote";
 import DownloadsManager from "./components/DownloadsManager";
 import DownloadBookBtn from "./components/DownloadBookBtn";
@@ -1379,7 +1379,15 @@ export default function App() {
                 }
                 return updated;
               });
-              if (book.extension !== "audiobook") {
+
+              if (book.extension?.toLowerCase() === "audiobook" && book.audiobookTracks?.length) {
+                try {
+                  await syncBookToCloud(user?.uid || "", book);
+                  await enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks);
+                } catch (err) {
+                  console.error("Audiobook auto-download failed:", err);
+                }
+              } else if (book.extension !== "audiobook") {
                 setActiveTab("library");
               }
               
@@ -1392,6 +1400,10 @@ export default function App() {
                 if (prev.some(b => b.id === book.id)) return prev;
                 return [...prev, book];
               });
+              if (book.audiobookTracks?.length) {
+                syncBookToCloud(user?.uid || "", book).catch(console.error);
+                enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks).catch(console.error);
+              }
               setActiveBook(book);
               setLastReadBook(book);
               localStorage.setItem("kindle_last_read", JSON.stringify(book));
