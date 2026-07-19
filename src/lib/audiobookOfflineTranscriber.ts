@@ -13,21 +13,68 @@ import {
 const TARGET_SAMPLE_RATE = 16000;
 const CHUNK_SECONDS = 28;
 const MAX_TRACK_SECONDS = 45 * 60; // safety cap per track for device CPU
+const WHISPER_MODEL = "Xenova/whisper-tiny.en";
 
 type ProgressCb = (progress: number, message?: string) => void;
 
 let whisperPipeline: any = null;
 let whisperLoading: Promise<any> | null = null;
 
+/** Route Hugging Face model files through our Worker so browser CORS works. */
+function configureTransformersEnv(env: {
+  allowLocalModels: boolean;
+  useBrowserCache: boolean;
+  allowRemoteModels?: boolean;
+  remoteHost?: string;
+  remotePathTemplate?: string;
+  backends?: { onnx?: { logLevel?: string } };
+}) {
+  env.allowLocalModels = false;
+  env.useBrowserCache = true;
+  env.allowRemoteModels = true;
+  env.remotePathTemplate = "{model}/resolve/{revision}/";
+  // Same-origin proxy → Worker fetches huggingface.co (and LFS redirects) server-side.
+  if (typeof window !== "undefined" && window.location?.origin) {
+    env.remoteHost = `${window.location.origin}/api/hf-model/`;
+  }
+  // Drop ORT "Removing initializer…" noise (harmless graph cleanup on Whisper ONNX).
+  if (env.backends?.onnx) {
+    env.backends.onnx.logLevel = "error";
+  }
+}
+
+/**
+ * onnxruntime-web still emits CleanUnusedInitializers warnings via console.warn
+ * even when logLevel is error (session create defaults to severity 2). Filter those.
+ */
+function silenceOrtUnusedInitializerSpam() {
+  if (typeof console === "undefined") return;
+  const consoleAny = console as Console & { __koraOrtFilter?: boolean };
+  if (consoleAny.__koraOrtFilter) return;
+
+  const originalWarn = console.warn.bind(console);
+  console.warn = (...args: unknown[]) => {
+    const text = args.map((arg) => (typeof arg === "string" ? arg : String(arg ?? ""))).join(" ");
+    if (
+      text.includes("CleanUnusedInitializersAndNodeArgs") ||
+      text.includes("Removing initializer") ||
+      (text.includes("onnxruntime") && text.includes("not used by any node"))
+    ) {
+      return;
+    }
+    originalWarn(...args);
+  };
+  consoleAny.__koraOrtFilter = true;
+}
+
 async function getWhisper() {
   if (whisperPipeline) return whisperPipeline;
   if (!whisperLoading) {
     whisperLoading = (async () => {
+      silenceOrtUnusedInitializerSpam();
       const { pipeline, env } = await import("@xenova/transformers");
-      // Cache models in browser cache; run fully on-device.
-      env.allowLocalModels = false;
-      env.useBrowserCache = true;
-      return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en", {
+      configureTransformersEnv(env);
+      return pipeline("automatic-speech-recognition", WHISPER_MODEL, {
         quantized: true,
       });
     })().catch((error) => {

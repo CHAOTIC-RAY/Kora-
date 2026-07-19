@@ -2073,6 +2073,70 @@ export default {
       }
     }
 
+    // Same-origin Hugging Face Hub proxy for Transformers.js (Whisper, etc.).
+    // Browser fetches to huggingface.co are blocked by CORS (ACA-Origin: huggingface.co only).
+    if (path.startsWith("/api/hf-model/")) {
+      const modelPath = path.slice("/api/hf-model/".length);
+      if (!modelPath || modelPath.includes("..") || !/^(Xenova|onnx-community|HuggingFaceTB)\//.test(modelPath)) {
+        return new Response(JSON.stringify({ error: "Invalid or disallowed model path" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+
+      const upstreamUrl = `https://huggingface.co/${modelPath}${url.search}`;
+      try {
+        const headers = new Headers();
+        headers.set(
+          "User-Agent",
+          "Mozilla/5.0 (compatible; KoraReader/1.0; +https://kora.chaoticstudio.workers.dev)"
+        );
+        headers.set("Accept", "*/*");
+        const range = request.headers.get("Range");
+        if (range) headers.set("Range", range);
+
+        const upstream = await fetch(upstreamUrl, {
+          method: "GET",
+          headers,
+          redirect: "follow",
+        });
+
+        const outHeaders = new Headers();
+        const passThrough = [
+          "content-type",
+          "content-length",
+          "content-range",
+          "accept-ranges",
+          "etag",
+          "last-modified",
+          "x-repo-commit",
+          "x-linked-etag",
+          "x-linked-size",
+        ];
+        for (const key of passThrough) {
+          const value = upstream.headers.get(key);
+          if (value) outHeaders.set(key, value);
+        }
+        outHeaders.set("Access-Control-Allow-Origin", "*");
+        outHeaders.set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, ETag");
+        outHeaders.set(
+          "Cache-Control",
+          upstream.ok ? "public, max-age=604800, immutable" : "no-store"
+        );
+
+        return new Response(upstream.body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: outHeaders,
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "HF proxy failed" }), {
+          status: 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+    }
+
     if (path === "/api/transcribe-audio" && request.method === "POST") {
       try {
         const body = await request.json();

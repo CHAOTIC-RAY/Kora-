@@ -3,9 +3,8 @@
  * No Gemini / no cloud API — local Whisper in the browser.
  */
 
-import { transcribeDownloadedTrack } from "./audiobookOfflineTranscriber";
-
 const QUEUE_KEY = "kora_audiobook_transcript_queue_v1";
+const MAX_ATTEMPTS = 2;
 
 export interface TranscriptJob {
   id: string;
@@ -16,6 +15,7 @@ export interface TranscriptJob {
   progress: number;
   message?: string;
   error?: string;
+  attempts?: number;
 }
 
 type Listener = (jobs: TranscriptJob[]) => void;
@@ -50,6 +50,23 @@ export function getTranscriptJob(bookId: string, trackIndex: number): Transcript
   return loadQueue().find((job) => job.bookId === bookId && job.trackIndex === trackIndex);
 }
 
+function scheduleProcessTranscriptQueue() {
+  if (typeof window === "undefined") {
+    void processTranscriptQueue();
+    return;
+  }
+  // Defer Whisper load so opening the audiobook player paints first (esp. PWA).
+  const start = () => void processTranscriptQueue();
+  if ("requestIdleCallback" in window) {
+    (window as Window & { requestIdleCallback: (cb: () => void, opts?: IdleRequestOptions) => number }).requestIdleCallback(
+      start,
+      { timeout: 2500 }
+    );
+  } else {
+    setTimeout(start, 400);
+  }
+}
+
 export function enqueueTrackTranscription(
   bookId: string,
   trackIndex: number,
@@ -58,8 +75,22 @@ export function enqueueTrackTranscription(
   const queue = loadQueue();
   const id = `${bookId}::${trackIndex}`;
   const existing = queue.find((job) => job.id === id);
-  if (existing && (existing.status === "done" || existing.status === "processing" || existing.status === "pending")) {
-    processTranscriptQueue();
+
+  if (existing) {
+    if (existing.status === "done" || existing.status === "processing" || existing.status === "pending") {
+      scheduleProcessTranscriptQueue();
+      return;
+    }
+    // Allow a manual retry after error (e.g. user reopened the chapter).
+    if ((existing.attempts || 0) >= MAX_ATTEMPTS) {
+      return;
+    }
+    existing.status = "pending";
+    existing.progress = 0;
+    existing.error = undefined;
+    existing.message = undefined;
+    saveQueue(queue.map((entry) => (entry.id === id ? { ...existing } : entry)));
+    scheduleProcessTranscriptQueue();
     return;
   }
 
@@ -70,9 +101,10 @@ export function enqueueTrackTranscription(
     trackTitle,
     status: "pending",
     progress: 0,
+    attempts: 0,
   });
   saveQueue(queue);
-  processTranscriptQueue();
+  scheduleProcessTranscriptQueue();
 }
 
 export async function processTranscriptQueue(): Promise<void> {
@@ -82,15 +114,41 @@ export async function processTranscriptQueue(): Promise<void> {
   try {
     while (true) {
       const queue = loadQueue();
-      const job = queue.find((entry) => entry.status === "pending" || entry.status === "error");
-      if (!job) break;
+      // Only pending — never tight-loop on error (that spammed HF and froze the PWA).
+      const job = queue.find(
+        (entry) => entry.status === "pending" && (entry.attempts || 0) < MAX_ATTEMPTS
+      );
+      if (!job) {
+        // Mark exhausted pending jobs as error so they don't block forever.
+        const exhausted = queue.filter(
+          (entry) => entry.status === "pending" && (entry.attempts || 0) >= MAX_ATTEMPTS
+        );
+        if (exhausted.length) {
+          saveQueue(
+            queue.map((entry) =>
+              exhausted.some((item) => item.id === entry.id)
+                ? {
+                    ...entry,
+                    status: "error" as const,
+                    error: entry.error || "Transcription failed after retries",
+                    message: entry.message || "Transcription failed after retries",
+                  }
+                : entry
+            )
+          );
+        }
+        break;
+      }
 
       job.status = "processing";
       job.progress = 1;
+      job.attempts = (job.attempts || 0) + 1;
       job.error = undefined;
+      job.message = "Starting…";
       saveQueue(queue.map((entry) => (entry.id === job.id ? { ...job } : entry)));
 
       try {
+        const { transcribeDownloadedTrack } = await import("./audiobookOfflineTranscriber");
         const result = await transcribeDownloadedTrack(
           job.bookId,
           job.trackIndex,
@@ -109,10 +167,12 @@ export async function processTranscriptQueue(): Promise<void> {
         job.status = result.ok ? "done" : "error";
         job.progress = result.ok ? 100 : 0;
         job.error = result.error;
+        job.message = result.ok ? "Transcript ready" : result.error;
       } catch (error) {
         job.status = "error";
         job.progress = 0;
         job.error = (error as Error).message || "Transcription failed";
+        job.message = job.error;
       }
 
       saveQueue(loadQueue().map((entry) => (entry.id === job.id ? { ...job } : entry)));
@@ -129,12 +189,33 @@ export async function processTranscriptQueue(): Promise<void> {
 }
 
 if (typeof window !== "undefined") {
-  const pending = loadQueue().some((job) => job.status === "pending" || job.status === "processing");
-  if (pending) {
-    const queue = loadQueue().map((job) =>
-      job.status === "processing" ? { ...job, status: "pending" as const } : job
+  // Cleanup legacy queue state that tight-looped failed Whisper jobs and blanked the PWA.
+  const raw = loadQueue();
+  const cleaned = raw
+    .filter((job) => job.status !== "error")
+    .map((job) =>
+      job.status === "processing"
+        ? { ...job, status: "pending" as const, attempts: Math.min(job.attempts || 0, MAX_ATTEMPTS - 1) }
+        : job
     );
-    saveQueue(queue);
-    void processTranscriptQueue();
+  if (cleaned.length !== raw.length || cleaned.some((job, i) => job !== raw[i])) {
+    if (cleaned.length) saveQueue(cleaned);
+    else {
+      localStorage.removeItem(QUEUE_KEY);
+      listeners.forEach((fn) => fn([]));
+    }
+  }
+
+  const pending = cleaned.some((job) => job.status === "pending");
+  if (pending) {
+    const start = () => void processTranscriptQueue();
+    if ("requestIdleCallback" in window) {
+      (window as Window & { requestIdleCallback: (cb: () => void, opts?: IdleRequestOptions) => number }).requestIdleCallback(
+        start,
+        { timeout: 4000 }
+      );
+    } else {
+      setTimeout(start, 1200);
+    }
   }
 }

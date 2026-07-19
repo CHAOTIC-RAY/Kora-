@@ -1795,7 +1795,13 @@ export default function App() {
 
       {/* 3. Full-Screen Reader Component Viewports */}
       {audiobookPlayback && (
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center">
+              <KoraLoading />
+            </div>
+          }
+        >
           <AudiobookPlayer
             book={audiobookPlayback}
             userId={user?.uid || ""}
