@@ -110,25 +110,42 @@ export function updateFeedItemFromPreview(itemId: string, preview: FeedArticlePr
 
 export async function prefetchFeedPreviews(items: FeedItem[], limit = 16): Promise<FeedItem[]> {
   const targets = items.filter(needsPreview).slice(0, limit);
-  let updated = getFeedItems();
+  if (!targets.length) return getFeedItems();
 
-  await Promise.all(
-    targets.map(async (item) => {
+  const byId = new Map<string, FeedArticlePreview>();
+
+  // Cap concurrency to avoid hammering the preview API + main thread.
+  const CONCURRENCY = 3;
+  let cursor = 0;
+  async function worker() {
+    while (cursor < targets.length) {
+      const index = cursor++;
+      const item = targets[index];
       const cached = getCachedPreview(item.id);
       if (cached) {
-        updated = updateFeedItemFromPreview(item.id, cached);
-        return;
+        byId.set(item.id, cached);
+        continue;
       }
-
       try {
         const preview = await fetchFeedPreview(item.link);
         setCachedPreview(item.id, preview);
-        updated = updateFeedItemFromPreview(item.id, preview);
+        byId.set(item.id, preview);
       } catch {
         // best-effort background prefetch
       }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, targets.length) }, () => worker()));
+
+  if (!byId.size) return getFeedItems();
+
+  const merged = dedupeFeedItems(
+    getFeedItems().map((item) => {
+      const preview = byId.get(item.id);
+      return preview ? applyPreviewToItem(item, preview) : item;
     })
   );
-
-  return updated;
+  saveFeedItems(merged);
+  return merged;
 }

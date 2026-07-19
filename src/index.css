@@ -430,6 +430,12 @@ html.kora-android body {
   display: none !important;
 }
 
+.discover-category-section,
+.feed-article-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
+}
+
 .kora-mobile-fab {
   bottom: calc(var(--kora-mobile-footer-stack) + 0.75rem);
   right: calc(1.5rem + var(--kora-safe-right));

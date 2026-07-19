@@ -174,7 +174,7 @@ function calculateStreak(stats: Record<string, { minutes: number }>): number {
   return streak;
 }
 
-export default function LibraryManager({ 
+function LibraryManager({ 
   userId, 
   books, 
   onBookSelected, 
@@ -1734,3 +1734,5 @@ export default function LibraryManager({
     </div>
   );
 }
+
+export default React.memo(LibraryManager);

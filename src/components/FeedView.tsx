@@ -80,7 +80,7 @@ function getBentoVariant(index: number): BentoVariant {
   return "default";
 }
 
-function FeedArticleCard({
+const FeedArticleCard = React.memo(function FeedArticleCard({
   item,
   cover,
   busy,
@@ -106,7 +106,7 @@ function FeedArticleCard({
 
   const layoutClass =
     variant === "wide"
-      ? "flex flex-col sm:flex-row sm:items-stretch h-full"
+      ? "feed-article-card flex flex-col sm:flex-row sm:items-stretch h-full"
       : "flex flex-col h-full";
 
   const imageClass =
@@ -213,9 +213,10 @@ function FeedArticleCard({
       </div>
     </article>
   );
-}
+});
 
-export default function FeedView({
+
+function FeedView({
   userId = "",
   onRefreshLibrary,
   onOpenBook,
@@ -565,3 +566,5 @@ export default function FeedView({
     </div>
   );
 }
+
+export default React.memo(FeedView);

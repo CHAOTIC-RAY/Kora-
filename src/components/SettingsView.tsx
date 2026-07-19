@@ -76,6 +76,8 @@ interface SettingsViewProps {
   onRefreshLibrary?: (uid?: string) => void;
   onCachedIdsChanged?: () => void;
   onOpenOnboarding?: () => void;
+  /** When false (hidden keep-alive tab), skip heavy IDB/dir init until first activation. */
+  isActive?: boolean;
 }
 
 function getRemainingGuestDays(user: User | null): number {
@@ -125,7 +127,7 @@ function Row({ title, desc, children }: { title: string; desc?: string; children
   );
 }
 
-export default function SettingsView({
+function SettingsView({
   user,
   userId,
   view = "settings",
@@ -152,7 +154,8 @@ export default function SettingsView({
   books = [],
   onRefreshLibrary,
   onCachedIdsChanged,
-  onOpenOnboarding
+  onOpenOnboarding,
+  isActive = true,
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -324,20 +327,21 @@ export default function SettingsView({
   const [newVirtualExt, setNewVirtualExt] = useState<"epub" | "pdf">("epub");
 
   useEffect(() => {
+    if (!isActive) return;
     async function loadDict() {
       const entries = await getAllDictionaryEntries();
       // Only show custom entries in settings, not the external dictionary
       setDictEntries(entries.filter(e => e.isCustom));
     }
-    loadDict();
+    void loadDict();
     
     async function initDir() {
       const handle = await getSavedDirectoryHandle();
       setRealDirHandle(handle);
       setVirtualFiles(getVirtualDirectoryFiles());
     }
-    initDir();
-  }, []);
+    void initDir();
+  }, [isActive]);
 
   const handleSelectRealDir = async () => {
     try {
@@ -1228,12 +1232,14 @@ export default function SettingsView({
           </div>
         )}
 
-        {/* Devices & cross-device sync */}
-        <DevicesSyncPanel
-          userId={userId}
-          books={books}
-          onCachedIdsChanged={onCachedIdsChanged}
-        />
+        {/* Devices & cross-device sync — only when settings tab is visible */}
+        {view === "settings" && isActive ? (
+          <DevicesSyncPanel
+            userId={userId}
+            books={books}
+            onCachedIdsChanged={onCachedIdsChanged}
+          />
+        ) : null}
 
         {/* Data & Storage */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
@@ -1612,3 +1618,5 @@ export default function SettingsView({
     </div>
   );
 }
+
+export default React.memo(SettingsView);

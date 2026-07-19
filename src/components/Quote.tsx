@@ -29,23 +29,39 @@ export default function Quote() {
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isModalOpenRef = useRef(isModalOpen);
+  isModalOpenRef.current = isModalOpen;
 
-  const startTimer = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      if (!isModalOpen) {
-        setCurrentIndex((prev) => (prev + 1) % quotesList.length);
-      }
-    }, SLIDE_MS);
-  };
-
-  // Reset/Restart timer on change
   useEffect(() => {
-    startTimer();
+    const tick = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (isModalOpenRef.current) return;
+      setCurrentIndex((prev) => (prev + 1) % quotesList.length);
+    };
+
+    const start = () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      timerRef.current = setInterval(tick, SLIDE_MS);
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+      } else {
+        start();
+      }
+    };
+
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [quotesList.length, isModalOpen]);
+  }, [quotesList.length]);
 
   const activeQuote = quotesList[currentIndex] || LITERARY_QUOTES[0];
 

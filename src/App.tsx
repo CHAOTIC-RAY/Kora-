@@ -50,7 +50,7 @@ import DailyReminderModal from "./components/DailyReminderModal";
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import AnnotationsHub from "./components/AnnotationsHub";
-import { enqueueEbookDownload } from "./lib/ebookDownloadQueue";
+import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
 import { toast, Toaster } from "react-hot-toast";
 import { logger } from "./lib/logger";
@@ -373,16 +373,14 @@ export default function App() {
   const [sharingError, setSharingError] = useState<string | null>(null);
 
   // Global Background Downloads State
-  const [globalDownloads, setGlobalDownloads] = useState<any[]>(() => {
-    const saved = localStorage.getItem("kora_downloads_log");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [globalDownloads, setGlobalDownloads] = useState<any[]>(() => loadDownloadsLog());
   const foregroundDownloadAborts = useRef<Map<string, AbortController>>(new Map());
+  const swProgressThrottleRef = useRef<Map<string, number>>(new Map());
 
   const removeDownloadEntry = useCallback((downloadId: string) => {
     setGlobalDownloads((prev) => {
       const updated = prev.filter((dl) => dl.id !== downloadId);
-      localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+      persistDownloadsLogNow(updated);
       return updated;
     });
     try {
@@ -452,7 +450,7 @@ export default function App() {
 
     setGlobalDownloads(prev => {
       const updated = [newDl, ...prev];
-      localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+      persistDownloadsLogNow(updated);
       return updated;
     });
 
@@ -512,7 +510,7 @@ export default function App() {
             eta: "",
             transferred: attemptLabel
           } : dl);
-          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          persistDownloadsLogNow(updated);
           return updated;
         });
 
@@ -664,7 +662,7 @@ export default function App() {
                   transferred: transferredStr,
                   eta: etaStr
                 } : dl);
-                localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+                schedulePersistDownloadsLog(updated);
                 return updated;
               });
             }
@@ -777,7 +775,7 @@ export default function App() {
         
         setGlobalDownloads(prev => {
           const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
-          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          persistDownloadsLogNow(updated);
           return updated;
         });
 
@@ -809,7 +807,7 @@ export default function App() {
       console.error("Background download failed on all mirrors:", finalError);
       setGlobalDownloads(prev => {
         const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: finalError?.message } : dl);
-        localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+        persistDownloadsLogNow(updated);
         return updated;
       });
       toast.error(`Failed to download ${book.title}`, { id: downloadId });
@@ -825,59 +823,6 @@ export default function App() {
       document.body.classList.add("dark");
     }
   }, [displayTheme]);
-
-  // Listen for download progress / completion from the service worker
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    const onMessage = async (event: MessageEvent) => {
-      const data = event.data || {};
-      if (data.type === "download-progress") {
-        setGlobalDownloads(prev => {
-          const updated = prev.map(dl => dl.id === data.downloadId ? {
-            ...dl,
-            status: "downloading",
-            percent: data.percent,
-            transferred: data.transferred,
-            speed: data.speed
-          } : dl);
-          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
-          return updated;
-        });
-      } else if (data.type === "download-complete") {
-        await ingestDownload(data.downloadId, data.title, data.size);
-      } else if (data.type === "audiobook-track-complete") {
-        // Only notify the queue waiter — ingest happens once in audiobookSyncQueue
-        // after the waiter resolves (avoids double pickup → 404 spam).
-        handleAudiobookSwMessage(data);
-      } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
-        handleAudiobookSwMessage(data);
-      } else if (data.type === "download-error") {
-        if (data.error === "Cancelled") {
-          removeDownloadEntry(data.downloadId);
-          return;
-        }
-        setGlobalDownloads(prev => {
-          const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl);
-          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
-          return updated;
-        });
-        toast.error(data.error || "Download failed", { id: data.downloadId });
-      } else if (data.type === "open-downloads") {
-        switchTab("library");
-      } else if (data.type === "open-feed-briefs") {
-        switchTab("feed");
-      } else if (data.type === "brief-notification-shown") {
-        markBriefNotificationShown();
-      } else if (data.type === "bgf-retry") {
-        switchTab("library");
-        toast.loading("Retry available in your Library downloads");
-      } else if (data.type === "bgf-cancel") {
-        removeDownloadEntry(data.downloadId);
-      }
-    };
-    navigator.serviceWorker.addEventListener("message", onMessage);
-    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [user?.uid, refreshLibrary]);
 
   useEffect(() => {
     void (async () => {
@@ -933,7 +878,7 @@ export default function App() {
       await syncBookToCloud(user?.uid || "", newBook);
       setGlobalDownloads(prev => {
         const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
-        localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+        persistDownloadsLogNow(updated);
         return updated;
       });
       toast.success(`${finalTitle} downloaded!`, { id: downloadId });
@@ -941,9 +886,79 @@ export default function App() {
       navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId });
     } catch (err) {
       console.error("SW pickup failed:", err);
-      setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: "Pickup failed" } : dl));
+      setGlobalDownloads((prev) => {
+        const updated = prev.map((dl) =>
+          dl.id === downloadId ? { ...dl, status: "error", error: "Pickup failed" } : dl
+        );
+        persistDownloadsLogNow(updated);
+        return updated;
+      });
     }
   }
+
+  const ingestDownloadRef = useRef(ingestDownload);
+  ingestDownloadRef.current = ingestDownload;
+
+  // Listen for download progress / completion from the service worker (stable listener).
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = async (event: MessageEvent) => {
+      const data = event.data || {};
+      if (data.type === "download-progress") {
+        const now = Date.now();
+        const last = swProgressThrottleRef.current.get(data.downloadId) || 0;
+        if (now - last < 250) return;
+        swProgressThrottleRef.current.set(data.downloadId, now);
+        setGlobalDownloads((prev) => {
+          const updated = prev.map((dl) =>
+            dl.id === data.downloadId
+              ? {
+                  ...dl,
+                  status: "downloading",
+                  percent: data.percent,
+                  transferred: data.transferred,
+                  speed: data.speed,
+                }
+              : dl
+          );
+          schedulePersistDownloadsLog(updated);
+          return updated;
+        });
+      } else if (data.type === "download-complete") {
+        await ingestDownloadRef.current(data.downloadId, data.title, data.size);
+      } else if (data.type === "audiobook-track-complete") {
+        handleAudiobookSwMessage(data);
+      } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
+        handleAudiobookSwMessage(data);
+      } else if (data.type === "download-error") {
+        if (data.error === "Cancelled") {
+          removeDownloadEntry(data.downloadId);
+          return;
+        }
+        setGlobalDownloads((prev) => {
+          const updated = prev.map((dl) =>
+            dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl
+          );
+          persistDownloadsLogNow(updated);
+          return updated;
+        });
+        toast.error(data.error || "Download failed", { id: data.downloadId });
+      } else if (data.type === "open-downloads") {
+        switchTab("library");
+      } else if (data.type === "open-feed-briefs") {
+        switchTab("feed");
+      } else if (data.type === "brief-notification-shown") {
+        markBriefNotificationShown();
+      } else if (data.type === "bgf-retry") {
+        switchTab("library");
+        toast.loading("Retry available in your Library downloads");
+      } else if (data.type === "bgf-cancel") {
+        removeDownloadEntry(data.downloadId);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [removeDownloadEntry, switchTab]);
 
   // On launch, sweep any blobs the SW finished while the app was closed and
   // ingest them into the library (C7).
@@ -957,13 +972,13 @@ export default function App() {
         for (const id of pending) {
           // Skip audiobook track pickups (handled by audiobookSyncQueue).
           if (String(id).includes("::") || String(id).startsWith("audiobook-")) continue;
-          await ingestDownload(id, "Downloaded book");
+          await ingestDownloadRef.current(id, "Downloaded book");
         }
       } catch (e) {
         /* SW not ready yet; will retry on next launch */
       }
     })();
-  }, [user?.uid, ingestDownload]);
+  }, [user?.uid]);
 
   // Web Share Target API helper to extract a URL
   function extractUrl(text: string | null): string | null {
@@ -1283,7 +1298,7 @@ export default function App() {
   }
 
   // Load books metadata
-  async function refreshLibrary(uid = user?.uid || "") {
+  const refreshLibrary = useCallback(async (uid = user?.uid || "") => {
     setLoadingLibrary(true);
     try {
       const data = await loadLibrary(uid);
@@ -1293,9 +1308,9 @@ export default function App() {
     } finally {
       setLoadingLibrary(false);
     }
-  }
+  }, [user?.uid]);
 
-  function removeBooksFromLibrary(bookIds: string[]) {
+  const removeBooksFromLibrary = useCallback((bookIds: string[]) => {
     if (!bookIds.length) return;
     const removeSet = new Set(bookIds);
     setBooks((current) => current.filter((book) => !removeSet.has(book.id)));
@@ -1304,7 +1319,7 @@ export default function App() {
       bookIds.forEach((id) => next.delete(id));
       return next;
     });
-  }
+  }, []);
 
   // Handle manual login/signup
   async function handleAuthSubmit(e: React.FormEvent) {
@@ -1565,7 +1580,7 @@ export default function App() {
             userId={user?.uid || ""}
             books={books}
             onBookSelected={handleOpenBook}
-            onRefreshLibrary={() => refreshLibrary()}
+            onRefreshLibrary={refreshLibrary}
             onBooksRemoved={removeBooksFromLibrary}
             cachedBookIds={cachedBookIds}
             onCachedIdsChanged={updateCachedBookIndex}
@@ -1590,7 +1605,7 @@ export default function App() {
 
           <FeedView
             userId={user?.uid || ""}
-            onRefreshLibrary={() => refreshLibrary()}
+            onRefreshLibrary={refreshLibrary}
             onOpenBook={handleOpenBook}
             initialUrl={feedInitialUrl}
             onClearInitialUrl={() => setFeedInitialUrl(null)}
@@ -1696,7 +1711,7 @@ export default function App() {
             onClearDeviceCache={handleClearDeviceCache}
             onClearRecentSearches={handleClearRecentSearches}
             books={books}
-            onRefreshLibrary={() => refreshLibrary()}
+            onRefreshLibrary={refreshLibrary}
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={() => setShowOnboarding(true)}
           />

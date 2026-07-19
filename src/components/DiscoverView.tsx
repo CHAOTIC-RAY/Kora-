@@ -184,7 +184,7 @@ function getCategoryLoadingLabel(category: { source?: string }) {
   return "Loading Best Sellers...";
 }
 
-export default function DiscoverView({ 
+function DiscoverView({ 
   userId, 
   books = [],
   onBookAdded, 
@@ -585,7 +585,7 @@ export default function DiscoverView({
           if (parsed && typeof parsed === "object") {
             setFeaturedData(parsed);
             setLoadingFeatured(false);
-            void refreshFeaturedContentInBackground(forceRefresh);
+            // Same-day cache is fresh enough — skip background NYT/Goodreads refresh.
             return;
           }
         } catch {
@@ -2589,7 +2589,7 @@ export default function DiscoverView({
                 >
                   <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-300">
                     {book.coverUrl ? (
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={getAudiobookCoverSrc(book.coverUrl) || book.coverUrl}
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -2686,7 +2686,7 @@ export default function DiscoverView({
                 >
                   <div className={`aspect-[2/3] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
                     {!hideCovers && book.coverUrl ? (
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={resolveCoverImageSrc(book.coverUrl) || ""}
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -2877,7 +2877,7 @@ export default function DiscoverView({
                 >
                   <div className="aspect-[2/3] bg-kindle-card rounded-2xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
                     {!hideCovers && book.coverUrl ? (
-                      <img
+                      <img loading="lazy" decoding="async"
                         src={
                           viewingCategory.source === "audiobook"
                             ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl)
@@ -3105,7 +3105,7 @@ export default function DiscoverView({
                 const books = featuredData[cat.id];
                 if (!Array.isArray(books) || books.length === 0) return null;
                 return (
-                  <section key={cat.id} className="space-y-3">
+                  <section key={cat.id} className="discover-category-section space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-kindle-card rounded-xl border border-kindle-border">
@@ -3144,7 +3144,7 @@ export default function DiscoverView({
                           <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm">
                             <BookRatingBadge book={book} />
                             {!hideCovers && book.coverUrl ? (
-                              <img
+                              <img loading="lazy" decoding="async"
                                 src={getAudiobookCoverSrc(book.coverUrl) || book.coverUrl}
                                 alt={book.title}
                                 className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -3177,7 +3177,7 @@ export default function DiscoverView({
                         <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
                           <BookRatingBadge book={book} />
                           {!hideCovers && book.coverUrl ? (
-                            <img
+                            <img loading="lazy" decoding="async"
                               src={cat.source === "audiobook" ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl) : (resolveCoverImageSrc(book.coverUrl) || "")}
                               alt={book.title}
                               className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -3525,7 +3525,7 @@ export default function DiscoverView({
                   <div className="w-full md:w-64 shrink-0 flex flex-col items-center md:items-start">
                     <div className="w-full max-w-[240px] aspect-[2/3] rounded-xl overflow-hidden shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-black/5 relative group mb-6">
                       {selectedFeaturedBook.coverUrl ? (
-                        <img src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
+                        <img loading="lazy" decoding="async" src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-kindle-text-muted">
                           <BookOpen className="w-12 h-12" />
@@ -4030,7 +4030,7 @@ export default function DiscoverView({
                                   handleSearch(`${book.title} ${book.author}`);
                                 }}>
                                   <div className="aspect-[2/3] rounded-lg shadow-sm overflow-hidden mb-2 bg-kindle-card border border-kindle-border group-hover:shadow-md transition-all group-hover:-translate-y-1">
-                                    {book.coverUrl && <img src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
+                                    {book.coverUrl && <img loading="lazy" decoding="async" src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
                                   </div>
                                   <p className="text-[10px] font-bold text-kindle-text line-clamp-2 leading-tight group-hover:text-kindle-accent transition-colors">{book.title}</p>
                                 </div>
@@ -4064,3 +4064,5 @@ export default function DiscoverView({
     </>
   );
 }
+
+export default React.memo(DiscoverView);
