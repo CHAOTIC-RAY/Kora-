@@ -10,7 +10,8 @@ import DownloadBookBtn from "./DownloadBookBtn";
 import AudiobookCassetteCard from "./AudiobookCassetteCard";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
-import { clearAudiobookSyncQueue } from "../lib/audiobookSyncQueue";
+import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
+import { hydrateBookFile, canHydrateBook, loadSyncPrefs } from "../lib/crossDeviceSync";
 import FluidOverlay from "./FluidOverlay";
 
 function findActiveDownload(book: { id?: string; md5?: string; downloadId?: string }, downloads: any[] = []) {
@@ -414,42 +415,39 @@ export default function LibraryManager({
   }, [userId]);
 
   useEffect(() => {
+    const prefs = loadSyncPrefs();
+    if (!prefs.autoHydrateLibrary) return;
+
     const downloadMissingBook = async (book: BookMetadata) => {
-      if (!book.md5 || syncingBookIds.has(book.id) || cachedBookIds.has(book.id)) return;
-      
-      setSyncingBookIds(prev => new Set(prev).add(book.id));
-      
-      try {
-        const res = await fetch(`/api/download-options?md5=${book.md5}`);
-        const data = await res.json();
-        const options = data.options || data.downloadLinks || [];
-        // Prioritize direct links for auto-sync
-        const directOptions = options.filter((o: any) => o.isDirect);
-        const finalOptions = directOptions.length > 0 ? directOptions : options;
-        
-        if (finalOptions.length > 0) {
-          // Try up to 3 options in sequence
-          for (let i = 0; i < Math.min(finalOptions.length, 3); i++) {
-            const opt = finalOptions[i];
-            try {
-              console.log(`Auto-sync trying mirror ${i + 1}/${finalOptions.length} for "${book.title}": ${opt.url}`);
-              const dlRes = await fetch(`/api/proxy-file?url=${encodeURIComponent(opt.url)}`);
-              
-              if (dlRes.ok) {
-                const blob = await dlRes.blob();
-                await storeBookFile(book.id, blob, `${book.title}.${book.extension}`, book.extension);
-                onCachedIdsChanged();
-                break; // Succeeded!
-              }
-            } catch (err) {
-              console.warn(`Auto-sync mirror failed for "${book.title}" on URL ${opt.url}:`, err);
-            }
-          }
+      if (syncingBookIds.has(book.id) || cachedBookIds.has(book.id) || deletingBookIds.has(book.id)) {
+        return;
+      }
+      if (book.extension?.toLowerCase() === "audiobook") {
+        if (!book.audiobookTracks?.length || book.audiobookDownloaded) return;
+        setSyncingBookIds((prev) => new Set(prev).add(book.id));
+        try {
+          await enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks);
+        } catch (e) {
+          console.warn("Audiobook auto-sync failed for", book.title, e);
+        } finally {
+          setSyncingBookIds((prev) => {
+            const next = new Set(prev);
+            next.delete(book.id);
+            return next;
+          });
         }
+        return;
+      }
+      if (!canHydrateBook(book)) return;
+
+      setSyncingBookIds((prev) => new Set(prev).add(book.id));
+      try {
+        const result = await hydrateBookFile(book);
+        if (result.ok) onCachedIdsChanged();
       } catch (e) {
         console.warn("Auto-sync failed for", book.title, e);
       } finally {
-        setSyncingBookIds(prev => {
+        setSyncingBookIds((prev) => {
           const next = new Set(prev);
           next.delete(book.id);
           return next;
@@ -457,12 +455,12 @@ export default function LibraryManager({
       }
     };
 
-    books.forEach(book => {
-      if (!cachedBookIds.has(book.id) && book.md5 && !syncingBookIds.has(book.id) && !deletingBookIds.has(book.id)) {
-        downloadMissingBook(book);
+    books.forEach((book) => {
+      if (!cachedBookIds.has(book.id) && !syncingBookIds.has(book.id) && !deletingBookIds.has(book.id)) {
+        void downloadMissingBook(book);
       }
     });
-  }, [books, cachedBookIds, syncingBookIds, deletingBookIds]);
+  }, [books, cachedBookIds, syncingBookIds, deletingBookIds, onCachedIdsChanged]);
 
   async function loadTags() {
     const tags = await loadCustomTags(userId);
@@ -1053,13 +1051,23 @@ export default function LibraryManager({
                         </span>
                       </div>
                       
-                      <div className="shrink-0">
+                      <div className="shrink-0" title={
+                        isCached
+                          ? "On this device"
+                          : syncingBookIds.has(book.id)
+                            ? "Syncing to this device…"
+                            : canHydrateBook(book)
+                              ? "In cloud library — will download when needed"
+                              : "No remote file identity"
+                      }>
                         {isCached ? (
                           <CheckCircle className="w-2.5 h-2.5 text-emerald-600" />
                         ) : syncingBookIds.has(book.id) ? (
                           <div className="w-2.5 h-2.5 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
+                        ) : canHydrateBook(book) ? (
                           <Cloud className="w-2.5 h-2.5 text-blue-500 opacity-60" />
+                        ) : (
+                          <AlertTriangle className="w-2.5 h-2.5 text-amber-500 opacity-80" />
                         )}
                       </div>
                     </div>

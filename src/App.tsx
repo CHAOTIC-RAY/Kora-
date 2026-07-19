@@ -60,6 +60,13 @@ import {
 import JSZip from "jszip";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import FluidOverlay, { koraEase, koraSpring } from "./components/FluidOverlay";
+import {
+  hydrateBookFile,
+  maybePushBookToWebDav,
+  loadSyncPrefs,
+  registerThisDevice,
+  listenAndServePeerRequests,
+} from "./lib/crossDeviceSync";
 
 const MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
@@ -740,6 +747,8 @@ export default function App() {
           downloadUrl: variant.downloadUrl || variant.directUrl
         };
 
+        void maybePushBookToWebDav(newBook, fileBlob).catch(() => undefined);
+
         await syncBookToCloud(user?.uid || "", newBook);
         
         setGlobalDownloads(prev => {
@@ -896,6 +905,7 @@ export default function App() {
         year: book.year || "",
         downloadUrl: variant.downloadUrl || variant.directUrl
       };
+      void maybePushBookToWebDav(newBook, blob).catch(() => undefined);
       await syncBookToCloud(user?.uid || "", newBook);
       setGlobalDownloads(prev => {
         const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
@@ -1060,6 +1070,29 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Cross-device: register this device + serve P2P file requests when enabled
+  useEffect(() => {
+    const uid = user?.uid;
+    if (!uid) return;
+    let unsubPeer: (() => void) | undefined;
+    const syncPeer = () => {
+      const prefs = loadSyncPrefs();
+      void registerThisDevice(uid, prefs.peerSharingEnabled);
+      unsubPeer?.();
+      unsubPeer = listenAndServePeerRequests(
+        uid,
+        prefs.peerSharingEnabled,
+        (msg) => toast(msg, { id: "peer-serve" })
+      );
+    };
+    syncPeer();
+    const heartbeat = window.setInterval(syncPeer, 45_000);
+    return () => {
+      unsubPeer?.();
+      window.clearInterval(heartbeat);
+    };
+  }, [user?.uid]);
 
   useEffect(() => {
     localStorage.setItem("kora_zlib_config", JSON.stringify(zlibConfig));
@@ -1336,9 +1369,11 @@ export default function App() {
   async function handleOpenBook(book: BookMetadata) {
     if (book.extension?.toLowerCase() === "audiobook") {
       if (!book.audiobookTracks?.length) {
-        alert("This audiobook has no tracks. Open it from Discover to load audio files.");
+        toast.error("This audiobook has no tracks. Open it from Discover to load audio files.");
         return;
       }
+      // Kick off track hydrate in background if needed
+      void enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks);
       setAudiobookPlayback(book);
       setActiveBook(book);
       setLastReadBook(book);
@@ -1347,28 +1382,26 @@ export default function App() {
     }
 
     if (!cachedBookIds.has(book.id)) {
-      if (book.downloadUrl) {
-        try {
-          alert(`Downloading ${book.title}...`);
-          const res = await fetch(book.downloadUrl);
-          if (!res.ok) throw new Error("Download failed");
-          const blob = await res.blob();
-          await storeBookFile(book.id, blob, book.filename || `${book.title}.${book.extension}`, book.extension);
-          setCachedBookIds(prev => {
-            const next = new Set(prev);
-            next.add(book.id);
-            return next;
-          });
-          // Proceed to open
-        } catch (err) {
-          console.error("Failed to download from downloadUrl", err);
-          alert("Failed to download book from its saved URL. Please try again or download manually.");
-          return;
-        }
-      } else {
-        alert("This book is currently syncing to this device or requires a manual download. Please wait a moment.");
+      const toastId = `hydrate-${book.id}`;
+      toast.loading(`Getting “${book.title}” on this device…`, { id: toastId });
+      const result = await hydrateBookFile(book, {
+        onProgress: (label) => toast.loading(label, { id: toastId }),
+      });
+      if (!result.ok) {
+        toast.error(result.error || "Could not sync this book to this device", { id: toastId });
         return;
       }
+      toast.success(
+        result.source === "cache"
+          ? "Ready"
+          : `Synced via ${result.source === "md5" ? "catalog" : result.source}`,
+        { id: toastId }
+      );
+      setCachedBookIds((prev) => {
+        const next = new Set(prev);
+        next.add(book.id);
+        return next;
+      });
     }
     setActiveBook(book);
     setLastReadBook(book);

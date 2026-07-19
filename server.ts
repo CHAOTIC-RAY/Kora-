@@ -2588,6 +2588,81 @@ app.post("/api/send-email", async (req, res) => {
   }
 });
 
+// WebDAV proxy — lets the browser talk to a user's own WebDAV host without CORS issues.
+async function handleWebDavProxy(req: any, res: any) {
+  const method = String(req.query.method || req.body?.method || "GET").toUpperCase();
+  const targetUrl = String(req.query.url || req.body?.url || "");
+  const username = String(req.query.username || req.body?.username || "");
+  const password = String(req.query.password || req.body?.password || "");
+
+  if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+    return res.status(400).json({ error: "Valid https WebDAV url is required." });
+  }
+
+  try {
+    const headers: Record<string, string> = {
+      "User-Agent": "Kora-WebDAV/1.0",
+    };
+    if (username || password) {
+      headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+    }
+
+    let body: Buffer | string | undefined;
+    if (method === "PUT" && req.method === "PUT") {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      body = Buffer.concat(chunks);
+      headers["Content-Type"] = String(req.headers["content-type"] || "application/octet-stream");
+    } else if (method === "PROPFIND") {
+      headers.Depth = String(req.body?.depth || "0");
+      headers["Content-Type"] = "application/xml";
+      body =
+        req.body?.bodyText ||
+        `<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>`;
+    }
+
+    const upstream = await fetch(targetUrl, {
+      method,
+      headers,
+      body: method === "GET" || method === "HEAD" || method === "MKCOL" ? undefined : body,
+      redirect: "follow",
+    });
+
+    if (method === "GET") {
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.status(upstream.status);
+      res.setHeader(
+        "Content-Type",
+        upstream.headers.get("content-type") || "application/octet-stream"
+      );
+      res.setHeader("Cache-Control", "no-store");
+      return res.send(buf);
+    }
+
+    if (method === "PUT") {
+      return res.status(upstream.status).json({
+        status: upstream.status,
+        ok: upstream.ok,
+      });
+    }
+
+    const text = await upstream.text();
+    return res.status(200).json({
+      status: upstream.status,
+      ok: upstream.ok,
+      bodyText: text.slice(0, 4000),
+      error: upstream.ok ? undefined : text.slice(0, 200),
+    });
+  } catch (err: any) {
+    console.error("WebDAV proxy failed:", err);
+    return res.status(502).json({ error: err.message || "WebDAV proxy failed" });
+  }
+}
+
+app.get("/api/webdav-proxy", handleWebDavProxy);
+app.post("/api/webdav-proxy", express.json({ limit: "2mb" }), handleWebDavProxy);
+app.put("/api/webdav-proxy", handleWebDavProxy);
+
 // 3. API: Proxy Download to bypass CORS & SSL blocks
 app.get("/api/proxy-file", async (req, res) => {
   const fileUrl = req.query.url as string;

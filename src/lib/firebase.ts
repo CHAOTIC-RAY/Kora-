@@ -149,7 +149,7 @@ export interface BookMetadata {
   size: string;
   coverUrl?: string;
   downloadUrl?: string;
-  md5?: string;
+  md5?: string; // catalog identity for cross-device re-fetch (never store file bytes in Firebase)
   source?: string;
   tags: string[];
   status: "to-read" | "reading" | "completed";
@@ -169,7 +169,7 @@ export interface BookMetadata {
   description?: string;
   series?: string;
   seriesNumber?: string;
-  /** Audiobook-specific metadata */
+  /** Audiobook-specific metadata (track URLs sync; audio blobs stay on-device) */
   audiobookTracks?: { index: number; title: string; src: string }[];
   audiobookSourceUrl?: string;
   audiobookDownloaded?: boolean;

@@ -21,6 +21,7 @@ import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
+import DevicesSyncPanel from "./DevicesSyncPanel";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -1035,6 +1036,13 @@ export default function SettingsView({
             </div>
           </div>
         )}
+
+        {/* Devices & cross-device sync */}
+        <DevicesSyncPanel
+          userId={userId}
+          books={books}
+          onCachedIdsChanged={onCachedIdsChanged}
+        />
 
         {/* Data & Storage */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">

@@ -2964,6 +2964,101 @@ export default {
       }
     }
 
+    // WebDAV proxy for BYO personal archive (avoids browser CORS)
+    if (path === "/api/webdav-proxy") {
+      try {
+        const method = (url.searchParams.get("method") || "GET").toUpperCase();
+        let targetUrl = url.searchParams.get("url") || "";
+        let username = url.searchParams.get("username") || "";
+        let password = url.searchParams.get("password") || "";
+        let depth = "0";
+        let bodyText: string | undefined;
+        let putBody: ArrayBuffer | undefined;
+        let putContentType = "application/octet-stream";
+
+        if (request.method === "POST") {
+          const body = (await request.json().catch(() => ({}))) as Record<string, string>;
+          targetUrl = targetUrl || body.url || "";
+          username = username || body.username || "";
+          password = password || body.password || "";
+          depth = body.depth || "0";
+          bodyText = body.bodyText;
+        } else if (request.method === "PUT") {
+          putBody = await request.arrayBuffer();
+          putContentType = request.headers.get("content-type") || "application/octet-stream";
+        }
+
+        if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+          return new Response(JSON.stringify({ error: "Valid https WebDAV url is required." }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+
+        const headers: Record<string, string> = { "User-Agent": "Kora-WebDAV/1.0" };
+        if (username || password) {
+          headers.Authorization = `Basic ${btoa(`${username}:${password}`)}`;
+        }
+
+        let upstreamBody: ArrayBuffer | string | undefined;
+        if (method === "PUT") {
+          headers["Content-Type"] = putContentType;
+          upstreamBody = putBody;
+        } else if (method === "PROPFIND") {
+          headers.Depth = depth;
+          headers["Content-Type"] = "application/xml";
+          upstreamBody =
+            bodyText ||
+            `<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>`;
+        }
+
+        const upstream = await fetch(targetUrl, {
+          method,
+          headers,
+          body: method === "GET" || method === "HEAD" || method === "MKCOL" ? undefined : upstreamBody,
+          redirect: "follow",
+        });
+
+        if (method === "GET") {
+          const buf = await upstream.arrayBuffer();
+          return new Response(buf, {
+            status: upstream.status,
+            headers: {
+              "Content-Type": upstream.headers.get("content-type") || "application/octet-stream",
+              "Cache-Control": "no-store",
+              "Access-Control-Allow-Origin": "*",
+            },
+          });
+        }
+
+        if (method === "PUT") {
+          return new Response(JSON.stringify({ status: upstream.status, ok: upstream.ok }), {
+            status: upstream.status,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+
+        const text = await upstream.text();
+        return new Response(
+          JSON.stringify({
+            status: upstream.status,
+            ok: upstream.ok,
+            bodyText: text.slice(0, 4000),
+            error: upstream.ok ? undefined : text.slice(0, 200),
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          }
+        );
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "WebDAV proxy failed" }), {
+          status: 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+    }
+
     // 11. File Proxy / Z-Library Download Proxy
     if ((path === "/api/proxy-file" || path === "/api/zlib/download") && (request.method === "GET" || request.method === "HEAD" || request.method === "POST")) {
       try {
