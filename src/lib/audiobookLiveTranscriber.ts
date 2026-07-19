@@ -6,6 +6,13 @@ export interface AudiobookLiveTranscriberCallbacks {
   onError?: (message: string) => void;
 }
 
+interface AudioTap {
+  ctx: AudioContext;
+  dest: MediaStreamAudioDestinationNode;
+}
+
+const audioTapRegistry = new WeakMap<HTMLAudioElement, AudioTap>();
+
 function pickRecorderMimeType(): string {
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
   for (const candidate of candidates) {
@@ -19,9 +26,38 @@ function captureStreamFromAudio(audio: HTMLAudioElement): MediaStream | null {
     captureStream?: () => MediaStream;
     mozCaptureStream?: () => MediaStream;
   };
-  if (typeof withCapture.captureStream === "function") return withCapture.captureStream();
-  if (typeof withCapture.mozCaptureStream === "function") return withCapture.mozCaptureStream();
+  if (typeof withCapture.captureStream === "function") {
+    const stream = withCapture.captureStream();
+    if (stream.getAudioTracks().length > 0) return stream;
+  }
+  if (typeof withCapture.mozCaptureStream === "function") {
+    const stream = withCapture.mozCaptureStream();
+    if (stream.getAudioTracks().length > 0) return stream;
+  }
   return null;
+}
+
+function createWebAudioTap(audio: HTMLAudioElement): MediaStream | null {
+  try {
+    let tap = audioTapRegistry.get(audio);
+    if (!tap) {
+      const ctx = new AudioContext();
+      const source = ctx.createMediaElementSource(audio);
+      const dest = ctx.createMediaStreamDestination();
+      source.connect(dest);
+      source.connect(ctx.destination);
+      tap = { ctx, dest };
+      audioTapRegistry.set(audio, tap);
+    }
+    void tap.ctx.resume();
+    return tap.dest.stream;
+  } catch {
+    return null;
+  }
+}
+
+function getAudioStream(audio: HTMLAudioElement): MediaStream | null {
+  return captureStreamFromAudio(audio) || createWebAudioTap(audio);
 }
 
 export class AudiobookLiveTranscriber {
@@ -79,18 +115,20 @@ export class AudiobookLiveTranscriber {
   private startRecorder() {
     if (this.destroyed || !this.enabled || !this.audio) return;
 
-    const stream = captureStreamFromAudio(this.audio);
-    if (!stream) {
+    const stream = getAudioStream(this.audio);
+    if (!stream || stream.getAudioTracks().length === 0) {
       this.callbacks.onStatus?.("unavailable");
-      this.callbacks.onError?.("Live transcription is not supported in this browser.");
+      this.callbacks.onError?.("Live transcription is not supported for this audio source.");
+      return;
+    }
+
+    if (typeof MediaRecorder === "undefined") {
+      this.callbacks.onStatus?.("unavailable");
+      this.callbacks.onError?.("MediaRecorder is not available in this browser.");
       return;
     }
 
     const mimeType = pickRecorderMimeType();
-    if (!mimeType && typeof MediaRecorder === "undefined") {
-      this.callbacks.onStatus?.("unavailable");
-      return;
-    }
 
     try {
       this.stream = stream;
@@ -102,6 +140,7 @@ export class AudiobookLiveTranscriber {
       };
       this.recorder.onerror = () => {
         this.callbacks.onStatus?.("error");
+        this.callbacks.onError?.("Recording failed.");
       };
       this.recorder.start(4500);
       this.callbacks.onStatus?.("listening");
@@ -152,6 +191,7 @@ export class AudiobookLiveTranscriber {
           break;
         }
         this.callbacks.onStatus?.("error");
+        this.callbacks.onError?.(message);
       }
     }
     this.processing = false;

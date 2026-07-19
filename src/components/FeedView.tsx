@@ -31,6 +31,7 @@ import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
 import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
+import { buildTodayCombinedBrief } from "../lib/feedBriefs";
 
 interface FeedViewProps {
   userId?: string;
@@ -304,6 +305,12 @@ export default function FeedView({
       .sort((a, b) => b.publishedAt - a.publishedAt);
   }, [items, filter, selectedSubscriptionId]);
 
+  const todayBrief = useMemo(() => {
+    if (filter !== "all" || selectedSubscriptionId) return null;
+    const retained = items.filter((item) => isFeedItemWithinRetention(item));
+    return buildTodayCombinedBrief(retained);
+  }, [filter, items, selectedSubscriptionId]);
+
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addFeedUrl.trim()) return;
@@ -437,7 +444,23 @@ export default function FeedView({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 auto-rows-fr">
+        <div className="space-y-4">
+          {todayBrief && (
+            <button
+              type="button"
+              onClick={() => handleReadArticle(todayBrief)}
+              className="w-full text-left bg-gradient-to-br from-blue-950/40 to-kindle-card border border-blue-500/30 rounded-2xl p-4 hover:border-blue-400/50 transition"
+            >
+              <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400 mb-1">
+                Daily News Brief
+              </p>
+              <h3 className="text-sm font-lexend font-bold text-kindle-text mb-2">{todayBrief.title}</h3>
+              <p className="text-xs text-kindle-text-muted leading-relaxed line-clamp-4 whitespace-pre-line">
+                {todayBrief.summary}
+              </p>
+            </button>
+          )}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 auto-rows-fr">
           {visibleItems.map((item, index) => {
             const cover = getItemThumbnail(item);
             const title = displayTitle(item);
@@ -457,6 +480,7 @@ export default function FeedView({
               />
             );
           })}
+          </div>
         </div>
       )}
 

@@ -443,6 +443,7 @@ export default function AudiobookPlayer({
 
       try {
         const url = await resolveTrackUrl(index);
+        audioRef.current.crossOrigin = url.startsWith("blob:") ? null : "anonymous";
         audioRef.current.src = url;
         audioRef.current.playbackRate = speed;
         pendingTrackLoad.current = { index, resumeTime: savedResume };
@@ -450,6 +451,7 @@ export default function AudiobookPlayer({
         if (autoPlay) {
           await audioRef.current.play();
           setIsPlaying(true);
+          liveTranscriberRef.current?.attach(audioRef.current);
         }
         setCurrentTrack(index);
       } catch (err) {

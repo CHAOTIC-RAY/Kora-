@@ -439,6 +439,8 @@ function isNewsBriefItem(item) {
 
 async function fetchFeedBriefs(subscriptions) {
   const briefs = [];
+  const syntheticBySourceDay = new Map();
+
   for (const sub of subscriptions || []) {
     try {
       const res = await fetch("/api/feed/fetch", {
@@ -449,18 +451,45 @@ async function fetchFeedBriefs(subscriptions) {
       if (!res.ok) continue;
       const data = await res.json();
       for (const item of data.items || []) {
-        if (!isNewsBriefItem(item)) continue;
-        briefs.push({
+        if (isNewsBriefItem(item)) {
+          briefs.push({
+            title: item.title,
+            source: sub.title,
+            link: item.link,
+            publishedAt: item.publishedAt || Date.now(),
+          });
+          continue;
+        }
+
+        const d = new Date(item.publishedAt || Date.now());
+        const dayKey = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+        const groupKey = `${sub.id}:${dayKey}`;
+        const list = syntheticBySourceDay.get(groupKey) || [];
+        list.push({
           title: item.title,
           source: sub.title,
           link: item.link,
           publishedAt: item.publishedAt || Date.now(),
         });
+        syntheticBySourceDay.set(groupKey, list);
       }
     } catch (e) {
       /* try next feed */
     }
   }
+
+  for (const [, articles] of syntheticBySourceDay) {
+    if (articles.length < 2) continue;
+    articles.sort((a, b) => b.publishedAt - a.publishedAt);
+    const top = articles[0];
+    briefs.push({
+      title: `Daily Brief — ${top.source}`,
+      source: top.source,
+      link: top.link,
+      publishedAt: top.publishedAt,
+    });
+  }
+
   briefs.sort((a, b) => b.publishedAt - a.publishedAt);
   return briefs;
 }
