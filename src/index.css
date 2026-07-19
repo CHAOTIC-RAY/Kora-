@@ -380,6 +380,35 @@ html.kora-android body {
   right: calc(1.5rem + var(--kora-safe-right));
 }
 
+/* Mini player + Continue: one dock bar above the nav */
+.kora-mobile-media-dock {
+  bottom: var(--kora-audiobook-mini-bottom);
+  left: calc(0.75rem + var(--kora-safe-left));
+  right: calc(0.75rem + var(--kora-safe-right));
+}
+
+.kora-mobile-media-dock--joined {
+  min-height: 3.5rem;
+  border-radius: 1rem;
+  border: 1px solid var(--theme-border, rgba(0, 0, 0, 0.12));
+  background: color-mix(in srgb, var(--theme-card, #fff) 95%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+}
+
+.kora-continue-attached {
+  width: 3.5rem;
+  align-self: stretch;
+  border-left: 1px solid color-mix(in srgb, var(--theme-border, rgba(0, 0, 0, 0.12)) 80%, transparent);
+  border-radius: 0;
+}
+
+.kora-audiobook-mini-docked {
+  background: transparent;
+}
+
 .kora-main-mobile {
   padding-bottom: var(--kora-mobile-nav-offset);
 }

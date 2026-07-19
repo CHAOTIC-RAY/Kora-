@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   Download,
@@ -215,6 +216,25 @@ export default function AudiobookPlayer({
   const [estimatedRemaining, setEstimatedRemaining] = useState(0);
   const [ttsVoiceName, setTtsVoiceName] = useState("");
   const [showTtsSettings, setShowTtsSettings] = useState(false);
+  const [miniDockHost, setMiniDockHost] = useState<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (viewMode !== "minimized") {
+      setMiniDockHost(null);
+      return;
+    }
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => {
+      if (!mq.matches) {
+        setMiniDockHost(null);
+        return;
+      }
+      setMiniDockHost(document.getElementById("kora-audiobook-mini-host"));
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [viewMode, book.id]);
   const [subtitle, setSubtitle] = useState("");
   const [transcriberReady, setTranscriberReady] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState("");
@@ -806,45 +826,62 @@ export default function AudiobookPlayer({
       />
 
       {viewMode === "minimized" ? (
-        <div className="fixed kora-audiobook-mini md:bottom-4 md:left-4 md:right-4 z-[45] md:z-[95] rounded-2xl border border-kindle-border bg-kindle-card/95 backdrop-blur-md shadow-2xl overflow-hidden">
-          <div className="flex items-center gap-3 px-3 py-2.5">
-            <button onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-3 text-left">
-              <div className="w-10 h-10 rounded-xl overflow-hidden bg-kindle-bg border border-kindle-border shrink-0">
-                {book.coverUrl ? (
-                  <img src={book.coverUrl} alt="" className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] font-bold">AB</div>
-                )}
+        (() => {
+          const miniInner = (
+            <>
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <button onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-3 text-left">
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-kindle-bg border border-kindle-border shrink-0">
+                    {book.coverUrl ? (
+                      <img src={book.coverUrl} alt="" className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-[10px] font-bold">AB</div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-kindle-text truncate">{book.title}</p>
+                    <p className="text-[10px] text-kindle-text-muted truncate">
+                      {transcriberText || (isTtsBook ? "Audio transcriber…" : currentTrackLabel)}
+                    </p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => void togglePlay()}
+                  className="p-2.5 rounded-full bg-kindle-text text-kindle-bg shrink-0"
+                  aria-label={isPlaying ? "Pause" : "Play"}
+                >
+                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                </button>
+                <button
+                  onClick={() => {
+                    stopPlayback();
+                    onClose();
+                  }}
+                  className="p-2 rounded-xl text-kindle-text-muted hover:text-kindle-text shrink-0"
+                  aria-label="Stop"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-kindle-text truncate">{book.title}</p>
-                <p className="text-[10px] text-kindle-text-muted truncate">
-                  {transcriberText || (isTtsBook ? "Audio transcriber…" : currentTrackLabel)}
-                </p>
+              <div className="h-1 bg-kindle-bg">
+                <div className="h-full bg-kindle-text transition-all" style={{ width: `${overallPercent}%` }} />
               </div>
-            </button>
-            <button
-              onClick={() => void togglePlay()}
-              className="p-2.5 rounded-full bg-kindle-text text-kindle-bg shrink-0"
-              aria-label={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-            </button>
-            <button
-              onClick={() => {
-                stopPlayback();
-                onClose();
-              }}
-              className="p-2 rounded-xl text-kindle-text-muted hover:text-kindle-text shrink-0"
-              aria-label="Stop"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="h-1 bg-kindle-bg">
-            <div className="h-full bg-kindle-text transition-all" style={{ width: `${overallPercent}%` }} />
-          </div>
-        </div>
+            </>
+          );
+
+          if (miniDockHost) {
+            return createPortal(
+              <div className="kora-audiobook-mini-docked h-full overflow-hidden">{miniInner}</div>,
+              miniDockHost
+            );
+          }
+
+          return (
+            <div className="fixed kora-audiobook-mini md:bottom-4 md:left-4 md:right-4 z-[45] md:z-[95] rounded-2xl border border-kindle-border bg-kindle-card/95 backdrop-blur-md shadow-2xl overflow-hidden">
+              {miniInner}
+            </div>
+          );
+        })()
       ) : (
     <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col kora-safe-top kora-safe-bottom">
       <header className="flex items-center justify-between px-3 sm:px-4 py-3 border-b border-kindle-border shrink-0">

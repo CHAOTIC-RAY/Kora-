@@ -1570,18 +1570,40 @@ export default function App() {
         )}
       </main>
 
-      {/* Floating Actions for Mobile */}
-      <div className="md:hidden fixed kora-mobile-fab flex flex-col gap-4 z-50">
-        {lastReadBook && activeTab === "library" && (
-          <button
-            onClick={() => handleOpenBook(lastReadBook)}
-            className="w-14 h-14 bg-kindle-text text-kindle-bg rounded-full shadow-2xl flex items-center justify-center transition-transform active:scale-90 ring-4 ring-kindle-bg"
-            title={`Continue Reading: ${lastReadBook.title}`}
+      {/* Mobile media dock: mini player (left) + Continue (right), joined as one control */}
+      {(() => {
+        const showContinueFab = Boolean(lastReadBook && activeTab === "library");
+        const showMiniHost = Boolean(
+          audiobookPlayback && activeBook?.id !== audiobookPlayback.id
+        );
+        if (!showContinueFab && !showMiniHost) return null;
+        return (
+          <div
+            className={`md:hidden fixed kora-mobile-media-dock z-[45] flex items-stretch${
+              showMiniHost ? " kora-mobile-media-dock--joined" : " justify-end"
+            }`}
           >
-            <Play className="w-6 h-6 ml-1 fill-current" />
-          </button>
-        )}
-      </div>
+            {showMiniHost && (
+              <div id="kora-audiobook-mini-host" className="min-w-0 flex-1" />
+            )}
+            {showContinueFab && (
+              <button
+                type="button"
+                onClick={() => handleOpenBook(lastReadBook!)}
+                className={
+                  showMiniHost
+                    ? "kora-continue-attached shrink-0 flex items-center justify-center bg-kindle-text text-kindle-bg transition-transform active:scale-95"
+                    : "kora-continue-solo w-14 h-14 bg-kindle-text text-kindle-bg rounded-full shadow-2xl flex items-center justify-center transition-transform active:scale-90 ring-4 ring-kindle-bg"
+                }
+                title={`Continue Reading: ${lastReadBook!.title}`}
+                aria-label={`Continue reading ${lastReadBook!.title}`}
+              >
+                <Play className="w-6 h-6 ml-1 fill-current" />
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 3. Full-Screen Reader Component Viewports */}
       {audiobookPlayback && (
