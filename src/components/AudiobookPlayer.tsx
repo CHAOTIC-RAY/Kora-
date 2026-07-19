@@ -9,6 +9,7 @@ import {
   RotateCw,
   SkipBack,
   SkipForward,
+  Sparkles,
   X,
 } from "lucide-react";
 import type { BookMetadata } from "../lib/firebase";
@@ -23,6 +24,13 @@ import {
   subscribeAudiobookSyncQueue,
   getAudiobookSyncProgress,
 } from "../lib/audiobookSyncQueue";
+import {
+  getSmartSkipSettings,
+  saveSmartSkipSettings,
+  shouldApplyIntroSkip,
+  shouldAutoAdvancePastOutro,
+  type SmartSkipSettings,
+} from "../lib/audiobookSmartSkip";
 import CassetteVisualizer from "./CassetteVisualizer";
 
 interface AudiobookPlayerProps {
@@ -113,6 +121,11 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const [localUrls, setLocalUrls] = useState<Record<number, string>>({});
   const [loadingTrack, setLoadingTrack] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [smartSkip, setSmartSkip] = useState<SmartSkipSettings>(() => getSmartSkipSettings());
+  const introSkippedForTrack = useRef<number | null>(null);
+  const resumeTimeForTrack = useRef<number | null>(null);
+  const outroSkipTriggered = useRef(false);
+  const pendingTrackLoad = useRef<{ index: number; resumeTime?: number } | null>(null);
 
   const persistProgress = useCallback(
     (trackIdx: number, time: number, percent?: number) => {
@@ -148,18 +161,42 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     [book.id, localUrls, tracks]
   );
 
+  const applyIntroSkip = useCallback(
+    (index: number, resumeTime?: number) => {
+      if (!smartSkip.enabled || !audioRef.current) return;
+      const audio = audioRef.current;
+      const trackDuration = audio.duration;
+      if (!shouldApplyIntroSkip(trackDuration, resumeTime, smartSkip.introSeconds)) return;
+      if (introSkippedForTrack.current === index) return;
+
+      audio.currentTime = smartSkip.introSeconds;
+      setCurrentTime(smartSkip.introSeconds);
+      introSkippedForTrack.current = index;
+    },
+    [smartSkip]
+  );
+
   const loadTrack = useCallback(
-    async (index: number, autoPlay = false) => {
+    async (index: number, autoPlay = false, resumeTime?: number) => {
       if (!tracks[index] || !audioRef.current) return;
       setLoadingTrack(true);
       setPlaybackError(null);
+      outroSkipTriggered.current = false;
+      introSkippedForTrack.current = null;
+
+      const savedResume =
+        resumeTime ??
+        (book.audiobookCurrentTrack === index && book.audiobookCurrentTime
+          ? book.audiobookCurrentTime
+          : undefined);
+      resumeTimeForTrack.current = savedResume ?? null;
+
       try {
         const url = await resolveTrackUrl(index);
         audioRef.current.src = url;
         audioRef.current.playbackRate = speed;
-        if (book.audiobookCurrentTrack === index && book.audiobookCurrentTime) {
-          audioRef.current.currentTime = book.audiobookCurrentTime;
-        }
+        pendingTrackLoad.current = { index, resumeTime: savedResume };
+
         if (autoPlay) {
           await audioRef.current.play();
           setIsPlaying(true);
@@ -173,7 +210,15 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         setLoadingTrack(false);
       }
     },
-    [tracks, resolveTrackUrl, speed, book.audiobookCurrentTrack, book.audiobookCurrentTime]
+    [
+      tracks,
+      resolveTrackUrl,
+      speed,
+      book.audiobookCurrentTrack,
+      book.audiobookCurrentTime,
+      smartSkip.enabled,
+      applyIntroSkip,
+    ]
   );
 
   useEffect(() => {
@@ -226,6 +271,12 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     loadTrack(index, isPlaying);
   };
 
+  const toggleSmartSkip = () => {
+    const next = { ...smartSkip, enabled: !smartSkip.enabled };
+    setSmartSkip(next);
+    saveSmartSkipSettings(next);
+  };
+
   const handleDownloadAll = async () => {
     if (downloading || tracks.length === 0) return;
     setDownloading(true);
@@ -268,10 +319,41 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         ref={audioRef}
         onTimeUpdate={() => {
           if (!audioRef.current) return;
-          setCurrentTime(audioRef.current.currentTime);
+          const time = audioRef.current.currentTime;
+          const trackDuration = audioRef.current.duration;
+          setCurrentTime(time);
+
+          if (
+            smartSkip.enabled &&
+            !outroSkipTriggered.current &&
+            shouldAutoAdvancePastOutro(
+              time,
+              trackDuration,
+              smartSkip.outroSeconds,
+              currentTrack < tracks.length - 1
+            )
+          ) {
+            outroSkipTriggered.current = true;
+            goToTrack(currentTrack + 1);
+          }
         }}
         onLoadedMetadata={() => {
-          if (audioRef.current) setDuration(audioRef.current.duration);
+          if (!audioRef.current) return;
+          const audio = audioRef.current;
+          setDuration(audio.duration);
+
+          const pending = pendingTrackLoad.current;
+          if (pending) {
+            if (pending.resumeTime != null && pending.resumeTime > 0) {
+              audio.currentTime = pending.resumeTime;
+              setCurrentTime(pending.resumeTime);
+            } else {
+              applyIntroSkip(pending.index, pending.resumeTime);
+            }
+            pendingTrackLoad.current = null;
+          } else if (smartSkip.enabled) {
+            applyIntroSkip(currentTrack, resumeTimeForTrack.current ?? undefined);
+          }
         }}
         onEnded={() => {
           if (currentTrack < tracks.length - 1) {
@@ -314,7 +396,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         <div className="flex-1 overflow-y-auto">
           <div className="flex flex-col items-center px-5 py-6 gap-5 max-w-md mx-auto w-full">
             <div className="w-full">
-              <div className="p-4 rounded-2xl bg-kindle-card border border-kindle-border shadow-lg">
+              <div className="p-3 sm:p-4 rounded-2xl bg-kindle-card border border-kindle-border shadow-lg">
                 <CassetteVisualizer
                   title={book.title}
                   coverUrl={book.coverUrl}
@@ -352,6 +434,8 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                   const t = parseFloat(e.target.value);
                   if (audioRef.current) audioRef.current.currentTime = t;
                   setCurrentTime(t);
+                  introSkippedForTrack.current = currentTrack;
+                  outroSkipTriggered.current = false;
                 }}
                 className="w-full h-1.5 appearance-none rounded-full bg-kindle-border accent-white cursor-pointer"
                 style={{
@@ -437,6 +521,37 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={toggleSmartSkip}
+              className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-left transition ${
+                smartSkip.enabled
+                  ? "bg-white/10 border-white/20 text-kindle-text"
+                  : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text"
+              }`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Sparkles className={`w-4 h-4 shrink-0 ${smartSkip.enabled ? "text-white" : ""}`} />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest font-lexend">Smart Skip</p>
+                  <p className="text-[10px] text-kindle-text-muted truncate">
+                    {smartSkip.enabled
+                      ? `Skip ${smartSkip.introSeconds}s intros and ${smartSkip.outroSeconds}s outros`
+                      : "Off — plays full track intros and outros"}
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`shrink-0 text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-full border ${
+                  smartSkip.enabled
+                    ? "bg-white text-black border-white"
+                    : "border-kindle-border"
+                }`}
+              >
+                {smartSkip.enabled ? "On" : "Off"}
+              </span>
+            </button>
 
             <button
               onClick={handleDownloadAll}
