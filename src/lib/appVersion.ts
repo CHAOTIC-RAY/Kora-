@@ -2,8 +2,8 @@ declare const __KORA_BUILD_ID__: string | undefined;
 
 /** Build id baked in at compile time (changes every production build). */
 export const APP_BUILD_ID: string =
-  typeof __KORA_BUILD_ID__ !== "undefined" && __KORA_BUILD_ID_
-    ? __KORA_BUILD_ID_
+  typeof __KORA_BUILD_ID__ !== "undefined" && __KORA_BUILD_ID__
+    ? __KORA_BUILD_ID__
     : "dev";
 
 export type RemoteVersion = {
@@ -17,7 +17,6 @@ export async function fetchRemoteVersion(timeoutMs = 8000): Promise<RemoteVersio
     const res = await fetch(`/version.json?t=${Date.now()}`, {
       cache: "no-store",
       headers: { "Cache-Control": "no-cache" },
-      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) return null;
     const data = await res.json();
