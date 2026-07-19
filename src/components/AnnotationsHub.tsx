@@ -29,12 +29,13 @@ export default function AnnotationsHub({ books, userId, onClose, onOpenBook }: A
       const collected: BookAnnotations[] = [];
       for (const book of readable) {
         try {
-          const [highlights, notes] = await Promise.all([
+          const [highlights, notesRecord] = await Promise.all([
             loadBookHighlights(userId, book.id),
             loadChapterNotes(userId, book.id),
           ]);
-          if ((highlights?.length || 0) > 0 || notes?.some((n) => n.noteText?.trim())) {
-            collected.push({ book, highlights: highlights || [], notes: notes || [] });
+          const notes = Object.values(notesRecord || {});
+          if ((highlights?.length || 0) > 0 || notes.some((n) => n.noteText?.trim())) {
+            collected.push({ book, highlights: highlights || [], notes });
           }
         } catch {
           /* skip book */
