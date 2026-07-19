@@ -1,3 +1,11 @@
+@font-face {
+  font-family: "Faruma";
+  src: url("/fonts/faruma.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
@@ -25,7 +33,7 @@
   --font-display: "Lexend", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-lexend: "Lexend", sans-serif;
-  --font-thaana: "Noto Sans Thaana", "MV Waheed", sans-serif;
+  --font-thaana: "Faruma", "Noto Sans Thaana", "MV Waheed", sans-serif;
 
   --color-kindle-bg: var(--theme-bg);
   --color-kindle-text: var(--theme-text);
