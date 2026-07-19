@@ -301,8 +301,6 @@ export async function scrapePopularAudiobooks(
         title: b.title,
         author: b.author || "Unknown",
         description: `Listen free on ${source === "hdaudiobooks" ? "HDAudiobooks" : "FullLengthAudiobooks"}.`,
-        rating: 4.5,
-        ratingCount: "Popular audiobook",
         coverUrl: b.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author || "")}`,
         link: b.link,
         listenUrl: b.link,

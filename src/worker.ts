@@ -1188,12 +1188,14 @@ export default {
 
             // Minirating parsing
             const ratingText = row.find("span.minirating").text().trim();
-            let rating = 4.0;
-            let ratingCount = "100,000 ratings";
+            let rating: number | undefined;
+            let ratingCount: string | undefined;
+            let ratingVerified = false;
 
             const ratingMatch = ratingText.match(/([\d.]+)\s*avg\s*rating/i);
             if (ratingMatch) {
               rating = parseFloat(ratingMatch[1]);
+              ratingVerified = true;
             }
 
             const countMatch = ratingText.match(/([\d,]+)\s*rating/i);
@@ -1211,9 +1213,10 @@ export default {
               rank,
               title: rawTitle,
               author,
-              description: `Popular selection from the Goodreads community. Rated ${rating} stars by ${ratingCount}.`,
-              rating,
-              ratingCount,
+              description: ratingVerified && rating
+                ? `Popular selection from the Goodreads community. Rated ${rating} stars${ratingCount ? ` by ${ratingCount}` : ""}.`
+                : "Popular selection from the Goodreads community.",
+              ...(ratingVerified && rating ? { rating, ratingCount, ratingVerified: true } : {}),
               coverUrl,
               goodreadsId,
               source: "goodreads"

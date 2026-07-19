@@ -23,7 +23,21 @@ import {
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { canHover } from "../lib/canHover";
+import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon } from "./BrandIcons";
+
+function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
+  const display = getDisplayRating(book);
+  if (!display) return null;
+  return (
+    <div
+      className={`absolute top-2 right-2 bg-amber-500/95 text-white font-sans font-bold text-[8.5px] px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md z-10 ${className}`}
+      title={display.title}
+    >
+      ★ {display.value}
+    </div>
+  );
+}
 
 interface DiscoverViewProps {
   userId: string;
@@ -145,7 +159,12 @@ const ALL_CATEGORIES = [
   { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
   { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
   { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
-  { id: "audiobooks-popular",   title: "Popular Audiobooks",    query: "audiobooks-popular", source: "audiobook" },
+  { id: "audiobooks-popular",   title: "Popular Audiobooks",        query: "popular", source: "audiobook", mode: "popular" },
+  { id: "audiobooks-fiction",   title: "Fiction",                   query: "fiction", source: "audiobook", mode: "search" },
+  { id: "audiobooks-mystery",   title: "Mystery & Thriller",        query: "mystery thriller", source: "audiobook", mode: "search" },
+  { id: "audiobooks-scifi",     title: "Sci-Fi & Fantasy",          query: "science fiction fantasy", source: "audiobook", mode: "search" },
+  { id: "audiobooks-classics",  title: "Classics",                  query: "classic literature", source: "audiobook", mode: "search" },
+  { id: "audiobooks-biography", title: "Biography & Memoir",        query: "biography memoir", source: "audiobook", mode: "search" },
 ];
 
 function getCategoryDescription(category: { source?: string }) {
@@ -211,6 +230,7 @@ export default function DiscoverView({
   });
   const [loadingFeatured, setLoadingFeatured] = useState<boolean>(true);
   const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook">("all");
+  const [audiobookLibraryMode, setAudiobookLibraryMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -664,24 +684,8 @@ export default function DiscoverView({
       const audiobookCats = ALL_CATEGORIES.filter(cat => cat.source === "audiobook");
       const audiobookPromises = audiobookCats.map(async (cat) => {
         try {
-          const res = await fetch("/api/audiobooks/popular");
-          if (!res.ok) return { id: cat.id, books: [] };
-          const books = await res.json();
-          const mapped = books.map((b: any) => ({
-            title: b.title,
-            author: b.author,
-            coverUrl: b.coverUrl || null,
-            description: b.description,
-            rating: b.rating,
-            ratingCount: b.ratingCount || "Popular audiobook",
-            rank: b.rank,
-            source: "audiobook",
-            listenUrl: b.listenUrl,
-            listenUrlAlt: b.listenUrlAlt,
-            link: b.link || b.listenUrl,
-            isbn: b.isbn,
-          }));
-          return { id: cat.id, books: mapped };
+          const books = await fetchAudiobookCategory(cat);
+          return { id: cat.id, books };
         } catch (err) {
           console.error(`Failed to load audiobooks for ${cat.title}:`, err);
           return { id: cat.id, books: [] };
@@ -691,6 +695,14 @@ export default function DiscoverView({
       audiobookResults.forEach(res => {
         mergedData[res.id] = res.books;
       });
+
+      await Promise.all(
+        ALL_CATEGORIES.filter((cat) => cat.source === "nyt").map(async (cat) => {
+          const books = mergedData[cat.id];
+          if (!books?.length) return;
+          mergedData[cat.id] = await enrichBooksWithRatings(books, titlesRoughlyMatch, 6);
+        })
+      );
 
       // Update states
       setFeaturedData(mergedData);
@@ -715,6 +727,23 @@ export default function DiscoverView({
       setLoadingFeatured(false);
     }
   }
+
+  const openAudiobookLibrary = () => {
+    setAudiobookLibraryMode(true);
+    setIsAudiobookSearch(false);
+    setIsAdvancedSearch(false);
+    setSearchMode(false);
+    setViewingCategory(null);
+    setFeedFilter("audiobook");
+    window.setTimeout(() => {
+      document.getElementById("discover-feeds")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
+
+  const closeAudiobookLibrary = () => {
+    setAudiobookLibraryMode(false);
+    setFeedFilter("all");
+  };
 
   const findAudiobookMatch = async (title: string, author?: string, generation?: number) => {
     const q = `${title} ${author || ""}`.trim();
@@ -1096,13 +1125,41 @@ export default function DiscoverView({
 
       const result = { books: mappedBooks, previousDate };
       tempStorage.set(cacheKey, result);
-      return result;
+      const enrichedBooks = await enrichBooksWithRatings(mappedBooks, titlesRoughlyMatch, 10);
+      return { books: enrichedBooks, previousDate };
     } catch (err) {
       console.error("Failed to fetch NYT category:", err);
       return { books: [], previousDate: null };
     }
   }
 
+
+  async function fetchAudiobookCategory(category: { query: string; mode?: string }): Promise<any[]> {
+    try {
+      const usePopular = category.mode === "popular" || category.query === "popular";
+      const res = usePopular
+        ? await fetch("/api/audiobooks/popular")
+        : await fetch(`/api/audiobooks/search?q=${encodeURIComponent(category.query)}`);
+      if (!res.ok) return [];
+      const books = await res.json();
+      if (!Array.isArray(books)) return [];
+      return books.map((b: any, idx: number) => ({
+        title: b.title,
+        author: b.author,
+        coverUrl: b.coverUrl || null,
+        description: b.description,
+        rank: b.rank || idx + 1,
+        source: "audiobook",
+        listenUrl: b.listenUrl || b.link,
+        listenUrlAlt: b.listenUrlAlt,
+        link: b.link || b.listenUrl,
+        isbn: b.isbn,
+      }));
+    } catch (err) {
+      console.error("Failed to fetch audiobook category:", err);
+      return [];
+    }
+  }
 
   async function fetchGoodreadsCategory(query: string): Promise<any[]> {
     const cacheKey = `goodreads_list_${query}_v3`;
@@ -1141,8 +1198,7 @@ export default function DiscoverView({
           coverUrl,
           searchQuery: `${cleanTitle} ${cleanAuthor}`.trim(),
           description: book.description,
-          rating: book.rating,
-          ratingCount: book.ratingCount,
+          ...(book.ratingVerified ? { rating: book.rating, ratingCount: book.ratingCount, ratingVerified: true } : {}),
           rank: book.rank,
           source: 'goodreads',
           isGoogleBook: false
@@ -1171,8 +1227,7 @@ export default function DiscoverView({
         setCategoryBooks(Array.isArray(books) ? books : []);
         setCategoryPreviousDate(null);
       } else if (category.source === "audiobook") {
-        const res = await fetch("/api/audiobooks/popular");
-        const books = res.ok ? await res.json() : [];
+        const books = await fetchAudiobookCategory(category);
         setCategoryBooks(Array.isArray(books) ? books : []);
         setCategoryPreviousDate(null);
       } else {
@@ -2303,32 +2358,23 @@ export default function DiscoverView({
               </form>
 
               {/* Advanced Search Toggle */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
-                    const newVal = !isAudiobookSearch;
-                    setIsAudiobookSearch(newVal);
-                    setIsAdvancedSearch(false);
-                    setAudiobookResults([]);
-                    if (newVal) {
-                      setSearchMode(true);
-                      setCurrentPage(1);
-                      setResults([]);
-                      prefetchCache.current.clear();
+                    if (audiobookLibraryMode) {
+                      closeAudiobookLibrary();
                     } else {
-                      setCurrentPage(1);
-                      setResults([]);
-                      prefetchCache.current.clear();
+                      openAudiobookLibrary();
                     }
                   }}
-                  className={`px-3.5 py-1.5 md:py-3.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                    isAudiobookSearch
-                      ? "bg-kindle-card border-kindle-text text-kindle-text"
-                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-text/30 hover:text-kindle-text"
+                  className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                    audiobookLibraryMode
+                      ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text"
                   }`}
                 >
-                  <Headphones className="w-3.5 h-3.5" />
+                  <Headphones className="w-3 h-3" />
                   Audiobooks
                 </button>
                 <button
@@ -2337,8 +2383,8 @@ export default function DiscoverView({
                     const newVal = !isAdvancedSearch;
                     setIsAdvancedSearch(newVal);
                     setIsAudiobookSearch(false);
+                    setAudiobookLibraryMode(false);
                     setAudiobookResults([]);
-                    // Ensure we are in search mode when activating advanced search
                     if (newVal) {
                       setSearchMode(true);
                       setCurrentPage(1);
@@ -2346,19 +2392,18 @@ export default function DiscoverView({
                       prefetchCache.current.clear();
                       if (activeSource !== "all") setActiveSource("all");
                     } else {
-                      // If toggling off, also clear to reset to Google Books
                       setCurrentPage(1);
                       setResults([]);
                       prefetchCache.current.clear();
                     }
                   }}
-                  className={`px-3.5 py-1.5 md:py-3.5 rounded-lg border text-[10px] font-bold uppercase tracking-widest transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     isAdvancedSearch
-                      ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent"
-                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/30 hover:text-kindle-accent"
+                      ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text"
                   }`}
                 >
-                  <Database className="w-3.5 h-3.5" />
+                  <Database className="w-3 h-3" />
                   Advanced Search
                 </button>
               </div>
@@ -2790,12 +2835,7 @@ export default function DiscoverView({
                       </div>
                     )}
 
-                    {/* Goodreads rating badge */}
-                    {book.rating && (
-                      <div className="absolute top-2 right-2 bg-amber-500/95 text-white font-sans font-bold text-[8px] px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md">
-                        ★ {book.rating}
-                      </div>
-                    )}
+                    <BookRatingBadge book={book} />
                   </div>
 
                   <div className="space-y-0.5">
@@ -2879,8 +2919,23 @@ export default function DiscoverView({
               </button>
             </div>
           )}
+          {audiobookLibraryMode && (
+            <div className="flex items-center justify-between gap-3 bg-kindle-card border border-kindle-border rounded-2xl px-4 py-3">
+              <div>
+                <h3 className="text-lg font-lexend font-bold text-kindle-text">Audiobook Library</h3>
+                <p className="text-[10px] text-kindle-text-muted">Browse free audiobooks organized by category.</p>
+              </div>
+              <button
+                onClick={closeAudiobookLibrary}
+                className="px-3.5 py-1.5 rounded-full border border-kindle-border text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text transition"
+              >
+                Back
+              </button>
+            </div>
+          )}
+
           {/* Feed Filter Tabs */}
-          <div className="flex items-center justify-between border-b border-kindle-border/40 pb-2">
+          <div id="discover-feeds" className="flex items-center justify-between border-b border-kindle-border/40 pb-2">
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
               <button
                 onClick={() => setFeedFilter("all")}
@@ -2915,7 +2970,13 @@ export default function DiscoverView({
                 NYT Best Sellers
               </button>
               <button
-                onClick={() => setFeedFilter("audiobook")}
+                onClick={() => {
+                  if (feedFilter === "audiobook" && audiobookLibraryMode) {
+                    closeAudiobookLibrary();
+                  } else {
+                    openAudiobookLibrary();
+                  }
+                }}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   feedFilter === "audiobook"
                     ? "border-kindle-text text-kindle-text"
@@ -2997,6 +3058,40 @@ export default function DiscoverView({
                     </button>
                   </div>
 
+                  {audiobookLibraryMode && cat.source === "audiobook" ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+                      {books.map((book, idx) => (
+                        <div
+                          key={idx}
+                          onMouseEnter={() => { if (canHover()) prefetchAudiobookDetail(book); }}
+                          onFocus={() => prefetchAudiobookDetail(book)}
+                          onClick={() => openBookDetail(book)}
+                          className="group cursor-pointer space-y-2 p-1 sm:p-1.5 rounded-2xl transition-all border border-transparent hover:bg-kindle-card/50"
+                        >
+                          <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm">
+                            <BookRatingBadge book={book} />
+                            {!hideCovers && book.coverUrl ? (
+                              <img
+                                src={getAudiobookCoverSrc(book.coverUrl) || book.coverUrl}
+                                alt={book.title}
+                                className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center p-3 bg-kindle-card">
+                                <Headphones className="w-6 h-6 text-kindle-text-muted mb-1.5 opacity-30" />
+                                <span className="text-[8px] font-bold text-kindle-text-muted uppercase text-center line-clamp-3">{book.title}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="space-y-0.5">
+                            <h4 className="text-[10px] font-bold font-serif line-clamp-2 leading-snug">{book.title}</h4>
+                            <p className="text-[9px] text-kindle-text-muted truncate">{book.author}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
                   <div className="flex gap-3 overflow-x-auto pb-4 scroll-smooth snap-x">
                     {books.map((book, idx) => (
                       <div
@@ -3007,12 +3102,7 @@ export default function DiscoverView({
                         className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start"
                       >
                         <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
-                          {/* Goodreads rating badge */}
-                          {book.rating && (
-                            <div className="absolute top-2 right-2 bg-amber-500/95 text-white font-sans font-bold text-[8.5px] px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-md z-10">
-                              ★ {book.rating}
-                            </div>
-                          )}
+                          <BookRatingBadge book={book} />
                           {!hideCovers && book.coverUrl ? (
                             <img
                               src={cat.source === "audiobook" ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl) : (resolveCoverImageSrc(book.coverUrl) || "")}
@@ -3053,6 +3143,7 @@ export default function DiscoverView({
                       </div>
                     ))}
                   </div>
+                  )}
                 </section>
               );
             });
@@ -3060,6 +3151,7 @@ export default function DiscoverView({
           )}
 
           {/* Explore Categories Dashboard */}
+          {!audiobookLibraryMode && (
           <div className="space-y-8 pt-4">
             <div className="space-y-1">
               <h3 className="text-xl font-lexend font-bold tracking-tight text-kindle-text">Explore Archives</h3>
@@ -3114,6 +3206,7 @@ export default function DiscoverView({
               ))}
             </div>
           </div>
+          )}
         </div>
       )}
       </div>
