@@ -4,17 +4,10 @@ import { clipUrlToLibrary } from "../lib/feedClipper";
 import type { FeedItem } from "../lib/feedStorage";
 import { markFeedItemSaved } from "../lib/feedStorage";
 import { textDirection } from "../lib/textDirection";
-import {
-  loadNewsReaderPrefs,
-  NEWS_READER_FONT_OPTIONS,
-  NEWS_READER_MARGIN_OPTIONS,
-  NEWS_READER_PREFS_EVENT,
-  NEWS_READER_THEME_OPTIONS,
-  newsReaderThemeClasses,
-  patchNewsReaderPrefs,
-  type NewsReaderPrefs,
-} from "../lib/newsReaderPrefs";
+import { newsReaderThemeClasses } from "../lib/newsReaderPrefs";
 import { isTelegramArticleLink, telegramPostHtml } from "../lib/telegramFeed";
+import { useNewsReaderPrefs } from "../hooks/useNewsReaderPrefs";
+import NewsReaderSettingsPanel from "./NewsReaderSettingsPanel";
 
 interface FeedArticleReaderProps {
   item: FeedItem;
@@ -34,26 +27,11 @@ export default function FeedArticleReader({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [prefs, setPrefs] = useState<NewsReaderPrefs>(() => loadNewsReaderPrefs());
+  const { prefs, updatePrefs } = useNewsReaderPrefs();
   const [showSettings, setShowSettings] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
 
   const isTelegram = isTelegramArticleLink(item.link);
-
-  useEffect(() => {
-    const sync = () => setPrefs(loadNewsReaderPrefs());
-    const onCustom = (event: Event) => {
-      const detail = (event as CustomEvent<NewsReaderPrefs>).detail;
-      if (detail) setPrefs(detail);
-      else sync();
-    };
-    window.addEventListener(NEWS_READER_PREFS_EVENT, onCustom as EventListener);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener(NEWS_READER_PREFS_EVENT, onCustom as EventListener);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,10 +80,6 @@ export default function FeedArticleReader({
 
   const theme = useMemo(() => newsReaderThemeClasses(prefs.theme), [prefs.theme]);
 
-  const updatePrefs = (patch: Partial<NewsReaderPrefs>) => {
-    setPrefs(patchNewsReaderPrefs(patch));
-  };
-
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -124,135 +98,6 @@ export default function FeedArticleReader({
     }
   };
 
-  const settingsPanel = showSettings ? (
-    <div
-      className={`border-b ${theme.border} ${theme.header} px-4 py-4 space-y-4 max-h-[45vh] overflow-y-auto shrink-0`}
-    >
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold">Font Size</h4>
-          <span className={`text-[10px] font-mono ${theme.muted}`}>{prefs.fontSize}px</span>
-        </div>
-        <input
-          type="range"
-          min={12}
-          max={36}
-          step={1}
-          value={prefs.fontSize}
-          onChange={(e) => updatePrefs({ fontSize: Number(e.target.value) })}
-          className="w-full accent-kindle-accent cursor-pointer"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold">Line Spacing</h4>
-          <span className={`text-[10px] font-mono ${theme.muted}`}>{prefs.lineSpacing.toFixed(1)}</span>
-        </div>
-        <input
-          type="range"
-          min={1.2}
-          max={2.6}
-          step={0.1}
-          value={prefs.lineSpacing}
-          onChange={(e) => updatePrefs({ lineSpacing: Number(e.target.value) })}
-          className="w-full accent-kindle-accent cursor-pointer"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold">Paragraph Spacing</h4>
-          <span className={`text-[10px] font-mono ${theme.muted}`}>{prefs.paragraphSpacing.toFixed(1)}em</span>
-        </div>
-        <input
-          type="range"
-          min={0.6}
-          max={2.2}
-          step={0.1}
-          value={prefs.paragraphSpacing}
-          onChange={(e) => updatePrefs({ paragraphSpacing: Number(e.target.value) })}
-          className="w-full accent-kindle-accent cursor-pointer"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <h4 className={`text-[9px] uppercase tracking-widest font-bold ${theme.muted}`}>Font Family</h4>
-        <div className="flex flex-wrap gap-2">
-          {NEWS_READER_FONT_OPTIONS.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => updatePrefs({ fontFamily: f.id })}
-              className={`px-3 py-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition ${
-                prefs.fontFamily === f.id
-                  ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                  : `${theme.border} ${theme.muted}`
-              }`}
-            >
-              <span className={f.id}>{f.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <h4 className={`text-[9px] uppercase tracking-widest font-bold ${theme.muted}`}>Page Width</h4>
-        <div className="flex flex-wrap gap-2">
-          {NEWS_READER_MARGIN_OPTIONS.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => updatePrefs({ marginSize: m.id })}
-              className={`px-3 py-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition ${
-                prefs.marginSize === m.id
-                  ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                  : `${theme.border} ${theme.muted}`
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <h4 className={`text-[9px] uppercase tracking-widest font-bold ${theme.muted}`}>Theme</h4>
-        <div className="grid grid-cols-4 gap-2">
-          {NEWS_READER_THEME_OPTIONS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => updatePrefs({ theme: t.id })}
-              className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border transition ${
-                prefs.theme === t.id ? "border-kindle-accent ring-1 ring-kindle-accent/30" : theme.border
-              }`}
-            >
-              <div className={`w-6 h-6 rounded-md ${t.bg} ring-1 ${t.ring}`} />
-              <span className="text-[8px] font-bold uppercase tracking-widest">{t.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-bold">Brightness</h4>
-          <span className={`text-[10px] font-mono ${theme.muted}`}>{prefs.brightness}%</span>
-        </div>
-        <input
-          type="range"
-          min={40}
-          max={100}
-          step={5}
-          value={prefs.brightness}
-          onChange={(e) => updatePrefs({ brightness: Number(e.target.value) })}
-          className="w-full accent-kindle-accent cursor-pointer"
-        />
-      </div>
-    </div>
-  ) : null;
-
   return (
     <div
       className={`fixed inset-0 z-[9999] flex flex-col ${theme.shell}`}
@@ -263,9 +108,9 @@ export default function FeedArticleReader({
         filter: prefs.brightness < 100 ? `brightness(${prefs.brightness}%)` : undefined,
       }}
     >
-      {/* Mobile floating chrome — no fixed top bar */}
+      {/* Floating chrome only — no fixed top bar */}
       <div
-        className={`sm:hidden absolute z-20 left-0 right-0 top-0 flex items-start justify-between gap-2 px-[max(0.5rem,var(--kora-safe-left))] pt-[max(0.5rem,var(--kora-safe-top))] pr-[max(0.5rem,var(--kora-safe-right))] pointer-events-none transition-opacity ${
+        className={`absolute z-20 left-0 right-0 top-0 flex items-start justify-between gap-2 px-[max(0.5rem,var(--kora-safe-left))] pt-[max(0.5rem,var(--kora-safe-top))] pr-[max(0.5rem,var(--kora-safe-right))] pointer-events-none transition-opacity ${
           chromeVisible || showSettings ? "opacity-100" : "opacity-0"
         }`}
       >
@@ -308,64 +153,7 @@ export default function FeedArticleReader({
         </div>
       </div>
 
-      {/* Desktop / tablet header */}
-      <header
-        className={`hidden sm:flex shrink-0 border-b ${theme.border} ${theme.header} backdrop-blur-md px-4 py-3 items-center gap-2 kora-safe-top`}
-      >
-        <button
-          onClick={onClose}
-          className={`p-2 rounded-xl hover:opacity-80 transition ${theme.muted}`}
-          aria-label="Close reader"
-        >
-          <ChevronLeft className="w-5 h-5" />
-        </button>
-        <div className="min-w-0 flex-1">
-          <p className={`text-[9px] font-bold uppercase tracking-widest truncate ${theme.muted}`}>
-            {item.subscriptionTitle}
-            {isTelegram ? " · Telegram" : ""}
-          </p>
-          <h1
-            dir={textDirection(articleTitle)}
-            className={`text-sm font-lexend font-bold truncate ${
-              textDirection(articleTitle) === "rtl" ? "font-thaana" : ""
-            }`}
-          >
-            {articleTitle}
-          </h1>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => setShowSettings((v) => !v)}
-            className={`p-2 rounded-xl border ${theme.border} hover:opacity-90 ${theme.muted}`}
-            aria-label="News reader settings"
-            aria-pressed={showSettings}
-          >
-            <Settings2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => void handleSave()}
-            disabled={saving || loading || !!error}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border ${theme.border} text-[10px] font-bold uppercase tracking-wider disabled:opacity-50`}
-          >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bookmark className="w-3.5 h-3.5" />}
-            Save
-          </button>
-          <a
-            href={item.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`p-2 rounded-xl border ${theme.border} ${theme.muted}`}
-            aria-label="Open original"
-          >
-            <ExternalLink className="w-4 h-4" />
-          </a>
-        </div>
-      </header>
-
-      {/* Mobile settings sheet under floating chrome */}
-      <div className="sm:hidden">{settingsPanel}</div>
-      <div className="hidden sm:block">{settingsPanel}</div>
+      {showSettings ? <NewsReaderSettingsPanel prefs={prefs} onChange={updatePrefs} /> : null}
 
       <div
         className="flex-1 overflow-y-auto overscroll-contain min-h-0"
@@ -380,7 +168,7 @@ export default function FeedArticleReader({
             <p className="text-xs font-sans">Loading article…</p>
           </div>
         ) : error ? (
-          <div className="max-w-lg mx-auto p-8 text-center space-y-4 pt-24 sm:pt-8">
+          <div className="max-w-lg mx-auto p-8 text-center space-y-4 pt-24">
             <p className="text-sm text-red-400">{error}</p>
             <a
               href={item.link}
@@ -394,17 +182,17 @@ export default function FeedArticleReader({
           </div>
         ) : (
           <article
-            className={`mx-auto pt-[calc(var(--kora-safe-top)+3.5rem)] sm:pt-8 pb-[calc(var(--kora-safe-bottom)+1.5rem)] ${prefs.marginSize}`}
+            className={`mx-auto pt-[calc(var(--kora-safe-top)+3.5rem)] pb-[calc(var(--kora-safe-bottom)+1.5rem)] ${prefs.marginSize}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sm:hidden mb-5 space-y-1">
+            <div className="mb-5 space-y-1">
               <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
                 {item.subscriptionTitle}
                 {isTelegram ? " · Telegram" : ""}
               </p>
               <h1
                 dir={textDirection(articleTitle)}
-                className={`text-xl font-lexend font-bold leading-snug ${
+                className={`text-xl md:text-2xl font-lexend font-bold leading-snug ${
                   textDirection(articleTitle) === "rtl" ? "font-thaana" : ""
                 }`}
               >

@@ -13,6 +13,7 @@ import {
   loadNewsReaderPrefs,
   NEWS_READER_FONT_OPTIONS,
   NEWS_READER_MARGIN_OPTIONS,
+  NEWS_READER_PREFS_EVENT,
   NEWS_READER_THEME_OPTIONS,
   patchNewsReaderPrefs,
   type NewsReaderPrefs,
@@ -172,6 +173,21 @@ export default function SettingsView({
   const setNRP = (patch: Partial<NewsReaderPrefs>) => {
     setNewsReaderPrefs(patchNewsReaderPrefs(patch));
   };
+
+  useEffect(() => {
+    const sync = () => setNewsReaderPrefs(loadNewsReaderPrefs());
+    const onCustom = (event: Event) => {
+      const detail = (event as CustomEvent<NewsReaderPrefs>).detail;
+      if (detail) setNewsReaderPrefs(detail);
+      else sync();
+    };
+    window.addEventListener(NEWS_READER_PREFS_EVENT, onCustom as EventListener);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(NEWS_READER_PREFS_EVENT, onCustom as EventListener);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   const toggleCategory = (key: string) => {
     setExpandedCategories(prev => ({
@@ -857,7 +873,7 @@ export default function SettingsView({
           {expandedCategories.newsReading && (
             <div className="mt-4 pt-4 border-t border-kindle-border/40 space-y-5 animate-in slide-in-from-top-2 duration-200">
               <p className="text-[10px] text-kindle-text-muted">
-                Controls font size, spacing, width, and theme for Feed articles. You can also adjust these while reading.
+                Shared text settings for Feed articles and the Daily News Brief. Changes are remembered on this device and can also be adjusted while reading.
               </p>
 
               <div className="space-y-2">
