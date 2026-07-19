@@ -276,8 +276,10 @@ function FeedView({
     loadLocalState();
     const subs = ensureDefaultSubscriptions();
     const newestFetch = Math.max(0, ...subs.map((sub) => sub.lastFetchedAt || 0));
-    // Skip network refresh when feeds were fetched recently (keeps first paint snappy).
-    if (newestFetch && Date.now() - newestFetch < 5 * 60 * 1000) {
+    const hasNeverFetched = subs.some((sub) => !sub.lastFetchedAt);
+    // Skip network refresh when feeds were fetched recently (keeps first paint snappy),
+    // but always refresh when a newly added source has never been fetched (e.g. MV Crisis).
+    if (!hasNeverFetched && newestFetch && Date.now() - newestFetch < 5 * 60 * 1000) {
       setItems(getFeedItems());
       return;
     }

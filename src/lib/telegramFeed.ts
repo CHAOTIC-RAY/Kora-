@@ -81,8 +81,20 @@ function stripTags(html: string): string {
 
 function extractBackgroundImage(style: string | undefined): string | undefined {
   if (!style) return undefined;
-  const match = style.match(/background-image:\s*url\(['"]?(.*?)['"]?\)/i);
-  return match?.[1] || undefined;
+  const match =
+    style.match(/background-image:\s*url\(['"]([^'"]+)['"]\)/i) ||
+    style.match(/background-image:\s*url\(([^)]+)\)/i);
+  const url = match?.[1]?.trim();
+  if (!url) return undefined;
+  if (url.startsWith("//")) return `https:${url}`;
+  return url;
+}
+
+function extractStyleAttr(tagHtml: string): string | undefined {
+  return (
+    tagHtml.match(/\bstyle=(")([^"]*)"/i)?.[2] ||
+    tagHtml.match(/\bstyle=(')([^']*)'/i)?.[2]
+  );
 }
 
 function extractChannelTitle(html: string, username: string): string {
@@ -129,6 +141,59 @@ export async function discoverTelegramChannel(input: string): Promise<{
   };
 }
 
+/** Split t.me/s HTML into full top-level message widgets (not nested *_user/_text nodes). */
+function extractTelegramMessageBlocks(html: string): string[] {
+  const opener =
+    /<div[^>]+class="[^"]*\btgme_widget_message\b(?![_\w])[^"]*\bjs-widget_message\b[^"]*"[^>]*>/gi;
+  const starts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = opener.exec(html)) !== null) {
+    starts.push(match.index);
+  }
+  if (!starts.length) return [];
+
+  const blocks: string[] = [];
+  for (let i = 0; i < starts.length; i++) {
+    const start = starts[i];
+    const end = i + 1 < starts.length ? starts[i + 1] : html.length;
+    blocks.push(html.slice(start, end));
+  }
+  return blocks;
+}
+
+function firstExternalArticleUrl(htmlChunk: string): string | undefined {
+  const hrefs = [...htmlChunk.matchAll(/\bhref=["'](https?:\/\/[^"']+)["']/gi)].map((m) => m[1]);
+  return hrefs.find((href) => {
+    try {
+      const host = new URL(href).hostname.replace(/^www\./, "").toLowerCase();
+      if (host === "t.me" || host === "telegram.me" || host === "telegram.dog") return false;
+      if (host === "telegram.org") return false;
+      // Social / tip inboxes aren't article pages
+      if (host === "m.me" || host.endsWith(".facebook.com") || host === "facebook.com") return false;
+      if (host === "x.com" || host === "twitter.com") return false;
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function titleFromTelegramBlock(text: string, previewTitle: string | undefined, messageId: string): string {
+  const preview = previewTitle?.replace(/\s+/g, " ").trim();
+  if (preview && preview.length >= 8) return preview.slice(0, 180);
+
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    // Drop bare URL-only lines from titles
+    .filter((line) => !/^https?:\/\//i.test(line));
+
+  const first = lines[0]?.slice(0, 180);
+  if (first) return first;
+  return `Post #${messageId}`;
+}
+
 export async function fetchTelegramChannelFeed(feedUrl: string): Promise<{
   title: string;
   link: string;
@@ -157,53 +222,43 @@ export async function fetchTelegramChannelFeed(feedUrl: string): Promise<{
   const html = await response.text();
 
   const title = extractChannelTitle(html, username);
-  const postMatches = [
-    ...html.matchAll(
-      /data-post=["']([^"']+)["'][\s\S]*?(?=data-post=["']|<\/section>|$)/gi
-    ),
-  ];
-
-  // Prefer widget blocks when available
-  const widgetChunks =
-    html.match(
-      /<div[^>]+class="[^"]*tgme_widget_message[^"]*"[\s\S]*?(?=<div[^>]+class="[^"]*tgme_widget_message[^"]*"|<\/section>|$)/gi
-    ) || [];
-
-  const blocks = widgetChunks.length ? widgetChunks : postMatches.map((m) => m[0]);
+  const blocks = extractTelegramMessageBlocks(html);
 
   const items = blocks
     .map((block) => {
       const dataPost = block.match(/data-post=["']([^"']+)["']/i)?.[1];
       if (!dataPost) return null;
-      const [channel, messageId] = dataPost.split("/");
-      if (!messageId || (channel && channel.toLowerCase() !== username.toLowerCase())) {
-        // still accept if channel missing match (renamed handles rare)
-        if (!messageId) return null;
-      }
+      const [, messageId] = dataPost.split("/");
+      if (!messageId) return null;
 
       const textHtml =
         block.match(
           /<div[^>]+class="[^"]*tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/i
         )?.[1] || "";
-      const text = stripTags(textHtml);
+      // Preserve line breaks from <br> before stripping tags
+      const text = stripTags(textHtml.replace(/<br\s*\/?>/gi, "\n"));
+      const previewTitle = stripTags(
+        block.match(
+          /<div[^>]+class="[^"]*link_preview_title[^"]*"[^>]*>([\s\S]*?)<\/div>/i
+        )?.[1] || ""
+      );
       const datetime = block.match(/<time[^>]+datetime=["']([^"']+)["']/i)?.[1];
       const publishedAt = datetime ? Date.parse(datetime) : Date.now();
-      const photoStyle =
-        block.match(
-          /<a[^>]+class="[^"]*tgme_widget_message_photo_wrap[^"]*"[^>]*style=["']([^"']+)["']/i
-        )?.[1] ||
-        block.match(
-          /style=["']([^"']*background-image[^"']*)["'][^>]*class=["'][^"']*tgme_widget_message_photo/i
-        )?.[1];
-      const imageUrl = extractBackgroundImage(photoStyle);
 
-      const titleLine = text.split(/(?<=[.!?])\s+/)[0]?.slice(0, 140) || `Post #${messageId}`;
-      const link = `https://t.me/${username}/${messageId}`;
+      const photoTag =
+        block.match(/<a[^>]+class="[^"]*tgme_widget_message_photo_wrap[^"]*"[^>]*>/i)?.[0] ||
+        block.match(/<i[^>]+class="[^"]*link_preview_image[^"]*"[^>]*>/i)?.[0];
+      const imageUrl = extractBackgroundImage(extractStyleAttr(photoTag || ""));
+
+      const telegramLink = `https://t.me/${username}/${messageId}`;
+      // Prefer the linked article URL when present so Read opens the real story.
+      const articleLink = firstExternalArticleUrl(textHtml) || telegramLink;
+      const titleLine = titleFromTelegramBlock(text, previewTitle, messageId);
 
       return {
-        id: canonicalFeedItemId(link),
-        title: titleLine || `Post #${messageId}`,
-        link,
+        id: canonicalFeedItemId(articleLink),
+        title: titleLine,
+        link: articleLink,
         author: title,
         summary: text.slice(0, 800) || undefined,
         publishedAt: Number.isNaN(publishedAt) ? Date.now() : publishedAt,

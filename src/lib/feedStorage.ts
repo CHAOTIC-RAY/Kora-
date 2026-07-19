@@ -122,7 +122,7 @@ const REMOVED_DEFAULT_FEED_URLS = new Set([
   "https://feeds.feedburner.com/ycombinator",
 ]);
 
-const FEED_MIGRATION_KEY = "kora_feed_migration_v6";
+const FEED_MIGRATION_KEY = "kora_feed_migration_v7";
 const MALDIVES_INDEPENDENT_OLD_FEED = "https://maldivesindependent.com/api/rss/news";
 const MALDIVES_INDEPENDENT_FEED = "https://maldivesindependent.com/api/rss";
 
@@ -216,7 +216,10 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
       id: makeFeedSubscriptionId(sub.feedUrl),
       addedAt: Date.now(),
     }));
-    existing = migrateMaldivesIndependentFeed([...additions, ...existing]);
+    existing = migrateMaldivesIndependentFeed([...additions, ...existing]).map((sub) =>
+      // Force re-fetch for Telegram sources after parser fixes (e.g. MV Crisis).
+      /^kora:\/\/telegram\//i.test(sub.feedUrl) ? { ...sub, lastFetchedAt: undefined } : sub
+    );
     saveFeedSubscriptions(existing);
     saveFeedItems(dedupeFeedItems(readJson<FeedItem[]>(ITEMS_KEY, [])));
     localStorage.setItem(FEED_MIGRATION_KEY, "1");
