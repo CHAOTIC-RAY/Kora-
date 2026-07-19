@@ -671,17 +671,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           definition: localDef.definition,
           phonetic: localDef.partOfSpeech,
         });
-        return;
-      }
-
-      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(word)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectionDictPreview({
-          word,
-          phonetic: data.phonetic,
-          definition: data.meanings?.[0]?.definitions?.[0]?.definition,
-        });
       } else {
         setSelectionDictPreview({ word });
       }
@@ -1140,13 +1129,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     try {
       setDictLoading(true);
       setDictionaryWord(word);
-      
-      // 1. Check custom dictionary first
+
       const localDef = await lookupWord(word);
       if (localDef) {
         setDictionaryData({
           word: localDef.word,
-          phonetic: localDef.isCustom ? "Personal Definition" : "Kora System Definition",
+          phonetic: localDef.isCustom ? "Personal Definition" : "Kora Dictionary",
           meanings: [
             {
               partOfSpeech: localDef.partOfSpeech || "noun",
@@ -1159,14 +1147,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             }
           ]
         });
-        return;
-      }
-
-      // 2. Fall back to online dictionary
-      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(word)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDictionaryData(data);
       } else {
         setDictionaryData(null);
       }
@@ -2704,7 +2684,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               <div className={`relative w-full max-w-sm ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-6 overflow-hidden`}>
                 <div className="flex justify-between items-center mb-3">
                   <div>
-                    <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Oxford Dictionary</span>
+                    <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Kora Dictionary</span>
                     <h3 className="text-xl font-extrabold font-serif leading-tight mt-0.5">{dictionaryWord}</h3>
                   </div>
                   <button onClick={() => setDictionaryWord(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition">
