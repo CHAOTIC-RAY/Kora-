@@ -20,6 +20,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
+import WebClipperPanel from "./WebClipperPanel";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -603,7 +604,6 @@ export default function SettingsView({
           {[
             { icon: FileText, label: "EPUB Tools", desc: "Merge, split, metadata — coming soon", soon: true },
             { icon: Files, label: "PDF Tools", desc: "Extract, compress, rotate — coming soon", soon: true },
-            { icon: Scissors, label: "Clip & Convert", desc: "Web pages to ebook — coming soon", soon: true },
           ].map((tool) => (
             <div
               key={tool.label}
@@ -619,6 +619,8 @@ export default function SettingsView({
             </div>
           ))}
         </div>
+
+        <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
 
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2">

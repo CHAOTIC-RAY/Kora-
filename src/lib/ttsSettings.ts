@@ -141,6 +141,33 @@ export function getQualityPresetLabel(preset: TtsQualityPreset): string {
   }
 }
 
+export function groupVoicesByLanguage(voices: SpeechSynthesisVoice[]): Array<{
+  language: string;
+  voices: SpeechSynthesisVoice[];
+}> {
+  const groups = new Map<string, SpeechSynthesisVoice[]>();
+  for (const voice of voices) {
+    const lang = voice.lang || "unknown";
+    const languageLabel = (() => {
+      try {
+        return new Intl.DisplayNames(["en"], { type: "language" }).of(lang.split("-")[0]) || lang;
+      } catch {
+        return lang;
+      }
+    })();
+    const bucket = groups.get(languageLabel) || [];
+    bucket.push(voice);
+    groups.set(languageLabel, bucket);
+  }
+
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([language, groupedVoices]) => ({
+      language,
+      voices: groupedVoices.sort((a, b) => a.name.localeCompare(b.name)),
+    }));
+}
+
 export function subscribeToVoicesChanged(callback: () => void): () => void {
   if (typeof window === "undefined" || !window.speechSynthesis) return () => {};
   const handler = () => callback();

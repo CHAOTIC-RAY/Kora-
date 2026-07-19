@@ -18,6 +18,8 @@ export interface ParsedFeed {
 function decodeEntities(text: string): string {
   return text
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)))
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -28,7 +30,39 @@ function decodeEntities(text: string): string {
 }
 
 function stripTags(html: string): string {
-  return decodeEntities(html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim());
+  const decoded = decodeEntities(html);
+  return decoded.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractAtomLink(block: string): string {
+  const links = [...block.matchAll(/<link\b([^>]*)>/gi)];
+  for (const match of links) {
+    const attrs = match[1] || "";
+    const rel = attrs.match(/\brel=["']([^"']+)["']/i)?.[1] || "";
+    const href = attrs.match(/\bhref=["']([^"']+)["']/i)?.[1];
+    if (href && (!rel || /alternate/i.test(rel))) {
+      return decodeEntities(href);
+    }
+  }
+  return "";
+}
+
+export function normalizeFeedArticleLink(link: string, feedUrl?: string): string {
+  if (!link || !feedUrl) return link;
+  try {
+    const article = new URL(link);
+    if (article.hostname !== "psmnews.mv") return link;
+    if (article.pathname.match(/^\/\d+\/?$/)) {
+      const feed = new URL(feedUrl);
+      const locale = feed.pathname.match(/^\/(en|dv)\//i)?.[1];
+      if (locale) {
+        return `https://psmnews.mv/${locale}${article.pathname}`;
+      }
+    }
+  } catch {
+    // keep original link
+  }
+  return link;
 }
 
 function parseDate(value?: string): number {
@@ -122,7 +156,7 @@ function parseAtom(xml: string): ParsedFeed {
     const block = match[1];
     const title = stripTags(block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "Untitled");
     const link =
-      decodeEntities(block.match(/<link[^>]*href="([^"]+)"/i)?.[1] || "") ||
+      extractAtomLink(block) ||
       decodeEntities(block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] || "");
     if (!link) continue;
     const updated = block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i)?.[1];

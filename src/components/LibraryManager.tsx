@@ -14,6 +14,7 @@ interface LibraryManagerProps {
   books: BookMetadata[];
   onBookSelected: (book: BookMetadata) => void;
   onRefreshLibrary: () => void;
+  onBooksRemoved?: (bookIds: string[]) => void;
   cachedBookIds: Set<string>;
   onCachedIdsChanged: () => void;
   grayscaleCovers?: boolean;
@@ -62,6 +63,7 @@ export default function LibraryManager({
   books, 
   onBookSelected, 
   onRefreshLibrary,
+  onBooksRemoved,
   cachedBookIds,
   onCachedIdsChanged,
   grayscaleCovers = false,
@@ -360,17 +362,18 @@ export default function LibraryManager({
   async function confirmDeleteBook() {
     if (!activeBookForDelete) return;
     const bookId = activeBookForDelete.id;
-    setDeletingBookIds(prev => new Set(prev).add(bookId));
-    try {
-      await deleteBookFile(bookId);
-      await syncDeleteBook(userId, bookId);
-      onCachedIdsChanged();
-      onRefreshLibrary();
-    } catch (err) {
-      console.error("Delete Book Error:", err);
-    } finally {
-      setActiveBookForDelete(null);
-    }
+    setActiveBookForDelete(null);
+    onBooksRemoved?.([bookId]);
+    void (async () => {
+      try {
+        await deleteBookFile(bookId);
+        await syncDeleteBook(userId, bookId);
+        onCachedIdsChanged();
+      } catch (err) {
+        console.error("Delete Book Error:", err);
+        onRefreshLibrary();
+      }
+    })();
   }
 
   // Bulk Status Update for Selected Books
@@ -405,25 +408,22 @@ export default function LibraryManager({
   // Bulk Delete Selected Books
   async function confirmBulkDelete() {
     const ids = Array.from(selectedBookIds) as string[];
-    setDeletingBookIds(prev => {
-      const next = new Set(prev);
-      ids.forEach(id => next.add(id));
-      return next;
-    });
-    try {
-      for (const id of ids) {
-        await deleteBookFile(id);
-        await syncDeleteBook(userId, id);
+    setSelectedBookIds(new Set());
+    setIsManageMode(false);
+    setShowBulkDeleteConfirm(false);
+    onBooksRemoved?.(ids);
+    void (async () => {
+      try {
+        await Promise.all(ids.map(async (id) => {
+          await deleteBookFile(id);
+          await syncDeleteBook(userId, id);
+        }));
+        onCachedIdsChanged();
+      } catch (err) {
+        console.error("[Bulk Delete Error]:", err);
+        onRefreshLibrary();
       }
-      onCachedIdsChanged();
-      onRefreshLibrary();
-    } catch (err) {
-      console.error("[Bulk Delete Error]:", err);
-    } finally {
-      setSelectedBookIds(new Set());
-      setIsManageMode(false);
-      setShowBulkDeleteConfirm(false);
-    }
+    })();
   }
 
   // Bulk Add Tag/Collection to Selected Books

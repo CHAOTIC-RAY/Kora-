@@ -4,6 +4,7 @@ import {
   getSpeechVoices,
   getQualityPresetLabel,
   getTtsSettings,
+  groupVoicesByLanguage,
   saveTtsSettings,
   speakTestPhrase,
   subscribeToVoicesChanged,
@@ -54,6 +55,8 @@ export default function TtsVoiceSettings({
     }
   };
 
+  const voiceGroups = groupVoicesByLanguage(voices);
+
   return (
     <div className={`space-y-3 ${compact ? "" : "rounded-xl border border-kindle-border bg-kindle-bg/60 p-3"}`}>
       <div className="space-y-1.5">
@@ -67,10 +70,14 @@ export default function TtsVoiceSettings({
           className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
         >
           <option value="">Best available voice</option>
-          {voices.map((voice) => (
-            <option key={`${voice.name}-${voice.lang}`} value={voice.name}>
-              {voice.name} ({voice.lang})
-            </option>
+          {voiceGroups.map((group) => (
+            <optgroup key={group.language} label={group.language}>
+              {group.voices.map((voice) => (
+                <option key={`${voice.name}-${voice.lang}`} value={voice.name}>
+                  {voice.name.replace(/\s+Online\s+\(Natural\)/i, "").trim()} ({voice.lang})
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>

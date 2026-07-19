@@ -55,9 +55,16 @@ const REMOVED_DEFAULT_FEED_URLS = new Set([
   "https://rss.arxiv.org/rss/cs",
   "https://news.ycombinator.com",
   "https://arxiv.org/list/cs/recent",
+  "https://feeds.feedburner.com/ycombinator",
 ]);
 
-const FEED_MIGRATION_KEY = "kora_feed_migration_v2";
+const FEED_MIGRATION_KEY = "kora_feed_migration_v3";
+
+function isRemovedFeedSubscription(sub: FeedSubscription): boolean {
+  if (REMOVED_DEFAULT_FEED_URLS.has(sub.feedUrl)) return true;
+  const haystack = `${sub.title} ${sub.feedUrl} ${sub.siteUrl}`.toLowerCase();
+  return /hacker\s*news|hnrss|ycombinator|arxiv/i.test(haystack);
+}
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -103,11 +110,13 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
   }
 
   if (!localStorage.getItem(FEED_MIGRATION_KEY)) {
-    const filtered = existing.filter(
-      (sub) =>
-        !REMOVED_DEFAULT_FEED_URLS.has(sub.feedUrl) &&
-        !/hacker news|arxiv/i.test(sub.title)
+    const filtered = existing.filter((sub) => !isRemovedFeedSubscription(sub));
+    const removedIds = new Set(
+      existing.filter((sub) => isRemovedFeedSubscription(sub)).map((sub) => sub.id)
     );
+    if (removedIds.size) {
+      saveFeedItems(getFeedItems().filter((item) => !removedIds.has(item.subscriptionId)));
+    }
     const knownUrls = new Set(filtered.map((sub) => sub.feedUrl));
     const additions = DEFAULT_FEED_SUBSCRIPTIONS.filter((sub) => !knownUrls.has(sub.feedUrl)).map((sub) => ({
       ...sub,

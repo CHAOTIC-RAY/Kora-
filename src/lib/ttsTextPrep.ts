@@ -20,6 +20,14 @@ const ABBREVIATIONS: Record<string, string> = {
   "etc.": "et cetera",
   "e.g.": "for example",
   "i.e.": "that is",
+  "jr.": "Junior",
+  "sr.": "Senior",
+  "no.": "number",
+  "vol.": "volume",
+  "ch.": "chapter",
+  "fig.": "figure",
+  "approx.": "approximately",
+  "dept.": "department",
 };
 
 const BOILERPLATE_PATTERNS = [
@@ -59,10 +67,28 @@ function isBoilerplateLine(line: string): boolean {
 }
 
 function expandAbbreviations(text: string): string {
-  return text.replace(/\b([A-Za-z]{1,4})\./g, (match, word: string) => {
+  return text.replace(/\b([A-Za-z]{1,6})\./g, (match, word: string) => {
     const key = `${word.toLowerCase()}.`;
     return ABBREVIATIONS[key] || match;
   });
+}
+
+function softenPunctuationForSpeech(text: string): string {
+  return text
+    .replace(/([,;:])\s*/g, "$1 ")
+    .replace(/([.!?])\s{2,}/g, "$1 ")
+    .replace(/(\d),(\d)/g, "$1$2")
+    .replace(/\b(\d{1,3})\s*%\b/g, "$1 percent")
+    .replace(/\b(\d{4})\b/g, (year) => {
+      const value = Number(year);
+      if (value >= 1000 && value <= 2099) {
+        const first = Math.floor(value / 100);
+        const rest = value % 100;
+        if (rest === 0) return `${first} hundred`;
+        if (rest < 10) return `${first} oh ${rest}`;
+      }
+      return year;
+    });
 }
 
 function normalizeWhitespace(text: string): string {
@@ -172,6 +198,7 @@ export function prepareTextForNarration(
   text = stripLeadingBoilerplateBlocks(text);
   text = stripGibberishParagraphs(text);
   text = expandAbbreviations(text);
+  text = softenPunctuationForSpeech(text);
   text = applyDirectorRules(text);
 
   if (options?.chapterTitle) {
@@ -209,9 +236,9 @@ export function buildSpeakChunks(
       chunks.push({
         text,
         pauseAfterMs:
-          kind === "scene-break" ? 850 : kind === "dialogue" ? 320 : kind === "list" ? 260 : 240,
+          kind === "scene-break" ? 900 : kind === "dialogue" ? 360 : kind === "list" ? 300 : 280,
         rateMultiplier:
-          kind === "scene-break" ? 0.88 : kind === "dialogue" ? 0.96 : kind === "list" ? 0.92 : 0.98,
+          kind === "scene-break" ? 0.9 : kind === "dialogue" ? 0.94 : kind === "list" ? 0.95 : 1,
         pitchMultiplier: kind === "dialogue" ? 1.02 : 1,
         kind,
       });

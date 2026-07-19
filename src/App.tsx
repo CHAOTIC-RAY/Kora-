@@ -1097,6 +1097,17 @@ export default function App() {
     }
   }
 
+  function removeBooksFromLibrary(bookIds: string[]) {
+    if (!bookIds.length) return;
+    const removeSet = new Set(bookIds);
+    setBooks((current) => current.filter((book) => !removeSet.has(book.id)));
+    setCachedBookIds((current) => {
+      const next = new Set(current);
+      bookIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  }
+
   // Handle manual login/signup
   async function handleAuthSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1349,6 +1360,7 @@ export default function App() {
             books={books}
             onBookSelected={handleOpenBook}
             onRefreshLibrary={() => refreshLibrary()}
+            onBooksRemoved={removeBooksFromLibrary}
             cachedBookIds={cachedBookIds}
             onCachedIdsChanged={updateCachedBookIndex}
             grayscaleCovers={grayscaleCovers}

@@ -5,9 +5,9 @@ import {
   ExternalLink,
   Loader2,
   Newspaper,
-  Plus,
   RefreshCw,
   Rss,
+  Settings2,
   Trash2,
   X,
 } from "lucide-react";
@@ -96,14 +96,14 @@ function FeedArticleCard({
 
   const layoutClass =
     variant === "wide"
-      ? "flex flex-col sm:flex-row sm:items-stretch"
+      ? "flex flex-col sm:flex-row sm:items-stretch h-full"
       : "flex flex-col h-full";
 
   const imageClass =
     variant === "featured"
       ? "w-full aspect-[21/9]"
       : variant === "wide"
-        ? "w-full sm:w-40 shrink-0 aspect-[16/10] sm:aspect-auto sm:min-h-[8.5rem]"
+        ? "w-full sm:w-40 shrink-0 aspect-[16/10] sm:aspect-auto sm:h-full sm:min-h-[8.5rem]"
         : variant === "square"
           ? "w-full aspect-square"
           : "w-full aspect-[4/3]";
@@ -217,7 +217,7 @@ export default function FeedView({
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [showAddFeed, setShowAddFeed] = useState(false);
+  const [showManageFeeds, setShowManageFeeds] = useState(false);
   const [addFeedUrl, setAddFeedUrl] = useState("");
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
   const [addingFeed, setAddingFeed] = useState(false);
@@ -301,7 +301,7 @@ export default function FeedView({
         feedUrl: discovered.feedUrl,
       });
       setSubscriptions(ensureDefaultSubscriptions());
-      setShowAddFeed(false);
+      setShowManageFeeds(false);
       setAddFeedUrl("");
       await refreshFeeds();
     } catch (err) {
@@ -336,11 +336,11 @@ export default function FeedView({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={() => setShowAddFeed(true)}
+            onClick={() => setShowManageFeeds(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Add
+            <Settings2 className="w-3.5 h-3.5" />
+            Manage
           </button>
           <button
             onClick={() => void refreshFeeds()}
@@ -410,7 +410,7 @@ export default function FeedView({
           <Newspaper className="w-12 h-12 text-kindle-text-muted mx-auto mb-4 opacity-50" />
           <h3 className="text-lg font-lexend font-bold mb-2">No articles here yet</h3>
           <p className="text-sm text-kindle-text-muted max-w-md mx-auto">
-            Add a feed source with the Add button above, or share an article link to Kora from your browser.
+            Add a feed source with Manage above, or share an article link to Kora from your browser.
           </p>
         </div>
       ) : (
@@ -437,72 +437,73 @@ export default function FeedView({
         </div>
       )}
 
-      {subscriptions.length > 0 && (
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-          <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted font-lexend">
-            Subscriptions
-          </h3>
-          <div className="space-y-2">
-            {subscriptions.map((sub) => (
-              <div
-                key={sub.id}
-                className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-kindle-border bg-kindle-bg/50"
-              >
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-kindle-text truncate">{sub.title}</p>
-                  <p className="text-[10px] text-kindle-text-muted truncate">{sub.feedUrl}</p>
-                </div>
-                <button
-                  onClick={() => {
-                    removeFeedSubscription(sub.id);
-                    loadLocalState();
-                  }}
-                  className="p-2 text-kindle-text-muted hover:text-red-500 transition shrink-0"
-                  title="Unsubscribe"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {showAddFeed && (
+      {showManageFeeds && (
         <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 shadow-2xl">
+          <div className="w-full max-w-lg bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-lexend font-bold text-kindle-text">Add Feed Source</h3>
-              <button onClick={() => setShowAddFeed(false)} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
+              <h3 className="text-sm font-lexend font-bold text-kindle-text">Manage Subscriptions</h3>
+              <button onClick={() => setShowManageFeeds(false)} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-[10px] text-kindle-text-muted">
-              Paste a website URL or direct RSS/Atom feed link. Kora will discover the feed automatically.
-            </p>
-            <form onSubmit={handleAddSubscription} className="space-y-3">
-              <input
-                type="url"
-                required
-                value={addFeedUrl}
-                onChange={(e) => setAddFeedUrl(e.target.value)}
-                placeholder="https://example.com or feed.xml"
-                className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2.5 text-xs text-kindle-text"
-              />
-              {addFeedError && (
-                <p className="text-[10px] text-red-500 bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2">
-                  {addFeedError}
-                </p>
+
+            <div className="space-y-2">
+              {subscriptions.length === 0 ? (
+                <p className="text-[10px] text-kindle-text-muted">No subscriptions yet.</p>
+              ) : (
+                subscriptions.map((sub) => (
+                  <div
+                    key={sub.id}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-kindle-border bg-kindle-bg/50"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-kindle-text truncate">{sub.title}</p>
+                      <p className="text-[10px] text-kindle-text-muted truncate">{sub.feedUrl}</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        removeFeedSubscription(sub.id);
+                        loadLocalState();
+                      }}
+                      className="p-2 text-kindle-text-muted hover:text-red-500 transition shrink-0"
+                      title="Unsubscribe"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))
               )}
-              <button
-                type="submit"
-                disabled={addingFeed}
-                className="w-full py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {addingFeed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />}
-                Subscribe
-              </button>
-            </form>
+            </div>
+
+            <div className="border-t border-kindle-border pt-4 space-y-3">
+              <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Add Feed Source</h4>
+              <p className="text-[10px] text-kindle-text-muted">
+                Paste a website URL or direct RSS/Atom feed link. Kora will discover the feed automatically.
+              </p>
+              <form onSubmit={handleAddSubscription} className="space-y-3">
+                <input
+                  type="url"
+                  required
+                  value={addFeedUrl}
+                  onChange={(e) => setAddFeedUrl(e.target.value)}
+                  placeholder="https://example.com or feed.xml"
+                  className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2.5 text-xs text-kindle-text"
+                />
+                {addFeedError && (
+                  <p className="text-[10px] text-red-500 bg-red-500/5 border border-red-500/10 rounded-lg px-3 py-2">
+                    {addFeedError}
+                  </p>
+                )}
+                <button
+                  type="submit"
+                  disabled={addingFeed}
+                  className="w-full py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {addingFeed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />}
+                  Subscribe
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}

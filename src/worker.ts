@@ -20,6 +20,7 @@ import {
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
+import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 
 declare const HTMLRewriter: any;
@@ -2135,18 +2136,37 @@ export default {
 
         // Fetch the raw page content using standard fetch with timeout
         let rawHtml = "";
+        const pageHeaders = {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+        };
+        const fetchTargets = [targetUrl];
         try {
-          const response = await fetch(targetUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-          });
-          if (response.ok) {
-            rawHtml = await response.text();
-          } else {
-            throw new Error(`HTTP error ${response.status}`);
+          const parsedTarget = new URL(targetUrl);
+          if (parsedTarget.hostname === "psmnews.mv" && /^\/\d+\/?$/.test(parsedTarget.pathname)) {
+            fetchTargets.unshift(`https://psmnews.mv/en${parsedTarget.pathname}`);
           }
-        } catch (fetchErr) {
+        } catch {
+          // ignore invalid URL
+        }
+
+        let fetchErr: unknown = null;
+        for (const fetchUrl of fetchTargets) {
+          try {
+            const response = await fetch(fetchUrl, { headers: pageHeaders, redirect: "follow" });
+            if (response.ok) {
+              rawHtml = await response.text();
+              if (rawHtml.trim().length >= 100) break;
+            } else {
+              fetchErr = new Error(`HTTP error ${response.status}`);
+            }
+          } catch (err) {
+            fetchErr = err;
+          }
+        }
+
+        if (!rawHtml || rawHtml.trim().length < 100) {
           console.warn(`[Web Clipper] Standard fetch failed, trying Puppeteer:`, fetchErr);
           if (env && env.BROWSER) {
             try {
@@ -2154,7 +2174,7 @@ export default {
               try {
                 const page = await browser.newPage();
                 await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-                await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
+                await page.goto(fetchTargets[0] || targetUrl, { waitUntil: "domcontentloaded", timeout: 20000 });
                 rawHtml = await page.content();
               } finally {
                 await browser.disconnect();
@@ -2164,7 +2184,7 @@ export default {
               throw new Error("Failed to fetch content with both standard fetch and Puppeteer");
             }
           } else {
-            throw new Error("Failed to fetch content and no Puppeteer available");
+            throw fetchErr instanceof Error ? fetchErr : new Error("Failed to fetch content and no Puppeteer available");
           }
         }
 
@@ -3231,22 +3251,26 @@ export default {
             finalHeaders["Cookie"] = `remix_userid=${userId}; remix_userkey=${userKey}`;
           }
 
-          try {
-            response = await fetch(targetUrl, {
-              headers: finalHeaders,
-              redirect: 'follow'
-            });
-          } catch (fetchErr: any) {
-            // Fallback to http:// if https:// failed (extremely common on libgen/library mirrors with broken SSL)
-            if (targetUrl.startsWith("https://")) {
-              const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
-              console.log(`Worker HTTPS fetch failed, retrying over HTTP: ${fallbackUrl}`);
-              response = await fetch(fallbackUrl, {
+          if (isLibgenUrl(targetUrl)) {
+            response = await fetchBinaryWithLibgenMirrors(targetUrl, finalHeaders);
+            resolvedFinalUrl = targetUrl;
+          } else {
+            try {
+              response = await fetch(targetUrl, {
                 headers: finalHeaders,
-                redirect: 'follow'
+                redirect: "follow",
               });
-            } else {
-              throw fetchErr;
+            } catch (fetchErr: any) {
+              if (targetUrl.startsWith("https://")) {
+                const fallbackUrl = targetUrl.replace(/^https:\/\//i, "http://");
+                console.log(`Worker HTTPS fetch failed, retrying over HTTP: ${fallbackUrl}`);
+                response = await fetch(fallbackUrl, {
+                  headers: finalHeaders,
+                  redirect: "follow",
+                });
+              } else {
+                throw fetchErr;
+              }
             }
           }
         }

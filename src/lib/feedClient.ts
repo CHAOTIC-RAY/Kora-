@@ -1,4 +1,4 @@
-import { ParsedFeedItem } from "./rssParser";
+import { ParsedFeedItem, normalizeFeedArticleLink } from "./rssParser";
 import { FeedItem, FeedSubscription } from "./feedStorage";
 
 export async function discoverFeed(url: string): Promise<{
@@ -45,7 +45,7 @@ export function mapParsedItems(
     subscriptionTitle: subscription.title,
     title: item.title,
     author: item.author,
-    link: item.link,
+    link: normalizeFeedArticleLink(item.link, subscription.feedUrl),
     summary: item.summary,
     publishedAt: item.publishedAt,
     imageUrl: item.imageUrl,
