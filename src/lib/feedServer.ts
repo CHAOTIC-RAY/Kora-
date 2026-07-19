@@ -1,5 +1,10 @@
 import { canonicalFeedItemId } from "./feedNormalize";
 import { COMMON_FEED_PATHS, discoverFeedUrlFromHtml, normalizeFeedArticleLink, parseFeedXml } from "./rssParser";
+import {
+  discoverTelegramChannel,
+  fetchTelegramChannelFeed,
+  parseTelegramChannelInput,
+} from "./telegramFeed";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
@@ -25,11 +30,18 @@ export async function discoverFeedFromUrl(inputUrl: string): Promise<{
   siteUrl: string;
   feedUrl: string;
 }> {
+  const telegram = await discoverTelegramChannel(inputUrl).catch((err) => {
+    // Only surface Telegram-specific errors when the input was clearly a Telegram handle/URL
+    if (parseTelegramChannelInput(inputUrl)) throw err;
+    return null;
+  });
+  if (telegram) return telegram;
+
   let parsed: URL;
   try {
-    parsed = new URL(inputUrl);
+    parsed = new URL(inputUrl.startsWith("http") ? inputUrl : `https://${inputUrl}`);
   } catch {
-    throw new Error("Invalid URL format");
+    throw new Error("Invalid URL format. Paste a site URL, RSS link, or Telegram @channel / t.me/channel.");
   }
 
   if (isFeedUrl(parsed.toString())) {
@@ -220,6 +232,7 @@ async function fetchCustomFeed(feedUrl: string) {
   const path = feedUrl.replace("kora://", "");
   if (path.startsWith("edition.mv/")) return fetchEditionMvFeed();
   if (path.startsWith("mihaaru.com/")) return fetchMihaaruFeed();
+  if (path.startsWith("telegram/")) return fetchTelegramChannelFeed(feedUrl);
   throw new Error(`Unknown custom feed: ${feedUrl}`);
 }
 

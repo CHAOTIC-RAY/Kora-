@@ -491,7 +491,11 @@ export default function FeedView({
                   >
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-kindle-text truncate">{sub.title}</p>
-                      <p className="text-[10px] text-kindle-text-muted truncate">{sub.feedUrl}</p>
+                      <p className="text-[10px] text-kindle-text-muted truncate">
+                        {sub.feedUrl.startsWith("kora://telegram/")
+                          ? `Telegram · @${sub.feedUrl.replace(/^kora:\/\/telegram\//i, "")}`
+                          : sub.feedUrl}
+                      </p>
                     </div>
                     <button
                       onClick={() => {
@@ -511,15 +515,15 @@ export default function FeedView({
             <div className="border-t border-kindle-border pt-4 space-y-3">
               <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Add Feed Source</h4>
               <p className="text-[10px] text-kindle-text-muted">
-                Paste a website URL or direct RSS/Atom feed link. Kora will discover the feed automatically.
+                Paste a website or RSS link, or a public Telegram channel (@name or t.me/name).
               </p>
               <form onSubmit={handleAddSubscription} className="space-y-3">
                 <input
-                  type="url"
+                  type="text"
                   required
                   value={addFeedUrl}
                   onChange={(e) => setAddFeedUrl(e.target.value)}
-                  placeholder="https://example.com or feed.xml"
+                  placeholder="https://… · @channel · t.me/channel"
                   className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-2.5 text-xs text-kindle-text"
                 />
                 {addFeedError && (
