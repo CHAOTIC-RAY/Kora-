@@ -2486,7 +2486,9 @@ export default {
               "name :", "send", "reply", "breaking news", "live",
               "write your reply", "copyright", "all rights reserved",
               "privacy policy", "terms and conditions", "contact us",
-              "about", "close", "menu"
+              "terms of use", "code of ethics", "editorial policy",
+              "about", "close", "menu", "topics", "related stories",
+              "discuss", "sign using", "characters remaining"
             ];
             const lowerText = textContent.toLowerCase();
             if (textContent.length < 40 && boilerplateTexts.some(bp => lowerText.includes(bp))) {
@@ -2496,6 +2498,16 @@ export default {
             // Skip navigational text (menu items)
             if (/^(News|World|Sports|Entertainment|Business|Travel|Column|Opinion|Features|Technology|Lifestyle|Art|Culture|Health|People|Local|Edition)\s*$/i.test(textContent)) {
               return;
+            }
+
+            // Stop once site footer chrome begins (Topics / Related / Discuss / legal).
+            if (
+              /^(Topics?|Related stories|Related articles|Related posts|Related news|More stories|More news|You may also like|Recommended|Discuss|Discussion|Comments?|Leave a (comment|reply)|Sign Using|Sign in|Share this|Tags?|Terms of Use|Privacy Policy|Code of Ethics|Editorial Policy)$/i.test(
+                textContent.trim()
+              ) ||
+              /^\d+\s+characters?\s+remaining$/i.test(textContent.trim())
+            ) {
+              return false;
             }
             
             // Process allowed elements
@@ -2562,6 +2574,18 @@ export default {
               (match, _tag, inner) => (normalizeTitle(String(inner)) === titleKey ? "" : match)
             );
           }
+        }
+
+        // Cut Topics / Related / Discuss / legal footer chrome from clipped body.
+        {
+          const headingCut = cleanedHtml.search(
+            /<(h[1-6])(?:\s[^>]*)?>\s*(?:Topics?|Related stories|Related articles|Related posts|Related news|More stories|More news|You may also like|Recommended|Discuss|Discussion|Comments?|Leave a (?:comment|reply)|Sign Using|Sign in|Share this|Tags?)\s*<\/\1>/i
+          );
+          if (headingCut >= 0) cleanedHtml = cleanedHtml.slice(0, headingCut).trim();
+          const charCut = cleanedHtml.search(
+            /<(?:p|div|span|label)(?:\s[^>]*)?>\s*\d+\s+characters?\s+remaining\s*<\/(?:p|div|span|label)>/i
+          );
+          if (charCut >= 0) cleanedHtml = cleanedHtml.slice(0, charCut).trim();
         }
 
         // Build a single clean chapter

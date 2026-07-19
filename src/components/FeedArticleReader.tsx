@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bookmark, ChevronLeft, ExternalLink, Loader2, Settings2 } from "lucide-react";
-import { prepareFeedArticleHtml } from "../lib/feedArticle";
+import { prepareFeedArticleHtml, prefetchFeedArticles } from "../lib/feedArticle";
 import { clipUrlToLibrary } from "../lib/feedClipper";
 import type { FeedItem } from "../lib/feedStorage";
 import { markFeedItemSaved } from "../lib/feedStorage";
@@ -12,15 +12,19 @@ import NewsReaderSettingsPanel from "./NewsReaderSettingsPanel";
 
 interface FeedArticleReaderProps {
   item: FeedItem;
+  queue?: FeedItem[];
   userId?: string;
   onClose: () => void;
+  onOpenItem?: (item: FeedItem) => void;
   onSaved?: () => void | Promise<void>;
 }
 
 export default function FeedArticleReader({
   item,
+  queue = [],
   userId,
   onClose,
+  onOpenItem,
   onSaved,
 }: FeedArticleReaderProps) {
   const [html, setHtml] = useState("");
@@ -31,8 +35,19 @@ export default function FeedArticleReader({
   const { prefs, updatePrefs } = useNewsReaderPrefs();
   const [showSettings, setShowSettings] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const nextSentinelRef = useRef<HTMLDivElement>(null);
+  const hasScrolledRef = useRef(false);
+  const advancingRef = useRef(false);
 
   const isTelegram = isTelegramArticleLink(item.link);
+
+  const nextItem = useMemo(() => {
+    if (!queue.length || !onOpenItem) return null;
+    const idx = queue.findIndex((entry) => entry.id === item.id);
+    if (idx < 0 || idx >= queue.length - 1) return null;
+    return queue[idx + 1];
+  }, [queue, item.id, onOpenItem]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +55,10 @@ export default function FeedArticleReader({
       setLoading(true);
       setError(null);
       setArticleTitle(item.title);
+      setHtml("");
+      hasScrolledRef.current = false;
+      advancingRef.current = false;
+      scrollRef.current?.scrollTo({ top: 0 });
 
       if (isTelegram) {
         setHtml(
@@ -78,6 +97,38 @@ export default function FeedArticleReader({
       cancelled = true;
     };
   }, [item.link, item.title, item.summary, item.imageUrl, isTelegram]);
+
+  useEffect(() => {
+    if (!nextItem) return;
+    void prefetchFeedArticles([nextItem], 1);
+  }, [nextItem]);
+
+  const goToNext = useCallback(() => {
+    if (!nextItem || !onOpenItem || advancingRef.current) return;
+    advancingRef.current = true;
+    onOpenItem(nextItem);
+  }, [nextItem, onOpenItem]);
+
+  useEffect(() => {
+    if (!nextItem || loading || error || showSettings) return;
+    const sentinel = nextSentinelRef.current;
+    const scroller = scrollRef.current;
+    if (!sentinel || !scroller) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) return;
+        if (!hasScrolledRef.current) return;
+        if (entry.intersectionRatio < 0.55) return;
+        goToNext();
+      },
+      { root: scroller, threshold: [0.55, 0.85] }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [nextItem, loading, error, showSettings, goToNext, item.id]);
 
   const theme = useMemo(() => newsReaderThemeClasses(prefs.theme), [prefs.theme]);
   const displayHtml = useMemo(
@@ -161,7 +212,13 @@ export default function FeedArticleReader({
       {showSettings ? <NewsReaderSettingsPanel prefs={prefs} onChange={updatePrefs} /> : null}
 
       <div
+        ref={scrollRef}
         className="flex-1 overflow-y-auto overscroll-contain min-h-0"
+        onScroll={() => {
+          const el = scrollRef.current;
+          if (!el) return;
+          if (el.scrollTop > 80) hasScrolledRef.current = true;
+        }}
         onClick={() => {
           if (showSettings) return;
           setChromeVisible((v) => !v);
@@ -184,37 +241,79 @@ export default function FeedArticleReader({
               <ExternalLink className="w-4 h-4" />
               Open in browser
             </a>
+            {nextItem ? (
+              <button
+                type="button"
+                onClick={goToNext}
+                className={`block w-full text-xs font-bold uppercase tracking-wider ${theme.muted}`}
+              >
+                Skip to next article
+              </button>
+            ) : null}
           </div>
         ) : (
-          <article
-            className={`mx-auto pt-[calc(var(--kora-safe-top)+3.5rem)] pb-[calc(var(--kora-safe-bottom)+1.5rem)] ${prefs.marginSize}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-5 space-y-1">
-              <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
-                {item.subscriptionTitle}
-                {isTelegram ? " · Telegram" : ""}
-              </p>
-              <h1
-                dir={textDirection(articleTitle)}
-                className={`text-xl md:text-2xl font-lexend font-bold leading-snug ${
-                  textDirection(articleTitle) === "rtl" ? "font-thaana" : ""
-                }`}
-              >
-                {articleTitle}
-              </h1>
-            </div>
+          <>
+            <article
+              className={`mx-auto pt-[calc(var(--kora-safe-top)+3.5rem)] pb-6 ${prefs.marginSize}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-5 space-y-1">
+                <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
+                  {item.subscriptionTitle}
+                  {isTelegram ? " · Telegram" : ""}
+                </p>
+                <h1
+                  dir={textDirection(articleTitle)}
+                  className={`text-xl md:text-2xl font-lexend font-bold leading-snug ${
+                    textDirection(articleTitle) === "rtl" ? "font-thaana" : ""
+                  }`}
+                >
+                  {articleTitle}
+                </h1>
+              </div>
+              <div
+                dir="auto"
+                className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext]`}
+                style={{
+                  fontSize: `${prefs.fontSize}px`,
+                  lineHeight: prefs.lineSpacing,
+                  ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
+                }}
+                dangerouslySetInnerHTML={{ __html: displayHtml }}
+              />
+            </article>
+
             <div
-              dir="auto"
-              className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext]`}
-              style={{
-                fontSize: `${prefs.fontSize}px`,
-                lineHeight: prefs.lineSpacing,
-                ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
-              }}
-              dangerouslySetInnerHTML={{ __html: displayHtml }}
-            />
-          </article>
+              ref={nextSentinelRef}
+              className={`mx-auto px-6 pb-[calc(var(--kora-safe-bottom)+4rem)] pt-4 ${prefs.marginSize}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {nextItem ? (
+                <button
+                  type="button"
+                  onClick={goToNext}
+                  className={`w-full text-left rounded-2xl border ${theme.border} ${theme.header} px-4 py-4 shadow-sm`}
+                >
+                  <p className={`text-[9px] font-bold uppercase tracking-[0.2em] ${theme.muted}`}>
+                    Scroll for next
+                  </p>
+                  <p
+                    dir={textDirection(nextItem.title)}
+                    className={`mt-1 text-sm font-lexend font-bold leading-snug line-clamp-2 ${
+                      textDirection(nextItem.title) === "rtl" ? "font-thaana" : ""
+                    }`}
+                  >
+                    {nextItem.title}
+                  </p>
+                  <p className={`mt-1 text-[10px] ${theme.muted}`}>{nextItem.subscriptionTitle}</p>
+                </button>
+              ) : (
+                <p className={`text-center text-[10px] font-bold uppercase tracking-widest ${theme.muted}`}>
+                  End of feed
+                </p>
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

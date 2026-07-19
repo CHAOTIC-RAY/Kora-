@@ -555,8 +555,14 @@ function FeedView({
       {readingArticle && (
         <FeedArticleReader
           item={readingArticle}
+          queue={visibleItems}
           userId={userId}
           onClose={() => dismissFeedArticle()}
+          onOpenItem={(next) => {
+            markFeedItemRead(next.id, true);
+            setItems(getFeedItems());
+            setReadingArticle(next);
+          }}
           onSaved={async () => {
             setItems(getFeedItems());
             await onRefreshLibrary?.();
