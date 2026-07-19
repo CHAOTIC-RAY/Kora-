@@ -779,7 +779,7 @@ export default function LibraryManager({
                       </div>
                     )}
                     {book.extension?.toLowerCase() === "audiobook" ? (
-                      <div className="w-full p-3 bg-gradient-to-b from-neutral-900/5 to-neutral-900/10">
+                      <div className="w-full p-3 bg-kindle-bg border-b border-kindle-border/40">
                         <AudiobookCassetteCard
                           title={book.title}
                           coverUrl={book.coverUrl}
