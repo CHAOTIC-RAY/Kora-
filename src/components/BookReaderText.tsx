@@ -51,7 +51,7 @@ function injectReaderStyles(
     "font-serif": "'Lora', 'Georgia', serif",
     "font-sans": "'Inter', system-ui, -apple-system, sans-serif",
     "font-mono": "'JetBrains Mono', 'Fira Code', monospace",
-    "font-thaana": "'Faruma', 'Noto Sans Thaana', 'MV Waheed', sans-serif",
+    "font-thaana": "'Noto Sans Thaana', 'MV Waheed', sans-serif",
   };
   const fontCss = fontMap[fontFamily] || fontMap["font-serif"];
 

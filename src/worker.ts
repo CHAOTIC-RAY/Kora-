@@ -22,6 +22,7 @@ import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
+import { transcribeAudioBase64 } from "./lib/transcribeAudio";
 
 declare const HTMLRewriter: any;
 
@@ -240,6 +241,7 @@ export interface Env {
   NYT_API_KEY?: string;
   GOOGLE_BOOKS_API_KEY?: string;
   NYT_BOOKS_API_KEY?: string;
+  GEMINI_API_KEY?: string;
   RAVE_BOOK_SEARCH?: any;
 }
 
@@ -2067,6 +2069,41 @@ export default {
         return new Response(JSON.stringify({ error: err.message || "Feed fetch failed" }), {
           status: 500,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    if (path === "/api/transcribe-audio" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const audio = typeof body.audio === "string" ? body.audio : "";
+        const mimeType = typeof body.mimeType === "string" ? body.mimeType : "audio/webm";
+        const previousContext =
+          typeof body.previousContext === "string" ? body.previousContext : undefined;
+
+        if (!audio) {
+          return new Response(JSON.stringify({ error: "Missing audio payload" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+
+        const apiKey = env.GEMINI_API_KEY;
+        if (!apiKey) {
+          return new Response(JSON.stringify({ error: "Transcription service is not configured." }), {
+            status: 503,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+
+        const text = await transcribeAudioBase64(audio, mimeType, apiKey, previousContext);
+        return new Response(JSON.stringify({ text }), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Transcription failed" }), {
+          status: 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
       }
     }

@@ -53,6 +53,10 @@ import {
   saveAudiobookSession,
   snapshotFromBook,
 } from "../lib/audiobookSession";
+import {
+  AudiobookLiveTranscriber,
+  type LiveTranscriberStatus,
+} from "../lib/audiobookLiveTranscriber";
 
 function getInitialAudiobookTrack(
   book: BookMetadata,
@@ -111,6 +115,20 @@ function displayAuthor(author?: string): string | null {
   const lower = author.toLowerCase().trim();
   if (["unknown", "audio", "audiobook", "unknown author"].includes(lower)) return null;
   return author;
+}
+
+function liveTranscriberPlaceholder(
+  status: LiveTranscriberStatus,
+  chapterLabel: string,
+  bookTitle: string
+): string {
+  if (status === "unavailable") {
+    return chapterLabel || bookTitle;
+  }
+  if (status === "listening") return "Listening…";
+  if (status === "processing") return "Transcribing…";
+  if (status === "error") return "Transcription paused — tap play to retry.";
+  return chapterLabel || bookTitle;
 }
 
 function normalizeTrackKey(title: string): string {
@@ -177,6 +195,7 @@ export default function AudiobookPlayer({
   const authorLabel = displayAuthor(book.author);
   const audioRef = useRef<HTMLAudioElement>(null);
   const ttsPlayerRef = useRef<BrowserTtsPlayer | null>(null);
+  const liveTranscriberRef = useRef<AudiobookLiveTranscriber | null>(null);
   const [currentTrack, setCurrentTrack] = useState(() => getInitialAudiobookTrack(book, tracks, isTtsBook));
   const currentPlayableIndex = useMemo(
     () => playableTracks.findIndex((entry) => entry.index === currentTrack),
@@ -198,6 +217,8 @@ export default function AudiobookPlayer({
   const [showTtsSettings, setShowTtsSettings] = useState(false);
   const [subtitle, setSubtitle] = useState("");
   const [transcriberReady, setTranscriberReady] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [liveTranscriberStatus, setLiveTranscriberStatus] = useState<LiveTranscriberStatus>("idle");
   const introSkippedForTrack = useRef<number | null>(null);
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
@@ -403,6 +424,9 @@ export default function AudiobookPlayer({
       setPlaybackError(null);
       outroSkipTriggered.current = false;
       introSkippedForTrack.current = null;
+      liveTranscriberRef.current?.detach(true);
+      setLiveTranscript("");
+      setLiveTranscriberStatus("idle");
 
       const savedResume =
         resumeTime ??
@@ -419,6 +443,7 @@ export default function AudiobookPlayer({
 
       try {
         const url = await resolveTrackUrl(index);
+        audioRef.current.crossOrigin = url.startsWith("blob:") ? null : "anonymous";
         audioRef.current.src = url;
         audioRef.current.playbackRate = speed;
         pendingTrackLoad.current = { index, resumeTime: savedResume };
@@ -426,6 +451,7 @@ export default function AudiobookPlayer({
         if (autoPlay) {
           await audioRef.current.play();
           setIsPlaying(true);
+          liveTranscriberRef.current?.attach(audioRef.current);
         }
         setCurrentTrack(index);
       } catch (err) {
@@ -466,10 +492,32 @@ export default function AudiobookPlayer({
       unsub();
       ttsPlayerRef.current?.destroy();
       ttsPlayerRef.current = null;
+      liveTranscriberRef.current?.destroy();
+      liveTranscriberRef.current = null;
       Object.values(localUrls).forEach((u) => URL.revokeObjectURL(u));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (isTtsBook) return;
+
+    const transcriber = new AudiobookLiveTranscriber({
+      onUpdate: (text) => {
+        setLiveTranscript(text);
+        setTranscriberReady(Boolean(text.trim()));
+      },
+      onStatus: setLiveTranscriberStatus,
+    });
+    liveTranscriberRef.current = transcriber;
+
+    return () => {
+      transcriber.destroy();
+      if (liveTranscriberRef.current === transcriber) {
+        liveTranscriberRef.current = null;
+      }
+    };
+  }, [isTtsBook]);
 
   useEffect(() => {
     if (isTtsBook) {
@@ -549,6 +597,7 @@ export default function AudiobookPlayer({
       ttsPlayerRef.current?.stop();
     } else {
       audioRef.current?.pause();
+      liveTranscriberRef.current?.detach(false);
     }
     setIsPlaying(false);
     clearAudiobookMediaSession();
@@ -579,7 +628,7 @@ export default function AudiobookPlayer({
   useEffect(() => {
     setupAudiobookMediaSession(
       {
-        title: isTtsBook && subtitle ? subtitle : currentTrackLabel || book.title,
+        title: (isTtsBook ? subtitle : liveTranscript) || currentTrackLabel || book.title,
         artist: authorLabel || book.author || "Kora",
         album: book.title,
         artworkUrl: book.coverUrl,
@@ -606,11 +655,11 @@ export default function AudiobookPlayer({
       }
     );
     return () => clearAudiobookMediaSession();
-  }, [authorLabel, book.coverUrl, book.title, currentTrackLabel, duration, isPlaying, isTtsBook, speed, stopPlayback, subtitle, tracks.length]);
+  }, [authorLabel, book.coverUrl, book.title, currentTrackLabel, duration, isPlaying, isTtsBook, liveTranscript, speed, stopPlayback, subtitle, tracks.length]);
 
   useEffect(() => {
     updateAudiobookMediaSession({
-      title: isTtsBook && subtitle ? subtitle : currentTrackLabel || book.title,
+      title: (isTtsBook ? subtitle : liveTranscript) || currentTrackLabel || book.title,
       artist: authorLabel || book.author || "Kora",
       album: book.title,
       artworkUrl: book.coverUrl,
@@ -619,7 +668,7 @@ export default function AudiobookPlayer({
       playbackRate: speed,
       isPlaying,
     });
-  }, [authorLabel, book.author, book.coverUrl, book.title, currentTime, currentTrackLabel, duration, isPlaying, isTtsBook, speed, subtitle]);
+  }, [authorLabel, book.author, book.coverUrl, book.title, currentTime, currentTrackLabel, duration, isPlaying, isTtsBook, liveTranscript, speed, subtitle]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -672,7 +721,7 @@ export default function AudiobookPlayer({
 
   const transcriberText = isTtsBook
     ? subtitle
-    : currentTrackLabel;
+    : liveTranscript || liveTranscriberPlaceholder(liveTranscriberStatus, currentTrackLabel, book.title);
 
   return (
     <>
@@ -725,8 +774,16 @@ export default function AudiobookPlayer({
             void persistProgress(currentTrack, 0, 100, false);
           }
         }}
-        onPause={() => setIsPlaying(false)}
-        onPlay={() => setIsPlaying(true)}
+        onPause={() => {
+          setIsPlaying(false);
+          if (!isTtsBook) liveTranscriberRef.current?.detach(false);
+        }}
+        onPlay={() => {
+          setIsPlaying(true);
+          if (!isTtsBook && audioRef.current) {
+            liveTranscriberRef.current?.attach(audioRef.current);
+          }
+        }}
         onError={() => {
           setIsPlaying(false);
           setPlaybackError("Playback failed — the audio source may be unavailable. Try downloading tracks.");
@@ -747,7 +804,7 @@ export default function AudiobookPlayer({
               <div className="min-w-0">
                 <p className="text-xs font-bold text-kindle-text truncate">{book.title}</p>
                 <p className="text-[10px] text-kindle-text-muted truncate">
-                  {isTtsBook ? (transcriberText || "Audio transcriber…") : currentTrackLabel}
+                  {transcriberText || (isTtsBook ? "Audio transcriber…" : currentTrackLabel)}
                 </p>
               </div>
             </button>
@@ -819,8 +876,13 @@ export default function AudiobookPlayer({
               <p className="text-sm font-serif leading-relaxed text-kindle-text text-center line-clamp-4">
                 {isTtsBook
                   ? transcriberText || (transcriberReady ? "" : "Preparing transcription…")
-                  : transcriberText || book.title}
+                  : transcriberText}
               </p>
+              {!isTtsBook && liveTranscriberStatus === "unavailable" && (
+                <p className="text-[10px] text-kindle-text-muted text-center">
+                  Live transcription unavailable — showing chapter title.
+                </p>
+              )}
             </div>
 
             <div className="text-center w-full space-y-0.5">
