@@ -235,13 +235,16 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5 overflow-y-auto py-6">
-        <div className="w-full max-w-sm px-2">
-          <CassetteVisualizer
-            title={book.title}
-            coverUrl={book.coverUrl}
-            size="player"
-            playing={isPlaying}
-          />
+        <div className="w-full max-w-md px-2">
+          <div className="relative p-4 rounded-2xl bg-kindle-card border border-kindle-border shadow-xl">
+            <div className="absolute inset-x-6 top-2 h-1 rounded-full bg-kindle-border/60" />
+            <CassetteVisualizer
+              title={book.title}
+              coverUrl={book.coverUrl}
+              size="player"
+              playing={isPlaying}
+            />
+          </div>
         </div>
 
         <div className="text-center max-w-md space-y-1">
