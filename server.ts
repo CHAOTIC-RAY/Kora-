@@ -1568,17 +1568,80 @@ async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
   return fetchPageHtmlWithProxies(targetUrl, "bookTitle");
 }
 
-// Static curated list: Goodreads "Week in Books" blog post #3182 (July 17, 2026)
+// Fallback curated list: Goodreads "Week in Books" blog post #3182 (July 17, 2026)
 const GOODREADS_BLOG_3182_BOOKS = [
-  { rank: 1, title: "The Calamity Club", author: "Kathryn Stockett", description: "Trending #1 on Goodreads this week — the highly anticipated new novel from the author of The Help.", rating: 4.2, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 2, title: "Yesteryear", author: "Caro Claire Burke", description: "Trending #2 on Goodreads — also the NYT #1 Hardcover Fiction bestseller this week.", rating: 4.1, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 3, title: "The Correspondent", author: "Virginia Evans", description: "Trending #3 on Goodreads this week.", rating: 4.0, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 4, title: "Whistler", author: "Ann Patchett", description: "Trending #4 on Goodreads — the latest novel from beloved author Ann Patchett.", rating: 4.1, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 5, title: "Dolly All the Time", author: "Annabel Monaghan", description: "Trending #5 on Goodreads — a GMA Book Club Pick and instant NYT bestseller about a single mother and a surprise romance.", rating: 4.0, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 6, title: "Theo of Golden", author: "Allen Levi", description: "Trending #6 on Goodreads — a national bestseller about faith, community, and a small-town coffee shop.", rating: 4.3, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 7, title: "The Shampoo Effect", author: "Jenny Jackson", description: "Trending #7 on Goodreads this week — from the author of Pineapple Street.", rating: 4.0, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 8, title: "Heart the Lover", author: "Lily King", description: "Trending #8 on Goodreads — an instant NYT bestseller and PEN/Faulkner Award finalist from Lily King.", rating: 4.1, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
-  { rank: 9, title: "A Football Odyssey", author: "Rob Potts", description: "Featured in Goodreads' Week in Books: a sweeping story of passion, politics, and the beautiful game.", rating: 4.0, ratingCount: "Featured pick", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 1, title: "The Calamity Club", author: "Kathryn Stockett", description: "Trending #1 on Goodreads this week — the highly anticipated new novel from the author of The Help.", rating: 4.2, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 2, title: "Yesteryear", author: "Caro Claire Burke", description: "Trending #2 on Goodreads — also the NYT #1 Hardcover Fiction bestseller this week.", rating: 4.1, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 3, title: "The Correspondent", author: "Virginia Evans", description: "Trending #3 on Goodreads this week.", rating: 4.0, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 4, title: "Whistler", author: "Ann Patchett", description: "Trending #4 on Goodreads — the latest novel from beloved author Ann Patchett.", rating: 4.1, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 5, title: "Dolly All the Time", author: "Annabel Monaghan", description: "Trending #5 on Goodreads — a GMA Book Club Pick and instant NYT bestseller.", rating: 4.0, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 6, title: "Theo of Golden", author: "Allen Levi", description: "Trending #6 on Goodreads — a national bestseller about faith, community, and a small-town coffee shop.", rating: 4.3, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 7, title: "The Shampoo Effect", author: "Jenny Jackson", description: "Trending #7 on Goodreads this week — from the author of Pineapple Street.", rating: 4.0, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 8, title: "Heart the Lover", author: "Lily King", description: "Trending #8 on Goodreads — an instant NYT bestseller and PEN/Faulkner Award finalist.", rating: 4.1, ratingCount: "Trending on Goodreads", goodreadsId: "", source: "goodreads" },
+  { rank: 9, title: "A Football Odyssey", author: "Rob Potts", description: "Featured in Goodreads' Week in Books: passion, politics, and the beautiful game.", rating: 4.0, ratingCount: "Featured pick", goodreadsId: "", source: "goodreads" },
+];
+
+// Daily Goodreads Trending Cache — refreshes once per calendar day
+let goodreadsTrendingCache: any[] | null = null;
+let goodreadsTrendingCacheDate = "";
+
+async function fetchGoodreadsTrendingBooks(): Promise<any[]> {
+  const today = new Date().toISOString().split("T")[0];
+  if (goodreadsTrendingCache && goodreadsTrendingCacheDate === today) {
+    console.log("[Goodreads Trending] Cache hit for", today);
+    return goodreadsTrendingCache;
+  }
+  console.log("[Goodreads Trending] Fetching fresh data from goodreads.com/book/most_read …");
+  try {
+    const html = await fetchPageHtmlWithProxies("https://www.goodreads.com/book/most_read", "bookTitle");
+    const $ = cheerio.load(html);
+    const books: any[] = [];
+    $("tr").each((_idx, el) => {
+      if (books.length >= 12) return false as any;
+      const row = $(el);
+      const title = (row.find("a.bookTitle span").text() || row.find(".bookTitle").text()).trim();
+      const author = (row.find("a.authorName span").text() || row.find(".authorName").text()).trim();
+      if (!title) return;
+      let coverUrl: string | null = row.find("img.bookCover, img[itemprop='image']").attr("src") || null;
+      if (coverUrl && (coverUrl.includes("nophoto") || coverUrl.includes("nocover"))) coverUrl = null;
+      books.push({
+        rank: books.length + 1,
+        title,
+        author,
+        description: "Currently trending on Goodreads — one of the most-read books this week.",
+        rating: 4.0,
+        ratingCount: "Trending this week",
+        coverUrl: coverUrl || `/api/cover-redirect?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author || "")}`,
+        goodreadsId: "",
+        source: "goodreads",
+      });
+    });
+    if (books.length >= 3) {
+      goodreadsTrendingCache = books;
+      goodreadsTrendingCacheDate = today;
+      console.log(`[Goodreads Trending] Cached ${books.length} books for ${today}.`);
+      return books;
+    }
+    throw new Error(`Only ${books.length} books parsed — insufficient.`);
+  } catch (err: any) {
+    console.warn("[Goodreads Trending] Scrape failed, using static fallback:", err.message);
+    return GOODREADS_BLOG_3182_BOOKS.map(b => ({
+      ...b,
+      coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+    }));
+  }
+}
+
+// Popular audiobooks — static curated list used as fallback/baseline
+const POPULAR_AUDIOBOOKS = [
+  { rank: 1, title: "Atomic Habits", author: "James Clear", description: "Practical strategies for building good habits — one of the most downloaded audiobooks of all time.", rating: 4.8, source: "audiobook" },
+  { rank: 2, title: "Project Hail Mary", author: "Andy Weir", description: "Award-winning sci-fi narrated by Ray Porter — a solo astronaut's mission to save Earth.", rating: 4.9, source: "audiobook" },
+  { rank: 3, title: "Where the Crawdads Sing", author: "Delia Owens", description: "One of the most downloaded audiobooks — a murder mystery and coming-of-age story.", rating: 4.7, source: "audiobook" },
+  { rank: 4, title: "Educated", author: "Tara Westover", description: "Narrated by the author — a gripping memoir about seeking education against all odds.", rating: 4.7, source: "audiobook" },
+  { rank: 5, title: "Daisy Jones & The Six", author: "Taylor Jenkins Reid", description: "Full cast production — the rise and fall of a 1970s rock band, narrated like a documentary.", rating: 4.6, source: "audiobook" },
+  { rank: 6, title: "Dune", author: "Frank Herbert", description: "Full cast production of the sci-fi classic — an unparalleled listening experience.", rating: 4.6, source: "audiobook" },
+  { rank: 7, title: "The Midnight Library", author: "Matt Haig", description: "Narrated by Carey Mulligan — a novel about choices and the lives we could have lived.", rating: 4.5, source: "audiobook" },
+  { rank: 8, title: "The Great Alone", author: "Kristin Hannah", description: "A powerful story of love and survival in the Alaskan wilderness.", rating: 4.6, source: "audiobook" },
 ];
 
 app.get("/api/goodreads/list", async (req, res) => {
@@ -1588,14 +1651,10 @@ app.get("/api/goodreads/list", async (req, res) => {
       return res.status(400).json({ error: "Missing 'list' query parameter." });
     }
 
-    // Special case: static curated blog list
+    // Special case: daily-refreshed Goodreads trending list
     if (listQuery === "goodreads-blog-3182-weekly") {
-      console.log("[Goodreads API] Returning static Goodreads blog #3182 weekly list.");
-      const withCovers = GOODREADS_BLOG_3182_BOOKS.map(b => ({
-        ...b,
-        coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`
-      }));
-      return res.json(withCovers);
+      const books = await fetchGoodreadsTrendingBooks();
+      return res.json(books);
     }
 
     console.log(`[Goodreads API] Fetching books for list query: ${listQuery}`);
@@ -1735,6 +1794,65 @@ app.get("/api/goodreads/list", async (req, res) => {
     console.error("Critical failure in Goodreads route:", globalErr);
     res.status(500).json({ error: "Failed to load Goodreads list" });
   }
+});
+
+// Audiobooks: popular titles for discovery feed
+app.get("/api/audiobooks/popular", async (_req, res) => {
+  const withCovers = POPULAR_AUDIOBOOKS.map(b => ({
+    ...b,
+    coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+  }));
+  res.json(withCovers);
+});
+
+// Audiobooks: search fulllengthaudiobooks.com and hdaudiobooks.com
+app.get("/api/audiobooks/search", async (req, res) => {
+  const q = (req.query.q as string || "").trim();
+  if (!q) return res.status(400).json({ error: "Missing query parameter 'q'" });
+
+  const results: any[] = [];
+
+  const parseAudiobookHtml = (html: string, sourceName: string, baseUrl: string) => {
+    const $ = cheerio.load(html);
+    $("article, .post, .entry, .book-item, .product").each((_i, el) => {
+      if (results.length >= 16) return false as any;
+      const item = $(el);
+      const titleEl = item.find("h2 a, h3 a, .entry-title a, .post-title a, h2, h3").first();
+      const title = titleEl.text().trim();
+      const link = titleEl.attr("href") || item.find("a").first().attr("href") || "";
+      const coverUrl = item.find("img").first().attr("src") || null;
+      const author = item.find(".author, .book-author, .entry-meta").first().text().replace(/by\s+/i, "").trim() || "";
+      if (!title || title.length < 3) return;
+      const absoluteLink = link.startsWith("http") ? link : `${baseUrl}${link}`;
+      results.push({ title, author, coverUrl, link: absoluteLink, source: sourceName });
+    });
+  };
+
+  await Promise.allSettled([
+    fetchPageHtmlWithProxies(`https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`)
+      .then(html => parseAudiobookHtml(html, "fulllengthaudiobooks", "https://fulllengthaudiobooks.com"))
+      .catch(err => console.warn("[Audiobook] fulllengthaudiobooks search failed:", err.message)),
+    fetchPageHtmlWithProxies(`https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`)
+      .then(html => parseAudiobookHtml(html, "hdaudiobooks", "https://hdaudiobooks.com"))
+      .catch(err => console.warn("[Audiobook] hdaudiobooks search failed:", err.message)),
+  ]);
+
+  // If scraping returned nothing, fall back to matching popular audiobooks by title
+  if (results.length === 0) {
+    const lower = q.toLowerCase();
+    POPULAR_AUDIOBOOKS.filter(b =>
+      b.title.toLowerCase().includes(lower) || b.author.toLowerCase().includes(lower)
+    ).forEach(b => {
+      results.push({
+        ...b,
+        coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+        link: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+        source: "hdaudiobooks",
+      });
+    });
+  }
+
+  res.json(results);
 });
 
 // Goodreads reviews endpoint

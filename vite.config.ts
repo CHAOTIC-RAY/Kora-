@@ -15,7 +15,7 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
       // Allow Replit's proxied iframe to reach the dev server
-      allowedHosts: true,
+      allowedHosts: true as true,
     },
   };
 });
