@@ -126,6 +126,7 @@ const ALL_CATEGORIES = [
   { id: "advice-how-to",        title: "Advice & How-To",           query: "advice-how-to", source: "nyt" },
   { id: "childrens-middle-grade-hardcover", title: "Middle Grade", query: "childrens-middle-grade-hardcover", source: "nyt" },
   { id: "young-adult-hardcover", title: "Young Adult", query: "young-adult-hardcover", source: "nyt" },
+  { id: "goodreads-weekly-blog", title: "Goodreads: Trending This Week", query: "goodreads-blog-3182-weekly", source: "goodreads" },
   { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
   { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
   { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },

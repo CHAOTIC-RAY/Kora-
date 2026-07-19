@@ -1568,11 +1568,34 @@ async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
   return fetchPageHtmlWithProxies(targetUrl, "bookTitle");
 }
 
+// Static curated list: Goodreads "Week in Books" blog post #3182 (July 17, 2026)
+const GOODREADS_BLOG_3182_BOOKS = [
+  { rank: 1, title: "The Calamity Club", author: "Kathryn Stockett", description: "Trending #1 on Goodreads this week — the highly anticipated new novel from the author of The Help.", rating: 4.2, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 2, title: "Yesteryear", author: "Caro Claire Burke", description: "Trending #2 on Goodreads — also the NYT #1 Hardcover Fiction bestseller this week.", rating: 4.1, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 3, title: "The Correspondent", author: "Virginia Evans", description: "Trending #3 on Goodreads this week.", rating: 4.0, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 4, title: "Whistler", author: "Ann Patchett", description: "Trending #4 on Goodreads — the latest novel from beloved author Ann Patchett.", rating: 4.1, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 5, title: "Dolly All the Time", author: "Annabel Monaghan", description: "Trending #5 on Goodreads — a GMA Book Club Pick and instant NYT bestseller about a single mother and a surprise romance.", rating: 4.0, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 6, title: "Theo of Golden", author: "Allen Levi", description: "Trending #6 on Goodreads — a national bestseller about faith, community, and a small-town coffee shop.", rating: 4.3, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 7, title: "The Shampoo Effect", author: "Jenny Jackson", description: "Trending #7 on Goodreads this week — from the author of Pineapple Street.", rating: 4.0, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 8, title: "Heart the Lover", author: "Lily King", description: "Trending #8 on Goodreads — an instant NYT bestseller and PEN/Faulkner Award finalist from Lily King.", rating: 4.1, ratingCount: "Trending on Goodreads", coverUrl: null, goodreadsId: "", source: "goodreads" },
+  { rank: 9, title: "A Football Odyssey", author: "Rob Potts", description: "Featured in Goodreads' Week in Books: a sweeping story of passion, politics, and the beautiful game.", rating: 4.0, ratingCount: "Featured pick", coverUrl: null, goodreadsId: "", source: "goodreads" },
+];
+
 app.get("/api/goodreads/list", async (req, res) => {
   try {
     const listQuery = req.query.list as string;
     if (!listQuery) {
       return res.status(400).json({ error: "Missing 'list' query parameter." });
+    }
+
+    // Special case: static curated blog list
+    if (listQuery === "goodreads-blog-3182-weekly") {
+      console.log("[Goodreads API] Returning static Goodreads blog #3182 weekly list.");
+      const withCovers = GOODREADS_BLOG_3182_BOOKS.map(b => ({
+        ...b,
+        coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`
+      }));
+      return res.json(withCovers);
     }
 
     console.log(`[Goodreads API] Fetching books for list query: ${listQuery}`);
