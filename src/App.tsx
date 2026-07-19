@@ -80,7 +80,6 @@ const MOBILE_TABS = [
 ];
 
 type AppTab = "library" | "discover" | "feed" | "tools" | "settings";
-const ALL_APP_TABS: AppTab[] = ["library", "discover", "feed", "tools", "settings"];
 
 async function injectMetadataIntoEpub(
   fileBlob: Blob,
