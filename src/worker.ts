@@ -115,6 +115,104 @@ async function resolveLibgenSigned(md5: string, timeoutMs = 2800): Promise<strin
   }
 }
 
+/** When Google Books is quota-limited, return an Open Library result shaped like a volumes response. */
+async function googleBooksFallbackFromOpenLibrary(q: string, maxResults = 5): Promise<any | null> {
+  try {
+    const intitle =
+      q.match(/intitle:"([^"]+)"/i)?.[1] ||
+      q.match(/intitle:(\S+)/i)?.[1] ||
+      "";
+    const inauthor =
+      q.match(/inauthor:"([^"]+)"/i)?.[1] ||
+      q.match(/inauthor:(.+)$/i)?.[1]?.trim() ||
+      "";
+    const bare = q
+      .replace(/intitle:"[^"]+"/gi, " ")
+      .replace(/intitle:\S+/gi, " ")
+      .replace(/inauthor:"[^"]+"/gi, " ")
+      .replace(/inauthor:.+$/gi, " ")
+      .replace(/[+\s]+/g, " ")
+      .trim();
+
+    const olUrl = new URL("https://openlibrary.org/search.json");
+    if (intitle) olUrl.searchParams.set("title", intitle);
+    if (inauthor) olUrl.searchParams.set("author", inauthor);
+    if (!intitle && !inauthor) olUrl.searchParams.set("q", bare || q);
+    olUrl.searchParams.set("limit", String(Math.min(Math.max(maxResults, 1), 10)));
+
+    const searchRes = await fetch(olUrl.toString(), { signal: AbortSignal.timeout(10000) });
+    if (!searchRes.ok) return null;
+    const searchData = await searchRes.json();
+    const docs = searchData?.docs || [];
+    if (!docs.length) return null;
+
+    const items = [];
+    for (const doc of docs.slice(0, maxResults)) {
+      let description = "";
+      if (doc.key) {
+        try {
+          const workRes = await fetch(`https://openlibrary.org${doc.key}.json`, {
+            signal: AbortSignal.timeout(8000),
+          });
+          if (workRes.ok) {
+            const work = await workRes.json();
+            description =
+              typeof work.description === "string"
+                ? work.description
+                : work.description?.value || "";
+          }
+        } catch {
+          /* skip description */
+        }
+      }
+
+      const coverId = doc.cover_i;
+      const isbn = doc.isbn?.[0];
+      items.push({
+        id: `ol:${doc.key || doc.edition_key?.[0] || doc.title}`,
+        volumeInfo: {
+          title: doc.title,
+          authors: doc.author_name || [],
+          description,
+          pageCount: doc.number_of_pages_median || doc.number_of_pages || undefined,
+          publishedDate: doc.first_publish_year ? String(doc.first_publish_year) : undefined,
+          publisher: doc.publisher?.[0],
+          language: doc.language?.[0],
+          categories: (doc.subject || []).slice(0, 8),
+          industryIdentifiers: (doc.isbn || []).slice(0, 4).map((id: string) => ({
+            type: id.length === 13 ? "ISBN_13" : "ISBN_10",
+            identifier: id,
+          })),
+          imageLinks: coverId
+            ? {
+                thumbnail: `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`,
+                smallThumbnail: `https://covers.openlibrary.org/b/id/${coverId}-S.jpg`,
+              }
+            : isbn
+              ? {
+                  thumbnail: `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`,
+                  smallThumbnail: `https://covers.openlibrary.org/b/isbn/${isbn}-S.jpg`,
+                }
+              : undefined,
+          previewLink: doc.key ? `https://openlibrary.org${doc.key}` : undefined,
+          infoLink: doc.key ? `https://openlibrary.org${doc.key}` : undefined,
+          sourceNote: "openlibrary-fallback",
+        },
+      });
+    }
+
+    if (!items.length) return null;
+    return {
+      kind: "books#volumes",
+      totalItems: searchData.numFound || items.length,
+      items,
+      source: "openlibrary-fallback",
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseCookies(cookieHeader: string | null | undefined): Record<string, string> {
   const list: Record<string, string> = {};
   if (!cookieHeader) return list;
@@ -1922,29 +2020,95 @@ export default {
       }
     }
 
-    // Google Books API Proxy
+    // Google Books API Proxy (cached; falls back to Open Library when Google quota/503s)
     if (path === "/api/google-books/search") {
       const q = url.searchParams.get("q");
-      const maxResults = url.searchParams.get("maxResults") || "1";
+      const maxResults = url.searchParams.get("maxResults") || "5";
       const startIndex = url.searchParams.get("startIndex") || "";
       if (!q) {
-        return new Response(JSON.stringify({ error: "Missing query" }), { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } });
+        return new Response(JSON.stringify({ error: "Missing query" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
       }
-      
+
+      const jsonHeaders = {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+        "Cache-Control": "public, max-age=3600",
+      };
+
+      const cacheKey = new Request(
+        `https://kora-cache.internal/google-books?q=${encodeURIComponent(q)}&max=${maxResults}&start=${startIndex || "0"}`
+      );
+      try {
+        const cached = await caches.default.match(cacheKey);
+        if (cached) {
+          const body = await cached.text();
+          return new Response(body, { status: 200, headers: jsonHeaders });
+        }
+      } catch {
+        /* cache optional */
+      }
+
       const apiKey = env.GOOGLE_BOOKS_API_KEY || "";
       const start = startIndex ? `&startIndex=${startIndex}` : "";
       const fetchUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${maxResults}${start}${apiKey ? `&key=${apiKey}` : ""}`;
-      
+
       try {
-        const response = await fetch(fetchUrl);
+        const response = await fetch(fetchUrl, { signal: AbortSignal.timeout(12000) });
         const data = await response.json();
-        return new Response(JSON.stringify(data), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        const googleOk = response.ok && !data?.error && Array.isArray(data?.items) && data.items.length > 0;
+
+        if (googleOk) {
+          const payload = JSON.stringify(data);
+          const out = new Response(payload, { status: 200, headers: jsonHeaders });
+          try {
+            await caches.default.put(
+              cacheKey,
+              new Response(payload, {
+                status: 200,
+                headers: { ...jsonHeaders, "Cache-Control": "public, max-age=86400" },
+              })
+            );
+          } catch {
+            /* ignore */
+          }
+          return out;
+        }
+
+        // Google is often 429/503 without a key — synthesize a volumes-like payload from Open Library.
+        const olFallback = await googleBooksFallbackFromOpenLibrary(q, Number(maxResults) || 5);
+        if (olFallback) {
+          const payload = JSON.stringify(olFallback);
+          try {
+            await caches.default.put(
+              cacheKey,
+              new Response(payload, {
+                status: 200,
+                headers: { ...jsonHeaders, "Cache-Control": "public, max-age=3600" },
+              })
+            );
+          } catch {
+            /* ignore */
+          }
+          return new Response(payload, { status: 200, headers: jsonHeaders });
+        }
+
+        // Surface Google's error so the client can show a useful message / try another source.
+        const status = data?.error?.code && Number(data.error.code) >= 400 ? Number(data.error.code) : response.ok ? 404 : response.status;
+        return new Response(JSON.stringify(data?.error ? data : { error: "No Google Books results", details: data }), {
+          status: status === 429 || status === 403 ? status : status >= 400 ? status : 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
       } catch (err: any) {
+        const olFallback = await googleBooksFallbackFromOpenLibrary(q, Number(maxResults) || 5);
+        if (olFallback) {
+          return new Response(JSON.stringify(olFallback), { status: 200, headers: jsonHeaders });
+        }
         return new Response(JSON.stringify({ error: "Failed to fetch from Google Books", details: err.message }), {
           status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
       }
     }

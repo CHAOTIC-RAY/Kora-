@@ -1048,66 +1048,136 @@ function DiscoverView({
     };
   };
 
+  const fetchOpenLibraryDescription = async (title: string, author: string): Promise<{
+    description: string;
+    doc?: any;
+  }> => {
+    try {
+      const olRes = await fetch(
+        `/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`
+      );
+      if (!olRes.ok) return { description: "" };
+      const data = await olRes.json();
+      const doc = data.docs?.[0];
+      if (!doc) return { description: "" };
+      let description = "";
+      if (doc.key) {
+        try {
+          // Prefer worker proxy path when available; fall back to direct OL.
+          const workRes = await fetch(`https://openlibrary.org${doc.key}.json`);
+          if (workRes.ok) {
+            const workData = await workRes.json();
+            description =
+              typeof workData.description === "string"
+                ? workData.description
+                : workData.description?.value || "";
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return { description, doc };
+    } catch {
+      return { description: "" };
+    }
+  };
+
   const fetchFeaturedMetadata = async (title: string, author: string, forceSource?: "google" | "nyt" | "openlibrary") => {
     setLoadingFeaturedDetails(true);
     setFeaturedBookDetails(null);
     setSimilarBooks([]);
     setReadMoreExpanded(false);
     const sourceToUse = forceSource || metadataSource;
+    const cleanTitle = (title || "").trim();
+    const cleanAuthor = (author || "").trim();
     
     try {
-      // 1. Google Books (Preferred Default)
+      // 1. Google Books (Preferred Default) — worker falls back to Open Library on quota errors.
       if (sourceToUse === "google") {
-        const q = encodeURIComponent(`intitle:${title} inauthor:${author}`);
-        const res = await fetch(`/api/google-books/search?q=${q}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.items && data.items.length > 0) {
-            const info = data.items[0].volumeInfo;
-            setFeaturedBookDetails({
-              ...info,
-              title: info.title,
-              authors: info.authors,
-              description: info.description || selectedFeaturedBook?.description,
-              pageCount: info.pageCount,
-              publishedDate: info.publishedDate,
-              publisher: info.publisher,
-              language: info.language,
-              industryIdentifiers: info.industryIdentifiers || [],
-              categories: info.categories || [],
-              subjects: info.categories 
-                ? Array.from(new Set(info.categories.flatMap((cat: string) => {
-                    const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
-                    return [cat, ...parts]; // Keep full path and parts
-                  })))
-                : [],
-              averageRating: info.averageRating,
-              ratingsCount: info.ratingsCount,
-              previewLink: info.previewLink,
-              source: "Google Books"
-            });
+        const queries = [
+          cleanAuthor ? `intitle:${cleanTitle} inauthor:${cleanAuthor}` : `intitle:${cleanTitle}`,
+          cleanAuthor ? `"${cleanTitle}" "${cleanAuthor}"` : `"${cleanTitle}"`,
+          `${cleanTitle} ${cleanAuthor}`.trim(),
+        ].filter(Boolean);
 
-            // Fetch similar books based on categories
-            if (info.categories && info.categories.length > 0) {
-              fetchSimilarBooks(info.categories[0]);
-            }
-            setLoadingFeaturedDetails(false);
-            return;
+        let info: any = null;
+        let usedFallback = false;
+        for (const query of queries) {
+          const res = await fetch(
+            `/api/google-books/search?q=${encodeURIComponent(query)}&maxResults=5`
+          );
+          if (!res.ok) continue;
+          const data = await res.json();
+          if (data?.error || !data?.items?.length) continue;
+          usedFallback = data.source === "openlibrary-fallback";
+          const ranked = [...data.items].sort((a: any, b: any) => {
+            const ad = (a.volumeInfo?.description || "").length;
+            const bd = (b.volumeInfo?.description || "").length;
+            return bd - ad;
+          });
+          info = ranked[0]?.volumeInfo;
+          if (info?.description) break;
+          if (info) break;
+        }
+
+        // If Google returned a match without a blurb, pull description from Open Library.
+        if (info && !info.description) {
+          const { description } = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
+          if (description) info = { ...info, description };
+        }
+
+        if (info) {
+          setFeaturedBookDetails({
+            ...info,
+            title: info.title || cleanTitle,
+            authors: info.authors || (cleanAuthor ? [cleanAuthor] : []),
+            description: info.description || selectedFeaturedBook?.description || "",
+            pageCount: info.pageCount,
+            publishedDate: info.publishedDate,
+            publisher: info.publisher,
+            language: info.language,
+            industryIdentifiers: info.industryIdentifiers || [],
+            categories: info.categories || [],
+            subjects: info.categories
+              ? Array.from(
+                  new Set(
+                    info.categories.flatMap((cat: string) => {
+                      const parts = cat.split("/").map((s: string) => s.trim()).filter(Boolean);
+                      return [cat, ...parts];
+                    })
+                  )
+                )
+              : [],
+            averageRating: info.averageRating,
+            ratingsCount: info.ratingsCount,
+            previewLink: info.previewLink,
+            source: usedFallback ? "Open Library (via Google)" : "Google Books",
+          });
+
+          if (info.categories && info.categories.length > 0) {
+            fetchSimilarBooks(info.categories[0]);
           }
+          setLoadingFeaturedDetails(false);
+          return;
         }
       }
 
       // 2. New York Times (Verified Raw)
       if (sourceToUse === "nyt") {
-        const nytRes = await fetch(`/api/nytimes/book-details-raw?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
+        const nytRes = await fetch(`/api/nytimes/book-details-raw?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(cleanAuthor)}`);
         if (nytRes.ok) {
           const data = await nytRes.json();
           if (data && data.results && data.results.length > 0) {
             const book = data.results[0];
+            let description = book.description || selectedFeaturedBook?.description || "";
+            if (!description) {
+              const ol = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
+              description = ol.description;
+            }
             setFeaturedBookDetails({
               title: book.title,
               authors: [book.author],
-              description: book.description || selectedFeaturedBook?.description,
+              description,
               pageCount: null, 
               publishedDate: null,
               publisher: book.publisher,
@@ -1122,44 +1192,30 @@ function DiscoverView({
         }
       }
 
-      // 3. Open Library
-      if (sourceToUse === "openlibrary") {
-        const olRes = await fetch(`/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
-        if (olRes.ok) {
-          const data = await olRes.json();
-          const doc = data.docs?.[0];
-          if (doc) {
-            let description = "";
-            if (doc.key) {
-              try {
-                const workRes = await fetch(`https://openlibrary.org${doc.key}.json`);
-                if (workRes.ok) {
-                  const workData = await workRes.json();
-                  description = typeof workData.description === "string" ? workData.description : (workData.description?.value || "");
-                }
-              } catch (err) {}
-            }
-            setFeaturedBookDetails({
-              title: doc.title,
-              authors: doc.author_name,
-              description: description || selectedFeaturedBook?.description,
-              pageCount: doc.number_of_pages_median || doc.number_of_pages,
-              publishedDate: doc.first_publish_year?.toString(),
-              publisher: doc.publisher?.[0],
-              language: doc.language?.[0],
-              industryIdentifiers: doc.isbn?.map((i: string) => ({ type: "ISBN", identifier: i })),
-              categories: doc.subject || [],
-              subjects: doc.subject 
-                ? Array.from(new Set(doc.subject.flatMap((cat: string) => {
-                    const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
-                    return [cat, ...parts];
-                  })))
-                : [],
-              source: "Open Library"
-            });
-            setLoadingFeaturedDetails(false);
-            return;
-          }
+      // 3. Open Library (also used as last-resort when Google/NYT miss)
+      if (sourceToUse === "openlibrary" || sourceToUse === "google" || sourceToUse === "nyt") {
+        const { description, doc } = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
+        if (doc) {
+          setFeaturedBookDetails({
+            title: doc.title,
+            authors: doc.author_name,
+            description: description || selectedFeaturedBook?.description || "",
+            pageCount: doc.number_of_pages_median || doc.number_of_pages,
+            publishedDate: doc.first_publish_year?.toString(),
+            publisher: doc.publisher?.[0],
+            language: doc.language?.[0],
+            industryIdentifiers: doc.isbn?.map((i: string) => ({ type: "ISBN", identifier: i })),
+            categories: doc.subject || [],
+            subjects: doc.subject 
+              ? Array.from(new Set(doc.subject.flatMap((cat: string) => {
+                  const parts = cat.split("/").map((s: string) => s.trim()).filter(Boolean);
+                  return [cat, ...parts];
+                })))
+              : [],
+            source: sourceToUse === "openlibrary" ? "Open Library" : "Open Library (fallback)"
+          });
+          setLoadingFeaturedDetails(false);
+          return;
         }
       }
     } catch (e) {
@@ -3799,7 +3855,13 @@ function DiscoverView({
                             </div>
                           ) : (
                             <p className="whitespace-pre-line text-sm md:text-base text-neutral-700 dark:text-kindle-text-muted leading-relaxed">
-                              {stripHtml(featuredBookDetails?.description || selectedFeaturedBook.description || "No detailed description available.")}
+                              {stripHtml(
+                                featuredBookDetails?.description ||
+                                  selectedFeaturedBook.description ||
+                                  (loadingFeaturedDetails
+                                    ? ""
+                                    : "No detailed description available from this source. Try Open Library or NYT above.")
+                              )}
                             </p>
                           )}
                         </div>
