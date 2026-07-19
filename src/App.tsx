@@ -1765,6 +1765,7 @@ export default function App() {
             readerPrefs={readerPrefs}
             onReaderPrefsChange={setReaderPrefs}
             onClose={dismissReader}
+            onRefreshLibrary={refreshLibrary}
             onProgressUpdate={(updatedBook) => {
               setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
               setLastReadBook(updatedBook);

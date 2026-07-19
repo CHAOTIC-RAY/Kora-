@@ -22,11 +22,32 @@ import {
   saveTtsSettings,
   subscribeToVoicesChanged,
 } from "../lib/ttsSettings";
-import { prepareTextForNarration } from "../lib/ttsTextPrep";
+import { prepareTextForNarration, splitSentences } from "../lib/ttsTextPrep";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal } from "lucide-react";
+import { createBrowserTtsAudiobook, extractBookChapters } from "../lib/browserTtsAudiobook";
+import { loadCachedBookBlob } from "../lib/audiobookConverterImport";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Wand2, Loader2 } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
+
+type NarrationUnit = {
+  el: HTMLElement;
+  text: string;
+  start: number;
+  end: number;
+};
+
+const TTS_SENTENCE_MARK_CLASS = "tts-sentence-highlight";
+const TTS_BLOCK_CLASSES = [
+  "tts-highlight",
+  "bg-amber-100/40",
+  "dark:bg-amber-900/25",
+  "ring-1",
+  "ring-amber-400/40",
+  "rounded-lg",
+  "transition-all",
+  "duration-300",
+] as const;
 
 function extractLookupWord(text: string): string {
   const trimmed = text.trim();
@@ -63,6 +84,7 @@ interface BookReaderEPUBProps {
   userId: string;
   onClose: () => void;
   onProgressUpdate: (updatedBook: BookMetadata) => void;
+  onRefreshLibrary?: (uid?: string) => void;
   readerPrefs?: {
     fontSize: number;
     lineSpacing: number;
@@ -92,7 +114,7 @@ interface EpubChapter {
   fullPath: string;
 }
 
-export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs, onReaderPrefsChange }: BookReaderEPUBProps) {
+export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, onRefreshLibrary, readerPrefs, onReaderPrefsChange }: BookReaderEPUBProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chapters, setChapters] = useState<EpubChapter[]>([]);
@@ -151,6 +173,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   const useDoubleColumns = doubleColumns && !isMobile;
   const useScrollLayout = isContinuous;
+  useScrollLayoutRef.current = useScrollLayout;
+  currentPageNumRef.current = currentPageNum;
+  totalPagesRef.current = totalPages;
+  isPlayingSpeechRef.current = isPlayingSpeech;
   const columnGapPx = useDoubleColumns ? 40 : 0;
 
   useEffect(() => {
@@ -275,7 +301,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [speechRate, setSpeechRate] = useState<number>(1.0);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
-  const [currentParagraphIdx, setCurrentParagraphIdx] = useState<number>(-1);
+  const [currentSentenceIdx, setCurrentSentenceIdx] = useState<number>(-1);
+  const [exportingAudiobook, setExportingAudiobook] = useState<boolean>(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
 
   const [externalLinkToOpen, setExternalLinkToOpen] = useState<string | null>(null);
 
@@ -284,6 +312,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const zipRef = useRef<JSZip | null>(null);
   const rootDirRef = useRef<string>("");
   const blobUrlsRef = useRef<string[]>([]);
+  const currentPageNumRef = useRef<number>(1);
+  const totalPagesRef = useRef<number>(1);
+  const useScrollLayoutRef = useRef<boolean>(false);
+  const isPlayingSpeechRef = useRef<boolean>(false);
   // Maps an EPUB internal href (normalized) -> spine chapter index, so in-book
   // Table-of-Contents links (e.g. <a href="chapter1.xhtml">) navigate correctly.
   const hrefToIndexRef = useRef<Map<string, number>>(new Map());
@@ -965,10 +997,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     if (showAudiobook) {
       const readableEl = target.closest("p, h1, h2, h3, h4, li");
       if (readableEl) {
-        const elements = getDOMElementsToRead();
-        const idx = elements.indexOf(readableEl);
+        const units = getNarrationUnits({ clearHighlights: false });
+        const idx = units.findIndex((unit) => unit.el === readableEl);
         if (idx !== -1) {
-          speakParagraph(idx);
+          speakSentence(idx);
           return; // Don't turn page when speaking
         }
       }
@@ -1498,77 +1530,148 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   // --- Audiobook / TTS Narration Engine ---
 
+  const clearTtsHighlights = () => {
+    const container = document.getElementById("epub-text-viewer");
+    if (!container) return;
+
+    container.querySelectorAll(`mark.${TTS_SENTENCE_MARK_CLASS}`).forEach((mark) => {
+      const parent = mark.parentNode;
+      if (!parent) return;
+      while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+      parent.removeChild(mark);
+      parent.normalize();
+    });
+
+    container.querySelectorAll(".tts-highlight").forEach((el) => {
+      el.classList.remove(...TTS_BLOCK_CLASSES);
+    });
+  };
+
   // Stop current narration
   const stopSpeech = () => {
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
     setIsPlayingSpeech(false);
-    setCurrentParagraphIdx(-1);
-
-    // Clear DOM paragraph highlights
-    const container = document.getElementById("epub-text-viewer");
-    if (container) {
-      container.querySelectorAll(".tts-highlight").forEach((el) => {
-        el.classList.remove(
-          "tts-highlight",
-          "bg-amber-100/60",
-          "dark:bg-amber-900/30",
-          "ring-1",
-          "ring-amber-400/50",
-          "rounded-lg",
-          "transition-all",
-          "duration-300"
-        );
-      });
-    }
+    setCurrentSentenceIdx(-1);
+    clearTtsHighlights();
   };
 
   // Get readable DOM text blocks from the parsed chapter container
   const getDOMElementsToRead = () => {
     const container = document.getElementById("epub-text-viewer");
     if (!container) return [];
-    // Select paragraphs, lists, and headings for speech
     return Array.from(container.querySelectorAll("p, h1, h2, h3, h4, li")).filter(
       (el) => (el.textContent?.trim().length || 0) > 3
     );
   };
 
-  // Highlight active speaking paragraph and scroll it smoothly into center view
-  const highlightParagraphInDOM = (idx: number) => {
-    const container = document.getElementById("epub-text-viewer");
-    if (!container) return;
-
-    // Remove existing highlights
-    container.querySelectorAll(".tts-highlight").forEach((el) => {
-      el.classList.remove(
-        "tts-highlight",
-        "bg-amber-100/60",
-        "dark:bg-amber-900/30",
-        "ring-1",
-        "ring-amber-400/50",
-        "rounded-lg",
-        "transition-all",
-        "duration-300"
-      );
-    });
-
-    const elements = getDOMElementsToRead();
-    if (elements[idx]) {
-      const activeEl = elements[idx] as HTMLElement;
-      activeEl.classList.add(
-        "tts-highlight",
-        "bg-amber-100/60",
-        "dark:bg-amber-900/30",
-        "ring-1",
-        "ring-amber-400/50",
-        "rounded-lg",
-        "transition-all",
-        "duration-300"
-      );
-      // Smooth visual scroll
-      activeEl.scrollIntoView({ behavior: "smooth", block: "center" });
+  const getNarrationUnits = (opts?: { clearHighlights?: boolean }): NarrationUnit[] => {
+    if (opts?.clearHighlights !== false) clearTtsHighlights();
+    const units: NarrationUnit[] = [];
+    for (const el of getDOMElementsToRead()) {
+      const text = el.textContent || "";
+      const sentences = splitSentences(text);
+      let searchFrom = 0;
+      for (const sentence of sentences) {
+        if (sentence.length < 2) continue;
+        const idx = text.indexOf(sentence, searchFrom);
+        if (idx === -1) continue;
+        units.push({
+          el: el as HTMLElement,
+          text: sentence,
+          start: idx,
+          end: idx + sentence.length,
+        });
+        searchFrom = idx + sentence.length;
+      }
     }
+    return units;
+  };
+
+  const wrapTextRange = (el: HTMLElement, start: number, end: number) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let pos = 0;
+    const ranges: { node: Text; start: number; end: number }[] = [];
+    let node = walker.nextNode() as Text | null;
+    while (node) {
+      const len = node.data.length;
+      const nodeStart = pos;
+      const nodeEnd = pos + len;
+      if (nodeEnd > start && nodeStart < end) {
+        ranges.push({
+          node,
+          start: Math.max(0, start - nodeStart),
+          end: Math.min(len, end - nodeStart),
+        });
+      }
+      pos = nodeEnd;
+      node = walker.nextNode() as Text | null;
+    }
+
+    for (let i = ranges.length - 1; i >= 0; i--) {
+      const part = ranges[i];
+      if (part.end <= part.start) continue;
+      const range = document.createRange();
+      range.setStart(part.node, part.start);
+      range.setEnd(part.node, part.end);
+      const mark = document.createElement("mark");
+      mark.className = `${TTS_SENTENCE_MARK_CLASS} bg-amber-400/45 dark:bg-amber-500/40 text-inherit rounded-[3px] box-decoration-clone shadow-[inset_0_-2px_0_0_rgba(245,158,11,0.65)]`;
+      try {
+        range.surroundContents(mark);
+      } catch {
+        const contents = range.extractContents();
+        mark.appendChild(contents);
+        range.insertNode(mark);
+      }
+    }
+  };
+
+  const ensureElementOnVisiblePage = (el: HTMLElement) => {
+    if (useScrollLayoutRef.current) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+
+    const article = contentRef.current;
+    const viewport = viewerRef.current;
+    if (!article || !viewport) {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      return;
+    }
+
+    const step = pageStepRef.current || 1;
+    const viewRect = viewport.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    const pad = 12;
+
+    const fullyVisible =
+      elRect.left >= viewRect.left + pad &&
+      elRect.right <= viewRect.right - pad &&
+      elRect.top >= viewRect.top - 4 &&
+      elRect.bottom <= viewRect.bottom + 4;
+
+    if (fullyVisible) return;
+
+    const translatedX = (currentPageNumRef.current - 1) * step;
+    const offsetInContent = elRect.left - viewRect.left + translatedX;
+    const targetPage = Math.max(
+      1,
+      Math.min(totalPagesRef.current || 1, Math.floor(Math.max(0, offsetInContent) / step) + 1)
+    );
+
+    if (targetPage !== currentPageNumRef.current) {
+      setCurrentPageNum(targetPage);
+    }
+  };
+
+  // Highlight active speaking sentence and keep it on the current page
+  const highlightSentenceInDOM = (unit: NarrationUnit) => {
+    clearTtsHighlights();
+    unit.el.classList.add(...TTS_BLOCK_CLASSES);
+    wrapTextRange(unit.el, unit.start, unit.end);
+    const mark = unit.el.querySelector(`mark.${TTS_SENTENCE_MARK_CLASS}`) as HTMLElement | null;
+    ensureElementOnVisiblePage(mark || unit.el);
   };
 
   // Load available speech voices
@@ -1594,39 +1697,37 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
   }, []);
 
-  // Speak a specific paragraph index
-  const speakParagraph = (idx: number) => {
+  // Speak a specific sentence index
+  const speakSentence = (idx: number) => {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
 
-    window.speechSynthesis.cancel(); // Stop active speaking
+    window.speechSynthesis.cancel();
 
-    const domElements = getDOMElementsToRead();
-    if (idx < 0 || idx >= domElements.length) {
-      // End of chapter! Advance to next chapter if available
+    const units = getNarrationUnits();
+    if (idx < 0 || idx >= units.length) {
       if (currentChapterIdx < chapters.length - 1) {
         updateProgress(currentChapterIdx + 1);
-        setCurrentParagraphIdx(0);
+        setCurrentSentenceIdx(0);
       } else {
         stopSpeech();
       }
       return;
     }
 
-    setCurrentParagraphIdx(idx);
-    highlightParagraphInDOM(idx);
+    const unit = units[idx];
+    setCurrentSentenceIdx(idx);
+    highlightSentenceInDOM(unit);
 
-    const textToSpeak = prepareTextForNarration(domElements[idx].textContent?.trim() || "", {
+    const textToSpeak = prepareTextForNarration(unit.text, {
       quality: getTtsSettings().qualityPreset,
     });
     if (!textToSpeak) {
-      speakParagraph(idx + 1);
+      speakSentence(idx + 1);
       return;
     }
 
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     const settings = getTtsSettings();
-    
-    // Assign voice if selected
     const selectedVoice = resolveSpeechVoice(selectedVoiceName || settings.voiceName);
     if (selectedVoice) {
       utterance.voice = selectedVoice;
@@ -1636,7 +1737,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     utterance.pitch = settings.pitch;
 
     utterance.onend = () => {
-      speakParagraph(idx + 1);
+      speakSentence(idx + 1);
     };
 
     utterance.onerror = (event) => {
@@ -1662,21 +1763,60 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         window.speechSynthesis.resume();
         setIsPlayingSpeech(true);
       } else {
-        const startIdx = currentParagraphIdx >= 0 ? currentParagraphIdx : 0;
-        speakParagraph(startIdx);
+        const startIdx = currentSentenceIdx >= 0 ? currentSentenceIdx : 0;
+        speakSentence(startIdx);
       }
+    }
+  };
+
+  const handleExportToAudiobook = async () => {
+    if (exportingAudiobook) return;
+    setExportingAudiobook(true);
+    setExportStatus("Loading book…");
+    try {
+      const { blob, fileName } = await loadCachedBookBlob(book);
+      const ext = (book.extension || fileName.split(".").pop() || "epub").toLowerCase();
+      if (ext !== "epub" && ext !== "txt") {
+        throw new Error("Export supports EPUB and TXT books only.");
+      }
+      setExportStatus("Extracting chapters…");
+      const textChapters = await extractBookChapters(blob, ext, book.title);
+      if (!textChapters.length) throw new Error("No readable chapters found.");
+
+      setExportStatus("Creating audiobook…");
+      const entry = await createBrowserTtsAudiobook({
+        sourceBook: book,
+        chapters: textChapters,
+        userId,
+        onRefreshLibrary,
+        pregenerate: false,
+        onProgress: (message, percent) => setExportStatus(`${message} (${percent}%)`),
+      });
+      setExportStatus(`Added “${entry.title}” to your library`);
+    } catch (err) {
+      setExportStatus((err as Error).message || "Export failed");
+    } finally {
+      setExportingAudiobook(false);
     }
   };
 
   // Auto-read on chapter shift if audiobook is currently running
   useEffect(() => {
-    if (showAudiobook && isPlayingSpeech) {
+    if (showAudiobook && isPlayingSpeechRef.current) {
       const timer = setTimeout(() => {
-        speakParagraph(0);
+        speakSentence(0);
       }, 600);
       return () => clearTimeout(timer);
     }
   }, [currentChapterIdx]);
+
+  // Keep live sentence on-page after layout/page changes during narration
+  useEffect(() => {
+    if (!isPlayingSpeech || currentSentenceIdx < 0) return;
+    const container = document.getElementById("epub-text-viewer");
+    const mark = container?.querySelector(`mark.${TTS_SENTENCE_MARK_CLASS}`) as HTMLElement | null;
+    if (mark) ensureElementOnVisiblePage(mark);
+  }, [currentPageNum, containerWidth, pageStep, useScrollLayout]);
 
   const handleClose = () => {
     stopSpeech();
@@ -2261,175 +2401,199 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         {showAudiobook && (
           <>
             <div className={`absolute inset-0 z-30 bg-black/10 md:hidden transition-opacity ${isAudiobookExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setIsAudiobookExpanded(false)} />
-            
-            {/* Desktop Sidebar OR Mobile Expanded Popup OR Mobile Mini Player */}
-            <aside className={`
-              w-full md:w-80 border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0
-              md:relative md:h-auto md:translate-y-0
-              ${isAudiobookExpanded ? 'fixed bottom-0 left-0 right-0 h-[60vh] z-40 rounded-t-3xl p-5' : 'fixed bottom-4 left-4 right-4 h-16 z-40 rounded-2xl shadow-xl flex-row items-center px-4 py-2 border'}
-            `}>
-              
-              {/* Mobile Mini Player Layout */}
-              {!isAudiobookExpanded && (
-                <div className="flex md:hidden items-center justify-between w-full h-full" onClick={() => setIsAudiobookExpanded(true)}>
-                  <div className="flex items-center gap-3 overflow-hidden flex-1">
-                    <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
-                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
-                        A
-                      </div>
-                    </div>
-                    <div className="min-w-0 truncate">
-                      <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate">
-                        {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
-                      </span>
-                      <p className="text-[10px] opacity-70 truncate font-serif">
-                        {currentParagraphIdx >= 0 ? `Section ${currentParagraphIdx + 1}` : "Tap to open"}
-                      </p>
+
+            {/* Mobile mini player only (desktop uses full sidebar below) */}
+            {!isAudiobookExpanded && (
+              <div
+                className={`md:hidden fixed bottom-4 left-4 right-4 h-16 z-40 rounded-2xl shadow-xl border ${activeTheme.border} ${activeTheme.card} flex items-center px-4 py-2`}
+                onClick={() => setIsAudiobookExpanded(true)}
+              >
+                <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
+                  <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
+                    <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
+                      A
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={toggleSpeechPlayback}
-                      className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-sm transform active:scale-95 transition"
-                    >
-                      {isPlayingSpeech ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-                    </button>
-                    <button 
-                      onClick={() => setShowAudiobook(false)}
-                      className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:text-current rounded-full"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate">
+                      {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
+                    </span>
+                    <p className="text-[10px] opacity-70 truncate font-serif">
+                      {currentSentenceIdx >= 0 ? `Sentence ${currentSentenceIdx + 1}` : "Tap to open"}
+                    </p>
                   </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={toggleSpeechPlayback}
+                    className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-sm transform active:scale-95 transition"
+                  >
+                    {isPlayingSpeech ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                  </button>
+                  <button
+                    onClick={() => { stopSpeech(); setShowAudiobook(false); }}
+                    className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:text-current rounded-full"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Desktop sidebar / mobile expanded sheet */}
+            <aside
+              className={`
+                ${activeTheme.card} ${activeTheme.border}
+                z-40 flex flex-col shrink-0 overflow-hidden
+                md:relative md:w-80 md:h-auto md:min-h-0 md:self-stretch
+                md:border-0 md:border-r md:rounded-none md:shadow-none md:p-5
+                animate-in slide-in-from-bottom md:slide-in-from-left duration-200
+                ${isAudiobookExpanded
+                  ? "fixed bottom-0 left-0 right-0 h-[min(70vh,640px)] rounded-t-3xl border-t p-5 shadow-[0_-10px_40px_rgba(0,0,0,0.15)] md:static md:inset-auto md:h-auto md:max-h-none md:rounded-none md:shadow-none"
+                  : "hidden md:flex"}
+              `}
+            >
+              {isAudiobookExpanded && (
+                <div className="w-full flex justify-center pb-3 md:hidden" onClick={() => setIsAudiobookExpanded(false)}>
+                  <div className="w-12 h-1.5 bg-current opacity-20 rounded-full" />
                 </div>
               )}
 
-              {/* Desktop / Expanded Mobile Layout */}
-              <div className={`w-full flex-col h-full ${!isAudiobookExpanded ? 'hidden md:flex' : 'flex'}`}>
-                {/* Drag handle for mobile */}
-                <div className="w-full flex justify-center pb-2 md:hidden" onClick={() => setIsAudiobookExpanded(false)}>
-                  <div className="w-12 h-1.5 bg-current opacity-20 rounded-full" />
+              <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center gap-3 shrink-0`}>
+                <span className="font-sans font-semibold text-sm flex items-center gap-2 min-w-0">
+                  <Headphones className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Voice Narrator</span>
+                </span>
+                <button
+                  onClick={() => {
+                    if (isAudiobookExpanded) setIsAudiobookExpanded(false);
+                    else { stopSpeech(); setShowAudiobook(false); }
+                  }}
+                  className="text-xs px-2 py-1.5 hover:bg-neutral-500/10 rounded-lg font-sans font-semibold shrink-0"
+                >
+                  {isAudiobookExpanded ? "Collapse" : "Done"}
+                </button>
+              </div>
+
+              <div className="flex-1 flex flex-col gap-4 min-h-0 overflow-y-auto">
+                <div className={`p-3.5 rounded-xl border ${activeTheme.border} bg-white/5 flex items-center gap-3`}>
+                  <div className={`w-9 h-9 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
+                    <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
+                      A
+                    </div>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                      {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
+                    </span>
+                    <p className="text-xs opacity-70 truncate font-serif mt-0.5">
+                      {currentSentenceIdx >= 0
+                        ? `Sentence ${currentSentenceIdx + 1} · tap text to jump`
+                        : "Click play to start"}
+                    </p>
+                  </div>
                 </div>
 
-                <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center ${isAudiobookExpanded ? '' : 'p-5 md:p-0'}`}>
-                  <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
-                    <Headphones className="w-4 h-4" />
-                    Voice Narrator
-                  </span>
-                  <button 
-                    onClick={() => {
-                      if (isAudiobookExpanded) setIsAudiobookExpanded(false);
-                      else { stopSpeech(); setShowAudiobook(false); }
-                    }} 
-                    className="text-xs p-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346] dark:text-neutral-300"
+                <div className="flex items-center gap-2 justify-center py-1">
+                  <button
+                    onClick={() => speakSentence(Math.max(0, currentSentenceIdx - 1))}
+                    className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
+                    title="Previous sentence"
                   >
-                    {isAudiobookExpanded ? 'Collapse' : 'Done'}
+                    <Rewind className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={toggleSpeechPlayback}
+                    className="w-12 h-12 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-md transform active:scale-95 transition"
+                    title={isPlayingSpeech ? "Pause" : "Play"}
+                  >
+                    {isPlayingSpeech ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                  </button>
+                  <button
+                    onClick={() => speakSentence(currentSentenceIdx + 1)}
+                    className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
+                    title="Next sentence"
+                  >
+                    <FastForward className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={stopSpeech}
+                    className="p-2.5 rounded-lg border border-neutral-500/20 text-red-500 hover:bg-red-50/10 transition"
+                    title="Reset"
+                  >
+                    <RotateCcw className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className={`flex-1 flex flex-col gap-4 overflow-y-auto ${isAudiobookExpanded ? '' : 'px-5 md:px-0 pb-5 md:pb-0'}`}>
-                  {/* Status Indicator */}
-                  <div className={`p-4 rounded-xl border ${activeTheme.border} bg-white/5 flex items-center gap-3`}>
-                    <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
-                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
-                        A
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1 uppercase tracking-wider">
-                        {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
-                      </span>
-                      <p className="text-xs opacity-70 truncate font-serif mt-0.5">
-                        {currentParagraphIdx >= 0 ? `Reading Section ${currentParagraphIdx + 1}` : "Click play to start"}
-                      </p>
-                    </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-60 block mb-1.5">Voice</label>
+                    <select
+                      value={selectedVoiceName}
+                      onChange={(e) => {
+                        setSelectedVoiceName(e.target.value);
+                        saveTtsSettings({ voiceName: e.target.value });
+                        if (isPlayingSpeech) {
+                          setTimeout(() => speakSentence(currentSentenceIdx >= 0 ? currentSentenceIdx : 0), 100);
+                        }
+                      }}
+                      className="w-full p-2.5 text-xs rounded-lg border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current truncate"
+                      title={selectedVoiceName}
+                    >
+                      {voices.length === 0 ? (
+                        <option value="">No System Voices</option>
+                      ) : (
+                        voices.map((v) => (
+                          <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
+                            {v.name} ({v.lang})
+                          </option>
+                        ))
+                      )}
+                    </select>
                   </div>
 
-                  {/* Primary Playback controls */}
-                  <div className="flex items-center gap-2 justify-center py-2">
-                    <button
-                      onClick={() => speakParagraph(Math.max(0, currentParagraphIdx - 1))}
-                      className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
-                      title="Previous Section"
-                    >
-                      <Rewind className="w-4 h-4 text-kindle-text" />
-                    </button>
-                    <button
-                      onClick={toggleSpeechPlayback}
-                      className="w-12 h-12 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-md transform active:scale-95 transition"
-                      title={isPlayingSpeech ? "Pause" : "Play"}
-                    >
-                      {isPlayingSpeech ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
-                    </button>
-                    <button
-                      onClick={() => speakParagraph(currentParagraphIdx + 1)}
-                      className="p-2.5 rounded-lg border border-neutral-500/20 hover:bg-neutral-500/10 transition"
-                      title="Next Section"
-                    >
-                      <FastForward className="w-4 h-4 text-kindle-text" />
-                    </button>
-                    <button
-                      onClick={stopSpeech}
-                      className="p-2.5 rounded-lg border border-neutral-500/20 text-red-500 hover:bg-red-50/10 transition"
-                      title="Reset Speech"
-                    >
-                      <RotateCcw className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {/* Settings Block (Voice, Speed, etc) */}
-                  <div className="space-y-4 pt-2">
-                    {/* Voice selector */}
-                    <div>
-                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-60 block mb-1">Voice Accent</label>
-                      <select
-                        value={selectedVoiceName}
-                        onChange={(e) => {
-                          setSelectedVoiceName(e.target.value);
-                          saveTtsSettings({ voiceName: e.target.value });
-                          if (isPlayingSpeech) {
-                            setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
-                          }
-                        }}
-                        className="w-full p-2 text-xs rounded-lg border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current"
-                      >
-                        {voices.length === 0 ? (
-                          <option value="">No System Voices</option>
-                        ) : (
-                          voices.map((v) => (
-                            <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
-                              {v.name.slice(0, 24)} ({v.lang.split("-")[0].toUpperCase()})
-                            </option>
-                          ))
-                        )}
-                      </select>
+                  <div>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Speech Speed</label>
+                      <span className="text-xs font-mono font-semibold">{speechRate.toFixed(1)}x</span>
                     </div>
-
-                    {/* Speed */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="text-[10px] font-bold uppercase tracking-widest opacity-60">Speech Speed</label>
-                        <span className="text-xs font-mono font-semibold">{speechRate}x</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.1"
-                        value={speechRate}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value);
-                          setSpeechRate(val);
-                          saveTtsSettings({ rate: val });
-                          if (isPlayingSpeech) {
-                            setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
-                          }
-                        }}
-                        className="w-full accent-amber-500 cursor-pointer h-1 bg-neutral-500/20 rounded-lg appearance-none"
-                      />
-                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="2.0"
+                      step="0.1"
+                      value={speechRate}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setSpeechRate(val);
+                        saveTtsSettings({ rate: val });
+                        if (isPlayingSpeech) {
+                          setTimeout(() => speakSentence(currentSentenceIdx >= 0 ? currentSentenceIdx : 0), 100);
+                        }
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer h-1.5 bg-neutral-500/20 rounded-lg appearance-none"
+                    />
                   </div>
+                </div>
+
+                <div className={`mt-auto pt-4 border-t ${activeTheme.border} space-y-2 shrink-0`}>
+                  <button
+                    onClick={handleExportToAudiobook}
+                    disabled={exportingAudiobook}
+                    className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-neutral-950 text-[11px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition shadow-sm"
+                  >
+                    {exportingAudiobook ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Wand2 className="w-4 h-4" />
+                    )}
+                    {exportingAudiobook ? "Exporting…" : "Export to Audio Book"}
+                  </button>
+                  {exportStatus && (
+                    <p className="text-[10px] leading-relaxed opacity-70 text-center px-1">
+                      {exportStatus}
+                    </p>
+                  )}
                 </div>
               </div>
             </aside>

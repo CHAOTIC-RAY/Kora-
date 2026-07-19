@@ -154,7 +154,7 @@ function splitParagraphs(text: string): string[] {
     .filter(Boolean);
 }
 
-function splitSentences(paragraph: string): string[] {
+export function splitSentences(paragraph: string): string[] {
   const parts = paragraph.match(/[^.!?…]+[.!?…]+|[^.!?…]+$/g) || [paragraph];
   return parts.map((part) => part.trim()).filter(Boolean);
 }
