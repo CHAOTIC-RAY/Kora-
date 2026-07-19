@@ -23,7 +23,6 @@ import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedIm
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 import { transcribeAudioBase64 } from "./lib/transcribeAudio";
-import { generateDailyNewsBrief } from "./lib/generateNewsBrief";
 
 declare const HTMLRewriter: any;
 
@@ -2103,54 +2102,6 @@ export default {
         });
       } catch (err: any) {
         return new Response(JSON.stringify({ error: err.message || "Transcription failed" }), {
-          status: 502,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-        });
-      }
-    }
-
-    if (path === "/api/feed/daily-brief" && request.method === "POST") {
-      try {
-        const body = await request.json();
-        const date = typeof body.date === "string" ? body.date : "";
-        const articles = Array.isArray(body.articles) ? body.articles : [];
-
-        if (!articles.length) {
-          return new Response(JSON.stringify({ error: "Missing articles" }), {
-            status: 400,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-          });
-        }
-
-        const apiKey = env.GEMINI_API_KEY;
-        if (!apiKey) {
-          return new Response(JSON.stringify({ error: "Brief generation service is not configured." }), {
-            status: 503,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-          });
-        }
-
-        const normalized = articles
-          .filter((article: any) => article?.id && article?.title && article?.link)
-          .map((article: any) => ({
-            id: String(article.id),
-            source: String(article.source || "News"),
-            title: String(article.title),
-            summary: typeof article.summary === "string" ? article.summary : undefined,
-            link: String(article.link),
-          }));
-
-        const brief = await generateDailyNewsBrief(
-          normalized,
-          apiKey,
-          date || new Date().toISOString().slice(0, 10)
-        );
-
-        return new Response(JSON.stringify(brief), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message || "Brief generation failed" }), {
           status: 502,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });

@@ -30,7 +30,6 @@ import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./src/lib/libgenProxy";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./src/lib/feedServer";
 import { transcribeAudioBase64 } from "./src/lib/transcribeAudio";
-import { generateDailyNewsBrief } from "./src/lib/generateNewsBrief";
 
 dotenv.config();
 
@@ -720,38 +719,6 @@ app.post("/api/transcribe-audio", express.json({ limit: "12mb" }), async (req, r
   } catch (err: any) {
     console.error("Transcribe audio error:", err);
     return res.status(502).json({ error: err.message || "Transcription failed" });
-  }
-});
-
-app.post("/api/feed/daily-brief", express.json({ limit: "256kb" }), async (req, res) => {
-  const date = typeof req.body?.date === "string" ? req.body.date : "";
-  const articles = Array.isArray(req.body?.articles) ? req.body.articles : [];
-
-  if (!articles.length) {
-    return res.status(400).json({ error: "Missing articles" });
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(503).json({ error: "Brief generation service is not configured." });
-  }
-
-  try {
-    const normalized = articles
-      .filter((article: any) => article?.id && article?.title && article?.link)
-      .map((article: any) => ({
-        id: String(article.id),
-        source: String(article.source || "News"),
-        title: String(article.title),
-        summary: typeof article.summary === "string" ? article.summary : undefined,
-        link: String(article.link),
-      }));
-
-    const brief = await generateDailyNewsBrief(normalized, apiKey, date || new Date().toISOString().slice(0, 10));
-    return res.json(brief);
-  } catch (err: any) {
-    console.error("Daily brief generation error:", err);
-    return res.status(502).json({ error: err.message || "Brief generation failed" });
   }
 });
 

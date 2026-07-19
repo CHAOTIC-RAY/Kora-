@@ -1,8 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, ExternalLink, Loader2, Sparkles } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { ChevronDown, ChevronUp, ExternalLink, Newspaper } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
-import type { GeneratedDailyBrief } from "../lib/generateNewsBrief";
-import { collectTodayBriefArticles, fetchEnhancedDailyBrief } from "../lib/dailyNewsBriefClient";
+import { collectTodayBriefArticles, buildTodayDailyBrief } from "../lib/dailyNewsBriefClient";
 
 interface TodayNewsBriefCardProps {
   items: FeedItem[];
@@ -11,33 +10,10 @@ interface TodayNewsBriefCardProps {
 
 export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBriefCardProps) {
   const articles = useMemo(() => collectTodayBriefArticles(items), [items]);
-  const articleKey = useMemo(() => articles.map((article) => article.id).join(","), [articles]);
+  const brief = useMemo(() => buildTodayDailyBrief(articles), [articles]);
   const [expanded, setExpanded] = useState(false);
-  const [brief, setBrief] = useState<GeneratedDailyBrief | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (articles.length < 2) {
-      setBrief(null);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-
-    void fetchEnhancedDailyBrief(articles).then((result) => {
-      if (!cancelled) {
-        setBrief(result);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [articleKey, articles]);
-
-  if (articles.length < 2 || !brief) return null;
+  if (!brief) return null;
 
   const storyCount = brief.sections.reduce((total, section) => total + section.items.length, 0);
 
@@ -61,11 +37,10 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <Newspaper className="w-3.5 h-3.5 text-blue-400 shrink-0" />
               <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400">
                 Daily News Brief
               </p>
-              {loading && <Loader2 className="w-3 h-3 animate-spin text-blue-400" />}
             </div>
             <h3 className="text-sm font-lexend font-bold text-kindle-text mb-2">
               Today&apos;s News Brief
