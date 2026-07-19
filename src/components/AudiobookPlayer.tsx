@@ -13,12 +13,16 @@ import {
 } from "lucide-react";
 import type { BookMetadata } from "../lib/firebase";
 import {
-  downloadAudiobookTrack,
   getAudiobookTrack,
   getAudiobookTracksForBook,
   getProxiedAudioUrl,
   isAudiobookFullyDownloaded,
 } from "../lib/audiobookStorage";
+import {
+  enqueueAudiobookDownload,
+  subscribeAudiobookSyncQueue,
+  getAudiobookSyncProgress,
+} from "../lib/audiobookSyncQueue";
 
 interface AudiobookPlayerProps {
   book: BookMetadata;
@@ -119,7 +123,18 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   useEffect(() => {
     loadTrack(currentTrack);
     isAudiobookFullyDownloaded(book.id, tracks.length).then(setOfflineReady);
+    const unsub = subscribeAudiobookSyncQueue((jobs, pct) => {
+      const bookJobs = jobs.filter((j) => j.bookId === book.id);
+      if (bookJobs.length) {
+        setDownloading(bookJobs.some((j) => j.status === "downloading" || j.status === "pending"));
+        setDownloadProgress(pct);
+        if (bookJobs.every((j) => j.status === "done")) {
+          setOfflineReady(true);
+        }
+      }
+    });
     return () => {
+      unsub();
       Object.values(localUrls).forEach((u) => URL.revokeObjectURL(u));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,21 +170,10 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const handleDownloadAll = async () => {
     if (downloading || tracks.length === 0) return;
     setDownloading(true);
-    setDownloadProgress(0);
+    setDownloadProgress(getAudiobookSyncProgress());
 
     try {
-      for (let i = 0; i < tracks.length; i++) {
-        const track = tracks[i];
-        const existing = await getAudiobookTrack(book.id, i);
-        if (existing) {
-          setDownloadProgress(Math.round(((i + 1) / tracks.length) * 100));
-          continue;
-        }
-        await downloadAudiobookTrack(book.id, i, track.title, track.src, (pct) => {
-          const overall = ((i + pct / 100) / tracks.length) * 100;
-          setDownloadProgress(Math.round(overall));
-        });
-      }
+      await enqueueAudiobookDownload(book.id, book.title, tracks);
       setOfflineReady(true);
       if (onProgressUpdate) {
         onProgressUpdate({

@@ -99,8 +99,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [turningPageNum, setTurningPageNum] = useState<number>(1);
   const [turningChapterIdx, setTurningChapterIdx] = useState<number>(0);
   const [turnDirection, setTurnDirection] = useState<"next" | "prev">("next");
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const useDoubleColumns = doubleColumns && !isMobile;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mq.matches);
+    const handler = () => setPrefersReducedMotion(mq.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -121,7 +131,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       
       setFlipDirection(dir);
 
-      if (pageTransitionEffect === "paper-flip" && shouldAnimate && !isTurningPage) {
+      if (pageTransitionEffect === "paper-flip" && shouldAnimate && !isTurningPage && !prefersReducedMotion) {
         setTurningPageNum(prevPageNumRef.current);
         setTurningChapterIdx(prevChapterIdxRef.current);
         setTurnDirection(dir);
@@ -2661,7 +2671,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               >
                 <div className="w-full h-full overflow-hidden relative flex items-start justify-start" style={{ perspective: "1200px" }}>
                   {/* Turn.js style 3D page flip transition */}
-                  {pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && (
+                  {pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
                     <div 
                       className="absolute inset-0 pointer-events-none z-50 overflow-hidden"
                       style={{ perspective: "2500px" }}
@@ -2670,7 +2680,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         key={`page-turn-${turningChapterIdx}-${turningPageNum}-${currentPageNum}`}
                         initial={{ rotateY: 0 }}
                         animate={{ rotateY: turnDirection === "next" ? -180 : 180 }}
-                        transition={{ duration: 0.52, ease: [0.32, 0.72, 0, 1] }}
+                        transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.9 }}
                         onAnimationComplete={() => setIsTurningPage(false)}
                         style={{
                           position: "absolute",
@@ -2684,6 +2694,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             ? (turnDirection === "next" ? "left center" : "right center")
                             : "left center",
                           transformStyle: "preserve-3d",
+                          willChange: "transform",
                         }}
                       >
                         {/* Front Face: Old Page */}
@@ -2738,11 +2749,27 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               }}
                             />
                           </div>
+                          {/* Page curl edge shader */}
+                          <motion.div
+                            className="absolute inset-y-0 pointer-events-none"
+                            style={{
+                              width: "28%",
+                              [turnDirection === "next" ? "right" : "left"]: 0,
+                              background: turnDirection === "next"
+                                ? "linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0.22) 100%)"
+                                : "linear-gradient(270deg, transparent 0%, rgba(0,0,0,0.12) 55%, rgba(0,0,0,0.22) 100%)",
+                              clipPath: turnDirection === "next"
+                                ? "polygon(0 0, 100% 8%, 100% 92%, 0 100%)"
+                                : "polygon(0 8%, 100% 0, 100% 100%, 0 92%)",
+                            }}
+                            animate={{ opacity: [0, 0.5, 0.15] }}
+                            transition={{ type: "spring", stiffness: 180, damping: 22 }}
+                          />
                           {/* Shading / Shadow Overlay during curl fold */}
                           <motion.div
-                            className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/15 via-transparent to-black/5"
-                            animate={{ opacity: [0, 0.28, 0.08] }}
-                            transition={{ duration: 0.52, ease: [0.32, 0.72, 0, 1] }}
+                            className="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/12 via-transparent to-black/4"
+                            animate={{ opacity: [0, 0.22, 0.06] }}
+                            transition={{ type: "spring", stiffness: 180, damping: 22 }}
                           />
                         </div>
 

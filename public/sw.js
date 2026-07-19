@@ -22,12 +22,28 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const SHELL_CACHE = "kora-shell-v1";
+const API_CACHE = "kora-api-v1";
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/sw.js", "/favicon.svg"];
+const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
+
+async function warmApiCache() {
+  const cache = await caches.open(API_CACHE);
+  await Promise.allSettled(
+    WARM_API_PATHS.map((path) =>
+      fetch(path).then((res) => {
+        if (res.ok) return cache.put(path, res);
+      })
+    )
+  );
+}
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {}))
+    Promise.all([
+      caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {})),
+      warmApiCache(),
+    ])
   );
 });
 
@@ -35,8 +51,9 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== SHELL_CACHE).map((k) => caches.delete(k)));
+      await Promise.all(keys.filter((k) => k !== SHELL_CACHE && k !== API_CACHE).map((k) => caches.delete(k)));
       await self.clients.claim();
+      warmApiCache();
     })()
   );
 });
@@ -376,7 +393,25 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2. Don't intercept API or background-fetch network requests
+  // 2. API warm-cache: stale-while-revalidate for discovery feed endpoints
+  if (event.request.method === "GET" && WARM_API_PATHS.includes(url.pathname)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(API_CACHE);
+        const cached = await cache.match(event.request);
+        const network = fetch(event.request)
+          .then((res) => {
+            if (res && res.ok) cache.put(event.request, res.clone());
+            return res;
+          })
+          .catch(() => cached);
+        return cached || network;
+      })()
+    );
+    return;
+  }
+
+  // 2b. Don't intercept other API or background-fetch network requests
   if (url.pathname.startsWith("/api/")) return;
 
   // 3. Navigation / same-origin asset: stale-while-revalidate from the shell cache

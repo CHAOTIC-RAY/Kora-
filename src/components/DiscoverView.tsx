@@ -10,6 +10,14 @@ import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
 import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
+import { fetchAudiobookDetail, prefetchAudiobookDetail } from "../lib/audiobookDetailClient";
+import {
+  createSearchSignal,
+  abortActiveSearch,
+  streamAudiobookSearch,
+  streamEbookSearch,
+  getCachedSearch,
+} from "../lib/searchClient";
 
 interface DiscoverViewProps {
   userId: string;
@@ -680,44 +688,44 @@ export default function DiscoverView({
     }
   }
 
-  const fetchAudiobookDetail = async (book: any) => {
+  const fetchAudiobookDetailForBook = async (book: any) => {
     setAudiobookDetailLoading(true);
     setAudiobookDetailError(null);
-    setAudiobookDetail(null);
 
-    const urls = [
-      book.link,
-      book.listenUrl,
-      book.listenUrlAlt,
-      `https://hdaudiobooks.com/?s=${encodeURIComponent(book.title)}`,
-      `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(book.title)}`,
-    ].filter(Boolean);
-
-    for (const detailUrl of urls) {
-      try {
-        const res = await fetch(`/api/audiobooks/detail?url=${encodeURIComponent(detailUrl)}`);
-        const data = await res.json();
-        if (res.ok && data.tracks?.length > 0) {
-          setAudiobookDetail(data);
-          setAudiobookDetailLoading(false);
-          return;
-        }
-      } catch {
-        /* try next source */
-      }
+    const stale = await fetchAudiobookDetail(book, { staleWhileRevalidate: true });
+    if (stale?.tracks?.length) {
+      setAudiobookDetail(stale);
+      setAudiobookDetailLoading(false);
+      return;
     }
 
-    setAudiobookDetailError("Could not extract audio tracks from source sites");
+    const fresh = await fetchAudiobookDetail(book, { staleWhileRevalidate: false });
+    if (fresh?.tracks?.length) {
+      setAudiobookDetail(fresh);
+    } else {
+      setAudiobookDetailError("Could not extract audio tracks from source sites");
+    }
     setAudiobookDetailLoading(false);
   };
 
   useEffect(() => {
     if (selectedAudiobook) {
-      fetchAudiobookDetail(selectedAudiobook);
+      fetchAudiobookDetailForBook(selectedAudiobook);
     } else {
       setAudiobookDetail(null);
       setAudiobookDetailError(null);
     }
+  }, [selectedAudiobook]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { data } = (e as CustomEvent).detail || {};
+      if (data?.tracks?.length && selectedAudiobook) {
+        setAudiobookDetail(data);
+      }
+    };
+    window.addEventListener("kora-audiobook-detail-updated", handler);
+    return () => window.removeEventListener("kora-audiobook-detail-updated", handler);
   }, [selectedAudiobook]);
 
   const buildAudiobookLibraryEntry = (book: any, tracks: any[]): BookMetadata => ({
@@ -1114,13 +1122,33 @@ export default function DiscoverView({
       setCategoryBooks([]);
       setAudiobookLoading(true);
       setAudiobookResults([]);
+
+      const cached = getCachedSearch(term.trim(), "audiobook");
+      if (cached?.length) {
+        setAudiobookResults(cached);
+        setAudiobookLoading(false);
+      }
+
+      const signal = createSearchSignal();
       try {
-        const res = await fetch(`/api/audiobooks/search?q=${encodeURIComponent(term.trim())}`);
-        const data = await res.json();
-        setAudiobookResults(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error("Audiobook search failed:", err);
-        setAudiobookResults([]);
+        const results = await streamAudiobookSearch(
+          term.trim(),
+          (_source, batch) => {
+            setAudiobookResults((prev) => {
+              const seen = new Set(prev.map((r) => r.link));
+              const merged = [...prev, ...batch.filter((r) => !seen.has(r.link))];
+              return merged;
+            });
+            setAudiobookLoading(false);
+          },
+          signal
+        );
+        setAudiobookResults(results);
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.error("Audiobook search failed:", err);
+          setAudiobookResults([]);
+        }
       } finally {
         setAudiobookLoading(false);
       }
@@ -1158,6 +1186,7 @@ export default function DiscoverView({
 
     try {
       const source = sourceOverride || activeSource;
+      const signal = createSearchSignal();
 
       let mappedBooks: any[];
       let totalCount: number;
@@ -1178,11 +1207,37 @@ export default function DiscoverView({
           more = result.hasMore;
         }
       } else {
-        // Normal Google Books Search
-        const result = await fetchGoogleBooks(term, page);
-        mappedBooks = result.books;
-        totalCount = result.totalCount;
-        more = result.hasMore;
+        const cached = page === 1 ? getCachedSearch(term, "ebook") : null;
+        if (cached?.length && page === 1) {
+          mappedBooks = cached;
+          totalCount = cached.length;
+          more = false;
+        } else {
+          const streamResult = await streamEbookSearch(
+            term,
+            (_src, books) => {
+              if (page === 1) {
+                setResults((prev) => {
+                  const seen = new Set(prev.map((b) => b.title + b.author));
+                  const merged = [...prev, ...books.filter((b) => !seen.has(b.title + b.author))];
+                  return merged;
+                });
+                setLoading(false);
+              }
+            },
+            signal
+          );
+          mappedBooks = streamResult.books;
+          totalCount = streamResult.totalCount;
+          more = streamResult.hasMore;
+
+          if (!mappedBooks.length) {
+            const result = await fetchGoogleBooks(term, page);
+            mappedBooks = result.books;
+            totalCount = result.totalCount;
+            more = result.hasMore;
+          }
+        }
       }
 
       // Group search results by simplified Title + Author + Year + Series to completely avoid duplicates of the same book
@@ -1302,6 +1357,7 @@ export default function DiscoverView({
   }
 
   function clearSearch() {
+    abortActiveSearch();
     setSearchMode(false);
     setViewingCategory(null);
     setCategoryBooks([]);
@@ -2289,6 +2345,8 @@ export default function DiscoverView({
               {audiobookResults.map((book, idx) => (
                 <div
                   key={idx}
+                  onMouseEnter={() => prefetchAudiobookDetail(book)}
+                  onFocus={() => prefetchAudiobookDetail(book)}
                   onClick={() => setSelectedAudiobook(book)}
                   className="group block space-y-2 cursor-pointer"
                 >
@@ -2812,6 +2870,8 @@ export default function DiscoverView({
                     {books.map((book, idx) => (
                       <div
                         key={idx}
+                        onMouseEnter={() => prefetchAudiobookDetail(book)}
+                        onFocus={() => prefetchAudiobookDetail(book)}
                         onClick={() => {
                           if (cat.source === "audiobook") {
                             setSelectedAudiobook(book);
@@ -3210,7 +3270,7 @@ export default function DiscoverView({
                   <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto opacity-70" />
                   <p className="text-xs text-kindle-text-muted">{audiobookDetailError}</p>
                   <button
-                    onClick={() => fetchAudiobookDetail(selectedAudiobook)}
+                    onClick={() => fetchAudiobookDetailForBook(selectedAudiobook)}
                     className="text-[10px] font-bold uppercase tracking-widest text-purple-500 hover:underline"
                   >
                     Retry

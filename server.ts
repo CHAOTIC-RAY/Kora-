@@ -16,6 +16,13 @@ import {
   extractFirstBookLinkFromSearch,
   isAudiobookSearchUrl,
 } from "./src/lib/audiobookScraper";
+import {
+  getCachedAudiobookDetail,
+  getCachedAudiobookSearch,
+  setCachedAudiobookSearch,
+  resolveAudiobookDetailParallel,
+  resolveAudiobookDetailFromPage,
+} from "./src/lib/audiobookServer";
 
 dotenv.config();
 
@@ -1802,6 +1809,9 @@ app.get("/api/audiobooks/search", async (req, res) => {
   const q = (req.query.q as string || "").trim();
   if (!q) return res.status(400).json({ error: "Missing query parameter 'q'" });
 
+  const cached = getCachedAudiobookSearch(q);
+  if (cached) return res.json(cached);
+
   const results: any[] = [];
 
   await Promise.allSettled([
@@ -1831,44 +1841,160 @@ app.get("/api/audiobooks/search", async (req, res) => {
     });
   }
 
+  setCachedAudiobookSearch(q, deduped);
   res.json(deduped);
+});
+
+// Audiobooks: streaming search (NDJSON — results arrive per source)
+app.get("/api/audiobooks/search/stream", async (req, res) => {
+  const q = (req.query.q as string || "").trim();
+  if (!q) return res.status(400).json({ error: "Missing query parameter 'q'" });
+
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  const cached = getCachedAudiobookSearch(q);
+  if (cached) {
+    res.write(JSON.stringify({ source: "cache", results: cached }) + "\n");
+    res.write(JSON.stringify({ done: true }) + "\n");
+    return res.end();
+  }
+
+  const all: any[] = [];
+  const seen = new Set<string>();
+
+  const sources = [
+    { name: "fulllengthaudiobooks", url: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://fulllengthaudiobooks.com" },
+    { name: "hdaudiobooks", url: `https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://hdaudiobooks.com" },
+  ];
+
+  await Promise.allSettled(sources.map(async (src) => {
+    try {
+      const html = await fetchPageHtmlWithProxies(src.url);
+      const batch = parseAudiobookSearchHtml(html, src.name, src.base).filter((r) => {
+        if (seen.has(r.link)) return false;
+        seen.add(r.link);
+        return true;
+      });
+      if (batch.length) {
+        all.push(...batch);
+        res.write(JSON.stringify({ source: src.name, results: batch }) + "\n");
+      }
+    } catch (err: any) {
+      console.warn(`[Audiobook Stream] ${src.name} failed:`, err.message);
+    }
+  }));
+
+  if (all.length === 0) {
+    const lower = q.toLowerCase();
+    const fallback = POPULAR_AUDIOBOOKS.filter(b =>
+      b.title.toLowerCase().includes(lower) || b.author.toLowerCase().includes(lower)
+    ).map(b => ({
+      ...b,
+      coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+      link: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+      source: "hdaudiobooks",
+    }));
+    if (fallback.length) {
+      all.push(...fallback);
+      res.write(JSON.stringify({ source: "fallback", results: fallback }) + "\n");
+    }
+  }
+
+  setCachedAudiobookSearch(q, all.slice(0, 16));
+  res.write(JSON.stringify({ done: true }) + "\n");
+  res.end();
 });
 
 // Audiobooks: scrape detail page for audio track URLs (pap-player data-playlist, audio elements)
 app.get("/api/audiobooks/detail", async (req, res) => {
   const pageUrl = (req.query.url as string || "").trim();
-  if (!pageUrl) return res.status(400).json({ error: "Missing query parameter 'url'" });
+  const urlsParam = (req.query.urls as string || "").trim();
+  const urls = urlsParam ? urlsParam.split(",").map(u => u.trim()).filter(Boolean) : pageUrl ? [pageUrl] : [];
+
+  if (urls.length === 0) return res.status(400).json({ error: "Missing query parameter 'url' or 'urls'" });
 
   try {
     const allowedHosts = ["hdaudiobooks.com", "fulllengthaudiobooks.com", "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com"];
-    const host = new URL(pageUrl).hostname.replace(/^www\./, "");
-    if (!allowedHosts.some(h => h.replace(/^www\./, "") === host)) {
-      return res.status(400).json({ error: "Unsupported audiobook source URL" });
-    }
-
-    const html = await fetchPageHtmlWithProxies(pageUrl);
-    let resolvedUrl = pageUrl;
-    let detail = parseAudiobookDetailHtml(html, pageUrl);
-
-    if (detail.tracks.length === 0 && isAudiobookSearchUrl(pageUrl)) {
-      const baseUrl = new URL(pageUrl).origin;
-      const bookLink = extractFirstBookLinkFromSearch(html, baseUrl);
-      if (bookLink) {
-        const bookHtml = await fetchPageHtmlWithProxies(bookLink);
-        resolvedUrl = bookLink;
-        detail = parseAudiobookDetailHtml(bookHtml, bookLink);
+    for (const u of urls) {
+      const host = new URL(u).hostname.replace(/^www\./, "");
+      if (!allowedHosts.some(h => h.replace(/^www\./, "") === host)) {
+        return res.status(400).json({ error: "Unsupported audiobook source URL" });
       }
     }
 
-    if (detail.tracks.length === 0) {
-      return res.status(404).json({ error: "No audio tracks found on this page", ...detail, sourceUrl: resolvedUrl });
+    for (const u of urls) {
+      const cached = getCachedAudiobookDetail(u.split("?")[0]);
+      if (cached?.tracks?.length) {
+        res.setHeader("X-Cache", "HIT");
+        return res.json(cached);
+      }
     }
 
-    res.json({ ...detail, sourceUrl: resolvedUrl });
+    const detail = urls.length > 1
+      ? await resolveAudiobookDetailParallel(urls, fetchPageHtmlWithProxies)
+      : await resolveAudiobookDetailFromPage(urls[0], fetchPageHtmlWithProxies);
+
+    if (!detail || detail.tracks.length === 0) {
+      return res.status(404).json({ error: "No audio tracks found on this page" });
+    }
+
+    res.setHeader("X-Cache", "MISS");
+    res.json(detail);
   } catch (err: any) {
     console.error("[Audiobook Detail] Failed:", err.message);
     res.status(500).json({ error: "Failed to load audiobook details", message: err.message });
   }
+});
+
+// Unified ebook search stream (Google Books + Anna's Archive in parallel)
+app.get("/api/search/stream", async (req, res) => {
+  const q = (req.query.q as string || "").trim();
+  const page = parseInt(req.query.page as string || "1", 10);
+  if (!q) return res.status(400).json({ error: "Missing query parameter 'q'" });
+
+  res.setHeader("Content-Type", "application/x-ndjson");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+
+  const all: any[] = [];
+
+  const googlePromise = fetch(`http://127.0.0.1:${PORT}/api/google-books/search?q=${encodeURIComponent(q)}&startIndex=${(page - 1) * 20}`)
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data?.items) return;
+      const books = data.items.slice(0, 12).map((item: any) => {
+        const info = item.volumeInfo || {};
+        return {
+          title: info.title,
+          author: (info.authors || []).join(", "),
+          coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
+          year: info.publishedDate?.split("-")[0],
+          publisher: info.publisher,
+          isGoogleBook: true,
+          source: "google",
+        };
+      });
+      if (books.length) {
+        all.push(...books);
+        res.write(JSON.stringify({ source: "google", books }) + "\n");
+      }
+    }).catch(() => {});
+
+  const annasPromise = fetch(`http://127.0.0.1:${PORT}/api/annas-archive/search?q=${encodeURIComponent(q)}&page=${page}`)
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      const books = (data?.results || data || []).slice(0, 12);
+      if (books.length) {
+        all.push(...books);
+        res.write(JSON.stringify({ source: "annas", books }) + "\n");
+      }
+    }).catch(() => {});
+
+  await Promise.allSettled([googlePromise, annasPromise]);
+  res.write(JSON.stringify({ done: true, totalCount: all.length, hasMore: all.length >= 12 }) + "\n");
+  res.end();
 });
 
 // Goodreads reviews endpoint
