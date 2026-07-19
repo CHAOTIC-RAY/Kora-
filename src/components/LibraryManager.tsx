@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
@@ -416,12 +416,21 @@ export default function LibraryManager({
     loadTags();
   }, [userId]);
 
+  const syncingBookIdsRef = useRef(syncingBookIds);
+  syncingBookIdsRef.current = syncingBookIds;
+  const deletingBookIdsRef = useRef(deletingBookIds);
+  deletingBookIdsRef.current = deletingBookIds;
+
   useEffect(() => {
     const prefs = loadSyncPrefs();
     if (!prefs.autoHydrateLibrary) return;
 
     const downloadMissingBook = async (book: BookMetadata) => {
-      if (syncingBookIds.has(book.id) || cachedBookIds.has(book.id) || deletingBookIds.has(book.id)) {
+      if (
+        syncingBookIdsRef.current.has(book.id) ||
+        cachedBookIds.has(book.id) ||
+        deletingBookIdsRef.current.has(book.id)
+      ) {
         return;
       }
       if (book.extension?.toLowerCase() === "audiobook") {
@@ -458,11 +467,15 @@ export default function LibraryManager({
     };
 
     books.forEach((book) => {
-      if (!cachedBookIds.has(book.id) && !syncingBookIds.has(book.id) && !deletingBookIds.has(book.id)) {
+      if (
+        !cachedBookIds.has(book.id) &&
+        !syncingBookIdsRef.current.has(book.id) &&
+        !deletingBookIdsRef.current.has(book.id)
+      ) {
         void downloadMissingBook(book);
       }
     });
-  }, [books, cachedBookIds, syncingBookIds, deletingBookIds, onCachedIdsChanged]);
+  }, [books, cachedBookIds, onCachedIdsChanged]);
 
   async function loadTags() {
     const tags = await loadCustomTags(userId);
@@ -630,38 +643,40 @@ export default function LibraryManager({
     book.extension?.toLowerCase() === "audiobook" || book.tags?.includes("audiobook");
 
   // Filter & sort logic
-  const filteredBooks = books.filter((book) => {
-    const matchesSearch = 
-      book.title.toLowerCase().includes(search.toLowerCase()) || 
-      book.author.toLowerCase().includes(search.toLowerCase());
-      
-    const matchesStatus = 
-      filterStatus === "all" || book.status === filterStatus;
-      
-    const matchesTag = 
-      filterTag === "all" || book.tags.includes(filterTag);
+  const filteredBooks = useMemo(() => {
+    const q = search.toLowerCase();
+    return books
+      .filter((book) => {
+        const matchesSearch =
+          book.title.toLowerCase().includes(q) || book.author.toLowerCase().includes(q);
 
-    const matchesType =
-      filterType === "all" ||
-      (filterType === "audiobook" && isAudiobookEntry(book)) ||
-      (filterType === "book" && !isAudiobookEntry(book));
-      
-    return matchesSearch && matchesStatus && matchesTag && matchesType;
-  }).sort((a, b) => {
-    if (sortBy === "dateAdded") {
-      return b.dateAdded - a.dateAdded;
-    }
-    if (sortBy === "progress") {
-      return (b.progress?.percent ?? 0) - (a.progress?.percent ?? 0);
-    }
-    if (sortBy === "rating") {
-      return (b.rating ?? 0) - (a.rating ?? 0);
-    }
-    if (sortBy === "title") {
-      return a.title.localeCompare(b.title);
-    }
-    return 0;
-  });
+        const matchesStatus = filterStatus === "all" || book.status === filterStatus;
+
+        const matchesTag = filterTag === "all" || book.tags.includes(filterTag);
+
+        const matchesType =
+          filterType === "all" ||
+          (filterType === "audiobook" && isAudiobookEntry(book)) ||
+          (filterType === "book" && !isAudiobookEntry(book));
+
+        return matchesSearch && matchesStatus && matchesTag && matchesType;
+      })
+      .sort((a, b) => {
+        if (sortBy === "dateAdded") {
+          return b.dateAdded - a.dateAdded;
+        }
+        if (sortBy === "progress") {
+          return (b.progress?.percent ?? 0) - (a.progress?.percent ?? 0);
+        }
+        if (sortBy === "rating") {
+          return (b.rating ?? 0) - (a.rating ?? 0);
+        }
+        if (sortBy === "title") {
+          return a.title.localeCompare(b.title);
+        }
+        return 0;
+      });
+  }, [books, search, filterStatus, filterTag, filterType, sortBy]);
 
   const finalRenderedBooks = filteredBooks;
 

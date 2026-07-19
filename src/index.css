@@ -423,13 +423,11 @@ html.kora-android body {
 }
 
 .kora-tab-panel {
-  will-change: opacity, transform;
+  /* keep-alive tabs: inactive panels stay mounted but hidden */
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .kora-tab-panel {
-    will-change: auto;
-  }
+.kora-tab-panel[hidden] {
+  display: none !important;
 }
 
 .kora-mobile-fab {

@@ -273,6 +273,13 @@ export default function FeedView({
 
   useEffect(() => {
     loadLocalState();
+    const subs = ensureDefaultSubscriptions();
+    const newestFetch = Math.max(0, ...subs.map((sub) => sub.lastFetchedAt || 0));
+    // Skip network refresh when feeds were fetched recently (keeps first paint snappy).
+    if (newestFetch && Date.now() - newestFetch < 5 * 60 * 1000) {
+      setItems(getFeedItems());
+      return;
+    }
     void refreshFeeds();
   }, [loadLocalState, refreshFeeds]);
 
@@ -339,7 +346,7 @@ export default function FeedView({
   };
 
   return (
-    <div className="space-y-5 md:space-y-7 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
+    <div className="space-y-5 md:space-y-7 pb-4 md:pb-10 text-left">
       <header className="flex items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">

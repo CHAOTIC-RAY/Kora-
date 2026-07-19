@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense, startTransition } from "react";
 import { 
   auth, 
   isRealFirebase, 
@@ -18,7 +18,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { getBookFile, clearAllCachedBooks, storeBookFile } from "./db/indexedDB";
+import { clearAllCachedBooks, storeBookFile, listCachedBookIds } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
@@ -62,8 +62,8 @@ import {
   RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench
 } from "lucide-react";
 import JSZip from "jszip";
-import { AnimatePresence, LayoutGroup, motion } from "motion/react";
-import FluidOverlay, { koraEase, koraSpring } from "./components/FluidOverlay";
+import { LayoutGroup, motion } from "motion/react";
+import FluidOverlay, { koraSpring } from "./components/FluidOverlay";
 import {
   hydrateBookFile,
   maybePushBookToWebDav,
@@ -78,6 +78,9 @@ const MOBILE_TABS = [
   { id: "feed" as const, label: "Read", Icon: Rss },
   { id: "tools" as const, label: "Tools", Icon: Wrench },
 ];
+
+type AppTab = "library" | "discover" | "feed" | "tools" | "settings";
+const ALL_APP_TABS: AppTab[] = ["library", "discover", "feed", "tools", "settings"];
 
 async function injectMetadataIntoEpub(
   fileBlob: Blob,
@@ -186,7 +189,18 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"library" | "discover" | "feed" | "tools" | "settings">("library");
+  const [activeTab, setActiveTab] = useState<AppTab>("library");
+  // Keep visited tabs mounted so switching doesn't remount Discover/Feed/Library.
+  const [mountedTabs, setMountedTabs] = useState<Set<AppTab>>(() => new Set<AppTab>(["library"]));
+  const switchTab = useCallback((tab: AppTab) => {
+    setMountedTabs((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
+    startTransition(() => setActiveTab(tab));
+  }, []);
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
@@ -850,13 +864,13 @@ export default function App() {
         });
         toast.error(data.error || "Download failed", { id: data.downloadId });
       } else if (data.type === "open-downloads") {
-        setActiveTab("library");
+        switchTab("library");
       } else if (data.type === "open-feed-briefs") {
-        setActiveTab("feed");
+        switchTab("feed");
       } else if (data.type === "brief-notification-shown") {
         markBriefNotificationShown();
       } else if (data.type === "bgf-retry") {
-        setActiveTab("library");
+        switchTab("library");
         toast.loading("Retry available in your Library downloads");
       } else if (data.type === "bgf-cancel") {
         removeDownloadEntry(data.downloadId);
@@ -1140,28 +1154,35 @@ export default function App() {
     }
   }, [zlibConfig.autoDiscover]);
 
-  // Sync index of locally cached books in IndexedDB
-  useEffect(() => {
-    updateCachedBookIndex();
-  }, [books]);
-
-  async function updateCachedBookIndex() {
-    const ids = new Set<string>();
-    for (const book of books) {
-      const exists = await getBookFile(book.id);
-      if (exists) {
-        ids.add(book.id);
-      }
+  // Sync index of locally cached books in IndexedDB (keys only — never load blobs)
+  const updateCachedBookIndex = useCallback(async () => {
+    try {
+      const ids = await listCachedBookIds();
+      setCachedBookIds(new Set(ids));
+    } catch (err) {
+      console.warn("Failed to refresh cached book index:", err);
     }
-    setCachedBookIds(ids);
-  }
+  }, []);
+
+  useEffect(() => {
+    void updateCachedBookIndex();
+  }, [books, updateCachedBookIndex]);
 
   // Keep track of the active tab before transitioning to settings
-  const prevTabRef = useRef<"library" | "discover" | "feed" | "tools" | "settings">("library");
+  const prevTabRef = useRef<AppTab>("library");
   useEffect(() => {
     if (activeTab !== "settings") {
       prevTabRef.current = activeTab;
     }
+  }, [activeTab]);
+
+  useEffect(() => {
+    setMountedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
   }, [activeTab]);
 
   const isAudiobookBook = activeBook?.extension?.toLowerCase() === "audiobook";
@@ -1195,7 +1216,7 @@ export default function App() {
     closeAudiobook
   );
   const dismissSettings = useAndroidBackLayer(activeTab === "settings", "settings", () => {
-    setActiveTab(prevTabRef.current);
+    switchTab(prevTabRef.current);
   });
   const dismissAuthModal = useAndroidBackLayer(showAuthModal, "auth-modal", () => setShowAuthModal(false));
   const dismissSharingModal = useAndroidBackLayer(sharingStatus === "error", "share-error", () => setSharingStatus("idle"));
@@ -1435,7 +1456,7 @@ export default function App() {
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
             id="kora-logo-home"
-            onClick={() => setActiveTab("library")}
+            onClick={() => switchTab("library")}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none cursor-pointer shrink-0"
             aria-label="Kora Library Home"
           >
@@ -1454,7 +1475,7 @@ export default function App() {
           <nav className="hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border">
             <button
               id="library-tab"
-              onClick={() => setActiveTab("library")}
+              onClick={() => switchTab("library")}
               className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "library" 
                   ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
@@ -1466,7 +1487,7 @@ export default function App() {
             </button>
             <button
               id="discover-tab"
-              onClick={() => setActiveTab("discover")}
+              onClick={() => switchTab("discover")}
               className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "discover" 
                   ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
@@ -1478,7 +1499,7 @@ export default function App() {
             </button>
             <button
               id="feed-tab"
-              onClick={() => setActiveTab("feed")}
+              onClick={() => switchTab("feed")}
               className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "feed" 
                   ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
@@ -1490,7 +1511,7 @@ export default function App() {
             </button>
             <button
               id="tools-tab"
-              onClick={() => setActiveTab("tools")}
+              onClick={() => switchTab("tools")}
               className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "tools" 
                   ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
@@ -1504,7 +1525,7 @@ export default function App() {
 
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setActiveTab("settings")}
+              onClick={() => switchTab("settings")}
               className={`p-2 rounded-xl transition cursor-pointer relative z-40 ${
                 activeTab === "settings"
                   ? "bg-kindle-accent/15 text-kindle-accent"
@@ -1533,17 +1554,14 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab Displays */}
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={activeTab}
+        {/* Tab Displays — keep visited tabs mounted to avoid remount lag */}
+{mountedTabs.has("library") && (
+          <div
             className="kora-tab-panel"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.28, ease: koraEase }}
+            hidden={activeTab !== "library"}
+            inert={activeTab !== "library" ? true : undefined}
           >
-        {activeTab === "library" && (
+
           <LibraryManager
             userId={user?.uid || ""}
             books={books}
@@ -1559,12 +1577,18 @@ export default function App() {
             onOpenAnnotations={() => setShowAnnotationsHub(true)}
             onSearchTrigger={(query) => {
               setDiscoverInitialQuery(query);
-              setActiveTab("discover");
+              switchTab("discover");
             }}
           />
+                  </div>
         )}
+{mountedTabs.has("feed") && (
+          <div
+            className="kora-tab-panel"
+            hidden={activeTab !== "feed"}
+            inert={activeTab !== "feed" ? true : undefined}
+          >
 
-        {activeTab === "feed" && (
           <FeedView
             userId={user?.uid || ""}
             onRefreshLibrary={() => refreshLibrary()}
@@ -1572,9 +1596,15 @@ export default function App() {
             initialUrl={feedInitialUrl}
             onClearInitialUrl={() => setFeedInitialUrl(null)}
           />
+                  </div>
         )}
-        
-        {activeTab === "discover" && (
+{mountedTabs.has("discover") && (
+          <div
+            className="kora-tab-panel"
+            hidden={activeTab !== "discover"}
+            inert={activeTab !== "discover" ? true : undefined}
+          >
+
           <DiscoverView
             userId={user?.uid || ""}
             books={books}
@@ -1584,7 +1614,7 @@ export default function App() {
             onTriggerDownload={startBackgroundDownload}
             onOpenBrowser={(url) => {
               setFeedInitialUrl(url);
-              setActiveTab("feed");
+              switchTab("feed");
             }}
             onBookAdded={async (book) => {
               setBooks(prev => {
@@ -1603,7 +1633,7 @@ export default function App() {
                   console.error("Audiobook auto-download failed:", err);
                 }
               } else if (book.extension !== "audiobook") {
-                setActiveTab("library");
+                switchTab("library");
               }
               
               // Enrich metadata in background after addition
@@ -1628,10 +1658,15 @@ export default function App() {
             initialQuery={discoverInitialQuery}
             onClearInitialQuery={() => setDiscoverInitialQuery(null)}
           />
+                  </div>
         )}
+{mountedTabs.has("tools") && (
+          <div
+            className="kora-tab-panel"
+            hidden={activeTab !== "tools"}
+            inert={activeTab !== "tools" ? true : undefined}
+          >
 
-
-        {activeTab === "tools" && (
           <SettingsView
             view="tools"
             user={user}
@@ -1666,9 +1701,15 @@ export default function App() {
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={() => setShowOnboarding(true)}
           />
+                  </div>
         )}
+{mountedTabs.has("settings") && (
+          <div
+            className="kora-tab-panel"
+            hidden={activeTab !== "settings"}
+            inert={activeTab !== "settings" ? true : undefined}
+          >
 
-        {activeTab === "settings" && (
           <SettingsView
             view="settings" 
             user={user}
@@ -1699,9 +1740,8 @@ export default function App() {
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={() => setShowOnboarding(true)}
           />
+                  </div>
         )}
-          </motion.div>
-        </AnimatePresence>
       </main>
 
       {/* Mobile media dock: mini player (left) + Continue (right), joined as one control */}
@@ -2073,7 +2113,7 @@ export default function App() {
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setActiveTab(id)}
+                  onClick={() => switchTab(id)}
                   className={`kora-tab-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${
                     isActive ? "text-kindle-text" : "text-kindle-text-muted"
                   }`}

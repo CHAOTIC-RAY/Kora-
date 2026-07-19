@@ -2382,7 +2382,7 @@ export default function DiscoverView({
 
   return (
     <>
-      <div className="space-y-6 md:space-y-10 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="space-y-6 md:space-y-10 pb-4 md:pb-10">
         {/* Header & Search */}
         <header className="space-y-6">
           <div className="flex items-start justify-between">

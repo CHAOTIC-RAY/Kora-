@@ -100,8 +100,26 @@ export async function deleteBookFile(bookId: string): Promise<void> {
 }
 
 export async function checkBookFileCached(bookId: string): Promise<boolean> {
-  const file = await getBookFile(bookId);
-  return file !== null;
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getKey(bookId);
+    request.onsuccess = () => resolve(request.result !== undefined);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/** Cheap existence scan — keys only, never reads book blobs. */
+export async function listCachedBookIds(): Promise<string[]> {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAllKeys();
+    request.onsuccess = () => resolve((request.result || []).map(String));
+    request.onerror = () => reject(request.error);
+  });
 }
 
 export async function clearAllCachedBooks(): Promise<void> {
