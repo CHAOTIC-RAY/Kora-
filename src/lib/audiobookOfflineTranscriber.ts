@@ -18,21 +18,38 @@ type ProgressCb = (progress: number, message?: string) => void;
 
 let whisperPipeline: any = null;
 let whisperLoading: Promise<any> | null = null;
+let whisperLoadError: Error | null = null;
+
+const WHISPER_MODEL = "Xenova/whisper-tiny.en";
+
+/** Clear a prior model-load failure so the next call can retry. */
+export function resetWhisperLoadError() {
+  whisperLoadError = null;
+}
 
 async function getWhisper() {
   if (whisperPipeline) return whisperPipeline;
+  if (whisperLoadError) throw whisperLoadError;
   if (!whisperLoading) {
     whisperLoading = (async () => {
       const { pipeline, env } = await import("@xenova/transformers");
       // Cache models in browser cache; run fully on-device.
       env.allowLocalModels = false;
       env.useBrowserCache = true;
-      return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en", {
+      // Browser→huggingface.co is CORS-blocked from *.workers.dev.
+      // Load Hub files via same-origin Worker proxy (/api/hf/...).
+      if (typeof window !== "undefined" && window.location?.origin) {
+        env.remoteHost = `${window.location.origin}/api/hf/`;
+        env.remotePathTemplate = "{model}/resolve/{revision}/";
+      }
+      return pipeline("automatic-speech-recognition", WHISPER_MODEL, {
         quantized: true,
       });
     })().catch((error) => {
       whisperLoading = null;
-      throw error;
+      whisperLoadError =
+        error instanceof Error ? error : new Error(String(error || "Whisper model failed to load"));
+      throw whisperLoadError;
     });
   }
   whisperPipeline = await whisperLoading;

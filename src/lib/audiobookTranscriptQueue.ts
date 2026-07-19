@@ -57,7 +57,17 @@ export function enqueueTrackTranscription(
   const queue = loadQueue();
   const id = `${bookId}::${trackIndex}`;
   const existing = queue.find((job) => job.id === id);
-  if (existing && (existing.status === "done" || existing.status === "processing" || existing.status === "pending")) {
+  if (existing) {
+    if (existing.status === "done" || existing.status === "processing" || existing.status === "pending") {
+      processTranscriptQueue();
+      return;
+    }
+    // Manual re-enqueue of a failed job (do not auto-loop on error).
+    existing.status = "pending";
+    existing.progress = 0;
+    existing.error = undefined;
+    existing.trackTitle = trackTitle || existing.trackTitle;
+    saveQueue(queue);
     processTranscriptQueue();
     return;
   }
@@ -81,7 +91,8 @@ export async function processTranscriptQueue(): Promise<void> {
   try {
     while (true) {
       const queue = loadQueue();
-      const job = queue.find((entry) => entry.status === "pending" || entry.status === "error");
+      // Only pending — never auto-retry error (that caused infinite Whisper/CORS spam).
+      const job = queue.find((entry) => entry.status === "pending");
       if (!job) break;
 
       job.status = "processing";

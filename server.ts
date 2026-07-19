@@ -2663,6 +2663,58 @@ app.get("/api/webdav-proxy", handleWebDavProxy);
 app.post("/api/webdav-proxy", express.json({ limit: "2mb" }), handleWebDavProxy);
 app.put("/api/webdav-proxy", handleWebDavProxy);
 
+// Same-origin Hugging Face Hub proxy for on-device Whisper (@xenova/transformers).
+app.use("/api/hf", async (req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  try {
+    const hfPath = (req.url || "").replace(/^\//, "").split("?")[0];
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/resolve\/[A-Za-z0-9_.-]+\/.+/.test(hfPath)) {
+      return res.status(400).json({ error: "Invalid Hugging Face model path" });
+    }
+    const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
+    const target = `https://huggingface.co/${hfPath}${qs}`;
+    const headers: Record<string, string> = {
+      "User-Agent": "Kora-HF-Proxy/1.0",
+      Accept: req.headers.accept || "*/*",
+    };
+    if (req.headers.range) headers.Range = String(req.headers.range);
+    if (req.headers["if-none-match"]) headers["If-None-Match"] = String(req.headers["if-none-match"]);
+
+    const upstream = await fetch(target, { method: "GET", headers, redirect: "follow" });
+    res.status(upstream.status);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader(
+      "Access-Control-Expose-Headers",
+      "Content-Length, Content-Range, Accept-Ranges, ETag, Cache-Control"
+    );
+    const pass = [
+      "content-type",
+      "content-length",
+      "content-range",
+      "accept-ranges",
+      "etag",
+      "cache-control",
+      "last-modified",
+    ];
+    for (const key of pass) {
+      const value = upstream.headers.get(key);
+      if (value) res.setHeader(key, value);
+    }
+    if (!res.getHeader("Cache-Control")) {
+      res.setHeader("Cache-Control", "public, max-age=86400, immutable");
+    }
+    if (!res.getHeader("Content-Type")) {
+      res.setHeader("Content-Type", "application/octet-stream");
+    }
+
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    return res.send(buf);
+  } catch (err: any) {
+    console.error("HF proxy failed:", err);
+    return res.status(502).json({ error: err?.message || "HF proxy failed" });
+  }
+});
+
 // 3. API: Proxy Download to bypass CORS & SSL blocks
 app.get("/api/proxy-file", async (req, res) => {
   const fileUrl = req.query.url as string;

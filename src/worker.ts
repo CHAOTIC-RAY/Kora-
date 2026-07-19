@@ -355,11 +355,78 @@ export default {
       return new Response(null, {
         headers: {
           "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
-          "Access-Control-Allow-Credentials": "true"
+          "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie, Range",
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Expose-Headers": "Content-Length, Content-Range, Accept-Ranges, ETag",
         }
       });
+    }
+
+    // Same-origin Hugging Face Hub proxy for @xenova/transformers model files.
+    // Browser fetches to huggingface.co are blocked (CORS ACAO only allows huggingface.co).
+    if (path.startsWith("/api/hf/")) {
+      try {
+        const hfPath = path.slice("/api/hf/".length);
+        // Only allow Hub resolve URLs: owner/repo/resolve/revision/filepath
+        if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/resolve\/[A-Za-z0-9_.-]+\/.+/.test(hfPath)) {
+          return new Response(JSON.stringify({ error: "Invalid Hugging Face model path" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        const target = `https://huggingface.co/${hfPath}${url.search || ""}`;
+        const upstreamHeaders: Record<string, string> = {
+          "User-Agent": "Kora-HF-Proxy/1.0",
+          Accept: request.headers.get("Accept") || "*/*",
+        };
+        const range = request.headers.get("Range");
+        if (range) upstreamHeaders.Range = range;
+        const ifNoneMatch = request.headers.get("If-None-Match");
+        if (ifNoneMatch) upstreamHeaders["If-None-Match"] = ifNoneMatch;
+
+        const upstream = await fetch(target, {
+          method: "GET",
+          headers: upstreamHeaders,
+          redirect: "follow",
+        });
+
+        const outHeaders = new Headers();
+        outHeaders.set("Access-Control-Allow-Origin", "*");
+        outHeaders.set(
+          "Access-Control-Expose-Headers",
+          "Content-Length, Content-Range, Accept-Ranges, ETag, Cache-Control"
+        );
+        const pass = [
+          "content-type",
+          "content-length",
+          "content-range",
+          "accept-ranges",
+          "etag",
+          "cache-control",
+          "last-modified",
+        ];
+        for (const key of pass) {
+          const value = upstream.headers.get(key);
+          if (value) outHeaders.set(key, value);
+        }
+        if (!outHeaders.has("Cache-Control")) {
+          outHeaders.set("Cache-Control", "public, max-age=86400, immutable");
+        }
+        if (!outHeaders.has("Content-Type")) {
+          outHeaders.set("Content-Type", "application/octet-stream");
+        }
+
+        return new Response(upstream.body, {
+          status: upstream.status,
+          headers: outHeaders,
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message || "HF proxy failed" }), {
+          status: 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
     }
 
     // Browser Proxy Route using Cloudflare's Browser Run (env.BROWSER) & native HTMLRewriter
