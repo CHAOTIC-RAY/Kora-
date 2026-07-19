@@ -125,9 +125,9 @@ function liveTranscriberPlaceholder(
   if (status === "unavailable") {
     return chapterLabel || bookTitle;
   }
-  if (status === "listening") return "Listening…";
-  if (status === "processing") return "Transcribing…";
-  if (status === "error") return "Transcription paused — tap play to retry.";
+  if (status === "ready" || status === "listening") return "Listening…";
+  if (status === "processing") return "Generating on-device transcript…";
+  if (status === "error") return "Transcript unavailable — showing chapter title.";
   return chapterLabel || bookTitle;
 }
 
@@ -451,7 +451,17 @@ export default function AudiobookPlayer({
         if (autoPlay) {
           await audioRef.current.play();
           setIsPlaying(true);
-          liveTranscriberRef.current?.attach(audioRef.current);
+          liveTranscriberRef.current?.attach(audioRef.current, {
+            bookId: book.id,
+            trackIndex: index,
+            trackTitle: tracks[index]?.title || `Part ${index + 1}`,
+          });
+        } else {
+          liveTranscriberRef.current?.attach(audioRef.current, {
+            bookId: book.id,
+            trackIndex: index,
+            trackTitle: tracks[index]?.title || `Part ${index + 1}`,
+          });
         }
         setCurrentTrack(index);
       } catch (err) {
@@ -468,6 +478,7 @@ export default function AudiobookPlayer({
       loadTtsTrack,
       resolveTrackUrl,
       speed,
+      book.id,
       book.audiobookCurrentTrack,
       book.audiobookCurrentTime,
       smartSkip.enabled,
@@ -781,7 +792,11 @@ export default function AudiobookPlayer({
         onPlay={() => {
           setIsPlaying(true);
           if (!isTtsBook && audioRef.current) {
-            liveTranscriberRef.current?.attach(audioRef.current);
+            liveTranscriberRef.current?.attach(audioRef.current, {
+              bookId: book.id,
+              trackIndex: currentTrack,
+              trackTitle: tracks[currentTrack]?.title || currentTrackLabel,
+            });
           }
         }}
         onError={() => {
@@ -878,9 +893,14 @@ export default function AudiobookPlayer({
                   ? transcriberText || (transcriberReady ? "" : "Preparing transcription…")
                   : transcriberText}
               </p>
-              {!isTtsBook && liveTranscriberStatus === "unavailable" && (
+              {!isTtsBook && liveTranscriberStatus === "processing" && (
                 <p className="text-[10px] text-kindle-text-muted text-center">
-                  Live transcription unavailable — showing chapter title.
+                  On-device transcript generating after download…
+                </p>
+              )}
+              {!isTtsBook && liveTranscriberStatus === "error" && (
+                <p className="text-[10px] text-kindle-text-muted text-center">
+                  Transcript unavailable — showing chapter title.
                 </p>
               )}
             </div>

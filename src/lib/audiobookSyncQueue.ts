@@ -7,6 +7,7 @@ import { downloadAudiobookTrack, getAudiobookTrack, storeAudiobookTrack } from "
 import { refererForMediaUrl } from "./mediaUrl";
 import { getProxiedAudioUrl } from "./audiobookStorage";
 import { handoffAudiobookTrackDownload } from "./swBridge";
+import { enqueueTrackTranscription } from "./audiobookTranscriptQueue";
 
 const QUEUE_KEY = "kora_audiobook_sync_queue_v1";
 
@@ -141,6 +142,7 @@ export async function ingestAudiobookTrackFromSw(
       }
       await storeAudiobookTrack(bookId, trackIndex, trackTitle, blob);
       navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", jobId });
+      enqueueTrackTranscription(bookId, trackIndex, trackTitle);
       return;
     } catch (error) {
       lastError = error as Error;
@@ -164,6 +166,7 @@ async function downloadTrack(job: AudiobookSyncJob, onProgress?: (pct: number) =
 
   if (!handedOff) {
     await downloadAudiobookTrack(job.bookId, job.trackIndex, job.trackTitle, job.src, onProgress);
+    enqueueTrackTranscription(job.bookId, job.trackIndex, job.trackTitle);
     return;
   }
 
@@ -194,6 +197,7 @@ async function downloadTrack(job: AudiobookSyncJob, onProgress?: (pct: number) =
     // SW handoff/pickup failed — fall back to direct client download once.
     swJobWaiters.delete(job.id);
     await downloadAudiobookTrack(job.bookId, job.trackIndex, job.trackTitle, job.src, onProgress);
+    enqueueTrackTranscription(job.bookId, job.trackIndex, job.trackTitle);
   }
 }
 
