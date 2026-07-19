@@ -134,6 +134,28 @@
     0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+.player-chapter-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.player-chapter-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.player-chapter-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.player-chapter-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+.player-chapter-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 /* Shimmer sweep used by the download progress overlay in the library */
 @keyframes shimmer {
   0% { transform: translateX(0); }
