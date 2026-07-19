@@ -186,8 +186,27 @@ class DiagnosticLogger {
     const logsText = this.logs
       .map(l => `[${l.timestamp}] [${l.type.toUpperCase()}] ${l.message}${l.detail ? `\nDetail: ${l.detail}` : ""}`)
       .join("\n\n");
-    
-    const blob = new Blob([logsText], { type: "text/plain;charset=utf-8" });
+
+    let downloadLogSection = "";
+    try {
+      const raw = localStorage.getItem("kora_downloads_log");
+      if (raw) {
+        const entries = JSON.parse(raw);
+        if (Array.isArray(entries) && entries.length > 0) {
+          downloadLogSection =
+            "\n\n" +
+            "=".repeat(60) +
+            "\nDOWNLOAD ACTIVITY LOG (kora_downloads_log)\n" +
+            "=".repeat(60) +
+            "\n\n" +
+            JSON.stringify(entries, null, 2);
+        }
+      }
+    } catch {
+      // ignore malformed download log
+    }
+
+    const blob = new Blob([logsText + downloadLogSection], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;

@@ -26,6 +26,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./src/lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
+import { discoverFeedFromUrl, fetchFeedFromUrl } from "./src/lib/feedServer";
 
 dotenv.config();
 
@@ -53,6 +54,33 @@ function getGeminiClient() {
 }
 
 app.use("/api/zlib", zlibRouter);
+
+// RSS Feed Discovery & Fetch
+app.post("/api/feed/discover", express.json(), async (req, res) => {
+  const inputUrl = req.body.url;
+  if (!inputUrl) {
+    return res.status(400).json({ error: "Missing url parameter" });
+  }
+  try {
+    const result = await discoverFeedFromUrl(inputUrl);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Feed discovery failed" });
+  }
+});
+
+app.post("/api/feed/fetch", express.json(), async (req, res) => {
+  const feedUrl = req.body.feedUrl;
+  if (!feedUrl) {
+    return res.status(400).json({ error: "Missing feedUrl parameter" });
+  }
+  try {
+    const result = await fetchFeedFromUrl(feedUrl);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Feed fetch failed" });
+  }
+});
 
 // Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Cheerio + JSDOM)
 app.post("/api/convert-url", express.json(), async (req, res) => {

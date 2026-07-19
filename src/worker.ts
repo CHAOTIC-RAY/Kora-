@@ -19,6 +19,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
+import { discoverFeedFromUrl, fetchFeedFromUrl } from "./lib/feedServer";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 
 declare const HTMLRewriter: any;
@@ -2021,7 +2022,52 @@ export default {
       }
     }
 
-    // 5. Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Cheerio)
+    // 5. RSS Feed Discovery & Fetch
+    if (path === "/api/feed/discover" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const inputUrl = body.url;
+        if (!inputUrl) {
+          return new Response(JSON.stringify({ error: "Missing url parameter" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        const result = await discoverFeedFromUrl(inputUrl);
+        return new Response(JSON.stringify(result), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Feed discovery failed" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    if (path === "/api/feed/fetch" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const feedUrl = body.feedUrl;
+        if (!feedUrl) {
+          return new Response(JSON.stringify({ error: "Missing feedUrl parameter" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+        const result = await fetchFeedFromUrl(feedUrl);
+        return new Response(JSON.stringify(result), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err.message || "Feed fetch failed" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    // 6. Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Cheerio)
     if (path === "/api/convert-url" && request.method === "POST") {
       try {
         const body = await request.json();

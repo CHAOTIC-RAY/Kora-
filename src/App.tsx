@@ -30,7 +30,7 @@ import AudiobookPlayer from "./components/AudiobookPlayer";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import { enqueueAudiobookDownload } from "./lib/audiobookSyncQueue";
 import Quote from "./components/Quote";
-import DownloadsManager from "./components/DownloadsManager";
+import FeedView from "./components/FeedView";
 import DownloadBookBtn from "./components/DownloadBookBtn";
 import OnboardingModal from "./components/OnboardingModal";
 import DailyReminderModal from "./components/DailyReminderModal";
@@ -41,7 +41,7 @@ import {
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
-  Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle,
+  Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle, Rss,
   RefreshCw, Zap, Database, Trash2, Library, BookMarked
 } from "lucide-react";
 import JSZip from "jszip";
@@ -153,7 +153,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"library" | "discover" | "downloads" | "settings">("library");
+  const [activeTab, setActiveTab] = useState<"library" | "discover" | "feed" | "settings">("library");
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
     const saved = localStorage.getItem("kindle_last_read");
@@ -289,7 +289,7 @@ export default function App() {
   const [cachedBookIds, setCachedBookIds] = useState<Set<string>>(new Set());
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
-  const [browserInitialUrl, setBrowserInitialUrl] = useState<string | null>(null);
+  const [feedInitialUrl, setFeedInitialUrl] = useState<string | null>(null);
 
   // Mobile Web App / PWA Share Target state variables
   const [sharingStatus, setSharingStatus] = useState<"idle" | "converting" | "success" | "error">("idle");
@@ -695,11 +695,10 @@ export default function App() {
         });
         toast.error(data.error || "Download failed", { id: data.downloadId });
       } else if (data.type === "open-downloads") {
-        setActiveTab("downloads");
+        setActiveTab("library");
       } else if (data.type === "bgf-retry") {
-        setActiveTab("downloads");
-        // The DownloadsManager renders retry buttons for errored items.
-        toast.loading("Retry available in the Downloads panel");
+        setActiveTab("library");
+        toast.loading("Retry available in your Library downloads");
       } else if (data.type === "bgf-cancel") {
         setGlobalDownloads(prev => {
           const updated = prev.map(dl => dl.id === data.downloadId ? { ...dl, status: "error", error: "Cancelled" } : dl);
@@ -987,7 +986,7 @@ export default function App() {
   }, [activeBook]);
 
   // Keep track of the active tab before transitioning to settings
-  const prevTabRef = useRef<"library" | "discover" | "downloads" | "settings">("library");
+  const prevTabRef = useRef<"library" | "discover" | "feed" | "settings">("library");
   useEffect(() => {
     if (activeTab !== "settings") {
       prevTabRef.current = activeTab;
@@ -1258,16 +1257,16 @@ export default function App() {
               <span>Discover</span>
             </button>
             <button
-              id="downloads-tab"
-              onClick={() => setActiveTab("downloads")}
+              id="feed-tab"
+              onClick={() => setActiveTab("feed")}
               className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
-                activeTab === "downloads" 
+                activeTab === "feed" 
                   ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
                   : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>Downloads</span>
+              <Rss className="w-3.5 h-3.5" />
+              <span>Feed</span>
             </button>
             <button
               id="settings-tab"
@@ -1339,24 +1338,13 @@ export default function App() {
           />
         )}
 
-        {activeTab === "downloads" && (
-          <DownloadsManager 
-            userId={user?.uid || ""} 
-            downloads={globalDownloads}
-            onSetDownloads={(updated: any[]) => {
-              setGlobalDownloads(updated);
-              localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
-            }}
+        {activeTab === "feed" && (
+          <FeedView
+            userId={user?.uid || ""}
             onRefreshLibrary={() => refreshLibrary()}
-            onRetryDownload={(dl: any) => {
-              // Reconstruct the original book + variant from the stashed payload
-              const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[dl.id];
-              if (!mirror) {
-                toast.error("Cannot retry — original source unavailable");
-                return;
-              }
-              startBackgroundDownload(mirror.book, [mirror.variant], mirror.variant);
-            }}
+            onOpenBook={handleOpenBook}
+            initialUrl={feedInitialUrl}
+            onClearInitialUrl={() => setFeedInitialUrl(null)}
           />
         )}
         
@@ -1369,8 +1357,8 @@ export default function App() {
             onSelectedBookChange={setSelectedBookForDownload}
             onTriggerDownload={startBackgroundDownload}
             onOpenBrowser={(url) => {
-              setBrowserInitialUrl(url);
-              setActiveTab("downloads");
+              setFeedInitialUrl(url);
+              setActiveTab("feed");
             }}
             onBookAdded={async (book) => {
               setBooks(prev => {
@@ -1820,13 +1808,13 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab("downloads")}
+            onClick={() => setActiveTab("feed")}
             className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "downloads" ? "text-kindle-text" : "text-kindle-text-muted"
+              activeTab === "feed" ? "text-kindle-text" : "text-kindle-text-muted"
             }`}
           >
-            <Download className={`w-5 h-5 transition-all duration-300 ${activeTab === "downloads" ? "scale-110" : "opacity-80"}`} />
-            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Storage</span>
+            <Rss className={`w-5 h-5 transition-all duration-300 ${activeTab === "feed" ? "scale-110" : "opacity-80"}`} />
+            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Read</span>
           </button>
 
           <button

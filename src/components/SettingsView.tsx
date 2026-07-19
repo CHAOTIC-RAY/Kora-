@@ -956,13 +956,13 @@ export default function SettingsView({
           </button>
 
           <div className="border-t border-kindle-border/40 pt-4 space-y-2.5">
-            <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Diagnostic System Logs</h4>
+            <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Diagnostic & Download Logs</h4>
             <div className="flex gap-2">
               <button
                 onClick={() => logger.downloadLogsAsFile()}
                 className="flex-1 flex items-center justify-center gap-2 py-2 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5 text-kindle-accent" /> Export Log
+                <Download className="w-3.5 h-3.5 text-kindle-accent" /> Export Logs
               </button>
               <button
                 onClick={() => {
@@ -1022,7 +1022,7 @@ export default function SettingsView({
             )}
 
             <p className="text-[8px] text-kindle-text-muted leading-relaxed italic">
-              Contains details on download links, proxy attempts, worker syncs, and system errors.
+              Includes diagnostic events, download activity history, proxy attempts, worker syncs, and system errors.
             </p>
           </div>
         </section>
