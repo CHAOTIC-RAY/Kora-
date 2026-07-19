@@ -6,7 +6,8 @@
 const DB_NAME = "EbookSyncReaderDB";
 const STORE_NAME = "cached_books";
 export const AUDIOBOOK_TRACK_STORE = "audiobook_tracks";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
+export const TTS_CHAPTER_CACHE_STORE = "tts_chapter_cache";
 
 export function getDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -20,6 +21,9 @@ export function getDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(AUDIOBOOK_TRACK_STORE)) {
         const trackStore = db.createObjectStore(AUDIOBOOK_TRACK_STORE, { keyPath: "trackKey" });
         trackStore.createIndex("bookId", "bookId", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(TTS_CHAPTER_CACHE_STORE)) {
+        db.createObjectStore(TTS_CHAPTER_CACHE_STORE, { keyPath: "cacheKey" });
       }
     };
 

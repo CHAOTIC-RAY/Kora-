@@ -13,6 +13,15 @@ import {
   loadBookHighlights
 } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
+import {
+  getEffectiveSpeechRate,
+  getSpeechVoices,
+  getTtsSettings,
+  resolveSpeechVoice,
+  saveTtsSettings,
+  subscribeToVoicesChanged,
+} from "../lib/ttsSettings";
+import { prepareTextForNarration } from "../lib/ttsTextPrep";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
 import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
@@ -1471,25 +1480,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     if (typeof window === "undefined" || !window.speechSynthesis) return;
 
     const loadVoices = () => {
-      const allVoices = window.speechSynthesis.getVoices();
+      const allVoices = getSpeechVoices();
       setVoices(allVoices);
-
-      // Select default voice (prefer english)
-      const defaultVoice = 
-        allVoices.find((v) => v.lang.startsWith("en-US") && v.name.includes("Natural")) ||
-        allVoices.find((v) => v.lang.startsWith("en") && v.localService) ||
-        allVoices.find((v) => v.lang.startsWith("en")) ||
-        allVoices[0];
-
-      if (defaultVoice) {
-        setSelectedVoiceName(defaultVoice.name);
+      const settings = getTtsSettings();
+      const resolved = resolveSpeechVoice(settings.voiceName);
+      if (resolved) {
+        setSelectedVoiceName(resolved.name);
+        if (!settings.voiceName) saveTtsSettings({ voiceName: resolved.name });
       }
+      setSpeechRate(settings.rate || 1);
     };
 
-    loadVoices();
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-
+    const unsubscribe = subscribeToVoicesChanged(loadVoices);
     return () => {
+      unsubscribe();
       window.speechSynthesis.cancel();
     };
   }, []);
@@ -1515,21 +1519,25 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setCurrentParagraphIdx(idx);
     highlightParagraphInDOM(idx);
 
-    const textToSpeak = domElements[idx].textContent?.trim() || "";
+    const textToSpeak = prepareTextForNarration(domElements[idx].textContent?.trim() || "", {
+      quality: getTtsSettings().qualityPreset,
+    });
     if (!textToSpeak) {
       speakParagraph(idx + 1);
       return;
     }
 
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    const settings = getTtsSettings();
     
     // Assign voice if selected
-    const selectedVoice = voices.find((v) => v.name === selectedVoiceName);
+    const selectedVoice = resolveSpeechVoice(selectedVoiceName || settings.voiceName);
     if (selectedVoice) {
       utterance.voice = selectedVoice;
     }
 
-    utterance.rate = speechRate;
+    utterance.rate = getEffectiveSpeechRate(speechRate);
+    utterance.pitch = settings.pitch;
 
     utterance.onend = () => {
       speakParagraph(idx + 1);
@@ -2275,6 +2283,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         value={selectedVoiceName}
                         onChange={(e) => {
                           setSelectedVoiceName(e.target.value);
+                          saveTtsSettings({ voiceName: e.target.value });
                           if (isPlayingSpeech) {
                             setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
                           }
@@ -2308,6 +2317,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         onChange={(e) => {
                           const val = parseFloat(e.target.value);
                           setSpeechRate(val);
+                          saveTtsSettings({ rate: val });
                           if (isPlayingSpeech) {
                             setTimeout(() => speakParagraph(currentParagraphIdx >= 0 ? currentParagraphIdx : 0), 100);
                           }

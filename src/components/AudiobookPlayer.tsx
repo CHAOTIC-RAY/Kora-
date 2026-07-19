@@ -22,6 +22,13 @@ import { refererForMediaUrl } from "../lib/mediaUrl";
 import { isBrowserTtsTrack } from "../lib/browserTtsAudiobook";
 import { BrowserTtsPlayer } from "../lib/browserTtsPlayer";
 import {
+  formatEstimatedRemaining,
+  loadTtsPlaybackPosition,
+  saveTtsPlaybackPosition,
+} from "../lib/ttsProgress";
+import { getTtsSettings } from "../lib/ttsSettings";
+import TtsVoiceSettings from "./TtsVoiceSettings";
+import {
   enqueueAudiobookDownload,
   subscribeAudiobookSyncQueue,
   getAudiobookSyncProgress,
@@ -126,6 +133,9 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const [loadingTrack, setLoadingTrack] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [smartSkip, setSmartSkip] = useState<SmartSkipSettings>(() => getSmartSkipSettings());
+  const [estimatedRemaining, setEstimatedRemaining] = useState(0);
+  const [ttsVoiceName, setTtsVoiceName] = useState("");
+  const [showTtsSettings, setShowTtsSettings] = useState(false);
   const introSkippedForTrack = useRef<number | null>(null);
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
@@ -177,8 +187,10 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
       outroSkipTriggered.current = false;
       introSkippedForTrack.current = null;
 
+      const savedPosition = loadTtsPlaybackPosition(book.id, index);
       const savedResume =
         resumeTime ??
+        savedPosition?.estimatedTime ??
         (book.audiobookCurrentTrack === index && book.audiobookCurrentTime
           ? book.audiobookCurrentTime
           : undefined);
@@ -192,9 +204,11 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         const text = await stored.blob.text();
         if (!ttsPlayerRef.current) {
           ttsPlayerRef.current = new BrowserTtsPlayer({
-            onTimeUpdate: (time, trackDuration) => {
+            onTimeUpdate: (time, trackDuration, remaining) => {
               setCurrentTime(time);
               setDuration(trackDuration);
+              setEstimatedRemaining(remaining);
+              setTtsVoiceName(ttsPlayerRef.current?.voiceName || "");
               const idx = currentTrackRef.current;
               if (
                 smartSkip.enabled &&
@@ -209,6 +223,9 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                 outroSkipTriggered.current = true;
                 goToTrackRef.current(idx + 1);
               }
+            },
+            onPositionChange: (position) => {
+              saveTtsPlaybackPosition(book.id, currentTrackRef.current, position);
             },
             onEnded: () => {
               const idx = currentTrackRef.current;
@@ -228,8 +245,15 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
           });
         }
 
+        ttsPlayerRef.current.refreshVoice();
         ttsPlayerRef.current.setRate(speed);
-        await ttsPlayerRef.current.loadText(text, savedResume ?? 0);
+        await ttsPlayerRef.current.loadText(text, savedPosition || savedResume || 0, {
+          bookId: book.id,
+          trackIndex: index,
+          chapterTitle: tracks[index]?.title,
+          quality: getTtsSettings().qualityPreset,
+        });
+        setTtsVoiceName(ttsPlayerRef.current.voiceName);
 
         if (smartSkip.enabled && savedResume == null) {
           const trackDuration = ttsPlayerRef.current.duration;
@@ -555,7 +579,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               )}
               {isTtsBook && (
                 <p className="text-[10px] text-kindle-text-muted/90 font-lexend uppercase tracking-widest">
-                  Read aloud · device voice
+                  Read aloud · {ttsVoiceName || "device voice"}
                 </p>
               )}
               {tracks.length > 0 && (
@@ -595,6 +619,11 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                 <span>{formatTime(currentTime)}</span>
                 <span>{formatTime(duration)}</span>
               </div>
+              {isTtsBook && (
+                <p className="text-[10px] text-kindle-text-muted/80 text-center font-lexend">
+                  ~{formatEstimatedRemaining(estimatedRemaining)} remaining (estimated)
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-1 bg-kindle-border rounded-full overflow-hidden">
                   <div
@@ -670,6 +699,32 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                 </button>
               ))}
             </div>
+
+            {isTtsBook && (
+              <div className="w-full space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTtsSettings((open) => !open)}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-kindle-border bg-kindle-card text-left"
+                >
+                  <span className="text-[10px] font-bold uppercase tracking-widest font-lexend">
+                    Narrator Settings
+                  </span>
+                  <span className="text-[10px] text-kindle-text-muted">{showTtsSettings ? "Hide" : "Show"}</span>
+                </button>
+                {showTtsSettings && (
+                  <TtsVoiceSettings
+                    compact
+                    showQualityPresets
+                    showTestButton
+                    onSettingsChange={() => {
+                      ttsPlayerRef.current?.refreshVoice();
+                      setTtsVoiceName(ttsPlayerRef.current?.voiceName || getTtsSettings().voiceName);
+                    }}
+                  />
+                )}
+              </div>
+            )}
 
             <button
               type="button"

@@ -4,6 +4,8 @@ import { BookMetadata } from "../lib/firebase";
 import { getEligibleConverterBooks, loadCachedBookBlob } from "../lib/audiobookConverterImport";
 import { createBrowserTtsAudiobook, extractBookChapters } from "../lib/browserTtsAudiobook";
 import { estimateSpeechDurationSeconds } from "../lib/epubTextExtract";
+import { getTtsSettings } from "../lib/ttsSettings";
+import TtsVoiceSettings from "./TtsVoiceSettings";
 
 interface BuiltInAudiobookConverterProps {
   books: BookMetadata[];
@@ -29,6 +31,7 @@ export default function BuiltInAudiobookConverter({
     BUILTIN_EXTENSIONS.has((book.extension || "").toLowerCase())
   );
   const selectedBook = eligibleBooks.find((book) => book.id === selectedBookId);
+  const ttsSettings = getTtsSettings();
 
   const handleConvert = async () => {
     if (!selectedBook) return;
@@ -43,7 +46,7 @@ export default function BuiltInAudiobookConverter({
       const ext = (selectedBook.extension || fileName.split(".").pop() || "epub").toLowerCase();
       if (abortRef.current) throw new Error("Cancelled");
 
-      setProgress({ message: "Extracting chapters…", percent: 20 });
+      setProgress({ message: "Extracting chapters…", percent: 15 });
       const chapters = await extractBookChapters(blob, ext, selectedBook.title);
       if (abortRef.current) throw new Error("Cancelled");
 
@@ -51,18 +54,19 @@ export default function BuiltInAudiobookConverter({
         chapters.reduce((sum, chapter) => sum + estimateSpeechDurationSeconds(chapter.text), 0) / 60
       );
 
-      setProgress({ message: "Preparing read-aloud audiobook…", percent: 40 });
+      setProgress({ message: "Preparing read-aloud audiobook…", percent: 25 });
       const entry = await createBrowserTtsAudiobook({
         sourceBook: selectedBook,
         chapters,
         userId,
         onRefreshLibrary,
-        onProgress: (message, percent) => setProgress({ message, percent: 40 + Math.round(percent * 0.55) }),
+        pregenerate: ttsSettings.generationMode === "pregenerate" || ttsSettings.qualityPreset === "studio",
+        onProgress: (message, percent) => setProgress({ message, percent: 25 + Math.round(percent * 0.7) }),
       });
 
       setProgress({ message: "Done", percent: 100 });
       setLastSuccess(
-        `Added "${entry.title}" with ${chapters.length} chapter(s). Estimated listen time ~${estimatedMinutes} min using your device's voice.`
+        `Added "${entry.title}" with ${chapters.length} chapter(s). Estimated listen time ~${estimatedMinutes} min using ${ttsSettings.voiceName || "your device voice"}.`
       );
     } catch (err) {
       if ((err as Error).message === "Cancelled") {
@@ -96,40 +100,44 @@ export default function BuiltInAudiobookConverter({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1">
-            <Headphones className="w-3 h-3" />
-            Source Book (cached offline)
-          </label>
-          <select
-            value={selectedBookId}
-            onChange={(e) => setSelectedBookId(e.target.value)}
-            disabled={converting || !eligibleBooks.length}
-            className="w-full text-[11px] bg-kindle-bg border border-kindle-border rounded-lg px-3 py-2"
-          >
-            <option value="">
-              {eligibleBooks.length ? "Select a book…" : "No EPUB/TXT books in library"}
-            </option>
-            {eligibleBooks.map((book) => (
-              <option key={book.id} value={book.id}>
-                {book.title} — {book.author} ({book.extension?.toUpperCase()})
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1">
+              <Headphones className="w-3 h-3" />
+              Source Book (cached offline)
+            </label>
+            <select
+              value={selectedBookId}
+              onChange={(e) => setSelectedBookId(e.target.value)}
+              disabled={converting || !eligibleBooks.length}
+              className="w-full text-[11px] bg-kindle-bg border border-kindle-border rounded-lg px-3 py-2"
+            >
+              <option value="">
+                {eligibleBooks.length ? "Select a book…" : "No EPUB/TXT books in library"}
               </option>
-            ))}
-          </select>
+              {eligibleBooks.map((book) => (
+                <option key={book.id} value={book.id}>
+                  {book.title} — {book.author} ({book.extension?.toUpperCase()})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="rounded-xl border border-kindle-border bg-kindle-bg/60 px-3 py-2.5 space-y-1">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1">
+              <Volume2 className="w-3 h-3" />
+              Playback modes
+            </p>
+            <ul className="text-[9px] text-kindle-text-muted leading-relaxed space-y-0.5">
+              <li>• Instant — live system voice</li>
+              <li>• Balanced — prepared text + smoother pauses</li>
+              <li>• Studio — pre-generate chapter timing cache locally</li>
+            </ul>
+          </div>
         </div>
 
-        <div className="rounded-xl border border-kindle-border bg-kindle-bg/60 px-3 py-2.5 space-y-1">
-          <p className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1">
-            <Volume2 className="w-3 h-3" />
-            How it works
-          </p>
-          <ul className="text-[9px] text-kindle-text-muted leading-relaxed space-y-0.5">
-            <li>• Extracts chapter text from your book</li>
-            <li>• Stores chapters locally for offline playback</li>
-            <li>• Uses your system voice in the audiobook player</li>
-          </ul>
-        </div>
+        <TtsVoiceSettings showQualityPresets showGenerationMode showTestButton />
       </div>
 
       {progress && converting && (
