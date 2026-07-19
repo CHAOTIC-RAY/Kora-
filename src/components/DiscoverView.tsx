@@ -22,6 +22,7 @@ import {
   getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import { GoodreadsIcon, NytIcon } from "./BrandIcons";
 
 interface DiscoverViewProps {
   userId: string;
@@ -2898,7 +2899,7 @@ export default function DiscoverView({
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                <Library className="w-3.5 h-3.5 text-amber-500" />
+                <GoodreadsIcon className="w-3.5 h-3.5 text-[#553B08] dark:text-[#D9C5A0]" />
                 Goodreads Favorites
               </button>
               <button
@@ -2909,7 +2910,7 @@ export default function DiscoverView({
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+                <NytIcon className="w-3.5 h-3.5 text-kindle-text" />
                 NYT Best Sellers
               </button>
               <button
@@ -2976,7 +2977,9 @@ export default function DiscoverView({
                           {cat.source === "audiobook" ? (
                             <Headphones className="w-4 h-4 text-kindle-text" />
                           ) : cat.source === "goodreads" ? (
-                            <Library className="w-4 h-4 text-amber-500" />
+                            <GoodreadsIcon className="w-4 h-4 text-[#553B08] dark:text-[#D9C5A0]" />
+                          ) : cat.source === "nyt" ? (
+                            <NytIcon className="w-4 h-4 text-kindle-text" />
                           ) : cat.id.includes("fiction") ? (
                             <BookMarked className="w-4 h-4 text-kindle-accent" />
                           ) : (
