@@ -244,35 +244,50 @@ export async function fetchArticlePreview(articleUrl: string): Promise<{
   author?: string;
   siteName?: string;
 }> {
-  const html = await fetchText(articleUrl);
-  const title =
-    metaContent(html, "og:title") ||
-    metaContent(html, "twitter:title") ||
-    html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
-  const description =
-    metaContent(html, "og:description") ||
-    metaContent(html, "twitter:description") ||
-    metaContent(html, "description");
-  const imageUrl = metaContent(html, "og:image") || metaContent(html, "twitter:image");
-  const author = metaContent(html, "author") || metaContent(html, "article:author");
-  const siteName = metaContent(html, "og:site_name");
+  const resolvedUrl = normalizeFeedArticleLink(articleUrl, articleUrl.includes("/en/") ? "https://psmnews.mv/en/feed/" : articleUrl);
 
-  let resolvedImage = imageUrl;
-  if (imageUrl) {
-    try {
-      resolvedImage = new URL(imageUrl, articleUrl).toString();
-    } catch {
-      resolvedImage = imageUrl;
-    }
+  let hostname = "";
+  try {
+    hostname = new URL(resolvedUrl).hostname.replace(/^www\./, "");
+  } catch {
+    hostname = "";
   }
 
-  return {
-    title: title?.replace(/\s+/g, " ").slice(0, 300),
-    description: description?.replace(/\s+/g, " ").slice(0, 500),
-    imageUrl: resolvedImage,
-    author,
-    siteName,
-  };
+  try {
+    const html = await fetchText(resolvedUrl);
+    const title =
+      metaContent(html, "og:title") ||
+      metaContent(html, "twitter:title") ||
+      html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim();
+    const description =
+      metaContent(html, "og:description") ||
+      metaContent(html, "twitter:description") ||
+      metaContent(html, "description");
+    const imageUrl = metaContent(html, "og:image") || metaContent(html, "twitter:image");
+    const author = metaContent(html, "author") || metaContent(html, "article:author");
+    const siteName = metaContent(html, "og:site_name");
+
+    let resolvedImage = imageUrl;
+    if (imageUrl) {
+      try {
+        resolvedImage = new URL(imageUrl, resolvedUrl).toString();
+      } catch {
+        resolvedImage = imageUrl;
+      }
+    }
+
+    return {
+      title: title?.replace(/\s+/g, " ").slice(0, 300),
+      description: description?.replace(/\s+/g, " ").slice(0, 500),
+      imageUrl: resolvedImage,
+      author,
+      siteName: siteName || hostname || undefined,
+    };
+  } catch {
+    return {
+      siteName: hostname || undefined,
+    };
+  }
 }
 
 export async function proxyFeedImage(imageUrl: string): Promise<Response> {

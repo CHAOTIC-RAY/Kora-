@@ -9,6 +9,67 @@ import DownloadBookBtn from "./DownloadBookBtn";
 import AudiobookCassetteCard from "./AudiobookCassetteCard";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 
+function findActiveDownload(book: { id?: string; md5?: string; downloadId?: string }, downloads: any[] = []) {
+  const bookKeys = new Set(
+    [book.id, book.md5, book.downloadId].filter(Boolean).map(String)
+  );
+  return (
+    downloads.find((download) => {
+      if (download.status !== "downloading") return false;
+      return [download.id, download.md5].filter(Boolean).some((key) => bookKeys.has(String(key)));
+    }) ?? null
+  );
+}
+
+function LibraryDownloadOverlay({
+  book,
+  download,
+  hideCovers,
+}: {
+  book: { coverUrl?: string };
+  download: { percent?: number };
+  hideCovers?: boolean;
+}) {
+  const pct = typeof download.percent === "number" ? download.percent : 0;
+  return (
+    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-kindle-card/70 backdrop-blur-[1px]">
+      {!hideCovers && book.coverUrl ? (
+        <img
+          src={resolveCoverImageSrc(book.coverUrl) || ""}
+          className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale"
+          referrerPolicy="no-referrer"
+          alt=""
+        />
+      ) : null}
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+          style={{ animation: "shimmer 1.4s infinite" }}
+        />
+      </div>
+      <div className="relative w-14 h-14 rounded-full flex items-center justify-center bg-kindle-bg/80 border border-kindle-border shadow">
+        <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+          <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-kindle-border" />
+          <circle
+            cx="18"
+            cy="18"
+            r="15.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            className="text-kindle-accent transition-all duration-300"
+            strokeDasharray={97.4}
+            strokeDashoffset={97.4 - (97.4 * Math.max(0, Math.min(100, pct))) / 100}
+          />
+        </svg>
+        <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
+      </div>
+      <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">Downloading…</span>
+    </div>
+  );
+}
+
 interface LibraryManagerProps {
   userId: string;
   books: BookMetadata[];
@@ -540,26 +601,48 @@ export default function LibraryManager({
   // download animation shows in the library while the file is still incoming).
   // The existing downloading overlay keys off book.id/md5 matching a download,
   // so we synthesize cards with id = download id/md5.
+  const activeDownloadKeys = new Set(
+    (downloads || [])
+      .filter((d) => d.status === "downloading" || d.status === "error")
+      .flatMap((d) => [d.id, d.md5].filter(Boolean).map(String))
+  );
+
   const downloadingBooks: any[] = (downloads || [])
     .filter((d) => d.status === "downloading" || d.status === "error")
     .map((d) => {
-      let coverUrl = "";
-      try {
-        const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[d.id];
-        coverUrl = mirror?.book?.coverUrl || "";
-      } catch (e) {}
+      let coverUrl = d.coverUrl || "";
+      if (!coverUrl) {
+        try {
+          const mirror = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}")[d.id];
+          coverUrl = mirror?.book?.coverUrl || "";
+        } catch (e) {}
+      }
       return {
         id: d.md5 || d.id,
         md5: d.md5,
+        downloadId: d.id,
         title: d.title,
         author: d.author,
         coverUrl,
         isDownloadingCard: true,
         downloadStatus: d.status,
+        activeDownload: d,
       };
     });
+
+  // Avoid duplicate React keys when a download card shares the same id/md5 as an
+  // existing library book — show the animated download card instead.
+  const booksWithoutActiveDownloads = activeDownloadKeys.size
+    ? finalRenderedBooks.filter(
+        (book) =>
+          ![book.id, (book as { md5?: string }).md5]
+            .filter(Boolean)
+            .some((key) => activeDownloadKeys.has(String(key)))
+      )
+    : finalRenderedBooks;
+
   const renderedWithDownloads = downloadingBooks.length
-    ? [...downloadingBooks, ...finalRenderedBooks]
+    ? [...downloadingBooks, ...booksWithoutActiveDownloads]
     : finalRenderedBooks;
 
   // Reading Stats
@@ -715,7 +798,7 @@ export default function LibraryManager({
           </div>
         </div>
 
-        {finalRenderedBooks.length === 0 ? (
+        {renderedWithDownloads.length === 0 ? (
           <div className="py-24 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
             <BookOpen className="w-10 h-10 text-kindle-text-muted mx-auto mb-3 animate-pulse" />
             <h3 className="font-sans font-bold text-xs text-kindle-text-muted uppercase tracking-widest">No books found</h3>
@@ -726,9 +809,14 @@ export default function LibraryManager({
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
               const isDownloadingCard = !!book.isDownloadingCard;
+              const activeDownload =
+                book.activeDownload || findActiveDownload(book, downloads);
+              const cardKey = isDownloadingCard
+                ? `dl-${book.downloadId || book.id}`
+                : book.id;
               return (
                 <div
-                  key={book.id}
+                  key={cardKey}
                   onTouchStart={(e) => !isManageMode && startLongPress(book, e)}
                   onTouchEnd={isManageMode ? undefined : endLongPress}
                   onTouchMove={isManageMode ? undefined : handleTouchMove}
@@ -814,45 +902,13 @@ export default function LibraryManager({
                       </div>
                     )}
 
-                    {/* Downloading overlay: light grayscale thumbnail + progress animation */}
-                    {(() => {
-                      const dl = downloads.find(
-                        (d) => d.status === "downloading" && (d.md5 === book.md5 || d.md5 === book.id || d.id === book.id || d.id === book.md5)
-                      );
-                      if (!dl) return null;
-                      const pct = typeof dl.percent === "number" ? dl.percent : 0;
-                      return (
-                        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-kindle-card/70 backdrop-blur-[1px]">
-                          {/* Light grayscale book thumbnail */}
-                          {!hideCovers && book.coverUrl ? (
-                            <img
-                              src={resolveCoverImageSrc(book.coverUrl) || ""}
-                              className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale"
-                              referrerPolicy="no-referrer"
-                              alt=""
-                            />
-                          ) : null}
-                          {/* Shimmer sweep */}
-                          <div className="absolute inset-0 overflow-hidden">
-                            <div className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-[shimmer_1.4s_infinite]" />
-                          </div>
-                          {/* Progress ring */}
-                          <div className="relative w-14 h-14 rounded-full flex items-center justify-center bg-kindle-bg/80 border border-kindle-border shadow">
-                            <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
-                              <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-kindle-border" />
-                              <circle
-                                cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"
-                                className="text-kindle-accent transition-all duration-300"
-                                strokeDasharray={97.4}
-                                strokeDashoffset={97.4 - (97.4 * Math.max(0, Math.min(100, pct))) / 100}
-                              />
-                            </svg>
-                            <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
-                          </div>
-                          <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">Downloading…</span>
-                        </div>
-                      );
-                    })()}
+                    {activeDownload && (
+                      <LibraryDownloadOverlay
+                        book={book}
+                        download={activeDownload}
+                        hideCovers={hideCovers}
+                      />
+                    )}
 
 
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-kindle-border">

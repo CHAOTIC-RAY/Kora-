@@ -332,6 +332,7 @@ export default function App() {
       md5: variant.md5,
       title: book.title,
       author: book.author || "Unknown",
+      coverUrl: book.coverUrl || "",
       size: variant.size || "Unknown",
       status: "downloading",
       percent: 0,
@@ -391,14 +392,18 @@ export default function App() {
         const attemptLabel = mirrorList.length > 1 ? `(Mirror ${index + 1}/${mirrorList.length}) ` : '';
         logger.info(`Starting background download for "${book.title}" ${attemptLabel}. Size: ${variant.size || 'Unknown'}. Mirror: ${mirror.url}`);
 
-        setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
-          ...dl, 
-          status: "downloading", 
-          percent: 0,
-          speed: "Connecting...",
-          eta: "",
-          transferred: attemptLabel
-        } : dl));
+        setGlobalDownloads(prev => {
+          const updated = prev.map(dl => dl.id === downloadId ? { 
+            ...dl, 
+            status: "downloading", 
+            percent: 0,
+            speed: "Connecting...",
+            eta: "",
+            transferred: attemptLabel
+          } : dl);
+          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          return updated;
+        });
 
         const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
         
@@ -534,13 +539,17 @@ export default function App() {
                 ? `${formatBytes(receivedLength)} of ${formatBytes(contentLength)}`
                 : formatBytes(receivedLength);
 
-              setGlobalDownloads(prev => prev.map(dl => dl.id === downloadId ? { 
-                ...dl, 
-                percent,
-                speed: speedStr,
-                transferred: transferredStr,
-                eta: etaStr
-              } : dl));
+              setGlobalDownloads(prev => {
+                const updated = prev.map(dl => dl.id === downloadId ? { 
+                  ...dl, 
+                  percent,
+                  speed: speedStr,
+                  transferred: transferredStr,
+                  eta: etaStr
+                } : dl);
+                localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+                return updated;
+              });
             }
           }
         }
@@ -694,13 +703,17 @@ export default function App() {
     const onMessage = async (event: MessageEvent) => {
       const data = event.data || {};
       if (data.type === "download-progress") {
-        setGlobalDownloads(prev => prev.map(dl => dl.id === data.downloadId ? {
-          ...dl,
-          status: "downloading",
-          percent: data.percent,
-          transferred: data.transferred,
-          speed: data.speed
-        } : dl));
+        setGlobalDownloads(prev => {
+          const updated = prev.map(dl => dl.id === data.downloadId ? {
+            ...dl,
+            status: "downloading",
+            percent: data.percent,
+            transferred: data.transferred,
+            speed: data.speed
+          } : dl);
+          localStorage.setItem("kora_downloads_log", JSON.stringify(updated));
+          return updated;
+        });
       } else if (data.type === "download-complete") {
         await ingestDownload(data.downloadId, data.title, data.size);
       } else if (data.type === "download-error") {
