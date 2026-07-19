@@ -7,10 +7,17 @@ interface AudiobookCassetteCardProps {
   grayscaleCovers?: boolean;
   hideCovers?: boolean;
   size?: "card" | "thumb";
+  orientation?: "landscape" | "portrait";
   playing?: boolean;
   className?: string;
 }
 
 export default function AudiobookCassetteCard(props: AudiobookCassetteCardProps) {
-  return <CassetteVisualizer {...props} size={props.size || "card"} />;
+  return (
+    <CassetteVisualizer
+      {...props}
+      size={props.size || "card"}
+      orientation={props.orientation || (props.size === "thumb" ? "landscape" : "portrait")}
+    />
+  );
 }

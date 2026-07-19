@@ -868,14 +868,13 @@ export default function LibraryManager({
                       </div>
                     )}
                     {book.extension?.toLowerCase() === "audiobook" ? (
-                      <div className="w-full p-3 bg-gradient-to-b from-neutral-900/20 to-neutral-950/30 border-b border-kindle-border/30">
-                        <AudiobookCassetteCard
-                          title={book.title}
-                          coverUrl={book.coverUrl}
-                          grayscaleCovers={grayscaleCovers}
-                          hideCovers={hideCovers}
-                        />
-                      </div>
+                      <AudiobookCassetteCard
+                        title={book.title}
+                        coverUrl={book.coverUrl}
+                        grayscaleCovers={grayscaleCovers}
+                        hideCovers={hideCovers}
+                        orientation="portrait"
+                      />
                     ) : !hideCovers && book.coverUrl ? (
                       <>
                         <img
