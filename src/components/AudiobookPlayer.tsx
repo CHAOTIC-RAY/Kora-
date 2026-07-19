@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { BookMetadata } from "../lib/firebase";
+import { syncBookToCloud } from "../lib/firebase";
 import {
   getAudiobookTrack,
   getProxiedAudioUrl,
@@ -41,12 +42,28 @@ import {
 } from "../lib/audiobookSmartSkip";
 import CassetteVisualizer from "./CassetteVisualizer";
 import { isFrontMatterTitle, filterPlayableTracks, findFirstNarrativeTrackIndex } from "../lib/audiobookTextFilter";
+import {
+  clearAudiobookMediaSession,
+  setupAudiobookMediaSession,
+  updateAudiobookMediaSession,
+} from "../lib/audiobookMediaSession";
+import {
+  clearAudiobookSession,
+  loadAudiobookSession,
+  saveAudiobookSession,
+  snapshotFromBook,
+} from "../lib/audiobookSession";
 
 function getInitialAudiobookTrack(
   book: BookMetadata,
   tracks: NonNullable<BookMetadata["audiobookTracks"]>,
   isTtsBook: boolean
 ): number {
+  const session = loadAudiobookSession();
+  if (session?.bookId === book.id) {
+    return session.trackIndex;
+  }
+
   const savedTrack = book.audiobookCurrentTrack ?? 0;
   const hasProgress =
     (book.audiobookCurrentTime ?? 0) > 5 ||
@@ -54,13 +71,22 @@ function getInitialAudiobookTrack(
 
   if (!isTtsBook || hasProgress) return savedTrack;
 
-  const narrativeIdx = findFirstNarrativeTrackIndex(tracks);
-  return narrativeIdx;
+  return findFirstNarrativeTrackIndex(tracks);
+}
+
+function getInitialAudiobookTime(book: BookMetadata): number {
+  const session = loadAudiobookSession();
+  if (session?.bookId === book.id) return session.currentTime;
+  return book.audiobookCurrentTime || 0;
 }
 
 interface AudiobookPlayerProps {
   book: BookMetadata;
+  userId?: string;
+  viewMode?: "fullscreen" | "minimized";
   onClose: () => void;
+  onMinimize?: () => void;
+  onExpand?: () => void;
   onProgressUpdate?: (book: BookMetadata) => void;
 }
 
@@ -130,7 +156,15 @@ function cleanTrackTitle(
   return title;
 }
 
-export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: AudiobookPlayerProps) {
+export default function AudiobookPlayer({
+  book,
+  userId = "",
+  viewMode = "fullscreen",
+  onClose,
+  onMinimize,
+  onExpand,
+  onProgressUpdate,
+}: AudiobookPlayerProps) {
   const tracks = book.audiobookTracks || [];
   const isTtsBook = book.source === "browser-tts" || tracks.some((track) => isBrowserTtsTrack(track.src));
   const playableTracks = useMemo(
@@ -140,6 +174,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const trackTitles = useMemo(() => tracks.map((track) => track.title), [tracks]);
   const authorLabel = displayAuthor(book.author);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const silentAudioRef = useRef<HTMLAudioElement>(null);
   const ttsPlayerRef = useRef<BrowserTtsPlayer | null>(null);
   const [currentTrack, setCurrentTrack] = useState(() => getInitialAudiobookTrack(book, tracks, isTtsBook));
   const currentPlayableIndex = useMemo(
@@ -147,7 +182,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     [playableTracks, currentTrack]
   );
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(book.audiobookCurrentTime || 0);
+  const [currentTime, setCurrentTime] = useState(() => getInitialAudiobookTime(book));
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [downloading, setDownloading] = useState(false);
@@ -167,24 +202,42 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
   const pendingTrackLoad = useRef<{ index: number; resumeTime?: number } | null>(null);
   const currentTrackRef = useRef(currentTrack);
   const goToTrackRef = useRef<(index: number) => void>(() => {});
+  const isPlayingRef = useRef(isPlaying);
+  const togglePlayRef = useRef<() => void>(() => {});
   currentTrackRef.current = currentTrack;
+  isPlayingRef.current = isPlaying;
 
   const persistProgress = useCallback(
-    (trackIdx: number, time: number, percent?: number) => {
-      if (!onProgressUpdate) return;
-      onProgressUpdate({
+    async (trackIdx: number, time: number, percent?: number, playing = isPlaying) => {
+      const trackFraction = duration > 0 ? time / duration : 0;
+      const playableIdx = playableTracks.findIndex((entry) => entry.index === trackIdx);
+      const computedPercent =
+        percent ??
+        (playableTracks.length > 0 && playableIdx >= 0
+          ? Math.round(((playableIdx + trackFraction) / playableTracks.length) * 100)
+          : Math.round(((trackIdx + trackFraction) / Math.max(tracks.length, 1)) * 100));
+
+      const updated: BookMetadata = {
         ...book,
         audiobookCurrentTrack: trackIdx,
         audiobookCurrentTime: time,
         progress: {
           ...book.progress,
-          percent: percent ?? book.progress.percent,
+          percent: computedPercent,
           lastReadTime: Date.now(),
         },
         dateModified: Date.now(),
-      });
+      };
+
+      saveAudiobookSession(snapshotFromBook(updated, trackIdx, time, playing));
+      onProgressUpdate?.(updated);
+      try {
+        await syncBookToCloud(userId, updated);
+      } catch {
+        // offline sync is best-effort
+      }
     },
-    [book, onProgressUpdate]
+    [book, duration, isPlaying, onProgressUpdate, playableTracks, tracks.length, userId]
   );
 
   const resolveTrackUrl = useCallback(
@@ -213,8 +266,12 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
       introSkippedForTrack.current = null;
 
       const savedPosition = loadTtsPlaybackPosition(book.id, index);
+      const session = loadAudiobookSession();
+      const sessionResume =
+        session?.bookId === book.id && session.trackIndex === index ? session.currentTime : undefined;
       const savedResume =
         resumeTime ??
+        sessionResume ??
         savedPosition?.estimatedTime ??
         (book.audiobookCurrentTrack === index && book.audiobookCurrentTime
           ? book.audiobookCurrentTime
@@ -346,9 +403,15 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
 
       const savedResume =
         resumeTime ??
-        (book.audiobookCurrentTrack === index && book.audiobookCurrentTime
-          ? book.audiobookCurrentTime
-          : undefined);
+        (() => {
+          const session = loadAudiobookSession();
+          if (session?.bookId === book.id && session.trackIndex === index) {
+            return session.currentTime;
+          }
+          return book.audiobookCurrentTrack === index && book.audiobookCurrentTime
+            ? book.audiobookCurrentTime
+            : undefined;
+        })();
       resumeTimeForTrack.current = savedResume ?? null;
 
       try {
@@ -417,7 +480,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     if (isTtsBook) {
       if (isPlaying) {
         ttsPlayerRef.current?.pause();
-        persistProgress(currentTrack, ttsPlayerRef.current?.currentTime || currentTime);
+        void persistProgress(currentTrack, ttsPlayerRef.current?.currentTime || currentTime, undefined, false);
       } else {
         await ttsPlayerRef.current?.play();
       }
@@ -427,12 +490,13 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
-      persistProgress(currentTrack, audioRef.current.currentTime);
+      void persistProgress(currentTrack, audioRef.current.currentTime, undefined, false);
     } else {
       await audioRef.current.play();
       setIsPlaying(true);
     }
   };
+  togglePlayRef.current = togglePlay;
 
   const skip = (delta: number) => {
     if (isTtsBook) {
@@ -459,6 +523,103 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     loadTrack(index, isPlaying);
   };
   goToTrackRef.current = goToTrack;
+
+  const stopPlayback = useCallback(() => {
+    if (isTtsBook) {
+      ttsPlayerRef.current?.stop();
+    } else {
+      audioRef.current?.pause();
+    }
+    setIsPlaying(false);
+    clearAudiobookMediaSession();
+    clearAudiobookSession();
+  }, [isTtsBook]);
+
+  const handleExit = useCallback(() => {
+    const time = isTtsBook
+      ? ttsPlayerRef.current?.currentTime || currentTime
+      : audioRef.current?.currentTime || currentTime;
+    void persistProgress(currentTrack, time, undefined, isPlaying);
+    if (isPlaying && onMinimize) {
+      onMinimize();
+      return;
+    }
+    stopPlayback();
+    onClose();
+  }, [currentTime, currentTrack, isPlaying, isTtsBook, onClose, onMinimize, persistProgress, stopPlayback]);
+
+  const currentTrackLabel = cleanTrackTitle(
+    tracks[currentTrack]?.title || "",
+    currentTrack,
+    book.title,
+    book.author,
+    trackTitles
+  );
+
+  useEffect(() => {
+    setupAudiobookMediaSession(
+      {
+        title: isTtsBook && subtitle ? subtitle : currentTrackLabel || book.title,
+        artist: authorLabel || book.author || "Kora",
+        album: book.title,
+        artworkUrl: book.coverUrl,
+        duration: duration || 0,
+        position: currentTime,
+        playbackRate: speed,
+        isPlaying,
+      },
+      {
+        onPlay: () => void togglePlayRef.current?.(),
+        onPause: () => togglePlayRef.current?.(),
+        onSeek: (position) => {
+          if (isTtsBook) ttsPlayerRef.current?.seek(position);
+          else if (audioRef.current) audioRef.current.currentTime = position;
+          setCurrentTime(position);
+        },
+        onPrevious: () => goToTrackRef.current(Math.max(0, currentTrackRef.current - 1)),
+        onNext: () => goToTrackRef.current(Math.min(tracks.length - 1, currentTrackRef.current + 1)),
+        onStop: () => stopPlayback(),
+      }
+    );
+    return () => clearAudiobookMediaSession();
+  }, [authorLabel, book.coverUrl, book.title, currentTrackLabel, duration, isPlaying, isTtsBook, speed, stopPlayback, subtitle, tracks.length]);
+
+  useEffect(() => {
+    updateAudiobookMediaSession({
+      title: isTtsBook && subtitle ? subtitle : currentTrackLabel || book.title,
+      artist: authorLabel || book.author || "Kora",
+      album: book.title,
+      artworkUrl: book.coverUrl,
+      duration: duration || 0,
+      position: currentTime,
+      playbackRate: speed,
+      isPlaying,
+    });
+  }, [authorLabel, book.author, book.coverUrl, book.title, currentTime, currentTrackLabel, duration, isPlaying, isTtsBook, speed, subtitle]);
+
+  // Keep Android lock-screen / notification controls alive during browser TTS playback.
+  useEffect(() => {
+    const silent = silentAudioRef.current;
+    if (!isTtsBook || !silent) return;
+    if (isPlaying) {
+      silent.play().catch(() => {
+        // autoplay may require a prior user gesture
+      });
+    } else {
+      silent.pause();
+    }
+  }, [isPlaying, isTtsBook]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const timer = window.setInterval(() => {
+      const time = isTtsBook
+        ? ttsPlayerRef.current?.currentTime || currentTime
+        : audioRef.current?.currentTime || currentTime;
+      void persistProgress(currentTrackRef.current, time, undefined, true);
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [currentTime, isPlaying, isTtsBook, persistProgress]);
 
   const toggleSmartSkip = () => {
     const next = { ...smartSkip, enabled: !smartSkip.enabled };
@@ -489,27 +650,32 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
     }
   };
 
-  const overallPercent =
-    tracks.length > 0
-      ? Math.round(((currentTrack + (duration > 0 ? currentTime / duration : 0)) / tracks.length) * 100)
-      : 0;
-
-  const currentTrackLabel = cleanTrackTitle(
-    tracks[currentTrack]?.title || "",
-    currentTrack,
-    book.title,
-    book.author,
-    trackTitles
-  );
+  const overallPercent = useMemo(() => {
+    const trackFraction = duration > 0 ? currentTime / duration : 0;
+    if (playableTracks.length > 0 && currentPlayableIndex >= 0) {
+      return Math.round(((currentPlayableIndex + trackFraction) / playableTracks.length) * 100);
+    }
+    if (!tracks.length) return 0;
+    return Math.round(((currentTrack + trackFraction) / tracks.length) * 100);
+  }, [currentPlayableIndex, currentTime, currentTrack, duration, playableTracks.length, tracks.length]);
 
   useEffect(() => {
     if (!isTtsBook) {
-      setSubtitle(currentTrackLabel);
+      const timeLabel = duration > 0 ? `${formatTime(currentTime)} / ${formatTime(duration)}` : "";
+      setSubtitle(timeLabel ? `${currentTrackLabel} · ${timeLabel}` : currentTrackLabel);
     }
-  }, [isTtsBook, currentTrackLabel]);
+  }, [currentTime, currentTrackLabel, duration, isTtsBook]);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col">
+    <>
+      <audio
+        ref={silentAudioRef}
+        className="hidden"
+        loop
+        playsInline
+        preload="auto"
+        src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQQAAAAAAA=="
+      />
       <audio
         ref={audioRef}
         className={isTtsBook ? "hidden" : undefined}
@@ -556,7 +722,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
             goToTrack(currentTrack + 1);
           } else {
             setIsPlaying(false);
-            persistProgress(currentTrack, 0, 100);
+            void persistProgress(currentTrack, 0, 100, false);
           }
         }}
         onPause={() => setIsPlaying(false)}
@@ -567,10 +733,50 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         }}
       />
 
-      <header className="flex items-center justify-between px-4 py-3 border-b border-kindle-border/80 bg-kindle-card/95 backdrop-blur-md shrink-0">
+      {viewMode === "minimized" ? (
+        <div className="fixed bottom-[4.75rem] md:bottom-4 left-3 right-3 z-[95] rounded-2xl border border-kindle-border bg-kindle-card/95 backdrop-blur-md shadow-2xl overflow-hidden">
+          <div className="flex items-center gap-3 px-3 py-2.5">
+            <button onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-3 text-left">
+              <div className="w-10 h-10 rounded-xl overflow-hidden bg-kindle-bg border border-kindle-border shrink-0">
+                {book.coverUrl ? (
+                  <img src={book.coverUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[10px] font-bold">AB</div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-kindle-text truncate">{book.title}</p>
+                <p className="text-[10px] text-kindle-text-muted truncate">{subtitle || currentTrackLabel}</p>
+              </div>
+            </button>
+            <button
+              onClick={() => void togglePlay()}
+              className="p-2.5 rounded-full bg-kindle-text text-kindle-bg shrink-0"
+              aria-label={isPlaying ? "Pause" : "Play"}
+            >
+              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+            </button>
+            <button
+              onClick={() => {
+                stopPlayback();
+                onClose();
+              }}
+              className="p-2 rounded-xl text-kindle-text-muted hover:text-kindle-text shrink-0"
+              aria-label="Stop"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="h-1 bg-kindle-bg">
+            <div className="h-full bg-kindle-text transition-all" style={{ width: `${overallPercent}%` }} />
+          </div>
+        </div>
+      ) : (
+    <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col">
+      <header className="flex items-center justify-between px-3 sm:px-4 py-3 border-b border-kindle-border shrink-0">
         <button
-          onClick={onClose}
-          className="p-2 rounded-xl hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text"
+          onClick={handleExit}
+          className="p-2 rounded-xl hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text"
           aria-label="Back"
         >
           <ChevronLeft className="w-5 h-5" />
@@ -580,8 +786,8 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
           <p className="text-xs font-lexend font-bold text-kindle-text truncate max-w-[12rem] sm:max-w-xs">{book.title}</p>
         </div>
         <button
-          onClick={onClose}
-          className="p-2 rounded-xl hover:bg-kindle-bg transition text-kindle-text-muted hover:text-kindle-text"
+          onClick={handleExit}
+          className="p-2 rounded-xl hover:bg-kindle-card transition text-kindle-text-muted hover:text-kindle-text"
           aria-label="Close player"
         >
           <X className="w-5 h-5" />
@@ -799,5 +1005,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
         )}
       </div>
     </div>
+      )}
+    </>
   );
 }

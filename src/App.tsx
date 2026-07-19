@@ -27,6 +27,7 @@ import BookReaderEPUB from "./components/BookReaderEPUB";
 import BookReaderPDF from "./components/BookReaderPDF";
 import BookReaderText from "./components/BookReaderText";
 import AudiobookPlayer from "./components/AudiobookPlayer";
+import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import { enqueueAudiobookDownload } from "./lib/audiobookSyncQueue";
 import Quote from "./components/Quote";
@@ -155,6 +156,7 @@ export default function App() {
   // Navigation & view states
   const [activeTab, setActiveTab] = useState<"library" | "discover" | "feed" | "settings">("library");
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
+  const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
     const saved = localStorage.getItem("kindle_last_read");
     return saved ? JSON.parse(saved) : null;
@@ -290,6 +292,20 @@ export default function App() {
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
   const [feedInitialUrl, setFeedInitialUrl] = useState<string | null>(null);
+
+  // Restore minimized audiobook player after reload if playback was active.
+  useEffect(() => {
+    if (audiobookPlayback || books.length === 0) return;
+    const session = loadAudiobookSession();
+    if (!session?.isPlaying) return;
+    const book = books.find((b) => b.id === session.bookId);
+    if (!book?.audiobookTracks?.length) return;
+    setAudiobookPlayback({
+      ...book,
+      audiobookCurrentTrack: session.trackIndex,
+      audiobookCurrentTime: session.currentTime,
+    });
+  }, [audiobookPlayback, books]);
 
   // Mobile Web App / PWA Share Target state variables
   const [sharingStatus, setSharingStatus] = useState<"idle" | "converting" | "success" | "error">("idle");
@@ -1178,6 +1194,7 @@ export default function App() {
         alert("This audiobook has no tracks. Open it from Discover to load audio files.");
         return;
       }
+      setAudiobookPlayback(book);
       setActiveBook(book);
       setLastReadBook(book);
       localStorage.setItem("kindle_last_read", JSON.stringify(book));
@@ -1464,25 +1481,32 @@ export default function App() {
       </div>
 
       {/* 3. Full-Screen Reader Component Viewports */}
-      {activeBook && (
-        activeBook.extension?.toLowerCase() === "audiobook" ? (
+      {audiobookPlayback && (
           <AudiobookPlayer
-            book={activeBook}
+            book={audiobookPlayback}
+            userId={user?.uid || ""}
+            viewMode={activeBook?.id === audiobookPlayback.id ? "fullscreen" : "minimized"}
+            onMinimize={() => setActiveBook(null)}
+            onExpand={() => setActiveBook(audiobookPlayback)}
             onClose={() => {
               if (window.history.state && window.history.state.isReading) {
                 window.history.back();
               }
+              setAudiobookPlayback(null);
               setActiveBook(null);
               refreshLibrary();
             }}
             onProgressUpdate={(updatedBook) => {
-              setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+              setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
               setLastReadBook(updatedBook);
-              setActiveBook(updatedBook);
+              setAudiobookPlayback(updatedBook);
+              if (activeBook?.id === updatedBook.id) setActiveBook(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
-        ) : activeBook.extension?.toLowerCase() === "pdf" ? (
+        )}
+      {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
+        activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
             book={activeBook}
             userId={user?.uid || ""}

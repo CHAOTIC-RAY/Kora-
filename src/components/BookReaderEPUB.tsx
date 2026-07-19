@@ -75,6 +75,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
   const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
   const [isContinuous, setIsContinuous] = useState<boolean>(readerPrefs?.isContinuous ?? false);
+
+  useEffect(() => {
+    setIsContinuous(readerPrefs?.isContinuous ?? false);
+  }, [readerPrefs?.isContinuous]);
   const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
   const [grayscaleImages, setGrayscaleImages] = useState<boolean>(readerPrefs?.grayscaleImages ?? false);
   const [hideImages, setHideImages] = useState<boolean>(readerPrefs?.hideImages ?? false);
@@ -88,7 +92,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [currentPageNum, setCurrentPageNum] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [containerWidth, setContainerWidth] = useState<number>(600);
-  const pageStepRef = React.useRef<number>(600 + 40); // last computed per-page stride
+  const [pageStep, setPageStep] = useState<number>(600);
+  const pageStepRef = React.useRef<number>(600);
   const [doubleColumns, setDoubleColumns] = useState<boolean>(readerPrefs?.doubleColumns ?? false); // Dual page mode
   const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 0); // KOReader-style page overlap (px repeated across page turns)
   const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
@@ -97,7 +102,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(readerPrefs?.pageTransitionEffect ?? "paper-flip");
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
 
-  // Responsive mobile state — detect synchronously so first paint uses scroll layout
+  // Responsive mobile state — used for single-column layout and disabling dual-page mode
   const [isMobile, setIsMobile] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.innerWidth < 768 || window.matchMedia("(max-width: 767px)").matches;
@@ -114,7 +119,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const useDoubleColumns = doubleColumns && !isMobile;
-  const useScrollLayout = isMobile || isContinuous;
+  const useScrollLayout = isContinuous;
   const columnGapPx = useDoubleColumns ? 40 : 0;
 
   useEffect(() => {
@@ -302,17 +307,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         setTotalPages(1);
         setContainerWidth(textWidth);
         pageStepRef.current = textWidth;
+        setPageStep(textWidth);
         if (currentPageNum !== 1) setCurrentPageNum(1);
         return;
       }
 
       const scrollWidth = container.scrollWidth;
-      const step = textWidth - pageOverlap;
+      const step = Math.max(1, textWidth - pageOverlap);
       const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
       const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
+      setPageStep(step);
     }, 150);
   };
 
@@ -1386,18 +1393,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         setTotalPages(1);
         setContainerWidth(textWidth);
         pageStepRef.current = textWidth;
+        setPageStep(textWidth);
         setCurrentPageNum(1);
         setTimeout(() => setShouldAnimate(true), 150);
         return;
       }
 
       const scrollWidth = container.scrollWidth;
-      const step = textWidth - pageOverlap;
+      const step = Math.max(1, textWidth - pageOverlap);
       const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
       const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
+      setPageStep(step);
       setCurrentPageNum(goToLastPage ? calculatedPages : 1);
       
       // Re-enable animation after layout settles
@@ -2057,6 +2066,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-neutral-300"}`}
                     >
                       <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${doubleColumns ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                    </button>
+                  </div>
+
+                  {/* Continuous Scroll Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold">Continuous Scroll</h4>
+                      <p className="text-[10px] text-kindle-text-muted">Scroll instead of page-by-page turns</p>
+                    </div>
+                    <button
+                      onClick={() => setIsContinuous(!isContinuous)}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${isContinuous ? "bg-kindle-accent" : "bg-neutral-300"}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isContinuous ? "translate-x-5.5" : "translate-x-0.5"}`} />
                     </button>
                   </div>
 
@@ -2748,7 +2771,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               height: "100%",
                               columnFill: "auto",
                               overflow: "visible",
-                              transform: `translateX(-${(turningPageNum - 1) * pageStepRef.current}px)`,
+                              transform: `translateX(-${(turningPageNum - 1) * pageStep}px)`,
                               paddingTop: "12px",
                               paddingBottom: "12px",
                               
@@ -2826,8 +2849,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               overflow: "visible",
                               transform: `translateX(-${
                                 useDoubleColumns && turnDirection === "prev"
-                                  ? (currentPageNum - 1) * pageStepRef.current + ((containerWidth - 40) / 2 + 40)
-                                  : (currentPageNum - 1) * pageStepRef.current
+                                  ? (currentPageNum - 1) * pageStep + ((containerWidth - 40) / 2 + 40)
+                                  : (currentPageNum - 1) * pageStep
                               }px)`,
                               paddingTop: "12px",
                               paddingBottom: "12px",
@@ -2893,7 +2916,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   <motion.article 
                     ref={contentRef}
                     animate={{ 
-                      x: useScrollLayout ? 0 : -(currentPageNum - 1) * pageStepRef.current,
+                      x: useScrollLayout ? 0 : -(currentPageNum - 1) * pageStep,
                       rotateY: 0,
                       skewY: 0,
                       scaleX: 1

@@ -680,7 +680,7 @@ export default function SettingsView({
                 </div>
               </div>
 
-              <Row title="Continuous Scroll" desc="Scroll chapters as one long page">
+              <Row title="Continuous Scroll" desc="Off = page-by-page e-reader (default). On = scroll chapters as one long page.">
                 <Toggle on={readerPrefs.isContinuous} onClick={() => setRP({ isContinuous: !readerPrefs.isContinuous })} />
               </Row>
 

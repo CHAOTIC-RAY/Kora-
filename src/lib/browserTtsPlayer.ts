@@ -136,6 +136,7 @@ export class BrowserTtsPlayer {
     } else if (resume) {
       this.seekToPosition(resume);
     }
+    this.emitSubtitle();
   }
 
   seek(seconds: number) {
@@ -156,6 +157,7 @@ export class BrowserTtsPlayer {
     this.boundaryTime = index < this.chunks.length ? remaining : 0;
     this.charOffset = this.estimateCharOffset(this.chunks[this.chunkIndex]?.text || "", remaining);
     this.emitTime();
+    this.emitSubtitle();
   }
 
   seekToPosition(position: TtsPlaybackPosition) {
@@ -320,7 +322,10 @@ export class BrowserTtsPlayer {
 
   private startTick() {
     this.stopTick();
-    this.tickTimer = setInterval(() => this.emitTime(), 200);
+    this.tickTimer = setInterval(() => {
+      this.emitTime();
+      if (this.playing && !this.paused) this.emitSubtitle();
+    }, 200);
   }
 
   private stopTick() {
@@ -336,7 +341,9 @@ export class BrowserTtsPlayer {
       this.callbacks.onSubtitleUpdate?.("");
       return;
     }
-    this.callbacks.onSubtitleUpdate?.(extractSentenceAround(chunk.text, charIndex));
+    const sentence = extractSentenceAround(chunk.text, charIndex);
+    const text = sentence || chunk.text.trim();
+    this.callbacks.onSubtitleUpdate?.(text.length > 220 ? `${text.slice(0, 217)}…` : text);
   }
 
   private emitTime() {
@@ -409,6 +416,7 @@ export class BrowserTtsPlayer {
 
       utterance.onstart = () => {
         this.chunkIndex = index;
+        this.charOffset = index === this.chunkIndex ? this.charOffset : 0;
         this.emitSubtitle(this.charOffset);
       };
 
