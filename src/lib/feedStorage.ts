@@ -9,6 +9,8 @@ export interface FeedSubscription {
   folder?: string;
   addedAt: number;
   lastFetchedAt?: number;
+  /** When false, source is hidden from the feed and skipped on refresh. Defaults to true. */
+  enabled?: boolean;
 }
 
 export interface FeedItem {
@@ -96,19 +98,47 @@ export const CURATED_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = 
   ...INTERNATIONAL_FEED_OPTIONS,
 ];
 
+const DEFAULT_FEED_URLS = new Set(DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl));
+const INTERNATIONAL_FEED_URLS = new Set(INTERNATIONAL_FEED_OPTIONS.map((feed) => feed.feedUrl));
+const CURATED_FEED_URLS = new Set(CURATED_FEED_OPTIONS.map((feed) => feed.feedUrl));
+
 export function makeFeedSubscriptionId(feedUrl: string): string {
   return `feed-${feedUrl.replace(/[^a-z0-9]+/gi, "-").slice(0, 40)}`;
 }
 
+export function isFeedSubscriptionEnabled(sub: Pick<FeedSubscription, "enabled">): boolean {
+  return sub.enabled !== false;
+}
+
+export function isCuratedFeedUrl(feedUrl: string): boolean {
+  return CURATED_FEED_URLS.has(feedUrl);
+}
+
+export function isDefaultFeedUrl(feedUrl: string): boolean {
+  return DEFAULT_FEED_URLS.has(feedUrl);
+}
+
+export function isInternationalFeedUrl(feedUrl: string): boolean {
+  return INTERNATIONAL_FEED_URLS.has(feedUrl);
+}
+
 /** Replace default seeding with an explicit selection of curated feed URLs. */
 export function applySelectedFeedSources(feedUrls: string[]): FeedSubscription[] {
-  const selected = CURATED_FEED_OPTIONS.filter((option) => feedUrls.includes(option.feedUrl));
-  const sources = selected.length ? selected : DEFAULT_FEED_SUBSCRIPTIONS;
-  const seeded = sources.map((sub) => ({
-    ...sub,
-    id: makeFeedSubscriptionId(sub.feedUrl),
-    addedAt: Date.now(),
-  }));
+  const selected = new Set(
+    feedUrls.length ? feedUrls : DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl)
+  );
+  const custom = getFeedSubscriptions().filter((sub) => !CURATED_FEED_URLS.has(sub.feedUrl));
+  const curated = CURATED_FEED_OPTIONS.map((option) => {
+    const previous = getFeedSubscriptions().find((sub) => sub.feedUrl === option.feedUrl);
+    return {
+      ...option,
+      id: previous?.id || makeFeedSubscriptionId(option.feedUrl),
+      addedAt: previous?.addedAt || Date.now(),
+      lastFetchedAt: selected.has(option.feedUrl) ? previous?.lastFetchedAt : previous?.lastFetchedAt,
+      enabled: selected.has(option.feedUrl),
+    };
+  });
+  const seeded = [...curated, ...custom.map((sub) => ({ ...sub, enabled: sub.enabled !== false }))];
   saveFeedSubscriptions(seeded);
   localStorage.setItem(FEED_MIGRATION_KEY, "1");
   return seeded;
@@ -122,7 +152,7 @@ const REMOVED_DEFAULT_FEED_URLS = new Set([
   "https://feeds.feedburner.com/ycombinator",
 ]);
 
-const FEED_MIGRATION_KEY = "kora_feed_migration_v7";
+const FEED_MIGRATION_KEY = "kora_feed_migration_v8";
 const MALDIVES_INDEPENDENT_OLD_FEED = "https://maldivesindependent.com/api/rss/news";
 const MALDIVES_INDEPENDENT_FEED = "https://maldivesindependent.com/api/rss";
 
@@ -140,6 +170,36 @@ function migrateMaldivesIndependentFeed(subscriptions: FeedSubscription[]): Feed
       feedUrl: MALDIVES_INDEPENDENT_FEED,
     };
   });
+}
+
+/** Ensure Maldives + international curated sources exist and can be toggled. */
+function ensureCuratedToggleCatalog(existing: FeedSubscription[]): FeedSubscription[] {
+  const byUrl = new Map(existing.map((sub) => [sub.feedUrl, sub]));
+  const curated = CURATED_FEED_OPTIONS.map((option) => {
+    const previous = byUrl.get(option.feedUrl);
+    if (previous) {
+      return {
+        ...previous,
+        title: option.title,
+        siteUrl: option.siteUrl,
+        feedUrl: option.feedUrl,
+        enabled: previous.enabled !== false,
+      };
+    }
+    return {
+      ...option,
+      id: makeFeedSubscriptionId(option.feedUrl),
+      addedAt: Date.now(),
+      // New international sources start off; Maldives defaults start on.
+      enabled: DEFAULT_FEED_URLS.has(option.feedUrl),
+    };
+  });
+
+  const custom = existing
+    .filter((sub) => !CURATED_FEED_URLS.has(sub.feedUrl))
+    .map((sub) => ({ ...sub, enabled: sub.enabled !== false }));
+
+  return [...curated, ...custom];
 }
 
 function purgeRemovedFeedData(subscriptions: FeedSubscription[]): FeedSubscription[] {
@@ -176,6 +236,10 @@ export function saveFeedSubscriptions(subscriptions: FeedSubscription[]): void {
   writeJson(SUBSCRIPTIONS_KEY, subscriptions);
 }
 
+export function getEnabledFeedSubscriptions(): FeedSubscription[] {
+  return getFeedSubscriptions().filter(isFeedSubscriptionEnabled);
+}
+
 export function getFeedItems(): FeedItem[] {
   return dedupeFeedItems(readJson<FeedItem[]>(ITEMS_KEY, [])).filter(isFeedItemWithinRetention);
 }
@@ -198,11 +262,7 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
   }
 
   if (!existing.length) {
-    const seeded = DEFAULT_FEED_SUBSCRIPTIONS.map((sub) => ({
-      ...sub,
-      id: makeFeedSubscriptionId(sub.feedUrl),
-      addedAt: Date.now(),
-    }));
+    const seeded = ensureCuratedToggleCatalog([]);
     saveFeedSubscriptions(seeded);
     saveFeedItems(dedupeFeedItems(getFeedItems()));
     localStorage.setItem(FEED_MIGRATION_KEY, "1");
@@ -210,13 +270,7 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
   }
 
   if (!localStorage.getItem(FEED_MIGRATION_KEY)) {
-    const knownUrls = new Set(existing.map((sub) => sub.feedUrl));
-    const additions = DEFAULT_FEED_SUBSCRIPTIONS.filter((sub) => !knownUrls.has(sub.feedUrl)).map((sub) => ({
-      ...sub,
-      id: makeFeedSubscriptionId(sub.feedUrl),
-      addedAt: Date.now(),
-    }));
-    existing = migrateMaldivesIndependentFeed([...additions, ...existing]).map((sub) =>
+    existing = ensureCuratedToggleCatalog(existing).map((sub) =>
       // Force re-fetch for Telegram sources after parser fixes (e.g. MV Crisis).
       /^kora:\/\/telegram\//i.test(sub.feedUrl) ? { ...sub, lastFetchedAt: undefined } : sub
     );
@@ -226,24 +280,64 @@ export function ensureDefaultSubscriptions(): FeedSubscription[] {
     return existing;
   }
 
+  // Keep curated catalog complete even after the migration flag is set.
+  const missingCurated = CURATED_FEED_OPTIONS.some(
+    (option) => !existing.some((sub) => sub.feedUrl === option.feedUrl)
+  );
+  if (missingCurated) {
+    const catalogued = ensureCuratedToggleCatalog(existing);
+    saveFeedSubscriptions(catalogued);
+    return catalogued;
+  }
+
   return existing;
+}
+
+export function setFeedSubscriptionEnabled(subscriptionId: string, enabled: boolean): FeedSubscription[] {
+  const next = getFeedSubscriptions().map((sub) =>
+    sub.id === subscriptionId
+      ? {
+          ...sub,
+          enabled,
+          // Re-fetch when turning a source back on.
+          lastFetchedAt: enabled ? undefined : sub.lastFetchedAt,
+        }
+      : sub
+  );
+  saveFeedSubscriptions(next);
+  return next;
 }
 
 export function addFeedSubscription(sub: Omit<FeedSubscription, "id" | "addedAt">): FeedSubscription {
   const subscriptions = getFeedSubscriptions();
   const duplicate = subscriptions.find((entry) => entry.feedUrl === sub.feedUrl);
-  if (duplicate) return duplicate;
+  if (duplicate) {
+    if (duplicate.enabled === false) {
+      const next = setFeedSubscriptionEnabled(duplicate.id, true);
+      return next.find((entry) => entry.id === duplicate.id) || duplicate;
+    }
+    return duplicate;
+  }
 
   const entry: FeedSubscription = {
     ...sub,
-    id: `feed-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: CURATED_FEED_URLS.has(sub.feedUrl)
+      ? makeFeedSubscriptionId(sub.feedUrl)
+      : `feed-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     addedAt: Date.now(),
+    enabled: sub.enabled !== false,
   };
   saveFeedSubscriptions([entry, ...subscriptions]);
   return entry;
 }
 
 export function removeFeedSubscription(subscriptionId: string): void {
+  const target = getFeedSubscriptions().find((sub) => sub.id === subscriptionId);
+  // Curated sources are toggled off instead of deleted.
+  if (target && isCuratedFeedUrl(target.feedUrl)) {
+    setFeedSubscriptionEnabled(subscriptionId, false);
+    return;
+  }
   saveFeedSubscriptions(getFeedSubscriptions().filter((sub) => sub.id !== subscriptionId));
   saveFeedItems(getFeedItems().filter((item) => item.subscriptionId !== subscriptionId));
 }
@@ -269,5 +363,6 @@ export function markFeedItemSaved(itemId: string, bookId: string): void {
 }
 
 export function getUnreadFeedCount(): number {
-  return getFeedItems().filter((item) => !item.read).length;
+  const enabledIds = new Set(getEnabledFeedSubscriptions().map((sub) => sub.id));
+  return getFeedItems().filter((item) => !item.read && enabledIds.has(item.subscriptionId)).length;
 }

@@ -20,10 +20,15 @@ import {
   FeedItem,
   FeedSubscription,
   getFeedItems,
+  isCuratedFeedUrl,
+  isDefaultFeedUrl,
+  isFeedSubscriptionEnabled,
+  isInternationalFeedUrl,
   markFeedItemRead,
   mergeFeedItems,
   removeFeedSubscription,
   saveFeedSubscriptions,
+  setFeedSubscriptionEnabled,
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
@@ -43,6 +48,26 @@ interface FeedViewProps {
 
 type FeedFilter = "all" | "unread" | "saved" | "briefs";
 type BentoVariant = "featured" | "square" | "wide" | "default";
+
+function SourceToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
+        on ? "bg-kindle-text" : "bg-kindle-border"
+      }`}
+      aria-pressed={on}
+      aria-label={on ? "Turn source off" : "Turn source on"}
+    >
+      <div
+        className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${
+          on ? "translate-x-5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/50"
+        }`}
+      />
+    </button>
+  );
+}
 
 function formatFeedDate(timestamp: number): string {
   const date = new Date(timestamp);
@@ -237,8 +262,6 @@ function FeedView({
   const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
   const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
 
-  const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
-
   const loadLocalState = useCallback(() => {
     const subs = ensureDefaultSubscriptions();
     setSubscriptions(subs);
@@ -258,12 +281,18 @@ function FeedView({
   const refreshFeeds = useCallback(async () => {
     const subs = ensureDefaultSubscriptions();
     setSubscriptions(subs);
+    const activeSubs = subs.filter(isFeedSubscriptionEnabled);
     setRefreshing(true);
     try {
-      const incoming = await refreshAllSubscriptions(subs);
+      const incoming = await refreshAllSubscriptions(activeSubs);
       const merged = mergeFeedItems(incoming);
       setItems(merged);
-      saveFeedSubscriptions(subs.map((sub) => ({ ...sub, lastFetchedAt: Date.now() })));
+      const fetchedIds = new Set(activeSubs.map((sub) => sub.id));
+      saveFeedSubscriptions(
+        subs.map((sub) =>
+          fetchedIds.has(sub.id) ? { ...sub, lastFetchedAt: Date.now() } : sub
+        )
+      );
       void enrichFeedItems(merged);
     } catch (error) {
       console.error("Feed refresh failed:", error);
@@ -275,10 +304,11 @@ function FeedView({
   useEffect(() => {
     loadLocalState();
     const subs = ensureDefaultSubscriptions();
-    const newestFetch = Math.max(0, ...subs.map((sub) => sub.lastFetchedAt || 0));
-    const hasNeverFetched = subs.some((sub) => !sub.lastFetchedAt);
+    const activeSubs = subs.filter(isFeedSubscriptionEnabled);
+    const newestFetch = Math.max(0, ...activeSubs.map((sub) => sub.lastFetchedAt || 0));
+    const hasNeverFetched = activeSubs.some((sub) => !sub.lastFetchedAt);
     // Skip network refresh when feeds were fetched recently (keeps first paint snappy),
-    // but always refresh when a newly added source has never been fetched (e.g. MV Crisis).
+    // but always refresh when a newly enabled source has never been fetched.
     if (!hasNeverFetched && newestFetch && Date.now() - newestFetch < 5 * 60 * 1000) {
       setItems(getFeedItems());
       return;
@@ -302,9 +332,25 @@ function FeedView({
     setReadingArticle(syntheticItem);
   }, [initialUrl, onClearInitialUrl]);
 
+  const enabledSubscriptions = useMemo(
+    () => subscriptions.filter(isFeedSubscriptionEnabled),
+    [subscriptions]
+  );
+  const enabledSubscriptionIds = useMemo(
+    () => new Set(enabledSubscriptions.map((sub) => sub.id)),
+    [enabledSubscriptions]
+  );
+  const unreadCount = useMemo(
+    () => items.filter((item) => !item.read && enabledSubscriptionIds.has(item.subscriptionId)).length,
+    [items, enabledSubscriptionIds]
+  );
+
   const retainedItems = useMemo(
-    () => items.filter((item) => isFeedItemWithinRetention(item)),
-    [items]
+    () =>
+      items.filter(
+        (item) => isFeedItemWithinRetention(item) && enabledSubscriptionIds.has(item.subscriptionId)
+      ),
+    [items, enabledSubscriptionIds]
   );
 
   const visibleItems = useMemo(() => {
@@ -318,6 +364,34 @@ function FeedView({
       })
       .sort((a, b) => b.publishedAt - a.publishedAt);
   }, [retainedItems, filter, selectedSubscriptionId]);
+
+  const maldivesSources = useMemo(
+    () => subscriptions.filter((sub) => isDefaultFeedUrl(sub.feedUrl)),
+    [subscriptions]
+  );
+  const internationalSources = useMemo(
+    () => subscriptions.filter((sub) => isInternationalFeedUrl(sub.feedUrl)),
+    [subscriptions]
+  );
+  const customSources = useMemo(
+    () => subscriptions.filter((sub) => !isCuratedFeedUrl(sub.feedUrl)),
+    [subscriptions]
+  );
+
+  const handleToggleSource = useCallback(
+    async (sub: FeedSubscription) => {
+      const nextEnabled = !isFeedSubscriptionEnabled(sub);
+      const next = setFeedSubscriptionEnabled(sub.id, nextEnabled);
+      setSubscriptions(next);
+      if (selectedSubscriptionId === sub.id && !nextEnabled) {
+        setSelectedSubscriptionId(null);
+      }
+      if (nextEnabled) {
+        await refreshFeeds();
+      }
+    },
+    [refreshFeeds, selectedSubscriptionId]
+  );
 
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -416,7 +490,7 @@ function FeedView({
         >
           All Sources
         </button>
-        {subscriptions.map((sub) => (
+        {enabledSubscriptions.map((sub) => (
           <button
             key={sub.id}
             onClick={() => setSelectedSubscriptionId(sub.id)}
@@ -434,11 +508,11 @@ function FeedView({
 
       {filter === "briefs" ? (
         <NewsInBriefPanel
-          items={items.filter((item) => isFeedItemWithinRetention(item))}
+          items={retainedItems}
           selectedSourceId={selectedSubscriptionId}
           onRead={handleReadArticle}
         />
-      ) : refreshing && items.length === 0 ? (
+      ) : refreshing && retainedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-kindle-text-muted">
           <Loader2 className="w-8 h-8 animate-spin mb-3" />
           <p className="text-sm">Fetching your feeds…</p>
@@ -484,46 +558,70 @@ function FeedView({
         <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-lexend font-bold text-kindle-text">Manage Subscriptions</h3>
+              <div>
+                <h3 className="text-sm font-lexend font-bold text-kindle-text">Manage Sources</h3>
+                <p className="text-[10px] text-kindle-text-muted mt-0.5">
+                  Toggle sources on or off — nothing is unsubscribed.
+                </p>
+              </div>
               <button onClick={() => dismissManageFeeds()} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-2">
-              {subscriptions.length === 0 ? (
-                <p className="text-[10px] text-kindle-text-muted">No subscriptions yet.</p>
-              ) : (
-                subscriptions.map((sub) => (
-                  <div
-                    key={sub.id}
-                    className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-kindle-border bg-kindle-bg/50"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-kindle-text truncate">{sub.title}</p>
-                      <p className="text-[10px] text-kindle-text-muted truncate">
-                        {sub.feedUrl.startsWith("kora://telegram/")
-                          ? `Telegram · @${sub.feedUrl.replace(/^kora:\/\/telegram\//i, "")}`
-                          : sub.feedUrl}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        removeFeedSubscription(sub.id);
-                        loadLocalState();
-                      }}
-                      className="p-2 text-kindle-text-muted hover:text-red-500 transition shrink-0"
-                      title="Unsubscribe"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+            <div className="space-y-4">
+              {[
+                { label: "Maldives", sources: maldivesSources },
+                { label: "International", sources: internationalSources },
+                { label: "Custom", sources: customSources },
+              ].map((group) =>
+                group.sources.length ? (
+                  <div key={group.label} className="space-y-2">
+                    <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">
+                      {group.label}
+                    </h4>
+                    {group.sources.map((sub) => {
+                      const on = isFeedSubscriptionEnabled(sub);
+                      return (
+                        <div
+                          key={sub.id}
+                          className={`flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl border border-kindle-border ${
+                            on ? "bg-kindle-bg/50" : "bg-kindle-bg/20 opacity-80"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-kindle-text truncate">{sub.title}</p>
+                            <p className="text-[10px] text-kindle-text-muted truncate">
+                              {sub.feedUrl.startsWith("kora://telegram/")
+                                ? `Telegram · @${sub.feedUrl.replace(/^kora:\/\/telegram\//i, "")}`
+                                : sub.siteUrl || sub.feedUrl}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {!isCuratedFeedUrl(sub.feedUrl) ? (
+                              <button
+                                onClick={() => {
+                                  removeFeedSubscription(sub.id);
+                                  loadLocalState();
+                                }}
+                                className="p-2 text-kindle-text-muted hover:text-red-500 transition"
+                                title="Remove custom source"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            ) : null}
+                            <SourceToggle on={on} onClick={() => void handleToggleSource(sub)} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))
+                ) : null
               )}
             </div>
 
             <div className="border-t border-kindle-border pt-4 space-y-3">
-              <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Add Feed Source</h4>
+              <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Add Custom Source</h4>
               <p className="text-[10px] text-kindle-text-muted">
                 Paste a website or RSS link, or a public Telegram channel (@name or t.me/name).
               </p>
@@ -547,7 +645,7 @@ function FeedView({
                   className="w-full py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {addingFeed ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />}
-                  Subscribe
+                  Add Source
                 </button>
               </form>
             </div>
