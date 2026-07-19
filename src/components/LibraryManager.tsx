@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
@@ -72,6 +72,7 @@ export default function LibraryManager({
   const [search, setSearch] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterTag, setFilterTag] = useState<string>("all");
+  const [filterType, setFilterType] = useState<"all" | "book" | "audiobook">("all");
   const [sortBy, setSortBy] = useState<string>("dateAdded");
   
   // Custom Tag States
@@ -495,6 +496,9 @@ export default function LibraryManager({
     setNewTagInput("");
   }
 
+  const isAudiobookEntry = (book: BookMetadata) =>
+    book.extension?.toLowerCase() === "audiobook" || book.tags?.includes("audiobook");
+
   // Filter & sort logic
   const filteredBooks = books.filter((book) => {
     const matchesSearch = 
@@ -506,8 +510,13 @@ export default function LibraryManager({
       
     const matchesTag = 
       filterTag === "all" || book.tags.includes(filterTag);
+
+    const matchesType =
+      filterType === "all" ||
+      (filterType === "audiobook" && isAudiobookEntry(book)) ||
+      (filterType === "book" && !isAudiobookEntry(book));
       
-    return matchesSearch && matchesStatus && matchesTag;
+    return matchesSearch && matchesStatus && matchesTag && matchesType;
   }).sort((a, b) => {
     if (sortBy === "dateAdded") {
       return b.dateAdded - a.dateAdded;
@@ -675,6 +684,32 @@ export default function LibraryManager({
                 <option value="rating">Sort: Rating</option>
                 <option value="title">Sort: Title</option>
               </select>
+
+              <button
+                type="button"
+                onClick={() => setFilterType((prev) => (prev === "book" ? "all" : "book"))}
+                className={`px-2.5 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1 ${
+                  filterType === "book"
+                    ? "bg-kindle-text text-kindle-bg border-transparent shadow-sm"
+                    : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text hover:text-kindle-text"
+                }`}
+              >
+                <BookOpen className="w-3 h-3" />
+                Book
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFilterType((prev) => (prev === "audiobook" ? "all" : "audiobook"))}
+                className={`px-2.5 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1 ${
+                  filterType === "audiobook"
+                    ? "bg-kindle-text text-kindle-bg border-transparent shadow-sm"
+                    : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text hover:text-kindle-text"
+                }`}
+              >
+                <Headphones className="w-3 h-3" />
+                Audiobook
+              </button>
             </div>
           </div>
         </div>
