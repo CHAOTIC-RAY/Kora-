@@ -1081,6 +1081,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
 
     const handlePointerDown = (e: PointerEvent) => {
+      const targetEl = e.target as HTMLElement | null;
+      // Taps on the floating selection menu / pins must NOT tear down the menu
+      // before click handlers run (that made Highlight / Note / Web appear dead).
+      if (targetEl?.closest?.("[data-kora-selection-ui]")) {
+        isPointerDownRef.current = false;
+        pressInsideContent = false;
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        return;
+      }
+
       isPointerDownRef.current = true;
       movedDuringPress = false;
       pressStartX = lastX = e.clientX;
@@ -1956,23 +1969,71 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   // Request AI companion assistance using our offline engine (No keys/API needed!)
+  const openWebSearch = (query: string) => {
+    const q = query.trim();
+    if (!q) return;
+    const url = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  };
+
   const handleSaveHighlight = async (color: "yellow" | "green" | "blue" | "pink") => {
-    if (!selectedText) return;
+    const text = selectedText.trim();
+    if (!text) return;
     const highlightId = Date.now().toString();
     const chapterTitle = chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`;
     const newHighlight: BookHighlight = {
       id: highlightId,
-      text: selectedText,
+      text,
       color,
       chapterIdx: currentChapterIdx,
       chapterTitle,
       createdAt: Date.now()
     };
-    
-    await syncBookHighlight(userId, book.id, newHighlight);
-    setHighlightsData(prev => [newHighlight, ...prev]);
+
+    setHighlightsData((prev) => [newHighlight, ...prev]);
     dismissSelection();
     setShowNotes(true);
+    setDictFeedback("Highlight saved");
+    window.setTimeout(() => setDictFeedback(null), 2000);
+
+    try {
+      await syncBookHighlight(userId, book.id, newHighlight);
+    } catch (err) {
+      console.error("Failed to sync highlight", err);
+    }
+  };
+
+  const handleAddSelectionToNote = () => {
+    const quote = selectedText.trim();
+    if (!quote) return;
+    const chapterTitle = chapters[currentChapterIdx]?.title || `Chapter ${currentChapterIdx + 1}`;
+    const next = `${activeNoteText}${activeNoteText.trim() ? "\n\n" : ""}"${quote}"`;
+    setActiveNoteText(next);
+    setChapterNotesData((prev) => ({
+      ...prev,
+      [currentChapterIdx]: {
+        chapterIdx: currentChapterIdx,
+        chapterTitle,
+        noteText: next,
+        updatedAt: Date.now(),
+      },
+    }));
+    setShowNotes(true);
+    dismissSelection();
+    setDictFeedback("Added to note");
+    window.setTimeout(() => setDictFeedback(null), 2000);
+    void syncChapterNote(userId, book.id, currentChapterIdx, chapterTitle, next).catch((err) => {
+      console.error("Failed to sync note", err);
+    });
   };
 
   const expandSelectionToSentence = () => {
@@ -3631,6 +3692,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       {/* Kindle-Style Selection Pin Handles rendered at top level to avoid overflow clipping and CSS transform offsets */}
       {selectedText && selectionPins.start && (
         <div 
+          data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
           style={{
             left: `${selectionPins.start.x}px`,
@@ -3641,6 +3703,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         >
           {/* Start Pin Handle with Enlarged Touch/Pointer Target */}
           <div 
+            data-kora-selection-ui
             onPointerDown={(e) => handlePinDragStart(e, 'start')}
             onPointerMove={handlePinDragMove}
             onPointerUp={handlePinDragEnd}
@@ -3656,6 +3719,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       )}
       {selectedText && selectionPins.end && (
         <div 
+          data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
           style={{
             left: `${selectionPins.end.x}px`,
@@ -3666,6 +3730,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         >
           {/* End Pin Handle with Enlarged Touch/Pointer Target */}
           <div 
+            data-kora-selection-ui
             onPointerDown={(e) => handlePinDragStart(e, 'end')}
             onPointerMove={handlePinDragMove}
             onPointerUp={handlePinDragEnd}
@@ -3683,6 +3748,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       {/* Native-style floating selection menu */}
       {selectedText && selectionCoords && !isDraggingSelection && (
         <div
+          data-kora-selection-ui
           className="fixed z-[9999] max-w-[min(96vw,24rem)] animate-in fade-in zoom-in-95 duration-150"
           style={{
             left: `${selectionCoords.x}px`,
@@ -3694,11 +3760,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               : "translate(-50%, 0)",
             boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
           }}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="rounded-2xl border border-neutral-700/80 bg-[#1a1816]/96 backdrop-blur-xl text-white overflow-hidden">
             {(selectionDictPreview || selectionDictLoading) && (
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => lookupDictionary(selectionDictPreview?.word || extractLookupWord(selectedText))}
                 className="w-full text-left px-3.5 py-2.5 border-b border-neutral-800/80 hover:bg-white/5 transition"
@@ -3726,6 +3794,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             <div className="flex items-center gap-0.5 p-1.5">
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => lookupDictionary(selectionDictPreview?.word || extractLookupWord(selectedText) || selectedText)}
                 className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 active:scale-[0.98] transition"
@@ -3737,10 +3806,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => setShowHighlightColors((open) => !open)}
+                onClick={() => void handleSaveHighlight("yellow")}
                 className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition text-neutral-200"
-                title="Highlight"
+                title="Highlight selection"
               >
                 <Highlighter className="w-5 h-5" />
                 <span className="text-[10px] font-bold uppercase tracking-wide font-sans">Highlight</span>
@@ -3748,12 +3818,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  setActiveNoteText((prev) => `${prev}${prev ? "\n" : ""}"${selectedText}"\n`);
-                  setShowNotes(true);
-                  dismissSelection();
-                }}
+                onClick={handleAddSelectionToNote}
                 className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition text-neutral-200"
                 title="Add to note"
               >
@@ -3763,9 +3830,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
-                  window.open(`https://www.google.com/search?q=${encodeURIComponent(selectedText)}`, "_blank", "noopener,noreferrer");
+                  const q = selectedText;
+                  openWebSearch(q);
                   dismissSelection();
                 }}
                 className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition text-neutral-200"
@@ -3777,6 +3846,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
               <button
                 type="button"
+                onPointerDown={(e) => e.preventDefault()}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={dismissSelection}
                 className="w-9 h-full flex items-center justify-center rounded-xl text-neutral-500 hover:text-white hover:bg-white/5 transition"
@@ -3786,37 +3856,28 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </button>
             </div>
 
-            <AnimatePresence>
-              {showHighlightColors && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden border-t border-neutral-800/80"
-                >
-                  <div className="flex items-center justify-center gap-3 px-3 py-2.5">
-                    {(["yellow", "green", "blue", "pink"] as const).map((color) => {
-                      const colorClasses = {
-                        yellow: "bg-yellow-400",
-                        green: "bg-emerald-400",
-                        blue: "bg-sky-400",
-                        pink: "bg-pink-400",
-                      };
-                      return (
-                        <button
-                          key={color}
-                          type="button"
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => handleSaveHighlight(color)}
-                          className={`w-8 h-8 rounded-full border-2 border-white/20 shadow-md active:scale-110 transition ${colorClasses[color]}`}
-                          title={`Highlight ${color}`}
-                        />
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <div className="flex items-center justify-center gap-3 px-3 py-2.5 border-t border-neutral-800/80">
+              {(["yellow", "green", "blue", "pink"] as const).map((color) => {
+                const colorClasses = {
+                  yellow: "bg-yellow-400",
+                  green: "bg-emerald-400",
+                  blue: "bg-sky-400",
+                  pink: "bg-pink-400",
+                };
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    onPointerDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => void handleSaveHighlight(color)}
+                    className={`w-8 h-8 rounded-full border-2 border-white/20 shadow-md active:scale-110 transition ${colorClasses[color]}`}
+                    title={`Highlight ${color}`}
+                    aria-label={`Highlight ${color}`}
+                  />
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
