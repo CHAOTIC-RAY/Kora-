@@ -83,6 +83,7 @@ function getInitialAudiobookTime(book: BookMetadata): number {
 interface AudiobookPlayerProps {
   book: BookMetadata;
   userId?: string;
+  grayscaleCovers?: boolean;
   viewMode?: "fullscreen" | "minimized";
   onClose: () => void;
   onMinimize?: () => void;
@@ -159,6 +160,7 @@ function cleanTrackTitle(
 export default function AudiobookPlayer({
   book,
   userId = "",
+  grayscaleCovers = false,
   viewMode = "fullscreen",
   onClose,
   onMinimize,
@@ -805,6 +807,7 @@ export default function AudiobookPlayer({
                   size="player"
                   playing={isPlaying}
                   voiceMode={isTtsBook}
+                  grayscaleCovers={grayscaleCovers}
                   getAudioElement={() => audioRef.current}
                 />
               </div>

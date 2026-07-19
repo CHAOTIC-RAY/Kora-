@@ -209,7 +209,16 @@ export default function CassetteVisualizer({
 
   const shellRadius = isThumb ? "rounded-[6px]" : isPlayer ? "rounded-[18px]" : "rounded-[14px]";
   const labelSize = isThumb ? "text-[4px]" : isPlayer ? "text-[8px]" : "text-[6.5px]";
-  const reelSize = isThumb ? "w-[34%] max-w-[1.4rem]" : isPlayer ? "w-[38%] max-w-[7.5rem]" : "w-[36%] max-w-[3.4rem]";
+  const coverReelSize = isThumb
+    ? "w-[42%] max-w-[1.65rem]"
+    : isPlayer
+      ? "w-[48%] max-w-[9.5rem]"
+      : "w-[42%] max-w-[3.9rem]";
+  const visualizerReelSize = isThumb
+    ? "w-[22%] max-w-[0.95rem]"
+    : isPlayer
+      ? "w-[24%] max-w-[4.25rem]"
+      : "w-[22%] max-w-[2rem]";
   const screwSize = isThumb ? "w-1 h-1" : isPlayer ? "w-2.5 h-2.5" : "w-1.5 h-1.5";
 
   const displayTitle = title.length > (isPlayer ? 28 : isThumb ? 14 : 22)
@@ -276,10 +285,10 @@ export default function CassetteVisualizer({
                 coverSrc={coverSrc}
                 hideCovers={hideCovers}
                 grayscaleCovers={grayscaleCovers}
-                className={`${reelSize} aspect-square shrink-0`}
+                className={`${coverReelSize} aspect-square shrink-0`}
               />
 
-              <div className="flex-1 relative h-[10%] min-w-[12%] max-w-[28%] self-center">
+              <div className="flex-1 relative h-[10%] min-w-[10%] max-w-[24%] self-center">
                 <div className="absolute inset-0 rounded-full bg-amber-950/70 border border-amber-900/40 shadow-inner" />
                 <div
                   className={`absolute inset-y-[18%] left-[8%] right-[8%] rounded-full bg-gradient-to-r from-amber-800/80 via-amber-600/70 to-amber-800/80 ${
@@ -293,7 +302,7 @@ export default function CassetteVisualizer({
                 playing={playing}
                 reverse
                 levels={levels}
-                className={`${reelSize} aspect-square shrink-0`}
+                className={`${visualizerReelSize} aspect-square shrink-0`}
               />
             </div>
 

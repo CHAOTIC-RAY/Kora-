@@ -43,7 +43,7 @@ import {
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle, Rss,
-  RefreshCw, Zap, Database, Trash2, Library, BookMarked
+  RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench
 } from "lucide-react";
 import JSZip from "jszip";
 
@@ -154,7 +154,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<"library" | "discover" | "feed" | "settings">("library");
+  const [activeTab, setActiveTab] = useState<"library" | "discover" | "feed" | "tools" | "settings">("library");
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
@@ -1297,44 +1297,35 @@ export default function App() {
               }`}
             >
               <Rss className="w-3.5 h-3.5" />
-              <span>Feed</span>
+              <span>Read</span>
             </button>
             <button
-              id="settings-tab"
-              onClick={() => setActiveTab("settings")}
+              id="tools-tab"
+              onClick={() => setActiveTab("tools")}
               className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
-                activeTab === "settings" 
+                activeTab === "tools" 
                   ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
                   : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
-              <SettingsIcon className="w-3.5 h-3.5" />
-              <span>Settings</span>
+              <Wrench className="w-3.5 h-3.5" />
+              <span>Tools</span>
             </button>
           </nav>
 
           <div className="flex items-center gap-1">
-            <div className="flex items-center gap-1">
-              {loadingAuth ? (
-                <div className="w-4 h-4 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-              ) : user && !user.isAnonymous ? (
-                <button
-                  onClick={handleSignOut}
-                  className="p-2 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer relative z-40"
-                  title="Sign Out"
-                >
-                  <LogOut className="w-4 h-4" />
-                </button>
-              ) : (
-                <button
-                  onClick={() => setShowAuthModal(true)}
-                  className="p-2 text-kindle-text-muted hover:text-kindle-text hover:bg-neutral-100 rounded-xl transition cursor-pointer relative z-40"
-                  title="Sign In"
-                >
-                  <UserIcon className="w-5 h-5" />
-                </button>
-              )}
-            </div>
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`p-2 rounded-xl transition cursor-pointer relative z-40 ${
+                activeTab === "settings"
+                  ? "bg-kindle-accent/15 text-kindle-accent"
+                  : "text-kindle-text-muted hover:text-kindle-text hover:bg-neutral-100"
+              }`}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <SettingsIcon className="w-5 h-5" />
+            </button>
           </div>
         </div>
         </div>
@@ -1436,8 +1427,44 @@ export default function App() {
         )}
 
 
+        {activeTab === "tools" && (
+          <SettingsView
+            view="tools"
+            user={user}
+            userId={user?.uid || ""}
+            grayscaleCovers={grayscaleCovers}
+            hideCovers={false}
+            displayTheme={displayTheme}
+            dailyRemindersEnabled={dailyRemindersEnabled}
+            onChangeDailyReminders={(enabled) => {
+              setDailyRemindersEnabled(enabled);
+              localStorage.setItem("kora_daily_reminders", String(enabled));
+            }}
+            onToggleGrayscale={toggleGrayscale}
+            onChangeTheme={(theme) => {
+              setDisplayTheme(theme);
+              localStorage.setItem("kora_display_theme", theme);
+            }}
+            onSignOut={handleSignOut}
+            onSignIn={() => setShowAuthModal(true)}
+            readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
+            searchPrefs={searchPrefs}
+            onSearchPrefsChange={setSearchPrefs}
+            bookCount={books.length}
+            cachedCount={cachedBookIds.size}
+            onClearDeviceCache={handleClearDeviceCache}
+            onClearRecentSearches={handleClearRecentSearches}
+            books={books}
+            onRefreshLibrary={() => refreshLibrary()}
+            onCachedIdsChanged={updateCachedBookIndex}
+            onOpenOnboarding={() => setShowOnboarding(true)}
+          />
+        )}
+
         {activeTab === "settings" && (
-          <SettingsView 
+          <SettingsView
+            view="settings" 
             user={user}
             userId={user?.uid || ""}
             grayscaleCovers={grayscaleCovers}
@@ -1485,6 +1512,7 @@ export default function App() {
           <AudiobookPlayer
             book={audiobookPlayback}
             userId={user?.uid || ""}
+            grayscaleCovers={grayscaleCovers}
             viewMode={activeBook?.id === audiobookPlayback.id ? "fullscreen" : "minimized"}
             onMinimize={() => setActiveBook(null)}
             onExpand={() => setActiveBook(audiobookPlayback)}
@@ -1856,13 +1884,13 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab("settings")}
+            onClick={() => setActiveTab("tools")}
             className={`flex flex-col items-center justify-center flex-1 h-full rounded-xl transition ${
-              activeTab === "settings" ? "text-kindle-text" : "text-kindle-text-muted"
+              activeTab === "tools" ? "text-kindle-text" : "text-kindle-text-muted"
             }`}
           >
-            <SettingsIcon className={`w-5 h-5 transition-all duration-300 ${activeTab === "settings" ? "scale-110" : "opacity-80"}`} />
-            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Settings</span>
+            <Wrench className={`w-5 h-5 transition-all duration-300 ${activeTab === "tools" ? "scale-110" : "opacity-80"}`} />
+            <span className="text-[8px] font-sans font-bold mt-1 uppercase tracking-wider">Tools</span>
           </button>
         </div>
       </footer>

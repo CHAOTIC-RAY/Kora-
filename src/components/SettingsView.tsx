@@ -39,6 +39,7 @@ interface SearchPrefs {
 interface SettingsViewProps {
   user: User | null;
   userId?: string;
+  view?: "settings" | "tools";
   grayscaleCovers: boolean;
   hideCovers?: boolean;
   displayTheme: string;
@@ -106,6 +107,7 @@ function Row({ title, desc, children }: { title: string; desc?: string; children
 export default function SettingsView({
   user,
   userId,
+  view = "settings",
   grayscaleCovers,
   hideCovers = false,
   displayTheme,
@@ -428,12 +430,69 @@ export default function SettingsView({
     <div className="space-y-6 md:space-y-10 pb-4 md:pb-10 animate-in fade-in slide-in-from-bottom-4 duration-500 text-left">
       <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">
         <div>
-          <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Settings</h2>
-          <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Preferences &amp; Cloud Sync</p>
+          <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">
+            {view === "tools" ? "Tools" : "Settings"}
+          </h2>
+          <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">
+            {view === "tools"
+              ? "Import books, cloud sync, and read-aloud utilities"
+              : "Profile, preferences & cloud sync"}
+          </p>
         </div>
       </header>
 
       <div className="space-y-6">
+        {view === "settings" && (
+          <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs">
+            <div className="flex items-start gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-kindle-bg border border-kindle-border flex items-center justify-center shrink-0">
+                <UserIcon className="w-7 h-7 text-kindle-text-muted" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-lexend font-bold text-kindle-text truncate">
+                  {user && !user.isAnonymous ? user.displayName || user.email || "Kora Reader" : "Guest Reader"}
+                </h3>
+                <p className="text-xs text-kindle-text-muted truncate">
+                  {user && !user.isAnonymous ? user.email : "Sign in to sync your library across devices"}
+                </p>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {user && !user.isAnonymous ? (
+                    <button
+                      onClick={onSignOut}
+                      className="px-3 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider hover:bg-kindle-bg transition"
+                    >
+                      Sign Out
+                    </button>
+                  ) : (
+                    <button
+                      onClick={onSignIn}
+                      className="px-3 py-1.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition"
+                    >
+                      Sign In
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-kindle-border/60">
+              <div className="p-3 rounded-xl bg-kindle-bg border border-kindle-border text-center">
+                <p className="text-lg font-bold font-lexend">{bookCount}</p>
+                <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">Books</p>
+              </div>
+              <div className="p-3 rounded-xl bg-kindle-bg border border-kindle-border text-center">
+                <p className="text-lg font-bold font-lexend text-kindle-accent">{cachedCount}</p>
+                <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">Cached</p>
+              </div>
+              <div className="p-3 rounded-xl bg-kindle-bg border border-kindle-border text-center">
+                <p className="text-lg font-bold font-lexend">{getRemainingGuestDays(user)}</p>
+                <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">Guest Days</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {view === "settings" && (
+        <>
         {/* Appearance — first */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
           <div 
@@ -495,7 +554,11 @@ export default function SettingsView({
             </div>
           )}
         </section>
+        </>
+        )}
 
+        {view === "tools" && (
+        <>
         {/* Bento Widget Grid (local ingest + cloud) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-2 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-3">
@@ -601,7 +664,11 @@ export default function SettingsView({
           </div>
 
         </div>
+        </>
+        )}
 
+        {view === "settings" && (
+        <>
         {/* Reading */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
           <div 
@@ -884,7 +951,6 @@ export default function SettingsView({
 
 
 
-        {/* Cloud Import Connectivity Modal */}
         {showCloudImport && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
             <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
@@ -1019,8 +1085,11 @@ export default function SettingsView({
             </p>
           </div>
         </section>
+        </>
+        )}
 
-
+        {view === "tools" && (
+        <>
         {/* Folder Auto-Ingestion (Directory Access) */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
@@ -1225,7 +1294,11 @@ export default function SettingsView({
             </div>
           )}
         </section>
+        </>
+        )}
 
+        {view === "settings" && (
+        <>
         {/* About */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
@@ -1274,6 +1347,8 @@ export default function SettingsView({
             </div>
           </div>
         </section>
+        </>
+        )}
       </div>
     </div>
   );

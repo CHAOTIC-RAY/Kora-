@@ -12,7 +12,6 @@ import {
   X,
 } from "lucide-react";
 import type { BookMetadata } from "../lib/firebase";
-import { clipUrlToLibrary } from "../lib/feedClipper";
 import {
   addFeedSubscription,
   ensureDefaultSubscriptions,
@@ -27,6 +26,7 @@ import {
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import FeedArticleReader from "./FeedArticleReader";
 
 interface FeedViewProps {
   userId?: string;
@@ -65,7 +65,7 @@ function getItemThumbnail(item: FeedItem): string | null {
   if (item.imageUrl) return resolveCoverImageSrc(item.imageUrl);
   try {
     const host = new URL(item.link).hostname;
-    return `/api/proxy-image?url=${encodeURIComponent(`https://www.google.com/s2/favicons?domain=${host}&sz=128`)}`;
+    return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`;
   } catch {
     return null;
   }
@@ -177,8 +177,8 @@ export default function FeedView({
   const [addFeedUrl, setAddFeedUrl] = useState("");
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
   const [addingFeed, setAddingFeed] = useState(false);
-  const [workingItemId, setWorkingItemId] = useState<string | null>(null);
   const [shareClipping, setShareClipping] = useState(false);
+  const [readingArticle, setReadingArticle] = useState<FeedItem | null>(null);
 
   const unreadCount = useMemo(() => items.filter((item) => !item.read).length, [items]);
 
@@ -213,23 +213,17 @@ export default function FeedView({
     if (!initialUrl?.trim()) return;
     const url = initialUrl.trim();
     onClearInitialUrl?.();
-    setShareClipping(true);
-    void (async () => {
-      try {
-        const book = await clipUrlToLibrary({
-          url,
-          userId,
-          tags: ["Feed", "Shared"],
-        });
-        await onRefreshLibrary?.();
-        onOpenBook?.(book);
-      } catch (err) {
-        console.error("Shared link clip failed:", err);
-      } finally {
-        setShareClipping(false);
-      }
-    })();
-  }, [initialUrl, onClearInitialUrl, onOpenBook, onRefreshLibrary, userId]);
+    const syntheticItem: FeedItem = {
+      id: `shared-${Date.now()}`,
+      subscriptionId: "shared",
+      subscriptionTitle: "Shared Link",
+      title: "Shared Article",
+      link: url,
+      publishedAt: Date.now(),
+      read: false,
+    };
+    setReadingArticle(syntheticItem);
+  }, [initialUrl, onClearInitialUrl]);
 
   const visibleItems = useMemo(() => {
     return items.filter((item) => {
@@ -263,25 +257,10 @@ export default function FeedView({
     }
   };
 
-  const handleReadArticle = async (item: FeedItem) => {
-    setWorkingItemId(item.id);
-    try {
-      const book = await clipUrlToLibrary({
-        url: item.link,
-        userId,
-        tags: ["Feed", item.subscriptionTitle],
-        sourceLabel: item.subscriptionTitle,
-      });
-      markFeedItemSaved(item.id, book.id);
-      markFeedItemRead(item.id, true);
-      setItems(getFeedItems());
-      await onRefreshLibrary?.();
-      onOpenBook?.(book);
-    } catch (err) {
-      alert((err as Error).message || "Could not read this article.");
-    } finally {
-      setWorkingItemId(null);
-    }
+  const handleReadArticle = (item: FeedItem) => {
+    markFeedItemRead(item.id, true);
+    setItems(getFeedItems());
+    setReadingArticle(item);
   };
 
   return (
@@ -298,7 +277,7 @@ export default function FeedView({
             )}
           </div>
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">
-            Subscribe to sources and read articles offline in your library.
+            Subscribe to sources and read articles fullscreen — save to library only when you want.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -391,14 +370,13 @@ export default function FeedView({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {visibleItems.map((item) => {
             const cover = getItemThumbnail(item);
-            const busy = workingItemId === item.id;
             const title = displayTitle(item);
             return (
               <FeedArticleCard
                 key={item.id}
                 item={item}
                 cover={cover}
-                busy={busy}
+                busy={false}
                 title={title}
                 onRead={() => void handleReadArticle(item)}
                 onToggleRead={() => {
@@ -479,6 +457,17 @@ export default function FeedView({
             </form>
           </div>
         </div>
+      )}
+      {readingArticle && (
+        <FeedArticleReader
+          item={readingArticle}
+          userId={userId}
+          onClose={() => setReadingArticle(null)}
+          onSaved={async () => {
+            setItems(getFeedItems());
+            await onRefreshLibrary?.();
+          }}
+        />
       )}
     </div>
   );
