@@ -1,10 +1,5 @@
 import { SpeakChunk, buildSpeakChunks, estimateChunkDurationSeconds } from "./ttsTextPrep";
-import {
-  getEffectiveSpeechRate,
-  getTtsSettings,
-  resolveSpeechVoice,
-  TtsQualityPreset,
-} from "./ttsSettings";
+import { getEffectiveSpeechRate, getSpeechVoices, getTtsSettings, resolveSpeechVoice, TtsQualityPreset } from "./ttsSettings";
 import { TtsPlaybackPosition } from "./ttsProgress";
 import { getNeuralChapterCache } from "./neuralTtsCache";
 
@@ -183,7 +178,13 @@ export class BrowserTtsPlayer {
       this.callbacks.onError?.("Text-to-speech is not supported in this browser.");
       return;
     }
-    if (!this.chunks.length) return;
+    if (!this.chunks.length) {
+      this.callbacks.onError?.("No speakable text found in this chapter.");
+      return;
+    }
+
+    await this.waitForVoices();
+    this.refreshVoice();
 
     if (this.paused && window.speechSynthesis.paused) {
       window.speechSynthesis.resume();
@@ -251,6 +252,9 @@ export class BrowserTtsPlayer {
       quality: this.quality,
       maxChars: this.quality === "instant" ? 220 : 170,
     });
+    if (!chunks.length) {
+      throw new Error("No speakable text found in this chapter.");
+    }
     return {
       chunks,
       chunkDurations: chunks.map((chunk) => this.estimateChunkDuration(chunk)),
@@ -344,6 +348,24 @@ export class BrowserTtsPlayer {
     this.callbacks.onPositionChange?.(this.playbackPosition);
   }
 
+  private async waitForVoices(timeoutMs = 1200): Promise<void> {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    if (getSpeechVoices().length) return;
+
+    await new Promise<void>((resolve) => {
+      const finish = () => resolve();
+      const timer = window.setTimeout(finish, timeoutMs);
+      const handler = () => {
+        if (getSpeechVoices().length) {
+          window.clearTimeout(timer);
+          window.speechSynthesis.removeEventListener("voiceschanged", handler);
+          resolve();
+        }
+      };
+      window.speechSynthesis.addEventListener("voiceschanged", handler);
+    });
+  }
+
   private async speakFromIndex(index: number): Promise<void> {
     if (!this.playing || index >= this.chunks.length) {
       if (this.playing) {
@@ -404,10 +426,11 @@ export class BrowserTtsPlayer {
       };
 
       utterance.onerror = (event) => {
-        if (event.error !== "interrupted") {
-          this.callbacks.onError?.("Speech playback failed.");
-          this.playing = false;
+        if (event.error === "interrupted" || event.error === "canceled") {
+          resolve();
+          return;
         }
+        console.warn("TTS chunk failed:", event.error, spokenText.slice(0, 80));
         resolve();
       };
 

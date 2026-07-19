@@ -32,6 +32,7 @@ const BOILERPLATE_PATTERNS = [
   /^acknowledg(e)?ments$/i,
   /^license$/i,
   /^isbn[:\s]/i,
+  /^discovery(\s*page)?$/i,
   /^prologue$/i,
   /^preface$/i,
   /^foreword$/i,

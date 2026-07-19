@@ -40,7 +40,7 @@ import {
   type SmartSkipSettings,
 } from "../lib/audiobookSmartSkip";
 import CassetteVisualizer from "./CassetteVisualizer";
-import { isFrontMatterTitle } from "../lib/audiobookTextFilter";
+import { isFrontMatterTitle, filterPlayableTracks, findFirstNarrativeTrackIndex } from "../lib/audiobookTextFilter";
 
 function getInitialAudiobookTrack(
   book: BookMetadata,
@@ -54,8 +54,8 @@ function getInitialAudiobookTrack(
 
   if (!isTtsBook || hasProgress) return savedTrack;
 
-  const narrativeIdx = tracks.findIndex((track) => !isFrontMatterTitle(track.title || ""));
-  return narrativeIdx >= 0 ? narrativeIdx : savedTrack;
+  const narrativeIdx = findFirstNarrativeTrackIndex(tracks);
+  return narrativeIdx;
 }
 
 interface AudiobookPlayerProps {
@@ -133,11 +133,19 @@ function cleanTrackTitle(
 export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: AudiobookPlayerProps) {
   const tracks = book.audiobookTracks || [];
   const isTtsBook = book.source === "browser-tts" || tracks.some((track) => isBrowserTtsTrack(track.src));
+  const playableTracks = useMemo(
+    () => (isTtsBook ? filterPlayableTracks(tracks) : tracks.map((track, index) => ({ track, index }))),
+    [isTtsBook, tracks]
+  );
   const trackTitles = useMemo(() => tracks.map((track) => track.title), [tracks]);
   const authorLabel = displayAuthor(book.author);
   const audioRef = useRef<HTMLAudioElement>(null);
   const ttsPlayerRef = useRef<BrowserTtsPlayer | null>(null);
   const [currentTrack, setCurrentTrack] = useState(() => getInitialAudiobookTrack(book, tracks, isTtsBook));
+  const currentPlayableIndex = useMemo(
+    () => playableTracks.findIndex((entry) => entry.index === currentTrack),
+    [playableTracks, currentTrack]
+  );
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(book.audiobookCurrentTime || 0);
   const [duration, setDuration] = useState(0);
@@ -609,7 +617,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
               )}
               {tracks.length > 0 && (
                 <p className="text-[10px] text-kindle-text-muted/80 font-mono tabular-nums">
-                  Chapter {currentTrack + 1} / {tracks.length}
+                  Chapter {(currentPlayableIndex >= 0 ? currentPlayableIndex : currentTrack) + 1} / {playableTracks.length}
                 </p>
               )}
               {playbackError && <p className="text-xs text-red-400 mt-2">{playbackError}</p>}
@@ -761,10 +769,10 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
             <div className="max-w-lg mx-auto space-y-2">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted font-lexend">Chapters</p>
-                <span className="text-[10px] text-kindle-text-muted font-mono tabular-nums">{tracks.length}</span>
+                <span className="text-[10px] text-kindle-text-muted font-mono tabular-nums">{playableTracks.length}</span>
               </div>
               <div className="max-h-36 overflow-y-auto player-chapter-scroll space-y-1 rounded-xl border border-kindle-border bg-kindle-bg/80 p-1.5">
-                {tracks.map((track, idx) => {
+                {playableTracks.map(({ track, index: idx }, displayIdx) => {
                   const label = cleanTrackTitle(track.title, idx, book.title, book.author, trackTitles);
                   const active = idx === currentTrack;
                   return (
@@ -778,7 +786,7 @@ export default function AudiobookPlayer({ book, onClose, onProgressUpdate }: Aud
                       }`}
                     >
                       <span className={`text-[10px] font-mono tabular-nums w-5 shrink-0 ${active ? "text-kindle-text" : ""}`}>
-                        {idx + 1}
+                        {displayIdx + 1}
                       </span>
                       <span className="truncate flex-1 font-sans">{label}</span>
                       {active && isPlaying && <Play className="w-3 h-3 shrink-0 fill-current" />}

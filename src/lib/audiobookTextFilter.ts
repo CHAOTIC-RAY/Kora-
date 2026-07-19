@@ -1,5 +1,5 @@
 const FRONT_MATTER_TITLE =
-  /^(cover|title\s*page|half\s*title|copyright|dedication|acknowledg(e)?ments|table\s+of\s+contents|contents|toc|list\s+of\s+(illustrations|characters)|front\s*matter|prologue|preface|foreword|introduction|about\s+the\s+author|also\s+by|epigraph|map|praise\s+for|notes\s+on\s+the\s+type|imprint|colophon|half-title)\b/i;
+  /^(cover|title\s*page|half\s*title|copyright|dedication|acknowledg(e)?ments|table\s+of\s+contents|contents|toc|list\s+of\s+(illustrations|characters)|front\s*matter|prologue|preface|foreword|introduction|about\s+the\s+author|also\s+by|epigraph|map|praise\s+for|notes\s+on\s+the\s+type|imprint|colophon|half-title|discovery\s*page)\b/i;
 
 export function isFrontMatterTitle(title: string): boolean {
   const trimmed = title.trim();
@@ -38,11 +38,22 @@ export function isFrontMatterChapter(title: string, text: string): boolean {
   return false;
 }
 
+export function filterPlayableTracks<T extends { title: string }>(tracks: T[]): { track: T; index: number }[] {
+  return tracks
+    .map((track, index) => ({ track, index }))
+    .filter(({ track }) => !isFrontMatterTitle(track.title || ""));
+}
+
 export function findFirstNarrativeChapterIndex(
   chapters: { title: string; text: string }[]
 ): number {
   const idx = chapters.findIndex((chapter) => !isFrontMatterChapter(chapter.title, chapter.text));
   return idx >= 0 ? idx : 0;
+}
+
+export function findFirstNarrativeTrackIndex(tracks: { title: string }[]): number {
+  const playable = filterPlayableTracks(tracks);
+  return playable[0]?.index ?? 0;
 }
 
 export function isGibberishLine(line: string): boolean {

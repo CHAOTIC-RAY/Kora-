@@ -97,8 +97,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(readerPrefs?.pageTransitionEffect ?? "paper-flip");
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
 
-  // Responsive mobile state
-  const [isMobile, setIsMobile] = useState<boolean>(false);
+  // Responsive mobile state — detect synchronously so first paint uses scroll layout
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < 768 || window.matchMedia("(max-width: 767px)").matches;
+  });
   const [flipDirection, setFlipDirection] = useState<"next" | "prev">("next");
   const prevPageNumRef = useRef<number>(1);
   const prevChapterIdxRef = useRef<number>(0);
@@ -126,12 +129,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   useEffect(() => {
     if (typeof window === "undefined") return;
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      setIsMobile(window.innerWidth < 768 || window.matchMedia("(max-width: 767px)").matches);
     };
     checkMobile();
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  useEffect(() => {
+    if (isMobile && doubleColumns) {
+      setDoubleColumns(false);
+    }
+  }, [isMobile, doubleColumns]);
 
   useEffect(() => {
     if (currentPageNum !== prevPageNumRef.current || currentChapterIdx !== prevChapterIdxRef.current) {
