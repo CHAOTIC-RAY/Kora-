@@ -2033,9 +2033,9 @@ export default function App() {
                 </div>
                 <button 
                   onClick={toggleGrayscale}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${grayscaleCovers ? "bg-emerald-500" : "bg-kindle-border"}`}
+                  className={`w-12 h-6 rounded-full transition-colors relative ${grayscaleCovers ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                 >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${grayscaleCovers ? "translate-x-7" : "translate-x-1"}`} />
+                  <div className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${grayscaleCovers ? "translate-x-7 bg-kindle-bg" : "translate-x-1 bg-kindle-text/70"}`} />
                 </button>
               </div>
 

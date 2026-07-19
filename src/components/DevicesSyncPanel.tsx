@@ -183,12 +183,14 @@ export default function DevicesSyncPanel({
                   type="button"
                   onClick={() => patchPrefs({ [key]: !prefs[key] })}
                   className={`w-11 h-6 rounded-full relative transition-colors ${
-                    prefs[key] ? "bg-emerald-500" : "bg-kindle-border"
+                    prefs[key] ? "bg-kindle-accent" : "bg-kindle-accent/25"
                   }`}
                 >
                   <span
-                    className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
-                      prefs[key] ? "translate-x-6" : "translate-x-1"
+                    className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${
+                      prefs[key]
+                        ? "translate-x-6 bg-kindle-bg"
+                        : "translate-x-1 bg-kindle-text/70"
                     }`}
                   />
                 </button>
@@ -282,12 +284,14 @@ export default function DevicesSyncPanel({
                 type="button"
                 onClick={() => patchWebDav({ enabled: !prefs.webdav.enabled })}
                 className={`w-11 h-6 rounded-full relative transition-colors ${
-                  prefs.webdav.enabled ? "bg-emerald-500" : "bg-kindle-border"
+                  prefs.webdav.enabled ? "bg-kindle-accent" : "bg-kindle-accent/25"
                 }`}
               >
                 <span
-                  className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${
-                    prefs.webdav.enabled ? "translate-x-6" : "translate-x-1"
+                  className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${
+                    prefs.webdav.enabled
+                      ? "translate-x-6 bg-kindle-bg"
+                      : "translate-x-1 bg-kindle-text/70"
                   }`}
                 />
               </button>

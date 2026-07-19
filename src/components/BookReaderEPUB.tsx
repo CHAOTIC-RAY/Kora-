@@ -2246,9 +2246,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     </div>
                     <button 
                       onClick={() => setHyphenation(!hyphenation)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-emerald-500" : "bg-kindle-border"}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                      aria-pressed={hyphenation}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hyphenation ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hyphenation ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
                     </button>
                   </div>
                 </div>
@@ -2268,9 +2269,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     </div>
                     <button 
                       onClick={() => setDoubleColumns(!doubleColumns)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-emerald-500" : "bg-kindle-border"}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                      aria-pressed={doubleColumns}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${doubleColumns ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${doubleColumns ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
                     </button>
                   </div>
 
@@ -2282,9 +2284,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     </div>
                     <button
                       onClick={() => setIsContinuous(!isContinuous)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${isContinuous ? "bg-emerald-500" : "bg-kindle-border"}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${isContinuous ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                      aria-pressed={isContinuous}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${isContinuous ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${isContinuous ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
                     </button>
                   </div>
 
@@ -2296,9 +2299,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     </div>
                     <button 
                       onClick={() => setGrayscaleImages(!grayscaleImages)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${grayscaleImages ? "bg-emerald-500" : "bg-kindle-border"}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${grayscaleImages ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                      aria-pressed={grayscaleImages}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${grayscaleImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${grayscaleImages ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
                     </button>
                   </div>
 
@@ -2310,9 +2314,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     </div>
                     <button 
                       onClick={() => setHideImages(!hideImages)}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-emerald-500" : "bg-kindle-border"}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                      aria-pressed={hideImages}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform ${hideImages ? "translate-x-5.5" : "translate-x-0.5"}`} />
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hideImages ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
                     </button>
                   </div>
                 </div>
