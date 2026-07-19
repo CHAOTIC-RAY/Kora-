@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -26,6 +26,36 @@ import { runOfflineCompanion } from "../lib/offlineAssistant";
 import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
+
+function extractLookupWord(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const candidate = words.length === 1 ? words[0] : words[0];
+  return candidate.replace(/^[^a-zA-Z0-9'-]+|[^a-zA-Z0-9'-]+$/g, "");
+}
+
+function clearNativeSelection() {
+  const sel = window.getSelection();
+  if (sel) sel.removeAllRanges();
+}
+
+function dismissSelectionState(
+  setters: {
+    setSelectedText: (v: string) => void;
+    setSelectionCoords: (v: null) => void;
+    setSelectionPins: (v: { start: null; end: null }) => void;
+    setSelectionDictPreview: (v: null) => void;
+    setShowHighlightColors: (v: boolean) => void;
+  }
+) {
+  clearNativeSelection();
+  setters.setSelectedText("");
+  setters.setSelectionCoords(null);
+  setters.setSelectionPins({ start: null, end: null });
+  setters.setSelectionDictPreview(null);
+  setters.setShowHighlightColors(false);
+}
 
 interface BookReaderEPUBProps {
   book: BookMetadata;
@@ -234,14 +264,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [selectedText, setSelectedText] = useState<string>("");
   const [dictFeedback, setDictFeedback] = useState<string | null>(null);
   const [tapFeedback, setTapFeedback] = useState<"next" | "prev" | null>(null);
-  const [selectMode, setSelectMode] = useState<boolean>(false);
-  const [selectionCoords, setSelectionCoords] = useState<{ x: number; y: number } | null>(null);
+  const [selectionCoords, setSelectionCoords] = useState<{ x: number; y: number; top: number; bottom: number } | null>(null);
   const [selectionPins, setSelectionPins] = useState<{
     start: { x: number; y: number; height: number } | null;
     end: { x: number; y: number; height: number } | null;
   }>({ start: null, end: null });
   const [isDraggingSelection, setIsDraggingSelection] = useState<boolean>(false);
-  const [showMoreActions, setShowMoreActions] = useState<boolean>(false);
+  const [showHighlightColors, setShowHighlightColors] = useState<boolean>(false);
+  const [selectionDictPreview, setSelectionDictPreview] = useState<{
+    word: string;
+    definition?: string;
+    phonetic?: string;
+  } | null>(null);
+  const [selectionDictLoading, setSelectionDictLoading] = useState<boolean>(false);
   const [showAnalyzer, setShowAnalyzer] = useState<boolean>(false);
   const [analyzedText, setAnalyzedText] = useState<string>("");
   const [vocabBreakdown, setVocabBreakdown] = useState<{ word: string; entry: any }[]>([]);
@@ -602,7 +637,54 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     }
   };
 
-  // Record highlighted/selected text for AI helper and handle Selection Mode
+  const prefetchSelectionDictionary = useCallback(async (text: string) => {
+    const word = extractLookupWord(text);
+    if (!word || word.length < 2) {
+      setSelectionDictPreview(null);
+      return;
+    }
+
+    setSelectionDictLoading(true);
+    try {
+      const localDef = await lookupWord(word);
+      if (localDef) {
+        setSelectionDictPreview({
+          word: localDef.word,
+          definition: localDef.definition,
+          phonetic: localDef.partOfSpeech,
+        });
+        return;
+      }
+
+      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(word)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectionDictPreview({
+          word,
+          phonetic: data.phonetic,
+          definition: data.meanings?.[0]?.definitions?.[0]?.definition,
+        });
+      } else {
+        setSelectionDictPreview({ word });
+      }
+    } catch {
+      setSelectionDictPreview({ word });
+    } finally {
+      setSelectionDictLoading(false);
+    }
+  }, []);
+
+  const dismissSelection = useCallback(() => {
+    dismissSelectionState({
+      setSelectedText,
+      setSelectionCoords,
+      setSelectionPins,
+      setSelectionDictPreview,
+      setShowHighlightColors,
+    });
+  }, []);
+
+  // Native text selection toolbar — no separate "selection mode" required
   useEffect(() => {
     let rafId: number | null = null;
 
@@ -630,11 +712,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               if (container && (container.contains(range.startContainer) || container.contains(range.endContainer))) {
                 const text = selection.toString().trim();
                 setSelectedText(text);
-                setSelectMode(true);
                 
                 const rect = range.getBoundingClientRect();
                 
-                // Get precise start and end rects for Kindle-style selection pins
                 const rects = range.getClientRects();
                 if (rects.length > 0) {
                   const firstRect = rects[0];
@@ -657,18 +737,22 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
                 setSelectionCoords({
                   x: rect.left + rect.width / 2,
-                  y: rect.bottom + 10
+                  y: rect.bottom + 10,
+                  top: rect.top,
+                  bottom: rect.bottom,
                 });
+                void prefetchSelectionDictionary(text);
               }
             }
           } catch (e) {
             console.warn("Failed to get selection coords:", e);
           }
         } else {
-          // Clear coords when selection collapses, but keep selectMode active so the user can continue drag-selecting text.
           setSelectionCoords(null);
           setSelectionPins({ start: null, end: null });
-          setShowMoreActions(false);
+          setSelectedText("");
+          setSelectionDictPreview(null);
+          setShowHighlightColors(false);
         }
       });
     };
@@ -680,7 +764,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const selection = window.getSelection();
       const word = selection?.toString().trim();
       if (word && word.length > 0 && word.split(/\s+/).length === 1) {
-        setSelectMode(true);
         setSelectedText(word);
         lookupDictionary(word);
       }
@@ -693,8 +776,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         const selection = window.getSelection();
         const text = selection?.toString().trim();
         if (text && text.length > 0) {
-          setSelectMode(true);
           setSelectedText(text);
+          void prefetchSelectionDictionary(text);
         }
       }
     };
@@ -708,14 +791,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const handlePointerDown = (e: PointerEvent) => {
       isPointerDownRef.current = true;
 
-      // Instantly clear old coords and pins when a new pointerdown selection action begins.
-      // This hides the toolbar and pins during dragging to optimize rendering and reduce UI jitter.
-      setSelectionCoords(null);
-      setSelectionPins({ start: null, end: null });
-
-      if (selectMode) {
-        setIsDraggingSelection(true);
-        return;
+      const container = contentRef.current;
+      const target = e.target as Node;
+      if (!container?.contains(target)) {
+        setSelectionCoords(null);
+        setSelectionPins({ start: null, end: null });
       }
       
       pressStartX = e.clientX;
@@ -754,7 +834,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 sel.removeAllRanges();
                 sel.addRange(newRange);
                 setSelectedText(word);
-                setSelectMode(true);
                 
                 try {
                   const rect = newRange.getBoundingClientRect();
@@ -769,8 +848,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   }
                   setSelectionCoords({
                     x: rect.left + rect.width / 2,
-                    y: rect.bottom + 10
+                    y: rect.bottom + 10,
+                    top: rect.top,
+                    bottom: rect.bottom,
                   });
+                  void prefetchSelectionDictionary(word);
+                  lookupDictionary(word);
                 } catch (err) {
                   // fallback
                 }
@@ -819,11 +902,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       if (pressTimer) clearTimeout(pressTimer);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [selectMode]);
+  }, [prefetchSelectionDictionary]);
 
-  // Prevent viewport/body scrolling or rubber-banding while in selection mode or dragging pins
+  // Prevent viewport rubber-banding only while dragging selection handles
   useEffect(() => {
-    if (selectMode || isDraggingSelection) {
+    if (isDraggingSelection) {
       const preventDefaultTouch = (e: TouchEvent) => {
         // Only prevent touch movements when active selecting or dragging to lock position
         e.preventDefault();
@@ -839,7 +922,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         document.removeEventListener("touchmove", preventDefaultTouch);
       };
     }
-  }, [selectMode, isDraggingSelection]);
+  }, [isDraggingSelection]);
 
   const handleNextPage = () => {
     playFlipSound();
@@ -930,12 +1013,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     
     // If we are in select mode or have an active selection, dismiss/clear it and stop (do NOT turn the page!)
     const sel = window.getSelection();
-    if (selectMode || (sel && sel.toString().trim().length > 0)) {
-      if (sel) {
-        sel.removeAllRanges();
-      }
-      setSelectedText("");
-      setSelectMode(false);
+    if (sel && sel.toString().trim().length > 0) {
+      dismissSelection();
       return; // Prevent page turn on this tap!
     }
     
@@ -965,7 +1044,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (selectMode) return;
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) return;
     if (!e.isPrimary) return;
     pointerStartRef.current = {
       x: e.clientX,
@@ -975,7 +1055,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (selectMode) return;
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) return;
     if (!pointerStartRef.current) return;
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
@@ -1632,7 +1713,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     
     await syncBookHighlight(userId, book.id, newHighlight);
     setHighlightsData(prev => [newHighlight, ...prev]);
-    setSelectedText("");
+    dismissSelection();
     setShowNotes(true);
   };
 
@@ -1686,7 +1767,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         const rect = newRange.getBoundingClientRect();
         setSelectionCoords({
           x: rect.left + rect.width / 2,
-          y: rect.bottom + 10
+          y: rect.bottom + 10,
+          top: rect.top,
+          bottom: rect.bottom,
         });
       } catch (e) {
         console.warn("Failed to get expanded selection coordinates:", e);
@@ -1801,21 +1884,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
           <button
             onClick={() => {
-              const newMode = !selectMode;
-              setSelectMode(newMode);
-              if (!newMode) {
-                setSelectedText("");
-                setSelectionCoords(null);
-                const sel = window.getSelection();
-                if (sel) sel.removeAllRanges();
-              }
+              setShowNotes(true);
               setShowToc(false);
               setShowSettings(false);
               setShowAudiobook(false);
-              setShowNotes(false);
             }}
-            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${selectMode ? 'bg-kindle-accent/20 text-kindle-accent font-semibold' : ''}`}
-            title="Text Selection Mode"
+            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? "bg-kindle-accent/20 text-kindle-accent font-semibold" : ""}`}
+            title="Highlights & Notes"
           >
             <Highlighter className="w-5 h-5" />
           </button>
@@ -2653,61 +2728,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             </div>
           ) : (
             <div className="flex-1 flex flex-col relative overflow-hidden h-full">
-              {/* Floating highlighted text helper tip */}
-              {selectedText && !selectMode && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-[#1e1c19] text-white px-4 py-2.5 rounded-full shadow-xl text-xs font-sans flex items-center gap-3 border border-[#3e3933] animate-fade-in max-w-[90vw] w-max md:max-w-3xl overflow-x-auto no-scrollbar">
-                  <span className="font-medium truncate max-w-[100px] md:max-w-xs shrink-0">Selected: "{selectedText}"</span>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button 
-                      onClick={() => handleSaveHighlight("yellow")}
-                      className="bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border border-yellow-500/30"
-                    >
-                      <Highlighter className="w-3 h-3" /> Highlight
-                    </button>
-                    <button 
-                      onClick={() => {
-                        addDictionaryEntry({
-                          word: selectedText.length > 30 ? selectedText.slice(0, 30) + "..." : selectedText,
-                          definition: `Passage highlighted from '${book.title}': "${selectedText}"`,
-                          partOfSpeech: "excerpt",
-                          isCustom: true
-                        });
-                        setDictFeedback(`Saved excerpt to personal dictionary!`);
-                        setTimeout(() => setDictFeedback(null), 2500);
-                        setSelectedText("");
-                      }}
-                      className="bg-[#2c3e2b] hover:bg-[#3d5c3b] text-emerald-200 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 border border-emerald-500/20"
-                    >
-                      <BookMarked className="w-3 h-3 text-emerald-400" /> Save
-                    </button>
-                    <button onClick={() => setSelectedText("")} className="text-neutral-400 hover:text-white pl-1.5 text-sm font-semibold">✕</button>
-                  </div>
-                </div>
-              )}
-
-              {/* Select Mode Top Banner */}
-              {selectMode && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-[#1e1c19]/90 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-sans flex items-center gap-4 border border-amber-500/20 animate-fade-in w-[90%] md:w-max max-w-xl justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
-                    <span className="font-semibold tracking-wider text-amber-400 text-[10px] uppercase">Selection Mode Active</span>
-                    <span className="hidden md:inline text-neutral-400">| Drag text or double-click.</span>
-                  </div>
-                  <button 
-                    onClick={() => {
-                      setSelectMode(false);
-                      setSelectedText("");
-                      setSelectionCoords(null);
-                      const sel = window.getSelection();
-                      if (sel) sel.removeAllRanges();
-                    }}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest transition font-sans"
-                  >
-                    Exit Selection Mode
-                  </button>
-                </div>
-              )}
-
               {/* Dict Saved Feedback Indicator */}
               {dictFeedback && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-emerald-950 text-emerald-100 border border-emerald-500/40 px-4 py-2 rounded-full text-xs font-sans flex items-center gap-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-250">
@@ -2787,7 +2807,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               </h2>
                             </div>
                             <div 
-                              className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words`}
+                              className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
                               dangerouslySetInnerHTML={{ __html: chapters[turningChapterIdx]?.content || "" }}
                               onClick={(e) => {
                                 const target = e.target as HTMLElement;
@@ -2867,7 +2887,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               </h2>
                             </div>
                             <div 
-                              className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words`}
+                              className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
                               dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
                               onClick={(e) => {
                                 const target = e.target as HTMLElement;
@@ -2955,7 +2975,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     {/* EPUB HTML Content Injection */}
                     <div 
                       id="epub-text-viewer"
-                      className={`epub-content leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
+                      className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
                       dangerouslySetInnerHTML={{ __html: chapters[currentChapterIdx]?.content || "" }}
                       onClick={(e) => {
                         const target = e.target as HTMLElement;
@@ -3263,9 +3283,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       </div>
 
       {/* Kindle-Style Selection Pin Handles rendered at top level to avoid overflow clipping and CSS transform offsets */}
-      {selectMode && selectionPins.start && (
+      {selectedText && selectionPins.start && (
         <div 
-          className="fixed bg-amber-500 z-[9999] pointer-events-none transition-all duration-75"
+          className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
           style={{
             left: `${selectionPins.start.x}px`,
             top: `${selectionPins.start.y - 4}px`,
@@ -3284,13 +3304,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             title="Drag to adjust start"
           >
             {/* Visual Teardrop/Balloon Pin resembling Kindle/iOS/Android select pin */}
-            <div className="w-4 h-4 rounded-full rounded-tr-none bg-amber-500 shadow-lg border-2 border-white dark:border-neutral-900 rotate-45 transform" />
+            <div className="w-4 h-4 rounded-full rounded-tr-none bg-[#3390ff] shadow-lg border-2 border-white dark:border-neutral-900 rotate-45 transform" />
           </div>
         </div>
       )}
-      {selectMode && selectionPins.end && (
+      {selectedText && selectionPins.end && (
         <div 
-          className="fixed bg-amber-500 z-[9999] pointer-events-none transition-all duration-75"
+          className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
           style={{
             left: `${selectionPins.end.x}px`,
             top: `${selectionPins.end.y}px`,
@@ -3309,243 +3329,148 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             title="Drag to adjust end"
           >
             {/* Visual Teardrop/Balloon Pin resembling Kindle/iOS/Android select pin */}
-            <div className="w-4 h-4 rounded-full rounded-bl-none bg-amber-500 shadow-lg border-2 border-white dark:border-neutral-900 -rotate-45 transform" />
+            <div className="w-4 h-4 rounded-full rounded-bl-none bg-[#3390ff] shadow-lg border-2 border-white dark:border-neutral-900 -rotate-45 transform" />
           </div>
         </div>
       )}
 
-      {/* Custom Floating Context Selection Toolbar */}
-      {selectMode && selectedText && !isDraggingSelection && (
-        <div 
-          className="fixed z-[9999] bg-[#1e1c19]/95 backdrop-blur-lg text-white rounded-2xl shadow-3xl flex items-center border border-amber-500/30 animate-in fade-in zoom-in-95 duration-200 max-w-[95vw] md:max-w-max"
+      {/* Native-style floating selection menu */}
+      {selectedText && selectionCoords && !isDraggingSelection && (
+        <div
+          className="fixed z-[9999] max-w-[min(96vw,24rem)] animate-in fade-in zoom-in-95 duration-150"
           style={{
-            top: selectionCoords ? `${selectionCoords.y}px` : "15%",
-            left: selectionCoords ? `${selectionCoords.x}px` : "50%",
-            transform: selectionCoords ? "translate(-50%, 0)" : "translate(-50%, -50%)",
-            position: "fixed",
-            boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.5), 0 8px 10px -6px rgb(0 0 0 / 0.5)"
+            left: `${selectionCoords.x}px`,
+            top: selectionCoords.bottom > window.innerHeight * 0.62
+              ? `${selectionCoords.top - 12}px`
+              : `${selectionCoords.bottom + 12}px`,
+            transform: selectionCoords.bottom > window.innerHeight * 0.62
+              ? "translate(-50%, -100%)"
+              : "translate(-50%, 0)",
+            boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
           }}
         >
-          {/* DESKTOP TOOLBAR (md:flex hidden) */}
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-2 overflow-x-auto no-scrollbar">
-            {/* Color Highlighter Dots */}
-            <div className="flex items-center gap-1.5 px-2 border-r border-neutral-800 pr-3 mr-1 shrink-0">
-              {(["yellow", "green", "blue", "pink"] as const).map((color) => {
-                const colorClasses = {
-                  yellow: "bg-yellow-400 hover:scale-110",
-                  green: "bg-emerald-400 hover:scale-110",
-                  blue: "bg-sky-400 hover:scale-110",
-                  pink: "bg-pink-400 hover:scale-110"
-                };
-                return (
-                  <button
-                    key={color}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => handleSaveHighlight(color)}
-                    className={`w-4 h-4 rounded-full transition-all duration-150 ${colorClasses[color]}`}
-                    title={`Highlight ${color}`}
-                  />
-                );
-              })}
+          <div className="rounded-2xl border border-neutral-700/80 bg-[#1a1816]/96 backdrop-blur-xl text-white overflow-hidden">
+            {(selectionDictPreview || selectionDictLoading) && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => lookupDictionary(selectionDictPreview?.word || extractLookupWord(selectedText))}
+                className="w-full text-left px-3.5 py-2.5 border-b border-neutral-800/80 hover:bg-white/5 transition"
+              >
+                {selectionDictLoading ? (
+                  <p className="text-[11px] text-neutral-400 font-sans">Looking up definition…</p>
+                ) : selectionDictPreview ? (
+                  <>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-bold font-serif text-amber-300">{selectionDictPreview.word}</span>
+                      {selectionDictPreview.phonetic && (
+                        <span className="text-[10px] font-mono text-neutral-400">{selectionDictPreview.phonetic}</span>
+                      )}
+                    </div>
+                    {selectionDictPreview.definition && (
+                      <p className="text-[11px] text-neutral-300 leading-snug mt-1 line-clamp-2 font-sans">
+                        {selectionDictPreview.definition}
+                      </p>
+                    )}
+                  </>
+                ) : null}
+              </button>
+            )}
+
+            <div className="flex items-center gap-0.5 p-1.5">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => lookupDictionary(selectionDictPreview?.word || extractLookupWord(selectedText) || selectedText)}
+                className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 active:scale-[0.98] transition"
+                title="Dictionary"
+              >
+                <BookOpen className="w-5 h-5" />
+                <span className="text-[10px] font-bold uppercase tracking-wide font-sans">Dictionary</span>
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setShowHighlightColors((open) => !open)}
+                className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition text-neutral-200"
+                title="Highlight"
+              >
+                <Highlighter className="w-5 h-5" />
+                <span className="text-[10px] font-bold uppercase tracking-wide font-sans">Highlight</span>
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setActiveNoteText((prev) => `${prev}${prev ? "\n" : ""}"${selectedText}"\n`);
+                  setShowNotes(true);
+                  dismissSelection();
+                }}
+                className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition text-neutral-200"
+                title="Add to note"
+              >
+                <FileText className="w-5 h-5" />
+                <span className="text-[10px] font-bold uppercase tracking-wide font-sans">Note</span>
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  window.open(`https://www.google.com/search?q=${encodeURIComponent(selectedText)}`, "_blank", "noopener,noreferrer");
+                  dismissSelection();
+                }}
+                className="flex-1 min-w-[4.5rem] flex flex-col items-center justify-center gap-1 px-2 py-2.5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition text-neutral-200"
+                title="Search on web"
+              >
+                <Search className="w-5 h-5" />
+                <span className="text-[10px] font-bold uppercase tracking-wide font-sans">Web</span>
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={dismissSelection}
+                className="w-9 h-full flex items-center justify-center rounded-xl text-neutral-500 hover:text-white hover:bg-white/5 transition"
+                title="Clear selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
 
-            {/* Actions */}
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => analyzeSentenceOffline(selectedText)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-amber-400 shrink-0"
-              title="Analyze word or sentence offline"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Analyze (Offline)
-            </button>
-
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={expandSelectionToSentence}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
-              title="Select entire sentence containing current selection"
-            >
-              <Type className="w-3.5 h-3.5" /> Select Sentence
-            </button>
-
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                navigator.clipboard.writeText(selectedText);
-                setDictFeedback("Copied to clipboard!");
-                setTimeout(() => setDictFeedback(null), 2000);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
-              title="Copy selection"
-            >
-              <Copy className="w-3.5 h-3.5" /> Copy
-            </button>
-
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                addDictionaryEntry({
-                  word: selectedText.length > 30 ? selectedText.slice(0, 30) + "..." : selectedText,
-                  definition: `Saved vocabulary from '${book.title}': "${selectedText}"`,
-                  partOfSpeech: "phrase",
-                  isCustom: true
-                });
-                setDictFeedback("Saved to personal dictionary!");
-                setTimeout(() => setDictFeedback(null), 2500);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
-              title="Save to offline dictionary"
-            >
-              <BookMarked className="w-3.5 h-3.5" /> Save Vocab
-            </button>
-
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setActiveNoteText(prev => `${prev}\n"${selectedText}"\n`);
-                setShowNotes(true);
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl hover:bg-white/10 text-[10px] font-bold uppercase tracking-widest transition text-neutral-300 shrink-0"
-              title="Add to Notes"
-            >
-              <FileText className="w-3.5 h-3.5" /> Add Note
-            </button>
-
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                const sel = window.getSelection();
-                if (sel) sel.removeAllRanges();
-                setSelectedText("");
-              }}
-              className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition text-[10px]"
-              title="Clear selection"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* MOBILE TOOLBAR (md:hidden) with 44px Touch Targets, Icons-Only and Expandable Secondary Actions */}
-          <div className="flex md:hidden items-center gap-1 p-1 bg-[#1e1c19]/95 rounded-2xl">
-            {/* Color Highlighter Dots */}
-            <div className="flex items-center gap-2 px-2 border-r border-neutral-800 pr-2 mr-1">
-              {(["yellow", "green", "blue", "pink"] as const).map((color) => {
-                const colorClasses = {
-                  yellow: "bg-yellow-400 active:scale-125",
-                  green: "bg-emerald-400 active:scale-125",
-                  blue: "bg-sky-400 active:scale-125",
-                  pink: "bg-pink-400 active:scale-125"
-                };
-                return (
-                  <button
-                    key={color}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => handleSaveHighlight(color)}
-                    className={`w-5 h-5 rounded-full transition-transform duration-150 ${colorClasses[color]}`}
-                    title={`Highlight ${color}`}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Primary Mobile Action Buttons (44px x 44px standard touch targets for comfort) */}
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => analyzeSentenceOffline(selectedText)}
-              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-amber-400 transition-colors"
-              title="Analyze (Offline)"
-            >
-              <Sparkles className="w-5 h-5" />
-            </button>
-
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                navigator.clipboard.writeText(selectedText);
-                setDictFeedback("Copied to clipboard!");
-                setTimeout(() => setDictFeedback(null), 2000);
-              }}
-              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
-              title="Copy"
-            >
-              <Copy className="w-5 h-5" />
-            </button>
-
-            {/* Expandable Options Toggle (ellipsis icon) */}
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => setShowMoreActions(!showMoreActions)}
-              className={`w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 transition-all ${showMoreActions ? "text-amber-500 bg-white/10 rotate-90" : "text-neutral-300"}`}
-              title="More options"
-            >
-              <MoreHorizontal className="w-5 h-5" />
-            </button>
-
-            {/* Expandable Options Container */}
             <AnimatePresence>
-              {showMoreActions && (
+              {showHighlightColors && (
                 <motion.div
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: "auto", opacity: 1 }}
-                  exit={{ width: 0, opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="flex items-center gap-1 border-l border-neutral-800 pl-1 ml-1 overflow-hidden shrink-0"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden border-t border-neutral-800/80"
                 >
-                  <button 
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={expandSelectionToSentence}
-                    className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
-                    title="Select sentence"
-                  >
-                    <Type className="w-5 h-5" />
-                  </button>
-
-                  <button 
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      addDictionaryEntry({
-                        word: selectedText.length > 30 ? selectedText.slice(0, 30) + "..." : selectedText,
-                        definition: `Saved vocabulary from '${book.title}': "${selectedText}"`,
-                        partOfSpeech: "phrase",
-                        isCustom: true
-                      });
-                      setDictFeedback("Saved to personal dictionary!");
-                      setTimeout(() => setDictFeedback(null), 2500);
-                    }}
-                    className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
-                    title="Save vocab"
-                  >
-                    <BookMarked className="w-5 h-5" />
-                  </button>
-
-                  <button 
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setActiveNoteText(prev => `${prev}\n"${selectedText}"\n`);
-                      setShowNotes(true);
-                    }}
-                    className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-white/10 active:bg-white/20 text-neutral-300 transition-colors"
-                    title="Add note"
-                  >
-                    <FileText className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center justify-center gap-3 px-3 py-2.5">
+                    {(["yellow", "green", "blue", "pink"] as const).map((color) => {
+                      const colorClasses = {
+                        yellow: "bg-yellow-400",
+                        green: "bg-emerald-400",
+                        blue: "bg-sky-400",
+                        pink: "bg-pink-400",
+                      };
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => handleSaveHighlight(color)}
+                          className={`w-8 h-8 rounded-full border-2 border-white/20 shadow-md active:scale-110 transition ${colorClasses[color]}`}
+                          title={`Highlight ${color}`}
+                        />
+                      );
+                    })}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
-
-            {/* Clear Selection */}
-            <button 
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                const sel = window.getSelection();
-                if (sel) sel.removeAllRanges();
-                setSelectedText("");
-              }}
-              className="w-9 h-9 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors ml-1"
-              title="Clear selection"
-            >
-              ✕
-            </button>
           </div>
         </div>
       )}

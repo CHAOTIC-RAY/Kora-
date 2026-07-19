@@ -166,6 +166,24 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.12) 100%);
 }
 
+.epub-content ::selection,
+.reader-select-surface ::selection {
+  background: rgba(51, 144, 255, 0.38);
+  color: inherit;
+}
+
+.epub-content::-moz-selection,
+.reader-select-surface::-moz-selection {
+  background: rgba(51, 144, 255, 0.38);
+  color: inherit;
+}
+
+.reader-select-surface {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 .player-chapter-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
