@@ -80,36 +80,34 @@ export default function FeedArticleReader({
     [stack, item.id]
   );
 
-  const fillEntry = useCallback(async (feedItem: FeedItem) => {
-    if (loadingIdsRef.current.has(feedItem.id)) return;
+  const fillEntry = useCallback(async (feedItem: FeedItem, force = false) => {
+    if (!force && loadingIdsRef.current.has(feedItem.id)) return;
     loadingIdsRef.current.add(feedItem.id);
     try {
       const resolved = await resolveFeedArticle(feedItem);
       setStack((prev) => {
-        if (!prev.some((entry) => entry.item.id === feedItem.id)) return prev;
+        const inStack = prev.some((entry) => entry.item.id === feedItem.id);
+        const nextEntry: StackEntry = {
+          item: feedItem,
+          title: resolved.title || feedItem.title,
+          html: resolved.htmlContent || "",
+          ready: true,
+        };
+        if (!inStack) return prev.length ? prev : [nextEntry];
+        return prev.map((entry) => (entry.item.id === feedItem.id ? nextEntry : entry));
+      });
+    } catch (err) {
+      setStack((prev) => {
+        const message = (err as Error).message || "Could not load this article.";
+        if (!prev.some((entry) => entry.item.id === feedItem.id)) {
+          return [{ ...placeholderEntry(feedItem), ready: true, error: message }];
+        }
         return prev.map((entry) =>
           entry.item.id === feedItem.id
-            ? {
-                item: feedItem,
-                title: resolved.title || feedItem.title,
-                html: resolved.htmlContent || "",
-                ready: true,
-              }
+            ? { ...entry, ready: true, error: message }
             : entry
         );
       });
-    } catch (err) {
-      setStack((prev) =>
-        prev.map((entry) =>
-          entry.item.id === feedItem.id
-            ? {
-                ...entry,
-                ready: true,
-                error: (err as Error).message || "Could not load this article.",
-              }
-            : entry
-        )
-      );
     } finally {
       loadingIdsRef.current.delete(feedItem.id);
     }
@@ -117,8 +115,14 @@ export default function FeedArticleReader({
 
   // Fresh open / jump to an article that isn't already in the continuous stack.
   useEffect(() => {
-    const alreadyStacked = stack.some((entry) => entry.item.id === item.id);
-    if (alreadyStacked) return;
+    const existing = stack.find((entry) => entry.item.id === item.id);
+    if (existing) {
+      // Retry stuck placeholders (previous fetch dropped or hung).
+      if (!existing.ready && !existing.error) {
+        void fillEntry(item, true);
+      }
+      return;
+    }
 
     sessionStartIdRef.current = item.id;
     hasUserScrolledRef.current = false;
@@ -127,7 +131,7 @@ export default function FeedArticleReader({
     scrollRef.current?.scrollTo({ top: 0 });
 
     if (!cached) {
-      void fillEntry(item);
+      void fillEntry(item, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to external item jumps
   }, [item.id, fillEntry]);
@@ -280,7 +284,7 @@ export default function FeedArticleReader({
       }}
     >
       <div
-        className={`absolute z-20 left-0 right-0 top-0 flex items-start justify-between gap-2 px-[max(0.5rem,var(--kora-safe-left))] pt-[max(0.5rem,var(--kora-safe-top))] pr-[max(0.5rem,var(--kora-safe-right))] pointer-events-none transition-opacity duration-200 ${
+        className={`absolute z-20 left-0 right-0 top-0 flex items-start justify-between gap-2 px-[max(0.75rem,var(--kora-safe-left))] pt-[max(0.75rem,calc(var(--kora-safe-top)+0.25rem))] pr-[max(0.75rem,var(--kora-safe-right))] pointer-events-none transition-opacity duration-200 ${
           chromeVisible || showSettings ? "opacity-100" : "opacity-0"
         }`}
       >
@@ -381,13 +385,37 @@ export default function FeedArticleReader({
                   </div>
 
                   {!entry.ready ? (
-                    <div className={`flex items-center gap-2 py-10 ${theme.muted}`}>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <p className="text-xs font-sans">Loading…</p>
+                    <div className="space-y-4 py-4">
+                      {entry.item.summary ? (
+                        <p className={`text-sm leading-relaxed ${theme.muted}`}>{entry.item.summary}</p>
+                      ) : null}
+                      <div className={`flex items-center gap-2 ${theme.muted}`}>
+                        <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                        <p className="text-xs font-sans">Loading full article…</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void fillEntry(entry.item, true)}
+                        className="text-[10px] font-bold uppercase tracking-wider underline opacity-70"
+                      >
+                        Retry
+                      </button>
                     </div>
                   ) : entry.error ? (
                     <div className="space-y-3 py-6">
                       <p className="text-sm text-red-400">{entry.error}</p>
+                      {entry.item.summary ? (
+                        <p className={`text-sm leading-relaxed ${theme.muted}`}>{entry.item.summary}</p>
+                      ) : null}
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void fillEntry(entry.item, true)}
+                          className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
+                        >
+                          <Loader2 className="w-4 h-4" />
+                          Retry
+                        </button>
                       <a
                         href={entry.item.link}
                         target="_blank"
@@ -397,6 +425,7 @@ export default function FeedArticleReader({
                         <ExternalLink className="w-4 h-4" />
                         Open in browser
                       </a>
+                      </div>
                     </div>
                   ) : (
                     <div

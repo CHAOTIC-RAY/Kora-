@@ -248,6 +248,7 @@ export async function fetchArticleContent(url: string): Promise<{
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url: url.trim() }),
+    signal: AbortSignal.timeout(22000),
   });
 
   if (!response.ok) {
@@ -256,6 +257,9 @@ export async function fetchArticleContent(url: string): Promise<{
   }
 
   const data = await response.json();
+  if (!data.htmlContent || String(data.htmlContent).trim().length < 20) {
+    throw new Error("Article content was empty. Try opening the original link.");
+  }
   return {
     title: data.title || "Article",
     author: data.author,

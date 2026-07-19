@@ -825,6 +825,21 @@ Baseline data (optional): ${freeData ? JSON.stringify(freeData) : "None"}`;
     }
   } catch (err: any) {
     console.error("Oxford Dictionary API Error:", err);
+    // Gemini often fails in production — still return free-dictionary baseline when present.
+    try {
+      const wordClean = String(req.query.word || "").trim().replace(/[^a-zA-Z\s-]/g, "").toLowerCase();
+      if (wordClean) {
+        const apiRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordClean)}`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (apiRes.ok) {
+          const data = await apiRes.json();
+          if (data?.[0]) return res.json(data[0]);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     return res.status(500).json({ error: err.message || "Failed to search Oxford dictionary" });
   }
 });

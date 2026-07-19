@@ -62,7 +62,7 @@ export async function registerThisDevice(
     name: getDeviceName(),
     platform: detectPlatform(),
     lastSeen: Date.now(),
-    peerSharingEnabled,
+    peerSharingEnabled: !!peerSharingEnabled,
   };
   if (!isRealFirebase || !userId || !db) return device;
   try {
@@ -112,6 +112,11 @@ export async function removeDevice(userId: string, deviceId: string): Promise<vo
   await deleteDoc(doc(db, "users", userId, "devices", deviceId));
 }
 
-export function isDeviceOnline(device: KoraDevice, withinMs = 90_000): boolean {
+export function isDeviceOnline(device: KoraDevice, withinMs = 180_000): boolean {
   return Date.now() - (device.lastSeen || 0) < withinMs;
+}
+
+/** Older device docs may omit the flag — default to sharing on. */
+export function isPeerSharingOn(device: KoraDevice): boolean {
+  return device.peerSharingEnabled !== false;
 }

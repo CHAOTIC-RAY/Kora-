@@ -242,7 +242,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
   const activeTheme = themes[theme] || themes.sepia;
 
   return (
-    <div id="text-reader-container" className={`fixed inset-0 z-50 flex flex-col ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}>
+    <div id="text-reader-container" className={`fixed inset-0 z-[100] flex flex-col ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}>
       {/* Brightness Overlay */}
       <div 
         className="fixed inset-0 pointer-events-none z-[60] bg-black" 

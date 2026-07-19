@@ -103,7 +103,7 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
   }
 
   return (
-    <div id="pdf-reader-container" className="fixed inset-0 z-50 flex flex-col bg-kindle-bg text-kindle-text transition-colors duration-200">
+    <div id="pdf-reader-container" className="fixed inset-0 z-[100] flex flex-col bg-kindle-bg text-kindle-text transition-colors duration-200">
       {/* Brightness Overlay */}
       <div 
         className="fixed inset-0 pointer-events-none z-[60] bg-black" 

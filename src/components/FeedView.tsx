@@ -47,7 +47,8 @@ interface FeedViewProps {
 }
 
 type FeedFilter = "all" | "unread" | "saved" | "briefs";
-type BentoVariant = "featured" | "square" | "wide" | "default";
+/** Only two card sizes: full-width hero + half-width tile. */
+type BentoVariant = "featured" | "default";
 
 function SourceToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -99,10 +100,8 @@ function displayTitle(item: FeedItem): string {
 }
 
 function getBentoVariant(index: number): BentoVariant {
-  if (index === 0) return "featured";
-  if (index % 6 === 3) return "wide";
-  if (index % 3 === 1) return "square";
-  return "default";
+  // Hero every 5th card (starting at 0); everything else is a half-width tile.
+  return index % 5 === 0 ? "featured" : "default";
 }
 
 const FeedArticleCard = React.memo(function FeedArticleCard({
@@ -126,22 +125,9 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const showThumb = cover && !thumbFailed;
   const dir = textDirection(title);
 
-  const cardClass =
-    variant === "featured" || variant === "wide" ? "col-span-2" : "col-span-1";
-
-  const layoutClass =
-    variant === "wide"
-      ? "feed-article-card flex flex-col sm:flex-row sm:items-stretch h-full"
-      : "flex flex-col h-full";
-
+  const cardClass = variant === "featured" ? "col-span-2" : "col-span-1";
   const imageClass =
-    variant === "featured"
-      ? "w-full aspect-[21/9]"
-      : variant === "wide"
-        ? "w-full sm:w-40 shrink-0 aspect-[16/10] sm:aspect-auto sm:h-full sm:min-h-[8.5rem]"
-        : variant === "square"
-          ? "w-full aspect-square"
-          : "w-full aspect-[4/3]";
+    variant === "featured" ? "w-full aspect-[16/9]" : "w-full aspect-[4/3]";
 
   return (
     <article
@@ -149,11 +135,11 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
         item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
       }`}
     >
-      <div className={layoutClass}>
+      <div className="flex flex-col h-full">
         <button
           type="button"
           onClick={onRead}
-          className={`relative bg-kindle-bg border-b sm:border-b-0 sm:border-r border-kindle-border overflow-hidden text-left ${imageClass}`}
+          className={`relative bg-kindle-bg border-b border-kindle-border overflow-hidden text-left ${imageClass}`}
         >
           {showThumb ? (
             <img
@@ -423,7 +409,7 @@ function FeedView({
   };
 
   return (
-    <div className="space-y-5 md:space-y-7 pb-4 md:pb-10 text-left">
+    <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
       <header className="flex items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -530,7 +516,7 @@ function FeedView({
           {filter === "all" && !selectedSubscriptionId && (
             <TodayNewsBriefCard items={retainedItems} onReadArticle={handleReadArticle} />
           )}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 auto-rows-fr">
+          <div className="grid grid-cols-2 gap-3 auto-rows-fr">
           {visibleItems.map((item, index) => {
             const cover = getItemThumbnail(item);
             const title = displayTitle(item);

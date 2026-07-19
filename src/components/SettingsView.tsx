@@ -805,11 +805,11 @@ function SettingsView({
 
               <div className="space-y-2.5">
                 <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Font Family</h4>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {fontOptions.map(f => (
                     <button key={f.id} onClick={() => setRP({ fontFamily: f.id })}
-                      className={`flex-1 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${readerPrefs.fontFamily === f.id ? 'bg-kindle-text text-kindle-bg border-kindle-text' : 'border-kindle-border text-kindle-text-muted hover:bg-kindle-bg'}`}>
-                      <span className={f.id}>{f.label}</span>
+                      className={`min-w-0 py-2 px-1 rounded-xl border text-[9px] font-bold uppercase tracking-wider transition ${readerPrefs.fontFamily === f.id ? 'bg-kindle-text text-kindle-bg border-kindle-text' : 'border-kindle-border text-kindle-text-muted hover:bg-kindle-bg'}`}>
+                      <span className={`${f.id} truncate block`}>{f.label}</span>
                     </button>
                   ))}
                 </div>

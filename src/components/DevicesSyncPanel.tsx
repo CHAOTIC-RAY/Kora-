@@ -16,6 +16,7 @@ import {
   getDeviceName,
   setDeviceName,
   isDeviceOnline,
+  isPeerSharingOn,
   listDevices,
   registerThisDevice,
   removeDevice,
@@ -67,7 +68,11 @@ export default function DevicesSyncPanel({
   };
 
   const patchPrefs = (patch: Partial<CrossDeviceSyncPrefs>) => {
-    savePrefs({ ...prefs, ...patch });
+    const next = { ...prefs, ...patch };
+    savePrefs(next);
+    if (userId && "peerSharingEnabled" in patch) {
+      void registerThisDevice(userId, next.peerSharingEnabled);
+    }
   };
 
   const patchWebDav = (patch: Partial<CrossDeviceSyncPrefs["webdav"]>) => {
@@ -75,7 +80,7 @@ export default function DevicesSyncPanel({
   };
 
   const onlineOthers = devices.filter(
-    (d) => d.id !== myId && d.peerSharingEnabled && isDeviceOnline(d)
+    (d) => d.id !== myId && isPeerSharingOn(d) && isDeviceOnline(d)
   );
 
   const handleTestWebDav = async () => {
@@ -219,6 +224,8 @@ export default function DevicesSyncPanel({
                 devices.map((device) => {
                   const online = isDeviceOnline(device);
                   const isMe = device.id === myId;
+                  // Prefer local toggle for this device so UI matches the switch above.
+                  const sharingOn = isMe ? !!prefs.peerSharingEnabled : isPeerSharingOn(device);
                   return (
                     <li
                       key={device.id}
@@ -232,14 +239,19 @@ export default function DevicesSyncPanel({
                         </p>
                         <p className="text-[10px] text-kindle-text-muted">
                           {device.platform} · {online ? "Online" : "Offline"}
-                          {device.peerSharingEnabled ? " · sharing on" : " · sharing off"}
+                          {sharingOn ? " · sharing on" : " · sharing off"}
                         </p>
                       </div>
-                      {!isMe && online && device.peerSharingEnabled && (
+                      {!isMe && online && (
                         <button
                           type="button"
-                          disabled={pullingFrom === device.id}
+                          disabled={pullingFrom === device.id || !sharingOn}
                           onClick={() => void pullMissingFromDevice(device)}
+                          title={
+                            sharingOn
+                              ? "Pull cached books from this device"
+                              : "Sharing is off on that device — enable P2P there first"
+                          }
                           className="px-2.5 py-1.5 rounded-lg border border-kindle-border text-[9px] font-bold uppercase tracking-wider hover:bg-kindle-card disabled:opacity-50"
                         >
                           {pullingFrom === device.id ? (

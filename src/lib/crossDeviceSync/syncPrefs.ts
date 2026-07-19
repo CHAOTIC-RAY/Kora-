@@ -52,8 +52,15 @@ export function loadSyncPrefs(): CrossDeviceSyncPrefs {
   }
 }
 
+export const SYNC_PREFS_CHANGED_EVENT = "kora-sync-prefs-changed";
+
 export function saveSyncPrefs(prefs: CrossDeviceSyncPrefs): void {
   localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  try {
+    window.dispatchEvent(new CustomEvent(SYNC_PREFS_CHANGED_EVENT));
+  } catch {
+    /* ignore (SSR / tests) */
+  }
 }
 
 export function updateSyncPrefs(patch: Partial<CrossDeviceSyncPrefs>): CrossDeviceSyncPrefs {

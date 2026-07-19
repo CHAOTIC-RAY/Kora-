@@ -52,6 +52,13 @@ const FALLBACK_DICTIONARY: DictionaryEntry[] = [
     partOfSpeech: "adjective",
     example: "The AI helper gave a lucid explanation of the intricate poetic motif.",
     isCustom: false
+  },
+  {
+    word: "almost",
+    definition: "Not quite; very nearly. Used to indicate that something is nearly the case, but not completely.",
+    partOfSpeech: "adverb",
+    example: "The book was almost finished when the power went out.",
+    isCustom: false
   }
 ];
 
@@ -67,7 +74,7 @@ async function loadExternalDictionary(): Promise<void> {
     const response = await fetch('/dictionary-data.json');
     if (response.ok) {
       EXTERNAL_DICTIONARY = await response.json();
-      console.log(`Loaded ${EXTERNAL_DICTIONARY.length} entries from external dictionary`);
+      console.log(`Loaded ${EXTERNAL_DICTIONARY!.length} entries from external dictionary`);
     }
   } catch (e) {
     // Silently fail - will use fallback dictionary
@@ -81,8 +88,6 @@ async function loadExternalDictionary(): Promise<void> {
 function getDefaultDictionary(): DictionaryEntry[] {
   return EXTERNAL_DICTIONARY || FALLBACK_DICTIONARY;
 }
-
-const DEFAULT_DICTIONARY = getDefaultDictionary();
 
 export function getCustomDictionary(): DictionaryEntry[] {
   try {
@@ -111,16 +116,73 @@ export async function getAllDictionaryEntries(): Promise<DictionaryEntry[]> {
   }
   
   const custom = getCustomDictionary();
-  const defaultWords = getDefaultDictionary().filter(
+  const defaults = [...FALLBACK_DICTIONARY, ...(EXTERNAL_DICTIONARY || [])];
+  const defaultWords = defaults.filter(
     defWord => !custom.some(custWord => custWord.word.toLowerCase() === defWord.word.toLowerCase())
   );
-  return [...custom, ...defaultWords];
+  // Prefer custom, then dedupe defaults by word
+  const seen = new Set(custom.map((e) => e.word.toLowerCase()));
+  const uniqueDefaults: DictionaryEntry[] = [];
+  for (const entry of defaultWords) {
+    const key = entry.word.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueDefaults.push(entry);
+  }
+  return [...custom, ...uniqueDefaults];
+}
+
+function candidateForms(word: string): string[] {
+  const normalized = word
+    .trim()
+    .toLowerCase()
+    .replace(/[’‘]/g, "'")
+    .replace(/\.+$/, "");
+  if (!normalized) return [];
+
+  const forms = new Set<string>([normalized]);
+  forms.add(normalized.replace(/'s$/, ""));
+  forms.add(normalized.replace(/s'$/, ""));
+
+  if (normalized.endsWith("ies") && normalized.length > 4) {
+    forms.add(normalized.slice(0, -3) + "y");
+  }
+  if (normalized.endsWith("ves") && normalized.length > 4) {
+    forms.add(normalized.slice(0, -3) + "f");
+    forms.add(normalized.slice(0, -3) + "fe");
+  }
+  if (normalized.endsWith("ing") && normalized.length > 5) {
+    forms.add(normalized.slice(0, -3));
+    forms.add(normalized.slice(0, -3) + "e");
+  }
+  if (normalized.endsWith("ed") && normalized.length > 4) {
+    forms.add(normalized.slice(0, -2));
+    forms.add(normalized.slice(0, -1));
+  }
+  if (normalized.endsWith("es") && normalized.length > 3) {
+    forms.add(normalized.slice(0, -2));
+  }
+  if (normalized.endsWith("s") && !normalized.endsWith("ss") && normalized.length > 3) {
+    forms.add(normalized.slice(0, -1));
+  }
+  if (normalized.endsWith("ly") && normalized.length > 4) {
+    forms.add(normalized.slice(0, -2));
+  }
+
+  return [...forms].filter(Boolean);
 }
 
 export async function lookupWord(word: string): Promise<DictionaryEntry | null> {
-  const normalized = word.trim().toLowerCase();
+  const forms = candidateForms(word);
+  if (!forms.length) return null;
   const all = await getAllDictionaryEntries();
-  return all.find(entry => entry.word.toLowerCase() === normalized) || null;
+  const byWord = new Map(all.map((entry) => [entry.word.toLowerCase(), entry]));
+
+  for (const form of forms) {
+    const hit = byWord.get(form);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 export function addDictionaryEntry(entry: DictionaryEntry): void {

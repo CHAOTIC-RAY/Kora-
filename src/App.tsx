@@ -1127,10 +1127,18 @@ export default function App() {
       );
     };
     syncPeer();
-    const heartbeat = window.setInterval(syncPeer, 45_000);
+    const onPrefsChanged = () => syncPeer();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") syncPeer();
+    };
+    window.addEventListener("kora-sync-prefs-changed", onPrefsChanged);
+    document.addEventListener("visibilitychange", onVisible);
+    const heartbeat = window.setInterval(syncPeer, 30_000);
     return () => {
       unsubPeer?.();
       window.clearInterval(heartbeat);
+      window.removeEventListener("kora-sync-prefs-changed", onPrefsChanged);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [user?.uid]);
 
@@ -2124,7 +2132,8 @@ export default function App() {
             </div>
       </FluidOverlay>
 
-      {/* 5. Modern Floating Mobile Navigation Bar */}
+      {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book */}
+      {!readerOpen && (
       <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md bg-kindle-card/90 backdrop-blur-xl border border-kindle-border/80 rounded-2xl shadow-[0_10px_35px_rgba(0,0,0,0.12)] kora-safe-bottom">
         <LayoutGroup id="kora-mobile-tabs">
           <nav className="kora-tab-bar grid grid-cols-4 h-14 px-1.5 py-1" aria-label="Main">
@@ -2162,6 +2171,7 @@ export default function App() {
           </nav>
         </LayoutGroup>
       </footer>
+      )}
 
       {/* 6. Compact Desktop Footer */}
       <footer className="hidden md:block border-t border-kindle-border py-10 px-4 text-center text-[10px] text-kindle-text-muted font-sans mt-auto bg-kindle-bg">

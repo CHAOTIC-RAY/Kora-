@@ -47,8 +47,10 @@ function extractLookupWord(text: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
   const words = trimmed.split(/\s+/).filter(Boolean);
-  const candidate = words.length === 1 ? words[0] : words[0];
-  return candidate.replace(/^[^a-zA-Z0-9'-]+|[^a-zA-Z0-9'-]+$/g, "");
+  const candidate = words[0] || "";
+  return candidate
+    .replace(/[’‘]/g, "'")
+    .replace(/^[^a-zA-Z0-9'-]+|[^a-zA-Z0-9'-]+$/g, "");
 }
 
 function clearNativeSelection() {
@@ -906,8 +908,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           while (end < text.length && /[\w\-]/.test(text[end])) end++;
           
           if (end > start) {
-            const word = text.slice(start, end).replace(/^[^a-zA-Z0-9\-]+|[^a-zA-Z0-9\-]+$/g, "");
-            if (word && word.length > 1) {
+            const word = text
+              .slice(start, end)
+              .replace(/[’‘]/g, "'")
+              .replace(/^[^a-zA-Z0-9\-']+|[^a-zA-Z0-9\-']+$/g, "");
+            // Allow short words (a, I, to, almost…) — previously length > 1 blocked many lookups.
+            if (word && word.length >= 1) {
               const newRange = document.createRange();
               newRange.setStart(textNode, start);
               newRange.setEnd(textNode, end);
@@ -943,7 +949,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             }
           }
         }
-      }, 700);
+      }, 420);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -1095,7 +1101,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     
     // If we are in select mode or have an active selection, dismiss/clear it and stop (do NOT turn the page!)
     const sel = window.getSelection();
-    if (sel && sel.toString().trim().length > 0) {
+    if ((sel && sel.toString().trim().length > 0) || selectedText.trim().length > 0) {
       dismissSelection();
       return; // Prevent page turn on this tap!
     }
@@ -1201,16 +1207,23 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   }, [currentChapterIdx, chapters.length, currentPageNum, totalPages]);
 
   async function lookupDictionary(word: string) {
+    const clean = extractLookupWord(word);
+    if (!clean) {
+      setDictionaryWord(null);
+      setDictionaryData(null);
+      return;
+    }
     try {
       setDictLoading(true);
-      setDictionaryWord(word);
+      setDictionaryWord(clean);
+      setDictionaryData(null);
       
-      // 1. Check custom dictionary first
-      const localDef = await lookupWord(word);
+      // 1. Check custom / bundled dictionary first
+      const localDef = await lookupWord(clean);
       if (localDef) {
         setDictionaryData({
           word: localDef.word,
-          phonetic: localDef.isCustom ? "Personal Definition" : "Kora System Definition",
+          phonetic: localDef.isCustom ? "Personal Definition" : "Kora Dictionary",
           meanings: [
             {
               partOfSpeech: localDef.partOfSpeech || "noun",
@@ -1226,8 +1239,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
-      // 2. Fall back to online dictionary
-      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(word)}`);
+      // 2. Fall back to online dictionary (Worker free-dict / Gemini on Node)
+      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(clean)}`, {
+        signal: AbortSignal.timeout(10000),
+      });
       if (res.ok) {
         const data = await res.json();
         setDictionaryData(data);
@@ -1903,7 +1918,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const activeTheme = themes[theme] || themes.sepia;
 
   return (
-    <div id="epub-reader-container" className={`fixed inset-0 z-50 flex flex-col ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}>
+    <div id="epub-reader-container" className={`fixed inset-0 z-[100] flex flex-col ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}>
       {/* 1. Header Toolbar */}
       <header className={`flex items-center justify-between px-6 py-4 border-b ${activeTheme.border} bg-opacity-95`}>
         <div className="flex items-center gap-4">
@@ -2038,7 +2053,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         {showSettings && (
           <>
             <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} />
-            <aside className={`w-full md:w-80 h-[50vh] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
+            <aside className={`w-full md:w-80 h-[min(70vh,32rem)] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 pb-[max(1.25rem,var(--kora-safe-bottom))] overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
               <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
                 <Type className="w-4 h-4 text-[#5c5346] dark:text-neutral-300" />
@@ -2709,15 +2724,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
           {/* Dictionary Modal */}
           {dictionaryWord && (
-            <div className="absolute inset-0 z-[70] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
+            <div className="absolute inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 animate-in fade-in zoom-in duration-200">
               <div className="absolute inset-0 bg-black/40" onClick={() => setDictionaryWord(null)} />
-              <div className={`relative w-full max-w-sm ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-6 overflow-hidden`}>
-                <div className="flex justify-between items-center mb-3">
-                  <div>
+              <div className={`relative w-full max-w-sm max-h-[min(85dvh,36rem)] ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-5 sm:p-6 overflow-y-auto`}>
+                <div className="flex justify-between items-start gap-3 mb-3 min-w-0">
+                  <div className="min-w-0">
                     <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Oxford Dictionary</span>
-                    <h3 className="text-xl font-extrabold font-serif leading-tight mt-0.5">{dictionaryWord}</h3>
+                    <h3 className="text-xl font-extrabold font-serif leading-tight mt-0.5 break-words">{dictionaryWord}</h3>
                   </div>
-                  <button onClick={() => setDictionaryWord(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition">
+                  <button onClick={() => setDictionaryWord(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition shrink-0">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -2776,20 +2791,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 )}
                 
                 {/* KOReader-style dictionary actions: Wikipedia, Search, Highlight, Close */}
-                <div className="mt-5 pt-3 border-t border-current/10 flex items-center gap-2">
+                <div className="mt-5 pt-3 border-t border-current/10 grid grid-cols-2 gap-2">
                   <button
                     onClick={() => window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(dictionaryWord || "")}`, "_blank")}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-current/15 text-[10px] font-bold uppercase tracking-widest hover:bg-current/5 transition"
+                    className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-current/15 text-[10px] font-bold uppercase tracking-widest hover:bg-current/5 transition min-w-0"
                     title="Open Wikipedia"
                   >
-                    <Globe className="w-3.5 h-3.5" /> Wiki
+                    <Globe className="w-3.5 h-3.5 shrink-0" /> Wiki
                   </button>
                   <button
                     onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(dictionaryWord || "")}`, "_blank")}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-current/15 text-[10px] font-bold uppercase tracking-widest hover:bg-current/5 transition"
+                    className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border border-current/15 text-[10px] font-bold uppercase tracking-widest hover:bg-current/5 transition min-w-0"
                     title="Search the web"
                   >
-                    <Search className="w-3.5 h-3.5" /> Search
+                    <Search className="w-3.5 h-3.5 shrink-0" /> Search
                   </button>
                   <button
                     onClick={() => {
@@ -2806,14 +2821,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       }
                       setDictionaryWord(null);
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30 text-[10px] font-bold uppercase tracking-widest transition"
+                    className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30 text-[10px] font-bold uppercase tracking-widest transition min-w-0"
                     title="Highlight selection"
                   >
-                    <Highlighter className="w-3.5 h-3.5" /> Highlight
+                    <Highlighter className="w-3.5 h-3.5 shrink-0" /> Highlight
                   </button>
                   <button
                     onClick={() => setDictionaryWord(null)}
-                    className="px-3 py-2 rounded-lg bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest hover:opacity-80 transition"
+                    className="flex items-center justify-center px-2 py-2 rounded-lg bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest hover:opacity-80 transition min-w-0"
                     title="Close"
                   >
                     Close
@@ -3102,10 +3117,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       scaleX: 1
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
-                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
+                    className={`w-full ml-0 select-text cursor-text touch-auto ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,
+                      WebkitUserSelect: "text",
+                      userSelect: "text",
+                      WebkitTouchCallout: "default",
                       ...(useScrollLayout
                         ? {
                             height: "auto",
@@ -3121,7 +3139,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             boxShadow: useDoubleColumns ? "inset 50% 0 0 -20px rgba(0,0,0,0.10)" : "none",
                             transformOrigin: flipDirection === "next" ? "left center" : "right center",
                           }),
-                    }}
+                    } as React.CSSProperties}
                   >
                     <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
                       <span className="text-[10px] uppercase font-mono opacity-60 tracking-wider">

@@ -252,10 +252,15 @@
   color: inherit;
 }
 
-.reader-select-surface {
-  -webkit-user-select: text;
-  user-select: text;
+.reader-select-surface,
+.reader-select-surface * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
   -webkit-touch-callout: default;
+}
+
+#epub-reader-container .reader-select-surface {
+  touch-action: pan-y;
 }
 
 .player-chapter-scroll {
