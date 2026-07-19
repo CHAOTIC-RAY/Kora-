@@ -804,6 +804,8 @@ export default function AudiobookPlayer({
                   coverUrl={book.coverUrl}
                   size="player"
                   playing={isPlaying}
+                  voiceMode={isTtsBook}
+                  getAudioElement={() => audioRef.current}
                 />
               </div>
             </div>

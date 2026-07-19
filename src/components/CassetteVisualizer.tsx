@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Headphones } from "lucide-react";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import { useCassetteAudioLevels } from "../lib/useCassetteAudioLevels";
 
 export interface CassetteVisualizerProps {
   title: string;
@@ -10,48 +11,162 @@ export interface CassetteVisualizerProps {
   size?: "thumb" | "card" | "player";
   playing?: boolean;
   className?: string;
+  getAudioElement?: () => HTMLAudioElement | null;
+  voiceMode?: boolean;
 }
 
 function CassetteScrew({ className }: { className: string }) {
   return (
-    <div className={`absolute rounded-full bg-neutral-600 border border-neutral-500/80 shadow-inner ${className}`}>
-      <div className="absolute inset-[28%] rounded-full bg-neutral-800" />
-      <div className="absolute top-1/2 left-[22%] right-[22%] h-[1px] -translate-y-1/2 bg-neutral-500/60" />
-      <div className="absolute left-1/2 top-[22%] bottom-[22%] w-[1px] -translate-x-1/2 bg-neutral-500/60" />
+    <div className={`absolute rounded-full bg-neutral-500/90 border border-neutral-400/60 shadow-inner ${className}`}>
+      <div className="absolute inset-[28%] rounded-full bg-neutral-800/90" />
+      <div className="absolute top-1/2 left-[22%] right-[22%] h-[1px] -translate-y-1/2 bg-neutral-400/50" />
+      <div className="absolute left-1/2 top-[22%] bottom-[22%] w-[1px] -translate-x-1/2 bg-neutral-400/50" />
     </div>
   );
 }
 
-function CassetteReel({
+function ReelHub({ className }: { className?: string }) {
+  return (
+    <div className={`absolute inset-[22%] rounded-full bg-gradient-to-br from-neutral-600 to-neutral-950 border border-neutral-500/50 shadow-inner ${className || ""}`}>
+      {[0, 60, 120].map((deg) => (
+        <div
+          key={deg}
+          className="absolute top-1/2 left-1/2 w-[46%] h-[2px] origin-left bg-neutral-400/25"
+          style={{ transform: `rotate(${deg}deg)` }}
+        />
+      ))}
+      <div className="absolute inset-[34%] rounded-full bg-gradient-to-br from-neutral-500 to-neutral-900 border border-neutral-400/30" />
+      <div className="absolute top-1/2 left-1/2 w-[18%] h-[18%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-300/25" />
+    </div>
+  );
+}
+
+function CoverTapeReel({
   playing,
   reverse,
+  coverSrc,
+  hideCovers,
+  grayscaleCovers,
   className,
 }: {
   playing: boolean;
   reverse?: boolean;
+  coverSrc: string | null;
+  hideCovers: boolean;
+  grayscaleCovers: boolean;
   className: string;
 }) {
   return (
     <div className={`relative ${className}`}>
-      {/* Outer flange */}
-      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-neutral-500 to-neutral-800 border border-neutral-600/90 shadow-md" />
-      {/* Tape pack ring */}
-      <div className="absolute inset-[8%] rounded-full border border-amber-950/30 bg-amber-900/20" />
-      {/* Spinning hub */}
+      <div className="absolute inset-0 rounded-full border border-neutral-500/70 bg-neutral-800/40 shadow-[inset_0_2px_8px_rgba(0,0,0,0.45)]" />
+
       <div
-        className={`absolute inset-[16%] rounded-full bg-gradient-to-br from-neutral-700 to-neutral-950 border border-neutral-600/70 ${
+        className={`absolute inset-[5%] rounded-full overflow-hidden ${
           playing ? (reverse ? "cassette-reel-spin-reverse" : "cassette-reel-spin") : ""
         }`}
       >
-        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
-          <div
-            key={deg}
-            className="absolute top-1/2 left-1/2 w-[42%] h-[1.5px] origin-left bg-neutral-500/35"
-            style={{ transform: `rotate(${deg}deg)` }}
-          />
-        ))}
-        <div className="absolute inset-[30%] rounded-full bg-gradient-to-br from-neutral-600 to-neutral-900 border border-neutral-500/40" />
-        <div className="absolute top-1/2 left-1/2 w-[16%] h-[16%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-neutral-400/30 shadow-inner" />
+        {!hideCovers && coverSrc ? (
+          <>
+            <img
+              src={coverSrc}
+              alt=""
+              className={`absolute inset-0 w-full h-full object-cover scale-110 ${grayscaleCovers ? "grayscale" : ""}`}
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_18%,rgba(69,26,3,0.15)_32%,rgba(69,26,3,0.55)_58%,rgba(28,12,4,0.92)_78%)]" />
+            {[22, 34, 46, 58].map((inset) => (
+              <div
+                key={inset}
+                className="absolute rounded-full border border-amber-950/25"
+                style={{ inset: `${inset}%` }}
+              />
+            ))}
+          </>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-amber-950/80 via-amber-900/50 to-neutral-900 flex items-center justify-center">
+            <Headphones className="w-[38%] h-[38%] text-white/20" />
+          </div>
+        )}
+
+        <ReelHub />
+      </div>
+    </div>
+  );
+}
+
+function VisualizerTapeReel({
+  playing,
+  reverse,
+  levels,
+  className,
+}: {
+  playing: boolean;
+  reverse?: boolean;
+  levels: number[];
+  className: string;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const size = canvas.clientWidth || 120;
+    canvas.width = size * dpr;
+    canvas.height = size * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const cx = size / 2;
+    const cy = size / 2;
+    const innerR = size * 0.16;
+    const maxOuter = size * 0.44;
+    const bars = levels.length;
+
+    ctx.clearRect(0, 0, size, size);
+
+    for (let i = 0; i < bars; i++) {
+      const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
+      const level = playing ? levels[i] ?? 0 : 0.08;
+      const outerR = innerR + 6 + level * (maxOuter - innerR - 6);
+      const x1 = cx + Math.cos(angle) * innerR;
+      const y1 = cy + Math.sin(angle) * innerR;
+      const x2 = cx + Math.cos(angle) * outerR;
+      const y2 = cy + Math.sin(angle) * outerR;
+
+      const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+      gradient.addColorStop(0, "rgba(251, 191, 36, 0.35)");
+      gradient.addColorStop(1, `rgba(251, 146, 60, ${0.45 + level * 0.55})`);
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = gradient;
+      ctx.lineWidth = Math.max(2, size * 0.028);
+      ctx.lineCap = "round";
+      ctx.stroke();
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, innerR * 0.72, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(24, 24, 27, 0.85)";
+    ctx.fill();
+  }, [levels, playing]);
+
+  return (
+    <div className={`relative ${className}`}>
+      <div className="absolute inset-0 rounded-full border border-neutral-500/70 bg-neutral-800/35 shadow-[inset_0_2px_8px_rgba(0,0,0,0.45)]" />
+
+      <div
+        className={`absolute inset-[5%] rounded-full ${
+          playing ? (reverse ? "cassette-reel-spin-reverse" : "cassette-reel-spin") : ""
+        }`}
+      >
+        <div className="absolute inset-[8%] rounded-full bg-gradient-to-br from-neutral-700/50 to-neutral-950/80 border border-neutral-600/40" />
+        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+        <ReelHub />
       </div>
     </div>
   );
@@ -82,15 +197,19 @@ export default function CassetteVisualizer({
   size = "card",
   playing = false,
   className = "",
+  getAudioElement,
+  voiceMode = false,
 }: CassetteVisualizerProps) {
   const isThumb = size === "thumb";
   const isPlayer = size === "player";
+  const barCount = isThumb ? 12 : isPlayer ? 28 : 18;
+  const levels = useCassetteAudioLevels(playing, getAudioElement, voiceMode, barCount);
 
   const coverSrc = resolveCoverImageSrc(coverUrl);
 
   const shellRadius = isThumb ? "rounded-[6px]" : isPlayer ? "rounded-[18px]" : "rounded-[14px]";
   const labelSize = isThumb ? "text-[4px]" : isPlayer ? "text-[8px]" : "text-[6.5px]";
-  const reelSize = isThumb ? "w-3 h-3" : isPlayer ? "w-11 h-11" : "w-6 h-6";
+  const reelSize = isThumb ? "w-[34%] max-w-[1.4rem]" : isPlayer ? "w-[38%] max-w-[7.5rem]" : "w-[36%] max-w-[3.4rem]";
   const screwSize = isThumb ? "w-1 h-1" : isPlayer ? "w-2.5 h-2.5" : "w-1.5 h-1.5";
 
   const displayTitle = title.length > (isPlayer ? 28 : isThumb ? 14 : 22)
@@ -101,24 +220,22 @@ export default function CassetteVisualizer({
     <div
       className={`relative flex flex-col items-center justify-center w-full shrink-0 ${
         isPlayer
-          ? "max-w-md w-full h-[168px] sm:h-[188px]"
+          ? "max-w-md w-full h-[188px] sm:h-[210px]"
           : isThumb
             ? "w-16 h-11"
             : "aspect-[10/6.2] min-h-[92px]"
       } ${className}`}
     >
       <div
-        className={`cassette-shell relative w-full h-full overflow-hidden ${shellRadius} ${
+        className={`cassette-shell cassette-shell-transparent relative w-full h-full overflow-hidden ${shellRadius} ${
           playing ? "cassette-shell-active" : ""
         }`}
       >
-        {/* Plastic shell texture + depth */}
-        <div className="absolute inset-0 cassette-plastic" />
+        <div className="absolute inset-0 cassette-plastic-transparent" />
         <div className="absolute inset-0 cassette-highlight pointer-events-none" />
 
-        {/* Top label strip — ruled paper look */}
-        <div className="absolute top-0 left-0 right-0 h-[20%] cassette-label-strip border-b border-black/50">
-          <div className="absolute inset-0 cassette-label-lines opacity-30" />
+        <div className="absolute top-0 left-0 right-0 h-[18%] cassette-label-strip border-b border-black/40">
+          <div className="absolute inset-0 cassette-label-lines opacity-25" />
           <div className="relative h-full flex items-center justify-between px-2 gap-1.5">
             <div className="flex items-center gap-1 min-w-0">
               <div
@@ -141,79 +258,67 @@ export default function CassetteVisualizer({
           </div>
         </div>
 
-        {/* Window recess bezel */}
         <div
-          className={`absolute left-1/2 -translate-x-1/2 cassette-window-bezel ${
+          className={`absolute left-1/2 -translate-x-1/2 cassette-window-bezel cassette-window-transparent ${
             isThumb
-              ? "top-[23%] w-[78%] h-[52%] rounded-[3px]"
+              ? "top-[21%] w-[84%] h-[58%] rounded-[3px]"
               : isPlayer
-                ? "top-[22%] w-[72%] h-[54%] rounded-lg"
-                : "top-[23%] w-[76%] h-[52%] rounded-md"
+                ? "top-[19%] w-[78%] h-[62%] rounded-xl"
+                : "top-[21%] w-[82%] h-[58%] rounded-md"
           }`}
         >
-          {/* Cover / art behind window */}
-          <div className="absolute inset-[3px] rounded-[inherit] overflow-hidden bg-black">
-            {!hideCovers && coverSrc ? (
-              <img
-                src={coverSrc}
-                alt={title}
-                className={`w-full h-full object-cover opacity-90 ${grayscaleCovers ? "grayscale" : ""}`}
-                referrerPolicy="no-referrer"
+          <div className="absolute inset-[3px] rounded-[inherit] overflow-hidden cassette-window-glass">
+            <div className="absolute inset-0 bg-gradient-to-b from-neutral-950/20 via-transparent to-neutral-950/35" />
+
+            <div className="absolute inset-x-[6%] top-[14%] bottom-[18%] flex items-center justify-between gap-[3%]">
+              <CoverTapeReel
+                playing={playing}
+                coverSrc={coverSrc}
+                hideCovers={hideCovers}
+                grayscaleCovers={grayscaleCovers}
+                className={`${reelSize} aspect-square shrink-0`}
               />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-neutral-900">
-                <Headphones
-                  className={`text-white/25 ${isThumb ? "w-3 h-3" : isPlayer ? "w-10 h-10" : "w-5 h-5"}`}
+
+              <div className="flex-1 relative h-[10%] min-w-[12%] max-w-[28%] self-center">
+                <div className="absolute inset-0 rounded-full bg-amber-950/70 border border-amber-900/40 shadow-inner" />
+                <div
+                  className={`absolute inset-y-[18%] left-[8%] right-[8%] rounded-full bg-gradient-to-r from-amber-800/80 via-amber-600/70 to-amber-800/80 ${
+                    playing ? "cassette-tape-pulse" : ""
+                  }`}
                 />
+                {playing && <div className="absolute inset-0 cassette-tape-shimmer rounded-full opacity-70" />}
               </div>
-            )}
-            {/* Glass reflection */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/30 pointer-events-none" />
-          </div>
 
-          {/* Tape path overlay at bottom of window */}
-          <div className="absolute bottom-[8%] left-[10%] right-[10%] flex items-center justify-between pointer-events-none">
-            <div className={`${reelSize} opacity-95`}>
-              <CassetteReel playing={playing} className="w-full h-full" />
-            </div>
-
-            {/* Magnetic tape ribbon between reels */}
-            <div className="flex-1 mx-1 relative h-[3px]">
-              <div className="absolute inset-0 rounded-full bg-amber-950/60 border border-amber-800/30" />
-              <div
-                className={`absolute inset-y-0 left-0 rounded-full bg-amber-700/50 ${
-                  playing ? "cassette-tape-flow" : "w-full"
-                }`}
+              <VisualizerTapeReel
+                playing={playing}
+                reverse
+                levels={levels}
+                className={`${reelSize} aspect-square shrink-0`}
               />
-              {playing && <div className="absolute inset-0 cassette-tape-shimmer rounded-full" />}
             </div>
 
-            <div className={`${reelSize} opacity-95`}>
-              <CassetteReel playing={playing} reverse className="w-full h-full" />
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-br from-white/12 via-transparent to-black/25 pointer-events-none" />
+            <div className="absolute inset-x-[8%] top-[8%] h-[18%] bg-gradient-to-b from-white/10 to-transparent pointer-events-none rounded-t-[inherit]" />
           </div>
         </div>
 
-        {/* Bottom ridge + pressure pad */}
         {!isThumb && (
           <div
-            className={`absolute left-1/2 -translate-x-1/2 bottom-[6%] rounded-sm bg-neutral-800/80 border border-neutral-700/50 ${
-              isPlayer ? "w-[28%] h-[6px]" : "w-[24%] h-[4px]"
+            className={`absolute left-1/2 -translate-x-1/2 bottom-[7%] rounded-sm bg-neutral-700/70 border border-neutral-500/40 ${
+              isPlayer ? "w-[30%] h-[7px]" : "w-[24%] h-[4px]"
             }`}
           />
         )}
 
-        {/* Corner screws */}
         <CassetteScrew className={`top-[5px] left-[5px] ${screwSize}`} />
         <CassetteScrew className={`top-[5px] right-[5px] ${screwSize}`} />
         <CassetteScrew className={`bottom-[5px] left-[5px] ${screwSize}`} />
         <CassetteScrew className={`bottom-[5px] right-[5px] ${screwSize}`} />
 
-        {/* Write-protect notches */}
         {!isThumb && (
           <>
-            <div className="absolute top-[20%] left-0 w-[3px] h-[8%] bg-black/40 rounded-r-sm" />
-            <div className="absolute top-[20%] right-0 w-[3px] h-[8%] bg-black/40 rounded-l-sm" />
+            <div className="absolute top-[18%] left-0 w-[3px] h-[8%] bg-black/30 rounded-r-sm" />
+            <div className="absolute top-[18%] right-0 w-[3px] h-[8%] bg-black/30 rounded-l-sm" />
           </>
         )}
       </div>
