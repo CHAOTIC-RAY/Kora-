@@ -13,21 +13,38 @@ import {
 const TARGET_SAMPLE_RATE = 16000;
 const CHUNK_SECONDS = 28;
 const MAX_TRACK_SECONDS = 45 * 60; // safety cap per track for device CPU
+const WHISPER_MODEL = "Xenova/whisper-tiny.en";
 
 type ProgressCb = (progress: number, message?: string) => void;
 
 let whisperPipeline: any = null;
 let whisperLoading: Promise<any> | null = null;
 
+/** Route Hugging Face model files through our Worker so browser CORS works. */
+function configureTransformersEnv(env: {
+  allowLocalModels: boolean;
+  useBrowserCache: boolean;
+  allowRemoteModels?: boolean;
+  remoteHost?: string;
+  remotePathTemplate?: string;
+}) {
+  env.allowLocalModels = false;
+  env.useBrowserCache = true;
+  env.allowRemoteModels = true;
+  env.remotePathTemplate = "{model}/resolve/{revision}/";
+  // Same-origin proxy → Worker fetches huggingface.co (and LFS redirects) server-side.
+  if (typeof window !== "undefined" && window.location?.origin) {
+    env.remoteHost = `${window.location.origin}/api/hf-model/`;
+  }
+}
+
 async function getWhisper() {
   if (whisperPipeline) return whisperPipeline;
   if (!whisperLoading) {
     whisperLoading = (async () => {
       const { pipeline, env } = await import("@xenova/transformers");
-      // Cache models in browser cache; run fully on-device.
-      env.allowLocalModels = false;
-      env.useBrowserCache = true;
-      return pipeline("automatic-speech-recognition", "Xenova/whisper-tiny.en", {
+      configureTransformersEnv(env);
+      return pipeline("automatic-speech-recognition", WHISPER_MODEL, {
         quantized: true,
       });
     })().catch((error) => {

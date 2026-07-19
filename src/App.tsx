@@ -165,8 +165,11 @@ async function injectMetadataIntoEpub(
   return fileBlob;
 }
 
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: React.ReactNode }) {
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode; fullscreen?: boolean; onReset?: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode; fullscreen?: boolean; onReset?: () => void }) {
     super(props);
     this.state = { hasError: false };
   }
@@ -174,6 +177,28 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   componentDidCatch(error: any, errorInfo: any) { console.error("ErrorBoundary caught an error", error, errorInfo); }
   render() {
     if (this.state.hasError) {
+      if (this.props.fullscreen) {
+        return (
+          <div className="fixed inset-0 z-[100] bg-kindle-bg flex flex-col items-center justify-center gap-4 px-6 text-center">
+            <p className="text-sm font-semibold text-kindle-text">Audiobook player hit an error</p>
+            <p className="text-xs text-kindle-text-muted max-w-sm">
+              Close and reopen the title. If it keeps failing, clear site data for this app and try again.
+            </p>
+            {this.props.onReset && (
+              <button
+                type="button"
+                onClick={() => {
+                  this.setState({ hasError: false });
+                  this.props.onReset?.();
+                }}
+                className="px-4 py-2 rounded-lg bg-kindle-text text-kindle-bg text-sm font-medium"
+              >
+                Close player
+              </button>
+            )}
+          </div>
+        );
+      }
       return (
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-center">
           <p className="text-xs text-red-600 font-bold uppercase tracking-widest">Something went wrong in this section.</p>
@@ -1741,24 +1766,32 @@ export default function App() {
 
       {/* 3. Full-Screen Reader Component Viewports */}
       {audiobookPlayback && (
-        <Suspense fallback={null}>
-          <AudiobookPlayer
-            book={audiobookPlayback}
-            userId={user?.uid || ""}
-            grayscaleCovers={grayscaleCovers}
-            viewMode={activeBook?.id === audiobookPlayback.id ? "fullscreen" : "minimized"}
-            onMinimize={() => dismissAudiobookFullscreen()}
-            onExpand={() => setActiveBook(audiobookPlayback)}
-            onClose={handleAudiobookClose}
-            onProgressUpdate={(updatedBook) => {
-              setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
-              setLastReadBook(updatedBook);
-              setAudiobookPlayback(updatedBook);
-              if (activeBook?.id === updatedBook.id) setActiveBook(updatedBook);
-              localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
-            }}
-          />
-        </Suspense>
+        <ErrorBoundary fullscreen onReset={handleAudiobookClose}>
+          <Suspense
+            fallback={
+              <div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center">
+                <KoraLoading />
+              </div>
+            }
+          >
+            <AudiobookPlayer
+              book={audiobookPlayback}
+              userId={user?.uid || ""}
+              grayscaleCovers={grayscaleCovers}
+              viewMode={activeBook?.id === audiobookPlayback.id ? "fullscreen" : "minimized"}
+              onMinimize={() => dismissAudiobookFullscreen()}
+              onExpand={() => setActiveBook(audiobookPlayback)}
+              onClose={handleAudiobookClose}
+              onProgressUpdate={(updatedBook) => {
+                setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
+                setLastReadBook(updatedBook);
+                setAudiobookPlayback(updatedBook);
+                if (activeBook?.id === updatedBook.id) setActiveBook(updatedBook);
+                localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+              }}
+            />
+          </Suspense>
+        </ErrorBoundary>
         )}
       {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
         <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading /></div>}>
