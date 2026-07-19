@@ -1,5 +1,7 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-/main/public/kora_banner.svg" alt="Kora - Next-Gen Ebook Reader" width="100%" />
+  <p>
+    <img src="./public/kora_banner.png" alt="Kora - Next-Gen Ebook Reader" width="100%" />
+  </p>
 
   # 📖 Kora - Next-Gen Ebook Reader
 
