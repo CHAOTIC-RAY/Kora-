@@ -18,6 +18,7 @@ import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
+import CastwrightConverter from "./CastwrightConverter";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -433,9 +434,14 @@ export default function SettingsView({
       </header>
 
       <div className="space-y-6">
-        {/* Bento Widget Grid (Add Books & Cloud Sync Ingestion) */}
+        {/* Bento Widget Grid (Castwright, Add Books & Cloud Sync Ingestion) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          
+          <CastwrightConverter
+            books={(books as BookMetadata[]) || []}
+            userId={userId}
+            onRefreshLibrary={onRefreshLibrary}
+          />
+
           {/* Tile 1: Local Ingestion (Drag & Drop) */}
           <div className="md:col-span-2 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-3">
             <div>
