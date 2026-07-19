@@ -31,6 +31,12 @@ import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import { enqueueAudiobookDownload, handleAudiobookSwMessage } from "./lib/audiobookSyncQueue";
 import { enqueueEbookDownload } from "./lib/ebookDownloadQueue";
+import {
+  LIBGEN_MIRRORS,
+  buildLibgenDownloadUrl,
+  isLibgenUrl,
+  libgenMirrorCandidates,
+} from "./lib/libgenProxy";
 import { useAndroidBackLayer } from "./hooks/useAndroidBackLayer";
 import { removeAndroidBackLayer } from "./lib/androidGestures";
 import {
@@ -432,6 +438,36 @@ export default function App() {
     [removeDownloadEntry]
   );
 
+  /** Expand a short mirror list into LibGen host candidates so one 500 doesn't kill the download. */
+  function expandDownloadMirrors(mirrors: any[], variant: any): any[] {
+    const seed = [...mirrors];
+    const md5 = String(variant?.md5 || "").toLowerCase();
+    if (/^[a-f0-9]{32}$/.test(md5)) {
+      for (const host of LIBGEN_MIRRORS) {
+        seed.push({
+          label: `LibGen (${host.replace(/^https?:\/\//, "")})`,
+          url: buildLibgenDownloadUrl(host, md5),
+          isDirect: true,
+          sourceId: "libgen",
+        });
+      }
+    }
+
+    const seen = new Set<string>();
+    const expanded: any[] = [];
+    for (const m of seed) {
+      const url = m?.url;
+      if (!url) continue;
+      const candidates = isLibgenUrl(url) ? libgenMirrorCandidates(url) : [url];
+      for (const candidate of candidates) {
+        if (seen.has(candidate)) continue;
+        seen.add(candidate);
+        expanded.push({ ...m, url: candidate });
+      }
+    }
+    return expanded.length > 0 ? expanded : mirrors;
+  }
+
   // Background download handler
   async function startBackgroundDownload(
     book: any,
@@ -439,7 +475,8 @@ export default function App() {
     variant: any,
     options?: { reuseDownloadId?: string; skipServiceWorker?: boolean }
   ) {
-    const mirrorList = Array.isArray(mirrors) ? mirrors : [mirrors];
+    const rawMirrors = Array.isArray(mirrors) ? mirrors : [mirrors];
+    const mirrorList = expandDownloadMirrors(rawMirrors.filter(Boolean), variant);
     if (!mirrorList || mirrorList.length === 0) {
       toast.error("No valid download mirrors available for auto-download.");
       return;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
@@ -42,7 +42,11 @@ import {
 import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
-import { applyHighlightsToHtml } from "../lib/readerHighlights";
+import {
+  applyHighlightsToElement,
+  applyHighlightsToHtml,
+  wrapSelectionWithHighlight,
+} from "../lib/readerHighlights";
 
 function extractLookupWord(text: string): string {
   const trimmed = text.trim();
@@ -1310,7 +1314,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       }
     } else if (effectivePageTurnMode === "margins-only") {
       // Wider dead-zone in the middle for comfortable touch selection on mobile.
-      const edge = isMobile ? 0.18 : 0.15;
+      const edge = isMobile ? 0.22 : 0.15;
       if (ratio < edge) {
         handlePrevPage();
       } else if (ratio > 1 - edge) {
@@ -2034,10 +2038,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       createdAt: Date.now()
     };
 
+    // Wrap the live selection BEFORE clearing it — this is what the user sees immediately.
+    const viewer = document.getElementById("epub-text-viewer");
+    const wrapped = wrapSelectionWithHighlight(color, highlightId, viewer);
+    if (wrapped && viewer) {
+      // Persist marked HTML into chapter state so React re-renders keep the mark.
+      const markedHtml = viewer.innerHTML;
+      setChapters((prev) =>
+        prev.map((ch, i) => (i === currentChapterIdx ? { ...ch, content: markedHtml } : ch))
+      );
+    }
+
     setHighlightsData((prev) => [newHighlight, ...prev]);
     dismissSelection();
     // Stay in the book so the mark is visible (notes panel lists highlights separately).
-    setDictFeedback("Highlight saved");
+    setDictFeedback(wrapped ? "Highlight saved" : "Highlight saved (list only)");
     window.setTimeout(() => setDictFeedback(null), 2000);
 
     try {
@@ -2046,6 +2061,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       console.error("Failed to sync highlight", err);
     }
   };
+
+  // Re-apply highlights onto the live chapter DOM after React paints chapter HTML.
+  // Catches cases where string injection missed a match (quotes, soft hyphens, etc.).
+  useLayoutEffect(() => {
+    if (loading) return;
+    const viewer = document.getElementById("epub-text-viewer");
+    if (!viewer) return;
+    applyHighlightsToElement(viewer, highlightsData, currentChapterIdx);
+  }, [loading, currentChapterIdx, chapters, highlightsData, chapterHtmlWithHighlights]);
 
   const handleAddSelectionToNote = () => {
     const quote = selectedText.trim();

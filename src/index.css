@@ -262,6 +262,14 @@
 /* Allow native text selection gestures; pan-y alone made column hit-testing worse on Android */
 #epub-reader-container .reader-select-surface {
   touch-action: auto;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+/* Keep highlight marks selectable but clearly painted above EPUB theme colors */
+#epub-text-viewer mark.kora-hl {
+  position: relative;
+  z-index: 1;
 }
 
 /* In-book highlight marks — beat EPUB inline styles / Tailwind preflight */
