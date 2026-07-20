@@ -12,6 +12,7 @@ import {
   getGuide,
   getGuideStatus,
   GUIDE_CATALOG,
+  clearJourney,
   loadJourney,
   saveJourney,
   startPostOnboardingJourney,
@@ -38,6 +39,8 @@ type GuideContextValue = {
   nextStep: () => void;
   skipStep: () => void;
   dismissActive: (forever?: boolean) => void;
+  /** End the active guide and clear the whole post-setup journey queue */
+  skipAllGuides: () => void;
   completeActive: () => void;
 };
 
@@ -139,6 +142,16 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
     [active, finishGuideAndAdvanceJourney]
   );
 
+  const skipAllGuides = useCallback(() => {
+    if (active) {
+      // Soft-complete current so it doesn't keep nagging mid-journey
+      completeGuide(active.guideId);
+    }
+    clearJourney();
+    setJourney(null);
+    setActive(null);
+  }, [active]);
+
   const nextStep = useCallback(() => {
     if (!active || !currentGuide) return;
     const next = active.stepIndex + 1;
@@ -206,6 +219,7 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
       nextStep,
       skipStep,
       dismissActive,
+      skipAllGuides,
       completeActive,
     }),
     [
@@ -217,6 +231,7 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
       nextStep,
       skipStep,
       dismissActive,
+      skipAllGuides,
       completeActive,
     ]
   );
@@ -232,6 +247,7 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
           stepCount={currentGuide.steps.length}
           onNext={nextStep}
           onSkip={() => dismissActive(false)}
+          onSkipAll={skipAllGuides}
           onDismissForever={() => dismissActive(true)}
           onTargetActivated={
             currentStep.action === "tap-target" ? nextStep : undefined

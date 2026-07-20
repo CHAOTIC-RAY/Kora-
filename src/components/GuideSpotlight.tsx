@@ -45,6 +45,7 @@ type GuideSpotlightProps = {
   stepCount: number;
   onNext: () => void;
   onSkip: () => void;
+  onSkipAll?: () => void;
   onDismissForever: () => void;
   onTargetActivated?: () => void;
 };
@@ -56,6 +57,7 @@ export default function GuideSpotlight({
   stepCount,
   onNext,
   onSkip,
+  onSkipAll,
   onDismissForever,
   onTargetActivated,
 }: GuideSpotlightProps) {
@@ -273,6 +275,15 @@ export default function GuideSpotlight({
                     >
                       Skip guide
                     </button>
+                    {onSkipAll && (
+                      <button
+                        type="button"
+                        onClick={onSkipAll}
+                        className="text-[11px] font-semibold text-kindle-text-muted hover:text-kindle-text px-2 py-1"
+                      >
+                        Skip all
+                      </button>
+                    )}
                   </div>
                 </div>
                 <button
@@ -286,7 +297,7 @@ export default function GuideSpotlight({
                 </button>
               </div>
               <p className="text-[9px] text-kindle-text-muted mt-2 px-1">
-                Tip: swipe away guide cards on Lounge to hide them forever.
+                Tip: swipe away guide cards on Lounge to hide them forever. Use Skip all to end the tour.
               </p>
             </div>
           </motion.div>

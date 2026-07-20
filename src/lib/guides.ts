@@ -420,6 +420,11 @@ export function saveJourney(state: JourneyState | null) {
   window.dispatchEvent(new CustomEvent("kora-guides-changed"));
 }
 
+/** Clear the forced post-onboarding queue without dismissing Lounge guide cards. */
+export function clearJourney() {
+  saveJourney(null);
+}
+
 /** Default post-onboarding queue */
 export function startPostOnboardingJourney() {
   const queue: GuideId[] = ["sync-setup", "first-book-search", "reader-tour", "news-feed"];

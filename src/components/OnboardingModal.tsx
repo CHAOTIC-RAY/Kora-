@@ -32,6 +32,8 @@ interface OnboardingModalProps {
     autoCache: boolean;
     dailyReminders: boolean;
     selectedFeedUrls: string[];
+    /** If false, skip the post-onboarding spotlight journey */
+    startInteractiveTour?: boolean;
   }) => void;
   currentTheme: string;
   onThemeChange: (theme: string) => void;
@@ -138,6 +140,8 @@ export default function OnboardingModal({
 
   // Walkthrough step within step 3
   const [walkthroughIndex, setWalkthroughIndex] = useState(0);
+  /** When false, App will not auto-start the post-setup spotlight journey */
+  const [startInteractiveTour, setStartInteractiveTour] = useState(true);
 
   if (!isOpen) return null;
 
@@ -174,6 +178,7 @@ export default function OnboardingModal({
       selectedFeedUrls: selectedFeedUrls.length
         ? selectedFeedUrls
         : DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl),
+      startInteractiveTour,
     });
   };
 
@@ -585,8 +590,15 @@ export default function OnboardingModal({
                     How Kora Fits Together
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    Preview every surface here. After you finish, live overlays will guide Sync → first book → reader → news — and Lounge will keep optional Guides you can swipe away forever.
+                    Preview every surface here. After you finish, live overlays can guide Sync → first book → reader → news — or skip anytime.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setStep(4)}
+                    className="text-[11px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-accent underline underline-offset-2"
+                  >
+                    Skip walkthrough
+                  </button>
                 </div>
 
                 {/* Curated Interactive walkthrough tabs */}
@@ -867,6 +879,19 @@ export default function OnboardingModal({
                     Continue as guest
                   </button>
                 </div>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-kindle-border bg-kindle-card cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={startInteractiveTour}
+                    onChange={(e) => setStartInteractiveTour(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 rounded border-kindle-border text-kindle-accent focus:ring-kindle-accent cursor-pointer shrink-0"
+                  />
+                  <span className="text-[11px] text-kindle-text-muted leading-relaxed">
+                    <span className="font-bold text-kindle-text block">Start interactive tour after setup</span>
+                    Spotlight overlays for Sync, first book, reader, and news. Uncheck to skip — you can still open Guides from Lounge anytime.
+                  </span>
+                </label>
               </motion.div>
             )}
 
@@ -874,7 +899,7 @@ export default function OnboardingModal({
         </div>
 
         {/* Footer controls */}
-        <div className="p-4 border-t border-kindle-border bg-kindle-card/50 flex justify-between items-center">
+        <div className="p-4 border-t border-kindle-border bg-kindle-card/50 flex justify-between items-center gap-2">
           {step > 1 ? (
             <button
               onClick={prevStep}
@@ -887,25 +912,36 @@ export default function OnboardingModal({
             <div />
           )}
 
-          {step < totalSteps ? (
-            <button
-              onClick={() => {
-                if (step === 4 && !agreedToLicenses) {
-                  toast.error("Please agree to the legal terms before continuing.");
-                  return;
-                }
-                nextStep();
-              }}
-              className={`py-2.5 px-5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ml-auto ${
-                step === 4 && !agreedToLicenses
-                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-                  : "bg-kindle-accent text-kindle-bg hover:opacity-90"
-              }`}
-            >
-              Next Step
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2 ml-auto">
+            {step === 3 && (
+              <button
+                type="button"
+                onClick={() => setStep(4)}
+                className="py-2.5 px-4 border border-kindle-border text-kindle-text-muted hover:text-kindle-text rounded-xl font-bold text-[11px] uppercase tracking-wider transition cursor-pointer"
+              >
+                Skip walkthrough
+              </button>
+            )}
+            {step < totalSteps ? (
+              <button
+                onClick={() => {
+                  if (step === 4 && !agreedToLicenses) {
+                    toast.error("Please agree to the legal terms before continuing.");
+                    return;
+                  }
+                  nextStep();
+                }}
+                className={`py-2.5 px-5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
+                  step === 4 && !agreedToLicenses
+                    ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                    : "bg-kindle-accent text-kindle-bg hover:opacity-90"
+                }`}
+              >
+                Next Step
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            ) : null}
+          </div>
         </div>
 
       </div>

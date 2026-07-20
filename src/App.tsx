@@ -308,6 +308,7 @@ export default function App() {
     autoCache: boolean;
     dailyReminders: boolean;
     selectedFeedUrls: string[];
+    startInteractiveTour?: boolean;
   }) => {
     localStorage.setItem("kora_onboarding_completed", "true");
     localStorage.setItem("kora_user_nickname", prefs.nickname);
@@ -340,18 +341,24 @@ export default function App() {
     setShowOnboarding(false);
     localStorage.setItem("kora_first_book_nudge", "true");
     setShowFirstBookNudge(true);
+    const wantTour = prefs.startInteractiveTour !== false;
     // Land on Lounge when enabled; otherwise Discover for the first-book nudge.
     if (isLoungeEnabled()) {
       switchTab("lounge");
-      toast.success(`Welcome, ${prefs.nickname}! Interactive guides will walk you through Sync → first book → reader → news.`);
+      toast.success(
+        wantTour
+          ? `Welcome, ${prefs.nickname}! Interactive guides will walk you through Sync → first book → reader → news.`
+          : `Welcome, ${prefs.nickname}! Your Lounge is ready — open Guides anytime from the dashboard.`
+      );
     } else {
       switchTab("discover");
       toast.success(`Welcome, ${prefs.nickname}! Search Discover to add your first book.`);
     }
-    // Kick off the hands-on post-onboarding journey (spotlight overlays).
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("kora-guide:start-journey"));
-    }, 700);
+    if (wantTour) {
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("kora-guide:start-journey"));
+      }, 700);
+    }
   };
 
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
