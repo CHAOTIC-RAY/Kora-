@@ -31,6 +31,7 @@ import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
+import EbookToolsPanel from "./EbookToolsPanel";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -615,16 +616,6 @@ function SettingsView({
 
         {view === "tools" && (
         <>
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-kindle-accent" />
-            <h2 className="text-2xl font-lexend font-bold text-kindle-text">Tools</h2>
-          </div>
-          <p className="text-[11px] text-kindle-text-muted leading-relaxed max-w-2xl">
-            Import, convert, and manage your ebooks. EPUB and PDF utilities live here.
-          </p>
-        </section>
-
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { id: "import", icon: Upload, label: "Import", desc: "Add files" },
@@ -653,27 +644,46 @@ function SettingsView({
           ))}
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { icon: FileText, label: "EPUB Tools", desc: "Merge, split, metadata — coming soon", soon: true },
-            { icon: Files, label: "PDF Tools", desc: "Extract, compress, rotate — coming soon", soon: true },
+            { id: "epub-tools", icon: FileText, label: "EPUB Tools", desc: "Extract, build, metadata" },
+            { id: "pdf-tools", icon: Files, label: "PDF Tools", desc: "Merge, rotate, split" },
+            { id: "clipper", icon: Globe, label: "Web Clipper", desc: "URL → ebook" },
+            { id: "highlights", icon: Download, label: "Highlights", desc: "Export Markdown" },
           ].map((tool) => (
-            <div
-              key={tool.label}
-              className="bg-kindle-card/60 border border-kindle-border/70 rounded-2xl p-4 flex flex-col gap-2 opacity-70"
+            <button
+              key={tool.id}
+              type="button"
+              onClick={() => {
+                const target =
+                  tool.id === "clipper"
+                    ? "web-clipper-panel"
+                    : "ebook-tools-panel";
+                document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                if (tool.id !== "clipper") {
+                  window.dispatchEvent(new CustomEvent("kora-tools-focus", { detail: tool.id }));
+                }
+              }}
+              className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
             >
-              <div className="p-2 rounded-xl bg-kindle-bg/80 border border-kindle-border w-fit">
-                <tool.icon className="w-4 h-4 text-kindle-text-muted" />
+              <div className="p-2 rounded-xl bg-kindle-bg border border-kindle-border w-fit">
+                <tool.icon className="w-4 h-4 text-kindle-accent" />
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
                 <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 
-        <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
+        <div id="ebook-tools-panel">
+          <EbookToolsPanel userId={userId} books={books as BookMetadata[]} />
+        </div>
+
+        <div id="web-clipper-panel">
+          <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
+        </div>
 
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2">
