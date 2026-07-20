@@ -23,6 +23,8 @@ import { inferBookTags } from "./lib/tagsHelper";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
+import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
+import { canHydrateBook } from "./lib/crossDeviceSync";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
 const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
 const BookReaderText = lazy(() => import("./components/BookReaderText"));
@@ -235,6 +237,7 @@ export default function App() {
   const [showFirstBookNudge, setShowFirstBookNudge] = useState<boolean>(() => {
     return localStorage.getItem("kora_first_book_nudge") === "true";
   });
+  const [deviceDownloadBooks, setDeviceDownloadBooks] = useState<BookMetadata[] | null>(null);
   const [showAnnotationsHub, setShowAnnotationsHub] = useState(false);
   const [proximitySyncBook, setProximitySyncBook] = useState<BookMetadata | null>(null);
   const [userNickname, setUserNickname] = useState<string>(() => {
@@ -450,6 +453,53 @@ export default function App() {
     },
     [removeDownloadEntry]
   );
+
+  const pauseBackgroundDownload = useCallback((downloadId: string) => {
+    const fg = foregroundDownloadAborts.current.get(downloadId);
+    if (fg) {
+      try {
+        fg.abort();
+      } catch {
+        /* ignore */
+      }
+      // Keep entry — foreground abort is treated as pause only via UI state
+    }
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "bgf-pause",
+        downloadId,
+      });
+    }
+    setGlobalDownloads((prev) => {
+      const updated = prev.map((dl) =>
+        dl.id === downloadId ? { ...dl, status: "paused", speed: "", eta: "Paused" } : dl
+      );
+      persistDownloadsLogNow(updated);
+      return updated;
+    });
+    toast("Download paused", { id: downloadId });
+  }, []);
+
+  const resumeBackgroundDownload = useCallback((downloadId: string) => {
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "bgf-resume",
+        downloadId,
+      });
+      setGlobalDownloads((prev) => {
+        const updated = prev.map((dl) =>
+          dl.id === downloadId
+            ? { ...dl, status: "downloading", speed: "Resuming…", eta: "", error: undefined }
+            : dl
+        );
+        persistDownloadsLogNow(updated);
+        return updated;
+      });
+      toast.loading("Resuming download…", { id: downloadId });
+      return;
+    }
+    toast.error("Can't resume right now — try Retry from Library.");
+  }, []);
 
   const dismissDownload = useCallback(
     (downloadId: string) => {
@@ -1181,6 +1231,18 @@ export default function App() {
         handleAudiobookSwMessage(data);
       } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
         handleAudiobookSwMessage(data);
+      } else if (data.type === "download-paused") {
+        clearSwDownloadWatchdog(data.downloadId);
+        setGlobalDownloads((prev) => {
+          const updated = prev.map((dl) =>
+            dl.id === data.downloadId
+              ? { ...dl, status: "paused", speed: "", eta: "Paused" }
+              : dl
+          );
+          persistDownloadsLogNow(updated);
+          return updated;
+        });
+        toast("Download paused", { id: data.downloadId });
       } else if (data.type === "download-error") {
         clearSwDownloadWatchdog(data.downloadId);
         swMadeProgressRef.current.delete(data.downloadId);
@@ -1350,7 +1412,10 @@ export default function App() {
       if (currentUser) {
         setUser(currentUser);
         setLoadingAuth(false);
-        await refreshLibrary(currentUser.uid);
+        const isReturningAccount = !currentUser.isAnonymous;
+        await refreshLibrary(currentUser.uid, {
+          promptDeviceDownloads: isReturningAccount,
+        });
 
         // Check if guest account has expired (30 days limit)
         if (currentUser.isAnonymous && currentUser.metadata.creationTime) {
@@ -1479,11 +1544,28 @@ export default function App() {
   }, [activeTab]);
 
   // Must be declared before closeReader/closeAudiobook (avoids TDZ blank-page crash).
-  const refreshLibrary = useCallback(async (uid = user?.uid || "") => {
+  const refreshLibrary = useCallback(async (uid = user?.uid || "", opts?: { promptDeviceDownloads?: boolean }) => {
     setLoadingLibrary(true);
     try {
       const data = await loadLibrary(uid);
       setBooks(data);
+
+      if (opts?.promptDeviceDownloads && uid) {
+        const promptKey = `kora_device_dl_prompted_${uid}`;
+        if (sessionStorage.getItem(promptKey) !== "true") {
+          const cached = new Set(await listCachedBookIds());
+          const missing = data.filter(
+            (book) =>
+              !cached.has(book.id) &&
+              (canHydrateBook(book) ||
+                (book.extension?.toLowerCase() === "audiobook" && !!book.audiobookTracks?.length))
+          );
+          if (missing.length > 0) {
+            sessionStorage.setItem(promptKey, "true");
+            setDeviceDownloadBooks(missing);
+          }
+        }
+      }
     } catch (err) {
       console.error("Failed to load library:", err);
     } finally {
@@ -1859,6 +1941,8 @@ export default function App() {
             onCancelDownload={cancelBackgroundDownload}
             onDismissDownload={dismissDownload}
             onRetryDownload={retryFailedDownload}
+            onPauseDownload={pauseBackgroundDownload}
+            onResumeDownload={resumeBackgroundDownload}
             onOpenAnnotations={() => setShowAnnotationsHub(true)}
             onSearchTrigger={(query) => {
               setDiscoverInitialQuery(query);
@@ -2513,6 +2597,16 @@ export default function App() {
         onClose={() => setShowDailyReminder(false)}
         nickname={userNickname}
       />
+
+      {deviceDownloadBooks && deviceDownloadBooks.length > 0 && (
+        <DeviceDownloadPicker
+          books={deviceDownloadBooks}
+          cachedBookIds={cachedBookIds}
+          userId={user?.uid || ""}
+          onClose={() => setDeviceDownloadBooks(null)}
+          onCachedIdsChanged={updateCachedBookIndex}
+        />
+      )}
 
       {/* Playful Booknerd Onboarding Modal */}
       <OnboardingModal

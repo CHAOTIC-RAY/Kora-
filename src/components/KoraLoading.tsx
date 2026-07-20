@@ -24,12 +24,15 @@ const APP_MESSAGES = [
   "Almost there…",
 ];
 
-const FLAP_COUNT = 4;
-const PAGE_TURN_CYCLE = 3.6;
-const SLOT = PAGE_TURN_CYCLE / FLAP_COUNT;
+const PAGE_TURN_CYCLE = 2.8;
 
-/** Corner flap size (% of icon box) — each layer peels a larger corner wedge. */
-const FLAP_SIZES = ["36%", "50%", "66%", "84%"] as const;
+/** Ghost/onion-skin flap offsets — like the paper-turn logo stills. */
+const GHOST_FLAPS = [
+  { delay: 0, opacity: 0.95, scale: 1 },
+  { delay: 0.12, opacity: 0.55, scale: 1.04 },
+  { delay: 0.24, opacity: 0.32, scale: 1.08 },
+  { delay: 0.36, opacity: 0.16, scale: 1.12 },
+] as const;
 
 function truncateQuery(query: string, max = 36) {
   const trimmed = query.trim();
@@ -66,133 +69,129 @@ function resolveMessage(
   }
 }
 
-function flapKeyframes(index: number) {
-  const slotStart = (index * SLOT) / PAGE_TURN_CYCLE;
-  const lift = (index * SLOT + SLOT * 0.22) / PAGE_TURN_CYCLE;
-  const mid = (index * SLOT + SLOT * 0.52) / PAGE_TURN_CYCLE;
-  const end = ((index + 1) * SLOT) / PAGE_TURN_CYCLE;
-
-  return {
-    times: [0, slotStart, lift, mid, end, 1],
-    rotateY: [0, 0, -22, -168, -178, 0] as number[],
-    rotateX: [0, 0, -8, -16, -10, 0] as number[],
-    shadow: [0, 0, 0.35, 0.55, 0.2, 0] as number[],
-  };
-}
-
-function CornerFlap({
-  index,
+/** Triangle paper flap peeling from the top-right corner with fold gradients. */
+function PaperFlapLayer({
+  delay,
+  opacity,
+  scale,
   size,
-  iconClass,
-  compact,
 }: {
-  index: number;
-  size: string;
-  iconClass: string;
-  compact: boolean;
+  delay: number;
+  opacity: number;
+  scale: number;
+  size: number;
 }) {
-  const { times, rotateY, rotateX, shadow } = flapKeyframes(index);
-  const iconW = compact ? "2.5rem" : "3.35rem";
-  const iconH = compact ? "3rem" : "4rem";
-
   return (
-    <div
-      className="pointer-events-none absolute bottom-0 right-0 overflow-hidden"
+    <motion.div
+      className="pointer-events-none absolute right-0 top-0 origin-top-right"
       style={{
         width: size,
         height: size,
-        clipPath: "polygon(0 0, 100% 0, 100% 100%)",
-        WebkitClipPath: "polygon(0 0, 100% 0, 100% 100%)",
-        zIndex: FLAP_COUNT - index,
+        transformStyle: "preserve-3d",
+      }}
+      animate={{
+        rotateY: [0, -28, -118, -168, -12, 0],
+        rotateX: [0, 8, 14, 6, 2, 0],
+        rotateZ: [0, -4, -8, -3, 0, 0],
+        opacity: [0, opacity, opacity * 0.9, opacity * 0.55, 0.08, 0],
+        scale: [0.92, scale, scale * 1.02, scale, 0.96, 0.92],
+      }}
+      transition={{
+        duration: PAGE_TURN_CYCLE,
+        repeat: Infinity,
+        delay,
+        ease: [0.45, 0.05, 0.2, 1],
+        times: [0, 0.12, 0.38, 0.58, 0.82, 1],
       }}
     >
-      <motion.div
-        className="absolute bottom-0 right-0"
+      {/* Front of paper — light face with fold gradient */}
+      <div
+        className="absolute inset-0"
         style={{
-          width: iconW,
-          height: iconH,
-          transformOrigin: "100% 100%",
-          transformStyle: "preserve-3d",
-        }}
-        animate={{ rotateY, rotateX }}
-        transition={{
-          duration: PAGE_TURN_CYCLE,
-          repeat: Infinity,
-          ease: [0.42, 0.02, 0.18, 1],
-          times,
+          clipPath: "polygon(0 0, 100% 0, 100% 100%)",
+          WebkitClipPath: "polygon(0 0, 100% 0, 100% 100%)",
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
+          background:
+            "linear-gradient(135deg, #f7f4ef 0%, #fffefb 38%, #e8e2d8 72%, #d4cdc2 100%)",
+          boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
         }}
       >
         <div
           className="absolute inset-0"
-          style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
-        >
-          <KoraIcon className={`${iconClass} text-kindle-accent`} />
-          <div
-            className="pointer-events-none absolute inset-0"
-            style={{
-              background:
-                "linear-gradient(135deg, transparent 58%, rgba(0,0,0,0.12) 78%, rgba(0,0,0,0.22) 100%)",
-            }}
-          />
-        </div>
-
-        <div
-          className="absolute inset-0 rounded-sm bg-gradient-to-br from-kindle-card via-kindle-bg to-kindle-card/80"
           style={{
-            transform: "rotateY(180deg)",
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            boxShadow: "inset 0 0 12px rgba(0,0,0,0.08)",
+            background:
+              "linear-gradient(225deg, rgba(255,255,255,0.85) 0%, transparent 42%, rgba(0,0,0,0.08) 100%)",
           }}
         />
-      </motion.div>
+        <div
+          className="absolute left-0 top-0 h-full w-[2px] origin-top-left"
+          style={{
+            transform: "rotate(45deg)",
+            background:
+              "linear-gradient(to bottom, rgba(0,0,0,0.18), rgba(0,0,0,0.04), transparent)",
+          }}
+        />
+      </div>
 
-      <motion.div
-        className="pointer-events-none absolute left-0 top-0 h-[141%] w-px origin-top-left bg-black/25"
-        style={{ transform: "rotate(-45deg)" }}
-        animate={{ opacity: shadow }}
-        transition={{
-          duration: PAGE_TURN_CYCLE,
-          repeat: Infinity,
-          ease: "easeInOut",
-          times,
+      {/* Underside of paper */}
+      <div
+        className="absolute inset-0"
+        style={{
+          clipPath: "polygon(0 0, 100% 0, 100% 100%)",
+          WebkitClipPath: "polygon(0 0, 100% 0, 100% 100%)",
+          transform: "rotateY(180deg)",
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
+          background:
+            "linear-gradient(315deg, #cfc8bc 0%, #b8b0a4 45%, #9a9288 100%)",
+          boxShadow: "inset 0 0 10px rgba(0,0,0,0.15)",
         }}
       />
-    </div>
+    </motion.div>
   );
 }
 
 function KoraPageTurnIcon({ compact }: { compact: boolean }) {
   const iconClass = compact ? "h-12 w-auto" : "h-16 w-auto";
   const boxClass = compact ? "h-12 w-10" : "h-16 w-[3.35rem]";
+  const flapSize = compact ? 28 : 38;
 
   return (
     <div
       className={`relative overflow-visible ${boxClass}`}
-      style={{
-        perspective: "480px",
-        perspectiveOrigin: "92% 96%",
-      }}
+      style={{ perspective: "640px", perspectiveOrigin: "85% 15%" }}
     >
-      <div className="absolute inset-0 translate-y-[3px] opacity-20">
+      {/* Soft stack behind the mark */}
+      <div className="absolute inset-0 translate-x-[1px] translate-y-[2px] opacity-25">
         <KoraIcon className={`${iconClass} text-kindle-accent`} />
       </div>
-      <div className="absolute inset-0 translate-x-[1px] translate-y-[5px] opacity-30">
+      <div className="absolute inset-0 opacity-90">
         <KoraIcon className={`${iconClass} text-kindle-accent`} />
       </div>
 
-      <div className="absolute inset-0 opacity-50">
-        <KoraIcon className={`${iconClass} text-kindle-accent/70`} />
-      </div>
+      {/* Corner shade under the peel */}
+      <motion.div
+        className="pointer-events-none absolute right-0 top-0"
+        style={{
+          width: flapSize * 1.15,
+          height: flapSize * 1.15,
+          clipPath: "polygon(0 0, 100% 0, 100% 100%)",
+          background:
+            "linear-gradient(225deg, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0.06) 55%, transparent 100%)",
+        }}
+        animate={{ opacity: [0.15, 0.55, 0.2, 0.15] }}
+        transition={{ duration: PAGE_TURN_CYCLE, repeat: Infinity, ease: "easeInOut" }}
+      />
 
-      <div className="absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
-        {FLAP_SIZES.map((size, index) => (
-          <CornerFlap
-            key={size}
-            index={index}
-            size={size}
-            iconClass={iconClass}
-            compact={compact}
+      <div className="absolute inset-0 overflow-visible" style={{ transformStyle: "preserve-3d" }}>
+        {GHOST_FLAPS.map((flap) => (
+          <PaperFlapLayer
+            key={flap.delay}
+            delay={flap.delay}
+            opacity={flap.opacity}
+            scale={flap.scale}
+            size={flapSize}
           />
         ))}
       </div>
@@ -241,7 +240,7 @@ export default function KoraLoading({
     >
       <KoraWordmark className={`${wordmarkSize} text-kindle-text`} />
 
-      <div className="relative flex items-center justify-center overflow-visible">
+      <div className="relative flex items-center justify-center overflow-visible py-1">
         <KoraPageTurnIcon compact={compact} />
       </div>
 

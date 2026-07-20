@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
@@ -20,7 +20,7 @@ function findActiveDownload(book: { id?: string; md5?: string; downloadId?: stri
   );
   return (
     downloads.find((download) => {
-      if (download.status !== "downloading" && download.status !== "error") return false;
+      if (download.status !== "downloading" && download.status !== "error" && download.status !== "paused") return false;
       return [download.id, download.md5].filter(Boolean).some((key) => bookKeys.has(String(key)));
     }) ?? null
   );
@@ -33,6 +33,8 @@ function LibraryDownloadOverlay({
   onStop,
   onDelete,
   onRetry,
+  onPause,
+  onResume,
 }: {
   book: { coverUrl?: string };
   download: { id?: string; percent?: number; status?: string; error?: string };
@@ -40,9 +42,12 @@ function LibraryDownloadOverlay({
   onStop?: () => void;
   onDelete?: () => void;
   onRetry?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
 }) {
   const pct = typeof download.percent === "number" ? download.percent : 0;
   const isError = download.status === "error";
+  const isPaused = download.status === "paused";
   return (
     <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-kindle-card/70 backdrop-blur-[1px]">
       {!hideCovers && book.coverUrl ? (
@@ -54,7 +59,7 @@ function LibraryDownloadOverlay({
         />
       ) : null}
       <div className="absolute inset-0 overflow-hidden">
-        {!isError && (
+        {!isError && !isPaused && (
           <div
             className="absolute inset-y-0 -left-1/3 w-1/3 bg-gradient-to-r from-transparent via-white/30 to-transparent"
             style={{ animation: "shimmer 1.4s infinite" }}
@@ -77,7 +82,37 @@ function LibraryDownloadOverlay({
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         )}
-        {!isError && onStop && (
+        {isPaused && onResume && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onResume();
+            }}
+            className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-kindle-accent/15 hover:text-kindle-accent active:scale-90 transition"
+            title="Resume download"
+            aria-label="Resume download"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+          </button>
+        )}
+        {!isError && !isPaused && onPause && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onPause();
+            }}
+            className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-kindle-accent/15 hover:text-kindle-accent active:scale-90 transition"
+            title="Pause download"
+            aria-label="Pause download"
+          >
+            <Pause className="w-3.5 h-3.5 fill-current" />
+          </button>
+        )}
+        {!isError && !isPaused && onStop && (
           <button
             type="button"
             onClick={(e) => {
@@ -86,13 +121,13 @@ function LibraryDownloadOverlay({
               onStop();
             }}
             className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-red-500/15 hover:text-red-500 active:scale-90 transition"
-            title="Stop download"
-            aria-label="Stop download"
+            title="Cancel download"
+            aria-label="Cancel download"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
           </button>
         )}
-        {onDelete && (
+        {(isError || isPaused) && onDelete && (
           <button
             type="button"
             onClick={(e) => {
@@ -101,8 +136,8 @@ function LibraryDownloadOverlay({
               onDelete();
             }}
             className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-red-500/15 hover:text-red-500 active:scale-90 transition"
-            title={isError ? "Remove download" : "Stop and remove"}
-            aria-label={isError ? "Remove download" : "Stop and remove download"}
+            title="Remove download"
+            aria-label="Remove download"
           >
             <X className="w-3.5 h-3.5" />
           </button>
@@ -133,7 +168,7 @@ function LibraryDownloadOverlay({
         )}
       </div>
       <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted px-2 text-center">
-        {isError ? (download.error === "Cancelled" ? "Stopped" : "Failed") : "Downloading…"}
+        {isError ? (download.error === "Cancelled" ? "Stopped" : "Failed") : isPaused ? "Paused" : "Downloading…"}
       </span>
     </div>
   );
@@ -153,6 +188,8 @@ interface LibraryManagerProps {
   onCancelDownload?: (downloadId: string) => void;
   onDismissDownload?: (downloadId: string) => void;
   onRetryDownload?: (downloadId: string) => void;
+  onPauseDownload?: (downloadId: string) => void;
+  onResumeDownload?: (downloadId: string) => void;
   onSearchTrigger?: (query: string) => void;
   onOpenAnnotations?: () => void;
 }
@@ -206,6 +243,8 @@ function LibraryManager({
   onCancelDownload,
   onDismissDownload,
   onRetryDownload,
+  onPauseDownload,
+  onResumeDownload,
   onSearchTrigger,
   onOpenAnnotations,
 }: LibraryManagerProps) {
@@ -1016,6 +1055,16 @@ function LibraryManager({
                         onStop={
                           activeDownload.status === "downloading" && onCancelDownload
                             ? () => onCancelDownload(activeDownload.id)
+                            : undefined
+                        }
+                        onPause={
+                          activeDownload.status === "downloading" && onPauseDownload
+                            ? () => onPauseDownload(activeDownload.id)
+                            : undefined
+                        }
+                        onResume={
+                          activeDownload.status === "paused" && onResumeDownload
+                            ? () => onResumeDownload(activeDownload.id)
                             : undefined
                         }
                         onRetry={

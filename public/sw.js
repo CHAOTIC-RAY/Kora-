@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v6";
-const API_CACHE = "kora-api-v6";
+const SHELL_CACHE = "kora-shell-v7";
+const API_CACHE = "kora-api-v7";
 const COVER_CACHE = "kora-covers-v1";
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.
@@ -18,8 +18,12 @@ const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
 const PARTIAL_FLUSH_BYTES = 512 * 1024;
 
-/** Active streaming downloads that can be aborted via bgf-cancel */
+/** Active streaming downloads that can be aborted via bgf-cancel / bgf-pause */
 const activeBookDownloads = new Map(); // downloadId -> { abortController, reader }
+/** Ids currently being paused (keep partials, do not treat as cancel) */
+const pausingDownloadIds = new Set();
+/** Live progress snapshot for the grouped "Kora Downloads" notification */
+const downloadProgressSnapshot = new Map(); // downloadId -> { title, percent, transferred, status }
 
 async function warmApiCache() {
   const cache = await caches.open(API_CACHE);
@@ -171,25 +175,106 @@ function absoluteUrl(url) {
 
 async function showProgressNotif(payload, percent, transferred, opts = {}) {
   if (!self.registration || !self.registration.showNotification) return;
-  const title = opts.title || `Downloading "${payload.title || payload.trackTitle || "file"}"`;
-  const body = percent == null ? transferred : `${percent}%  •  ${transferred}`;
   const downloadId = payload.downloadId || payload.jobId;
+  const title = payload.title || payload.bookTitle || payload.trackTitle || "file";
+
+  if (downloadId) {
+    downloadProgressSnapshot.set(downloadId, {
+      title,
+      percent: percent == null ? null : Math.max(0, Math.min(100, percent)),
+      transferred: transferred || "",
+      status: opts.status || "downloading",
+    });
+  }
+
+  await refreshGroupedDownloadNotification();
+}
+
+async function refreshGroupedDownloadNotification() {
+  if (!self.registration || !self.registration.showNotification) return;
+
+  const entries = [...downloadProgressSnapshot.entries()];
+  const active = entries.filter(([, e]) => e.status === "downloading" || e.status === "paused");
+
+  // Close any leftover per-download tags so the tray stays grouped.
+  try {
+    const all = await self.registration.getNotifications();
+    for (const n of all) {
+      const tag = n.tag || "";
+      if (tag.startsWith("kora-dl-") && tag !== "kora-dl-group") {
+        n.close();
+      }
+    }
+  } catch (e) {}
+
+  if (active.length === 0) {
+    try {
+      const group = await self.registration.getNotifications({ tag: "kora-dl-group" });
+      group.forEach((n) => n.close());
+    } catch (e) {}
+    return;
+  }
+
+  const downloading = active.filter(([, e]) => e.status === "downloading");
+  const paused = active.filter(([, e]) => e.status === "paused");
+  const primaryId = downloading[0]?.[0] || paused[0]?.[0];
+  const lines = active.slice(0, 4).map(([, e]) => {
+    const pct = e.percent != null ? `${e.percent}%` : "…";
+    const state = e.status === "paused" ? "paused" : pct;
+    return `${e.title} — ${state}`;
+  });
+  if (active.length > 4) lines.push(`+${active.length - 4} more`);
+
+  const avg =
+    downloading.length > 0
+      ? Math.round(
+          downloading.reduce((s, [, e]) => s + (e.percent || 0), 0) / downloading.length
+        )
+      : null;
+
+  let title;
+  if (downloading.length && paused.length) {
+    title = `Kora · ${downloading.length} downloading, ${paused.length} paused`;
+  } else if (paused.length && !downloading.length) {
+    title = paused.length === 1 ? `Kora · Paused “${paused[0][1].title}”` : `Kora · ${paused.length} downloads paused`;
+  } else if (downloading.length === 1) {
+    title = `Kora · Downloading “${downloading[0][1].title}”`;
+  } else {
+    title = `Kora · ${downloading.length} downloads`;
+  }
+
+  const actions = [];
+  if (downloading.length) {
+    actions.push({ action: "pause", title: "Pause" });
+    actions.push({ action: "cancel", title: "Cancel" });
+  } else if (paused.length) {
+    actions.push({ action: "resume", title: "Resume" });
+    actions.push({ action: "cancel", title: "Cancel" });
+  }
+  actions.push({ action: "open", title: "Open" });
+
   try {
     await self.registration.showNotification(title, {
-      body,
-      tag: "kora-dl-" + downloadId,
+      body: lines.join("\n"),
+      tag: "kora-dl-group",
+      renotify: true,
       silent: true,
-      data: { downloadId, jobId: payload.jobId },
-      ...(percent != null ? { progress: Math.max(0, Math.min(100, percent)) } : {}),
-      actions: [
-        { action: "open", title: "Open" },
-        { action: "cancel", title: "Cancel" },
-      ],
-      ...opts.extra,
+      data: {
+        downloadId: primaryId,
+        group: true,
+        downloadIds: active.map(([id]) => id),
+      },
+      ...(avg != null ? { progress: avg } : {}),
+      actions: actions.slice(0, 2),
     });
   } catch (e) {
     /* notification may be blocked */
   }
+}
+
+async function clearDownloadFromGroup(downloadId) {
+  downloadProgressSnapshot.delete(downloadId);
+  await refreshGroupedDownloadNotification();
 }
 
 function chunksToBlob(chunks, type) {
@@ -357,9 +442,26 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
     const cancelled =
       err?.name === "AbortError" ||
       /abort|cancel/i.test(String(err?.message || ""));
+    const wasPaused = pausingDownloadIds.has(downloadId);
+    if (wasPaused) pausingDownloadIds.delete(downloadId);
+
+    if (cancelled && wasPaused) {
+      // Keep partial bytes so the user can resume later.
+      downloadProgressSnapshot.set(downloadId, {
+        title: payload.title || "book",
+        percent: downloadProgressSnapshot.get(downloadId)?.percent ?? null,
+        transferred: downloadProgressSnapshot.get(downloadId)?.transferred || "Paused",
+        status: "paused",
+      });
+      await refreshGroupedDownloadNotification();
+      await postToClients({ type: "download-paused", downloadId });
+      return;
+    }
+
     if (cancelled) {
       await delDB(partialId);
       await delDB(downloadId);
+      await clearDownloadFromGroup(downloadId);
     }
     // Keep partials on non-cancel failures so background sync / foreground fallback can resume.
     await postToClients({
@@ -371,8 +473,8 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
       try {
         await self.registration.showNotification(`Download failed: "${payload.title}"`, {
           body: err.message || "Please try again.",
-          tag: "kora-dl-" + downloadId,
-          data: { downloadId, error: true },
+          tag: "kora-dl-group",
+          data: { downloadId, error: true, group: true },
           actions: [{ action: "retry", title: "Retry" }],
         });
       } catch (e) {}
@@ -390,6 +492,7 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
 }
 
 async function finishDownload(payload, fileBlob) {
+  await clearDownloadFromGroup(payload.downloadId);
   await postToClients({
     type: "download-complete",
     downloadId: payload.downloadId,
@@ -400,13 +503,13 @@ async function finishDownload(payload, fileBlob) {
     try {
       await self.registration.showNotification(`"${payload.title}" downloaded`, {
         body: "Ready in your library.",
-        tag: "kora-dl-" + payload.downloadId,
+        tag: "kora-dl-done-" + payload.downloadId,
         silent: false,
         data: { downloadId: payload.downloadId, done: true },
         actions: [{ action: "open", title: "Open" }],
       });
       setTimeout(() => {
-        self.registration.getNotifications({ tag: "kora-dl-" + payload.downloadId }).then((ns) => ns.forEach((n) => n.close()));
+        self.registration.getNotifications({ tag: "kora-dl-done-" + payload.downloadId }).then((ns) => ns.forEach((n) => n.close()));
       }, 4000);
     } catch (e) {}
   }
@@ -668,6 +771,7 @@ self.addEventListener("message", (event) => {
     event.waitUntil(delDB(data.downloadId || data.jobId));
   } else if (data.type === "bgf-cancel") {
     event.waitUntil((async () => {
+      pausingDownloadIds.delete(data.downloadId);
       try {
         await self.registration.backgroundFetch.get("kora-bgf-" + data.downloadId)?.abort();
       } catch (e) {}
@@ -680,7 +784,47 @@ self.addEventListener("message", (event) => {
       await delDB("kora-bgf-" + data.downloadId);
       await delDB(data.downloadId);
       await delDB("partial-" + data.downloadId);
+      await clearDownloadFromGroup(data.downloadId);
       await postToClients({ type: "download-error", downloadId: data.downloadId, error: "Cancelled" });
+    })());
+  } else if (data.type === "bgf-pause") {
+    event.waitUntil((async () => {
+      if (!data.downloadId) return;
+      pausingDownloadIds.add(data.downloadId);
+      const active = activeBookDownloads.get(data.downloadId);
+      if (active) {
+        try { active.abortController.abort(); } catch (e) {}
+        try { await active.reader?.cancel(); } catch (e) {}
+      } else {
+        // Already idle — mark paused from snapshot if present
+        const snap = downloadProgressSnapshot.get(data.downloadId);
+        if (snap) {
+          downloadProgressSnapshot.set(data.downloadId, { ...snap, status: "paused" });
+          await refreshGroupedDownloadNotification();
+          await postToClients({ type: "download-paused", downloadId: data.downloadId });
+        }
+      }
+    })());
+  } else if (data.type === "bgf-resume") {
+    event.waitUntil((async () => {
+      if (!data.downloadId) return;
+      pausingDownloadIds.delete(data.downloadId);
+      if (activeBookDownloads.has(data.downloadId)) return;
+      const partial = await getDB("partial-" + data.downloadId);
+      if (partial?.payload) {
+        downloadProgressSnapshot.set(data.downloadId, {
+          title: partial.payload.title || "book",
+          percent: downloadProgressSnapshot.get(data.downloadId)?.percent ?? null,
+          transferred: "Resuming…",
+          status: "downloading",
+        });
+        await refreshGroupedDownloadNotification();
+        await postToClients({ type: "download-progress", downloadId: data.downloadId, percent: downloadProgressSnapshot.get(data.downloadId)?.percent ?? 0, transferred: "Resuming…", speed: "" });
+        await downloadBook(partial.payload, partial.received || 0, partial.chunks || [], partial.contentType || "");
+        return;
+      }
+      // Fall back to client retry if no partial exists
+      await postToClients({ type: "bgf-retry", downloadId: data.downloadId });
     })());
   } else if (data.type === "sw-ready") {
     event.waitUntil(postToClients({ type: "sw-ready-ack" }));
@@ -776,10 +920,61 @@ self.addEventListener("notificationclick", (event) => {
     (async () => {
       const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       const focus = () => (clients[0] ? clients[0].focus() : self.clients.openWindow("/"));
+      const targetIds = Array.isArray(data.downloadIds) && data.downloadIds.length
+        ? data.downloadIds
+        : data.downloadId
+          ? [data.downloadId]
+          : [];
+
+      if (action === "pause") {
+        for (const id of targetIds) {
+          pausingDownloadIds.add(id);
+          const active = activeBookDownloads.get(id);
+          if (active) {
+            try { active.abortController.abort(); } catch (e) {}
+            try { await active.reader?.cancel(); } catch (e) {}
+          }
+        }
+        return;
+      }
+      if (action === "resume") {
+        for (const id of targetIds) {
+          pausingDownloadIds.delete(id);
+          if (activeBookDownloads.has(id)) continue;
+          const partial = await getDB("partial-" + id);
+          if (partial?.payload) {
+            downloadProgressSnapshot.set(id, {
+              title: partial.payload.title || "book",
+              percent: downloadProgressSnapshot.get(id)?.percent ?? null,
+              transferred: "Resuming…",
+              status: "downloading",
+            });
+            await postToClients({ type: "download-progress", downloadId: id, percent: downloadProgressSnapshot.get(id)?.percent ?? 0, transferred: "Resuming…", speed: "" });
+            // Fire without awaiting so multiple can resume
+            downloadBook(partial.payload, partial.received || 0, partial.chunks || [], partial.contentType || "");
+          } else {
+            await postToClients({ type: "bgf-retry", downloadId: id });
+          }
+        }
+        await refreshGroupedDownloadNotification();
+        await focus();
+        return;
+      }
       if (action === "cancel") {
-        if (data.downloadId) {
-          await postToClients({ type: "bgf-cancel", downloadId: data.downloadId });
-          try { await self.registration.backgroundFetch.get("kora-bgf-" + data.downloadId)?.abort(); } catch (e) {}
+        for (const id of targetIds) {
+          pausingDownloadIds.delete(id);
+          await postToClients({ type: "bgf-cancel", downloadId: id });
+          try { await self.registration.backgroundFetch.get("kora-bgf-" + id)?.abort(); } catch (e) {}
+          const active = activeBookDownloads.get(id);
+          if (active) {
+            try { active.abortController.abort(); } catch (e) {}
+            try { await active.reader?.cancel(); } catch (e) {}
+            activeBookDownloads.delete(id);
+          }
+          await delDB("kora-bgf-" + id);
+          await delDB(id);
+          await delDB("partial-" + id);
+          await clearDownloadFromGroup(id);
         }
         return;
       }
@@ -797,7 +992,7 @@ self.addEventListener("notificationclick", (event) => {
         }
         return;
       }
-      if (data.downloadId) await postToClients({ type: "open-downloads", downloadId: data.downloadId });
+      if (data.downloadId || data.group) await postToClients({ type: "open-downloads", downloadId: data.downloadId });
       await focus();
     })()
   );

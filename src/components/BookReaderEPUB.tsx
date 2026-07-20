@@ -3008,11 +3008,41 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             style={{ opacity: `${(100 - brightness) * 0.7}%` }} 
           />
 
-          {/* Dictionary Modal */}
+          {/* Dictionary Modal — anchored near the selection so the word stays visible */}
           {dictionaryWord && (
-            <div className="absolute inset-0 z-[70] flex items-center justify-center p-4 sm:p-6 animate-in fade-in zoom-in duration-200">
-              <div className="absolute inset-0 bg-black/40" onClick={() => setDictionaryWord(null)} />
-              <div className={`relative w-full max-w-sm max-h-[min(85dvh,36rem)] ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-5 sm:p-6 overflow-y-auto`}>
+            <div className="absolute inset-0 z-[70] pointer-events-none">
+              <div
+                className="absolute inset-0 bg-black/25 pointer-events-auto"
+                onClick={() => setDictionaryWord(null)}
+              />
+              <div
+                className={`pointer-events-auto absolute left-1/2 w-[min(100%-1.5rem,22rem)] max-h-[min(52dvh,22rem)] ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-4 sm:p-5 overflow-y-auto animate-in fade-in zoom-in-95 duration-200`}
+                style={(() => {
+                  const pad = 12;
+                  const panelH = Math.min(window.innerHeight * 0.52, 352);
+                  const coords = selectionCoords;
+                  if (!coords) {
+                    return {
+                      top: "auto",
+                      bottom: pad,
+                      transform: "translateX(-50%)",
+                    } as React.CSSProperties;
+                  }
+                  const spaceBelow = window.innerHeight - coords.bottom;
+                  const spaceAbove = coords.top;
+                  const placeBelow = spaceBelow >= Math.min(panelH, 220) || spaceBelow >= spaceAbove;
+                  if (placeBelow) {
+                    return {
+                      top: Math.min(coords.bottom + 10, window.innerHeight - panelH - pad),
+                      transform: "translateX(-50%)",
+                    } as React.CSSProperties;
+                  }
+                  return {
+                    top: Math.max(pad, coords.top - 10 - Math.min(panelH, spaceAbove - 16)),
+                    transform: "translateX(-50%)",
+                  } as React.CSSProperties;
+                })()}
+              >
                 <div className="flex justify-between items-start gap-3 mb-3 min-w-0">
                   <div className="min-w-0">
                     <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Oxford Dictionary</span>
@@ -3029,7 +3059,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     <span className="text-xs font-sans">Looking up...</span>
                   </div>
                 ) : dictionaryData ? (
-                  <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="space-y-3 max-h-[28vh] overflow-y-auto pr-1 custom-scrollbar">
                     {dictionaryData.phonetic && (
                       <p className="text-xs font-mono opacity-60 bg-current/5 px-2 py-1 rounded inline-block">{dictionaryData.phonetic}</p>
                     )}
