@@ -20,9 +20,12 @@
     <meta name="apple-mobile-web-app-title" content="Kora" />
     <meta name="application-name" content="Kora" />
     <meta name="theme-color" content="#18181B" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#ECE8D4" media="(prefers-color-scheme: light)" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="format-detection" content="telephone=no" />
+    <meta name="format-detection" content="telephone=no, address=no" />
+    <meta name="color-scheme" content="dark light" />
+    {/* Helps iOS treat the app as installable; PNG icons are required (SVG alone is not enough). */}
+    <link rel="mask-icon" href="/favicon.svg" color="#18181B" />
   </head>
   <body>
     <div id="root"></div>

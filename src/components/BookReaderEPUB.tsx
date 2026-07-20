@@ -1985,6 +1985,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
     const utterance = new SpeechSynthesisUtterance(textToSpeak);
     const settings = getTtsSettings();
+
+    try {
+      void import("../lib/iosPwa").then((m) => m.unlockIosAudio());
+    } catch {
+      /* ignore */
+    }
     
     // Assign voice if selected
     const selectedVoice = resolveSpeechVoice(selectedVoiceName || settings.voiceName);

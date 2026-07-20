@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v8";
-const API_CACHE = "kora-api-v8";
+const SHELL_CACHE = "kora-shell-v9";
+const API_CACHE = "kora-api-v9";
 const COVER_CACHE = "kora-covers-v1";
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.

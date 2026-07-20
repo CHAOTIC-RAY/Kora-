@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { getBookFile } from "../db/indexedDB";
 import { BookMetadata } from "../lib/firebase";
+import { shareOrDownloadBlob } from "../lib/iosPwa";
 
 export default function DownloadBookBtn({ book }: { book: BookMetadata }) {
   const [downloading, setDownloading] = useState(false);
@@ -15,14 +16,8 @@ export default function DownloadBookBtn({ book }: { book: BookMetadata }) {
         alert("File not found in local cache. Try re-downloading it from Discover.");
         return;
       }
-      const url = URL.createObjectURL(fileData.blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileData.fileName || `${book.title}.${book.extension}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const filename = fileData.fileName || `${book.title}.${book.extension}`;
+      await shareOrDownloadBlob(fileData.blob, filename, book.title);
     } catch (err) {
       console.error("Failed to download book", err);
       alert("Error downloading the book.");

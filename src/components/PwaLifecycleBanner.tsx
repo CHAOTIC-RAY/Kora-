@@ -282,11 +282,16 @@ export default function PwaLifecycleBanner() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold">{showIosHint ? "Add Kora to Home Screen" : "Install Kora"}</p>
             {showIosHint ? (
-              <p className="text-[11px] text-kindle-text-muted mt-0.5 leading-relaxed">
-                Tap <Share className="inline w-3.5 h-3.5 align-text-bottom mx-0.5" aria-hidden /> Share, then{" "}
-                <span className="font-semibold text-kindle-text">Add to Home Screen</span> for offline reading and a
-                full-screen app.
-              </p>
+              <ol className="text-[11px] text-kindle-text-muted mt-1.5 space-y-1.5 list-decimal list-inside leading-relaxed">
+                <li>
+                  Tap <Share className="inline w-3.5 h-3.5 align-text-bottom mx-0.5" aria-hidden />{" "}
+                  <span className="font-semibold text-kindle-text">Share</span> in Safari
+                </li>
+                <li>
+                  Choose <span className="font-semibold text-kindle-text">Add to Home Screen</span>
+                </li>
+                <li>Open Kora from your home screen for offline, full-screen reading</li>
+              </ol>
             ) : (
               <p className="text-[11px] text-kindle-text-muted mt-0.5 leading-relaxed">
                 Add to your home screen for offline reading and a full-screen experience.

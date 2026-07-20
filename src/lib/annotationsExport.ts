@@ -42,14 +42,20 @@ export function highlightsToMarkdown(opts: {
   return lines.join("\n");
 }
 
-export function downloadMarkdown(filename: string, content: string) {
+export async function downloadMarkdown(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename.replace(/[^\w.\- ]+/g, "_");
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  const safe = filename.replace(/[^\w.\- ]+/g, "_");
+  try {
+    const { shareOrDownloadBlob } = await import("./iosPwa");
+    await shareOrDownloadBlob(blob, safe.endsWith(".md") ? safe : `${safe}.md`, "Kora notes");
+  } catch {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safe;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 }

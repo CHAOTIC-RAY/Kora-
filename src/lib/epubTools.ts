@@ -319,15 +319,21 @@ p:first-of-type{text-indent:0}`
   });
 }
 
-export function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename.replace(/[^\w.\- ]+/g, "_");
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+export async function downloadBlob(filename: string, blob: Blob) {
+  const safe = filename.replace(/[^\w.\- ]+/g, "_");
+  try {
+    const { shareOrDownloadBlob } = await import("./iosPwa");
+    await shareOrDownloadBlob(blob, safe, "Kora");
+  } catch {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = safe;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 }
 
 export function slugifyFilename(value: string, ext: string): string {

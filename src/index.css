@@ -482,6 +482,71 @@ html.kora-ios body {
   }
 }
 
+/* Visual viewport + keyboard (set by iosPwa.ts) */
+:root {
+  --kora-vvh: 100dvh;
+  --kora-keyboard-inset: 0px;
+  --kora-vv-offset-top: 0px;
+}
+
+html.kora-ios,
+html.kora-standalone {
+  height: 100%;
+  height: -webkit-fill-available;
+}
+
+html.kora-ios body,
+html.kora-standalone body {
+  min-height: 100%;
+  min-height: -webkit-fill-available;
+  min-height: 100dvh;
+  /* Kill rubber-band chaining into the browser chrome */
+  overscroll-behavior-y: none;
+  position: relative;
+}
+
+html.kora-standalone body {
+  /* Installed PWA: status bar is translucent — keep content clear of notch */
+  padding-top: 0;
+}
+
+/* When the software keyboard is open, lift fixed chrome above it */
+html.kora-keyboard-open .kora-mobile-footer,
+html.kora-keyboard-open .kora-mobile-media-dock,
+html.kora-keyboard-open .kora-audiobook-mini,
+html.kora-keyboard-open .kora-mobile-fab {
+  bottom: calc(1.25rem + var(--kora-safe-bottom) + var(--kora-keyboard-inset)) !important;
+}
+
+html.kora-keyboard-open .fixed.bottom-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\] {
+  bottom: calc(4.5rem + env(safe-area-inset-bottom) + var(--kora-keyboard-inset)) !important;
+}
+
+/* Prefer dynamic visual viewport height for full-screen shells */
+html.kora-ios #epub-reader-container,
+html.kora-standalone #epub-reader-container {
+  height: var(--kora-vvh, 100dvh);
+  max-height: var(--kora-vvh, 100dvh);
+}
+
+/* iOS: avoid sticky hover sticky-states after tap — prefer coarse pointer MQ */
+@media (hover: none) and (pointer: coarse) {
+  button:focus {
+    outline: none;
+  }
+  button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--kindle-accent, #c4a574) 70%, transparent);
+    outline-offset: 2px;
+  }
+}
+
+/* Soften momentum scroll only on iOS panes */
+html.kora-ios .overflow-y-auto,
+html.kora-ios .overflow-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 .kora-safe-top {
   padding-top: var(--kora-safe-top);
 }
@@ -599,6 +664,7 @@ body {
 #root {
   min-height: 100vh;
   min-height: 100dvh;
+  min-height: var(--kora-vvh, 100dvh);
 }
 
 /* Headings — skin UI display font (scoped in skin-fonts.css for app shell) */
