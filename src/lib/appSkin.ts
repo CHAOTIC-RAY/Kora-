@@ -9,7 +9,7 @@ export const APP_SKINS = [
   {
     id: "kora-glass",
     label: "Kora Glass",
-    description: "iOS liquid glass chrome",
+    description: "Liquid glass refraction, glare & Fresnel rim",
   },
 ] as const;
 

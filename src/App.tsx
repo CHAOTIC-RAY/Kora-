@@ -85,6 +85,8 @@ import {
   readStoredAppSkin,
   skinBodyClass,
 } from "./lib/appSkin";
+import { setLiquidGlassEnabled } from "./lib/liquidGlass";
+import LiquidGlassFilters from "./components/LiquidGlassFilters";
 
 const MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
@@ -1016,6 +1018,9 @@ export default function App() {
     if (displayTheme.includes("dark")) classes.push("dark");
     document.body.className = classes.join(" ");
     document.documentElement.dataset.skin = appSkin;
+    if (appSkin !== "kora-glass") {
+      setLiquidGlassEnabled(false);
+    }
   }, [displayTheme, appSkin]);
 
   useEffect(() => {
@@ -1685,6 +1690,7 @@ export default function App() {
       data-skin={appSkin}
       className="min-h-screen min-h-[100dvh] flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300"
     >
+      {appSkin === "kora-glass" && <LiquidGlassFilters />}
       {/* 1. Global Navigation Header - Kora Style */}
       <header className="kora-app-header border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
