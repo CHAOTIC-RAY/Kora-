@@ -792,3 +792,299 @@ h1, h2, h3, h4 {
   border-radius: 0.375rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   App skins — orthogonal to display themes (color tokens).
+   .skin-kora = classic solid chrome (default, no extra rules)
+   .skin-kora-glass = iOS liquid glass materials + round chrome
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-kora-glass {
+  --glass-blur: 28px;
+  --glass-saturate: 180%;
+  --glass-fill: color-mix(in srgb, var(--theme-card) 58%, transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--theme-card) 78%, transparent);
+  --glass-stroke: color-mix(in srgb, var(--theme-text) 14%, transparent);
+  --glass-stroke-soft: color-mix(in srgb, var(--theme-text) 8%, transparent);
+  --glass-highlight: color-mix(in srgb, #ffffff 55%, transparent);
+  --glass-shadow: 0 10px 40px color-mix(in srgb, #000 18%, transparent);
+  --glass-inset:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 42%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 10%, transparent);
+
+  background-color: var(--theme-bg);
+  background-image:
+    radial-gradient(1100px 520px at 8% -8%, color-mix(in srgb, var(--theme-accent) 16%, transparent), transparent 62%),
+    radial-gradient(900px 480px at 92% 0%, color-mix(in srgb, var(--theme-text) 10%, transparent), transparent 58%),
+    radial-gradient(700px 420px at 50% 110%, color-mix(in srgb, var(--theme-accent) 10%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--theme-bg), color-mix(in srgb, var(--theme-card) 55%, var(--theme-bg)));
+  background-attachment: fixed;
+}
+
+body.skin-kora-glass.dark,
+body.skin-kora-glass.theme-dark-grey,
+body.skin-kora-glass.theme-dark-blue {
+  --glass-fill: color-mix(in srgb, var(--theme-card) 38%, transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--theme-card) 55%, transparent);
+  --glass-stroke: color-mix(in srgb, #ffffff 22%, transparent);
+  --glass-stroke-soft: color-mix(in srgb, #ffffff 14%, transparent);
+  --glass-highlight: color-mix(in srgb, #ffffff 28%, transparent);
+  --glass-shadow: 0 14px 48px color-mix(in srgb, #000 45%, transparent);
+  --glass-inset:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 28%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 28%, transparent);
+}
+
+/* Shared liquid-glass material helper */
+body.skin-kora-glass .kora-glass-surface,
+body.skin-kora-glass .kindle-card,
+body.skin-kora-glass .kora-app-header,
+body.skin-kora-glass .kora-desktop-nav,
+body.skin-kora-glass .kora-mobile-footer,
+body.skin-kora-glass .kora-mobile-media-dock--joined {
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-color: var(--glass-stroke);
+  box-shadow: var(--glass-shadow), var(--glass-inset);
+}
+
+/* Header — frosted strip with specular edge */
+body.skin-kora-glass .kora-app-header {
+  border-bottom-color: var(--glass-stroke-soft) !important;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 48%),
+    var(--glass-fill) !important;
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+}
+
+body.skin-kora-glass .kora-glass-icon {
+  filter: drop-shadow(0 1px 1px color-mix(in srgb, #000 18%, transparent));
+}
+
+body.skin-kora-glass .kora-glass-icon-btn {
+  border-radius: 9999px !important;
+  background: var(--glass-fill-strong);
+  border: 1px solid var(--glass-stroke-soft);
+  box-shadow: var(--glass-inset);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+}
+
+body.skin-kora-glass .kora-glass-icon-btn:hover {
+  background: color-mix(in srgb, var(--theme-card) 88%, transparent);
+}
+
+/* Desktop pill nav */
+body.skin-kora-glass .kora-desktop-nav {
+  border-radius: 9999px !important;
+  padding: 0.3rem !important;
+  gap: 0.2rem !important;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 55%),
+    var(--glass-fill) !important;
+}
+
+body.skin-kora-glass .kora-desktop-nav-item {
+  border-radius: 9999px !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body.skin-kora-glass .kora-desktop-nav-item.is-active {
+  background: var(--glass-fill-strong) !important;
+  border-color: var(--glass-stroke-soft) !important;
+  box-shadow: var(--glass-inset), 0 4px 14px color-mix(in srgb, #000 12%, transparent) !important;
+}
+
+/* Cards & panels */
+body.skin-kora-glass .kindle-card {
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(165deg, var(--glass-highlight), transparent 42%),
+    var(--glass-fill) !important;
+  border: 1px solid var(--glass-stroke);
+}
+
+body.skin-kora-glass .bg-kindle-card {
+  background-color: color-mix(in srgb, var(--theme-card) 62%, transparent) !important;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+body.skin-kora-glass .bg-kindle-card\/90,
+body.skin-kora-glass .bg-kindle-card\/95 {
+  background-color: color-mix(in srgb, var(--theme-card) 55%, transparent) !important;
+}
+
+/* Inputs / search fields */
+body.skin-kora-glass input[type="text"],
+body.skin-kora-glass input[type="search"],
+body.skin-kora-glass input[type="email"],
+body.skin-kora-glass input[type="password"],
+body.skin-kora-glass textarea,
+body.skin-kora-glass select {
+  background: color-mix(in srgb, var(--theme-card) 55%, transparent) !important;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border-color: var(--glass-stroke) !important;
+  box-shadow: var(--glass-inset);
+}
+
+/* Chip / pill controls — only bordered chips, not every rounded-full */
+body.skin-kora-glass button.rounded-full,
+body.skin-kora-glass .rounded-full.border,
+body.skin-kora-glass select.rounded-full {
+  background: color-mix(in srgb, var(--theme-card) 50%, transparent);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border-color: var(--glass-stroke-soft);
+}
+
+/* Mobile liquid-glass tab bar — round capsule + circular icon wells */
+body.skin-kora-glass .kora-mobile-footer {
+  max-width: 22rem;
+  border-radius: 9999px !important;
+  border-width: 1px !important;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 50%),
+    var(--glass-fill) !important;
+  backdrop-filter: blur(32px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(190%) !important;
+  box-shadow:
+    0 12px 40px color-mix(in srgb, #000 22%, transparent),
+    var(--glass-inset) !important;
+  overflow: hidden;
+}
+
+body.skin-kora-glass .kora-tab-bar {
+  height: 4rem;
+  padding: 0.35rem 0.45rem;
+  gap: 0.15rem;
+}
+
+body.skin-kora-glass .kora-tab-item {
+  border-radius: 9999px;
+  gap: 0.2rem;
+}
+
+body.skin-kora-glass .kora-tab-pill {
+  inset: 0.2rem 0.15rem !important;
+  border-radius: 9999px !important;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 60%),
+    var(--glass-fill-strong) !important;
+  border: 1px solid var(--glass-stroke-soft) !important;
+  box-shadow: var(--glass-inset), 0 6px 16px color-mix(in srgb, #000 14%, transparent) !important;
+}
+
+body.skin-kora-glass .kora-tab-icon {
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+body.skin-kora-glass .kora-tab-item.is-active .kora-tab-icon {
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 30%, transparent);
+}
+
+body.skin-kora-glass .kora-tab-item span.text-\[8px\] {
+  letter-spacing: 0.08em;
+}
+
+/* Media dock glass */
+body.skin-kora-glass .kora-mobile-media-dock--joined {
+  border-radius: 1.35rem !important;
+  background:
+    linear-gradient(180deg, var(--glass-highlight), transparent 50%),
+    var(--glass-fill) !important;
+}
+
+/* Settings / section shells that use card + border pattern */
+body.skin-kora-glass section.bg-kindle-card,
+body.skin-kora-glass .rounded-2xl.bg-kindle-card,
+body.skin-kora-glass .rounded-3xl.bg-kindle-card {
+  background:
+    linear-gradient(165deg, var(--glass-highlight), transparent 40%),
+    var(--glass-fill) !important;
+  border-color: var(--glass-stroke) !important;
+  box-shadow: var(--glass-shadow), var(--glass-inset);
+  backdrop-filter: blur(22px) saturate(170%);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+}
+
+/* Modal panels */
+body.skin-kora-glass .fixed .bg-kindle-card {
+  background:
+    linear-gradient(165deg, var(--glass-highlight), transparent 36%),
+    var(--glass-fill-strong) !important;
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border-color: var(--glass-stroke) !important;
+  box-shadow: 0 24px 80px color-mix(in srgb, #000 35%, transparent), var(--glass-inset);
+}
+
+/* Desktop footer softens into the atmosphere */
+body.skin-kora-glass footer.hidden.md\:block {
+  background: transparent !important;
+  border-top-color: var(--glass-stroke-soft) !important;
+}
+
+/* Soft light sheen animation for glass chrome */
+@keyframes kora-glass-sheen {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+
+body.skin-kora-glass .kora-mobile-footer::before,
+body.skin-kora-glass .kora-desktop-nav::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    105deg,
+    transparent 20%,
+    color-mix(in srgb, #ffffff 28%, transparent) 45%,
+    transparent 70%
+  );
+  background-size: 220% 100%;
+  opacity: 0.35;
+  animation: kora-glass-sheen 7s ease-in-out infinite alternate;
+  mix-blend-mode: soft-light;
+}
+
+body.skin-kora-glass .kora-mobile-footer,
+body.skin-kora-glass .kora-desktop-nav {
+  isolation: isolate;
+}
+
+body.skin-kora-glass .kora-desktop-nav {
+  position: relative;
+}
+
+/* Keep the mobile tab bar fixed to the viewport (do not override .fixed). */
+body.skin-kora-glass .kora-mobile-footer {
+  position: fixed;
+}
+
+body.skin-kora-glass .kora-mobile-footer > *,
+body.skin-kora-glass .kora-desktop-nav > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  body.skin-kora-glass .kora-mobile-footer::before,
+  body.skin-kora-glass .kora-desktop-nav::before {
+    animation: none;
+  }
+}

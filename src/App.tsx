@@ -79,6 +79,12 @@ import {
   listenAndServePeerRequests,
 } from "./lib/crossDeviceSync";
 import ProximitySyncModal from "./components/ProximitySyncModal";
+import {
+  APP_SKIN_STORAGE_KEY,
+  type AppSkinId,
+  readStoredAppSkin,
+  skinBodyClass,
+} from "./lib/appSkin";
 
 const MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
@@ -221,6 +227,7 @@ export default function App() {
   const [displayTheme, setDisplayTheme] = useState<string>(() => {
     return localStorage.getItem("kora_display_theme") || "theme-light-white";
   });
+  const [appSkin, setAppSkin] = useState<AppSkinId>(() => readStoredAppSkin());
 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     return localStorage.getItem("kora_onboarding_completed") !== "true";
@@ -1004,12 +1011,12 @@ export default function App() {
   // 1. Authenticate user anonymously on mount if not logged in
   useEffect(() => {
     initFirebase();
-    // Apply theme to body
-    document.body.className = displayTheme;
-    if (displayTheme.includes("dark")) {
-      document.body.classList.add("dark");
-    }
-  }, [displayTheme]);
+    // Display theme = colors; app skin = chrome/materials (orthogonal).
+    const classes = [displayTheme, skinBodyClass(appSkin)];
+    if (displayTheme.includes("dark")) classes.push("dark");
+    document.body.className = classes.join(" ");
+    document.documentElement.dataset.skin = appSkin;
+  }, [displayTheme, appSkin]);
 
   useEffect(() => {
     void (async () => {
@@ -1619,6 +1626,11 @@ export default function App() {
     localStorage.setItem("kora_display_theme", newTheme);
   }
 
+  function changeAppSkin(nextSkin: AppSkinId) {
+    setAppSkin(nextSkin);
+    localStorage.setItem(APP_SKIN_STORAGE_KEY, nextSkin);
+  }
+
   // Clear locally cached book files from IndexedDB
   async function handleClearDeviceCache() {
     try {
@@ -1668,9 +1680,13 @@ export default function App() {
   }
 
   return (
-    <div id="app-root-container" className="min-h-screen min-h-[100dvh] flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300">
+    <div
+      id="app-root-container"
+      data-skin={appSkin}
+      className="min-h-screen min-h-[100dvh] flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300"
+    >
       {/* 1. Global Navigation Header - Kora Style */}
-      <header className="border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top">
+      <header className="kora-app-header border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
@@ -1679,7 +1695,7 @@ export default function App() {
             className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none cursor-pointer shrink-0"
             aria-label="Kora Library Home"
           >
-            <KoraIcon className="w-7 h-7 text-kindle-text" />
+            <KoraIcon className="w-7 h-7 text-kindle-text kora-glass-icon" />
             <div className="hidden sm:block pr-4 border-r border-kindle-border">
               <KoraWordmark className="h-4 text-kindle-text" />
             </div>
@@ -1691,13 +1707,13 @@ export default function App() {
 
         {/* Tab Controls & Cloud Auth Sync Info */}
         <div className="flex items-center gap-2 shrink-0">
-          <nav className="hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border">
+          <nav className="kora-desktop-nav hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border">
             <button
               id="library-tab"
               onClick={() => switchTab("library")}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
+              className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "library" 
-                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
                   : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
@@ -1707,9 +1723,9 @@ export default function App() {
             <button
               id="discover-tab"
               onClick={() => switchTab("discover")}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
+              className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "discover" 
-                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
                   : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
@@ -1719,9 +1735,9 @@ export default function App() {
             <button
               id="feed-tab"
               onClick={() => switchTab("feed")}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
+              className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "feed" 
-                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
                   : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
@@ -1731,9 +1747,9 @@ export default function App() {
             <button
               id="tools-tab"
               onClick={() => switchTab("tools")}
-              className={`px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
+              className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "tools" 
-                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border" 
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
                   : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
@@ -1745,7 +1761,7 @@ export default function App() {
           <div className="flex items-center gap-1">
             <button
               onClick={() => switchTab("settings")}
-              className={`p-2 rounded-xl transition cursor-pointer relative z-40 ${
+              className={`kora-glass-icon-btn p-2 rounded-xl transition cursor-pointer relative z-40 ${
                 activeTab === "settings"
                   ? "bg-kindle-accent/15 text-kindle-accent"
                   : "text-kindle-text-muted hover:text-kindle-text hover:bg-neutral-100"
@@ -1893,6 +1909,7 @@ export default function App() {
             grayscaleCovers={grayscaleCovers}
             hideCovers={false}
             displayTheme={displayTheme}
+            appSkin={appSkin}
             dailyRemindersEnabled={dailyRemindersEnabled}
             onChangeDailyReminders={(enabled) => {
               setDailyRemindersEnabled(enabled);
@@ -1905,6 +1922,7 @@ export default function App() {
               setDisplayTheme(theme);
               localStorage.setItem("kora_display_theme", theme);
             }}
+            onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}
             readerPrefs={readerPrefs}
@@ -1936,6 +1954,7 @@ export default function App() {
             grayscaleCovers={grayscaleCovers}
             onToggleGrayscale={toggleGrayscale}
             displayTheme={displayTheme}
+            appSkin={appSkin}
             dailyRemindersEnabled={dailyRemindersEnabled}
             onChangeDailyReminders={(enabled) => {
               setDailyRemindersEnabled(enabled);
@@ -1944,6 +1963,7 @@ export default function App() {
             dailyNewsBriefEnabled={dailyNewsBriefEnabled}
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             onChangeTheme={changeTheme}
+            onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}
             readerPrefs={readerPrefs}
@@ -2341,23 +2361,25 @@ export default function App() {
                   type="button"
                   onClick={() => switchTab(id)}
                   className={`kora-tab-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${
-                    isActive ? "text-kindle-text" : "text-kindle-text-muted"
+                    isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
                   }`}
                   aria-current={isActive ? "page" : undefined}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="kora-tab-pill"
-                      className="absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
+                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
                       transition={koraSpring}
                     />
                   )}
-                  <Icon
-                    className={`relative z-[1] w-5 h-5 shrink-0 transition-transform duration-300 ${
-                      isActive ? "scale-105" : "opacity-80"
-                    }`}
-                    strokeWidth={isActive ? 2.25 : 2}
-                  />
+                  <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
+                    <Icon
+                      className={`w-5 h-5 shrink-0 transition-transform duration-300 ${
+                        isActive ? "scale-105" : "opacity-80"
+                      }`}
+                      strokeWidth={isActive ? 2.25 : 2}
+                    />
+                  </span>
                   <span className="relative z-[1] text-[8px] font-sans font-bold uppercase tracking-wider leading-none text-center">
                     {label}
                   </span>

@@ -28,6 +28,7 @@ import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
+import { APP_SKINS, type AppSkinId } from "../lib/appSkin";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
@@ -56,6 +57,7 @@ interface SettingsViewProps {
   grayscaleCovers: boolean;
   hideCovers?: boolean;
   displayTheme: string;
+  appSkin?: AppSkinId;
   dailyRemindersEnabled?: boolean;
   onChangeDailyReminders?: (enabled: boolean) => void;
   dailyNewsBriefEnabled?: boolean;
@@ -63,6 +65,7 @@ interface SettingsViewProps {
   onToggleGrayscale: () => void;
   onToggleHideCovers?: () => void;
   onChangeTheme: (theme: string) => void;
+  onChangeAppSkin?: (skin: AppSkinId) => void;
   onSignOut: () => void;
   onSignIn: () => void;
   readerPrefs: ReaderPrefs;
@@ -135,6 +138,7 @@ function SettingsView({
   grayscaleCovers,
   hideCovers = false,
   displayTheme,
+  appSkin = "kora",
   dailyRemindersEnabled = false,
   onChangeDailyReminders,
   dailyNewsBriefEnabled = false,
@@ -142,6 +146,7 @@ function SettingsView({
   onToggleGrayscale,
   onToggleHideCovers,
   onChangeTheme,
+  onChangeAppSkin,
   onSignOut,
   onSignIn,
   readerPrefs,
@@ -576,7 +581,68 @@ function SettingsView({
               </Row>
 
               <div className="space-y-2.5">
-                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
+                <div>
+                  <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">App Skin</h4>
+                  <p className="text-[10px] text-kindle-text-muted mt-1">
+                    Skins change chrome, materials, and shapes. Display themes only recolor the active skin.
+                  </p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {APP_SKINS.map((skin) => {
+                    const selected = appSkin === skin.id;
+                    return (
+                      <button
+                        key={skin.id}
+                        type="button"
+                        onClick={() => onChangeAppSkin?.(skin.id)}
+                        className={`relative overflow-hidden flex flex-col items-start gap-2 p-3 rounded-2xl border text-left transition cursor-pointer ${
+                          selected
+                            ? "border-kindle-accent shadow-xs ring-1 ring-kindle-accent/30 bg-kindle-bg"
+                            : "border-kindle-border hover:bg-kindle-bg opacity-80"
+                        }`}
+                      >
+                        <div
+                          className={`w-full h-14 rounded-xl border overflow-hidden ${
+                            skin.id === "kora-glass"
+                              ? "border-white/40 bg-gradient-to-br from-white/70 via-kindle-accent/10 to-kindle-card shadow-inner backdrop-blur-sm"
+                              : "border-kindle-border bg-kindle-card"
+                          }`}
+                        >
+                          <div className="h-full flex items-end justify-center pb-2 px-3 gap-1.5">
+                            {[0, 1, 2, 3].map((i) => (
+                              <span
+                                key={i}
+                                className={`rounded-full ${
+                                  skin.id === "kora-glass"
+                                    ? `w-4 h-4 border border-white/50 ${i === 1 ? "bg-kindle-text/25 shadow-sm" : "bg-white/35"}`
+                                    : `w-3.5 h-3.5 ${i === 1 ? "bg-kindle-accent" : "bg-kindle-border"}`
+                                }`}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {skin.id === "kora-glass" ? (
+                            <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+                          ) : (
+                            <Layout className="w-3.5 h-3.5 text-kindle-text-muted" />
+                          )}
+                          <span className="text-[10px] font-bold uppercase tracking-widest">{skin.label}</span>
+                        </div>
+                        <span className="text-[9px] text-kindle-text-muted leading-snug">{skin.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2.5">
+                <div>
+                  <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
+                  <p className="text-[10px] text-kindle-text-muted mt-1">
+                    Color palette only — White, Yellow, Grey, or Blue — for whichever skin is selected.
+                  </p>
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => onChangeTheme("theme-light-white")}
