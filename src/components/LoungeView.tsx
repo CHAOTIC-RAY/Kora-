@@ -40,7 +40,9 @@ type FeaturedBook = {
   kind?: "ebook" | "audiobook";
 };
 
-const AUTO_FLIP_MS = 9000;
+const CONTINUE_AUTO_FLIP_MS = 22_000;
+const DISCOVER_AUTO_FLIP_MS = 12_000;
+const AUTO_FLIP_TICK_MS = 1000;
 const MANUAL_PAUSE_MS = 28_000;
 
 function isAudiobook(book: BookMetadata) {
@@ -216,6 +218,8 @@ export default function LoungeView({
   const [greetingTick, setGreetingTick] = useState(0);
   const continuePauseUntil = useRef(0);
   const discoverPauseUntil = useRef(0);
+  const continueLastFlipAt = useRef(Date.now());
+  const discoverLastFlipAt = useRef(Date.now());
 
   useEffect(() => {
     setFeatured(loadFeaturedFromCache({ audiobooksOnly: false }));
@@ -236,8 +240,14 @@ export default function LoungeView({
 
   const setMode = (id: LoungeWidgetId, mode: string, fromUser = false) => {
     if (fromUser) {
-      if (id === "continue") continuePauseUntil.current = Date.now() + MANUAL_PAUSE_MS;
-      if (id === "discover") discoverPauseUntil.current = Date.now() + MANUAL_PAUSE_MS;
+      if (id === "continue") {
+        continuePauseUntil.current = Date.now() + MANUAL_PAUSE_MS;
+        continueLastFlipAt.current = Date.now();
+      }
+      if (id === "discover") {
+        discoverPauseUntil.current = Date.now() + MANUAL_PAUSE_MS;
+        discoverLastFlipAt.current = Date.now();
+      }
     }
     saveLoungeMode(id, mode);
     setModes((prev) => ({ ...prev, [id]: mode }));
@@ -258,7 +268,7 @@ export default function LoungeView({
   const hasDiscoverTrending = featured.length > 0;
   const hasDiscoverAudio = recentAudio.length > 0 || featuredAudio.length > 0;
 
-  // Smooth auto flip book ↔ listen / trending ↔ audio
+  // Smooth auto flip — Continue stays longer on book/listen than Discover on trending/audio
   useEffect(() => {
     const id = window.setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
@@ -266,19 +276,31 @@ export default function LoungeView({
 
       setModes((prev) => {
         let next = prev;
-        if (now >= continuePauseUntil.current && hasContinueBook && hasContinueAudio) {
+        if (
+          now >= continuePauseUntil.current &&
+          hasContinueBook &&
+          hasContinueAudio &&
+          now - continueLastFlipAt.current >= CONTINUE_AUTO_FLIP_MS
+        ) {
           const flipped = prev.continue === "audio" ? "book" : "audio";
           next = { ...next, continue: flipped };
           saveLoungeMode("continue", flipped);
+          continueLastFlipAt.current = now;
         }
-        if (now >= discoverPauseUntil.current && hasDiscoverTrending && hasDiscoverAudio) {
+        if (
+          now >= discoverPauseUntil.current &&
+          hasDiscoverTrending &&
+          hasDiscoverAudio &&
+          now - discoverLastFlipAt.current >= DISCOVER_AUTO_FLIP_MS
+        ) {
           const flipped = prev.discover === "audiobooks" ? "trending" : "audiobooks";
           next = { ...next, discover: flipped };
           saveLoungeMode("discover", flipped);
+          discoverLastFlipAt.current = now;
         }
         return next;
       });
-    }, AUTO_FLIP_MS);
+    }, AUTO_FLIP_TICK_MS);
     return () => window.clearInterval(id);
   }, [hasContinueBook, hasContinueAudio, hasDiscoverTrending, hasDiscoverAudio]);
 
