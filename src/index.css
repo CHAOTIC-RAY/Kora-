@@ -51,8 +51,12 @@
 }
 
 @theme {
-  /* Use Lora as the primary body font — matching the Kora wordmark's serif personality */
-  --font-sans: "Lora", "Inter", ui-serif, Georgia, serif;
+  /* App UI fonts — overridden per skin via --font-ui in skin-fonts.css */
+  --font-ui: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui-display: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+
+  /* Reader / book typography (not changed by app skin) */
+  --font-sans: "Inter", system-ui, sans-serif;
   --font-serif: "Lora", ui-serif, Georgia, serif;
   --font-display: "Lexend", "Inter", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
@@ -554,7 +558,7 @@ html.kora-android body {
 /* ── Base body ── */
 body {
   margin: 0;
-  font-family: var(--font-sans);
+  font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.6;
   overflow-x: hidden;
@@ -570,20 +574,21 @@ body {
   min-height: 100dvh;
 }
 
-/* Headings use Lexend for display contrast */
+/* Headings — skin UI display font (scoped in skin-fonts.css for app shell) */
 h1, h2, h3, h4 {
-  font-family: var(--font-lexend);
+  font-family: var(--font-ui-display);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-/* Wordmark / brand text should always be Lexend */
-.font-display { font-family: var(--font-lexend); }
+/* Reader-only font utilities — unaffected by app skin */
+.font-serif { font-family: var(--font-serif); }
 .font-thaana { font-family: var(--font-thaana); }
 .font-bookerly { font-family: var(--font-bookerly); }
 .font-chareink { font-family: var(--font-chareink); }
 .font-lexica { font-family: var(--font-lexica); }
 .font-rakuten { font-family: var(--font-rakuten); }
+.font-opendyslexic { font-family: var(--font-opendyslexic); }
 
 [dir="rtl"] .font-thaana,
 .font-thaana[dir="rtl"],
@@ -689,4 +694,5 @@ h1, h2, h3, h4 {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
+@import "./styles/skin-fonts.css";
 @import "./styles/app-skins.css";

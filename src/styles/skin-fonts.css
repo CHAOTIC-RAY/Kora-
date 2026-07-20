@@ -1,0 +1,78 @@
+/* ═══════════════════════════════════════════════════════════════
+   App UI font packs — per skin (chrome only, not reader body text).
+   Amazon Ember: Hitcher/skin.firetv (Fire TV Kodi skin)
+   https://github.com/Hitcher/skin.firetv/tree/master/fonts
+   ═══════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: "Amazon Ember";
+  src: url("/fonts/amazon-ember/Amazon-Ember-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Amazon Ember";
+  src: url("/fonts/amazon-ember/Amazon-Ember-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Amazon Ember";
+  src: url("/fonts/amazon-ember/Amazon-Ember-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Default UI stack (Kora skin) */
+body {
+  --font-ui: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui-display: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+  transition: font-family 0.2s ease;
+}
+
+body.skin-kora {
+  --font-ui: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui-display: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+}
+
+body.skin-paper {
+  --font-ui: "Lora", "Georgia", "Times New Roman", serif;
+  --font-ui-display: "Lora", "Georgia", "Times New Roman", serif;
+}
+
+body.skin-studio {
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+body.skin-soft {
+  --font-ui: "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui-display: "Lexend", "Inter", system-ui, sans-serif;
+}
+
+/* App chrome typography — does not affect in-book reader faces (font-lexica, font-serif, etc.) */
+body,
+body .font-sans,
+body .font-lexend,
+body .font-display,
+body h1,
+body h2,
+body h3,
+body h4 {
+  font-family: var(--font-ui);
+}
+
+body h1,
+body h2,
+body h3,
+body h4,
+body .font-display,
+body .font-lexend {
+  font-family: var(--font-ui-display);
+  letter-spacing: -0.02em;
+}

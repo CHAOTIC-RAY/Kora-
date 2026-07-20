@@ -5,21 +5,25 @@ export const APP_SKINS = [
     id: "kora",
     label: "Kora",
     description: "Classic frosted chrome with a floating tab bar",
+    uiFont: "Amazon Ember",
   },
   {
     id: "paper",
     label: "Paper",
     description: "Matte e-reader surfaces with warm, quiet borders",
+    uiFont: "Lora",
   },
   {
     id: "studio",
     label: "Studio",
     description: "Sharp editorial layout with crisp lines and contrast",
+    uiFont: "Inter",
   },
   {
     id: "soft",
     label: "Soft",
     description: "Rounded, elevated UI with gentle depth and shadows",
+    uiFont: "Lexend",
   },
 ] as const;
 

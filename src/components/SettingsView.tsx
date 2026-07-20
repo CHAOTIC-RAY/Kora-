@@ -610,7 +610,7 @@ function SettingsView({
                 <div>
                   <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">App Skin</h4>
                   <p className="text-[10px] text-kindle-text-muted mt-1">
-                    Skins change chrome, materials, and shapes. Display themes only recolor the active skin.
+                    Skins change chrome, materials, shapes, and UI fonts. Display themes only recolor the active skin. Reader fonts are separate.
                   </p>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -648,6 +648,9 @@ function SettingsView({
                           <span className="text-[10px] font-bold uppercase tracking-widest">{skin.label}</span>
                         </div>
                         <span className="text-[9px] text-kindle-text-muted leading-snug">{skin.description}</span>
+                        <span className="text-[8px] text-kindle-text-muted/80 uppercase tracking-wider font-mono">
+                          UI: {skin.uiFont}
+                        </span>
                       </button>
                     );
                   })}

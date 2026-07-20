@@ -510,6 +510,9 @@ export default function OnboardingModal({
                             {skin.label}
                           </span>
                           <p className="text-[9px] text-kindle-text-muted mt-0.5 leading-snug">{skin.description}</p>
+                          <p className="text-[8px] text-kindle-text-muted/80 uppercase tracking-wider font-mono mt-1">
+                            UI font: {skin.uiFont}
+                          </p>
                         </button>
                       );
                     })}
