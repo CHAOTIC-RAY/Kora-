@@ -578,6 +578,49 @@ html.kora-ios .overflow-auto {
   display: none !important;
 }
 
+/* Soft, quick enter when a keep-alive panel becomes visible */
+.kora-tab-panel:not([hidden]) {
+  animation: kora-tab-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes kora-tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kora-tab-panel:not([hidden]) {
+    animation: none;
+  }
+}
+
+.kora-desktop-nav-item {
+  transition:
+    color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.kora-desktop-nav-item.is-active {
+  transform: translateY(-0.5px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kora-desktop-nav-item,
+  .kora-desktop-nav-item.is-active {
+    transition: none;
+    transform: none;
+  }
+}
+
 .discover-category-section {
   content-visibility: auto;
   contain-intrinsic-size: auto 280px;
