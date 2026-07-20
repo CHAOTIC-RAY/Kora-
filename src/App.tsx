@@ -1723,7 +1723,7 @@ export default function App() {
   if (loadingAuth) {
     return (
       <div className="min-h-screen bg-kindle-bg flex items-center justify-center">
-        <KoraLoading />
+        <KoraLoading context="app" />
       </div>
     );
   }
@@ -2078,7 +2078,7 @@ export default function App() {
         <Suspense
           fallback={
             <div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center">
-              <KoraLoading />
+              <KoraLoading context="audiobook-player" />
             </div>
           }
         >
@@ -2101,7 +2101,7 @@ export default function App() {
         </Suspense>
         )}
       {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
-        <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading /></div>}>
+        <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading context="reader" /></div>}>
         {activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
             book={activeBook}

@@ -180,11 +180,6 @@ function getCategoryDescription(category: { source?: string }) {
   return "Top trending books currently featured on the New York Times Best Sellers list. Click any book to search and download.";
 }
 
-function getCategoryLoadingLabel(category: { source?: string }) {
-  if (category.source === "audiobook") return "Loading Audiobooks...";
-  if (category.source === "goodreads") return "Loading Goodreads picks...";
-  return "Loading Best Sellers...";
-}
 
 function DiscoverView({ 
   userId, 
@@ -2858,11 +2853,8 @@ function DiscoverView({
             </button>
           </div>
           {audiobookLoading ? (
-            <div className="py-24 flex flex-col items-center justify-center gap-4">
-              <KoraLoading />
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted animate-pulse">
-                Searching audiobook archives…
-              </p>
+            <div className="py-24 flex flex-col items-center justify-center">
+              <KoraLoading context="audiobook-search" query={query} compact />
             </div>
           ) : audiobookResults.length === 0 ? (
             <div className="py-16 flex flex-col items-center gap-4 text-center">
@@ -2942,11 +2934,8 @@ function DiscoverView({
           </div>
 
           {loading ? (
-            <div className="py-24 flex flex-col items-center justify-center gap-4">
-              <KoraLoading />
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted animate-pulse">
-                Querying global archives…
-              </p>
+            <div className="py-24 flex flex-col items-center justify-center">
+              <KoraLoading context="search" query={query} compact />
             </div>
           ) : error ? (
             <div className="py-16 flex flex-col items-center gap-4 text-center">
@@ -3147,11 +3136,8 @@ function DiscoverView({
           </div>
 
           {loadingCategory ? (
-            <div className="py-24 flex flex-col items-center justify-center gap-4">
-              <KoraLoading />
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted animate-pulse">
-                {getCategoryLoadingLabel(viewingCategory)}
-              </p>
+            <div className="py-24 flex flex-col items-center justify-center">
+              <KoraLoading context="category" categorySource={viewingCategory?.source} compact />
             </div>
           ) : categoryBooks.length === 0 ? (
             <div className="py-16 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
