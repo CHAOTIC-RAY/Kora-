@@ -930,16 +930,15 @@ html[data-liquid-glass="on"] body.skin-kora-glass .kora-desktop-nav,
 html[data-liquid-glass="on"] body.skin-kora-glass .kora-mobile-media-dock--joined {
   backdrop-filter:
     blur(6px)
-    url(#kora-liquid-regular)
+    url(#lg-filter-regular)
     saturate(var(--lg-saturate))
     brightness(var(--lg-brightness));
 }
 
-html[data-liquid-glass="on"] body.skin-kora-glass .kora-glass-icon-btn,
-html[data-liquid-glass="on"] body.skin-kora-glass .kora-tab-pill {
+html[data-liquid-glass="on"] body.skin-kora-glass .kora-glass-icon-btn {
   backdrop-filter:
     blur(4px)
-    url(#kora-liquid-lens)
+    url(#lg-filter-lens)
     saturate(210%)
     brightness(1.12);
 }
@@ -1011,7 +1010,7 @@ body.skin-kora-glass .kora-app-header {
 }
 
 html[data-liquid-glass="on"] body.skin-kora-glass .kora-app-header {
-  backdrop-filter: blur(8px) url(#kora-liquid-regular) saturate(180%) brightness(1.05) !important;
+  backdrop-filter: blur(8px) url(#lg-filter-regular) saturate(180%) brightness(1.05) !important;
 }
 
 /* Circular lens buttons */
@@ -1114,15 +1113,51 @@ body.skin-kora-glass .kora-tab-item {
   gap: 0.15rem;
 }
 
-/* Selected lens pill (LiquidLensView resting → glass) */
+/* Selected lens pill — LiquidLensView: resting white pill → lifted lens glass */
 body.skin-kora-glass .kora-tab-pill {
   inset: 0.2rem 0.1rem !important;
   border-radius: 9999px !important;
-  background: var(--lg-tint-selected) !important;
+  background: rgba(255, 255, 255, 0.3) !important;
   border: 1px solid var(--lg-rim) !important;
   box-shadow:
     inset 0 1.5px 0 rgba(255, 255, 255, 0.7),
     0 8px 22px rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(4px) saturate(210%) brightness(1.12) !important;
+  -webkit-backdrop-filter: blur(4px) saturate(210%) brightness(1.12) !important;
+}
+
+html[data-liquid-glass="on"] body.skin-kora-glass .kora-tab-pill,
+html[data-liquid-glass="on"] body.skin-kora-glass [data-lg="lens"] {
+  background: var(--lg-tint-selected) !important;
+  backdrop-filter:
+    blur(4px)
+    url(#lg-filter-lens)
+    saturate(210%)
+    brightness(1.12) !important;
+  -webkit-backdrop-filter:
+    blur(4px)
+    url(#lg-filter-lens)
+    saturate(210%)
+    brightness(1.12) !important;
+}
+
+/* Material presets via data-lg */
+body.skin-kora-glass [data-lg="regular"] {
+  --lg-blur: 10px;
+  --lg-saturate: 185%;
+  --lg-brightness: 1.06;
+}
+
+body.skin-kora-glass [data-lg="lens"] {
+  --lg-blur: 5px;
+  --lg-saturate: 210%;
+  --lg-brightness: 1.12;
+}
+
+body.skin-kora-glass [data-lg="thumb"] {
+  --lg-blur: 8px;
+  --lg-saturate: 170%;
+  --lg-brightness: 1.05;
 }
 
 body.skin-kora-glass .kora-tab-icon {
@@ -1163,7 +1198,7 @@ body.skin-kora-glass .fixed .bg-kindle-card {
 }
 
 html[data-liquid-glass="on"] body.skin-kora-glass .fixed .bg-kindle-card {
-  backdrop-filter: blur(10px) url(#kora-liquid-regular) saturate(180%) brightness(1.08) !important;
+  backdrop-filter: blur(10px) url(#lg-filter-regular) saturate(180%) brightness(1.08) !important;
 }
 
 body.skin-kora-glass footer.hidden.md\:block {
