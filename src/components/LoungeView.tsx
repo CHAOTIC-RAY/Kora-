@@ -37,6 +37,7 @@ type FeaturedBook = {
   author?: string;
   coverUrl?: string;
   rank?: number | string;
+  kind?: "ebook" | "audiobook";
 };
 
 const AUTO_FLIP_MS = 9000;
@@ -54,33 +55,65 @@ function sortByRecent(books: BookMetadata[]) {
   });
 }
 
-function loadFeaturedFromCache(): FeaturedBook[] {
+function cleanAuthor(author: unknown): string | undefined {
+  if (typeof author !== "string") return undefined;
+  const a = author.trim();
+  if (!a) return undefined;
+  // Filter scraper/CTA junk that sometimes lands in author fields
+  if (/^(play|listen|unknown|n\/a|null|undefined|audiobook)$/i.test(a)) return undefined;
+  return a;
+}
+
+function normalizeFeaturedBook(book: any, kind?: "ebook" | "audiobook"): FeaturedBook | null {
+  if (!book?.title || typeof book.title !== "string") return null;
+  return {
+    title: book.title.trim(),
+    author: cleanAuthor(book.author),
+    coverUrl: book.coverUrl || book.book_image || book.image || undefined,
+    rank: book.rank || book.bestsellerRank,
+    kind,
+  };
+}
+
+function dedupeFeatured(items: FeaturedBook[], limit = 12): FeaturedBook[] {
+  const seen = new Set<string>();
+  const out: FeaturedBook[] = [];
+  for (const b of items) {
+    const key = b.title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(b);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function isAudiobookCacheKey(key: string) {
+  const k = key.toLowerCase();
+  return k.startsWith("audiobooks-") || k.includes("audiobook");
+}
+
+function loadFeaturedFromCache(opts?: { audiobooksOnly?: boolean }): FeaturedBook[] {
   try {
     const raw = localStorage.getItem("kora_discover_featured_cache");
     if (!raw) return [];
     const data = JSON.parse(raw) as Record<string, any[]>;
     const pooled: FeaturedBook[] = [];
-    for (const list of Object.values(data || {})) {
+    const audioOnly = !!opts?.audiobooksOnly;
+
+    for (const [key, list] of Object.entries(data || {})) {
       if (!Array.isArray(list)) continue;
-      for (const book of list.slice(0, 8)) {
-        if (!book?.title) continue;
-        pooled.push({
-          title: book.title,
-          author: book.author,
-          coverUrl: book.coverUrl || book.book_image || book.image,
-          rank: book.rank || book.bestsellerRank,
-        });
+      const audioKey = isAudiobookCacheKey(key);
+      if (audioOnly && !audioKey) continue;
+      if (!audioOnly && audioKey) continue;
+
+      for (const book of list.slice(0, audioOnly ? 12 : 8)) {
+        const normalized = normalizeFeaturedBook(book, audioKey ? "audiobook" : "ebook");
+        if (normalized) pooled.push(normalized);
       }
     }
-    const seen = new Set<string>();
-    return pooled
-      .filter((b) => {
-        const key = b.title.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 12);
+
+    return dedupeFeatured(pooled, audioOnly ? 16 : 12);
   } catch {
     return [];
   }
@@ -178,13 +211,15 @@ export default function LoungeView({
 }: LoungeViewProps) {
   const [modes, setModes] = useState(loadLoungeModes);
   const [featured, setFeatured] = useState<FeaturedBook[]>([]);
+  const [featuredAudio, setFeaturedAudio] = useState<FeaturedBook[]>([]);
   const [feedTick, setFeedTick] = useState(0);
   const [greetingTick, setGreetingTick] = useState(0);
   const continuePauseUntil = useRef(0);
   const discoverPauseUntil = useRef(0);
 
   useEffect(() => {
-    setFeatured(loadFeaturedFromCache());
+    setFeatured(loadFeaturedFromCache({ audiobooksOnly: false }));
+    setFeaturedAudio(loadFeaturedFromCache({ audiobooksOnly: true }));
   }, []);
 
   useEffect(() => {
@@ -221,7 +256,7 @@ export default function LoungeView({
   const hasContinueAudio =
     recentAudio.length > 0 || (lastReadBook != null && isAudiobook(lastReadBook));
   const hasDiscoverTrending = featured.length > 0;
-  const hasDiscoverAudio = recentAudio.length > 0;
+  const hasDiscoverAudio = recentAudio.length > 0 || featuredAudio.length > 0;
 
   // Smooth auto flip book ↔ listen / trending ↔ audio
   useEffect(() => {
@@ -281,14 +316,19 @@ export default function LoungeView({
 
   const discoverItems = useMemo(() => {
     if (modes.discover === "audiobooks") {
-      return recentAudio.slice(0, 5).map((b) => ({
+      const fromLibrary: FeaturedBook[] = recentAudio.map((b) => ({
         title: b.title,
-        author: b.author,
+        author: cleanAuthor(b.author),
         coverUrl: b.coverUrl,
+        kind: "audiobook" as const,
       }));
+      // Library first, then Discover audiobook cache (popular/fiction/etc.), fill from trending if thin
+      const primary = dedupeFeatured([...fromLibrary, ...featuredAudio], 10);
+      if (primary.length >= 6) return primary;
+      return dedupeFeatured([...primary, ...featured.map((b) => ({ ...b, kind: "audiobook" as const }))], 10);
     }
-    return featured.slice(0, 5);
-  }, [modes.discover, featured, recentAudio]);
+    return featured.slice(0, 8);
+  }, [modes.discover, featured, featuredAudio, recentAudio]);
 
   const greeting = useMemo(() => {
     void greetingTick;
@@ -304,7 +344,9 @@ export default function LoungeView({
     ? resolveCoverImageSrc(continueBook.coverUrl) || continueBook.coverUrl
     : null;
   const discoverHero = discoverItems[0];
-  const discoverRest = discoverItems.slice(1, 5);
+  const discoverRest =
+    modes.discover === "audiobooks" ? discoverItems.slice(1, 9) : discoverItems.slice(1, 5);
+  const isDiscoverAudio = modes.discover === "audiobooks";
   const discoverHeroCover = discoverHero?.coverUrl
     ? resolveCoverImageSrc(discoverHero.coverUrl) || discoverHero.coverUrl
     : null;
@@ -649,33 +691,46 @@ export default function LoungeView({
               >
                 {discoverHero ? (
                   <>
-                    <div className="flex-1 flex items-center gap-3 min-h-0">
+                    <div className="flex items-center gap-3 shrink-0">
                       <div className="min-w-0 flex-1 space-y-1">
                         <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-accent">
-                          Featured
+                          {isDiscoverAudio ? "Featured listen" : "Featured"}
                         </p>
-                        <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
+                        <h4 className="text-base md:text-lg font-lexend font-bold text-kindle-text leading-tight line-clamp-2">
                           {discoverHero.title}
                         </h4>
-                        {discoverHero.author && (
+                        {discoverHero.author ? (
                           <p className="text-xs text-kindle-text-muted truncate">{discoverHero.author}</p>
-                        )}
+                        ) : isDiscoverAudio ? (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                            Audiobook
+                          </p>
+                        ) : null}
                       </div>
                       {discoverHeroCover && (
-                        <div className="shrink-0 w-[4.75rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
+                        <div className="relative shrink-0 w-[4.5rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
                           <img
                             src={discoverHeroCover}
                             alt=""
                             className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
                             referrerPolicy="no-referrer"
                           />
+                          {isDiscoverAudio && (
+                            <span className="absolute top-1 right-1 px-1 py-0.5 rounded bg-kindle-text text-kindle-bg text-[7px] font-bold uppercase tracking-wider leading-none">
+                              Audio
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
 
                     {discoverRest.length > 0 && (
                       <div
-                        className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        className={
+                          isDiscoverAudio
+                            ? "grid grid-cols-4 gap-2 flex-1 content-start"
+                            : "flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        }
                         onClick={(e) => e.stopPropagation()}
                       >
                         {discoverRest.map((book, i) => {
@@ -690,7 +745,11 @@ export default function LoungeView({
                                 if (onSearchDiscover) onSearchDiscover(book.title);
                                 else onOpenTab("discover");
                               }}
-                              className="shrink-0 w-[3.1rem] aspect-[2/3] rounded-lg overflow-hidden border border-white/10 bg-kindle-card shadow-md hover:border-kindle-accent/50 hover:-translate-y-0.5 transition"
+                              className={`relative overflow-hidden border border-white/10 bg-kindle-card shadow-md hover:border-kindle-accent/50 hover:-translate-y-0.5 transition ${
+                                isDiscoverAudio
+                                  ? "w-full aspect-[2/3] rounded-lg"
+                                  : "shrink-0 w-[3.1rem] aspect-[2/3] rounded-lg"
+                              }`}
                               title={book.title}
                             >
                               {cover ? (
@@ -717,14 +776,18 @@ export default function LoungeView({
                 ) : (
                   <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
                     <Compass className="w-7 h-7 text-kindle-text-muted opacity-30" />
-                    <p className="text-xs text-kindle-text-muted">Tap to explore Discover</p>
+                    <p className="text-xs text-kindle-text-muted">
+                      {isDiscoverAudio
+                        ? "Open Discover → Audio to fill listens here"
+                        : "Tap to explore Discover"}
+                    </p>
                   </div>
                 )}
               </motion.div>
             </AnimatePresence>
 
             <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-              Explore discover →
+              {isDiscoverAudio ? "Explore audiobooks →" : "Explore discover →"}
             </p>
           </div>
         </TileShell>
