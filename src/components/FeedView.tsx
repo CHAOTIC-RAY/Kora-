@@ -12,6 +12,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { toast } from "react-hot-toast";
+import { motion, useMotionValue, useTransform } from "motion/react";
 import type { BookMetadata } from "../lib/firebase";
 import { prefetchFeedArticles } from "../lib/feedArticle";
 import {
@@ -25,12 +27,15 @@ import {
   isFeedSubscriptionEnabled,
   isInternationalFeedUrl,
   markFeedItemRead,
+  markFeedItemSaved,
   mergeFeedItems,
   removeFeedSubscription,
   saveFeedSubscriptions,
   setFeedSubscriptionEnabled,
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
+import { clipUrlToLibrary } from "../lib/feedClipper";
+import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
 import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
 import { textDirection } from "../lib/textDirection";
@@ -112,6 +117,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   variant,
   onRead,
   onToggleRead,
+  onSaveLater,
 }: {
   item: FeedItem;
   cover: string | null;
@@ -120,6 +126,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   variant: BentoVariant;
   onRead: () => void;
   onToggleRead: () => void;
+  onSaveLater: () => void;
 }) {
   const [thumbFailed, setThumbFailed] = useState(false);
   const showThumb = cover && !thumbFailed;
@@ -129,99 +136,154 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const imageClass =
     variant === "featured" ? "w-full aspect-[16/9]" : "w-full aspect-[4/3]";
 
-  return (
-    <article
-      onClick={onRead}
-      className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md ${cardClass} ${
-        item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
-      } flex flex-col h-full`}
-    >
-      <div className="flex flex-col flex-1 min-h-0">
-        <div
-          className={`relative bg-kindle-bg border-b border-kindle-border overflow-hidden text-left ${imageClass}`}
-        >
-          {showThumb ? (
-            <img
-              src={cover}
-              alt=""
-              className="w-full h-full object-cover"
-              referrerPolicy="no-referrer"
-              loading="lazy"
-              onError={() => setThumbFailed(true)}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
-              <Rss className="w-6 h-6 text-kindle-text-muted/40" />
-            </div>
-          )}
-          {!item.read && (
-            <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-kindle-text shadow-sm" />
-          )}
-        </div>
+  const x = useMotionValue(0);
 
-        <div className="flex flex-col flex-1 p-3 sm:p-4 pb-4 sm:pb-5 gap-2 sm:gap-3 min-w-0">
-          <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate mb-1">
-              {item.subscriptionTitle} · {formatFeedDate(item.publishedAt)}
-            </p>
-            <h3
-              dir={dir}
-              className={`font-lexend font-bold leading-snug text-kindle-text ${
-                dir === "rtl" ? "font-thaana" : ""
-              } ${
-                variant === "featured" ? "text-base sm:text-lg line-clamp-3" : "text-sm line-clamp-3"
-              }`}
-            >
-              {title}
-            </h3>
-            {item.summary && !/^(article url|comments url)/i.test(item.summary) && (
-              <p
-                dir={textDirection(item.summary)}
-                className={`text-kindle-text-muted mt-1.5 leading-relaxed ${
-                  variant === "featured" ? "text-xs line-clamp-2" : "text-[11px] line-clamp-2"
-                }`}
-              >
-                {item.summary}
-              </p>
+  // Dynamic transforms for underlay action states
+  const leftOpacity = useTransform(x, [0, 60], [0, 1]);
+  const leftScale = useTransform(x, [0, 120], [0.85, 1.15]);
+
+  const rightOpacity = useTransform(x, [-60, 0], [1, 0]);
+  const rightScale = useTransform(x, [-120, 0], [1.15, 0.85]);
+
+  const handleDragEnd = (_event: any, info: any) => {
+    const threshold = 120;
+    if (info.offset.x > threshold) {
+      onToggleRead();
+    } else if (info.offset.x < -threshold) {
+      onSaveLater();
+    }
+  };
+
+  return (
+    <div className={`relative overflow-hidden rounded-2xl ${cardClass} h-full select-none`}>
+      {/* Swipe Underlay */}
+      <div className="absolute inset-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
+        {/* Left Action (swipe right) -> Mark Read */}
+        <motion.div
+          style={{ opacity: leftOpacity }}
+          className="flex items-center gap-2 text-kindle-text font-bold text-xs"
+        >
+          <motion.div style={{ scale: leftScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
+            <CheckCircle2 className="w-5 h-5 text-kindle-text" />
+          </motion.div>
+          <span>{item.read ? "Mark Unread" : "Mark Read"}</span>
+        </motion.div>
+
+        {/* Right Action (swipe left) -> Save Later */}
+        <motion.div
+          style={{ opacity: rightOpacity }}
+          className="flex items-center gap-2 text-kindle-accent font-bold text-xs ml-auto"
+        >
+          <span>{item.savedBookId ? "Saved" : "Save to Library"}</span>
+          <motion.div style={{ scale: rightScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
+            <Bookmark className="w-5 h-5 text-kindle-accent" />
+          </motion.div>
+        </motion.div>
+      </div>
+
+      {/* Swipeable Foreground Card */}
+      <motion.article
+        drag="x"
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={{ left: 0.6, right: 0.6 }}
+        style={{ x }}
+        onDragEnd={handleDragEnd}
+        onTap={() => onRead()}
+        className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col h-full touch-pan-y ${
+          item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
+        }`}
+      >
+        <div className="flex flex-col flex-1 min-h-0">
+          <div
+            className={`relative bg-kindle-bg border-b border-kindle-border overflow-hidden text-left ${imageClass}`}
+          >
+            {showThumb ? (
+              <img
+                src={cover}
+                alt=""
+                className="w-full h-full object-cover pointer-events-none"
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                onError={() => setThumbFailed(true)}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
+                <Rss className="w-6 h-6 text-kindle-text-muted/40" />
+              </div>
+            )}
+            {!item.read && (
+              <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-kindle-text shadow-sm" />
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 mt-auto min-w-0" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={onRead}
-              disabled={busy}
-              className="hidden sm:flex flex-1 items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50 min-w-0"
-            >
-              {busy ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Newspaper className="w-3.5 h-3.5 shrink-0" />}
-              <span className="truncate">Read</span>
-            </button>
-            <button
-              onClick={onToggleRead}
-              className="flex-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
-              title={item.read ? "Mark unread" : "Mark read"}
-            >
-              <span className="truncate">{item.read ? "Unread" : "Done"}</span>
-            </button>
-            <a
-              href={item.link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1.5 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0 flex items-center justify-center"
-              title="Open original"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
+          <div className="flex flex-col flex-1 p-3 sm:p-4 pb-4 sm:pb-5 gap-2 sm:gap-3 min-w-0">
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate mb-1">
+                {item.subscriptionTitle} · {formatFeedDate(item.publishedAt)}
+              </p>
+              <h3
+                dir={dir}
+                className={`font-lexend font-bold leading-snug text-kindle-text ${
+                  dir === "rtl" ? "font-thaana" : ""
+                } ${
+                  variant === "featured" ? "text-base sm:text-lg line-clamp-3" : "text-sm line-clamp-3"
+                }`}
+              >
+                {title}
+              </h3>
+              {item.summary && !/^(article url|comments url)/i.test(item.summary) && (
+                <p
+                  dir={textDirection(item.summary)}
+                  className={`text-kindle-text-muted mt-1.5 leading-relaxed ${
+                    variant === "featured" ? "text-xs line-clamp-2" : "text-[11px] line-clamp-2"
+                  }`}
+                >
+                  {item.summary}
+                </p>
+              )}
+            </div>
 
-          {item.savedBookId && (
-            <p className="text-[9px] text-emerald-600 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" />
-              Saved to library
-            </p>
-          )}
+            <div
+              className="flex items-center gap-1.5 mt-auto min-w-0"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={onRead}
+                disabled={busy}
+                className="hidden sm:flex flex-1 items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50 min-w-0"
+              >
+                {busy ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Newspaper className="w-3.5 h-3.5 shrink-0" />}
+                <span className="truncate">Read</span>
+              </button>
+              <button
+                onClick={onToggleRead}
+                className="flex-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
+                title={item.read ? "Mark unread" : "Mark read"}
+              >
+                <span className="truncate">{item.read ? "Unread" : "Done"}</span>
+              </button>
+              <a
+                href={item.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-1.5 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0 flex items-center justify-center"
+                title="Open original"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+
+            {item.savedBookId && (
+              <p className="text-[9px] text-emerald-600 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                Saved to library
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-    </article>
+      </motion.article>
+    </div>
   );
 });
 
@@ -407,6 +469,33 @@ function FeedView({
     setReadingArticle(item);
   };
 
+  const handleSaveLater = useCallback(async (item: FeedItem) => {
+    if (item.savedBookId) {
+      toast("Already saved to library", { icon: "📖" });
+      return;
+    }
+    const tId = toast.loading(`Saving “${item.title}” to library…`);
+    try {
+      const book = await clipUrlToLibrary({
+        url: item.link,
+        userId,
+        tags: [
+          "Feed",
+          item.subscriptionTitle,
+          ...(isTelegramArticleLink(item.link) ? ["Telegram"] : []),
+        ],
+        sourceLabel: item.subscriptionTitle,
+      });
+      markFeedItemSaved(item.id, book.id);
+      setItems(getFeedItems());
+      await onRefreshLibrary?.();
+      toast.success("Saved to library for offline reading", { id: tId });
+    } catch (err) {
+      console.error(err);
+      toast.error((err as Error).message || "Could not save to library.", { id: tId });
+    }
+  }, [userId, onRefreshLibrary]);
+
   return (
     <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
       <header className="flex items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
@@ -529,9 +618,16 @@ function FeedView({
                 variant={getBentoVariant(index)}
                 onRead={() => void handleReadArticle(item)}
                 onToggleRead={() => {
-                  markFeedItemRead(item.id, !item.read);
+                  const nextRead = !item.read;
+                  markFeedItemRead(item.id, nextRead);
                   setItems(getFeedItems());
+                  if (nextRead) {
+                    toast.success("Marked as read");
+                  } else {
+                    toast.success("Marked as unread");
+                  }
                 }}
+                onSaveLater={() => void handleSaveLater(item)}
               />
             );
           })}
