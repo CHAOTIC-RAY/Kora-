@@ -1075,61 +1075,17 @@ export default {
       }
     }
 
-    // Dictionary lookup (Free Dictionary API — works on Workers without Gemini)
+    // Built-in dictionary only — online Oxford / free-dict proxy removed
     if (path === "/api/oxford-dictionary") {
-      const word = url.searchParams.get("word") || "";
-      const wordClean = word.trim().replace(/[^a-zA-Z\s'-]/g, "").toLowerCase();
-      if (!wordClean) {
-        return new Response(JSON.stringify({ error: "Missing word parameter" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-      try {
-        const apiRes = await fetch(
-          `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(wordClean)}`,
-          { signal: AbortSignal.timeout(8000) }
-        );
-        if (apiRes.ok) {
-          const data: any = await apiRes.json();
-          if (data?.[0]) {
-            return new Response(JSON.stringify(data[0]), {
-              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-            });
-          }
+      return new Response(
+        JSON.stringify({
+          error: "Use Kora's built-in dictionary. Online dictionary lookup is disabled.",
+        }),
+        {
+          status: 410,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         }
-        // Soft stem retry for simple plurals / past tense
-        const stem = wordClean
-          .replace(/'s$/, "")
-          .replace(/ies$/, "y")
-          .replace(/ing$/, "")
-          .replace(/ed$/, "")
-          .replace(/es$/, "")
-          .replace(/s$/, "");
-        if (stem && stem !== wordClean && stem.length >= 2) {
-          const stemRes = await fetch(
-            `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(stem)}`,
-            { signal: AbortSignal.timeout(6000) }
-          );
-          if (stemRes.ok) {
-            const stemData: any = await stemRes.json();
-            if (stemData?.[0]) {
-              return new Response(JSON.stringify(stemData[0]), {
-                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-              });
-            }
-          }
-        }
-        return new Response(JSON.stringify({ error: "Word definition could not be located." }), {
-          status: 404,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message || "Dictionary lookup failed" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
+      );
     }
 
     // 1. Anna's Archive Search (Rave Book Search Scraper)

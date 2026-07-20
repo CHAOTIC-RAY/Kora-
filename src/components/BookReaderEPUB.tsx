@@ -41,6 +41,7 @@ import {
 } from "../lib/readingStats";
 import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
+import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "../lib/epubToc";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
 import {
   applyHighlightsToElement,
@@ -877,17 +878,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
-      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(word)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSelectionDictPreview({
-          word,
-          phonetic: data.phonetic,
-          definition: data.meanings?.[0]?.definitions?.[0]?.definition,
-        });
-      } else {
-        setSelectionDictPreview({ word });
-      }
+      // Built-in / personal dictionary only — no online fallback
+      setSelectionDictPreview({ word });
     } catch {
       setSelectionDictPreview({ word });
     } finally {
@@ -1478,16 +1470,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
-      // 2. Fall back to online dictionary (Worker free-dict / Gemini on Node)
-      const res = await fetch(`/api/oxford-dictionary?word=${encodeURIComponent(clean)}`, {
-        signal: AbortSignal.timeout(10000),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDictionaryData(data);
-      } else {
-        setDictionaryData(null);
-      }
+      // Built-in / personal dictionary only — no online Oxford / free-dict fallback
+      setDictionaryData(null);
     } catch (err) {
       console.error("Dictionary error:", err);
       setDictionaryData(null);
@@ -1613,9 +1597,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         }
       });
 
-      // Parse Table of Contents labels (EPUB 3 navigation, fallback to NCX)
-      // For this lightweight parser, we'll map spine indices as chapters, 
-      // and read title metadata or HTML headings as title defaults
+      // Parse Table of Contents labels (EPUB 3 nav + NCX) for real chapter names
+      const tocLabels = await loadEpubTocLabels(zip, opfDoc, rootDir);
       const parsedChapters: EpubChapter[] = [];
 
       // Pre-register all spine hrefs so that in-book TOC links in any chapter
@@ -1623,37 +1606,28 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       // to the correct spine index during content processing.
       for (let i = 0; i < spineItems.length; i++) {
         const relativeHref = spineItems[i];
-        const norm = pathResolve(rootDir, relativeHref).toLowerCase();
+        const norm = resolveEpubPath(rootDir, relativeHref).toLowerCase();
         hrefToIndexRef.current.set(norm, i);
         hrefToIndexRef.current.set(relativeHref.toLowerCase(), i);
       }
 
       for (let i = 0; i < spineItems.length; i++) {
         const relativeHref = spineItems[i];
-        const fullChapterPath = `${rootDir}${relativeHref}`;
-        const chapterFile = zip.file(fullChapterPath);
+        const fullChapterPath = resolveEpubPath(rootDir, relativeHref);
+        const chapterFile = zip.file(fullChapterPath) || zip.file(`${rootDir}${relativeHref}`);
 
         if (chapterFile) {
           const rawContent = await chapterFile.async("string");
-          const chapterDoc = parser.parseFromString(rawContent, "text/html");
-          
-          // Get beautiful title from H1/H2 or title element
-          let chapterTitle = chapterDoc.querySelector("title")?.textContent?.trim() || "";
-          
-          if (!chapterTitle || chapterTitle.toLowerCase() === "unknown" || chapterTitle.toLowerCase() === "untitled") {
-             chapterTitle = chapterDoc.querySelector("h1")?.textContent || 
-                            chapterDoc.querySelector("h2")?.textContent || 
-                            chapterDoc.querySelector("h3")?.textContent ||
-                            `Chapter ${i + 1}`;
-          }
-
-          chapterTitle = chapterTitle.trim().replace(/\s+/g, " ");
-          if (chapterTitle.length > 50) {
-            chapterTitle = chapterTitle.substring(0, 47) + "...";
-          }
+          const chapterTitle = resolveChapterTitle(
+            tocLabels,
+            rootDir,
+            relativeHref,
+            rawContent,
+            `Chapter ${i + 1}`
+          );
 
           // Process chapter document images and style links in-memory
-          // Find all images, retrieve binary blobs, and map to local blob URLs
+          const chapterDoc = parser.parseFromString(rawContent, "text/html");
           const processedContent = await resolveInternalAssets(chapterDoc, zip, rootDir, relativeHref);
 
           parsedChapters.push({
