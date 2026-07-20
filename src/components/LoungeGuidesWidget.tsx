@@ -41,7 +41,7 @@ export default function LoungeGuidesWidget({
 }: LoungeGuidesWidgetProps) {
   const guidesApi = useGuidesOptional();
   const reduceMotion = useReducedMotion();
-  const limit = variant === "bento" ? 1 : 2;
+  const limit = 2;
   const [guides, setGuides] = useState<GuideDefinition[]>(() => pickLoungeGuideWidgets(limit));
 
   useEffect(() => {
@@ -73,29 +73,31 @@ export default function LoungeGuidesWidget({
   };
 
   if (variant === "bento") {
-    const guide = guides[0];
     return (
       <div className="h-full flex flex-col gap-2.5 min-h-0" aria-label="Guides">
         <div className="flex items-center justify-between gap-2 shrink-0 px-0.5">
           <div className="flex items-center gap-2">
             <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
             <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
-              Guide
+              Guides
             </h3>
           </div>
-          <p className="text-[9px] text-kindle-text-muted font-medium">Swipe to hide</p>
+          <p className="text-[9px] text-kindle-text-muted font-medium">Swipe a card to hide forever</p>
         </div>
 
-        {guide ? (
-          <div className="flex-1 min-h-0 flex flex-col justify-center">
-            <GuideSwipeCard
-              guide={guide}
-              Icon={ICONS[guide.icon] || Sparkles}
-              reduceMotion={!!reduceMotion}
-              onDismiss={() => handleDismiss(guide.id)}
-              onStart={() => handleStart(guide.id)}
-              compact
-            />
+        {guides.length ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-1 min-h-0">
+            {guides.map((guide) => (
+              <GuideSwipeCard
+                key={guide.id}
+                guide={guide}
+                Icon={ICONS[guide.icon] || Sparkles}
+                reduceMotion={!!reduceMotion}
+                onDismiss={() => handleDismiss(guide.id)}
+                onStart={() => handleStart(guide.id)}
+                compact
+              />
+            ))}
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-3 py-4 gap-1.5">
