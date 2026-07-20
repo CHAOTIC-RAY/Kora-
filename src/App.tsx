@@ -232,6 +232,9 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     return localStorage.getItem("kora_onboarding_completed") !== "true";
   });
+  const [showFirstBookNudge, setShowFirstBookNudge] = useState<boolean>(() => {
+    return localStorage.getItem("kora_first_book_nudge") === "true";
+  });
   const [showAnnotationsHub, setShowAnnotationsHub] = useState(false);
   const [proximitySyncBook, setProximitySyncBook] = useState<BookMetadata | null>(null);
   const [userNickname, setUserNickname] = useState<string>(() => {
@@ -304,7 +307,10 @@ export default function App() {
     applySelectedFeedSources(prefs.selectedFeedUrls);
 
     setShowOnboarding(false);
-    toast.success(`Welcome, ${prefs.nickname}! Your reading identity has been forged.`);
+    localStorage.setItem("kora_first_book_nudge", "true");
+    setShowFirstBookNudge(true);
+    switchTab("discover");
+    toast.success(`Welcome, ${prefs.nickname}! Search Discover to add your first book.`);
   };
 
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
@@ -597,6 +603,12 @@ export default function App() {
     }
 
     toast.loading(`Downloading ${book.title}...`, { id: downloadId });
+
+    if (!options?.reuseDownloadId) {
+      localStorage.removeItem("kora_first_book_nudge");
+      setShowFirstBookNudge(false);
+      switchTab("library");
+    }
 
     // --- Background download via Service Worker (survives app exit + shows
     // Android progress notification). Falls back to the foreground loop below
@@ -1884,6 +1896,11 @@ export default function App() {
             zlibConfig={zlibConfig}
             selectedBook={selectedBookForDownload}
             onSelectedBookChange={setSelectedBookForDownload}
+            showFirstBookNudge={showFirstBookNudge && books.length === 0}
+            onDismissFirstBookNudge={() => {
+              localStorage.removeItem("kora_first_book_nudge");
+              setShowFirstBookNudge(false);
+            }}
             onTriggerDownload={startBackgroundDownload}
             onOpenBrowser={(url) => {
               setFeedInitialUrl(url);

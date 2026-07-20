@@ -55,6 +55,8 @@ interface DiscoverViewProps {
   onOpenBrowser?: (url: string) => void;
   onTriggerDownload?: (book: any, mirrors: any | any[], variant: any) => void;
   onPlayAudiobook?: (book: BookMetadata) => void;
+  showFirstBookNudge?: boolean;
+  onDismissFirstBookNudge?: () => void;
 }
 
 async function injectMetadataIntoEpub(
@@ -198,7 +200,9 @@ function DiscoverView({
   onClearInitialQuery,
   onOpenBrowser,
   onTriggerDownload,
-  onPlayAudiobook
+  onPlayAudiobook,
+  showFirstBookNudge = false,
+  onDismissFirstBookNudge,
 }: DiscoverViewProps) {
   const getAudiobookCoverSrc = (coverUrl?: string | null) => resolveCoverImageSrc(coverUrl);
   const stripHtml = (html: string) => {
@@ -2667,6 +2671,30 @@ function DiscoverView({
               </button>
             )}
           </div>
+
+          {showFirstBookNudge && !searchMode && !viewingCategory && (
+            <div className="rounded-2xl border border-kindle-accent/30 bg-kindle-accent/5 px-4 py-4 md:px-5 md:py-5 flex items-start gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="mt-0.5 rounded-xl bg-kindle-accent/15 p-2.5 text-kindle-accent shrink-0">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-bold text-kindle-text">Add your first book</p>
+                <p className="text-xs text-kindle-text-muted leading-relaxed">
+                  Search below or tap a trending title to download it to your library.
+                </p>
+              </div>
+              {onDismissFirstBookNudge && (
+                <button
+                  type="button"
+                  onClick={onDismissFirstBookNudge}
+                  className="p-1.5 rounded-lg text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0"
+                  aria-label="Dismiss"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="flex flex-col gap-3">
             <form onSubmit={handleSearch} className="relative group w-full">
