@@ -249,7 +249,7 @@ export default function PwaLifecycleBanner() {
               <button
                 type="button"
                 onClick={() => applyUpdate(false)}
-                className="px-3 py-1.5 rounded-lg bg-kindle-accent text-white text-[11px] font-bold uppercase tracking-wider"
+                className="px-3 py-1.5 rounded-lg bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider"
               >
                 Update now
               </button>
@@ -302,7 +302,7 @@ export default function PwaLifecycleBanner() {
                 <button
                   type="button"
                   onClick={handleInstall}
-                  className="px-3 py-1.5 rounded-lg bg-kindle-accent text-white text-[11px] font-bold uppercase tracking-wider"
+                  className="px-3 py-1.5 rounded-lg bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider"
                 >
                   Install
                 </button>
