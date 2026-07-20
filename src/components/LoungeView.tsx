@@ -401,11 +401,13 @@ export default function LoungeView({
         </AnimatePresence>
       </header>
 
-      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2 md:grid-rows-[minmax(200px,1fr)_minmax(220px,1fr)_auto]">
-        {/* Continue + shelf — left tall, whole hero opens book */}
+      <div className="flex flex-col gap-3 md:gap-4 md:grid md:grid-cols-2 md:items-start">
+        {/* Left stack — Continue sizes to content; Shelf fills under it */}
+        <div className="contents md:flex md:flex-col md:gap-3 md:gap-4 md:col-start-1 md:row-start-1">
+        {/* Continue — whole hero opens book */}
         <TileShell
           delay={0.02}
-          className="order-1 md:order-none md:col-start-1 md:row-start-1 md:row-span-2 relative bg-kindle-card"
+          className="order-1 relative bg-kindle-card"
           onClick={openContinue}
           label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
         >
@@ -434,7 +436,7 @@ export default function LoungeView({
             )}
           </div>
 
-          <div className="relative h-full flex flex-col">
+          <div className="relative flex flex-col">
             <div className="px-4 md:px-5 pt-4 flex items-center justify-between gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-2">
                 <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
@@ -452,8 +454,8 @@ export default function LoungeView({
               />
             </div>
 
-            {/* Hero: proper 2:3 cover left, meta column right */}
-            <div className="flex-1 min-h-[14rem] w-full text-left px-3.5 md:px-5 pb-3 pt-1 pointer-events-none">
+            {/* Hero: proper 2:3 cover left, meta column right — height follows content */}
+            <div className="w-full text-left px-3.5 md:px-5 pb-4 pt-2 pointer-events-none">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`${modes.continue}-${continueBook?.id || "empty"}`}
@@ -461,7 +463,7 @@ export default function LoungeView({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.35 }}
-                  className="h-full min-h-[14rem] flex items-center gap-3.5 md:gap-5"
+                  className="flex items-stretch gap-3.5 md:gap-5"
                 >
                   {continueBook ? (
                     <>
@@ -488,7 +490,7 @@ export default function LoungeView({
                           </span>
                         )}
                       </div>
-                      <div className="min-w-0 flex-1 self-stretch flex flex-col justify-between py-0.5 gap-2">
+                      <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5 gap-2">
                         <div className="space-y-1.5">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
                             {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
@@ -524,7 +526,7 @@ export default function LoungeView({
                       </div>
                     </>
                   ) : (
-                    <div className="space-y-2 self-center">
+                    <div className="space-y-2 py-4">
                       <p className="text-sm text-kindle-text-muted">
                         Nothing in progress yet. Tap to find something on Discover.
                       </p>
@@ -536,65 +538,65 @@ export default function LoungeView({
                 </motion.div>
               </AnimatePresence>
             </div>
-
-            {/* Shelf strip */}
-            <div
-              className="relative border-t border-white/10 bg-black/25 backdrop-blur-md px-4 md:px-5 pt-3 pb-3.5"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between gap-2 mb-2.5">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-3.5 h-3.5 text-kindle-accent" />
-                  <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
-                    On your shelf
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onOpenTab("library")}
-                  className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
-                >
-                  Library →
-                </button>
-              </div>
-
-              {shelfItems.length ? (
-                <div className="flex gap-2.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {shelfItems.map((book, i) => {
-                    return (
-                      <motion.button
-                        key={book.id}
-                        type="button"
-                        onClick={() => onOpenBook(book)}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.03 * i, duration: 0.25 }}
-                        className="group relative shrink-0 snap-start w-[3.85rem] focus:outline-none"
-                        title={book.title}
-                      >
-                        <div className="w-full aspect-[2/3] rounded-xl overflow-hidden border border-white/10 bg-kindle-bg shadow-md transition duration-300 group-hover:-translate-y-1 group-hover:border-kindle-accent/40">
-                          <CachedCoverImage
-                            coverUrl={book.coverUrl}
-                            bookTitle={book.title}
-                            className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-kindle-text-muted py-1">Books you open will line up here.</p>
-              )}
-            </div>
           </div>
         </TileShell>
 
+        {/* Shelf — sits under Continue on md+ to fill the left column */}
+        <TileShell delay={0.04} className="order-4 md:order-none bg-kindle-card/70 px-4 md:px-5 pt-3 pb-3.5">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-3.5 h-3.5 text-kindle-accent" />
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
+                On your shelf
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenTab("library")}
+              className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
+            >
+              Library →
+            </button>
+          </div>
+
+          {shelfItems.length ? (
+            <div className="flex gap-2.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {shelfItems.map((book, i) => {
+                return (
+                  <motion.button
+                    key={book.id}
+                    type="button"
+                    onClick={() => onOpenBook(book)}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.03 * i, duration: 0.25 }}
+                    className="group relative shrink-0 snap-start w-[3.85rem] focus:outline-none"
+                    title={book.title}
+                  >
+                    <div className="w-full aspect-[2/3] rounded-xl overflow-hidden border border-white/10 bg-kindle-bg shadow-md transition duration-300 group-hover:-translate-y-1 group-hover:border-kindle-accent/40">
+                      <CachedCoverImage
+                        coverUrl={book.coverUrl}
+                        bookTitle={book.title}
+                        className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                  </motion.button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-kindle-text-muted py-1">Books you open will line up here.</p>
+          )}
+        </TileShell>
+        </div>
+
+        {/* Right stack — Paper + Discover size independently */}
+        <div className="contents md:flex md:flex-col md:gap-3 md:gap-4 md:col-start-2 md:row-start-1">
         {/* Paper */}
         <TileShell
           delay={0.06}
-          className="order-2 md:order-none md:col-start-2 md:row-start-1 bg-kindle-card/55 flex flex-col"
+          className="order-2 bg-kindle-card/55 flex flex-col"
           onClick={() => onOpenTab("feed")}
           label="Open news paper"
         >
@@ -616,7 +618,7 @@ export default function LoungeView({
             />
           </div>
 
-          <div className="flex-1 divide-y divide-kindle-border/50 overflow-hidden">
+          <div className="divide-y divide-kindle-border/50 overflow-hidden">
             {newsItems.length ? (
               newsItems.map((item) => (
                 <div key={item.id} className="px-4 md:px-5 py-2.5 flex gap-2.5 hover:bg-kindle-bg/40 transition">
@@ -653,7 +655,7 @@ export default function LoungeView({
         {/* Discover — whole card clickable, denser featured + cover */}
         <TileShell
           delay={0.1}
-          className="order-3 md:order-none md:col-start-2 md:row-start-2 relative bg-kindle-bg"
+          className="order-3 relative bg-kindle-bg"
           onClick={openDiscover}
           label="Open Discover"
         >
@@ -683,7 +685,7 @@ export default function LoungeView({
             )}
           </div>
 
-          <div className="relative h-full p-4 md:p-5 flex flex-col gap-3 min-h-[220px]">
+          <div className="relative p-4 md:p-5 flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2 shrink-0">
               <div className="flex items-center gap-2">
                 <Compass className="w-3.5 h-3.5 text-kindle-accent" />
@@ -708,7 +710,7 @@ export default function LoungeView({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
-                className="flex-1 flex flex-col gap-3 min-h-0"
+                className="flex flex-col gap-3"
               >
                 {discoverHero ? (
                   <>
@@ -747,7 +749,7 @@ export default function LoungeView({
 
                     {discoverRest.length > 0 && (
                       <div
-                        className="mt-auto flex gap-2.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        className="flex gap-2.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {discoverRest.map((book, i) => {
@@ -775,7 +777,7 @@ export default function LoungeView({
                     )}
                   </>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
+                  <div className="flex flex-col items-center justify-center text-center gap-2 py-6">
                     <Compass className="w-7 h-7 text-kindle-text-muted opacity-30" />
                     <p className="text-xs text-kindle-text-muted">
                       {isDiscoverAudio
@@ -792,17 +794,20 @@ export default function LoungeView({
             </p>
           </div>
         </TileShell>
+        </div>
 
+        {/* Bottom row — Guides + Notes span full width, stack on narrow screens */}
+        <div className="order-5 contents sm:grid sm:grid-cols-2 sm:gap-3 md:gap-4 md:col-span-2 md:order-none">
         <TileShell
           delay={0.14}
-          className="order-4 md:order-none bg-kindle-card/60 p-3 md:p-4 min-h-[16rem]"
+          className="order-5 sm:order-none bg-kindle-card/60 p-3 md:p-4"
         >
           <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
         </TileShell>
 
         <TileShell
           delay={0.16}
-          className="order-5 md:order-none bg-kindle-card/60 p-3 md:p-4 min-h-[16rem]"
+          className="order-6 sm:order-none bg-kindle-card/60 p-3 md:p-4"
         >
           <LoungeNotesWidget
             books={books}
@@ -811,6 +816,7 @@ export default function LoungeView({
             onOpenAnnotations={onOpenAnnotations}
           />
         </TileShell>
+        </div>
       </div>
     </div>
   );
