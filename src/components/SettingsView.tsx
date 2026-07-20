@@ -5,8 +5,8 @@ import {
   User as UserIcon, ShieldCheck, BookOpen,
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
-  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper
+  Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, Circle
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import {
@@ -29,6 +29,32 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import { APP_SKINS, type AppSkinId } from "../lib/appSkin";
+
+const SKIN_PREVIEW: Record<
+  AppSkinId,
+  { preview: string; dots: string; icon: typeof Layout }
+> = {
+  kora: {
+    preview: "border-kindle-border bg-kindle-card/80 backdrop-blur-sm",
+    dots: "rounded-md",
+    icon: Layout,
+  },
+  paper: {
+    preview: "border-amber-900/15 bg-[#f4ede3]",
+    dots: "rounded-sm",
+    icon: BookOpen,
+  },
+  studio: {
+    preview: "border-2 border-kindle-text bg-kindle-bg",
+    dots: "rounded-none",
+    icon: AlignLeft,
+  },
+  soft: {
+    preview: "border-kindle-border/50 bg-kindle-card shadow-md",
+    dots: "rounded-full",
+    icon: Circle,
+  },
+};
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
@@ -590,6 +616,8 @@ function SettingsView({
                 <div className="grid grid-cols-2 gap-2">
                   {APP_SKINS.map((skin) => {
                     const selected = appSkin === skin.id;
+                    const preview = SKIN_PREVIEW[skin.id];
+                    const SkinIcon = preview.icon;
                     return (
                       <button
                         key={skin.id}
@@ -602,31 +630,21 @@ function SettingsView({
                         }`}
                       >
                         <div
-                          className={`w-full h-14 rounded-xl border overflow-hidden ${
-                            skin.id === "kora-glass"
-                              ? "border-white/40 bg-gradient-to-br from-white/70 via-kindle-accent/10 to-kindle-card shadow-inner backdrop-blur-sm"
-                              : "border-kindle-border bg-kindle-card"
-                          }`}
+                          className={`w-full h-14 rounded-xl border overflow-hidden ${preview.preview}`}
                         >
                           <div className="h-full flex items-end justify-center pb-2 px-3 gap-1.5">
                             {[0, 1, 2, 3].map((i) => (
                               <span
                                 key={i}
-                                className={`rounded-full ${
-                                  skin.id === "kora-glass"
-                                    ? `w-4 h-4 border border-white/50 ${i === 1 ? "bg-kindle-text/25 shadow-sm" : "bg-white/35"}`
-                                    : `w-3.5 h-3.5 ${i === 1 ? "bg-kindle-accent" : "bg-kindle-border"}`
+                                className={`w-3.5 h-3.5 ${preview.dots} ${
+                                  i === 1 ? "bg-kindle-accent" : "bg-kindle-border"
                                 }`}
                               />
                             ))}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          {skin.id === "kora-glass" ? (
-                            <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
-                          ) : (
-                            <Layout className="w-3.5 h-3.5 text-kindle-text-muted" />
-                          )}
+                          <SkinIcon className="w-3.5 h-3.5 text-kindle-text-muted" />
                           <span className="text-[10px] font-bold uppercase tracking-widest">{skin.label}</span>
                         </div>
                         <span className="text-[9px] text-kindle-text-muted leading-snug">{skin.description}</span>

@@ -1,0 +1,334 @@
+/* ═══════════════════════════════════════════════════════════════
+   App skins — orthogonal to display themes (color tokens).
+   .skin-kora    = classic frosted chrome (default)
+   .skin-paper   = matte e-reader
+   .skin-studio  = sharp editorial
+   .skin-soft    = rounded elevated
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Shared chrome hooks ── */
+.kora-app-header,
+.kora-desktop-nav,
+.kora-mobile-footer,
+.kora-chrome-btn,
+.kora-tab-pill {
+  transition:
+    border-radius 0.25s ease,
+    box-shadow 0.25s ease,
+    background-color 0.25s ease,
+    border-color 0.25s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   KORA — classic frosted floating chrome
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-kora .kora-app-header {
+  border-bottom: 1px solid var(--theme-border) !important;
+  background: color-mix(in srgb, var(--theme-bg) 92%, transparent) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+body.skin-kora .kora-desktop-nav {
+  border-radius: 0.75rem;
+}
+
+body.skin-kora .kora-mobile-footer {
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--theme-card) 90%, transparent);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
+}
+
+body.skin-kora .kora-tab-pill {
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--theme-bg) 92%, transparent);
+  border: 1px solid var(--theme-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+body.skin-kora .kindle-card,
+body.skin-kora .bg-kindle-card,
+body.skin-kora section.bg-kindle-card {
+  border-radius: 1rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PAPER — warm matte reader surfaces
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-paper {
+  --skin-paper-warm: color-mix(in srgb, var(--theme-card) 94%, #c4a574 6%);
+  --skin-paper-line: color-mix(in srgb, var(--theme-border) 80%, #8b7355 20%);
+}
+
+body.skin-paper .kora-app-header {
+  border-bottom: 1px solid var(--skin-paper-line) !important;
+  background: var(--skin-paper-warm) !important;
+  box-shadow: none;
+}
+
+body.skin-paper .kora-desktop-nav {
+  border-radius: 0.5rem;
+  background: var(--skin-paper-warm) !important;
+  border-color: var(--skin-paper-line) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+body.skin-paper .kora-desktop-nav-item.is-active {
+  background: color-mix(in srgb, var(--theme-bg) 88%, #d4c4a8 12%) !important;
+  border-color: var(--skin-paper-line) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+body.skin-paper .kora-mobile-footer {
+  left: 0.75rem;
+  right: 0.75rem;
+  border-radius: 0.625rem;
+  background: var(--skin-paper-warm);
+  border-color: var(--skin-paper-line) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 6px 18px rgba(60, 45, 30, 0.08);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body.skin-paper .kora-tab-pill {
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--theme-bg) 85%, #d4c4a8 15%) !important;
+  border: 1px solid var(--skin-paper-line) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+body.skin-paper .kora-chrome-btn {
+  border-radius: 0.5rem !important;
+  border: 1px solid var(--skin-paper-line);
+  background: var(--skin-paper-warm) !important;
+}
+
+body.skin-paper .kindle-card,
+body.skin-paper .bg-kindle-card,
+body.skin-paper section.bg-kindle-card,
+body.skin-paper .rounded-2xl.bg-kindle-card,
+body.skin-paper .rounded-3xl.bg-kindle-card {
+  border-radius: 0.5rem !important;
+  background: var(--skin-paper-warm) !important;
+  border-color: var(--skin-paper-line) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.45) inset,
+    0 2px 8px rgba(60, 45, 30, 0.06) !important;
+}
+
+body.skin-paper input[type="text"],
+body.skin-paper input[type="search"],
+body.skin-paper textarea,
+body.skin-paper select {
+  border-radius: 0.5rem !important;
+  background: color-mix(in srgb, var(--theme-bg) 90%, #e8dfd0 10%) !important;
+  border-color: var(--skin-paper-line) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STUDIO — sharp editorial chrome
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-studio .kora-app-header {
+  border-bottom: 2px solid var(--theme-text) !important;
+  background: var(--theme-bg) !important;
+  box-shadow: none;
+}
+
+body.skin-studio .kora-desktop-nav {
+  border-radius: 0.25rem;
+  padding: 0 !important;
+  gap: 0 !important;
+  overflow: hidden;
+  border: 2px solid var(--theme-text) !important;
+  background: var(--theme-bg) !important;
+}
+
+body.skin-studio .kora-desktop-nav-item {
+  border-radius: 0 !important;
+  border-right: 1px solid var(--theme-border) !important;
+}
+
+body.skin-studio .kora-desktop-nav-item:last-child {
+  border-right: none !important;
+}
+
+body.skin-studio .kora-desktop-nav-item.is-active {
+  background: var(--theme-text) !important;
+  color: var(--theme-bg) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+body.skin-studio .kora-desktop-nav-item.is-active svg {
+  color: inherit;
+}
+
+body.skin-studio .kora-mobile-footer {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-top: 2px solid var(--theme-text) !important;
+  background: var(--theme-bg);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding-bottom: max(var(--kora-safe-bottom), 0.25rem);
+}
+
+body.skin-studio .kora-tab-bar {
+  height: 3.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+body.skin-studio .kora-tab-pill {
+  border-radius: 0.25rem;
+  background: var(--theme-text) !important;
+  border: none !important;
+  box-shadow: none;
+}
+
+body.skin-studio .kora-tab-item.is-active {
+  color: var(--theme-bg) !important;
+}
+
+body.skin-studio .kora-tab-item.is-active .kora-tab-icon svg {
+  color: var(--theme-bg);
+}
+
+body.skin-studio .kora-tab-item.is-active span {
+  color: var(--theme-bg);
+}
+
+body.skin-studio .kora-chrome-btn {
+  border-radius: 0.25rem !important;
+  border: 2px solid var(--theme-text) !important;
+  background: var(--theme-bg) !important;
+}
+
+body.skin-studio .kindle-card,
+body.skin-studio .bg-kindle-card,
+body.skin-studio section.bg-kindle-card,
+body.skin-studio .rounded-2xl.bg-kindle-card,
+body.skin-studio .rounded-3xl.bg-kindle-card {
+  border-radius: 0.25rem !important;
+  border-width: 2px !important;
+  border-color: var(--theme-text) !important;
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--theme-text) 12%, transparent) !important;
+}
+
+body.skin-studio input[type="text"],
+body.skin-studio input[type="search"],
+body.skin-studio textarea,
+body.skin-studio select {
+  border-radius: 0.25rem !important;
+  border-width: 2px !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SOFT — rounded elevated surfaces
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-soft {
+  --skin-soft-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.1),
+    0 2px 8px rgba(0, 0, 0, 0.04);
+  --skin-soft-inset: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+body.skin-soft .kora-app-header {
+  border-bottom: none !important;
+  background: color-mix(in srgb, var(--theme-bg) 88%, transparent) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+}
+
+body.skin-soft .kora-desktop-nav {
+  border-radius: 9999px;
+  padding: 0.35rem !important;
+  background: color-mix(in srgb, var(--theme-card) 85%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-border) 60%, transparent) !important;
+  box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+body.skin-soft .kora-desktop-nav-item {
+  border-radius: 9999px !important;
+}
+
+body.skin-soft .kora-desktop-nav-item.is-active {
+  border-radius: 9999px !important;
+  background: var(--theme-bg) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1), var(--skin-soft-inset) !important;
+}
+
+body.skin-soft .kora-mobile-footer {
+  max-width: min(24rem, calc(100vw - 2rem));
+  border-radius: 9999px;
+  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-card) 88%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset);
+}
+
+body.skin-soft .kora-tab-bar {
+  height: 4.5rem;
+  padding: 0.5rem 0.65rem;
+}
+
+body.skin-soft .kora-tab-pill {
+  border-radius: 9999px !important;
+  background: var(--theme-bg) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 70%, transparent) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), var(--skin-soft-inset);
+}
+
+body.skin-soft .kora-chrome-btn {
+  border-radius: 9999px !important;
+  width: 2.65rem;
+  height: 2.65rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-card) 90%, transparent) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), var(--skin-soft-inset);
+}
+
+body.skin-soft .kindle-card,
+body.skin-soft .bg-kindle-card,
+body.skin-soft section.bg-kindle-card,
+body.skin-soft .rounded-2xl.bg-kindle-card,
+body.skin-soft .rounded-3xl.bg-kindle-card {
+  border-radius: 1.5rem !important;
+  border-color: color-mix(in srgb, var(--theme-border) 55%, transparent) !important;
+  box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset) !important;
+}
+
+body.skin-soft input[type="text"],
+body.skin-soft input[type="search"],
+body.skin-soft textarea,
+body.skin-soft select,
+body.skin-soft button.rounded-full {
+  border-radius: 9999px !important;
+  box-shadow: var(--skin-soft-inset) !important;
+}
+
+body.skin-soft .kora-mobile-media-dock--joined {
+  border-radius: 9999px !important;
+  box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset);
+}

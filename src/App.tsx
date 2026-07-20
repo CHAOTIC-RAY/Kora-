@@ -85,7 +85,6 @@ import {
   readStoredAppSkin,
   skinBodyClass,
 } from "./lib/appSkin";
-import { LiquidGlassProvider } from "./components/liquid-glass";
 
 const MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
@@ -1686,9 +1685,8 @@ export default function App() {
       data-skin={appSkin}
       className="min-h-screen min-h-[100dvh] flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300"
     >
-      <LiquidGlassProvider enabled={appSkin === "kora-glass"} />
       {/* 1. Global Navigation Header - Kora Style */}
-      <header className="kora-app-header lg-regular border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top" data-lg="regular">
+      <header className="kora-app-header border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
@@ -1697,7 +1695,7 @@ export default function App() {
             className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none cursor-pointer shrink-0"
             aria-label="Kora Library Home"
           >
-            <KoraIcon className="w-7 h-7 text-kindle-text kora-glass-icon" />
+            <KoraIcon className="w-7 h-7 text-kindle-text" />
             <div className="hidden sm:block pr-4 border-r border-kindle-border">
               <KoraWordmark className="h-4 text-kindle-text" />
             </div>
@@ -1709,7 +1707,7 @@ export default function App() {
 
         {/* Tab Controls & Cloud Auth Sync Info */}
         <div className="flex items-center gap-2 shrink-0">
-          <nav className="kora-desktop-nav lg-regular hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border" data-lg="regular">
+          <nav className="kora-desktop-nav hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border">
             <button
               id="library-tab"
               onClick={() => switchTab("library")}
@@ -1763,7 +1761,7 @@ export default function App() {
           <div className="flex items-center gap-1">
             <button
               onClick={() => switchTab("settings")}
-              className={`kora-glass-icon-btn p-2 rounded-xl transition cursor-pointer relative z-40 ${
+              className={`kora-chrome-btn p-2 rounded-xl transition cursor-pointer relative z-40 ${
                 activeTab === "settings"
                   ? "bg-kindle-accent/15 text-kindle-accent"
                   : "text-kindle-text-muted hover:text-kindle-text hover:bg-neutral-100"
@@ -2352,7 +2350,7 @@ export default function App() {
 
       {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book */}
       {!readerOpen && (
-      <footer className="md:hidden fixed kora-mobile-footer lg-regular z-50 mx-auto max-w-md border border-kindle-border/80 rounded-2xl kora-safe-bottom" data-lg="regular">
+      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border/80 rounded-2xl kora-safe-bottom">
         <LayoutGroup id="kora-mobile-tabs">
           <nav className="kora-tab-bar grid grid-cols-4 h-14 px-1.5 py-1" aria-label="Main">
             {MOBILE_TABS.map(({ id, label, Icon }) => {
@@ -2370,8 +2368,7 @@ export default function App() {
                   {isActive && (
                     <motion.span
                       layoutId="kora-tab-pill"
-                      className="kora-tab-pill lg-lens absolute inset-y-0.5 inset-x-0.5 rounded-xl"
-                      data-lg="lens"
+                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
                       transition={koraSpring}
                     />
                   )}
