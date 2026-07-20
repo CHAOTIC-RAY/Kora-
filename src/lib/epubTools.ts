@@ -1,5 +1,5 @@
 import JSZip from "jszip";
-import { extractEpubChapters } from "./epubTextExtract";
+import { extractEpubChapters, type TextChapter } from "./epubTextExtract";
 
 export type EpubInspectInfo = {
   title: string;
@@ -140,7 +140,7 @@ async function findCover(
 export async function inspectEpub(file: Blob): Promise<EpubInspectInfo> {
   const zip = await JSZip.loadAsync(file);
   const { rootDir, opfDoc } = await loadOpf(zip);
-  const chapters = await extractEpubChapters(file).catch(() => []);
+  const chapters = await extractEpubChapters(file).catch((): TextChapter[] => []);
   const wordCount = chapters.reduce(
     (sum, ch) => sum + (ch.text.trim() ? ch.text.trim().split(/\s+/).length : 0),
     0
