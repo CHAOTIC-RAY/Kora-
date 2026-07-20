@@ -120,18 +120,26 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
                 </button>
               </div>
 
-              {showSettings ? <NewsReaderSettingsPanel prefs={prefs} onChange={updatePrefs} /> : null}
-
               <div
                 className={`flex-1 overflow-y-auto overscroll-contain pt-[calc(var(--kora-safe-top)+3.25rem)] pb-[calc(var(--kora-safe-bottom)+1.5rem)] min-h-0 ${prefs.marginSize}`}
                 onClick={() => {
-                  if (showSettings) return;
+                  if (showSettings) {
+                    setShowSettings(false);
+                    return;
+                  }
                   setChromeVisible((v) => !v);
                 }}
               >
                 <div
                   className={`space-y-5 ${prefs.fontFamily} ${theme.content}`}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    if (showSettings) {
+                      setShowSettings(false);
+                      e.stopPropagation();
+                    } else {
+                      e.stopPropagation();
+                    }
+                  }}
                 >
                   <div className="space-y-1">
                     <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
@@ -203,6 +211,7 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
                   ))}
                 </div>
               </div>
+              {showSettings ? <NewsReaderSettingsPanel prefs={prefs} onChange={updatePrefs} /> : null}
             </div>
           </div>,
           document.body

@@ -2042,7 +2042,7 @@ export default {
         `https://kora-cache.internal/google-books?q=${encodeURIComponent(q)}&max=${maxResults}&start=${startIndex || "0"}`
       );
       try {
-        const cached = await caches.default.match(cacheKey);
+        const cached = await (caches as any).default.match(cacheKey);
         if (cached) {
           const body = await cached.text();
           return new Response(body, { status: 200, headers: jsonHeaders });
@@ -2064,7 +2064,7 @@ export default {
           const payload = JSON.stringify(data);
           const out = new Response(payload, { status: 200, headers: jsonHeaders });
           try {
-            await caches.default.put(
+            await (caches as any).default.put(
               cacheKey,
               new Response(payload, {
                 status: 200,
@@ -2082,7 +2082,7 @@ export default {
         if (olFallback) {
           const payload = JSON.stringify(olFallback);
           try {
-            await caches.default.put(
+            await (caches as any).default.put(
               cacheKey,
               new Response(payload, {
                 status: 200,

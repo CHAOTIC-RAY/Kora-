@@ -106,8 +106,8 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
       aria-pressed={on}
     >
       <div
-        className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${
-          on ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"
+        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${
+          on ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"
         }`}
       />
     </button>
@@ -452,10 +452,12 @@ function SettingsView({
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
     { id: "font-sans", label: "Sans" },
-    { id: "font-lexend", label: "Lexend" },
+    { id: "font-lexend", label: "Rakuten Sans" },
     { id: "font-opendyslexic", label: "OpenDyslexic" },
     { id: "font-mono", label: "Mono" },
-    { id: "font-thaana", label: "Dhivehi" },
+    { id: "font-bookerly", label: "Bookerly" },
+    { id: "font-chareink", label: "ChareInk7SP" },
+    { id: "font-lexica", label: "Lexica Ultralegible" },
   ];
   const readerThemes = [
     { id: "sepia", label: "Sepia", bg: "bg-[#f4ecd8]", ring: "ring-[#cbb994]" },

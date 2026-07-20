@@ -25,7 +25,7 @@ export const DEFAULT_NEWS_READER_PREFS: NewsReaderPrefs = {
   fontSize: 18,
   lineSpacing: 1.7,
   paragraphSpacing: 1.1,
-  fontFamily: "font-serif",
+  fontFamily: "font-lexica",
   marginSize: "max-w-2xl px-5",
   theme: "app",
   brightness: 100,
@@ -34,10 +34,12 @@ export const DEFAULT_NEWS_READER_PREFS: NewsReaderPrefs = {
 export const NEWS_READER_FONT_OPTIONS = [
   { id: "font-serif", label: "Serif" },
   { id: "font-sans", label: "Sans" },
-  { id: "font-lexend", label: "Lexend" },
+  { id: "font-lexend", label: "Rakuten Sans" },
   { id: "font-opendyslexic", label: "OpenDyslexic" },
   { id: "font-mono", label: "Mono" },
-  { id: "font-thaana", label: "Dhivehi" },
+  { id: "font-bookerly", label: "Bookerly" },
+  { id: "font-chareink", label: "ChareInk7SP" },
+  { id: "font-lexica", label: "Lexica Ultralegible" },
 ] as const;
 
 export const NEWS_READER_MARGIN_OPTIONS = [

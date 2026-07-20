@@ -463,6 +463,35 @@ function DiscoverView({
     };
   }
 
+  function cleanTitleAndAuthorForEbookSearch(title: string, author: string): string {
+    let cleanTitle = title || "";
+    let cleanAuthor = author || "";
+
+    // 1. Clean Title
+    // Remove parenthetical notes containing audiobook, unabridged, novel, etc.
+    cleanTitle = cleanTitle.replace(/\((audiobook|unabridged|abridged|novel|mp3|free|cd)\)/gi, "");
+    cleanTitle = cleanTitle.replace(/\[(audiobook|unabridged|abridged|novel|mp3|free|cd)\]/gi, "");
+    // Remove trailing "audiobook" indicators and "a novel" indicator
+    cleanTitle = cleanTitle.replace(/:\s*a\s+novel\s*$/gi, "");
+    cleanTitle = cleanTitle.replace(/[-\s:]+audiobook\s*$/gi, "");
+    cleanTitle = cleanTitle.replace(/\s+audiobook\s+/gi, " ");
+
+    // 2. Clean Author
+    // Remove narrator info
+    const narratorIndex = cleanAuthor.toLowerCase().search(/\b(narrated\s+by|read\s+by|narrator|with)\b/i);
+    if (narratorIndex !== -1) {
+      cleanAuthor = cleanAuthor.substring(0, narratorIndex);
+    }
+    // Remove "by " prefix
+    cleanAuthor = cleanAuthor.replace(/^\s*by\s+/i, "");
+
+    // Clean trailing punctuation
+    cleanTitle = cleanTitle.replace(/[,;.:\-\s]+$/, "").trim();
+    cleanAuthor = cleanAuthor.replace(/[,;.:\-\s]+$/, "").trim();
+
+    return `${cleanTitle} ${cleanAuthor}`.trim().replace(/\s+/g, " ");
+  }
+
   const loadFeaturedDownloads = async (title: string, author: string) => {
     setLoadingFeaturedDownloads(true);
     setFeaturedDownloadVariants([]);
@@ -471,7 +500,7 @@ function DiscoverView({
     setFeaturedMirrorError(null);
     
     try {
-      const q = `${title} ${author || ""}`.trim();
+      const q = cleanTitleAndAuthorForEbookSearch(title, author);
       const result = await searchDownloadVariants(q);
       const rawBooks = result.books || [];
       const uniqueVariants = rawBooks.reduce((acc: any[], current: any) => {
@@ -1927,9 +1956,10 @@ function DiscoverView({
 
     // Featured/catalog books need an archive search before mirrors exist.
     // Race fast sources instead of blocking on a full multi-source "all" scan.
-    if ((activeBook.isNYTBook || activeBook.isGoogleBook || activeBook.source === 'nyt' || activeBook.source === 'google' || activeBook.source === 'goodreads') && activeBook.searchQuery) {
+    if ((activeBook.isNYTBook || activeBook.isGoogleBook || activeBook.source === 'nyt' || activeBook.source === 'google' || activeBook.source === 'goodreads' || activeBook.source === 'audiobook') && (activeBook.searchQuery || activeBook.title)) {
       try {
-        const searchResult = await searchDownloadVariants(activeBook.searchQuery);
+        const q = activeBook.searchQuery || cleanTitleAndAuthorForEbookSearch(activeBook.title, activeBook.author);
+        const searchResult = await searchDownloadVariants(q);
         if (searchResult.books.length > 0) {
           activeBook = {
             ...activeBook,

@@ -56,14 +56,14 @@ function SourceToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer shrink-0 ${
-        on ? "bg-kindle-text" : "bg-kindle-border"
+        on ? "bg-kindle-accent" : "bg-kindle-accent/25"
       }`}
       aria-pressed={on}
       aria-label={on ? "Turn source off" : "Turn source on"}
     >
       <div
-        className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${
-          on ? "translate-x-5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/50"
+        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${
+          on ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"
         }`}
       />
     </button>
@@ -125,20 +125,19 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const showThumb = cover && !thumbFailed;
   const dir = textDirection(title);
 
-  const cardClass = variant === "featured" ? "col-span-2" : "col-span-1";
+  const cardClass = variant === "featured" ? "sm:col-span-2" : "sm:col-span-1";
   const imageClass =
     variant === "featured" ? "w-full aspect-[16/9]" : "w-full aspect-[4/3]";
 
   return (
     <article
-      className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition ${cardClass} ${
+      onClick={onRead}
+      className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md ${cardClass} ${
         item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
-      }`}
+      } flex flex-col h-full`}
     >
-      <div className="flex flex-col h-full">
-        <button
-          type="button"
-          onClick={onRead}
+      <div className="flex flex-col flex-1 min-h-0">
+        <div
           className={`relative bg-kindle-bg border-b border-kindle-border overflow-hidden text-left ${imageClass}`}
         >
           {showThumb ? (
@@ -158,9 +157,9 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
           {!item.read && (
             <span className="absolute top-2 left-2 w-2 h-2 rounded-full bg-kindle-text shadow-sm" />
           )}
-        </button>
+        </div>
 
-        <div className="flex flex-col flex-1 p-3 sm:p-4 gap-2 sm:gap-3 min-w-0">
+        <div className="flex flex-col flex-1 p-3 sm:p-4 pb-4 sm:pb-5 gap-2 sm:gap-3 min-w-0">
           <div className="min-w-0 flex-1">
             <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted truncate mb-1">
               {item.subscriptionTitle} · {formatFeedDate(item.publishedAt)}
@@ -187,30 +186,30 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
             )}
           </div>
 
-          <div className="flex items-center gap-2 mt-auto">
+          <div className="flex items-center gap-1.5 mt-auto min-w-0" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={onRead}
               disabled={busy}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50"
+              className="hidden sm:flex flex-1 items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50 min-w-0"
             >
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Newspaper className="w-3.5 h-3.5" />}
-              Read
+              {busy ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Newspaper className="w-3.5 h-3.5 shrink-0" />}
+              <span className="truncate">Read</span>
             </button>
             <button
               onClick={onToggleRead}
-              className="px-3 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
+              className="flex-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
               title={item.read ? "Mark unread" : "Mark read"}
             >
-              {item.read ? "Unread" : "Done"}
+              <span className="truncate">{item.read ? "Unread" : "Done"}</span>
             </button>
             <a
               href={item.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-2 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition"
+              className="p-1.5 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0 flex items-center justify-center"
               title="Open original"
             >
-              <ExternalLink className="w-4 h-4" />
+              <ExternalLink className="w-3.5 h-3.5" />
             </a>
           </div>
 
@@ -516,7 +515,7 @@ function FeedView({
           {filter === "all" && !selectedSubscriptionId && (
             <TodayNewsBriefCard items={retainedItems} onReadArticle={handleReadArticle} />
           )}
-          <div className="grid grid-cols-2 gap-3 auto-rows-fr">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-fr">
           {visibleItems.map((item, index) => {
             const cover = getItemThumbnail(item);
             const title = displayTitle(item);

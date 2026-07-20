@@ -78,6 +78,7 @@ import {
   registerThisDevice,
   listenAndServePeerRequests,
 } from "./lib/crossDeviceSync";
+import ProximitySyncModal from "./components/ProximitySyncModal";
 
 const MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
@@ -225,6 +226,7 @@ export default function App() {
     return localStorage.getItem("kora_onboarding_completed") !== "true";
   });
   const [showAnnotationsHub, setShowAnnotationsHub] = useState(false);
+  const [proximitySyncBook, setProximitySyncBook] = useState<BookMetadata | null>(null);
   const [userNickname, setUserNickname] = useState<string>(() => {
     return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
   });
@@ -303,7 +305,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : {
       fontSize: 18,
       lineSpacing: 1.6,
-      fontFamily: "font-serif",
+      fontFamily: "font-lexica",
       theme: initialDisplayTheme.includes("dark") ? "dark" : "light",
       themeManuallySet: false,
       marginSize: "max-w-2xl px-6",
@@ -1649,26 +1651,8 @@ export default function App() {
     }
 
     if (!cachedBookIds.has(book.id)) {
-      const toastId = `hydrate-${book.id}`;
-      toast.loading(`Getting “${book.title}” on this device…`, { id: toastId });
-      const result = await hydrateBookFile(book, {
-        onProgress: (label) => toast.loading(label, { id: toastId }),
-      });
-      if (!result.ok) {
-        toast.error(result.error || "Could not sync this book to this device", { id: toastId });
-        return;
-      }
-      toast.success(
-        result.source === "cache"
-          ? "Ready"
-          : `Synced via ${result.source === "md5" ? "catalog" : result.source}`,
-        { id: toastId }
-      );
-      setCachedBookIds((prev) => {
-        const next = new Set(prev);
-        next.add(book.id);
-        return next;
-      });
+      setProximitySyncBook(book);
+      return;
     }
     setActiveBook(book);
     setLastReadBook(book);
@@ -2316,7 +2300,7 @@ export default function App() {
                   onClick={toggleGrayscale}
                   className={`w-12 h-6 rounded-full transition-colors relative ${grayscaleCovers ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                 >
-                  <div className={`absolute top-1 w-4 h-4 rounded-full shadow-sm transition-transform ${grayscaleCovers ? "translate-x-7 bg-kindle-bg" : "translate-x-1 bg-kindle-text/70"}`} />
+                  <div className={`absolute top-1 left-1 w-4 h-4 rounded-full shadow-sm transition-transform ${grayscaleCovers ? "translate-x-6 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
                 </button>
               </div>
 
@@ -2471,6 +2455,26 @@ export default function App() {
           onOpenBook={(book) => {
             setShowAnnotationsHub(false);
             handleOpenBook(book);
+          }}
+        />
+      )}
+
+      {proximitySyncBook && (
+        <ProximitySyncModal
+          book={proximitySyncBook}
+          userId={user?.uid || "anonymous"}
+          onClose={() => setProximitySyncBook(null)}
+          onSuccess={(source) => {
+            const syncedBook = proximitySyncBook;
+            setCachedBookIds((prev) => {
+              const next = new Set(prev);
+              next.add(syncedBook.id);
+              return next;
+            });
+            setProximitySyncBook(null);
+            setTimeout(() => {
+              handleOpenBook(syncedBook);
+            }, 100);
           }}
         />
       )}

@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio } from "lucide-react";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
@@ -778,16 +778,30 @@ function LibraryManager({
         <div className="space-y-4">
           {/* Search Bar - styled identically to Discover view */}
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full font-sans">
-            <div className="relative group flex-1">
-              <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
-              <input
-                id="library-search-input"
-                type="text"
-                placeholder="Filter library by title, author..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
-              />
+            <div className="flex items-center gap-2 flex-1">
+              <div className="relative group flex-1">
+                <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
+                <input
+                  id="library-search-input"
+                  type="text"
+                  placeholder="Filter library by title, author..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
+                />
+              </div>
+
+              {onOpenAnnotations && (
+                <button
+                  type="button"
+                  onClick={onOpenAnnotations}
+                  className="sm:hidden p-4 bg-kindle-card border border-kindle-border rounded-2xl text-kindle-text-muted hover:text-kindle-text shrink-0 transition flex items-center justify-center cursor-pointer shadow-sm hover:border-kindle-accent"
+                  aria-label="Open annotations hub"
+                  title="Annotations"
+                >
+                  <BookMarked className="w-5 h-5 text-kindle-text-muted hover:text-kindle-accent" />
+                </button>
+              )}
             </div>
 
             <button
@@ -957,19 +971,28 @@ function LibraryManager({
                         </div>
                       </div>
                     )}
+                    {!isCached && !isDownloadingCard && (
+                      <div className="absolute top-2 left-2 p-1 px-1.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[8px] font-mono font-bold text-white/90 flex items-center gap-1 shadow-md z-20">
+                        <Radio className="w-3 h-3 text-kindle-accent animate-pulse" />
+                        <span>P2P</span>
+                      </div>
+                    )}
+
                     {book.extension?.toLowerCase() === "audiobook" ? (
-                      <AudiobookCassetteCard
-                        title={book.title}
-                        coverUrl={book.coverUrl}
-                        grayscaleCovers={grayscaleCovers}
-                        hideCovers={hideCovers}
-                        orientation="portrait"
-                      />
+                      <div className={`w-full ${!isCached ? "opacity-40 grayscale" : ""}`}>
+                        <AudiobookCassetteCard
+                          title={book.title}
+                          coverUrl={book.coverUrl}
+                          grayscaleCovers={grayscaleCovers}
+                          hideCovers={hideCovers}
+                          orientation="portrait"
+                        />
+                      </div>
                     ) : !hideCovers && book.coverUrl ? (
                       <>
                         <img
                           src={resolveCoverImageSrc(book.coverUrl) || ""}
-                          className={`w-full aspect-[2/3] object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""}`}
+                          className={`w-full aspect-[2/3] object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""} ${!isCached ? "grayscale opacity-40 brightness-110 contrast-75" : ""}`}
                           referrerPolicy="no-referrer"
                           onContextMenu={(e) => e.preventDefault()}
                           onError={(e) => {
@@ -985,7 +1008,7 @@ function LibraryManager({
                         </div>
                       </>
                     ) : (
-                      <div className="w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center">
+                      <div className={`w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center ${!isCached ? "opacity-40 grayscale" : ""}`}>
                         <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
                         <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
                       </div>

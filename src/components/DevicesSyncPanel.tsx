@@ -212,14 +212,14 @@ export default function DevicesSyncPanel({
                       patchPrefs({ [key]: !on });
                     }}
                     className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
-                      on ? "bg-kindle-text" : "bg-kindle-border"
+                      on ? "bg-kindle-accent" : "bg-kindle-accent/25"
                     }`}
                   >
                     <span
-                      className={`absolute top-0.5 w-5 h-5 rounded-full shadow-sm transition-transform ${
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow-sm transition-transform ${
                         on
-                          ? "translate-x-[1.35rem] bg-kindle-bg"
-                          : "translate-x-0.5 bg-kindle-text/50"
+                          ? "translate-x-5 bg-kindle-bg"
+                          : "translate-x-0 bg-kindle-text/70"
                       }`}
                     />
                   </button>
@@ -329,15 +329,15 @@ export default function DevicesSyncPanel({
                   e.stopPropagation();
                   patchWebDav({ enabled: !prefs.webdav.enabled });
                 }}
-                className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
-                  prefs.webdav.enabled ? "bg-kindle-text" : "bg-kindle-border"
+                 className={`w-11 h-6 rounded-full relative shrink-0 transition-colors ${
+                  prefs.webdav.enabled ? "bg-kindle-accent" : "bg-kindle-accent/25"
                 }`}
               >
                 <span
-                  className={`absolute top-0.5 w-5 h-5 rounded-full shadow-sm transition-transform ${
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow-sm transition-transform ${
                     prefs.webdav.enabled
-                      ? "translate-x-[1.35rem] bg-kindle-bg"
-                      : "translate-x-0.5 bg-kindle-text/50"
+                      ? "translate-x-5 bg-kindle-bg"
+                      : "translate-x-0 bg-kindle-text/70"
                   }`}
                 />
               </button>

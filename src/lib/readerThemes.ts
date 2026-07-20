@@ -99,10 +99,12 @@ export interface ReaderFontOption {
 export const READER_FONTS: ReaderFontOption[] = [
   { name: "Lora Serif", value: "font-serif" },
   { name: "Inter Sans", value: "font-sans" },
-  { name: "Lexend", value: "font-lexend" },
+  { name: "Rakuten Sans", value: "font-lexend" },
   { name: "OpenDyslexic", value: "font-opendyslexic", dyslexiaFriendly: true },
   { name: "JetBrains Mono", value: "font-mono" },
-  { name: "Dhivehi", value: "font-thaana" },
+  { name: "Bookerly", value: "font-bookerly" },
+  { name: "ChareInk7SP", value: "font-chareink" },
+  { name: "Lexica Ultralegible", value: "font-lexica" },
 ];
 
 export const MARGIN_PRESETS = [

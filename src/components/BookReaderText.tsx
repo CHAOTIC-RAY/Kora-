@@ -184,7 +184,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
   
   // Reading mode state variables
   const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18);
-  const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-serif");
+  const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-lexica");
   const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light");
   const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
   const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
@@ -199,7 +199,10 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
     { name: "Lora Serif", value: "font-serif" },
     { name: "Inter Sans", value: "font-sans" },
     { name: "JetBrains Mono", value: "font-mono" },
-    { name: "Dhivehi", value: "font-thaana" },
+    { name: "Bookerly", value: "font-bookerly" },
+    { name: "ChareInk7SP", value: "font-chareink" },
+    { name: "Lexica Ultralegible", value: "font-lexica" },
+    { name: "Rakuten Sans", value: "font-rakuten" },
   ];
 
   async function load() {
@@ -318,7 +321,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
             {/* Font Family */}
             <div className="mb-4">
               <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Font Style</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {fontFamilies.map((ff) => (
                   <button
                     key={ff.value}
@@ -329,7 +332,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
                         : "border-neutral-500/20 hover:border-neutral-500/50"
                     }`}
                   >
-                    {ff.name.split(" ")[0]}
+                    {ff.name}
                   </button>
                 ))}
               </div>
@@ -434,7 +437,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
                       onClick={() => setHideImages(!hideImages)}
                       className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hideImages ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hideImages ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
                     </button>
                   </div>
                 </div>
@@ -458,7 +461,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
         )}
 
         {/* Content Viewer viewport */}
-        <div className="flex-1 overflow-auto p-4 md:p-8 bg-transparent">
+        <div className="flex-1 overflow-auto p-4 md:p-8 bg-transparent" onClick={() => { if (showSettings) setShowSettings(false); }}>
           {loading ? (
             <div className="flex justify-center py-20">
               <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />

@@ -22,7 +22,7 @@ export default function NewsReaderSettingsPanel({
 
   return (
     <div
-      className={`border-b ${theme.border} ${theme.header} px-4 py-4 space-y-4 max-h-[45vh] overflow-y-auto shrink-0 ${className}`}
+      className={`border-t ${theme.border} ${theme.header} px-4 py-4 space-y-4 max-h-[45vh] overflow-y-auto shrink-0 ${className}`}
     >
       <p className={`text-[10px] ${theme.muted}`}>
         Applies to Feed articles and the Daily News Brief. Saved on this device.

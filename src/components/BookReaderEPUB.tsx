@@ -248,7 +248,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   
   // Customization states (seeded from persisted settings, fallback to defaults)
   const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18); // px
-  const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-serif");
+  const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-lexica");
   const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light"); // light, dark, sepia, green
   const [themeManuallySet, setThemeManuallySet] = useState<boolean>(readerPrefs?.themeManuallySet ?? false);
   const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
@@ -485,9 +485,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       }
 
       const scrollWidth = container.scrollWidth;
-      const step = Math.max(1, textWidth - pageOverlap);
-      const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
-      const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
+      const step = useDoubleColumns 
+        ? textWidth + columnGapPx 
+        : Math.max(1, textWidth - pageOverlap);
+      
+      const calculatedPages = useDoubleColumns
+        ? Math.max(1, Math.ceil((scrollWidth + columnGapPx) / (textWidth + columnGapPx)))
+        : Math.max(1, Math.ceil((Math.max(textWidth, scrollWidth - 10) - textWidth) / step) + 1);
+
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
@@ -1790,9 +1795,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       }
 
       const scrollWidth = container.scrollWidth;
-      const step = Math.max(1, textWidth - pageOverlap);
-      const adjustedScroll = Math.max(textWidth, scrollWidth - 10);
-      const calculatedPages = Math.max(1, Math.ceil((adjustedScroll - textWidth) / step) + 1);
+      const step = useDoubleColumns 
+        ? textWidth + columnGapPx 
+        : Math.max(1, textWidth - pageOverlap);
+      
+      const calculatedPages = useDoubleColumns
+        ? Math.max(1, Math.ceil((scrollWidth + columnGapPx) / (textWidth + columnGapPx)))
+        : Math.max(1, Math.ceil((Math.max(textWidth, scrollWidth - 10) - textWidth) / step) + 1);
+
       setTotalPages(calculatedPages);
       setContainerWidth(textWidth);
       pageStepRef.current = step;
@@ -2540,7 +2550,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`w-10 h-5 rounded-full transition-colors relative ${hyphenation ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                       aria-pressed={hyphenation}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hyphenation ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hyphenation ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
                     </button>
                   </div>
                 </div>
@@ -2563,7 +2573,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`w-10 h-5 rounded-full transition-colors relative ${doubleColumns ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                       aria-pressed={doubleColumns}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${doubleColumns ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${doubleColumns ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
                     </button>
                   </div>
 
@@ -2578,7 +2588,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`w-10 h-5 rounded-full transition-colors relative ${isContinuous ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                       aria-pressed={isContinuous}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${isContinuous ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${isContinuous ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
                     </button>
                   </div>
 
@@ -2593,7 +2603,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`w-10 h-5 rounded-full transition-colors relative ${grayscaleImages ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                       aria-pressed={grayscaleImages}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${grayscaleImages ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${grayscaleImages ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
                     </button>
                   </div>
 
@@ -2608,7 +2618,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`w-10 h-5 rounded-full transition-colors relative ${hideImages ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                       aria-pressed={hideImages}
                     >
-                      <div className={`absolute top-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hideImages ? "translate-x-5.5 bg-kindle-bg" : "translate-x-0.5 bg-kindle-text/70"}`} />
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${hideImages ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
                     </button>
                   </div>
                 </div>
@@ -3191,6 +3201,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 ref={viewerRef}
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
+                onClick={() => {
+                  if (showSettings) {
+                    setShowSettings(false);
+                  }
+                }}
                 className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start select-text cursor-text mx-auto ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
                 <div className={`w-full h-full ${useScrollLayout ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden"} relative flex items-start justify-start`} style={{ perspective: "1200px" }}>
@@ -3233,20 +3248,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                           }}
                         >
                           <div
-                            className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"}`}
+                            className={`ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"}`}
                             style={{
                               fontSize: `${fontSize}px`,
                               lineHeight: lineSpacing,
+                              width: useDoubleColumns ? `${containerWidth}px` : "100%",
+                              maxWidth: "none",
                               columnWidth: `${useDoubleColumns ? (containerWidth - columnGapPx) / 2 : containerWidth}px`,
                               columnGap: `${columnGapPx}px`,
                               height: "100%",
                               columnFill: "auto",
                               overflow: "visible",
-                              transform: `translateX(-${(turningPageNum - 1) * pageStep}px)`,
+                              transform: `translateX(-${(turningPageNum - 1) * pageStep + (useDoubleColumns ? ((containerWidth - 40) / 2 + 40) : 0)}px)`,
                               paddingTop: "12px",
                               paddingBottom: "12px",
-                              
-                              
                             }}
                           >
                             <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
@@ -3309,10 +3324,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                           }}
                         >
                           <div
-                            className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"}`}
+                            className={`ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"}`}
                             style={{
                               fontSize: `${fontSize}px`,
                               lineHeight: lineSpacing,
+                              width: useDoubleColumns ? `${containerWidth}px` : "100%",
+                              maxWidth: "none",
                               columnWidth: `${useDoubleColumns ? (containerWidth - columnGapPx) / 2 : containerWidth}px`,
                               columnGap: `${columnGapPx}px`,
                               height: "100%",
@@ -3325,8 +3342,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               }px)`,
                               paddingTop: "12px",
                               paddingBottom: "12px",
-                              
-                              
                             }}
                           >
                             <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>

@@ -22,6 +22,118 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lexica Ultralegible";
+  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lexica Ultralegible";
+  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Italic.otf") format("opentype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lexica Ultralegible";
+  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lexica Ultralegible";
+  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-BoldItalic.otf") format("opentype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rakuten Sans";
+  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rakuten Sans";
+  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
@@ -46,11 +158,15 @@
   /* Use Lora as the primary body font — matching the Kora wordmark's serif personality */
   --font-sans: "Lora", "Inter", ui-serif, Georgia, serif;
   --font-serif: "Lora", ui-serif, Georgia, serif;
-  --font-display: "Lexend", sans-serif;
+  --font-display: "Rakuten Sans", "Inter", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-lexend: "Lexend", sans-serif;
+  --font-lexend: "Rakuten Sans", "Inter", sans-serif;
   --font-thaana: "Faruma", "Noto Sans Thaana", "MV Waheed", sans-serif;
   --font-opendyslexic: "OpenDyslexic", "Lexend", sans-serif;
+  --font-bookerly: "Bookerly", serif;
+  --font-chareink: "ChareInk7SP", serif;
+  --font-lexica: "Lexica Ultralegible", sans-serif;
+  --font-rakuten: "Rakuten Sans", sans-serif;
 
   --color-kindle-bg: var(--theme-bg);
   --color-kindle-text: var(--theme-text);
@@ -470,8 +586,7 @@ html.kora-android body {
   display: none !important;
 }
 
-.discover-category-section,
-.feed-article-card {
+.discover-category-section {
   content-visibility: auto;
   contain-intrinsic-size: auto 280px;
 }
@@ -569,6 +684,10 @@ h1, h2, h3, h4 {
 /* Wordmark / brand text should always be Lexend */
 .font-display { font-family: var(--font-lexend); }
 .font-thaana { font-family: var(--font-thaana); }
+.font-bookerly { font-family: var(--font-bookerly); }
+.font-chareink { font-family: var(--font-chareink); }
+.font-lexica { font-family: var(--font-lexica); }
+.font-rakuten { font-family: var(--font-rakuten); }
 
 [dir="rtl"] .font-thaana,
 .font-thaana[dir="rtl"],

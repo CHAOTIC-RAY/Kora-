@@ -327,8 +327,6 @@ export default function FeedArticleReader({
         </div>
       </div>
 
-      {showSettings ? <NewsReaderSettingsPanel prefs={prefs} onChange={updatePrefs} /> : null}
-
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto overscroll-y-contain min-h-0 scroll-smooth"
@@ -338,7 +336,10 @@ export default function FeedArticleReader({
           }
         }}
         onClick={() => {
-          if (showSettings) return;
+          if (showSettings) {
+            setShowSettings(false);
+            return;
+          }
           setChromeVisible((v) => !v);
         }}
       >
@@ -367,7 +368,14 @@ export default function FeedArticleReader({
                   className={`mx-auto ${prefs.marginSize} ${
                     index === 0 ? "pt-[calc(var(--kora-safe-top)+3.5rem)]" : "pt-10"
                   } ${index < stack.length - 1 ? "pb-8 border-b border-kindle-border/40" : "pb-4"}`}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    if (showSettings) {
+                      setShowSettings(false);
+                      e.stopPropagation();
+                    } else {
+                      e.stopPropagation();
+                    }
+                  }}
                 >
                   <div className="mb-5 space-y-1">
                     <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
@@ -500,6 +508,7 @@ export default function FeedArticleReader({
           </>
         )}
       </div>
+      {showSettings ? <NewsReaderSettingsPanel prefs={prefs} onChange={updatePrefs} /> : null}
     </div>
   );
 }
