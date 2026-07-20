@@ -230,7 +230,7 @@ export default function LoungeView({
     const refresh = () => setFeedTick((n) => n + 1);
     window.addEventListener("storage", refresh);
     const id = window.setInterval(refresh, 60_000);
-    const greetId = window.setInterval(() => setGreetingTick((n) => n + 1), 15 * 60_000);
+    const greetId = window.setInterval(() => setGreetingTick((n) => n + 1), 20 * 60_000);
     return () => {
       window.removeEventListener("storage", refresh);
       window.clearInterval(id);
