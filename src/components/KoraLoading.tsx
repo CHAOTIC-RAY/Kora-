@@ -24,35 +24,12 @@ const APP_MESSAGES = [
   "Almost there…",
 ];
 
-/** Corner triangles peeling from bottom-right, smallest to largest. */
-const PAGE_FLAPS = [
-  {
-    clip: "polygon(78% 68%, 100% 52%, 100% 100%, 64% 100%)",
-    delay: 0,
-    z: 4,
-    tone: "text-kindle-accent",
-  },
-  {
-    clip: "polygon(62% 48%, 100% 24%, 100% 100%, 38% 100%)",
-    delay: 0.38,
-    z: 3,
-    tone: "text-kindle-accent/95",
-  },
-  {
-    clip: "polygon(42% 24%, 100% 0%, 100% 100%, 14% 100%)",
-    delay: 0.76,
-    z: 2,
-    tone: "text-kindle-accent/85",
-  },
-  {
-    clip: "polygon(14% 0%, 100% 0%, 100% 100%, 0% 92%)",
-    delay: 1.14,
-    z: 1,
-    tone: "text-kindle-accent/75",
-  },
-] as const;
+const FLAP_COUNT = 4;
+const PAGE_TURN_CYCLE = 3.6;
+const SLOT = PAGE_TURN_CYCLE / FLAP_COUNT;
 
-const PAGE_TURN_CYCLE = 3.2;
+/** Corner flap size (% of icon box) — each layer peels a larger corner wedge. */
+const FLAP_SIZES = ["36%", "50%", "66%", "84%"] as const;
 
 function truncateQuery(query: string, max = 36) {
   const trimmed = query.trim();
@@ -89,71 +66,96 @@ function resolveMessage(
   }
 }
 
-function PageFlap({
-  clip,
-  delay,
-  z,
-  tone,
+function flapKeyframes(index: number) {
+  const slotStart = (index * SLOT) / PAGE_TURN_CYCLE;
+  const lift = (index * SLOT + SLOT * 0.22) / PAGE_TURN_CYCLE;
+  const mid = (index * SLOT + SLOT * 0.52) / PAGE_TURN_CYCLE;
+  const end = ((index + 1) * SLOT) / PAGE_TURN_CYCLE;
+
+  return {
+    times: [0, slotStart, lift, mid, end, 1],
+    rotateY: [0, 0, -22, -168, -178, 0] as number[],
+    rotateX: [0, 0, -8, -16, -10, 0] as number[],
+    shadow: [0, 0, 0.35, 0.55, 0.2, 0] as number[],
+  };
+}
+
+function CornerFlap({
+  index,
+  size,
   iconClass,
+  compact,
 }: {
-  clip: string;
-  delay: number;
-  z: number;
-  tone: string;
+  index: number;
+  size: string;
   iconClass: string;
+  compact: boolean;
 }) {
+  const { times, rotateY, rotateX, shadow } = flapKeyframes(index);
+  const iconW = compact ? "2.5rem" : "3.35rem";
+  const iconH = compact ? "3rem" : "4rem";
+
   return (
     <div
-      className="pointer-events-none absolute inset-0 overflow-visible"
-      style={{ clipPath: clip, WebkitClipPath: clip, zIndex: z }}
+      className="pointer-events-none absolute bottom-0 right-0 overflow-hidden"
+      style={{
+        width: size,
+        height: size,
+        clipPath: "polygon(0 0, 100% 0, 100% 100%)",
+        WebkitClipPath: "polygon(0 0, 100% 0, 100% 100%)",
+        zIndex: FLAP_COUNT - index,
+      }}
     >
       <motion.div
-        className="absolute inset-0 overflow-visible"
+        className="absolute bottom-0 right-0"
         style={{
+          width: iconW,
+          height: iconH,
           transformOrigin: "100% 100%",
           transformStyle: "preserve-3d",
         }}
-        animate={{
-          rotateY: [0, -8, -72, -155, -175, -12, 0],
-          rotateX: [0, -4, -10, -18, -12, -3, 0],
-          rotateZ: [0, 2, 1, 0, -1, 0, 0],
-          scale: [1, 1, 0.98, 0.96, 0.98, 1, 1],
-        }}
+        animate={{ rotateY, rotateX }}
         transition={{
           duration: PAGE_TURN_CYCLE,
           repeat: Infinity,
-          delay,
-          ease: [0.45, 0.02, 0.2, 1],
-          times: [0, 0.08, 0.28, 0.5, 0.62, 0.82, 1],
+          ease: [0.42, 0.02, 0.18, 1],
+          times,
         }}
       >
         <div
           className="absolute inset-0"
           style={{ backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden" }}
         >
-          <KoraIcon className={`${iconClass} ${tone} drop-shadow-[0_2px_6px_rgba(0,0,0,0.18)]`} />
+          <KoraIcon className={`${iconClass} text-kindle-accent`} />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(135deg, transparent 58%, rgba(0,0,0,0.12) 78%, rgba(0,0,0,0.22) 100%)",
+            }}
+          />
         </div>
+
         <div
-          className="absolute inset-0"
+          className="absolute inset-0 rounded-sm bg-gradient-to-br from-kindle-card via-kindle-bg to-kindle-card/80"
           style={{
             transform: "rotateY(180deg)",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden",
+            boxShadow: "inset 0 0 12px rgba(0,0,0,0.08)",
           }}
-        >
-          <KoraIcon className={`${iconClass} text-kindle-accent/25`} />
-        </div>
+        />
       </motion.div>
 
       <motion.div
-        className="pointer-events-none absolute bottom-0 right-0 h-px w-[42%] origin-bottom-right bg-black/20"
-        animate={{ opacity: [0, 0.55, 0.2, 0], scaleX: [0.4, 1, 0.7, 0.4] }}
+        className="pointer-events-none absolute left-0 top-0 h-[141%] w-px origin-top-left bg-black/25"
+        style={{ transform: "rotate(-45deg)" }}
+        animate={{ opacity: shadow }}
         transition={{
           duration: PAGE_TURN_CYCLE,
           repeat: Infinity,
-          delay,
           ease: "easeInOut",
-          times: [0, 0.3, 0.55, 1],
+          times,
         }}
       />
     </div>
@@ -168,54 +170,32 @@ function KoraPageTurnIcon({ compact }: { compact: boolean }) {
     <div
       className={`relative overflow-visible ${boxClass}`}
       style={{
-        perspective: "520px",
-        perspectiveOrigin: "88% 92%",
+        perspective: "480px",
+        perspectiveOrigin: "92% 96%",
       }}
     >
-      <div
-        className="absolute inset-0"
-        style={{ transformStyle: "preserve-3d", transform: "translateZ(-6px)" }}
-      >
-        <div className="absolute inset-0 translate-y-[2px] opacity-15">
-          <KoraIcon className={`${iconClass} text-kindle-accent`} />
-        </div>
-        <div className="absolute inset-0 translate-x-[1px] translate-y-[3px] opacity-25">
-          <KoraIcon className={`${iconClass} text-kindle-accent`} />
-        </div>
-        <div className="absolute inset-0 translate-x-[2px] translate-y-[4px] opacity-35">
-          <KoraIcon className={`${iconClass} text-kindle-accent`} />
-        </div>
+      <div className="absolute inset-0 translate-y-[3px] opacity-20">
+        <KoraIcon className={`${iconClass} text-kindle-accent`} />
+      </div>
+      <div className="absolute inset-0 translate-x-[1px] translate-y-[5px] opacity-30">
+        <KoraIcon className={`${iconClass} text-kindle-accent`} />
       </div>
 
-      <div className="absolute inset-0 opacity-40">
-        <KoraIcon className={`${iconClass} text-kindle-accent/65`} />
+      <div className="absolute inset-0 opacity-50">
+        <KoraIcon className={`${iconClass} text-kindle-accent/70`} />
       </div>
 
-      <div
-        className="absolute inset-0"
-        style={{ transformStyle: "preserve-3d" }}
-      >
-        {PAGE_FLAPS.map((flap) => (
-          <PageFlap
-            key={flap.clip}
-            clip={flap.clip}
-            delay={flap.delay}
-            z={flap.z}
-            tone={flap.tone}
+      <div className="absolute inset-0" style={{ transformStyle: "preserve-3d" }}>
+        {FLAP_SIZES.map((size, index) => (
+          <CornerFlap
+            key={size}
+            index={index}
+            size={size}
             iconClass={iconClass}
+            compact={compact}
           />
         ))}
       </div>
-
-      <motion.div
-        className="pointer-events-none absolute bottom-0 right-0 z-10 h-[46%] w-[46%]"
-        style={{
-          background:
-            "radial-gradient(ellipse at 100% 100%, rgba(0,0,0,0.16) 0%, rgba(0,0,0,0.04) 42%, transparent 72%)",
-        }}
-        animate={{ opacity: [0.2, 0.65, 0.2] }}
-        transition={{ duration: PAGE_TURN_CYCLE, repeat: Infinity, ease: "easeInOut" }}
-      />
     </div>
   );
 }
@@ -262,11 +242,6 @@ export default function KoraLoading({
       <KoraWordmark className={`${wordmarkSize} text-kindle-text`} />
 
       <div className="relative flex items-center justify-center overflow-visible">
-        <motion.div
-          className="absolute -inset-5 rounded-full bg-kindle-accent/10 blur-xl"
-          animate={{ opacity: [0.2, 0.45, 0.2] }}
-          transition={{ duration: PAGE_TURN_CYCLE, repeat: Infinity, ease: "easeInOut" }}
-        />
         <KoraPageTurnIcon compact={compact} />
       </div>
 
