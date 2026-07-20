@@ -48,7 +48,7 @@ Everything you own, in one place — elegant typography, reliable offline storag
 ### Onboarding & personalization
 * **Reader archetypes** — Midnight Reader, Cozy Tea Sipper, Bibliophile Curator, or Speed Scholar, each with a matching display theme.
 * **App skins** — Choose your chrome style during setup: **Kora**, **Paper**, **Studio**, or **Soft**. Skins are separate from color themes and can be changed anytime in Settings → Appearance.
-* **Interactive walkthrough** — Library, feeds, Discover, downloads, cross-device sync, and display settings.
+* **Interactive walkthrough** — Lounge dashboard, Library, feeds, Discover, downloads & narrator, cross-device sync, and display skins.
 * **Account step** — Sign in to keep your library, or continue as guest (guest sessions reset every 30 days).
 
 ### Immersive reading

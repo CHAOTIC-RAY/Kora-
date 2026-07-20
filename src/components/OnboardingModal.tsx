@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { 
   Book, Glasses, Sparkles, Coffee, Bookmark, Check, ChevronRight, 
   ChevronLeft, Info, Shield, Heart, Smile, Star, BookOpen, Settings, Compass, Download, Award, Rss, Globe,
-  Cloud, LogIn, Smartphone
+  Cloud, LogIn, Smartphone, Sofa, Headphones
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -194,50 +194,57 @@ export default function OnboardingModal({
 
   const walkthroughSteps = [
     {
-      title: "E-Book Catalog & Library",
-      desc: "Keep your EPUB, PDF, and TXT files securely organized. Drag and drop files from your device to ingest them instantly into your secure local web storage database.",
+      title: "Lounge — Your Dashboard",
+      desc: "Lounge is your home screen. Artistic widgets cycle between Continue (book or listen), Shelf, Discover trending picks, and The Paper — latest, unread, or saved headlines. You can hide Lounge anytime in Settings.",
+      icon: Sofa,
+      color: "text-kindle-accent",
+      bg: "bg-kindle-accent/10"
+    },
+    {
+      title: "Library & Your Shelf",
+      desc: "Keep EPUB, PDF, TXT, and audiobooks organized. Import from your device or open titles you already downloaded — progress and highlights stay with each book.",
       icon: BookOpen,
       color: "text-emerald-500",
       bg: "bg-emerald-500/10"
     },
     {
       title: "News Feed Sources",
-      desc: "Pick Maldives and international RSS sources for your Read tab. Your Daily News Brief uses these selections.",
+      desc: "Pick Maldives and international RSS sources for your Read tab. Your Daily News Brief and Lounge paper widget use these selections.",
       icon: Rss,
       color: "text-sky-500",
       bg: "bg-sky-500/10"
     },
     {
-      title: "Discover & Search Feeds",
-      desc: "Browse curations from the New York Times Bestsellers or search public Goodreads lists in real-time, fetching rich book metadata seamlessly.",
+      title: "Discover Books & Audio",
+      desc: "Browse New York Times bestsellers, Goodreads lists, and federated search. Tap a cover to download an ebook or open an audiobook — Discover also feeds Lounge trending tiles.",
       icon: Compass,
       color: "text-amber-500",
       bg: "bg-amber-500/10"
     },
     {
-      title: "Background Download Manager",
-      desc: "Retrieve files from available public mirrors in the background. Your active downloads list tracks download streams and multi-mirror backup progress in real-time.",
-      icon: Download,
+      title: "Downloads & Narrator",
+      desc: "Background downloads group in one notification with pause and resume per book. In the reader, Voice Narrator reads pages aloud; audiobooks play in the full player.",
+      icon: Headphones,
       color: "text-blue-500",
       bg: "bg-blue-500/10"
     },
     {
       title: "Cross-Device Sync",
-      desc: "Your library metadata (books, progress, highlights) syncs through Firebase when signed in. Book files stay on your devices — transfer them peer-to-peer or via your own WebDAV archive in Tools → Devices & Sync.",
+      desc: "Sign in to sync library metadata across devices. On a new device, choose which books to download. Files stay on-device — share via peer transfer or WebDAV in Tools → Devices & Sync.",
       icon: Cloud,
-      color: "text-indigo-500",
-      bg: "bg-indigo-500/10"
+      color: "text-teal-500",
+      bg: "bg-teal-500/10"
     },
     {
-      title: "Display & Theme Settings",
-      desc: "Tweak font size, contrast, line height, or switch to paper-like grayscale mode to recreate a premium, eye-safe e-reader experience.",
+      title: "Display, Skins & Themes",
+      desc: "Tune font size, contrast, and line height. Pick an app skin (Kora, Paper, Studio, Soft) and a display theme for eye-safe reading — day or night.",
       icon: Settings,
-      color: "text-purple-500",
-      bg: "bg-purple-500/10"
+      color: "text-stone-500",
+      bg: "bg-stone-500/10"
     }
   ];
 
-  const isNewsFeedsStep = walkthroughIndex === 1;
+  const isNewsFeedsStep = walkthroughIndex === 2;
   const totalSteps = 5;
 
   return (
@@ -536,15 +543,15 @@ export default function OnboardingModal({
                     Interactive Guide
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    App Navigation & Capabilities
+                    How Kora Fits Together
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    A brief interactive overview showing how to navigate and manage your digital catalog inside this application.
+                    Lounge is home. From there, Library, Discover, and the morning paper are one tap away.
                   </p>
                 </div>
 
                 {/* Curated Interactive walkthrough tabs */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-kindle-card p-1 border border-kindle-border rounded-xl">
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1 bg-kindle-card p-1 border border-kindle-border rounded-xl">
                   {walkthroughSteps.map((wStep, idx) => {
                     const StepIcon = wStep.icon;
                     return (

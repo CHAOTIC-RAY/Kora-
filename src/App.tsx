@@ -338,8 +338,14 @@ export default function App() {
     setShowOnboarding(false);
     localStorage.setItem("kora_first_book_nudge", "true");
     setShowFirstBookNudge(true);
-    switchTab("discover");
-    toast.success(`Welcome, ${prefs.nickname}! Search Discover to add your first book.`);
+    // Land on Lounge when enabled; otherwise Discover for the first-book nudge.
+    if (isLoungeEnabled()) {
+      switchTab("lounge");
+      toast.success(`Welcome, ${prefs.nickname}! Your Lounge is ready — add a first book from Discover.`);
+    } else {
+      switchTab("discover");
+      toast.success(`Welcome, ${prefs.nickname}! Search Discover to add your first book.`);
+    }
   };
 
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
