@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense, startTransition } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { 
   auth, 
   isRealFirebase, 
@@ -76,7 +76,7 @@ import {
 } from "lucide-react";
 import JSZip from "jszip";
 import { LayoutGroup, motion } from "motion/react";
-import FluidOverlay, { koraSpring } from "./components/FluidOverlay";
+import FluidOverlay, { koraTabSpring } from "./components/FluidOverlay";
 import {
   hydrateBookFile,
   maybePushBookToWebDav,
@@ -217,14 +217,45 @@ export default function App() {
     () => new Set<AppTab>([isLoungeEnabled() ? "lounge" : "library"])
   );
   const switchTab = useCallback((tab: AppTab) => {
+    // Sync active tab for instant chrome/content swap (startTransition felt laggy).
+    setActiveTab(tab);
     setMountedTabs((prev) => {
       if (prev.has(tab)) return prev;
       const next = new Set(prev);
       next.add(tab);
       return next;
     });
-    startTransition(() => setActiveTab(tab));
   }, []);
+
+  // Warm secondary tabs in the background so later switches stay keep-alive-fast.
+  useEffect(() => {
+    const warm = () => {
+      setMountedTabs((prev) => {
+        const next = new Set(prev);
+        const candidates: AppTab[] = loungeEnabled
+          ? ["lounge", "library", "discover", "feed", "tools"]
+          : ["library", "discover", "feed", "tools"];
+        let changed = false;
+        for (const id of candidates) {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    };
+    const ric = (window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    }).requestIdleCallback;
+    if (typeof ric === "function") {
+      const id = ric(warm, { timeout: 1800 });
+      return () => (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(warm, 700);
+    return () => window.clearTimeout(t);
+  }, [loungeEnabled]);
 
   const mobileTabs = useMemo(() => {
     if (!loungeEnabled) return BASE_MOBILE_TABS;
@@ -2626,12 +2657,12 @@ export default function App() {
                     <motion.span
                       layoutId="kora-tab-pill"
                       className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
-                      transition={koraSpring}
+                      transition={koraTabSpring}
                     />
                   )}
                   <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
                     <Icon
-                      className={`w-5 h-5 shrink-0 transition-transform duration-300 ${
+                      className={`w-5 h-5 shrink-0 transition-transform duration-150 ${
                         isActive ? "scale-105" : "opacity-80"
                       }`}
                       strokeWidth={isActive ? 2.25 : 2}

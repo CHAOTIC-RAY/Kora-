@@ -8,7 +8,21 @@ export const koraSpring = {
   mass: 0.85,
 };
 
+/** Snappy pill / chrome motion for tab bar switches */
+export const koraTabSpring = {
+  type: "spring" as const,
+  stiffness: 620,
+  damping: 42,
+  mass: 0.55,
+};
+
 export const koraEase = [0.22, 1, 0.36, 1] as const;
+
+export const koraTabTween = {
+  type: "tween" as const,
+  duration: 0.16,
+  ease: koraEase,
+};
 
 type FluidOverlayProps = {
   open: boolean;
