@@ -2041,6 +2041,7 @@ export default function App() {
               books={books}
               lastReadBook={lastReadBook}
               userNickname={userNickname}
+              userId={user?.uid || ""}
               grayscaleCovers={grayscaleCovers}
               onOpenBook={handleOpenBook}
               onOpenTab={(tab) => switchTab(tab)}
@@ -2051,6 +2052,7 @@ export default function App() {
               onStartGuide={(id) => {
                 window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
               }}
+              onOpenAnnotations={() => setShowAnnotationsHub(true)}
             />
           </div>
         )}

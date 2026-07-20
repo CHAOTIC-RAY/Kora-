@@ -19,17 +19,20 @@ import {
 import { buildLoungeGreeting } from "../lib/loungeGreeting";
 import CachedCoverImage from "./CachedCoverImage";
 import LoungeGuidesWidget from "./LoungeGuidesWidget";
+import LoungeNotesWidget from "./LoungeNotesWidget";
 import type { GuideId } from "../lib/guides";
 
 interface LoungeViewProps {
   books: BookMetadata[];
   lastReadBook: BookMetadata | null;
   userNickname?: string;
+  userId?: string;
   grayscaleCovers?: boolean;
   onOpenBook: (book: BookMetadata) => void;
   onOpenTab: (tab: "library" | "discover" | "feed") => void;
   onSearchDiscover?: (query: string) => void;
   onStartGuide?: (id: GuideId) => void;
+  onOpenAnnotations?: () => void;
 }
 
 type FeaturedBook = {
@@ -205,11 +208,13 @@ export default function LoungeView({
   books,
   lastReadBook,
   userNickname,
+  userId = "",
   grayscaleCovers = false,
   onOpenBook,
   onOpenTab,
   onSearchDiscover,
   onStartGuide,
+  onOpenAnnotations,
 }: LoungeViewProps) {
   const [modes, setModes] = useState(loadLoungeModes);
   const [featured, setFeatured] = useState<FeaturedBook[]>([]);
@@ -791,9 +796,21 @@ export default function LoungeView({
 
         <TileShell
           delay={0.14}
-          className="order-4 md:order-none md:col-span-2 bg-kindle-card/60 p-3 md:p-4"
+          className="order-4 md:order-none bg-kindle-card/60 p-3 md:p-4 min-h-[16rem]"
         >
           <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
+        </TileShell>
+
+        <TileShell
+          delay={0.16}
+          className="order-5 md:order-none bg-kindle-card/60 p-3 md:p-4 min-h-[16rem]"
+        >
+          <LoungeNotesWidget
+            books={books}
+            userId={userId}
+            onOpenBook={onOpenBook}
+            onOpenAnnotations={onOpenAnnotations}
+          />
         </TileShell>
       </div>
     </div>

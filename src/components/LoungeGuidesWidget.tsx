@@ -10,6 +10,7 @@ import {
   Plus,
   Sparkles,
   ChevronRight,
+  X,
 } from "lucide-react";
 import {
   dismissGuideForever,
@@ -41,7 +42,7 @@ export default function LoungeGuidesWidget({
 }: LoungeGuidesWidgetProps) {
   const guidesApi = useGuidesOptional();
   const reduceMotion = useReducedMotion();
-  const limit = 2;
+  const limit = variant === "bento" ? 3 : 2;
   const [guides, setGuides] = useState<GuideDefinition[]>(() => pickLoungeGuideWidgets(limit));
 
   useEffect(() => {
@@ -74,20 +75,24 @@ export default function LoungeGuidesWidget({
 
   if (variant === "bento") {
     return (
-      <div className="h-full flex flex-col gap-2.5 min-h-0" aria-label="Guides">
-        <div className="flex items-center justify-between gap-2 shrink-0 px-0.5">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
-            <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
-              Guides
-            </h3>
+      <div className="h-full flex flex-col gap-3 min-h-0" aria-label="Guides">
+        <div className="flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-kindle-accent/15 flex items-center justify-center shrink-0">
+              <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
+                Guides
+              </h3>
+              <p className="text-[10px] text-kindle-text-muted truncate">Hands-on tours · swipe to hide</p>
+            </div>
           </div>
-          <p className="text-[9px] text-kindle-text-muted font-medium">Swipe a card to hide forever</p>
         </div>
 
         {guides.length ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-1 min-h-0">
-            {guides.map((guide) => (
+          <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {guides.map((guide, i) => (
               <GuideSwipeCard
                 key={guide.id}
                 guide={guide}
@@ -96,14 +101,15 @@ export default function LoungeGuidesWidget({
                 onDismiss={() => handleDismiss(guide.id)}
                 onStart={() => handleStart(guide.id)}
                 compact
+                index={i}
               />
             ))}
           </div>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center px-3 py-4 gap-1.5">
+          <div className="flex-1 flex flex-col items-center justify-center text-center px-3 py-6 gap-2 rounded-2xl border border-dashed border-kindle-border/70 bg-kindle-bg/40">
             <Sparkles className="w-5 h-5 text-kindle-text-muted opacity-40" />
-            <p className="text-xs text-kindle-text-muted leading-relaxed">
-              You&apos;re caught up — no pending guides.
+            <p className="text-xs text-kindle-text-muted leading-relaxed max-w-[14rem]">
+              You&apos;re caught up — no pending guides right now.
             </p>
           </div>
         )}
@@ -126,7 +132,7 @@ export default function LoungeGuidesWidget({
       </div>
 
       <div className="space-y-2.5">
-        {guides.map((guide) => {
+        {guides.map((guide, i) => {
           const Icon = ICONS[guide.icon] || Sparkles;
           return (
             <GuideSwipeCard
@@ -136,6 +142,7 @@ export default function LoungeGuidesWidget({
               reduceMotion={!!reduceMotion}
               onDismiss={() => handleDismiss(guide.id)}
               onStart={() => handleStart(guide.id)}
+              index={i}
             />
           );
         })}
@@ -151,6 +158,7 @@ function GuideSwipeCard({
   onDismiss,
   onStart,
   compact = false,
+  index = 0,
 }: {
   guide: GuideDefinition;
   Icon: React.ComponentType<{ className?: string }>;
@@ -158,6 +166,7 @@ function GuideSwipeCard({
   onDismiss: () => void;
   onStart: () => void;
   compact?: boolean;
+  index?: number;
 }) {
   const [exiting, setExiting] = useState(false);
 
@@ -175,47 +184,69 @@ function GuideSwipeCard({
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.85}
       onDragEnd={onDragEnd}
-      animate={exiting ? { opacity: 0, x: 120 } : { opacity: 1, x: 0 }}
-      transition={{ type: "spring", stiffness: 380, damping: 32 }}
-      className="relative touch-pan-y h-full"
+      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+      animate={exiting ? { opacity: 0, x: 120 } : { opacity: 1, x: 0, y: 0 }}
+      transition={{ type: "spring", stiffness: 380, damping: 32, delay: index * 0.04 }}
+      className="relative touch-pan-y"
     >
       <div className="absolute inset-y-1 left-1 right-1 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-end pr-3 pointer-events-none">
         <span className="text-[9px] font-bold uppercase tracking-wider text-red-600/80">Hide</span>
       </div>
-      <motion.button
-        type="button"
-        onClick={onStart}
-        className={`relative w-full text-left rounded-2xl border border-kindle-border bg-kindle-bg/80 hover:border-kindle-accent/30 transition flex items-start gap-3 ${
-          compact ? "p-3 h-full min-h-[7.5rem]" : "p-3.5 shadow-sm"
+      <motion.div
+        className={`relative w-full rounded-2xl border border-kindle-border/80 bg-gradient-to-br from-kindle-bg via-kindle-bg to-kindle-card/80 overflow-hidden ${
+          compact ? "" : "shadow-sm"
         }`}
         whileTap={reduceMotion ? undefined : { scale: 0.985 }}
       >
-        <div
-          className={`rounded-xl bg-kindle-accent/12 flex items-center justify-center shrink-0 ${
-            compact ? "w-9 h-9" : "w-10 h-10"
-          }`}
-        >
-          <Icon className={compact ? "w-4 h-4 text-kindle-accent" : "w-5 h-5 text-kindle-accent"} />
-        </div>
-        <div className="min-w-0 flex-1 flex flex-col">
-          <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
-            Interactive guide
-          </p>
-          <h3 className={`font-bold text-kindle-text mt-0.5 ${compact ? "text-sm" : "text-sm"}`}>
-            {guide.title}
-          </h3>
-          <p
-            className={`text-kindle-text-muted mt-1 leading-relaxed ${
-              compact ? "text-[11px] line-clamp-2 flex-1" : "text-[12px] line-clamp-2"
+        <div className="absolute inset-y-0 left-0 w-1 bg-kindle-accent/70" aria-hidden />
+        <div className={`flex items-stretch gap-0 ${compact ? "min-h-[4.75rem]" : ""}`}>
+          <button
+            type="button"
+            onClick={onStart}
+            className={`flex-1 text-left flex items-start gap-3 hover:bg-kindle-accent/[0.04] transition ${
+              compact ? "p-3 pl-3.5" : "p-3.5 pl-4"
             }`}
           >
-            {guide.blurb}
-          </p>
-          <span className="inline-flex items-center gap-1 mt-2 text-[11px] font-bold text-kindle-accent uppercase tracking-wider">
-            Start <ChevronRight className="w-3.5 h-3.5" />
-          </span>
+            <div
+              className={`rounded-xl bg-kindle-accent/12 flex items-center justify-center shrink-0 ring-1 ring-kindle-accent/10 ${
+                compact ? "w-9 h-9" : "w-10 h-10"
+              }`}
+            >
+              <Icon className={compact ? "w-4 h-4 text-kindle-accent" : "w-5 h-5 text-kindle-accent"} />
+            </div>
+            <div className="min-w-0 flex-1 flex flex-col">
+              <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                {guide.short || "Tour"}
+              </p>
+              <h3 className="font-bold text-kindle-text mt-0.5 text-sm leading-snug line-clamp-1">
+                {guide.title}
+              </h3>
+              <p
+                className={`text-kindle-text-muted mt-1 leading-relaxed ${
+                  compact ? "text-[11px] line-clamp-2" : "text-[12px] line-clamp-2"
+                }`}
+              >
+                {guide.blurb}
+              </p>
+              <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-kindle-accent uppercase tracking-wider">
+                Start tour <ChevronRight className="w-3.5 h-3.5" />
+              </span>
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss();
+            }}
+            className="shrink-0 px-2.5 flex items-center justify-center border-l border-kindle-border/60 text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg/80 transition"
+            aria-label={`Hide ${guide.title} forever`}
+            title="Hide forever"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
-      </motion.button>
+      </motion.div>
     </motion.div>
   );
 }
