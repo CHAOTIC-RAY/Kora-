@@ -623,9 +623,13 @@ function FeedView({
       ) : visibleItems.length === 0 ? (
         <div className="bg-kindle-card border border-kindle-border rounded-2xl p-12 text-center">
           <Newspaper className="w-12 h-12 text-kindle-text-muted mx-auto mb-4 opacity-50" />
-          <h3 className="text-lg font-lexend font-bold mb-2">No articles here yet</h3>
+          <h3 className="text-lg font-lexend font-bold mb-2">
+            {filter === "saved" ? "No saved articles" : "No articles here yet"}
+          </h3>
           <p className="text-sm text-kindle-text-muted max-w-md mx-auto">
-            Add a feed source with Manage above, or share an article link to Kora from your browser.
+            {filter === "saved"
+              ? "Tap Save on a story to keep it here for later. Saved stories stay in the news tab only."
+              : "Add a feed source with Manage above, or share an article link to Kora from your browser."}
           </p>
         </div>
       ) : (
