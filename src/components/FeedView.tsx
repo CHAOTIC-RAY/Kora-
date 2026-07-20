@@ -137,6 +137,12 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
     variant === "featured" ? "w-full aspect-[16/9]" : "w-full aspect-[4/3]";
 
   const x = useMotionValue(0);
+  const dragMovedRef = React.useRef(false);
+  const pointerStartRef = React.useRef<{ x: number; y: number; active: boolean }>({
+    x: 0,
+    y: 0,
+    active: false,
+  });
 
   // Dynamic transforms for underlay action states
   const leftOpacity = useTransform(x, [0, 60], [0, 1]);
@@ -145,19 +151,46 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const rightOpacity = useTransform(x, [-60, 0], [1, 0]);
   const rightScale = useTransform(x, [-120, 0], [1.15, 0.85]);
 
-  const handleDragEnd = (_event: any, info: any) => {
+  const handleDragStart = () => {
+    dragMovedRef.current = false;
+  };
+
+  const handleDrag = (_event: unknown, info: { offset: { x: number } }) => {
+    if (Math.abs(info.offset.x) > 12) dragMovedRef.current = true;
+  };
+
+  const handleDragEnd = (_event: unknown, info: { offset: { x: number } }) => {
     const threshold = 120;
     if (info.offset.x > threshold) {
       onToggleRead();
-    } else if (info.offset.x < -threshold) {
-      onSaveLater();
+      return;
     }
+    if (info.offset.x < -threshold) {
+      onSaveLater();
+      return;
+    }
+  };
+
+  const handlePointerDown = (event: React.PointerEvent) => {
+    pointerStartRef.current = { x: event.clientX, y: event.clientY, active: true };
+    dragMovedRef.current = false;
+  };
+
+  const handlePointerUp = (event: React.PointerEvent) => {
+    if (!pointerStartRef.current.active) return;
+    pointerStartRef.current.active = false;
+    if (dragMovedRef.current) return;
+    const dx = Math.abs(event.clientX - pointerStartRef.current.x);
+    const dy = Math.abs(event.clientY - pointerStartRef.current.y);
+    // Ignore scroll / swipe jitter — only treat as a tap when movement is tiny.
+    if (dx > 12 || dy > 12) return;
+    onRead();
   };
 
   return (
     <div className={`relative overflow-hidden rounded-2xl ${cardClass} h-full select-none`}>
-      {/* Swipe Underlay */}
-      <div className="absolute inset-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
+      {/* Swipe Underlay — must stay under the card (z-0) or it paints over titles */}
+      <div className="absolute inset-0 z-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
         {/* Left Action (swipe right) -> Mark Read */}
         <motion.div
           style={{ opacity: leftOpacity }}
@@ -181,15 +214,19 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
         </motion.div>
       </div>
 
-      {/* Swipeable Foreground Card */}
+      {/* Swipeable Foreground Card — z-10 keeps titles/summaries above the underlay */}
       <motion.article
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={{ left: 0.6, right: 0.6 }}
+        dragDirectionLock
         style={{ x }}
+        onDragStart={handleDragStart}
+        onDrag={handleDrag}
         onDragEnd={handleDragEnd}
-        onTap={() => onRead()}
-        className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col h-full touch-pan-y ${
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        className={`feed-article-card relative z-10 bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col h-full touch-pan-y ${
           item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
         }`}
       >
@@ -247,6 +284,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
               className="flex items-center gap-1.5 mt-auto min-w-0"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
             >
               <button
                 onClick={onRead}
