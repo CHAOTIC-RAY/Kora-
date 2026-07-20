@@ -25,6 +25,10 @@ export interface FeedItem {
   imageUrl?: string;
   category?: string;
   read: boolean;
+  /** Saved for later in the Feed "Saved" chip (news tab only). */
+  saved?: boolean;
+  savedAt?: number;
+  /** Optional book id when also clipped into the library. */
   savedBookId?: string;
   clippedAt?: number;
 }
@@ -355,9 +359,38 @@ export function markFeedItemRead(itemId: string, read = true): void {
   saveFeedItems(items);
 }
 
+/** True when an item belongs in the Feed "Saved" chip. */
+export function isFeedItemSaved(item: Pick<FeedItem, "saved" | "savedBookId">): boolean {
+  return item.saved === true || Boolean(item.savedBookId);
+}
+
+/** Save / unsave for later in the news Feed tab (does not clip to library). */
+export function markFeedItemSavedForLater(itemId: string, saved = true): void {
+  const items = getFeedItems().map((item) =>
+    item.id === itemId
+      ? {
+          ...item,
+          saved,
+          savedAt: saved ? Date.now() : undefined,
+        }
+      : item
+  );
+  saveFeedItems(items);
+}
+
+/** Mark a feed item as clipped into the book library (and keep it in Saved). */
 export function markFeedItemSaved(itemId: string, bookId: string): void {
   const items = getFeedItems().map((item) =>
-    item.id === itemId ? { ...item, savedBookId: bookId, read: true, clippedAt: Date.now() } : item
+    item.id === itemId
+      ? {
+          ...item,
+          saved: true,
+          savedAt: item.savedAt || Date.now(),
+          savedBookId: bookId,
+          read: true,
+          clippedAt: Date.now(),
+        }
+      : item
   );
   saveFeedItems(items);
 }

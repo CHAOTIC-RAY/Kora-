@@ -24,18 +24,17 @@ import {
   getFeedItems,
   isCuratedFeedUrl,
   isDefaultFeedUrl,
+  isFeedItemSaved,
   isFeedSubscriptionEnabled,
   isInternationalFeedUrl,
   markFeedItemRead,
-  markFeedItemSaved,
+  markFeedItemSavedForLater,
   mergeFeedItems,
   removeFeedSubscription,
   saveFeedSubscriptions,
   setFeedSubscriptionEnabled,
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
-import { clipUrlToLibrary } from "../lib/feedClipper";
-import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
 import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
 import { textDirection } from "../lib/textDirection";
@@ -112,7 +111,6 @@ function getBentoVariant(index: number): BentoVariant {
 const FeedArticleCard = React.memo(function FeedArticleCard({
   item,
   cover,
-  busy,
   title,
   variant,
   onRead,
@@ -121,7 +119,6 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
 }: {
   item: FeedItem;
   cover: string | null;
-  busy: boolean;
   title: string;
   variant: BentoVariant;
   onRead: () => void;
@@ -131,6 +128,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const [thumbFailed, setThumbFailed] = useState(false);
   const showThumb = cover && !thumbFailed;
   const dir = textDirection(title);
+  const saved = isFeedItemSaved(item);
 
   const cardClass = variant === "featured" ? "sm:col-span-2" : "sm:col-span-1";
   const imageClass =
@@ -191,7 +189,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
     <div className={`relative overflow-hidden rounded-2xl ${cardClass} h-full select-none`}>
       {/* Swipe Underlay — must stay under the card (z-0) or it paints over titles */}
       <div className="absolute inset-0 z-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
-        {/* Left Action (swipe right) -> Mark Read */}
+        {/* Left Action (swipe right) -> Mark as read */}
         <motion.div
           style={{ opacity: leftOpacity }}
           className="flex items-center gap-2 text-kindle-text font-bold text-xs"
@@ -199,15 +197,15 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
           <motion.div style={{ scale: leftScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
             <CheckCircle2 className="w-5 h-5 text-kindle-text" />
           </motion.div>
-          <span>{item.read ? "Mark Unread" : "Mark Read"}</span>
+          <span>{item.read ? "Mark as unread" : "Mark as read"}</span>
         </motion.div>
 
-        {/* Right Action (swipe left) -> Save Later */}
+        {/* Right Action (swipe left) -> Save */}
         <motion.div
           style={{ opacity: rightOpacity }}
           className="flex items-center gap-2 text-kindle-accent font-bold text-xs ml-auto"
         >
-          <span>{item.savedBookId ? "Saved" : "Save to Library"}</span>
+          <span>{saved ? "Saved" : "Save"}</span>
           <motion.div style={{ scale: rightScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
             <Bookmark className="w-5 h-5 text-kindle-accent" />
           </motion.div>
@@ -287,35 +285,44 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
               onPointerUp={(e) => e.stopPropagation()}
             >
               <button
-                onClick={onRead}
-                disabled={busy}
-                className="hidden sm:flex flex-1 items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50 min-w-0"
+                type="button"
+                onClick={onSaveLater}
+                className={`flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition min-w-0 ${
+                  saved
+                    ? "border-kindle-text bg-kindle-text text-kindle-bg"
+                    : "border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg"
+                }`}
+                title={saved ? "Remove from saved" : "Save for later"}
+                aria-pressed={saved}
               >
-                {busy ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Newspaper className="w-3.5 h-3.5 shrink-0" />}
-                <span className="truncate">Read</span>
+                <Bookmark className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{saved ? "Saved" : "Save"}</span>
               </button>
               <button
+                type="button"
                 onClick={onToggleRead}
-                className="flex-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
-                title={item.read ? "Mark unread" : "Mark read"}
+                className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
+                title={item.read ? "Mark as unread" : "Mark as read"}
               >
-                <span className="truncate">{item.read ? "Unread" : "Done"}</span>
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{item.read ? "Mark unread" : "Mark as read"}</span>
               </button>
               <a
                 href={item.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="p-1.5 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0 flex items-center justify-center"
-                title="Open original"
+                className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
+                title="Open in new tab"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
+                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">Open in new tab</span>
               </a>
             </div>
 
-            {item.savedBookId && (
-              <p className="text-[9px] text-emerald-600 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
-                Saved to library
+            {saved && (
+              <p className="text-[9px] text-kindle-text-muted flex items-center gap-1">
+                <Bookmark className="w-3 h-3" />
+                Saved — find it under the Saved chip
               </p>
             )}
           </div>
@@ -444,7 +451,7 @@ function FeedView({
         if (filter === "briefs") return false;
         if (selectedSubscriptionId && item.subscriptionId !== selectedSubscriptionId) return false;
         if (filter === "unread" && item.read) return false;
-        if (filter === "saved" && !item.savedBookId) return false;
+        if (filter === "saved" && !isFeedItemSaved(item)) return false;
         return true;
       })
       .sort((a, b) => b.publishedAt - a.publishedAt);
@@ -507,32 +514,16 @@ function FeedView({
     setReadingArticle(item);
   };
 
-  const handleSaveLater = useCallback(async (item: FeedItem) => {
-    if (item.savedBookId) {
-      toast("Already saved to library", { icon: "📖" });
-      return;
+  const handleSaveLater = useCallback((item: FeedItem) => {
+    const nextSaved = !isFeedItemSaved(item);
+    markFeedItemSavedForLater(item.id, nextSaved);
+    setItems(getFeedItems());
+    if (nextSaved) {
+      toast.success("Saved — find it under the Saved chip");
+    } else {
+      toast.success("Removed from Saved");
     }
-    const tId = toast.loading(`Saving “${item.title}” to library…`);
-    try {
-      const book = await clipUrlToLibrary({
-        url: item.link,
-        userId,
-        tags: [
-          "Feed",
-          item.subscriptionTitle,
-          ...(isTelegramArticleLink(item.link) ? ["Telegram"] : []),
-        ],
-        sourceLabel: item.subscriptionTitle,
-      });
-      markFeedItemSaved(item.id, book.id);
-      setItems(getFeedItems());
-      await onRefreshLibrary?.();
-      toast.success("Saved to library for offline reading", { id: tId });
-    } catch (err) {
-      console.error(err);
-      toast.error((err as Error).message || "Could not save to library.", { id: tId });
-    }
-  }, [userId, onRefreshLibrary]);
+  }, []);
 
   return (
     <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
@@ -651,7 +642,6 @@ function FeedView({
                 key={item.id}
                 item={item}
                 cover={cover}
-                busy={false}
                 title={title}
                 variant={getBentoVariant(index)}
                 onRead={() => void handleReadArticle(item)}
@@ -665,7 +655,7 @@ function FeedView({
                     toast.success("Marked as unread");
                   }
                 }}
-                onSaveLater={() => void handleSaveLater(item)}
+                onSaveLater={() => handleSaveLater(item)}
               />
             );
           })}

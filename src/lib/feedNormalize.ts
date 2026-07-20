@@ -66,6 +66,8 @@ export function dedupeFeedItems(items: FeedItem[]): FeedItem[] {
     map.set(item.id, {
       ...preferred,
       read: existing.read || item.read,
+      saved: existing.saved || item.saved || Boolean(existing.savedBookId || item.savedBookId),
+      savedAt: existing.savedAt || item.savedAt,
       savedBookId: existing.savedBookId || item.savedBookId,
       clippedAt: existing.clippedAt || item.clippedAt,
       title: hasMeaningfulTitle(preferred.title) ? preferred.title : fallback.title,
