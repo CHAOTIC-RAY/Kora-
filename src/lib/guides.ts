@@ -152,7 +152,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "reader-settings",
         title: "Display settings",
-        body: "Tap the gear to tune font size, theme, margins, and page-turn style. Your eye comfort lives here.",
+        body: "Tap the gear to tune font size, theme, margins, and page-turn style (tap pages vs continuous scroll). Your eye comfort lives here.",
         target: "#toggle-settings-btn",
         action: "tap-target",
       },
