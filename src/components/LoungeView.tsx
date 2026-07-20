@@ -453,7 +453,7 @@ export default function LoungeView({
               />
             </div>
 
-            {/* Hero: tall cover left (~45%), meta column right aligned to cover height */}
+            {/* Hero: proper 2:3 cover left, meta column right */}
             <div className="flex-1 min-h-[14rem] w-full text-left px-3.5 md:px-5 pb-3 pt-1 pointer-events-none">
               <AnimatePresence mode="wait">
                 <motion.div
@@ -462,16 +462,16 @@ export default function LoungeView({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.35 }}
-                  className="h-full min-h-[14rem] flex items-stretch gap-3.5 md:gap-5"
+                  className="h-full min-h-[14rem] flex items-center gap-3.5 md:gap-5"
                 >
                   {continueBook ? (
                     <>
-                      <div className="relative shrink-0 w-[42%] max-w-[11.5rem] self-stretch rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.45)] bg-kindle-card ring-1 ring-white/5">
+                      <div className="relative shrink-0 w-[6.75rem] sm:w-[7.5rem] md:w-[8.25rem] aspect-[2/3] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.45)] bg-kindle-card ring-1 ring-white/5">
                         {continueBook.coverUrl ? (
                           <CachedCoverImage
                             coverUrl={continueBook.coverUrl}
                             bookTitle={continueBook.title}
-                            className={`absolute inset-0 w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+                            className={`absolute inset-0 w-full h-full object-cover object-center ${grayscaleCovers ? "grayscale" : ""}`}
                             referrerPolicy="no-referrer"
                           />
                         ) : (
@@ -484,12 +484,12 @@ export default function LoungeView({
                           </div>
                         )}
                         {isAudiobook(continueBook) && (
-                          <span className="absolute top-2.5 right-2.5 px-1.5 py-0.5 rounded-md bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider leading-none shadow">
+                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider leading-none shadow">
                             Audio
                           </span>
                         )}
                       </div>
-                      <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5 gap-2">
+                      <div className="min-w-0 flex-1 self-stretch flex flex-col justify-between py-0.5 gap-2">
                         <div className="space-y-1.5">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
                             {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
