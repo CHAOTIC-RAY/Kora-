@@ -6,7 +6,7 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, Circle, Sparkles
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, Circle, Sparkles, Wifi
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import {
@@ -229,6 +229,13 @@ function SettingsView({
       ...prev,
       [key]: !prev[key]
     }));
+  };
+
+  const scrollToToolsSection = (sectionId: string, beforeScroll?: () => void) => {
+    beforeScroll?.();
+    requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
@@ -705,18 +712,32 @@ function SettingsView({
         <>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { id: "import", icon: Upload, label: "Import", desc: "Add files" },
-            { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox" },
-            { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch" },
-            { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert" },
+            { id: "import", icon: Upload, label: "Import", desc: "Add files", sectionId: "import-tools-panel" },
+            { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox", sectionId: "import-tools-panel" },
+            { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch", sectionId: "folder-tools-panel" },
+            { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert", sectionId: "tts-tools-panel" },
+            { id: "sync", icon: Wifi, label: "Sync", desc: "Devices & cloud", sectionId: "devices-sync-panel" },
           ].map((tool) => (
             <button
               key={tool.id}
               onClick={() => {
-                if (tool.id === "cloud") setShowCloudImport(true);
-                else if (tool.id === "folder") toggleCategory("folder");
-                else if (tool.id === "tts") toggleCategory("tts");
-                else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                if (tool.id === "cloud") {
+                  scrollToToolsSection(tool.sectionId, () => setShowCloudImport(true));
+                  return;
+                }
+                if (tool.id === "folder") {
+                  scrollToToolsSection(tool.sectionId, () => {
+                    if (!expandedCategories.folder) toggleCategory("folder");
+                  });
+                  return;
+                }
+                if (tool.id === "tts") {
+                  scrollToToolsSection(tool.sectionId, () => {
+                    if (!expandedCategories.tts) toggleCategory("tts");
+                  });
+                  return;
+                }
+                scrollToToolsSection(tool.sectionId);
               }}
               className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
             >
@@ -772,7 +793,17 @@ function SettingsView({
           <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
         </div>
 
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
+        <div id="devices-sync-panel">
+          {isActive ? (
+            <DevicesSyncPanel
+              userId={userId}
+              books={books}
+              onCachedIdsChanged={onCachedIdsChanged}
+            />
+          ) : null}
+        </div>
+
+        <section id="import-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Upload className="w-4 h-4 text-kindle-accent" />
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Import Files</h3>
@@ -1301,44 +1332,6 @@ function SettingsView({
 
         {view === "settings" && (
         <>
-        {showCloudImport && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
-            <div className="relative w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl shadow-2xl p-8 text-center text-kindle-text">
-              <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Cloud className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-bold mb-2">Cloud Connectivity</h3>
-              <p className="text-xs text-kindle-text-muted mb-8 leading-relaxed">
-                Connect your Google Drive or Dropbox to instantly sync your entire ebook collection. 
-                Secure OAuth integration ensures your data stays private.
-              </p>
-              <div className="space-y-3">
-                <button 
-                  className="w-full py-3.5 bg-[#4285F4] text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:brightness-110 transition cursor-pointer"
-                  onClick={() => alert("Cloud Sync Integration: Please set up Google OAuth in AI Studio settings to enable this feature.")}
-                >
-                  Connect Google Drive
-                </button>
-                <button 
-                  className="w-full py-3.5 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition cursor-pointer"
-                  onClick={() => setShowCloudImport(false)}
-                >
-                  Maybe Later
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {view === "tools" && isActive ? (
-          <DevicesSyncPanel
-            userId={userId}
-            books={books}
-            onCachedIdsChanged={onCachedIdsChanged}
-          />
-        ) : null}
-
         {/* Data & Storage */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
@@ -1449,7 +1442,7 @@ function SettingsView({
         {view === "tools" && (
         <>
         {expandedCategories.folder && (
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
+        <section id="folder-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between gap-3 border-b border-kindle-border pb-3">
             <div className="flex items-center gap-3">
               <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
@@ -1630,7 +1623,7 @@ function SettingsView({
         )}
 
         {/* Read Aloud — collapsed by default, near bottom */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+        <section id="tts-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
           <div
             onClick={() => toggleCategory("tts")}
             className="flex items-center justify-between cursor-pointer select-none"
@@ -1711,6 +1704,36 @@ function SettingsView({
           </div>
         </section>
         </>
+        )}
+
+        {showCloudImport && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
+            <div className="relative w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl shadow-2xl p-8 text-center text-kindle-text">
+              <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Cloud className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold mb-2">Cloud Connectivity</h3>
+              <p className="text-xs text-kindle-text-muted mb-8 leading-relaxed">
+                Connect your Google Drive or Dropbox to instantly sync your entire ebook collection.
+                Secure OAuth integration ensures your data stays private.
+              </p>
+              <div className="space-y-3">
+                <button
+                  className="w-full py-3.5 bg-[#4285F4] text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:brightness-110 transition cursor-pointer"
+                  onClick={() => alert("Cloud Sync Integration: Please set up Google OAuth in AI Studio settings to enable this feature.")}
+                >
+                  Connect Google Drive
+                </button>
+                <button
+                  className="w-full py-3.5 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition cursor-pointer"
+                  onClick={() => setShowCloudImport(false)}
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

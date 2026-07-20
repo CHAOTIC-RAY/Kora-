@@ -238,20 +238,45 @@ export function prepareFeedArticleHtml(html: string, title: string): string {
   }
 }
 
+const FAILED_URL_CACHE = new Map<string, number>();
+const FAILED_URL_TTL_MS = 15 * 60 * 1000;
+
+function markUrlFetchFailed(url: string): void {
+  FAILED_URL_CACHE.set(url.trim(), Date.now());
+}
+
+function isUrlFetchBlocked(url: string): boolean {
+  const failedAt = FAILED_URL_CACHE.get(url.trim());
+  if (!failedAt) return false;
+  if (Date.now() - failedAt > FAILED_URL_TTL_MS) {
+    FAILED_URL_CACHE.delete(url.trim());
+    return false;
+  }
+  return true;
+}
+
 export async function fetchArticleContent(url: string): Promise<{
   title: string;
   author?: string;
   description?: string;
   htmlContent: string;
 }> {
+  const trimmed = url.trim();
+  if (isUrlFetchBlocked(trimmed)) {
+    throw new Error("Article fetch unavailable right now. Try again later or open the original link.");
+  }
+
   const response = await fetch("/api/convert-url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: url.trim() }),
+    body: JSON.stringify({ url: trimmed }),
     signal: AbortSignal.timeout(22000),
   });
 
   if (!response.ok) {
+    if (response.status === 503 || response.status >= 500) {
+      markUrlFetchFailed(trimmed);
+    }
     const errData = await response.json().catch(() => ({}));
     throw new Error(errData.error || `HTTP error ${response.status}`);
   }

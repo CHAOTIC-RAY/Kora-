@@ -32,12 +32,14 @@ function LibraryDownloadOverlay({
   hideCovers,
   onStop,
   onDelete,
+  onRetry,
 }: {
   book: { coverUrl?: string };
-  download: { percent?: number; status?: string; error?: string };
+  download: { id?: string; percent?: number; status?: string; error?: string };
   hideCovers?: boolean;
   onStop?: () => void;
   onDelete?: () => void;
+  onRetry?: () => void;
 }) {
   const pct = typeof download.percent === "number" ? download.percent : 0;
   const isError = download.status === "error";
@@ -60,6 +62,21 @@ function LibraryDownloadOverlay({
         )}
       </div>
       <div className="absolute top-2 left-2 z-30 flex gap-1.5">
+        {isError && onRetry && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onRetry();
+            }}
+            className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-kindle-accent/15 hover:text-kindle-accent active:scale-90 transition"
+            title="Retry download"
+            aria-label="Retry download"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+        )}
         {!isError && onStop && (
           <button
             type="button"
@@ -135,6 +152,7 @@ interface LibraryManagerProps {
   downloads?: any[];
   onCancelDownload?: (downloadId: string) => void;
   onDismissDownload?: (downloadId: string) => void;
+  onRetryDownload?: (downloadId: string) => void;
   onSearchTrigger?: (query: string) => void;
   onOpenAnnotations?: () => void;
 }
@@ -187,6 +205,7 @@ function LibraryManager({
   downloads = [],
   onCancelDownload,
   onDismissDownload,
+  onRetryDownload,
   onSearchTrigger,
   onOpenAnnotations,
 }: LibraryManagerProps) {
@@ -999,6 +1018,11 @@ function LibraryManager({
                             ? () => onCancelDownload(activeDownload.id)
                             : undefined
                         }
+                        onRetry={
+                          activeDownload.status === "error" && onRetryDownload
+                            ? () => onRetryDownload(activeDownload.id)
+                            : undefined
+                        }
                         onDelete={
                           onCancelDownload || onDismissDownload
                             ? () => stopOrRemoveDownload(activeDownload)
@@ -1526,8 +1550,21 @@ function LibraryManager({
                     (longPressedBook as any).activeDownload ||
                     findActiveDownload(longPressedBook as any, downloads);
                   const downloading = dl?.status === "downloading";
+                  const failed = dl?.status === "error";
                   return (
                     <>
+                      {failed && onRetryDownload && (
+                        <button
+                          onClick={() => {
+                            onRetryDownload(dl.id);
+                            setLongPressedBook(null);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                        >
+                          <RefreshCw className="w-4 h-4 text-kindle-text-muted" />
+                          Retry download
+                        </button>
+                      )}
                       {downloading && onCancelDownload && (
                         <button
                           onClick={() => {

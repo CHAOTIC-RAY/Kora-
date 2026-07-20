@@ -452,6 +452,36 @@ export default function App() {
     [removeDownloadEntry]
   );
 
+  const retryFailedDownload = useCallback((downloadId: string) => {
+    let fallback = swDownloadFallbackRef.current.get(downloadId);
+    if (!fallback) {
+      try {
+        const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
+        const stored = payloads[downloadId];
+        if (stored?.book && stored?.variant) {
+          const mirrors =
+            stored.mirrors?.length > 0
+              ? stored.mirrors
+              : stored.variant.downloadUrl || stored.variant.directUrl
+                ? [{ url: stored.variant.downloadUrl || stored.variant.directUrl, label: "Retry" }]
+                : [];
+          fallback = { book: stored.book, variant: stored.variant, mirrors };
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!fallback?.mirrors?.length) {
+      toast.error("Cannot retry — search for this book again in Discover.");
+      return;
+    }
+    swDownloadFallbackRef.current.set(downloadId, fallback);
+    toast.loading(`Retrying ${fallback.book.title}…`, { id: downloadId });
+    void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
+      reuseDownloadId: downloadId,
+    });
+  }, []);
+
   /** Expand a short mirror list into LibGen host candidates so one 500 doesn't kill the download. */
   function expandDownloadMirrors(mirrors: any[], variant: any): any[] {
     const seed = [...mirrors];
@@ -584,7 +614,8 @@ export default function App() {
         payloads[downloadId] = {
           book: { title: book.title, author: book.author, coverUrl: book.coverUrl, tags: book.tags, language: book.language, description: book.description, publisher: book.publisher, year: book.year },
           variant: { md5: variant.md5, size: variant.size, extension: variant.extension, format: variant.format, downloadUrl: variant.downloadUrl, directUrl: variant.directUrl },
-          fileExtension: variant.extension || variant.format || "epub"
+          fileExtension: variant.extension || variant.format || "epub",
+          mirrors: mirrorList.map((m) => ({ url: m.url, label: m.label, sourceId: m.sourceId, isDirect: m.isDirect })),
         };
         localStorage.setItem("kora_sw_payloads", JSON.stringify(payloads));
 
@@ -1174,8 +1205,12 @@ export default function App() {
       } else if (data.type === "brief-notification-shown") {
         markBriefNotificationShown();
       } else if (data.type === "bgf-retry") {
-        switchTab("library");
-        toast.loading("Retry available in your Library downloads");
+        if (data.downloadId) {
+          retryFailedDownload(data.downloadId);
+        } else {
+          switchTab("library");
+          toast.loading("Retry available on failed downloads in your Library");
+        }
       } else if (data.type === "bgf-cancel") {
         removeDownloadEntry(data.downloadId);
       }
@@ -1811,6 +1846,7 @@ export default function App() {
             downloads={globalDownloads}
             onCancelDownload={cancelBackgroundDownload}
             onDismissDownload={dismissDownload}
+            onRetryDownload={retryFailedDownload}
             onOpenAnnotations={() => setShowAnnotationsHub(true)}
             onSearchTrigger={(query) => {
               setDiscoverInitialQuery(query);

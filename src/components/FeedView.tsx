@@ -13,9 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { motion, useMotionValue, useTransform } from "motion/react";
+import { motion, useMotionValue, useTransform, animate } from "motion/react";
 import type { BookMetadata } from "../lib/firebase";
-import { prefetchFeedArticles } from "../lib/feedArticle";
 import {
   addFeedSubscription,
   ensureDefaultSubscriptions,
@@ -158,15 +157,18 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   };
 
   const handleDragEnd = (_event: unknown, info: { offset: { x: number } }) => {
-    const threshold = 120;
+    const threshold = 100;
     if (info.offset.x > threshold) {
+      animate(x, 0, { type: "spring", stiffness: 520, damping: 42 });
       onToggleRead();
       return;
     }
     if (info.offset.x < -threshold) {
+      animate(x, 0, { type: "spring", stiffness: 520, damping: 42 });
       onSaveLater();
       return;
     }
+    animate(x, 0, { type: "spring", stiffness: 420, damping: 36 });
   };
 
   const handlePointerDown = (event: React.PointerEvent) => {
@@ -216,9 +218,10 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
       <motion.article
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={{ left: 0.6, right: 0.6 }}
+        dragElastic={0.12}
+        dragMomentum={false}
         dragDirectionLock
-        style={{ x }}
+        style={{ x, touchAction: "pan-y" }}
         onDragStart={handleDragStart}
         onDrag={handleDrag}
         onDragEnd={handleDragEnd}
@@ -364,7 +367,6 @@ function FeedView({
     try {
       const withPreviews = await prefetchFeedPreviews(merged, 20);
       setItems(withPreviews);
-      void prefetchFeedArticles(withPreviews.slice(0, 5), 5);
     } catch {
       setItems(merged);
     }
