@@ -344,12 +344,13 @@ export default function LoungeView({
     ? resolveCoverImageSrc(continueBook.coverUrl) || continueBook.coverUrl
     : null;
   const discoverHero = discoverItems[0];
-  const discoverRest =
-    modes.discover === "audiobooks" ? discoverItems.slice(1, 9) : discoverItems.slice(1, 5);
+  // Same strip length for Trending and Audio so the list UI stays consistent
+  const discoverRest = discoverItems.slice(1, 7);
   const isDiscoverAudio = modes.discover === "audiobooks";
   const discoverHeroCover = discoverHero?.coverUrl
     ? resolveCoverImageSrc(discoverHero.coverUrl) || discoverHero.coverUrl
     : null;
+  const continueAuthor = cleanAuthor(continueBook?.author);
 
   const openContinue = () => {
     if (continueBook) onOpenBook(continueBook);
@@ -430,8 +431,8 @@ export default function LoungeView({
               />
             </div>
 
-            {/* Dense hero — fills the empty middle; whole tile also opens continue */}
-            <div className="flex-1 min-h-[11rem] w-full text-left px-4 md:px-5 py-3 pointer-events-none">
+            {/* Dense hero — large cover + tightly stacked meta */}
+            <div className="flex-1 min-h-[12rem] w-full text-left px-4 md:px-5 py-3 pointer-events-none">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`${modes.continue}-${continueBook?.id || "empty"}`}
@@ -443,7 +444,7 @@ export default function LoungeView({
                 >
                   {continueBook ? (
                     <>
-                      <div className="shrink-0 w-[6.5rem] h-[9.75rem] md:w-[7.5rem] md:h-[11.25rem] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.4)] bg-kindle-card ring-1 ring-white/5">
+                      <div className="relative shrink-0 w-[7.75rem] sm:w-[8.5rem] md:w-[9.5rem] aspect-[2/3] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.4)] bg-kindle-card ring-1 ring-white/5">
                         {heroCover ? (
                           <img
                             src={heroCover}
@@ -454,24 +455,29 @@ export default function LoungeView({
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
                             {isAudiobook(continueBook) ? (
-                              <Headphones className="w-8 h-8 text-kindle-text-muted" />
+                              <Headphones className="w-9 h-9 text-kindle-text-muted" />
                             ) : (
-                              <BookOpen className="w-8 h-8 text-kindle-text-muted" />
+                              <BookOpen className="w-9 h-9 text-kindle-text-muted" />
                             )}
                           </div>
                         )}
+                        {isAudiobook(continueBook) && (
+                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider leading-none">
+                            Audio
+                          </span>
+                        )}
                       </div>
-                      <div className="min-w-0 flex-1 space-y-2.5">
+                      <div className="min-w-0 flex-1 flex flex-col justify-center gap-2">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
                           {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
                         </p>
-                        <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
+                        <h4 className="text-lg md:text-2xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
                           {continueBook.title}
                         </h4>
-                        <p className="text-sm text-kindle-text-muted truncate">
-                          {continueBook.author || "Unknown"}
-                        </p>
-                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden max-w-[14rem]">
+                        {continueAuthor && (
+                          <p className="text-sm text-kindle-text-muted truncate">{continueAuthor}</p>
+                        )}
+                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden w-full max-w-[16rem]">
                           <motion.div
                             className="h-full rounded-full bg-kindle-accent"
                             initial={{ width: 0 }}
@@ -479,7 +485,7 @@ export default function LoungeView({
                             transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                           />
                         </div>
-                        <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
+                        <span className="mt-0.5 inline-flex w-fit items-center gap-2 px-3.5 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
                           {isAudiobook(continueBook) ? (
                             <>
                               <Play className="w-3.5 h-3.5 fill-current" /> Resume
@@ -691,12 +697,12 @@ export default function LoungeView({
               >
                 {discoverHero ? (
                   <>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-start gap-3.5 shrink-0">
+                      <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
                         <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-accent">
                           {isDiscoverAudio ? "Featured listen" : "Featured"}
                         </p>
-                        <h4 className="text-base md:text-lg font-lexend font-bold text-kindle-text leading-tight line-clamp-2">
+                        <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
                           {discoverHero.title}
                         </h4>
                         {discoverHero.author ? (
@@ -708,7 +714,7 @@ export default function LoungeView({
                         ) : null}
                       </div>
                       {discoverHeroCover && (
-                        <div className="relative shrink-0 w-[4.5rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
+                        <div className="relative shrink-0 w-[5.5rem] md:w-[6.25rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
                           <img
                             src={discoverHeroCover}
                             alt=""
@@ -716,7 +722,7 @@ export default function LoungeView({
                             referrerPolicy="no-referrer"
                           />
                           {isDiscoverAudio && (
-                            <span className="absolute top-1 right-1 px-1 py-0.5 rounded bg-kindle-text text-kindle-bg text-[7px] font-bold uppercase tracking-wider leading-none">
+                            <span className="absolute top-1.5 right-1.5 px-1 py-0.5 rounded bg-kindle-text text-kindle-bg text-[7px] font-bold uppercase tracking-wider leading-none">
                               Audio
                             </span>
                           )}
@@ -726,11 +732,7 @@ export default function LoungeView({
 
                     {discoverRest.length > 0 && (
                       <div
-                        className={
-                          isDiscoverAudio
-                            ? "grid grid-cols-4 gap-2 flex-1 content-start"
-                            : "flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                        }
+                        className="mt-auto flex gap-2.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {discoverRest.map((book, i) => {
@@ -745,11 +747,7 @@ export default function LoungeView({
                                 if (onSearchDiscover) onSearchDiscover(book.title);
                                 else onOpenTab("discover");
                               }}
-                              className={`relative overflow-hidden border border-white/10 bg-kindle-card shadow-md hover:border-kindle-accent/50 hover:-translate-y-0.5 transition ${
-                                isDiscoverAudio
-                                  ? "w-full aspect-[2/3] rounded-lg"
-                                  : "shrink-0 w-[3.1rem] aspect-[2/3] rounded-lg"
-                              }`}
+                              className="relative shrink-0 w-[3.35rem] aspect-[2/3] rounded-lg overflow-hidden border border-white/10 bg-kindle-card shadow-md hover:border-kindle-accent/50 hover:-translate-y-0.5 transition"
                               title={book.title}
                             >
                               {cover ? (
