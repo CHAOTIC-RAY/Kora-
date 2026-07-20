@@ -724,6 +724,9 @@ function SettingsView({
           ].map((tool) => (
             <button
               key={tool.id}
+              data-guide={
+                tool.id === "tts" ? "tools-tts" : tool.id === "sync" ? "tools-sync" : undefined
+              }
               onClick={() => {
                 if (tool.id === "cloud") {
                   scrollToToolsSection(tool.sectionId, () => setShowCloudImport(true));
@@ -797,7 +800,7 @@ function SettingsView({
           <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
         </div>
 
-        <div id="devices-sync-panel">
+        <div id="devices-sync-panel" data-guide="tools-sync-panel">
           {isActive ? (
             <DevicesSyncPanel
               userId={userId}
@@ -1630,7 +1633,7 @@ function SettingsView({
         )}
 
         {/* Read Aloud — collapsed by default, near bottom */}
-        <section id="tts-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+        <section id="tts-tools-panel" data-guide="tts-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
           <div
             onClick={() => toggleCategory("tts")}
             className="flex items-center justify-between cursor-pointer select-none"

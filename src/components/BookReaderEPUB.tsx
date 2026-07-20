@@ -934,6 +934,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 const text = selection.toString().trim();
                 justSelectedAtRef.current = Date.now();
                 setSelectedText(text);
+                if (text.length > 0) {
+                  try {
+                    window.dispatchEvent(new CustomEvent("kora-guide:text-selected", { detail: { len: text.length } }));
+                  } catch {
+                    /* ignore */
+                  }
+                }
                 
                 const rect = range.getBoundingClientRect();
                 
@@ -2238,6 +2245,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         {/* Action Controls */}
         <div className="flex items-center gap-2">
           <button
+            data-guide="reader-notes-btn"
             onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? 'bg-neutral-500/20' : ''}`}
             title="Highlights & Notes"
@@ -2339,7 +2347,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         {showSettings && (
           <>
             <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} />
-            <aside className={`w-full md:w-80 h-[min(70vh,32rem)] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 pb-[max(1.25rem,var(--kora-safe-bottom))] overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
+            <aside data-guide="reader-settings-panel" className={`w-full md:w-80 h-[min(70vh,32rem)] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 pb-[max(1.25rem,var(--kora-safe-bottom))] overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
               <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
                 <Type className="w-4 h-4 text-[#5c5346] dark:text-neutral-300" />

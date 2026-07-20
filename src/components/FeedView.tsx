@@ -502,6 +502,11 @@ function FeedView({
       setSubscriptions(ensureDefaultSubscriptions());
       setShowManageFeeds(false);
       setAddFeedUrl("");
+      try {
+        window.dispatchEvent(new CustomEvent("kora-guide:feed-added"));
+      } catch {
+        /* ignore */
+      }
       await refreshFeeds();
     } catch (err) {
       setAddFeedError((err as Error).message || "Could not subscribe to this feed.");
@@ -546,6 +551,7 @@ function FeedView({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
+            data-guide="feed-manage"
             onClick={() => setShowManageFeeds(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition"
           >
@@ -635,7 +641,7 @@ function FeedView({
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4" data-guide="feed-list">
           {filter === "all" && !selectedSubscriptionId && (
             <TodayNewsBriefCard items={retainedItems} onReadArticle={handleReadArticle} />
           )}
@@ -740,7 +746,7 @@ function FeedView({
               <p className="text-[10px] text-kindle-text-muted">
                 Paste a website or RSS link, or a public Telegram channel (@name or t.me/name).
               </p>
-              <form onSubmit={handleAddSubscription} className="space-y-3">
+              <form onSubmit={handleAddSubscription} className="space-y-3" data-guide="feed-add-url">
                 <input
                   type="text"
                   required

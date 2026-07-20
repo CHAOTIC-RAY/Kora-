@@ -1606,6 +1606,12 @@ function DiscoverView({
 
     if (typeof e === "string") setQuery(e);
 
+    try {
+      window.dispatchEvent(new CustomEvent("kora-guide:search-submitted", { detail: { term: term.trim() } }));
+    } catch {
+      /* ignore */
+    }
+
     // Audiobook search mode — route to audiobook sites instead of ebook archives
     if (isAudiobookSearch) {
       setSearchMode(true);
@@ -2692,13 +2698,14 @@ function DiscoverView({
           )}
 
           <div className="flex flex-col gap-3">
-            <form onSubmit={handleSearch} className="relative group w-full">
+            <form onSubmit={handleSearch} className="relative group w-full" data-guide="discover-search">
               <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
               <input
                 type="text"
                 placeholder="Search millions of books, authors, ISBNs..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                data-guide="discover-search-input"
                 className="w-full pl-12 pr-32 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -2920,7 +2927,7 @@ function DiscoverView({
 
       {/* Search Results */}
       {searchMode && !isAudiobookSearch && (
-        <section className="space-y-6">
+        <section className="space-y-6" data-guide="discover-results">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-lexend font-bold">
               {loading ? "Searching archives…" : `Results for "${query}"`}

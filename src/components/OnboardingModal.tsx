@@ -195,53 +195,92 @@ export default function OnboardingModal({
   const walkthroughSteps = [
     {
       title: "Lounge — Your Dashboard",
-      desc: "Lounge is your home screen. Artistic widgets cycle between Continue (book or listen), Shelf, Discover trending picks, and The Paper — latest, unread, or saved headlines. You can hide Lounge anytime in Settings.",
+      desc: "Lounge is home: Continue (book or listen), Shelf, Discover trending, and The Paper. After setup, interactive Guides appear here — swipe a card away forever if you don't need it, or tap to start a hands-on tour.",
       icon: Sofa,
       color: "text-kindle-accent",
-      bg: "bg-kindle-accent/10"
+      bg: "bg-kindle-accent/10",
+      tips: [
+        "Mode switches on each widget flip Book/Listen, Trending/Audio, Latest/Unread/Saved.",
+        "Guides widgets pick unfinished tips at random each day.",
+      ],
     },
     {
       title: "Library & Your Shelf",
-      desc: "Keep EPUB, PDF, TXT, and audiobooks organized. Import from your device or open titles you already downloaded — progress and highlights stay with each book.",
+      desc: "EPUB, PDF, TXT, and audiobooks live here. Import from your device or open downloads — progress, highlights, and notes stay with each title.",
       icon: BookOpen,
       color: "text-emerald-500",
-      bg: "bg-emerald-500/10"
+      bg: "bg-emerald-500/10",
+      tips: [
+        "Long-press a cover for quick actions.",
+        "Annotations Hub collects highlights across books.",
+      ],
     },
     {
       title: "News Feed Sources",
-      desc: "Pick Maldives and international RSS sources for your Read tab. Your Daily News Brief and Lounge paper widget use these selections.",
+      desc: "Pick Maldives and international RSS for the Read tab. Daily Brief and Lounge paper use these. Later you can add any custom RSS URL from Manage.",
       icon: Rss,
       color: "text-sky-500",
-      bg: "bg-sky-500/10"
+      bg: "bg-sky-500/10",
+      tips: [
+        "Swipe cards right = read, left = save.",
+        "We'll walk you through Read right after your first book.",
+      ],
     },
     {
       title: "Discover Books & Audio",
-      desc: "Browse New York Times bestsellers, Goodreads lists, and federated search. Tap a cover to download an ebook or open an audiobook — Discover also feeds Lounge trending tiles.",
+      desc: "Search archives, NYT / Goodreads lists, and audiobooks. Tap a cover → download. We'll guide your first search with an on-screen spotlight after setup.",
       icon: Compass,
       color: "text-amber-500",
-      bg: "bg-amber-500/10"
+      bg: "bg-amber-500/10",
+      tips: [
+        "Use a title you already know for a quick win.",
+        "Downloads pause/resume from the grouped notification.",
+      ],
     },
     {
-      title: "Downloads & Narrator",
-      desc: "Background downloads group in one notification with pause and resume per book. In the reader, Voice Narrator reads pages aloud; audiobooks play in the full player.",
+      title: "Reader, Narrator & Notes",
+      desc: "Inside a book: gear = display settings, headphones = Voice Narrator, notes icon = highlights & chapter notes. Long-press text to highlight or look up a word.",
       icon: Headphones,
       color: "text-blue-500",
-      bg: "bg-blue-500/10"
+      bg: "bg-blue-500/10",
+      tips: [
+        "Narrator uses on-device voices — works offline.",
+        "We'll tour settings → narrator → notes after your first download.",
+      ],
     },
     {
-      title: "Cross-Device Sync",
-      desc: "Sign in to sync library metadata across devices. On a new device, choose which books to download. Files stay on-device — share via peer transfer or WebDAV in Tools → Devices & Sync.",
+      title: "Sync Setup",
+      desc: "Sign in to sync library metadata across devices. Files stay on-device; peer transfer and WebDAV in Tools → Devices & Sync move the actual files. Guest mode works fully offline.",
       icon: Cloud,
       color: "text-teal-500",
-      bg: "bg-teal-500/10"
+      bg: "bg-teal-500/10",
+      tips: [
+        "New device: pick which books to download when you sign in.",
+        "First guided step after this wizard is Sync — skip anytime.",
+      ],
+    },
+    {
+      title: "Tools & Audiobook Generator",
+      desc: "Tools holds import, web clipper, Devices & Sync, and Read Aloud — convert chapters into an offline audiobook with the built-in generator.",
+      icon: Settings,
+      color: "text-violet-500",
+      bg: "bg-violet-500/10",
+      tips: [
+        "Lounge can remind you to try Read Aloud later.",
+        "Skins and themes are under Settings → Appearance.",
+      ],
     },
     {
       title: "Display, Skins & Themes",
-      desc: "Tune font size, contrast, and line height. Pick an app skin (Kora, Paper, Studio, Soft) and a display theme for eye-safe reading — day or night.",
-      icon: Settings,
+      desc: "Tune font size, contrast, and line height. Pick an app skin (Kora, Paper, Studio, Soft) and a display theme for day or night reading.",
+      icon: Sparkles,
       color: "text-stone-500",
-      bg: "bg-stone-500/10"
-    }
+      bg: "bg-stone-500/10",
+      tips: [
+        "Reader theme can follow the app theme unless you override it.",
+        "Change skins anytime without losing your library.",
+      ],
+    },
   ];
 
   const isNewsFeedsStep = walkthroughIndex === 2;
@@ -540,18 +579,18 @@ export default function OnboardingModal({
                 <div className="text-center space-y-2">
                   <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full flex items-center gap-1 w-fit mx-auto">
                     <Award className="w-3.5 h-3.5 text-kindle-accent" />
-                    Interactive Guide
+                    Detailed walkthrough
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
                     How Kora Fits Together
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    Lounge is home. From there, Library, Discover, and the morning paper are one tap away.
+                    Preview every surface here. After you finish, live overlays will guide Sync → first book → reader → news — and Lounge will keep optional Guides you can swipe away forever.
                   </p>
                 </div>
 
                 {/* Curated Interactive walkthrough tabs */}
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1 bg-kindle-card p-1 border border-kindle-border rounded-xl">
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 bg-kindle-card p-1 border border-kindle-border rounded-xl">
                   {walkthroughSteps.map((wStep, idx) => {
                     const StepIcon = wStep.icon;
                     return (
@@ -588,6 +627,17 @@ export default function OnboardingModal({
                       </p>
                     </div>
                   </div>
+
+                  {walkthroughSteps[walkthroughIndex].tips?.length ? (
+                    <ul className="space-y-1.5 border-t border-kindle-border pt-3">
+                      {walkthroughSteps[walkthroughIndex].tips.map((tip) => (
+                        <li key={tip} className="flex items-start gap-2 text-[11px] text-kindle-text-muted">
+                          <Check className="w-3.5 h-3.5 text-kindle-accent shrink-0 mt-0.5" />
+                          <span className="leading-relaxed">{tip}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
 
                   {isNewsFeedsStep && (
                     <div className="space-y-4 border-t border-kindle-border pt-4">
@@ -766,13 +816,13 @@ export default function OnboardingModal({
               >
                 <div className="text-center space-y-2">
                   <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full">
-                    Your Account
+                    Sync setup
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    Sign in to keep your library
+                    Keep your shelf across devices
                   </h2>
                   <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    A free account syncs your bookshelf, reading progress, and highlights across devices via Firebase.
+                    Sign in so library metadata, progress, and highlights follow you. After this, live overlays will guide Sync → first book search → reader → news.
                   </p>
                 </div>
 
@@ -780,15 +830,22 @@ export default function OnboardingModal({
                   <div className="flex items-start gap-3">
                     <Cloud className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
                     <div>
-                      <p className="font-bold text-kindle-text text-[11px] uppercase tracking-wider mb-1">How sync works</p>
-                      <p>Metadata (library, progress, highlights) syncs to your account in the cloud. Book files stay on your devices — use <strong className="text-kindle-text">Tools → Devices & Sync</strong> for peer-to-peer transfer or your own WebDAV archive.</p>
+                      <p className="font-bold text-kindle-text text-[11px] uppercase tracking-wider mb-1">What syncs</p>
+                      <p>Bookshelf list, reading progress, highlights, and notes sync with your account. Raw book files stay on each device for privacy and offline use.</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
                     <Smartphone className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                     <div>
+                      <p className="font-bold text-kindle-text text-[11px] uppercase tracking-wider mb-1">Moving files</p>
+                      <p>Use <strong className="text-kindle-text">Tools → Devices & Sync</strong> for peer transfer or WebDAV. On a new phone after sign-in, pick which titles to download.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <LogIn className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                    <div>
                       <p className="font-bold text-kindle-text text-[11px] uppercase tracking-wider mb-1">Guest mode</p>
-                      <p>You can continue without signing in. Guest sessions reset every <strong className="text-kindle-text">30 days</strong> — your local library will be cleared when the guest account expires.</p>
+                      <p>Continue without an account — full reader works offline. Guest sessions reset every <strong className="text-kindle-text">30 days</strong>.</p>
                     </div>
                   </div>
                 </div>

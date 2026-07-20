@@ -25,6 +25,8 @@ import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
 import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
 import LoungeView from "./components/LoungeView";
+import { GuideProvider } from "./components/GuideProvider";
+import { emitGuideEvent } from "./lib/guides";
 import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
@@ -341,11 +343,15 @@ export default function App() {
     // Land on Lounge when enabled; otherwise Discover for the first-book nudge.
     if (isLoungeEnabled()) {
       switchTab("lounge");
-      toast.success(`Welcome, ${prefs.nickname}! Your Lounge is ready — add a first book from Discover.`);
+      toast.success(`Welcome, ${prefs.nickname}! Interactive guides will walk you through Sync → first book → reader → news.`);
     } else {
       switchTab("discover");
       toast.success(`Welcome, ${prefs.nickname}! Search Discover to add your first book.`);
     }
+    // Kick off the hands-on post-onboarding journey (spotlight overlays).
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("kora-guide:start-journey"));
+    }, 700);
   };
 
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)
@@ -1832,6 +1838,7 @@ export default function App() {
     setActiveBook(book);
     setLastReadBook(book);
     localStorage.setItem("kindle_last_read", JSON.stringify(book));
+    emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
   }
 
   if (loadingAuth) {
@@ -1843,6 +1850,7 @@ export default function App() {
   }
 
   return (
+    <GuideProvider onSwitchTab={switchTab} paused={showOnboarding}>
     <div
       id="app-root-container"
       data-skin={appSkin}
@@ -1870,10 +1878,22 @@ export default function App() {
 
         {/* Tab Controls & Cloud Auth Sync Info */}
         <div className="flex items-center gap-2 shrink-0">
+          {(!user || user.isAnonymous) && (
+            <button
+              type="button"
+              data-guide="auth-open"
+              onClick={() => setShowAuthModal(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card transition"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              Sign in
+            </button>
+          )}
           <nav className="kora-desktop-nav hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border">
             {loungeEnabled && (
               <button
                 id="lounge-tab"
+                data-guide="nav-lounge"
                 onClick={() => switchTab("lounge")}
                 className={`kora-desktop-nav-item px-3 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                   activeTab === "lounge"
@@ -1887,6 +1907,7 @@ export default function App() {
             )}
             <button
               id="library-tab"
+              data-guide="nav-library"
               onClick={() => switchTab("library")}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "library" 
@@ -1899,6 +1920,7 @@ export default function App() {
             </button>
             <button
               id="discover-tab"
+              data-guide="nav-discover"
               onClick={() => switchTab("discover")}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "discover" 
@@ -1911,6 +1933,7 @@ export default function App() {
             </button>
             <button
               id="feed-tab"
+              data-guide="nav-feed"
               onClick={() => switchTab("feed")}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "feed" 
@@ -1923,6 +1946,7 @@ export default function App() {
             </button>
             <button
               id="tools-tab"
+              data-guide="nav-tools"
               onClick={() => switchTab("tools")}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
                 activeTab === "tools" 
@@ -1983,6 +2007,9 @@ export default function App() {
               onSearchDiscover={(query) => {
                 setDiscoverInitialQuery(query);
                 switchTab("discover");
+              }}
+              onStartGuide={(id) => {
+                window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
               }}
             />
           </div>
@@ -2064,6 +2091,7 @@ export default function App() {
                 }
                 return updated;
               });
+              emitGuideEvent("kora-guide:book-added", { bookId: book.id });
 
               if (book.extension?.toLowerCase() === "audiobook" && book.audiobookTracks?.length) {
                 try {
@@ -2568,6 +2596,19 @@ export default function App() {
                 <button
                   key={id}
                   type="button"
+                  data-guide={
+                    id === "discover"
+                      ? "nav-discover"
+                      : id === "library"
+                        ? "nav-library"
+                        : id === "feed"
+                          ? "nav-feed"
+                          : id === "tools"
+                            ? "nav-tools"
+                            : id === "lounge"
+                              ? "nav-lounge"
+                              : undefined
+                  }
                   onClick={() => switchTab(id)}
                   className={`kora-tab-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${
                     isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
@@ -2723,5 +2764,6 @@ export default function App() {
         />
       )}
     </div>
+    </GuideProvider>
   );
 }

@@ -19,6 +19,8 @@ import {
   type LoungeWidgetId,
 } from "../lib/loungePrefs";
 import Quote from "./Quote";
+import LoungeGuidesWidget from "./LoungeGuidesWidget";
+import type { GuideId } from "../lib/guides";
 
 interface LoungeViewProps {
   books: BookMetadata[];
@@ -28,6 +30,7 @@ interface LoungeViewProps {
   onOpenBook: (book: BookMetadata) => void;
   onOpenTab: (tab: "library" | "discover" | "feed") => void;
   onSearchDiscover?: (query: string) => void;
+  onStartGuide?: (id: GuideId) => void;
 }
 
 type FeaturedBook = {
@@ -165,6 +168,7 @@ export default function LoungeView({
   onOpenBook,
   onOpenTab,
   onSearchDiscover,
+  onStartGuide,
 }: LoungeViewProps) {
   const [modes, setModes] = useState(loadLoungeModes);
   const [featured, setFeatured] = useState<FeaturedBook[]>([]);
@@ -253,6 +257,8 @@ export default function LoungeView({
           Pick up where you left off — books, listens, discoveries, and the paper.
         </p>
       </header>
+
+      <LoungeGuidesWidget onStartGuide={onStartGuide} />
 
       {/* Continue — hero widget */}
       <section className="relative overflow-hidden rounded-3xl border border-kindle-border bg-gradient-to-br from-kindle-card via-kindle-bg to-kindle-card min-h-[220px]">
