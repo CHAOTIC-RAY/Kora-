@@ -735,93 +735,65 @@ function LibraryManager({
   const readingStreak = calculatedStreak;
 
   return (
-    <div id="library-manager-section" className="space-y-6 md:space-y-10 pb-4 md:pb-10">
+    <div id="library-manager-section" className="w-full min-w-0 space-y-6 md:space-y-10 pb-4 md:pb-10">
       
       {/* 1. Interactive Header & Collapsible Stats/Streak Summary */}
-      <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">
-        <div>
+      <header className="flex items-center justify-between gap-3 pb-2 md:pb-4 border-b border-kindle-border font-sans w-full min-w-0">
+        <div className="min-w-0">
           <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Library</h1>
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">Focus &amp; Collections</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {onOpenAnnotations && (
             <button
               type="button"
               onClick={onOpenAnnotations}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider hover:bg-kindle-bg transition"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider hover:bg-kindle-bg transition"
               aria-label="Open annotations hub"
             >
-              Annotations
+              <span className="hidden sm:inline">Annotations</span>
+              <BookMarked className="w-4 h-4 sm:hidden text-kindle-text-muted" />
             </button>
           )}
-        {/* Manage Library Button (Mobile) */}
-        <button
-          onClick={() => {
-            setIsManageMode(!isManageMode);
-            setSelectedBookIds(new Set());
-          }}
-          className={`sm:hidden text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
-            isManageMode 
-              ? "text-red-600 dark:text-red-400" 
-              : "text-kindle-text-muted hover:text-kindle-text"
-          }`}
-          title={isManageMode ? "Cancel" : "Manage Library"}
-        >
-          {isManageMode ? "Cancel" : "Manage Library"}
-        </button>
+          <button
+            onClick={() => {
+              setIsManageMode(!isManageMode);
+              setSelectedBookIds(new Set());
+            }}
+            className={`inline-flex items-center justify-center px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
+              isManageMode 
+                ? "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/30" 
+                : "border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg"
+            }`}
+            title={isManageMode ? "Cancel" : "Manage Library"}
+          >
+            {isManageMode ? "Cancel" : "Manage Library"}
+          </button>
         </div>
       </header>
 
       {/* 3. Full Library Section with Search/Filter */}
-      <section className="space-y-5">
-        <div className="space-y-4">
-          {/* Search Bar - styled identically to Discover view */}
-          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full font-sans">
-            <div className="flex items-center gap-2 flex-1">
-              <div className="relative group flex-1">
-                <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
-                <input
-                  id="library-search-input"
-                  type="text"
-                  placeholder="Filter library by title, author..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
-                />
-              </div>
-
-              {onOpenAnnotations && (
-                <button
-                  type="button"
-                  onClick={onOpenAnnotations}
-                  className="sm:hidden p-4 bg-kindle-card border border-kindle-border rounded-2xl text-kindle-text-muted hover:text-kindle-text shrink-0 transition flex items-center justify-center cursor-pointer shadow-sm hover:border-kindle-accent"
-                  aria-label="Open annotations hub"
-                  title="Annotations"
-                >
-                  <BookMarked className="w-5 h-5 text-kindle-text-muted hover:text-kindle-accent" />
-                </button>
-              )}
+      <section className="w-full min-w-0 space-y-5">
+        <div className="w-full space-y-4">
+          {/* Search Bar — full content width so it shares the same right edge as the header actions */}
+          <div className="w-full font-sans">
+            <div className="relative group w-full">
+              <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
+              <input
+                id="library-search-input"
+                type="text"
+                placeholder="Filter library by title, author..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
+              />
             </div>
-
-            <button
-              onClick={() => {
-                setIsManageMode(!isManageMode);
-                setSelectedBookIds(new Set());
-              }}
-              className={`hidden sm:flex px-5 py-3.5 rounded-2xl text-[10px] font-bold uppercase tracking-wider transition border items-center justify-center gap-2 shrink-0 cursor-pointer ${
-                isManageMode 
-                  ? "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/30 hover:bg-red-100/50" 
-                  : "bg-kindle-card text-kindle-text border-kindle-border hover:border-kindle-text"
-              }`}
-            >
-              {isManageMode ? "Cancel" : "Manage Library"}
-            </button>
           </div>
 
           {/* Shelves / Collections Chips (Bellow the search bar, smaller and compact) */}
-          <div className="flex flex-col gap-3 font-sans">
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex flex-col gap-3 font-sans w-full min-w-0">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-hide w-full">
               {["All", "To Read", "Reading", "Completed", "Favorites", ...availableTags].map((shelf) => (
                 <button
                   key={shelf}
@@ -849,7 +821,7 @@ function LibraryManager({
             </div>
 
             {/* Dropdowns */}
-            <div className="flex flex-wrap gap-1.5 items-center justify-start">
+            <div className="flex flex-wrap gap-1.5 items-center justify-start w-full">
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -902,12 +874,12 @@ function LibraryManager({
         </div>
 
         {renderedWithDownloads.length === 0 ? (
-          <div className="py-24 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
+          <div className="w-full py-24 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
             <BookOpen className="w-10 h-10 text-kindle-text-muted mx-auto mb-3 animate-pulse" />
             <h3 className="font-sans font-bold text-xs text-kindle-text-muted uppercase tracking-widest">No books found</h3>
           </div>
         ) : (
-          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 xl:columns-6 gap-3 md:gap-6 space-y-3 md:space-y-6">
+          <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-5">
             {renderedWithDownloads.map((book) => {
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
@@ -952,7 +924,7 @@ function LibraryManager({
                     if (isDownloadingCard) return; // don't open a half-downloaded book
                     onBookSelected(book);
                   }}
-                  className={`kindle-card break-inside-avoid overflow-hidden group flex flex-col cursor-pointer transition duration-300 select-none relative ${
+                  className={`kindle-card w-full min-w-0 overflow-hidden group flex flex-col cursor-pointer transition duration-300 select-none relative ${
                     isManageMode && selectedBookIds.has(book.id)
                       ? "ring-4 ring-kindle-accent border-transparent bg-kindle-accent/[0.03] scale-[0.98] -translate-y-0"
                       : "hover:-translate-y-1"
@@ -1137,23 +1109,23 @@ function LibraryManager({
       </section>
 
       {/* 4. Reading Stats at the bottom */}
-      <section className="space-y-8 pt-12 border-t border-kindle-border">
-        <div>
+      <section className="w-full min-w-0 space-y-8 pt-12 border-t border-kindle-border">
+        <div className="w-full">
           <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-4 font-mono">Reading Statistics</h4>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="kindle-card p-4 border border-kindle-border">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 w-full">
+            <div className="kindle-card w-full p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Library</h4>
               <div className="text-xl font-bold">{totalBooks} <span className="text-xs font-normal text-kindle-text-muted">books</span></div>
             </div>
-            <div className="kindle-card p-4 border border-kindle-border">
+            <div className="kindle-card w-full p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Reading</h4>
               <div className="text-xl font-bold">{activeReading} <span className="text-xs font-normal text-kindle-text-muted">books</span></div>
             </div>
-            <div className="kindle-card p-4 border border-kindle-border">
+            <div className="kindle-card w-full p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Completed</h4>
               <div className="text-xl font-bold">{completedBooks} <span className="text-xs font-normal text-kindle-text-muted">books</span></div>
             </div>
-            <div className="kindle-card p-4 border border-kindle-border">
+            <div className="kindle-card w-full p-4 border border-kindle-border">
               <h4 className="text-[9px] text-kindle-text-muted font-bold uppercase tracking-widest mb-1">Streak</h4>
               <div className="text-xl font-bold">{readingStreak} <span className="text-xs font-normal">days</span></div>
             </div>
