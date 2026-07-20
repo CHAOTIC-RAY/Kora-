@@ -3,9 +3,11 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 import { initAndroidGestureNavigation } from "./lib/androidGestures";
+import { initIosTouchGuards } from "./lib/iosPwa";
 import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "./lib/appVersion";
 
 initAndroidGestureNavigation();
+initIosTouchGuards();
 
 // Register the service worker that keeps downloads alive in the background
 // and shows progress notifications. Updates are detected by PwaLifecycleBanner

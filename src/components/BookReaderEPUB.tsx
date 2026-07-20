@@ -1194,21 +1194,30 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
   }, [prefetchSelectionDictionary]);
 
-  // Prevent viewport rubber-banding only while dragging selection handles
+  // Prevent viewport rubber-banding only while dragging selection handles.
+  // Scope preventDefault — blanket touchmove blocks break iOS Safari scrolling.
   useEffect(() => {
     if (isDraggingSelection) {
       const preventDefaultTouch = (e: TouchEvent) => {
-        // Only prevent touch movements when active selecting or dragging to lock position
-        e.preventDefault();
+        if (e.touches.length > 1) {
+          e.preventDefault();
+          return;
+        }
+        const target = e.target as HTMLElement | null;
+        if (target?.closest?.("[data-kora-selection-ui], .kora-sel-handle")) {
+          e.preventDefault();
+        }
       };
-      
+
+      const prevOverflow = document.body.style.overflow;
+      const prevOverscroll = document.body.style.overscrollBehavior;
       document.body.style.overflow = "hidden";
       document.body.style.overscrollBehavior = "none";
       document.addEventListener("touchmove", preventDefaultTouch, { passive: false });
-      
+
       return () => {
-        document.body.style.overflow = "";
-        document.body.style.overscrollBehavior = "";
+        document.body.style.overflow = prevOverflow;
+        document.body.style.overscrollBehavior = prevOverscroll;
         document.removeEventListener("touchmove", preventDefaultTouch);
       };
     }
@@ -1372,11 +1381,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     // Keep edge-swipe-to-close and narrow margin page swipes only.
     const edgeSwipe = start.x < 28 || start.x > (typeof window !== "undefined" ? window.innerWidth - 28 : 9999);
     const allowPageSwipe = !isMobile || edgeSwipe;
+    // In iOS Safari (not installed PWA), left-edge swipe is the browser Back gesture —
+    // don't steal it to close the reader (causes "touch errors" / accidental exits).
+    const iosBrowser =
+      typeof navigator !== "undefined" &&
+      (/iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) &&
+      !(
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as Navigator & { standalone?: boolean }).standalone === true
+      );
 
     // Check if it's a swipe (fast flick or drag)
     if (allowPageSwipe && duration < 500 && Math.abs(diffX) > 40 && Math.abs(diffY) < 60) {
-      // Swipe from left edge of screen to right -> go back / close reader (native iOS/Android gesture)
-      if (start.x < 50 && diffX > 45) {
+      // Swipe from left edge → close reader (installed PWA / Android only)
+      if (!iosBrowser && start.x < 50 && diffX > 45) {
         onClose();
         return;
       }
@@ -2211,7 +2230,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const activeTheme = themes[theme] || themes.sepia;
 
   return (
-    <div id="epub-reader-container" className={`fixed inset-0 z-[100] flex flex-col ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}>
+    <div id="epub-reader-container" className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}>
       {/* 1. Header Toolbar */}
       <header className={`flex items-center justify-between px-6 py-4 border-b ${activeTheme.border} bg-opacity-95`}>
         <div className="flex items-center gap-4">
@@ -3446,7 +3465,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       scaleX: 1
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
-                    className={`w-full ml-0 select-text cursor-text touch-auto ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
+                    className={`w-full ml-0 select-text cursor-text touch-manipulation ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,
