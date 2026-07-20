@@ -1,11 +1,11 @@
 <div align="center">
   <p>
-    <img src="./public/kora_banner.png" alt="Kora - Next-Gen Ebook Reader" width="100%" />
+    <img src="./public/kora_banner.png" alt="Kora - Your bookshelf, narrator, and morning paper" width="100%" />
   </p>
 
-  # 📖 Kora - Next-Gen Ebook Reader
+  # 📖 Kora
 
-  ### *“I have always imagined that Paradise will be a kind of library.” — Jorge Luis Borges*
+  ### *Your bookshelf, your narrator, and your morning paper. Unified.*
 
   <p align="center">
     <a href="https://github.com/CHAOTIC-RAY/Kora-/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-2D2D2D?style=flat-square" alt="License" /></a>
@@ -16,8 +16,8 @@
   </p>
 
   <p align="center">
-    <b>A highly polished, Kindle-inspired next-generation ebook reader.</b><br />
-    Designed for digital bibliophiles who demand elegant typography, offline-first reliability, and seamless multi-device cloud synchronization.
+  <b>One app for everything you read and listen to.</b><br />
+  Build a personal library, listen with built-in narration, and catch up on the morning headlines — offline-first, synced across your devices, and designed to feel as calm as a well-stocked shelf.
   </p>
 
   <h4>
@@ -31,41 +31,69 @@
 
 ---
 
-## 🌟 Core Features
+## 🌟 Three things, one home
 
-Kora combines the simplicity of an e-ink Kindle device with the power of modern full-stack web applications.
+| | What it is | What you get |
+|---|---|---|
+| **📚 Bookshelf** | Your private library | EPUB, PDF, and TXT reading · discovery & downloads · highlights & bookmarks · offline PWA |
+| **🎧 Narrator** | Your listening layer | Audiobook playback · built-in TTS conversion · continue listening across sessions |
+| **📰 Morning paper** | Your daily read | RSS feeds & news reader · save & mark-read · optional Daily News Brief |
 
-### 🎭 Onboarding & Personalization
+---
+
+## 📚 Bookshelf
+
+Everything you own, in one place — elegant typography, reliable offline storage, and sync when you sign in.
+
+### Onboarding & personalization
 * **Reader archetypes** — Midnight Reader, Cozy Tea Sipper, Bibliophile Curator, or Speed Scholar, each with a matching display theme.
-* **App skins** — Choose your chrome style during setup: **Kora** (frosted), **Paper** (matte reader), **Studio** (editorial), or **Soft** (rounded & elevated). Skins are separate from color themes and can be changed anytime in Settings → Appearance.
-* **Interactive walkthrough** — Library, RSS feeds, Discover, downloads, cross-device sync, and display settings.
+* **App skins** — Choose your chrome style during setup: **Kora**, **Paper**, **Studio**, or **Soft**. Skins are separate from color themes and can be changed anytime in Settings → Appearance.
+* **Interactive walkthrough** — Library, feeds, Discover, downloads, cross-device sync, and display settings.
 * **Account step** — Sign in to keep your library, or continue as guest (guest sessions reset every 30 days).
 
-### 📚 Immersive Reading Engine
+### Immersive reading
 * **Kindle-inspired layout** — Adjustable font size, line height, and margins.
 * **Display themes** — Light White, Sepia, Dark Grey, and Dark Blue palettes.
 * **Typography** — Lora body text, Lexend UI, JetBrains Mono data, plus OpenDyslexic and Lexica Ultralegible reader fonts.
 * **Formats** — EPUB, PDF, TXT with bookmarks, highlights, and progress tracking.
 
-### 📰 News & RSS
-* **Read tab** — Maldives and international RSS sources with save, mark-read, and open-in-new-tab actions.
-* **Daily News Brief** — Optional morning headline digest from your selected feeds.
-
-### 🔍 Unified Ebook Discovery
+### Discovery & downloads
 * **Goodreads scraping** — Curated lists with CORS-safe cover proxying.
 * **Federated search** — Public open-source titles via mirror intelligence.
-* **Background downloads** — Multi-mirror progress tracking.
+* **Background downloads** — Multi-mirror progress tracking with manual retry.
 
-### 📦 Offline-First & Mobile Ready
+### Offline-first
 * **PWA** — Install on iOS/Android with offline reading from IndexedDB.
 * **Cover designer** — Procedural typographic covers when metadata is missing.
 
-### ☁️ Cross-Device Sync
+---
+
+## 🎧 Narrator
+
+Turn pages into playback — listen in the app or on the go.
+
+* **Audiobook player** — Full-screen and mini-player modes with track progress and offline caching.
+* **Built-in TTS** — Convert ebooks to listenable audio from Tools → Read Aloud.
+* **Session restore** — Pick up where you left off after reload or tab switch.
+
+---
+
+## 📰 Morning paper
+
+Your feeds, your brief, your pace.
+
+* **Read tab** — Maldives and international RSS sources with save, mark-read, and open-in-new-tab actions.
+* **Article reader** — Clean full-page reading with scroll-to-advance and per-source styling.
+* **Daily News Brief** — Optional morning headline digest from your selected feeds.
+
+---
+
+## ☁️ Cross-device sync
+
 * **Firebase Firestore** — Library metadata, reading progress, bookmarks, and highlights sync when signed in.
 * **Files stay local** — Book binaries are not uploaded to Firebase Storage.
 * **Tools → Devices & Sync** — Device dashboard, peer-to-peer file transfer between your devices, and optional BYO WebDAV archive.
 
-#### How sync works
 | Data | Where it lives |
 |------|----------------|
 | Book list, progress, highlights | Firebase (when signed in) |
@@ -154,5 +182,6 @@ MIT License — see [LICENSE](LICENSE).
 ---
 
 <p align="center">
+  <i>Your bookshelf, your narrator, and your morning paper. Unified.</i><br />
   Designed with ☕ and passion by <a href="https://github.com/CHAOTIC-RAY">CHAOTIC-RAY</a>.
 </p>
