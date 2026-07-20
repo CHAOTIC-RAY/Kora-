@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { 
   Book, Glasses, Sparkles, Coffee, Bookmark, Check, ChevronRight, 
-  ChevronLeft, Info, Shield, Heart, Smile, Star, BookOpen, Settings, Compass, Download, Award, Rss, Globe
+  ChevronLeft, Info, Shield, Heart, Smile, Star, BookOpen, Settings, Compass, Download, Award, Rss, Globe,
+  Cloud, LogIn, Smartphone
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -10,6 +11,14 @@ import {
   DEFAULT_FEED_SUBSCRIPTIONS,
   INTERNATIONAL_FEED_OPTIONS,
 } from "../lib/feedStorage";
+import { APP_SKINS, type AppSkinId } from "../lib/appSkin";
+
+const SKIN_PREVIEW: Record<AppSkinId, string> = {
+  kora: "border-kindle-border bg-kindle-card/80",
+  paper: "border-amber-900/15 bg-[#f4ede3]",
+  studio: "border-2 border-kindle-text bg-kindle-bg",
+  soft: "border-kindle-border/50 bg-kindle-card shadow-md",
+};
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -17,6 +26,7 @@ interface OnboardingModalProps {
     nickname: string;
     archetype: string;
     displayTheme: string;
+    appSkin: AppSkinId;
     fontSize: number;
     dailyGoal: number;
     autoCache: boolean;
@@ -25,6 +35,9 @@ interface OnboardingModalProps {
   }) => void;
   currentTheme: string;
   onThemeChange: (theme: string) => void;
+  appSkin: AppSkinId;
+  onAppSkinChange: (skin: AppSkinId) => void;
+  onOpenAuth: () => void;
 }
 
 const ARCHETYPES = [
@@ -101,7 +114,15 @@ function GlassesIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-export default function OnboardingModal({ isOpen, onComplete, currentTheme, onThemeChange }: OnboardingModalProps) {
+export default function OnboardingModal({
+  isOpen,
+  onComplete,
+  currentTheme,
+  onThemeChange,
+  appSkin,
+  onAppSkinChange,
+  onOpenAuth,
+}: OnboardingModalProps) {
   const [step, setStep] = useState(1);
   const [nickname, setNickname] = useState("");
   const [selectedArchetype, setSelectedArchetype] = useState("curator-bibliophile");
@@ -145,6 +166,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
       nickname: nickname.trim() || "Registered Reader",
       archetype: selectedArchetype,
       displayTheme: currentTheme,
+      appSkin,
       fontSize,
       dailyGoal,
       autoCache,
@@ -153,6 +175,15 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
         ? selectedFeedUrls
         : DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl),
     });
+  };
+
+  const handleSignIn = () => {
+    if (!agreedToLicenses) {
+      toast.error("Please agree to the legal terms on the previous step first.");
+      return;
+    }
+    handleFinish();
+    onOpenAuth();
   };
 
   const toggleFeed = (feedUrl: string) => {
@@ -191,6 +222,13 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
       bg: "bg-blue-500/10"
     },
     {
+      title: "Cross-Device Sync",
+      desc: "Your library metadata (books, progress, highlights) syncs through Firebase when signed in. Book files stay on your devices — transfer them peer-to-peer or via your own WebDAV archive in Tools → Devices & Sync.",
+      icon: Cloud,
+      color: "text-indigo-500",
+      bg: "bg-indigo-500/10"
+    },
+    {
       title: "Display & Theme Settings",
       desc: "Tweak font size, contrast, line height, or switch to paper-like grayscale mode to recreate a premium, eye-safe e-reader experience.",
       icon: Settings,
@@ -200,6 +238,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
   ];
 
   const isNewsFeedsStep = walkthroughIndex === 1;
+  const totalSteps = 5;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
@@ -214,7 +253,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
             </span>
           </div>
           <div className="flex gap-1.5">
-            {[1, 2, 3, 4].map(s => (
+            {[1, 2, 3, 4, 5].map(s => (
               <div 
                 key={s} 
                 className={`w-7 h-1.5 rounded-full transition-all duration-300 ${
@@ -444,6 +483,38 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                     </div>
                   </div>
                 </div>
+
+                <div className="space-y-3">
+                  <label className="text-[11px] uppercase tracking-wider font-bold text-kindle-text-muted block">
+                    App Skin
+                  </label>
+                  <p className="text-[10px] text-kindle-text-muted -mt-1">
+                    Skins change chrome and layout. Switch anytime in Settings → Appearance.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {APP_SKINS.map((skin) => {
+                      const selected = appSkin === skin.id;
+                      return (
+                        <button
+                          key={skin.id}
+                          type="button"
+                          onClick={() => onAppSkinChange(skin.id)}
+                          className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                            selected
+                              ? "border-kindle-accent ring-1 ring-kindle-accent/30 bg-kindle-card"
+                              : "border-kindle-border hover:border-kindle-text-muted"
+                          }`}
+                        >
+                          <div className={`h-8 rounded-lg border mb-2 ${SKIN_PREVIEW[skin.id]}`} />
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">
+                            {skin.label}
+                          </span>
+                          <p className="text-[9px] text-kindle-text-muted mt-0.5 leading-snug">{skin.description}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </motion.div>
             )}
 
@@ -470,7 +541,7 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
                 </div>
 
                 {/* Curated Interactive walkthrough tabs */}
-                <div className="grid grid-cols-5 gap-1 bg-kindle-card p-1 border border-kindle-border rounded-xl">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 bg-kindle-card p-1 border border-kindle-border rounded-xl">
                   {walkthroughSteps.map((wStep, idx) => {
                     const StepIcon = wStep.icon;
                     return (
@@ -674,6 +745,64 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
               </motion.div>
             )}
 
+            {/* STEP 5: Account & sync */}
+            {step === 5 && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+                key="step5"
+              >
+                <div className="text-center space-y-2">
+                  <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full">
+                    Your Account
+                  </span>
+                  <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
+                    Sign in to keep your library
+                  </h2>
+                  <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
+                    A free account syncs your bookshelf, reading progress, and highlights across devices via Firebase.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-kindle-card border border-kindle-border rounded-xl space-y-3 text-xs text-kindle-text-muted leading-relaxed">
+                  <div className="flex items-start gap-3">
+                    <Cloud className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-kindle-text text-[11px] uppercase tracking-wider mb-1">How sync works</p>
+                      <p>Metadata (library, progress, highlights) syncs to your account in the cloud. Book files stay on your devices — use <strong className="text-kindle-text">Tools → Devices & Sync</strong> for peer-to-peer transfer or your own WebDAV archive.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Smartphone className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-kindle-text text-[11px] uppercase tracking-wider mb-1">Guest mode</p>
+                      <p>You can continue without signing in. Guest sessions reset every <strong className="text-kindle-text">30 days</strong> — your local library will be cleared when the guest account expires.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleSignIn}
+                    className="w-full py-3 bg-kindle-text text-kindle-bg hover:opacity-90 rounded-xl font-bold text-[11px] uppercase tracking-wider transition flex items-center justify-center gap-2"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    Sign in or create account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFinish}
+                    className="w-full py-3 border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg rounded-xl font-bold text-[11px] uppercase tracking-wider transition"
+                  >
+                    Continue as guest
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
           </AnimatePresence>
         </div>
 
@@ -691,27 +820,25 @@ export default function OnboardingModal({ isOpen, onComplete, currentTheme, onTh
             <div />
           )}
 
-          {step < 4 ? (
+          {step < totalSteps ? (
             <button
-              onClick={nextStep}
-              className="py-2.5 px-5 bg-kindle-accent text-kindle-bg hover:opacity-90 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ml-auto"
+              onClick={() => {
+                if (step === 4 && !agreedToLicenses) {
+                  toast.error("Please agree to the legal terms before continuing.");
+                  return;
+                }
+                nextStep();
+              }}
+              className={`py-2.5 px-5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ml-auto ${
+                step === 4 && !agreedToLicenses
+                  ? "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+                  : "bg-kindle-accent text-kindle-bg hover:opacity-90"
+              }`}
             >
               Next Step
               <ChevronRight className="w-4 h-4" />
             </button>
-          ) : (
-            <button
-              onClick={handleFinish}
-              className={`py-2.5 px-6 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ml-auto shadow-md ${
-                agreedToLicenses 
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white" 
-                  : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              Get Started
-            </button>
-          )}
+          ) : null}
         </div>
 
       </div>

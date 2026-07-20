@@ -310,7 +310,13 @@ export default function DevicesSyncPanel({
             )}
           </div>
 
-          <div className="border-t border-kindle-border/50 pt-4 space-y-3">
+          <form
+            className="border-t border-kindle-border/50 pt-4 space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleTestWebDav();
+            }}
+          >
             <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted flex items-center gap-1.5">
               <Cloud className="w-3.5 h-3.5" /> BYO WebDAV archive
             </h4>
@@ -370,15 +376,14 @@ export default function DevicesSyncPanel({
               />
             </div>
             <button
-              type="button"
+              type="submit"
               disabled={testingWebDav || !prefs.webdav.baseUrl}
-              onClick={() => void handleTestWebDav()}
               className="w-full flex items-center justify-center gap-2 py-2.5 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-kindle-bg disabled:opacity-50"
             >
               {testingWebDav ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
               Test WebDAV connection
             </button>
-          </div>
+          </form>
         </>
       )}
     </section>

@@ -35,52 +35,59 @@
 
 Kora combines the simplicity of an e-ink Kindle device with the power of modern full-stack web applications.
 
-### 🎭 Playful Bookworm Onboarding
-* **Custom Reader Archetypes**: Define your literary identity! Choose from **The Midnight Reader** (lives in slate grey mode), **The Cozy Tea Sipper** (warm sepia presets), **The Bibliophile Curator** (perfectly ordered white pages), or **The Speed Scholar** (utilizing high-contrast navy presets).
-* **Pseudonym Customization**: Personalize your application header with a custom pseudonym.
-* **Interactive Guidebook**: A delightful, step-by-step carousel walking you through library drag-and-drop file ingestion, discovery feeds, background download alchemy, and aesthetic settings.
-* **The Bookworm Oath & Guild Pact**: Transparency first. Agreements detailing Fair Use compliance, offline browser-contained data sovereignty, and open-source licenses.
+### 🎭 Onboarding & Personalization
+* **Reader archetypes** — Midnight Reader, Cozy Tea Sipper, Bibliophile Curator, or Speed Scholar, each with a matching display theme.
+* **App skins** — Choose your chrome style during setup: **Kora** (frosted), **Paper** (matte reader), **Studio** (editorial), or **Soft** (rounded & elevated). Skins are separate from color themes and can be changed anytime in Settings → Appearance.
+* **Interactive walkthrough** — Library, RSS feeds, Discover, downloads, cross-device sync, and display settings.
+* **Account step** — Sign in to keep your library, or continue as guest (guest sessions reset every 30 days).
 
 ### 📚 Immersive Reading Engine
-* **Kindle-inspired Layout**: Clean text grids with adjustable font sizes, line heights, and margin widths to suit your reading habits.
-* **Aesthetic Palette Presets**: Four eye-safe display presets: **Light White** (default crisp paper), **Sepia** (warm amber), **Dark Grey** (calm charcoal), and **Dark Blue** (deep twilight).
-* **Elite Typography**: Features **Lora** as its primary body typeface, paired with **Lexend** for display elements and **JetBrains Mono** for data fields.
-* **Full Ebook Format Support**: Seamlessly parse and render standard EPUB and PDF books with chapter-to-chapter tracking, bookmarking, and highlighting.
+* **Kindle-inspired layout** — Adjustable font size, line height, and margins.
+* **Display themes** — Light White, Sepia, Dark Grey, and Dark Blue palettes.
+* **Typography** — Lora body text, Lexend UI, JetBrains Mono data, plus OpenDyslexic and Lexica Ultralegible reader fonts.
+* **Formats** — EPUB, PDF, TXT with bookmarks, highlights, and progress tracking.
+
+### 📰 News & RSS
+* **Read tab** — Maldives and international RSS sources with save, mark-read, and open-in-new-tab actions.
+* **Daily News Brief** — Optional morning headline digest from your selected feeds.
 
 ### 🔍 Unified Ebook Discovery
-* **Resilient Goodreads Scraping (Zero-AI/Zero-API)**: Direct, high-speed cheerio extraction of Goodreads curation lists with auto-retry and multiple CORS/Cloudflare bypass proxies (including corsproxy.io, codetabs, and allorigins). Loaded instantly, kept fully private.
-* **Federated Book Search**: Real-time crawling and searching of millions of public, open-source titles.
-* **Direct Mirror Intelligence**: Automatically resolves fast, direct mirrors (such as Library.lol and Libgen) to offer instant auto-download streams.
-* **Intelligent Landing Page Detection**: Recognizes slow links (such as Anna's Archive manual pages), safely labeling them to prevent script timeouts while supporting manual-download fallbacks.
-* **Curated Recommendations**: Displays dynamic trending book listings with beautiful book jackets and personalized recommendations.
+* **Goodreads scraping** — Curated lists with CORS-safe cover proxying.
+* **Federated search** — Public open-source titles via mirror intelligence.
+* **Background downloads** — Multi-mirror progress tracking.
 
 ### 📦 Offline-First & Mobile Ready
-* **Full PWA Capabilities**: Instant home-screen installations on iOS and Android with custom vector icons and standard black-translucent status bar immersion.
-* **Local IndexedDB Engine**: Automatically caches download streams and stores physical book binaries directly in browser local storage. Enter Kora completely offline and read your library uninterrupted.
-* **Cover Designer**: Generate stunning, minimalist procedurally rendered typographic book covers for downloaded books that lack metadata jackets.
+* **PWA** — Install on iOS/Android with offline reading from IndexedDB.
+* **Cover designer** — Procedural typographic covers when metadata is missing.
 
-### ☁️ Cross-Device Cloud Sync
-* **Seamless Library Sync**: Powered by Firebase Firestore, your personal bookshelf is automatically kept in lockstep.
-* **Live Progress Tracking**: Syncs active books, reading progress percentages, precise reading location states, bookmarks, and annotated highlights across your mobile, tablet, and desktop browsers.
+### ☁️ Cross-Device Sync
+* **Firebase Firestore** — Library metadata, reading progress, bookmarks, and highlights sync when signed in.
+* **Files stay local** — Book binaries are not uploaded to Firebase Storage.
+* **Tools → Devices & Sync** — Device dashboard, peer-to-peer file transfer between your devices, and optional BYO WebDAV archive.
+
+#### How sync works
+| Data | Where it lives |
+|------|----------------|
+| Book list, progress, highlights | Firebase (when signed in) |
+| EPUB/PDF file bytes | IndexedDB on each device |
+| Missing files on a new device | Pull from another device (P2P) or WebDAV |
+
+**Guest mode:** Anonymous accounts work out of the box but expire after **30 days**, clearing the guest session. Sign in with email or Google to keep your library permanently.
 
 ---
 
 ## 🛠️ Built With
 
-Kora's codebase is designed for raw performance, utilizing state-of-the-art libraries:
-
-* **Framework**: [React 19](https://react.dev) & [Vite 6](https://vite.dev) (Single-page app with lightning-fast asset builds)
-* **Styling**: [Tailwind CSS v4](https://tailwindcss.com) (Modern CSS variables, ultra-fast precompiled utility engine)
-* **Animations**: [Motion](https://motion.dev) (Custom-designed micro-animations, fade effects, and sheet transitions)
-* **API Proxy**: [Express.js](https://expressjs.com) (Secure backend routing layer to resolve external covers and files without exposing secret keys or hitting CORS restrictions)
-* **Cloud Sync**: [Firebase Core SDK](https://firebase.google.com) (Serverless Realtime Firestore and Secure Anonymous Auth)
-* **Local Storage**: [IndexedDB Wrapper](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) (High-capacity offline caching engine)
+* **Framework**: [React 19](https://react.dev) & [Vite 6](https://vite.dev)
+* **Styling**: [Tailwind CSS v4](https://tailwindcss.com)
+* **Animations**: [Motion](https://motion.dev)
+* **API Proxy**: Express / Cloudflare Workers (CORS bypass for covers & feed images)
+* **Cloud Sync**: [Firebase](https://firebase.google.com) (Firestore + Auth)
+* **Local Storage**: IndexedDB + localStorage
 
 ---
 
 ## 📂 Architecture Overview
-
-Kora operates on a **hybrid client-worker server architecture**:
 
 ```
  ┌──────────────────────────────────────────────────────────────┐
@@ -92,17 +99,14 @@ Kora operates on a **hybrid client-worker server architecture**:
                 │ Client Requests               │ Sync Data
                 ▼ (Proxy API)                   │
  ┌──────────────────────────────────────────────┴───────────────┐
- │                       EXPRESS BACKEND                        │
- │  - Handles cover art /file proxying (CORS-bypass)            │
- │  - Aggregates searches from federated books engines          │
- │  - Resolves direct download mirror pointers                  │
+ │                    EXPRESS / WORKERS BACKEND                   │
+ │  - Cover & feed image proxying (same-origin, CORS-safe)        │
+ │  - Federated book search & mirror resolution                   │
  └──────────────┬───────────────────────────────▲───────────────┘
-                │ Fetch Covers                  │ Store Reading State
+                │                               │
                 ▼                               ▼
  ┌──────────────────────────────┐       ┌───────────────────────┐
  │      EXTERNAL BOOK SERVERS   │       │   FIREBASE FIRESTORE  │
- │  (Libgen / OpenLibrary / IA) │       │   - User Bookshelf    │
- │                              │       │   - Synced Progress   │
  └──────────────────────────────┘       └───────────────────────┘
 ```
 
@@ -110,32 +114,23 @@ Kora operates on a **hybrid client-worker server architecture**:
 
 ## 🚀 Getting Started
 
-Follow these steps to spin up Kora on your local machine.
-
 ### Prerequisites
-* **Node.js**: `v18.0.0` or higher
-* **npm**: `v9.0.0` or higher
+* **Node.js** `v18+`
+* **npm** `v9+`
 
-### 1. Clone & Install
+### Install & run
 ```bash
-# Clone the repository
 git clone https://github.com/CHAOTIC-RAY/Kora-.git
-
-# Navigate into the project folder
 cd Kora-
-
-# Install required dependencies
 npm install
+npm run dev
 ```
 
-### 2. Configure Environment Variables
-Create a `.env` file at the root of your project:
-```env
-# Server Ingress Port
-PORT=3000
+Open [http://localhost:3000](http://localhost:3000).
 
-# Firebase Client Configuration (Optional - for Cloud Sync features)
-# If left blank, Kora will fallback to offline-only IndexedDB mode
+### Environment (optional — cloud sync)
+```env
+PORT=3000
 VITE_FIREBASE_API_KEY=your_firebase_api_key
 VITE_FIREBASE_AUTH_DOMAIN=your_project_auth_domain
 VITE_FIREBASE_PROJECT_ID=your_project_id
@@ -144,19 +139,9 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
 VITE_FIREBASE_APP_ID=your_app_id
 ```
 
-### 3. Run Development Server
+### Production build
 ```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser to interact with your local library.
-
-### 4. Production Build & Execution
-To pre-compile and bundle the application into production-optimized assets:
-```bash
-# Compile client assets and bundle Express backend
 npm run build
-
-# Start production server
 npm run start
 ```
 
@@ -164,7 +149,7 @@ npm run start
 
 ## 📜 License
 
-Kora is open-source software licensed under the **MIT License**. Check the [LICENSE](LICENSE) file for more information.
+MIT License — see [LICENSE](LICENSE).
 
 ---
 

@@ -268,6 +268,7 @@ export default function App() {
     nickname: string;
     archetype: string;
     displayTheme: string;
+    appSkin: AppSkinId;
     fontSize: number;
     dailyGoal: number;
     autoCache: boolean;
@@ -281,6 +282,7 @@ export default function App() {
     localStorage.setItem("kora_daily_reminders", String(prefs.dailyReminders));
     setDisplayTheme(prefs.displayTheme);
     setUserNickname(prefs.nickname);
+    changeAppSkin(prefs.appSkin);
     
     const updatedPrefs = {
       ...readerPrefs,
@@ -2465,6 +2467,9 @@ export default function App() {
         onComplete={handleOnboardingComplete}
         currentTheme={displayTheme}
         onThemeChange={(newTheme) => changeTheme(newTheme)}
+        appSkin={appSkin}
+        onAppSkinChange={changeAppSkin}
+        onOpenAuth={() => setShowAuthModal(true)}
       />
 
       <PwaLifecycleBanner />

@@ -21,7 +21,10 @@ export function resolveCoverImageSrc(coverUrl?: string | null): string | null {
   }
 
   if (/^https?:\/\//i.test(trimmed)) {
-    return `/api/proxy-image?url=${encodeURIComponent(trimmed)}`;
+    const secure = trimmed.startsWith("http://")
+      ? `https://${trimmed.slice(7)}`
+      : trimmed;
+    return `/api/proxy-image?url=${encodeURIComponent(secure)}`;
   }
 
   return trimmed;

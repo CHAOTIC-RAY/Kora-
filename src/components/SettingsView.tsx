@@ -1328,8 +1328,7 @@ function SettingsView({
           </div>
         )}
 
-        {/* Devices & cross-device sync — only when settings tab is visible */}
-        {view === "settings" && isActive ? (
+        {view === "tools" && isActive ? (
           <DevicesSyncPanel
             userId={userId}
             books={books}

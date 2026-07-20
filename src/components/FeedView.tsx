@@ -224,7 +224,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
         onDragEnd={handleDragEnd}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
-        className={`feed-article-card relative z-10 bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col h-full touch-pan-y ${
+        className={`feed-article-card relative z-10 bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col h-full touch-pan-y contain-layout ${
           item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
         }`}
       >
@@ -238,7 +238,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
                 alt=""
                 className="w-full h-full object-cover pointer-events-none"
                 referrerPolicy="no-referrer"
-                loading="lazy"
+                decoding="async"
                 onError={() => setThumbFailed(true)}
               />
             ) : (
@@ -279,7 +279,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
             </div>
 
             <div
-              className="flex items-center gap-1.5 mt-auto min-w-0"
+              className="flex items-center justify-center gap-1.5 mt-auto min-w-0"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
               onPointerUp={(e) => e.stopPropagation()}
@@ -287,35 +287,35 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
               <button
                 type="button"
                 onClick={onSaveLater}
-                className={`flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition min-w-0 ${
+                className={`inline-flex items-center justify-center w-9 h-9 rounded-xl border transition shrink-0 ${
                   saved
                     ? "border-kindle-text bg-kindle-text text-kindle-bg"
                     : "border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg"
                 }`}
                 title={saved ? "Remove from saved" : "Save for later"}
+                aria-label={saved ? "Remove from saved" : "Save for later"}
                 aria-pressed={saved}
               >
-                <Bookmark className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{saved ? "Saved" : "Save"}</span>
+                <Bookmark className="w-4 h-4 shrink-0" />
               </button>
               <button
                 type="button"
                 onClick={onToggleRead}
-                className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
+                className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0"
                 title={item.read ? "Mark as unread" : "Mark as read"}
+                aria-label={item.read ? "Mark as unread" : "Mark as read"}
               >
-                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">{item.read ? "Mark unread" : "Mark as read"}</span>
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
               </button>
               <a
                 href={item.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
+                className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0"
                 title="Open in new tab"
+                aria-label="Open in new tab"
               >
-                <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate">Open in new tab</span>
+                <ExternalLink className="w-4 h-4 shrink-0" />
               </a>
             </div>
 

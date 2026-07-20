@@ -55,7 +55,10 @@ export async function fetchFeedPreview(url: string): Promise<FeedArticlePreview>
 
 export function resolveFeedImageSrc(url: string | undefined | null): string | null {
   if (!url?.trim()) return null;
-  const trimmed = url.trim();
+  let trimmed = url.trim();
+  if (trimmed.startsWith("http://")) {
+    trimmed = `https://${trimmed.slice(7)}`;
+  }
   if (trimmed.startsWith("data:")) return trimmed;
   if (trimmed.startsWith("/")) return trimmed;
   if (trimmed.includes("google.com/s2/favicons")) return null;

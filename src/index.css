@@ -1,6 +1,6 @@
 @font-face {
-  font-family: "Faruma";
-  src: url("/fonts/faruma.woff2") format("woff2");
+  font-family: "OpenDyslexic";
+  src: url("https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff") format("woff");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -8,81 +8,9 @@
 
 @font-face {
   font-family: "OpenDyslexic";
-  src: url("/fonts/opendyslexic-regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "OpenDyslexic";
-  src: url("/fonts/opendyslexic-bold.woff2") format("woff2");
+  src: url("https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff") format("woff");
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Regular.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Bold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Italic.ttf") format("truetype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-BoldItalic.ttf") format("truetype");
-  font-weight: 700;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Regular.ttf") format("truetype");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Bold.ttf") format("truetype");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Italic.ttf") format("truetype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-BoldItalic.ttf") format("truetype");
-  font-weight: 700;
-  font-style: italic;
   font-display: swap;
 }
 
@@ -96,25 +24,9 @@
 
 @font-face {
   font-family: "Lexica Ultralegible";
-  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Italic.otf") format("opentype");
-  font-weight: 400;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Lexica Ultralegible";
   src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Bold.otf") format("opentype");
   font-weight: 700;
   font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Lexica Ultralegible";
-  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-BoldItalic.otf") format("opentype");
-  font-weight: 700;
-  font-style: italic;
   font-display: swap;
 }
 
@@ -145,10 +57,10 @@
   --font-display: "Lexend", "Inter", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-lexend: "Lexend", "Inter", sans-serif;
-  --font-thaana: "Faruma", "Noto Sans Thaana", "MV Waheed", sans-serif;
+  --font-thaana: "Noto Sans Thaana", "MV Waheed", sans-serif;
   --font-opendyslexic: "OpenDyslexic", "Lexend", sans-serif;
-  --font-bookerly: "Bookerly", serif;
-  --font-chareink: "ChareInk7SP", serif;
+  --font-bookerly: "Lora", ui-serif, Georgia, serif;
+  --font-chareink: "Lora", ui-serif, Georgia, serif;
   --font-lexica: "Lexica Ultralegible", sans-serif;
   --font-rakuten: "Lexend", sans-serif;
 
