@@ -384,8 +384,8 @@ export default function LoungeView({
   };
 
   return (
-    <div className="pb-6 md:pb-10 space-y-4 md:space-y-5">
-      <header className="space-y-1">
+    <div className="pb-6 md:pb-10 space-y-2.5 md:space-y-3">
+      <header>
         <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-kindle-accent">Lounge</p>
         <AnimatePresence mode="wait">
           <motion.h2
@@ -394,12 +394,11 @@ export default function LoungeView({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.35 }}
-            className="text-2xl md:text-3xl font-lexend font-bold tracking-tight text-kindle-text"
+            className="mt-1 text-2xl md:text-3xl font-lexend font-bold tracking-tight text-kindle-text"
           >
             {greeting.title}
           </motion.h2>
         </AnimatePresence>
-        <p className="text-sm text-kindle-text-muted max-w-xl leading-relaxed">{greeting.subtitle}</p>
       </header>
 
       <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2 md:grid-rows-[minmax(200px,1fr)_minmax(220px,1fr)_auto]">
