@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Download, RefreshCw, X } from "lucide-react";
+import { Download, RefreshCw, Share, X } from "lucide-react";
 import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "../lib/appVersion";
+import { isIosDevice, isStandaloneDisplay } from "../lib/iosPwa";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -12,10 +13,7 @@ const UPDATE_DISMISS_KEY = "kora_pwa_update_snooze_until";
 const RELOAD_GUARD_KEY = "kora_pwa_last_reload_at";
 
 function isStandalone(): boolean {
-  return (
-    window.matchMedia("(display-mode: standalone)").matches ||
-    (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-  );
+  return isStandaloneDisplay();
 }
 
 function safeReload(reason: string) {
@@ -32,6 +30,7 @@ function safeReload(reason: string) {
 export default function PwaLifecycleBanner() {
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstall, setShowInstall] = useState(false);
+  const [iosInstallHint, setIosInstallHint] = useState(false);
   const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const [showUpdate, setShowUpdate] = useState(false);
   const [updateReason, setUpdateReason] = useState<string>("A newer version of Kora is ready.");
@@ -43,17 +42,30 @@ export default function PwaLifecycleBanner() {
 
     const dismissedAt = Number(localStorage.getItem(INSTALL_DISMISS_KEY) || 0);
     const coolDownMs = 7 * 24 * 60 * 60 * 1000;
+    const canPrompt = !dismissedAt || Date.now() - dismissedAt > coolDownMs;
 
     const onBip = (e: Event) => {
       e.preventDefault();
       const evt = e as BeforeInstallPromptEvent;
       setInstallEvent(evt);
-      if (!dismissedAt || Date.now() - dismissedAt > coolDownMs) {
-        setShowInstall(true);
-      }
+      setIosInstallHint(false);
+      if (canPrompt) setShowInstall(true);
     };
 
     window.addEventListener("beforeinstallprompt", onBip);
+
+    // iOS never fires beforeinstallprompt — show Add to Home Screen instructions.
+    if (canPrompt && isIosDevice()) {
+      const t = window.setTimeout(() => {
+        setIosInstallHint(true);
+        setShowInstall(true);
+      }, 1800);
+      return () => {
+        window.removeEventListener("beforeinstallprompt", onBip);
+        window.clearTimeout(t);
+      };
+    }
+
     return () => window.removeEventListener("beforeinstallprompt", onBip);
   }, []);
 
@@ -180,6 +192,7 @@ export default function PwaLifecycleBanner() {
   const dismissInstall = () => {
     localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now()));
     setShowInstall(false);
+    setIosInstallHint(false);
   };
 
   const applyUpdate = (fromAuto = false) => {
@@ -215,6 +228,8 @@ export default function PwaLifecycleBanner() {
   };
 
   if (!showInstall && !showUpdate) return null;
+
+  const showIosHint = showInstall && iosInstallHint && !installEvent;
 
   return (
     <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-3 right-3 z-[90] flex flex-col gap-2 pointer-events-none md:left-auto md:right-6 md:w-[360px]">
@@ -259,26 +274,40 @@ export default function PwaLifecycleBanner() {
           aria-label="Install Kora"
           className="pointer-events-auto rounded-2xl border border-kindle-border bg-kindle-card text-kindle-text shadow-xl p-3.5 flex items-start gap-3"
         >
-          <Download className="w-5 h-5 text-kindle-accent shrink-0 mt-0.5" aria-hidden />
+          {showIosHint ? (
+            <Share className="w-5 h-5 text-kindle-accent shrink-0 mt-0.5" aria-hidden />
+          ) : (
+            <Download className="w-5 h-5 text-kindle-accent shrink-0 mt-0.5" aria-hidden />
+          )}
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold">Install Kora</p>
-            <p className="text-[11px] text-kindle-text-muted mt-0.5 leading-relaxed">
-              Add to your home screen for offline reading and a full-screen experience.
-            </p>
+            <p className="text-sm font-bold">{showIosHint ? "Add Kora to Home Screen" : "Install Kora"}</p>
+            {showIosHint ? (
+              <p className="text-[11px] text-kindle-text-muted mt-0.5 leading-relaxed">
+                Tap <Share className="inline w-3.5 h-3.5 align-text-bottom mx-0.5" aria-hidden /> Share, then{" "}
+                <span className="font-semibold text-kindle-text">Add to Home Screen</span> for offline reading and a
+                full-screen app.
+              </p>
+            ) : (
+              <p className="text-[11px] text-kindle-text-muted mt-0.5 leading-relaxed">
+                Add to your home screen for offline reading and a full-screen experience.
+              </p>
+            )}
             <div className="flex gap-2 mt-2.5">
-              <button
-                type="button"
-                onClick={handleInstall}
-                className="px-3 py-1.5 rounded-lg bg-kindle-accent text-white text-[11px] font-bold uppercase tracking-wider"
-              >
-                Install
-              </button>
+              {!showIosHint && installEvent && (
+                <button
+                  type="button"
+                  onClick={handleInstall}
+                  className="px-3 py-1.5 rounded-lg bg-kindle-accent text-white text-[11px] font-bold uppercase tracking-wider"
+                >
+                  Install
+                </button>
+              )}
               <button
                 type="button"
                 onClick={dismissInstall}
                 className="px-3 py-1.5 rounded-lg border border-kindle-border text-[11px] font-semibold"
               >
-                Not now
+                {showIosHint ? "Got it" : "Not now"}
               </button>
             </div>
           </div>

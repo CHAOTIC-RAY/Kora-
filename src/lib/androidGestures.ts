@@ -20,6 +20,7 @@ export function initAndroidGestureNavigation(): void {
   if (initialized || typeof window === "undefined") return;
   initialized = true;
 
+  // Enables touch-action: manipulation globally (see index.css) on all platforms.
   document.documentElement.classList.add("kora-gesture-nav");
 
   if (isAndroidDevice()) {

@@ -7,12 +7,22 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v7";
-const API_CACHE = "kora-api-v7";
+const SHELL_CACHE = "kora-shell-v8";
+const API_CACHE = "kora-api-v8";
 const COVER_CACHE = "kora-covers-v1";
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.
-const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
+const SHELL_ASSETS = [
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/favicon.svg",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/fonts/opendyslexic-regular.woff2",
+  "/fonts/opendyslexic-bold.woff2",
+];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
 const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
@@ -615,7 +625,7 @@ async function downloadBookBGF(payload) {
     const bgf = await self.registration.backgroundFetch.fetch(bgfId, [proxyUrl], {
       title: `Downloading "${payload.title}"`,
       downloadTotal: 0,
-      icons: [{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml" }],
+      icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }],
     });
     await postToClients({
       type: "download-progress",

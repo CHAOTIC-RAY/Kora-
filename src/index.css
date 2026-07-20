@@ -275,11 +275,15 @@
   -webkit-touch-callout: default;
 }
 
-/* Allow native text selection gestures; pan-y alone made column hit-testing worse on Android */
+/*
+ * Keep long-press selection, but disable double-tap / pinch zoom on the page
+ * (touch-action: auto re-enabled accidental zoom on iOS Safari).
+ */
 #epub-reader-container .reader-select-surface {
-  touch-action: auto;
+  touch-action: manipulation;
   -webkit-user-select: text !important;
   user-select: text !important;
+  -webkit-touch-callout: default;
 }
 
 /* Keep highlight marks selectable but clearly painted above EPUB theme colors */
@@ -443,6 +447,16 @@ mark.kora-hl-pink {
 html {
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Default: block double-tap zoom without breaking scroll / long-press */
+  touch-action: manipulation;
+}
+
+html,
+body {
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
 }
 
 html.kora-gesture-nav,
@@ -450,9 +464,22 @@ html.kora-gesture-nav body {
   touch-action: manipulation;
 }
 
-html.kora-android body {
+html.kora-android body,
+html.kora-ios body {
   padding-left: var(--kora-safe-left);
   padding-right: var(--kora-safe-right);
+}
+
+/*
+ * iOS Safari zooms the viewport when a focused control is < 16px.
+ * Force readable control size without changing visual density much.
+ */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
 }
 
 .kora-safe-top {
