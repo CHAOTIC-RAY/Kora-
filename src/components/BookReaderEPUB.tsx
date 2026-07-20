@@ -2269,11 +2269,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             onClick={() => {
               if (showAudiobook) {
                 stopSpeech();
+                setIsAudiobookExpanded(false);
+                setShowAudiobook(false);
+              } else {
+                setShowAudiobook(true);
+                // Open the full sheet on narrow screens so the header isn't clipped
+                setIsAudiobookExpanded(typeof window !== "undefined" && window.innerWidth < 768);
+                setShowToc(false);
+                setShowSettings(false);
+                setShowNotes(false);
               }
-              setShowAudiobook(!showAudiobook);
-              setShowToc(false);
-              setShowSettings(false);
-              setShowNotes(false);
             }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition relative ${showAudiobook ? 'bg-kindle-accent/20 text-kindle-accent' : ''}`}
             title="Listen"
@@ -2710,75 +2715,93 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           {/* Sidebar / Popup: Voice Narrator panel */}
         {showAudiobook && (
           <>
-            <div className={`absolute inset-0 z-30 bg-black/10 md:hidden transition-opacity ${isAudiobookExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setIsAudiobookExpanded(false)} />
-            
-            {/* Desktop Sidebar OR Mobile Expanded Popup OR Mobile Mini Player */}
-            <aside className={`
-              w-full md:w-80 border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} overflow-y-auto flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0
-              md:relative md:h-auto md:translate-y-0
-              ${isAudiobookExpanded ? 'fixed bottom-0 left-0 right-0 h-[60vh] z-40 rounded-t-3xl p-5' : 'fixed bottom-4 left-4 right-4 h-16 z-40 rounded-2xl shadow-xl flex-row items-center px-4 py-2 border'}
-            `}>
-              
-              {/* Mobile Mini Player Layout */}
-              {!isAudiobookExpanded && (
-                <div className="flex md:hidden items-center justify-between w-full h-full" onClick={() => setIsAudiobookExpanded(true)}>
-                  <div className="flex items-center gap-3 overflow-hidden flex-1">
-                    <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
-                      <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
-                        A
-                      </div>
-                    </div>
-                    <div className="min-w-0 truncate">
-                      <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate">
-                        {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
-                      </span>
-                      <p className="text-[10px] opacity-70 truncate font-serif">
-                        {currentParagraphIdx >= 0 ? `Section ${currentParagraphIdx + 1}` : "Tap to open"}
-                      </p>
+            {/* Mobile expanded backdrop */}
+            <div
+              className={`absolute inset-0 z-30 bg-black/25 md:hidden transition-opacity ${isAudiobookExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+              onClick={() => setIsAudiobookExpanded(false)}
+            />
+
+            {/* Mobile mini player — only when collapsed */}
+            {!isAudiobookExpanded && (
+              <div
+                className={`md:hidden fixed left-4 right-4 z-[60] h-16 rounded-2xl border ${activeTheme.border} ${activeTheme.card} shadow-xl flex items-center px-4 py-2`}
+                style={{ bottom: "max(1rem, var(--kora-safe-bottom))" }}
+                onClick={() => setIsAudiobookExpanded(true)}
+              >
+                <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
+                  <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
+                    <div className="w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center text-neutral-900 font-bold text-[7px]">
+                      A
                     </div>
                   </div>
-                  
-                  <div className="flex items-center gap-1 shrink-0 ml-2" onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={toggleSpeechPlayback}
-                      className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-sm transform active:scale-95 transition"
-                    >
-                      {isPlayingSpeech ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-                    </button>
-                    <button 
-                      onClick={() => setShowAudiobook(false)}
-                      className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:text-current rounded-full"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
+                  <div className="min-w-0 truncate">
+                    <span className="font-semibold text-[10px] text-amber-600 dark:text-amber-400 uppercase tracking-wider block truncate">
+                      {isPlayingSpeech ? "Narrating..." : "Ready to listen"}
+                    </span>
+                    <p className="text-[10px] opacity-70 truncate font-serif">
+                      {currentParagraphIdx >= 0 ? `Section ${currentParagraphIdx + 1}` : "Tap to open"}
+                    </p>
                   </div>
                 </div>
-              )}
-
-              {/* Desktop / Expanded Mobile Layout */}
-              <div className={`w-full flex-col h-full ${!isAudiobookExpanded ? 'hidden md:flex' : 'flex'}`}>
-                {/* Drag handle for mobile */}
-                <div className="w-full flex justify-center pb-2 md:hidden" onClick={() => setIsAudiobookExpanded(false)}>
-                  <div className="w-12 h-1.5 bg-current opacity-20 rounded-full" />
+                <div className="flex items-center gap-1 shrink-0 ml-2" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={toggleSpeechPlayback}
+                    className="w-10 h-10 rounded-full bg-amber-500 hover:bg-amber-600 text-neutral-950 flex items-center justify-center shadow-sm transform active:scale-95 transition"
+                  >
+                    {isPlayingSpeech ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+                  </button>
+                  <button
+                    onClick={() => { stopSpeech(); setShowAudiobook(false); }}
+                    className="w-8 h-8 flex items-center justify-center text-neutral-500 hover:text-current rounded-full"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
+              </div>
+            )}
 
-                <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center ${isAudiobookExpanded ? '' : 'p-5 md:p-0'}`}>
+            {/* Full panel: desktop sidebar always; mobile sheet when expanded */}
+            <aside
+              className={`
+                ${activeTheme.border} ${activeTheme.card}
+                flex flex-col overflow-hidden shrink-0
+                animate-in slide-in-from-bottom md:slide-in-from-left duration-200
+                ${isAudiobookExpanded
+                  ? `fixed inset-x-0 z-[70] rounded-t-3xl border-t shadow-[0_-10px_40px_rgba(0,0,0,0.2)] md:static md:inset-auto md:z-40 md:rounded-none md:border-t-0 md:border-r md:shadow-none md:h-auto md:w-80`
+                  : `hidden md:flex md:relative md:w-80 md:h-auto md:border-r`
+                }
+              `}
+              style={isAudiobookExpanded ? {
+                bottom: 0,
+                top: "auto",
+                maxHeight: "min(70dvh, calc(100dvh - 5.5rem))",
+                paddingBottom: "max(1.25rem, var(--kora-safe-bottom))",
+              } : undefined}
+            >
+              <div className="w-full flex flex-col h-full min-h-0 p-5 md:p-5">
+                {isAudiobookExpanded && (
+                  <div className="w-full flex justify-center pb-2 md:hidden shrink-0" onClick={() => setIsAudiobookExpanded(false)}>
+                    <div className="w-12 h-1.5 bg-current opacity-20 rounded-full" />
+                  </div>
+                )}
+
+                <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center shrink-0`}>
                   <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
                     <Headphones className="w-4 h-4" />
                     Voice Narrator
                   </span>
-                  <button 
+                  <button
                     onClick={() => {
                       if (isAudiobookExpanded) setIsAudiobookExpanded(false);
                       else { stopSpeech(); setShowAudiobook(false); }
-                    }} 
-                    className="text-xs p-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346] dark:text-neutral-300"
+                    }}
+                    className="text-xs px-2 py-1 hover:bg-neutral-500/10 rounded font-sans font-semibold text-[#5c5346] dark:text-neutral-300"
                   >
-                    {isAudiobookExpanded ? 'Collapse' : 'Done'}
+                    {isAudiobookExpanded ? "Collapse" : "Done"}
                   </button>
                 </div>
 
-                <div className={`flex-1 flex flex-col gap-4 overflow-y-auto ${isAudiobookExpanded ? '' : 'px-5 md:px-0 pb-5 md:pb-0'}`}>
+                <div className="flex-1 flex flex-col gap-4 overflow-y-auto min-h-0 overscroll-contain">
                   {/* Status Indicator */}
                   <div className={`p-4 rounded-xl border ${activeTheme.border} bg-white/5 flex items-center gap-3`}>
                     <div className={`w-8 h-8 rounded-full border border-current/10 flex items-center justify-center bg-black/10 shrink-0 ${isPlayingSpeech ? "animate-spin" : ""}`} style={{ animationDuration: "6s" }}>
