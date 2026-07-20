@@ -335,6 +335,7 @@ export default function App() {
     displayTheme: string;
     appSkin: AppSkinId;
     fontSize: number;
+    isContinuous: boolean;
     dailyGoal: number;
     autoCache: boolean;
     dailyReminders: boolean;
@@ -353,6 +354,7 @@ export default function App() {
     const updatedPrefs = {
       ...readerPrefs,
       fontSize: prefs.fontSize,
+      isContinuous: !!prefs.isContinuous,
       theme: prefs.displayTheme.includes("dark") ? "dark" : "light"
     };
     setReaderPrefs(updatedPrefs);

@@ -11,13 +11,13 @@ import {
 } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";
 import { getFeedItems } from "../lib/feedStorage";
-import { resolveCoverImageSrc } from "../lib/coverImage";
 import {
   loadLoungeModes,
   saveLoungeMode,
   type LoungeWidgetId,
 } from "../lib/loungePrefs";
 import { buildLoungeGreeting } from "../lib/loungeGreeting";
+import CachedCoverImage from "./CachedCoverImage";
 import LoungeGuidesWidget from "./LoungeGuidesWidget";
 import type { GuideId } from "../lib/guides";
 
@@ -362,16 +362,10 @@ export default function LoungeView({
   }, [userNickname, lastReadBook, books, greetingTick]);
 
   const progress = Math.min(100, Math.round(continueBook?.progress?.percent || 0));
-  const heroCover = continueBook?.coverUrl
-    ? resolveCoverImageSrc(continueBook.coverUrl) || continueBook.coverUrl
-    : null;
   const discoverHero = discoverItems[0];
   // Same strip length for Trending and Audio so the list UI stays consistent
   const discoverRest = discoverItems.slice(1, 7);
   const isDiscoverAudio = modes.discover === "audiobooks";
-  const discoverHeroCover = discoverHero?.coverUrl
-    ? resolveCoverImageSrc(discoverHero.coverUrl) || discoverHero.coverUrl
-    : null;
   const continueAuthor = cleanAuthor(continueBook?.author);
 
   const openContinue = () => {
@@ -412,11 +406,12 @@ export default function LoungeView({
           label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
         >
           <div className="absolute inset-0 pointer-events-none">
-            {heroCover ? (
+            {continueBook?.coverUrl ? (
               <>
-                <img
-                  src={heroCover}
-                  alt=""
+                <CachedCoverImage
+                  coverUrl={continueBook.coverUrl}
+                  bookTitle={continueBook.title}
+                  fallback="empty"
                   className={`absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-30 ${
                     grayscaleCovers ? "grayscale" : ""
                   }`}
@@ -467,10 +462,10 @@ export default function LoungeView({
                   {continueBook ? (
                     <>
                       <div className="relative shrink-0 w-[7.75rem] sm:w-[8.5rem] md:w-[9.5rem] aspect-[2/3] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.4)] bg-kindle-card ring-1 ring-white/5">
-                        {heroCover ? (
-                          <img
-                            src={heroCover}
-                            alt=""
+                        {continueBook.coverUrl ? (
+                          <CachedCoverImage
+                            coverUrl={continueBook.coverUrl}
+                            bookTitle={continueBook.title}
                             className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
                             referrerPolicy="no-referrer"
                           />
@@ -558,9 +553,6 @@ export default function LoungeView({
               {shelfItems.length ? (
                 <div className="flex gap-2.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {shelfItems.map((book, i) => {
-                    const cover = book.coverUrl
-                      ? resolveCoverImageSrc(book.coverUrl) || book.coverUrl
-                      : null;
                     return (
                       <motion.button
                         key={book.id}
@@ -573,20 +565,12 @@ export default function LoungeView({
                         title={book.title}
                       >
                         <div className="w-full aspect-[2/3] rounded-xl overflow-hidden border border-white/10 bg-kindle-bg shadow-md transition duration-300 group-hover:-translate-y-1 group-hover:border-kindle-accent/40">
-                          {cover ? (
-                            <img
-                              src={cover}
-                              alt=""
-                              className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center p-1">
-                              <span className="text-[7px] font-bold uppercase text-kindle-text-muted text-center line-clamp-4">
-                                {book.title}
-                              </span>
-                            </div>
-                          )}
+                          <CachedCoverImage
+                            coverUrl={book.coverUrl}
+                            bookTitle={book.title}
+                            className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+                            referrerPolicy="no-referrer"
+                          />
                         </div>
                       </motion.button>
                     );
@@ -666,11 +650,12 @@ export default function LoungeView({
           label="Open Discover"
         >
           <div className="absolute inset-0 pointer-events-none">
-            {discoverHeroCover ? (
+            {discoverHero?.coverUrl ? (
               <>
-                <img
-                  src={discoverHeroCover}
-                  alt=""
+                <CachedCoverImage
+                  coverUrl={discoverHero.coverUrl}
+                  bookTitle={discoverHero.title}
+                  fallback="empty"
                   className={`absolute inset-0 w-full h-full object-cover opacity-35 ${
                     grayscaleCovers ? "grayscale" : ""
                   }`}
@@ -735,11 +720,11 @@ export default function LoungeView({
                           </p>
                         ) : null}
                       </div>
-                      {discoverHeroCover && (
+                      {discoverHero.coverUrl && (
                         <div className="relative shrink-0 w-[5.5rem] md:w-[6.25rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
-                          <img
-                            src={discoverHeroCover}
-                            alt=""
+                          <CachedCoverImage
+                            coverUrl={discoverHero.coverUrl}
+                            bookTitle={discoverHero.title}
                             className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
                             referrerPolicy="no-referrer"
                           />
@@ -758,9 +743,6 @@ export default function LoungeView({
                         onClick={(e) => e.stopPropagation()}
                       >
                         {discoverRest.map((book, i) => {
-                          const cover = book.coverUrl
-                            ? resolveCoverImageSrc(book.coverUrl) || book.coverUrl
-                            : null;
                           return (
                             <button
                               key={`${book.title}-${i}`}
@@ -772,21 +754,12 @@ export default function LoungeView({
                               className="relative shrink-0 w-[3.35rem] aspect-[2/3] rounded-lg overflow-hidden border border-white/10 bg-kindle-card shadow-md hover:border-kindle-accent/50 hover:-translate-y-0.5 transition"
                               title={book.title}
                             >
-                              {cover ? (
-                                <img
-                                  src={cover}
-                                  alt=""
-                                  className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
-                                  referrerPolicy="no-referrer"
-                                  loading="lazy"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center p-1">
-                                  <span className="text-[6px] font-bold uppercase text-kindle-text-muted text-center line-clamp-4">
-                                    {book.title}
-                                  </span>
-                                </div>
-                              )}
+                              <CachedCoverImage
+                                coverUrl={book.coverUrl}
+                                bookTitle={book.title}
+                                className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+                                referrerPolicy="no-referrer"
+                              />
                             </button>
                           );
                         })}

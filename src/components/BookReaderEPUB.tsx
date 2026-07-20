@@ -42,6 +42,11 @@ import {
 import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "../lib/epubToc";
+import {
+  classifySkippableChapter,
+  findFirstReadableChapterIndex,
+  nextReadableChapterIndex,
+} from "../lib/epubChapterSkip";
 import { playFlipSound, playBookOpenSound } from "../lib/sounds";
 import {
   applyHighlightsToElement,
@@ -239,6 +244,8 @@ interface EpubChapter {
   title: string;
   content: string;
   fullPath: string;
+  /** Front-matter / blank — skipped on open and sequential page turns */
+  skip?: boolean;
 }
 
 export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs, onReaderPrefsChange }: BookReaderEPUBProps) {
@@ -707,14 +714,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     loadEpubFile();
   }, [book.id]);
 
-  // Handle restoring the last read chapter
+  // Handle restoring the last read chapter — skip blank/front-matter when starting fresh
   useEffect(() => {
-    if (chapters.length > 0) {
-      const savedIdx = book.progress?.chapterIndex ?? 0;
-      if (savedIdx >= 0 && savedIdx < chapters.length) {
-        setCurrentChapterIdx(savedIdx);
-      }
+    if (chapters.length === 0) return;
+    const savedIdx = book.progress?.chapterIndex ?? 0;
+    const hasProgress =
+      (book.progress?.percent || 0) > 1 ||
+      (book.progress?.pageNumber || 0) > 1 ||
+      savedIdx > 0;
+
+    let target = savedIdx >= 0 && savedIdx < chapters.length ? savedIdx : 0;
+    if (!hasProgress || chapters[target]?.skip) {
+      target = findFirstReadableChapterIndex(chapters);
     }
+    setCurrentChapterIdx(target);
   }, [chapters]);
 
   // Load Highlights and Chapter Notes Data
@@ -1221,16 +1234,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setTimeout(() => setTapFeedback(null), 350);
     if (useScrollLayout) {
       if (currentChapterIdx < chapters.length - 1) {
-        updateProgress(currentChapterIdx + 1, false);
+        const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
+        if (next !== currentChapterIdx) updateProgress(next, false);
       }
       return;
     }
     if (currentPageNum < totalPages) {
-      setCurrentPageNum(prev => prev + 1);
-    } else {
-      if (currentChapterIdx < chapters.length - 1) {
-        updateProgress(currentChapterIdx + 1, false);
-      }
+      setCurrentPageNum((prev) => prev + 1);
+    } else if (currentChapterIdx < chapters.length - 1) {
+      const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
+      if (next !== currentChapterIdx) updateProgress(next, false);
     }
   };
 
@@ -1240,16 +1253,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setTimeout(() => setTapFeedback(null), 350);
     if (useScrollLayout) {
       if (currentChapterIdx > 0) {
-        updateProgress(currentChapterIdx - 1, true);
+        const prev = nextReadableChapterIndex(chapters, currentChapterIdx, -1);
+        if (prev !== currentChapterIdx) updateProgress(prev, true);
       }
       return;
     }
     if (currentPageNum > 1) {
-      setCurrentPageNum(prev => prev - 1);
-    } else {
-      if (currentChapterIdx > 0) {
-        updateProgress(currentChapterIdx - 1, true);
-      }
+      setCurrentPageNum((prev) => prev - 1);
+    } else if (currentChapterIdx > 0) {
+      const prev = nextReadableChapterIndex(chapters, currentChapterIdx, -1);
+      if (prev !== currentChapterIdx) updateProgress(prev, true);
     }
   };
 
@@ -1626,16 +1639,23 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             `Chapter ${i + 1}`
           );
 
-          // Process chapter document images and style links in-memory
           const chapterDoc = parser.parseFromString(rawContent, "text/html");
           const processedContent = await resolveInternalAssets(chapterDoc, zip, rootDir, relativeHref);
+          const skipInfo = classifySkippableChapter({
+            title: chapterTitle || `Chapter ${i + 1}`,
+            href: relativeHref,
+            html: processedContent,
+            spineIndex: i,
+            spineLength: spineItems.length,
+          });
 
           parsedChapters.push({
             id: `ch-${i}`,
             href: relativeHref,
             title: chapterTitle || `Chapter ${i + 1}`,
             content: processedContent,
-            fullPath: fullChapterPath
+            fullPath: fullChapterPath,
+            skip: skipInfo.skip,
           });
         }
       }
@@ -1938,8 +1958,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     if (idx < 0 || idx >= domElements.length) {
       // End of chapter! Advance to next chapter if available
       if (currentChapterIdx < chapters.length - 1) {
-        updateProgress(currentChapterIdx + 1);
-        setCurrentParagraphIdx(0);
+        const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
+        if (next !== currentChapterIdx) {
+          updateProgress(next);
+          setCurrentParagraphIdx(0);
+        } else {
+          stopSpeech();
+        }
       } else {
         stopSpeech();
       }
@@ -3518,14 +3543,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         }
                       }}
                     />
-
-                    {/* Bottom Controls */}
-                    <div className={`mt-12 pt-6 border-t ${activeTheme.border} flex justify-between items-center text-xs font-sans opacity-70`}>
-                      <span>End of {chapters[currentChapterIdx]?.title}</span>
-                      <span>{Math.round((currentChapterIdx / chapters.length) * 100)}% read</span>
-                    </div>
                   </motion.article>
                 </div>
+
+                {/* Chapter end label — outside column flow so it doesn't create blank trailing pages */}
+                {(useScrollLayout || currentPageNum >= totalPages) && (
+                  <div
+                    className={`pointer-events-none absolute left-0 right-0 bottom-14 md:bottom-16 px-4 md:px-8 flex justify-between items-center text-[10px] font-sans opacity-55 ${activeTheme.text}`}
+                  >
+                    <span>End of {chapters[currentChapterIdx]?.title}</span>
+                    <span>{Math.round((currentChapterIdx / Math.max(1, chapters.length)) * 100)}% read</span>
+                  </div>
+                )}
 
                 {/* External Link Intercept Dialog */}
                 {externalLinkToOpen && (

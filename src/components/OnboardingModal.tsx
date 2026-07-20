@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { 
   Book, Glasses, Sparkles, Coffee, Bookmark, Check, ChevronRight, 
   ChevronLeft, Info, Shield, Heart, Smile, Star, BookOpen, Settings, Compass, Download, Award, Rss, Globe,
-  Cloud, LogIn, Smartphone, Sofa, Headphones
+  Cloud, LogIn, Smartphone, Sofa, Headphones, MousePointerClick, ArrowDownToLine
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -28,6 +28,8 @@ interface OnboardingModalProps {
     displayTheme: string;
     appSkin: AppSkinId;
     fontSize: number;
+    /** false = tap/swipe page turns; true = continuous scroll */
+    isContinuous: boolean;
     dailyGoal: number;
     autoCache: boolean;
     dailyReminders: boolean;
@@ -129,6 +131,7 @@ export default function OnboardingModal({
   const [nickname, setNickname] = useState("");
   const [selectedArchetype, setSelectedArchetype] = useState("curator-bibliophile");
   const [fontSize, setFontSize] = useState(18);
+  const [isContinuous, setIsContinuous] = useState(false);
   const [dailyGoal, setDailyGoal] = useState(30); // minutes or pages
   const [autoCache, setAutoCache] = useState(true);
   const [dailyReminders, setDailyReminders] = useState(false);
@@ -172,6 +175,7 @@ export default function OnboardingModal({
       displayTheme: currentTheme,
       appSkin,
       fontSize,
+      isContinuous,
       dailyGoal,
       autoCache,
       dailyReminders,
@@ -244,11 +248,12 @@ export default function OnboardingModal({
     },
     {
       title: "Reader, Narrator & Notes",
-      desc: "Inside a book: gear = display settings, headphones = Voice Narrator, notes icon = highlights & chapter notes. Long-press text to highlight or look up a word.",
+      desc: "Inside a book: gear = display settings, headphones = Voice Narrator, notes icon = highlights & chapter notes. Long-press text to highlight or look up a word. Blank cover/copyright pages are skipped automatically.",
       icon: Headphones,
       color: "text-blue-500",
       bg: "bg-blue-500/10",
       tips: [
+        "Tap the left/right edges (or swipe) to turn pages — or use continuous scroll if you chose it in setup.",
         "Narrator uses on-device voices — works offline.",
         "We'll tour settings → narrator → notes after your first download.",
       ],
@@ -471,6 +476,49 @@ export default function OnboardingModal({
                     style={{ fontSize: `${fontSize}px` }}
                   >
                     The love of books is the best of hobbies.
+                  </div>
+                </div>
+
+                {/* How you turn pages */}
+                <div className="space-y-3">
+                  <label className="text-[11px] uppercase tracking-wider font-bold text-kindle-text-muted">
+                    How do you like to read?
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsContinuous(false)}
+                      className={`p-3.5 rounded-xl border text-left transition ${
+                        !isContinuous
+                          ? "border-kindle-text bg-kindle-text text-kindle-bg shadow-sm"
+                          : "border-kindle-border bg-kindle-card text-kindle-text hover:border-kindle-text-muted"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <MousePointerClick className="w-4 h-4 shrink-0" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Tap to turn pages</span>
+                      </div>
+                      <p className={`text-[10px] leading-relaxed ${!isContinuous ? "opacity-80" : "text-kindle-text-muted"}`}>
+                        Classic page flips — tap left/right edges or swipe. Best for focused chapter reading.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsContinuous(true)}
+                      className={`p-3.5 rounded-xl border text-left transition ${
+                        isContinuous
+                          ? "border-kindle-text bg-kindle-text text-kindle-bg shadow-sm"
+                          : "border-kindle-border bg-kindle-card text-kindle-text hover:border-kindle-text-muted"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <ArrowDownToLine className="w-4 h-4 shrink-0" />
+                        <span className="text-xs font-bold uppercase tracking-wider">Continuous scroll</span>
+                      </div>
+                      <p className={`text-[10px] leading-relaxed ${isContinuous ? "opacity-80" : "text-kindle-text-muted"}`}>
+                        Scroll through a chapter like a long article. Change anytime in reader settings.
+                      </p>
+                    </button>
                   </div>
                 </div>
 
