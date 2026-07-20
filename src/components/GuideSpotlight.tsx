@@ -252,10 +252,10 @@ export default function GuideSpotlight({
                       <button
                         type="button"
                         onClick={onNext}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-kindle-accent text-white text-[11px] font-bold uppercase tracking-wider"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider"
                       >
                         {step.cta || "Next"}
-                        <ChevronRight className="w-3.5 h-3.5" />
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                       </button>
                     )}
                     {step.action === "tap-target" && (
