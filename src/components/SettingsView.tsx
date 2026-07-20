@@ -6,7 +6,7 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, Circle
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, Circle, Sparkles
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import {
@@ -484,7 +484,7 @@ function SettingsView({
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
     { id: "font-sans", label: "Sans" },
-    { id: "font-lexend", label: "Rakuten Sans" },
+    { id: "font-lexend", label: "Lexend" },
     { id: "font-opendyslexic", label: "OpenDyslexic" },
     { id: "font-mono", label: "Mono" },
     { id: "font-bookerly", label: "Bookerly" },

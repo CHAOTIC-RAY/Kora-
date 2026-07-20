@@ -34,7 +34,7 @@ export const DEFAULT_NEWS_READER_PREFS: NewsReaderPrefs = {
 export const NEWS_READER_FONT_OPTIONS = [
   { id: "font-serif", label: "Serif" },
   { id: "font-sans", label: "Sans" },
-  { id: "font-lexend", label: "Rakuten Sans" },
+  { id: "font-lexend", label: "Lexend" },
   { id: "font-opendyslexic", label: "OpenDyslexic" },
   { id: "font-mono", label: "Mono" },
   { id: "font-bookerly", label: "Bookerly" },

@@ -99,7 +99,7 @@ export interface ReaderFontOption {
 export const READER_FONTS: ReaderFontOption[] = [
   { name: "Lora Serif", value: "font-serif" },
   { name: "Inter Sans", value: "font-sans" },
-  { name: "Rakuten Sans", value: "font-lexend" },
+  { name: "Lexend", value: "font-lexend" },
   { name: "OpenDyslexic", value: "font-opendyslexic", dyslexiaFriendly: true },
   { name: "JetBrains Mono", value: "font-mono" },
   { name: "Bookerly", value: "font-bookerly" },
