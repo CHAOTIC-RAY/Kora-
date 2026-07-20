@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   BookOpen,
@@ -17,6 +17,7 @@ import {
   saveLoungeMode,
   type LoungeWidgetId,
 } from "../lib/loungePrefs";
+import { buildLoungeGreeting } from "../lib/loungeGreeting";
 import LoungeGuidesWidget from "./LoungeGuidesWidget";
 import type { GuideId } from "../lib/guides";
 
@@ -37,6 +38,9 @@ type FeaturedBook = {
   coverUrl?: string;
   rank?: number | string;
 };
+
+const AUTO_FLIP_MS = 9000;
+const MANUAL_PAUSE_MS = 28_000;
 
 function isAudiobook(book: BookMetadata) {
   return book.extension?.toLowerCase() === "audiobook";
@@ -92,12 +96,19 @@ function ModeSwitch({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="inline-flex items-center gap-0.5 p-0.5 rounded-full bg-black/20 border border-white/10 backdrop-blur-sm">
+    <div
+      className="inline-flex items-center gap-0.5 p-0.5 rounded-full bg-black/25 border border-white/10 backdrop-blur-sm"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       {options.map((opt) => (
         <button
           key={opt.id}
           type="button"
-          onClick={() => onChange(opt.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onChange(opt.id);
+          }}
           className={`px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider transition ${
             value === opt.id
               ? "bg-kindle-text text-kindle-bg shadow-sm"
@@ -115,18 +126,40 @@ function TileShell({
   children,
   className = "",
   delay = 0,
+  onClick,
+  role,
+  label,
 }: {
   children: React.ReactNode;
   className?: string;
   delay?: number;
+  onClick?: () => void;
+  role?: string;
+  label?: string;
 }) {
   const reduceMotion = useReducedMotion();
   return (
     <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 14 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay, ease: [0.22, 1, 0.36, 1] }}
-      className={`rounded-3xl border border-kindle-border overflow-hidden min-h-0 ${className}`}
+      transition={{ duration: 0.35, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={`rounded-3xl border border-kindle-border overflow-hidden min-h-0 ${
+        onClick ? "cursor-pointer" : ""
+      } ${className}`}
+      onClick={onClick}
+      role={role || (onClick ? "button" : undefined)}
+      tabIndex={onClick ? 0 : undefined}
+      aria-label={label}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
     >
       {children}
     </motion.section>
@@ -146,6 +179,9 @@ export default function LoungeView({
   const [modes, setModes] = useState(loadLoungeModes);
   const [featured, setFeatured] = useState<FeaturedBook[]>([]);
   const [feedTick, setFeedTick] = useState(0);
+  const [greetingTick, setGreetingTick] = useState(0);
+  const continuePauseUntil = useRef(0);
+  const discoverPauseUntil = useRef(0);
 
   useEffect(() => {
     setFeatured(loadFeaturedFromCache());
@@ -155,13 +191,19 @@ export default function LoungeView({
     const refresh = () => setFeedTick((n) => n + 1);
     window.addEventListener("storage", refresh);
     const id = window.setInterval(refresh, 60_000);
+    const greetId = window.setInterval(() => setGreetingTick((n) => n + 1), 15 * 60_000);
     return () => {
       window.removeEventListener("storage", refresh);
       window.clearInterval(id);
+      window.clearInterval(greetId);
     };
   }, []);
 
-  const setMode = (id: LoungeWidgetId, mode: string) => {
+  const setMode = (id: LoungeWidgetId, mode: string, fromUser = false) => {
+    if (fromUser) {
+      if (id === "continue") continuePauseUntil.current = Date.now() + MANUAL_PAUSE_MS;
+      if (id === "discover") discoverPauseUntil.current = Date.now() + MANUAL_PAUSE_MS;
+    }
     saveLoungeMode(id, mode);
     setModes((prev) => ({ ...prev, [id]: mode }));
   };
@@ -174,6 +216,36 @@ export default function LoungeView({
     () => sortByRecent(books.filter(isAudiobook)).slice(0, 10),
     [books]
   );
+
+  const hasContinueBook = recentBooks.length > 0 || (lastReadBook && !isAudiobook(lastReadBook));
+  const hasContinueAudio =
+    recentAudio.length > 0 || (lastReadBook != null && isAudiobook(lastReadBook));
+  const hasDiscoverTrending = featured.length > 0;
+  const hasDiscoverAudio = recentAudio.length > 0;
+
+  // Smooth auto flip book ↔ listen / trending ↔ audio
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      const now = Date.now();
+
+      setModes((prev) => {
+        let next = prev;
+        if (now >= continuePauseUntil.current && hasContinueBook && hasContinueAudio) {
+          const flipped = prev.continue === "audio" ? "book" : "audio";
+          next = { ...next, continue: flipped };
+          saveLoungeMode("continue", flipped);
+        }
+        if (now >= discoverPauseUntil.current && hasDiscoverTrending && hasDiscoverAudio) {
+          const flipped = prev.discover === "audiobooks" ? "trending" : "audiobooks";
+          next = { ...next, discover: flipped };
+          saveLoungeMode("discover", flipped);
+        }
+        return next;
+      });
+    }, AUTO_FLIP_MS);
+    return () => window.clearInterval(id);
+  }, [hasContinueBook, hasContinueAudio, hasDiscoverTrending, hasDiscoverAudio]);
 
   const continueBook = useMemo(() => {
     if (modes.continue === "audio") {
@@ -191,7 +263,6 @@ export default function LoungeView({
     );
   }, [modes.continue, recentBooks, recentAudio, lastReadBook]);
 
-  /** Shelf strip follows continue mode (books vs audio), excluding the active continue title when possible */
   const shelfItems = useMemo(() => {
     const pool = modes.continue === "audio" ? recentAudio : recentBooks;
     const rest = continueBook ? pool.filter((b) => b.id !== continueBook.id) : pool;
@@ -219,9 +290,14 @@ export default function LoungeView({
     return featured.slice(0, 5);
   }, [modes.discover, featured, recentAudio]);
 
-  const greeting = userNickname?.trim()
-    ? `Welcome back, ${userNickname.trim()}`
-    : "Your Lounge";
+  const greeting = useMemo(() => {
+    void greetingTick;
+    return buildLoungeGreeting({
+      nickname: userNickname,
+      lastReadBook,
+      recentBooks: books,
+    });
+  }, [userNickname, lastReadBook, books, greetingTick]);
 
   const progress = Math.min(100, Math.round(continueBook?.progress?.percent || 0));
   const heroCover = continueBook?.coverUrl
@@ -229,92 +305,103 @@ export default function LoungeView({
     : null;
   const discoverHero = discoverItems[0];
   const discoverRest = discoverItems.slice(1, 5);
+  const discoverHeroCover = discoverHero?.coverUrl
+    ? resolveCoverImageSrc(discoverHero.coverUrl) || discoverHero.coverUrl
+    : null;
+
+  const openContinue = () => {
+    if (continueBook) onOpenBook(continueBook);
+    else onOpenTab("discover");
+  };
+
+  const openDiscover = () => {
+    if (discoverHero && onSearchDiscover) onSearchDiscover(discoverHero.title);
+    else onOpenTab("discover");
+  };
 
   return (
-    <div className="pb-6 md:pb-10 space-y-5 md:space-y-6">
-      <header className="space-y-1.5">
+    <div className="pb-6 md:pb-10 space-y-4 md:space-y-5">
+      <header className="space-y-1">
         <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-kindle-accent">Lounge</p>
-        <h2 className="text-2xl md:text-3xl font-lexend font-bold tracking-tight text-kindle-text">
-          {greeting}
-        </h2>
-        <p className="text-sm text-kindle-text-muted max-w-xl leading-relaxed">
-          Pick up where you left off — shelf, paper, and what&apos;s next.
-        </p>
+        <AnimatePresence mode="wait">
+          <motion.h2
+            key={greeting.title}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.35 }}
+            className="text-2xl md:text-3xl font-lexend font-bold tracking-tight text-kindle-text"
+          >
+            {greeting.title}
+          </motion.h2>
+        </AnimatePresence>
+        <p className="text-sm text-kindle-text-muted max-w-xl leading-relaxed">{greeting.subtitle}</p>
       </header>
 
-      {/*
-        Bento:
-          Continue+Shelf (tall left) | Paper
-          Continue+Shelf             | Discover
-          Guide (full width)
-      */}
-      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2 md:grid-rows-[minmax(220px,1.05fr)_minmax(240px,1fr)_auto]">
-        {/* Continue + integrated Shelf — LEFT, tall */}
+      <div className="grid gap-3 md:gap-4 grid-cols-1 md:grid-cols-2 md:grid-rows-[minmax(200px,1fr)_minmax(220px,1fr)_auto]">
+        {/* Continue + shelf — left tall, whole hero opens book */}
         <TileShell
           delay={0.02}
-          className="order-1 md:order-none md:col-start-1 md:row-start-1 md:row-span-2 relative min-h-[420px] md:min-h-0 bg-kindle-card"
+          className="order-1 md:order-none md:col-start-1 md:row-start-1 md:row-span-2 relative bg-kindle-card"
+          onClick={openContinue}
+          label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
         >
-          {/* Atmosphere from cover */}
           <div className="absolute inset-0 pointer-events-none">
             {heroCover ? (
               <>
                 <img
                   src={heroCover}
                   alt=""
-                  className={`absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-35 ${
+                  className={`absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-30 ${
                     grayscaleCovers ? "grayscale" : ""
                   }`}
                   referrerPolicy="no-referrer"
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-kindle-bg/55 via-kindle-bg/80 to-kindle-bg" />
+                <div className="absolute inset-0 bg-gradient-to-b from-kindle-bg/50 via-kindle-bg/75 to-kindle-bg" />
               </>
             ) : (
               <div
-                className="absolute inset-0 opacity-60"
+                className="absolute inset-0 opacity-55"
                 style={{
                   backgroundImage:
-                    "radial-gradient(ellipse at 20% 10%, color-mix(in srgb, var(--kindle-accent) 20%, transparent), transparent 55%), radial-gradient(ellipse at 90% 90%, color-mix(in srgb, var(--kindle-accent) 10%, transparent), transparent 50%)",
+                    "radial-gradient(ellipse at 20% 10%, color-mix(in srgb, var(--kindle-accent) 20%, transparent), transparent 55%)",
                 }}
               />
             )}
           </div>
 
           <div className="relative h-full flex flex-col">
-            {/* Continue hero */}
-            <div className="p-4 md:p-5 flex flex-col gap-4 flex-1 min-h-0">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
-                  <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
-                    Continue
-                  </h3>
-                </div>
-                <ModeSwitch
-                  value={modes.continue}
-                  onChange={(m) => setMode("continue", m)}
-                  options={[
-                    { id: "book", label: "Book" },
-                    { id: "audio", label: "Listen" },
-                  ]}
-                />
+            <div className="px-4 md:px-5 pt-4 flex items-center justify-between gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
+                  Continue
+                </h3>
               </div>
+              <ModeSwitch
+                value={modes.continue}
+                onChange={(m) => setMode("continue", m, true)}
+                options={[
+                  { id: "book", label: "Book" },
+                  { id: "audio", label: "Listen" },
+                ]}
+              />
+            </div>
 
+            {/* Dense hero — fills the empty middle; whole tile also opens continue */}
+            <div className="flex-1 min-h-[11rem] w-full text-left px-4 md:px-5 py-3 pointer-events-none">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`${modes.continue}-${continueBook?.id || "empty"}`}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.28 }}
-                  className="flex-1 flex flex-col sm:flex-row items-center sm:items-end gap-4 md:gap-5 min-h-0"
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: 0.35 }}
+                  className="h-full flex items-center gap-4 md:gap-5"
                 >
                   {continueBook ? (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => onOpenBook(continueBook)}
-                        className="shrink-0 w-[7.25rem] h-[10.75rem] md:w-32 md:h-48 rounded-2xl overflow-hidden border border-white/15 shadow-[0_20px_50px_rgba(0,0,0,0.45)] bg-kindle-card ring-1 ring-white/5"
-                      >
+                      <div className="shrink-0 w-[6.5rem] h-[9.75rem] md:w-[7.5rem] md:h-[11.25rem] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.4)] bg-kindle-card ring-1 ring-white/5">
                         {heroCover ? (
                           <img
                             src={heroCover}
@@ -325,39 +412,32 @@ export default function LoungeView({
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
                             {isAudiobook(continueBook) ? (
-                              <Headphones className="w-9 h-9 text-kindle-text-muted" />
+                              <Headphones className="w-8 h-8 text-kindle-text-muted" />
                             ) : (
-                              <BookOpen className="w-9 h-9 text-kindle-text-muted" />
+                              <BookOpen className="w-8 h-8 text-kindle-text-muted" />
                             )}
                           </div>
                         )}
-                      </button>
-
-                      <div className="min-w-0 flex-1 space-y-3 text-center sm:text-left pb-1">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted mb-1">
-                            {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
-                          </p>
-                          <h4 className="text-xl md:text-2xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
-                            {continueBook.title}
-                          </h4>
-                          <p className="text-sm text-kindle-text-muted mt-1 truncate">
-                            {continueBook.author || "Unknown"}
-                          </p>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden max-w-[16rem] mx-auto sm:mx-0">
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-2.5">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                          {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
+                        </p>
+                        <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
+                          {continueBook.title}
+                        </h4>
+                        <p className="text-sm text-kindle-text-muted truncate">
+                          {continueBook.author || "Unknown"}
+                        </p>
+                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden max-w-[14rem]">
                           <motion.div
                             className="h-full rounded-full bg-kindle-accent"
                             initial={{ width: 0 }}
                             animate={{ width: `${progress}%` }}
-                            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                           />
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => onOpenBook(continueBook)}
-                          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest hover:bg-kindle-accent transition shadow-lg"
-                        >
+                        <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
                           {isAudiobook(continueBook) ? (
                             <>
                               <Play className="w-3.5 h-3.5 fill-current" /> Resume
@@ -367,30 +447,29 @@ export default function LoungeView({
                               <BookOpen className="w-3.5 h-3.5" /> Resume
                             </>
                           )}
-                        </button>
+                        </span>
                       </div>
                     </>
                   ) : (
-                    <div className="py-8 space-y-3 text-center sm:text-left w-full">
+                    <div className="space-y-2">
                       <p className="text-sm text-kindle-text-muted">
-                        Nothing in progress yet. Find something on Discover.
+                        Nothing in progress yet. Tap to find something on Discover.
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => onOpenTab("discover")}
-                        className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-kindle-accent hover:underline"
-                      >
+                      <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-kindle-accent">
                         Browse Discover <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
+                      </span>
                     </div>
                   )}
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            {/* Integrated shelf strip */}
-            <div className="relative border-t border-white/10 bg-black/25 backdrop-blur-md px-4 md:px-5 pt-3.5 pb-4">
-              <div className="flex items-center justify-between gap-2 mb-3">
+            {/* Shelf strip */}
+            <div
+              className="relative border-t border-white/10 bg-black/25 backdrop-blur-md px-4 md:px-5 pt-3 pb-3.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-2 mb-2.5">
                 <div className="flex items-center gap-2">
                   <BookOpen className="w-3.5 h-3.5 text-kindle-accent" />
                   <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
@@ -407,7 +486,7 @@ export default function LoungeView({
               </div>
 
               {shelfItems.length ? (
-                <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex gap-2.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {shelfItems.map((book, i) => {
                     const cover = book.coverUrl
                       ? resolveCoverImageSrc(book.coverUrl) || book.coverUrl
@@ -417,15 +496,13 @@ export default function LoungeView({
                         key={book.id}
                         type="button"
                         onClick={() => onOpenBook(book)}
-                        initial={{ opacity: 0, y: 8 }}
+                        initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.04 * i, duration: 0.3 }}
-                        className="group relative shrink-0 snap-start w-[4.25rem] focus:outline-none"
+                        transition={{ delay: 0.03 * i, duration: 0.25 }}
+                        className="group relative shrink-0 snap-start w-[3.85rem] focus:outline-none"
                         title={book.title}
                       >
-                        <div
-                          className="w-full aspect-[2/3] rounded-xl overflow-hidden border border-white/10 bg-kindle-bg shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition duration-300 group-hover:-translate-y-1 group-hover:border-kindle-accent/40 group-hover:shadow-[0_14px_28px_rgba(0,0,0,0.45)]"
-                        >
+                        <div className="w-full aspect-[2/3] rounded-xl overflow-hidden border border-white/10 bg-kindle-bg shadow-md transition duration-300 group-hover:-translate-y-1 group-hover:border-kindle-accent/40">
                           {cover ? (
                             <img
                               src={cover}
@@ -434,36 +511,32 @@ export default function LoungeView({
                               referrerPolicy="no-referrer"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center p-1.5">
-                              <span className="text-[7px] font-bold uppercase text-kindle-text-muted text-center line-clamp-5">
+                            <div className="w-full h-full flex items-center justify-center p-1">
+                              <span className="text-[7px] font-bold uppercase text-kindle-text-muted text-center line-clamp-4">
                                 {book.title}
                               </span>
                             </div>
                           )}
-                          <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition" />
                         </div>
-                        <p className="mt-1.5 text-[9px] font-semibold text-kindle-text-muted line-clamp-2 leading-tight group-hover:text-kindle-text transition">
-                          {book.title}
-                        </p>
                       </motion.button>
                     );
                   })}
                 </div>
               ) : (
-                <p className="text-xs text-kindle-text-muted py-2">
-                  Books you open will line up here.
-                </p>
+                <p className="text-xs text-kindle-text-muted py-1">Books you open will line up here.</p>
               )}
             </div>
           </div>
         </TileShell>
 
-        {/* Paper — top right */}
+        {/* Paper */}
         <TileShell
-          delay={0.08}
-          className="order-2 md:order-none md:col-start-2 md:row-start-1 bg-kindle-card/55 flex flex-col min-h-[220px]"
+          delay={0.06}
+          className="order-2 md:order-none md:col-start-2 md:row-start-1 bg-kindle-card/55 flex flex-col"
+          onClick={() => onOpenTab("feed")}
+          label="Open news paper"
         >
-          <div className="px-4 md:px-5 pt-4 md:pt-5 pb-2 flex items-center justify-between gap-2 shrink-0">
+          <div className="px-4 md:px-5 pt-4 pb-2 flex items-center justify-between gap-2 shrink-0">
             <div className="flex items-center gap-2 min-w-0">
               <Rss className="w-3.5 h-3.5 text-kindle-accent shrink-0" />
               <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text truncate">
@@ -472,7 +545,7 @@ export default function LoungeView({
             </div>
             <ModeSwitch
               value={modes.paper}
-              onChange={(m) => setMode("paper", m)}
+              onChange={(m) => setMode("paper", m, true)}
               options={[
                 { id: "latest", label: "Latest" },
                 { id: "unread", label: "Unread" },
@@ -481,80 +554,60 @@ export default function LoungeView({
             />
           </div>
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={modes.paper}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex-1 divide-y divide-kindle-border/50 overflow-hidden"
-            >
-              {newsItems.length ? (
-                newsItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => onOpenTab("feed")}
-                    className="w-full text-left px-4 md:px-5 py-2.5 hover:bg-kindle-bg/55 transition flex gap-2.5"
-                  >
-                    {item.imageUrl ? (
-                      <img
-                        src={item.imageUrl}
-                        alt=""
-                        className="w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0"
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-11 h-11 rounded-lg bg-kindle-bg border border-kindle-border flex items-center justify-center shrink-0">
-                        <Rss className="w-3.5 h-3.5 text-kindle-text-muted opacity-40" />
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mb-0.5 truncate">
-                        {item.subscriptionTitle}
-                        {!item.read && <span className="ml-1.5 text-kindle-accent">New</span>}
-                      </p>
-                      <p className="text-[13px] font-bold text-kindle-text line-clamp-2 leading-snug">
-                        {item.title}
-                      </p>
+          <div className="flex-1 divide-y divide-kindle-border/50 overflow-hidden">
+            {newsItems.length ? (
+              newsItems.map((item) => (
+                <div key={item.id} className="px-4 md:px-5 py-2.5 flex gap-2.5 hover:bg-kindle-bg/40 transition">
+                  {item.imageUrl ? (
+                    <img
+                      src={item.imageUrl}
+                      alt=""
+                      className="w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-11 h-11 rounded-lg bg-kindle-bg border border-kindle-border flex items-center justify-center shrink-0">
+                      <Rss className="w-3.5 h-3.5 text-kindle-text-muted opacity-40" />
                     </div>
-                  </button>
-                ))
-              ) : (
-                <div className="px-5 py-8 text-center">
-                  <p className="text-sm text-kindle-text-muted mb-2">No headlines yet.</p>
-                  <button
-                    type="button"
-                    onClick={() => onOpenTab("feed")}
-                    className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent hover:underline"
-                  >
-                    Open the paper →
-                  </button>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mb-0.5 truncate">
+                      {item.subscriptionTitle}
+                      {!item.read && <span className="ml-1.5 text-kindle-accent">New</span>}
+                    </p>
+                    <p className="text-[13px] font-bold text-kindle-text line-clamp-2 leading-snug">
+                      {item.title}
+                    </p>
+                  </div>
                 </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+              ))
+            ) : (
+              <div className="px-5 py-8 text-center text-sm text-kindle-text-muted">No headlines yet.</div>
+            )}
+          </div>
         </TileShell>
 
-        {/* Discover — aesthetic feature tile, bottom right */}
+        {/* Discover — whole card clickable, denser featured + cover */}
         <TileShell
-          delay={0.12}
-          className="order-3 md:order-none md:col-start-2 md:row-start-2 relative min-h-[260px] bg-kindle-bg"
+          delay={0.1}
+          className="order-3 md:order-none md:col-start-2 md:row-start-2 relative bg-kindle-bg"
+          onClick={openDiscover}
+          label="Open Discover"
         >
           <div className="absolute inset-0 pointer-events-none">
-            {discoverHero?.coverUrl ? (
+            {discoverHeroCover ? (
               <>
                 <img
-                  src={resolveCoverImageSrc(discoverHero.coverUrl) || discoverHero.coverUrl}
+                  src={discoverHeroCover}
                   alt=""
-                  className={`absolute inset-0 w-full h-full object-cover opacity-40 ${
+                  className={`absolute inset-0 w-full h-full object-cover opacity-35 ${
                     grayscaleCovers ? "grayscale" : ""
                   }`}
                   referrerPolicy="no-referrer"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-kindle-bg via-kindle-bg/85 to-kindle-bg/40" />
-                <div className="absolute inset-0 bg-gradient-to-r from-kindle-bg/90 via-kindle-bg/50 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-kindle-bg via-kindle-bg/80 to-kindle-bg/35" />
+                <div className="absolute inset-0 bg-gradient-to-r from-kindle-bg/95 via-kindle-bg/55 to-kindle-bg/20" />
               </>
             ) : (
               <div
@@ -567,8 +620,8 @@ export default function LoungeView({
             )}
           </div>
 
-          <div className="relative h-full p-4 md:p-5 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2">
+          <div className="relative h-full p-4 md:p-5 flex flex-col gap-3 min-h-[220px]">
+            <div className="flex items-center justify-between gap-2 shrink-0">
               <div className="flex items-center gap-2">
                 <Compass className="w-3.5 h-3.5 text-kindle-accent" />
                 <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
@@ -577,7 +630,7 @@ export default function LoungeView({
               </div>
               <ModeSwitch
                 value={modes.discover}
-                onChange={(m) => setMode("discover", m)}
+                onChange={(m) => setMode("discover", m, true)}
                 options={[
                   { id: "trending", label: "Trending" },
                   { id: "audiobooks", label: "Audio" },
@@ -591,34 +644,40 @@ export default function LoungeView({
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.25 }}
-                className="flex-1 flex flex-col min-h-0"
+                transition={{ duration: 0.3 }}
+                className="flex-1 flex flex-col gap-3 min-h-0"
               >
                 {discoverHero ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onSearchDiscover) onSearchDiscover(discoverHero.title);
-                        else onOpenTab("discover");
-                      }}
-                      className="text-left group mb-3"
-                    >
-                      <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-accent mb-1">
-                        Featured
-                      </p>
-                      <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-2 group-hover:text-kindle-accent transition">
-                        {discoverHero.title}
-                      </h4>
-                      {discoverHero.author && (
-                        <p className="text-xs text-kindle-text-muted mt-1 truncate">
-                          {discoverHero.author}
+                    <div className="flex-1 flex items-center gap-3 min-h-0">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-accent">
+                          Featured
                         </p>
+                        <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
+                          {discoverHero.title}
+                        </h4>
+                        {discoverHero.author && (
+                          <p className="text-xs text-kindle-text-muted truncate">{discoverHero.author}</p>
+                        )}
+                      </div>
+                      {discoverHeroCover && (
+                        <div className="shrink-0 w-[4.75rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
+                          <img
+                            src={discoverHeroCover}
+                            alt=""
+                            className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
                       )}
-                    </button>
+                    </div>
 
                     {discoverRest.length > 0 && (
-                      <div className="mt-auto flex gap-2.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                      <div
+                        className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {discoverRest.map((book, i) => {
                           const cover = book.coverUrl
                             ? resolveCoverImageSrc(book.coverUrl) || book.coverUrl
@@ -631,7 +690,7 @@ export default function LoungeView({
                                 if (onSearchDiscover) onSearchDiscover(book.title);
                                 else onOpenTab("discover");
                               }}
-                              className="shrink-0 w-[3.35rem] aspect-[2/3] rounded-lg overflow-hidden border border-white/10 bg-kindle-card shadow-md hover:border-kindle-accent/50 hover:-translate-y-0.5 transition"
+                              className="shrink-0 w-[3.1rem] aspect-[2/3] rounded-lg overflow-hidden border border-white/10 bg-kindle-card shadow-md hover:border-kindle-accent/50 hover:-translate-y-0.5 transition"
                               title={book.title}
                             >
                               {cover ? (
@@ -656,30 +715,23 @@ export default function LoungeView({
                     )}
                   </>
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 py-6">
-                    <Compass className="w-8 h-8 text-kindle-text-muted opacity-30" />
-                    <p className="text-xs text-kindle-text-muted max-w-[16rem]">
-                      Open Discover once to fill trending picks here.
-                    </p>
+                  <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
+                    <Compass className="w-7 h-7 text-kindle-text-muted opacity-30" />
+                    <p className="text-xs text-kindle-text-muted">Tap to explore Discover</p>
                   </div>
                 )}
               </motion.div>
             </AnimatePresence>
 
-            <button
-              type="button"
-              onClick={() => onOpenTab("discover")}
-              className="self-start text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
-            >
+            <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
               Explore discover →
-            </button>
+            </p>
           </div>
         </TileShell>
 
-        {/* Guide — full width bottom */}
         <TileShell
-          delay={0.16}
-          className="order-4 md:order-none md:col-span-2 bg-kindle-card/60 p-3 md:p-4 min-h-[140px]"
+          delay={0.14}
+          className="order-4 md:order-none md:col-span-2 bg-kindle-card/60 p-3 md:p-4"
         >
           <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
         </TileShell>
