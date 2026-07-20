@@ -745,25 +745,15 @@ function LibraryManager({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {onOpenAnnotations && (
-            <button
-              type="button"
-              onClick={onOpenAnnotations}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider hover:bg-kindle-bg transition"
-              aria-label="Open annotations hub"
-            >
-              <span className="hidden sm:inline">Annotations</span>
-              <BookMarked className="w-4 h-4 sm:hidden text-kindle-text-muted" />
-            </button>
-          )}
           <button
+            type="button"
             onClick={() => {
               setIsManageMode(!isManageMode);
               setSelectedBookIds(new Set());
             }}
             className={`inline-flex items-center justify-center px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
-              isManageMode 
-                ? "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/30" 
+              isManageMode
+                ? "bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/30"
                 : "border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg"
             }`}
             title={isManageMode ? "Cancel" : "Manage Library"}
@@ -776,9 +766,9 @@ function LibraryManager({
       {/* 3. Full Library Section with Search/Filter */}
       <section className="w-full min-w-0 space-y-5">
         <div className="w-full space-y-4">
-          {/* Search Bar — full content width so it shares the same right edge as the header actions */}
-          <div className="w-full font-sans">
-            <div className="relative group w-full">
+          {/* Search + Annotations — same layout as mobile: manage in header, annotations beside search */}
+          <div className="flex items-center gap-2 sm:gap-3 w-full font-sans">
+            <div className="relative group flex-1 min-w-0">
               <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
               <input
                 id="library-search-input"
@@ -789,6 +779,19 @@ function LibraryManager({
                 className="w-full pl-12 pr-4 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
               />
             </div>
+
+            {onOpenAnnotations && (
+              <button
+                type="button"
+                onClick={onOpenAnnotations}
+                className="shrink-0 inline-flex items-center justify-center gap-2 p-4 sm:px-5 sm:py-3.5 bg-kindle-card border border-kindle-border rounded-2xl text-kindle-text-muted hover:text-kindle-text hover:border-kindle-text transition cursor-pointer shadow-sm"
+                aria-label="Open annotations hub"
+                title="Annotations"
+              >
+                <BookMarked className="w-5 h-5 sm:hidden" />
+                <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider">Annotations</span>
+              </button>
+            )}
           </div>
 
           {/* Shelves / Collections Chips (Bellow the search bar, smaller and compact) */}
