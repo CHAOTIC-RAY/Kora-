@@ -448,8 +448,8 @@ export default function LoungeView({
               />
             </div>
 
-            {/* Dense hero — large cover + tightly stacked meta */}
-            <div className="flex-1 min-h-[12rem] w-full text-left px-4 md:px-5 py-3 pointer-events-none">
+            {/* Hero: tall cover left (~45%), meta column right aligned to cover height */}
+            <div className="flex-1 min-h-[14rem] w-full text-left px-3.5 md:px-5 pb-3 pt-1 pointer-events-none">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={`${modes.continue}-${continueBook?.id || "empty"}`}
@@ -457,66 +457,70 @@ export default function LoungeView({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.35 }}
-                  className="h-full flex items-center gap-4 md:gap-5"
+                  className="h-full min-h-[14rem] flex items-stretch gap-3.5 md:gap-5"
                 >
                   {continueBook ? (
                     <>
-                      <div className="relative shrink-0 w-[7.75rem] sm:w-[8.5rem] md:w-[9.5rem] aspect-[2/3] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.4)] bg-kindle-card ring-1 ring-white/5">
+                      <div className="relative shrink-0 w-[42%] max-w-[11.5rem] self-stretch rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.45)] bg-kindle-card ring-1 ring-white/5">
                         {continueBook.coverUrl ? (
                           <CachedCoverImage
                             coverUrl={continueBook.coverUrl}
                             bookTitle={continueBook.title}
-                            className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+                            className={`absolute inset-0 w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
+                          <div className="absolute inset-0 flex items-center justify-center bg-kindle-bg">
                             {isAudiobook(continueBook) ? (
-                              <Headphones className="w-9 h-9 text-kindle-text-muted" />
+                              <Headphones className="w-10 h-10 text-kindle-text-muted" />
                             ) : (
-                              <BookOpen className="w-9 h-9 text-kindle-text-muted" />
+                              <BookOpen className="w-10 h-10 text-kindle-text-muted" />
                             )}
                           </div>
                         )}
                         {isAudiobook(continueBook) && (
-                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider leading-none">
+                          <span className="absolute top-2.5 right-2.5 px-1.5 py-0.5 rounded-md bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider leading-none shadow">
                             Audio
                           </span>
                         )}
                       </div>
-                      <div className="min-w-0 flex-1 flex flex-col justify-center gap-2">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-                          {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
-                        </p>
-                        <h4 className="text-lg md:text-2xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
-                          {continueBook.title}
-                        </h4>
-                        {continueAuthor && (
-                          <p className="text-sm text-kindle-text-muted truncate">{continueAuthor}</p>
-                        )}
-                        <div className="h-1.5 rounded-full bg-white/10 overflow-hidden w-full max-w-[16rem]">
-                          <motion.div
-                            className="h-full rounded-full bg-kindle-accent"
-                            initial={{ width: 0 }}
-                            animate={{ width: `${progress}%` }}
-                            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                          />
+                      <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5 gap-2">
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                            {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
+                          </p>
+                          <h4 className="text-xl md:text-2xl font-lexend font-bold text-kindle-text leading-[1.15] line-clamp-4">
+                            {continueBook.title}
+                          </h4>
+                          {continueAuthor ? (
+                            <p className="text-sm text-kindle-text-muted truncate">{continueAuthor}</p>
+                          ) : null}
                         </div>
-                        <span className="mt-0.5 inline-flex w-fit items-center gap-2 px-3.5 py-2 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
-                          {isAudiobook(continueBook) ? (
-                            <>
-                              <Play className="w-3.5 h-3.5 fill-current" /> Resume
-                            </>
-                          ) : (
-                            <>
-                              <BookOpen className="w-3.5 h-3.5" /> Resume
-                            </>
-                          )}
-                        </span>
+                        <div className="space-y-2.5 mt-auto">
+                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden w-full">
+                            <motion.div
+                              className="h-full rounded-full bg-kindle-accent"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${progress}%` }}
+                              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                            />
+                          </div>
+                          <span className="inline-flex w-fit items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
+                            {isAudiobook(continueBook) ? (
+                              <>
+                                <Play className="w-3.5 h-3.5 fill-current" /> Resume
+                              </>
+                            ) : (
+                              <>
+                                <BookOpen className="w-3.5 h-3.5" /> Resume
+                              </>
+                            )}
+                          </span>
+                        </div>
                       </div>
                     </>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-2 self-center">
                       <p className="text-sm text-kindle-text-muted">
                         Nothing in progress yet. Tap to find something on Discover.
                       </p>
