@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense, startTransition } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense, startTransition } from "react";
 import { 
   auth, 
   isRealFirebase, 
@@ -24,7 +24,9 @@ import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
 import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
+import LoungeView from "./components/LoungeView";
 import { canHydrateBook } from "./lib/crossDeviceSync";
+import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
 const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
 const BookReaderText = lazy(() => import("./components/BookReaderText"));
@@ -68,7 +70,7 @@ import {
   CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle, Rss,
-  RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench
+  RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench, Sofa
 } from "lucide-react";
 import JSZip from "jszip";
 import { LayoutGroup, motion } from "motion/react";
@@ -88,14 +90,14 @@ import {
   skinBodyClass,
 } from "./lib/appSkin";
 
-const MOBILE_TABS = [
+const BASE_MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
   { id: "discover" as const, label: "Discover", Icon: Compass },
   { id: "feed" as const, label: "Read", Icon: Rss },
   { id: "tools" as const, label: "Tools", Icon: Wrench },
 ];
 
-type AppTab = "library" | "discover" | "feed" | "tools" | "settings";
+type AppTab = "lounge" | "library" | "discover" | "feed" | "tools" | "settings";
 
 async function injectMetadataIntoEpub(
   fileBlob: Blob,
@@ -204,9 +206,14 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
 
 export default function App() {
   // Navigation & view states
-  const [activeTab, setActiveTab] = useState<AppTab>("library");
+  const [loungeEnabled, setLoungeEnabledState] = useState<boolean>(() => isLoungeEnabled());
+  const [activeTab, setActiveTab] = useState<AppTab>(() =>
+    isLoungeEnabled() ? "lounge" : "library"
+  );
   // Keep visited tabs mounted so switching doesn't remount Discover/Feed/Library.
-  const [mountedTabs, setMountedTabs] = useState<Set<AppTab>>(() => new Set<AppTab>(["library"]));
+  const [mountedTabs, setMountedTabs] = useState<Set<AppTab>>(
+    () => new Set<AppTab>([isLoungeEnabled() ? "lounge" : "library"])
+  );
   const switchTab = useCallback((tab: AppTab) => {
     setMountedTabs((prev) => {
       if (prev.has(tab)) return prev;
@@ -216,6 +223,25 @@ export default function App() {
     });
     startTransition(() => setActiveTab(tab));
   }, []);
+
+  const mobileTabs = useMemo(() => {
+    if (!loungeEnabled) return BASE_MOBILE_TABS;
+    return [
+      { id: "lounge" as const, label: "Lounge", Icon: Sofa },
+      ...BASE_MOBILE_TABS,
+    ];
+  }, [loungeEnabled]);
+
+  const handleLoungeEnabledChange = useCallback(
+    (enabled: boolean) => {
+      setLoungeEnabled(enabled);
+      setLoungeEnabledState(enabled);
+      if (!enabled && activeTab === "lounge") {
+        switchTab("library");
+      }
+    },
+    [activeTab, switchTab]
+  );
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
@@ -1822,9 +1848,9 @@ export default function App() {
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
             id="kora-logo-home"
-            onClick={() => switchTab("library")}
+            onClick={() => switchTab(loungeEnabled ? "lounge" : "library")}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none cursor-pointer shrink-0"
-            aria-label="Kora Library Home"
+            aria-label={loungeEnabled ? "Kora Lounge" : "Kora Library Home"}
           >
             <KoraIcon className="w-7 h-7 text-kindle-text" />
             <div className="hidden sm:block pr-4 border-r border-kindle-border">
@@ -1839,6 +1865,20 @@ export default function App() {
         {/* Tab Controls & Cloud Auth Sync Info */}
         <div className="flex items-center gap-2 shrink-0">
           <nav className="kora-desktop-nav hidden md:flex bg-kindle-bg p-1 rounded-xl items-center gap-1 border border-kindle-border">
+            {loungeEnabled && (
+              <button
+                id="lounge-tab"
+                onClick={() => switchTab("lounge")}
+                className={`kora-desktop-nav-item px-3 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
+                  activeTab === "lounge"
+                    ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active"
+                    : "text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                <Sofa className="w-3.5 h-3.5" />
+                <span>Lounge</span>
+              </button>
+            )}
             <button
               id="library-tab"
               onClick={() => switchTab("library")}
@@ -1921,6 +1961,26 @@ export default function App() {
         )}
 
         {/* Tab Displays — keep visited tabs mounted to avoid remount lag */}
+{loungeEnabled && mountedTabs.has("lounge") && (
+          <div
+            className="kora-tab-panel"
+            hidden={activeTab !== "lounge"}
+            inert={activeTab !== "lounge" ? true : undefined}
+          >
+            <LoungeView
+              books={books}
+              lastReadBook={lastReadBook}
+              userNickname={userNickname}
+              grayscaleCovers={grayscaleCovers}
+              onOpenBook={handleOpenBook}
+              onOpenTab={(tab) => switchTab(tab)}
+              onSearchDiscover={(query) => {
+                setDiscoverInitialQuery(query);
+                switchTab("discover");
+              }}
+            />
+          </div>
+        )}
 {mountedTabs.has("library") && (
           <div
             className="kora-tab-panel"
@@ -2056,6 +2116,8 @@ export default function App() {
             }}
             dailyNewsBriefEnabled={dailyNewsBriefEnabled}
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
+            loungeEnabled={loungeEnabled}
+            onChangeLoungeEnabled={handleLoungeEnabledChange}
             onToggleGrayscale={toggleGrayscale}
             onChangeTheme={(theme) => {
               setDisplayTheme(theme);
@@ -2101,6 +2163,8 @@ export default function App() {
             }}
             dailyNewsBriefEnabled={dailyNewsBriefEnabled}
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
+            loungeEnabled={loungeEnabled}
+            onChangeLoungeEnabled={handleLoungeEnabledChange}
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
@@ -2491,8 +2555,8 @@ export default function App() {
       {!readerOpen && (
       <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border/80 rounded-2xl kora-safe-bottom">
         <LayoutGroup id="kora-mobile-tabs">
-          <nav className="kora-tab-bar grid grid-cols-4 h-14 px-1.5 py-1" aria-label="Main">
-            {MOBILE_TABS.map(({ id, label, Icon }) => {
+          <nav className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`} aria-label="Main">
+            {mobileTabs.map(({ id, label, Icon }) => {
               const isActive = activeTab === id || (id === "tools" && activeTab === "settings");
               return (
                 <button

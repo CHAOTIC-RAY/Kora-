@@ -88,6 +88,8 @@ interface SettingsViewProps {
   onChangeDailyReminders?: (enabled: boolean) => void;
   dailyNewsBriefEnabled?: boolean;
   onChangeDailyNewsBrief?: (enabled: boolean) => void;
+  loungeEnabled?: boolean;
+  onChangeLoungeEnabled?: (enabled: boolean) => void;
   onToggleGrayscale: () => void;
   onToggleHideCovers?: () => void;
   onChangeTheme: (theme: string) => void;
@@ -169,6 +171,8 @@ function SettingsView({
   onChangeDailyReminders,
   dailyNewsBriefEnabled = false,
   onChangeDailyNewsBrief,
+  loungeEnabled = true,
+  onChangeLoungeEnabled,
   onToggleGrayscale,
   onToggleHideCovers,
   onChangeTheme,
@@ -1178,6 +1182,9 @@ function SettingsView({
               </Row>
               <Row title="Daily News Brief" desc="Morning notification with headlines from your RSS feeds">
                 <Toggle on={dailyNewsBriefEnabled} onClick={() => onChangeDailyNewsBrief?.(!dailyNewsBriefEnabled)} />
+              </Row>
+              <Row title="Lounge tab" desc="Show the Lounge dashboard as your default home screen">
+                <Toggle on={loungeEnabled} onClick={() => onChangeLoungeEnabled?.(!loungeEnabled)} />
               </Row>
             </div>
           )}
