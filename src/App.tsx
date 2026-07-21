@@ -59,6 +59,7 @@ import Quote from "./components/Quote";
 import FeedView from "./components/FeedView";
 import DownloadBookBtn from "./components/DownloadBookBtn";
 import OnboardingModal from "./components/OnboardingModal";
+import GuideSetupPopup from "./components/GuideSetupPopup";
 import DailyReminderModal from "./components/DailyReminderModal";
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
@@ -293,6 +294,7 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     return localStorage.getItem("kora_onboarding_completed") !== "true";
   });
+  const [showGuideSetup, setShowGuideSetup] = useState(false);
   const [showFirstBookNudge, setShowFirstBookNudge] = useState<boolean>(() => {
     return localStorage.getItem("kora_first_book_nudge") === "true";
   });
@@ -328,6 +330,20 @@ export default function App() {
       }
     }
   }, [dailyRemindersEnabled, showOnboarding]);
+
+  // Interactive guides can open setup popup, auth, settings, etc.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const open = (e as CustomEvent).detail?.open as string | undefined;
+      if (!open) return;
+      if (open === "setup") setShowGuideSetup(true);
+      else if (open === "auth") setShowAuthModal(true);
+      else if (open === "settings") switchTab("settings");
+      // feed-manage / tools-sync / tools-tts handled inside those views
+    };
+    window.addEventListener("kora-guide:open", onOpen);
+    return () => window.removeEventListener("kora-guide:open", onOpen);
+  }, []);
 
   const handleOnboardingComplete = (prefs: {
     nickname: string;
@@ -2001,6 +2017,7 @@ export default function App() {
 
           <div className="flex items-center gap-1">
             <button
+              data-guide="nav-settings"
               onClick={() => switchTab("settings")}
               className={`kora-chrome-btn p-2 rounded-xl transition cursor-pointer relative z-40 ${
                 activeTab === "settings"
@@ -2770,6 +2787,29 @@ export default function App() {
         appSkin={appSkin}
         onAppSkinChange={changeAppSkin}
         onOpenAuth={() => setShowAuthModal(true)}
+      />
+
+      <GuideSetupPopup
+        isOpen={showGuideSetup}
+        initial={{
+          fontSize: readerPrefs.fontSize || 18,
+          isContinuous: !!readerPrefs.isContinuous,
+        }}
+        onSave={(values) => {
+          const updated = {
+            ...readerPrefs,
+            fontSize: values.fontSize,
+            isContinuous: values.isContinuous,
+          };
+          setReaderPrefs(updated);
+          localStorage.setItem("kora_reader_prefs", JSON.stringify(updated));
+          setShowGuideSetup(false);
+          emitGuideEvent("kora-guide:setup-saved", values);
+        }}
+        onSkip={() => {
+          setShowGuideSetup(false);
+          emitGuideEvent("kora-guide:setup-saved", { skipped: true });
+        }}
       />
 
       <PwaLifecycleBanner />

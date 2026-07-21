@@ -265,7 +265,19 @@ export default function GuideSpotlight({
                     )}
                     {step.action === "wait-event" && (
                       <span className="text-[10px] text-kindle-text-muted font-medium animate-pulse">
-                        Waiting for you…
+                        {step.open === "setup"
+                          ? "Complete the setup popup…"
+                          : step.event?.includes("search")
+                            ? "Submit a search…"
+                            : step.event?.includes("book-added")
+                              ? "Download a book…"
+                              : step.event?.includes("reader")
+                                ? "Open a book…"
+                                : step.event?.includes("feed")
+                                  ? "Add a source…"
+                                  : step.event?.includes("text-selected")
+                                    ? "Long-press text…"
+                                    : "Waiting for you…"}
                       </span>
                     )}
                     <button

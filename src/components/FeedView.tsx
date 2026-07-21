@@ -357,6 +357,16 @@ function FeedView({
   const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
   const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
 
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      if ((e as CustomEvent).detail?.open === "feed-manage") {
+        setShowManageFeeds(true);
+      }
+    };
+    window.addEventListener("kora-guide:open", onOpen);
+    return () => window.removeEventListener("kora-guide:open", onOpen);
+  }, []);
+
   const loadLocalState = useCallback(() => {
     const subs = ensureDefaultSubscriptions();
     setSubscriptions(subs);

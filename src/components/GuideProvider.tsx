@@ -172,6 +172,17 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
     onSwitchTab(currentStep.tab);
   }, [currentStep?.id, currentStep?.tab, onSwitchTab, paused]);
 
+  // Auto-open popup/panel when step requests it
+  useEffect(() => {
+    if (paused || !currentStep?.open) return;
+    const t = window.setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent("kora-guide:open", { detail: { open: currentStep.open } })
+      );
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [currentStep?.id, currentStep?.open, paused]);
+
   // Wait for custom events
   useEffect(() => {
     if (paused || !currentStep || currentStep.action !== "wait-event" || !currentStep.event) {

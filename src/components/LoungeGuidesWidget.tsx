@@ -86,7 +86,7 @@ export default function LoungeGuidesWidget({
                 Guides
               </h3>
               <p className="text-[10px] text-kindle-text-muted truncate">
-                Quick tours · swipe or × to hide
+                Hands-on tab tours · setup popup
               </p>
             </div>
           </div>

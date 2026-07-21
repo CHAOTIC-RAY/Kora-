@@ -242,6 +242,23 @@ function SettingsView({
     });
   };
 
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const open = (e as CustomEvent).detail?.open as string | undefined;
+      if (open === "tools-sync") {
+        scrollToToolsSection("devices-sync-panel");
+      } else if (open === "tools-tts") {
+        scrollToToolsSection("tts-tools-panel", () => {
+          setExpandedCategories((prev) =>
+            prev.tts ? prev : { ...prev, tts: true }
+          );
+        });
+      }
+    };
+    window.addEventListener("kora-guide:open", onOpen);
+    return () => window.removeEventListener("kora-guide:open", onOpen);
+  }, []);
+
   const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
   const [showLiveLogs, setShowLiveLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState(() => logger.getLogs());

@@ -385,8 +385,8 @@ export default function LoungeView({
   };
 
   return (
-    <div className="pb-6 md:pb-10 space-y-2.5 md:space-y-3">
-      <header className="relative overflow-hidden pb-0.5">
+    <div className="pb-6 md:pb-10 space-y-4 md:space-y-5">
+      <header className="relative overflow-hidden pb-1">
         <div className="flex items-center gap-2.5">
           <span
             className="block h-px w-5 bg-kindle-accent/70"
@@ -451,9 +451,9 @@ export default function LoungeView({
       </header>
 
       {/* Bento: independent column stacks — widgets size to content, no equal-row stretch */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 md:items-start">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 md:items-start">
         {/* Left column — Continue first, then Shelf + Guides fill under it */}
-        <div className="flex flex-col gap-3 md:gap-4 min-w-0">
+        <div className="flex flex-col gap-4 md:gap-5 min-w-0">
           <TileShell
             delay={0.02}
             className="relative bg-kindle-card"
@@ -644,7 +644,7 @@ export default function LoungeView({
         </div>
 
         {/* Right column — Paper, Discover, Notes stack independently */}
-        <div className="flex flex-col gap-3 md:gap-4 min-w-0">
+        <div className="flex flex-col gap-4 md:gap-5 min-w-0">
           <TileShell
             delay={0.06}
             className="bg-kindle-card/55 flex flex-col"

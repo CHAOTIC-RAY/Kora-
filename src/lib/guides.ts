@@ -1,6 +1,9 @@
 /**
  * Interactive guides — catalog, persistence, and helpers.
  * Status: pending | completed | dismissed (swipe forever).
+ *
+ * Guides take you to real tabs/controls (spotlight + tap/wait),
+ * and use a shared setup popup for reading preferences.
  */
 
 export type GuideId =
@@ -16,6 +19,15 @@ export type GuideStatus = "pending" | "completed" | "dismissed";
 
 export type GuideStepAction = "next" | "tap-target" | "wait-event";
 
+/** Auto-open a real UI surface when the step becomes active */
+export type GuideOpenAction =
+  | "setup"
+  | "auth"
+  | "settings"
+  | "feed-manage"
+  | "tools-sync"
+  | "tools-tts";
+
 export type GuideStep = {
   id: string;
   title: string;
@@ -24,6 +36,8 @@ export type GuideStep = {
   target?: string;
   /** Switch app tab before showing this step */
   tab?: "lounge" | "library" | "discover" | "feed" | "tools" | "settings";
+  /** Open a popup/panel when this step activates */
+  open?: GuideOpenAction;
   action?: GuideStepAction;
   /** CustomEvent name when action === wait-event */
   event?: string;
@@ -52,44 +66,45 @@ const JOURNEY_KEY = "kora_guides_journey_v1";
 export const GUIDE_CATALOG: GuideDefinition[] = [
   {
     id: "sync-setup",
-    title: "Sync & account",
-    short: "Keep your shelf across devices",
-    blurb: "Sign in once so progress, highlights, and library metadata follow you. Files stay on-device.",
+    title: "Setup & sync",
+    short: "Prefs + cross-device sync",
+    blurb: "We'll open a setup popup, then take you to Sign in and Devices & Sync.",
     icon: "cloud",
     journey: true,
     loungeWidget: true,
     steps: [
       {
-        id: "sync-intro",
-        title: "Cross-device sync",
-        body: "Kora syncs library metadata when you sign in. Book files stay on each device — use peer transfer or WebDAV in Tools for files.",
+        id: "setup-prefs",
+        title: "Reading setup",
+        body: "A setup popup will open — pick font size and tap vs scroll. Save when you're happy.",
         tab: "lounge",
-        action: "next",
-        cta: "Show me where",
+        open: "setup",
+        action: "wait-event",
+        event: "kora-guide:setup-saved",
       },
       {
         id: "sync-sign-in",
         title: "Sign in (optional)",
-        body: "Tap Sign in in the header to create an account, or continue as a guest. You can always sign in later from Settings.",
+        body: "Tap Sign in in the header to sync progress across devices — or continue as a guest.",
         target: '[data-guide="auth-open"]',
         tab: "lounge",
         action: "next",
-        cta: "Continue",
+        cta: "Next: Tools",
       },
       {
-        id: "sync-tools",
-        title: "Devices & Sync",
-        body: "In Tools → Devices & Sync you can name this device, enable peer sharing, or connect WebDAV.",
+        id: "sync-tools-nav",
+        title: "Open Tools",
+        body: "Tap Tools — Devices & Sync lives there.",
         target: '[data-guide="nav-tools"]',
-        tab: "tools",
         action: "tap-target",
       },
       {
         id: "sync-panel",
-        title: "Open Devices & Sync",
-        body: "Tap Sync to jump to Devices & Sync and review this device. When you're ready, continue.",
+        title: "Devices & Sync",
+        body: "Tap Sync to jump to Devices & Sync. Name this device or connect WebDAV when you're ready.",
         target: '[data-guide="tools-sync"]',
         tab: "tools",
+        open: "tools-sync",
         action: "next",
         cta: "Done with sync",
       },
@@ -99,7 +114,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
     id: "first-book-search",
     title: "Find your first book",
     short: "Search & download from Discover",
-    blurb: "We'll walk you through searching Discover and starting a download.",
+    blurb: "We'll take you to Discover, have you search, download, then open the book.",
     icon: "search",
     journey: true,
     loungeWidget: true,
@@ -107,14 +122,14 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "search-tab",
         title: "Open Discover",
-        body: "Discover is where you search archives, bestsellers, and audiobooks. Tap Discover to continue.",
+        body: "Tap Discover — that's where you search archives and bestsellers.",
         target: '[data-guide="nav-discover"]',
         action: "tap-target",
       },
       {
         id: "search-box",
         title: "Search for a title",
-        body: "Type a book you love — title or author — then submit. Try something you already know so the download is easy to spot.",
+        body: "Type a book you know and submit. We'll wait for your search.",
         target: '[data-guide="discover-search"]',
         tab: "discover",
         action: "wait-event",
@@ -122,8 +137,8 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       },
       {
         id: "search-result",
-        title: "Pick a result",
-        body: "Tap a cover or result to open details, then start the download. Kora will move you to Library when the file is ready.",
+        title: "Download a result",
+        body: "Open a result and start the download. We'll continue when the book is on your shelf.",
         target: '[data-guide="discover-results"]',
         tab: "discover",
         action: "wait-event",
@@ -132,7 +147,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "search-open",
         title: "Open it to read",
-        body: "Great — your book is on the shelf. Open it from Library (or Continue on Lounge) to learn the reader.",
+        body: "Tap Library, then open your new book — next tour covers the reader.",
         target: '[data-guide="nav-library"]',
         tab: "library",
         action: "wait-event",
@@ -144,22 +159,38 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
     id: "reader-tour",
     title: "Reader studio",
     short: "Settings, narrator, notes",
-    blurb: "Learn display settings, Voice Narrator, highlights, and chapter notes inside a book.",
+    blurb: "Open a book and we'll spotlight display settings, Narrator, and highlights.",
     icon: "book",
     journey: true,
     loungeWidget: true,
     steps: [
       {
+        id: "reader-need-book",
+        title: "Open a book first",
+        body: "Open any EPUB from Library or Lounge Continue. We'll continue when the reader opens.",
+        tab: "library",
+        action: "wait-event",
+        event: "kora-guide:reader-opened",
+      },
+      {
+        id: "reader-setup",
+        title: "Quick reading setup",
+        body: "Confirm font size and page-turn style in the setup popup — same prefs used everywhere.",
+        open: "setup",
+        action: "wait-event",
+        event: "kora-guide:setup-saved",
+      },
+      {
         id: "reader-settings",
         title: "Display settings",
-        body: "Tap the gear to tune font size, theme, margins, and page-turn style (tap pages vs continuous scroll). Your eye comfort lives here.",
+        body: "Tap the gear to open in-reader settings — theme, margins, and more.",
         target: "#toggle-settings-btn",
         action: "tap-target",
       },
       {
         id: "reader-settings-done",
         title: "Tune to taste",
-        body: "Adjust anything you like, then close the panel (or tap Next) when you're ready for Voice Narrator.",
+        body: "Adjust anything you like, then continue for Voice Narrator.",
         target: '[data-guide="reader-settings-panel"], #toggle-settings-btn',
         action: "next",
         cta: "Next: Narrator",
@@ -167,28 +198,21 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "reader-narrator",
         title: "Voice Narrator",
-        body: "Tap the headphones icon to hear the page read aloud. Speed and voice are under Tools → Read Aloud for conversions.",
+        body: "Tap headphones to hear the page read aloud.",
         target: "#toggle-audiobook-btn",
         action: "tap-target",
       },
       {
-        id: "reader-narrator-done",
-        title: "Listen or pause",
-        body: "Play a few sentences, then continue. Narrator works offline with the built-in voices on your device.",
-        action: "next",
-        cta: "Next: Notes",
-      },
-      {
         id: "reader-notes",
         title: "Highlights & notes",
-        body: "Open Highlights & Notes. Long-press text in the page to select, highlight, or look up a word.",
+        body: "Open Highlights & Notes, then long-press text on the page to select.",
         target: '[data-guide="reader-notes-btn"]',
         action: "tap-target",
       },
       {
         id: "reader-select",
         title: "Try a selection",
-        body: "Long-press a word on the page. You'll get highlight, note, and dictionary actions. That finishes the reader tour.",
+        body: "Long-press a word — highlight, note, or look it up. That finishes this tour.",
         action: "wait-event",
         event: "kora-guide:text-selected",
       },
@@ -198,7 +222,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
     id: "news-feed",
     title: "Morning paper",
     short: "Read tab & headlines",
-    blurb: "Swipe stories, save for later, and skim your Daily Brief from sources you picked.",
+    blurb: "We'll open Read, show the feed, then Manage Sources for your RSS list.",
     icon: "rss",
     journey: true,
     loungeWidget: true,
@@ -206,28 +230,28 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "feed-open",
         title: "Open Read",
-        body: "Your news lives on the Read tab. We'll switch there for you — watch the nav highlight.",
+        body: "Tap Read — your headlines and Daily Brief live here.",
         target: '[data-guide="nav-feed"]',
-        tab: "feed",
-        action: "next",
-        cta: "Show my feeds",
+        action: "tap-target",
       },
       {
         id: "feed-cards",
-        title: "Swipe the cards",
-        body: "Swipe a headline right to mark read, left to save. Tap a card to open the article reader.",
+        title: "Use the cards",
+        body: "Swipe a headline right to mark read, left to save. Tap a card to open the article.",
         target: '[data-guide="feed-list"]',
         tab: "feed",
         action: "next",
-        cta: "Got it",
+        cta: "Next: Sources",
       },
       {
         id: "feed-manage",
         title: "Manage sources",
-        body: "Tap Manage anytime to toggle Maldives / international feeds or add a custom RSS URL.",
+        body: "We'll open Manage Sources — toggle feeds or add a custom RSS URL.",
         target: '[data-guide="feed-manage"]',
         tab: "feed",
-        action: "tap-target",
+        open: "feed-manage",
+        action: "next",
+        cta: "Done",
       },
     ],
   },
@@ -235,14 +259,14 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
     id: "narrator-mode",
     title: "Try Voice Narrator",
     short: "Hands-free reading",
-    blurb: "Open any ebook and start Voice Narrator for the first time.",
+    blurb: "Open a book, then tap headphones — we'll guide each tap.",
     icon: "headphones",
     loungeWidget: true,
     steps: [
       {
         id: "narrator-open-book",
         title: "Open a book",
-        body: "Open any EPUB from Library or Lounge Continue, then we'll highlight Narrator.",
+        body: "Open any EPUB from Library. We'll continue when the reader opens.",
         tab: "library",
         action: "wait-event",
         event: "kora-guide:reader-opened",
@@ -257,7 +281,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "narrator-done",
         title: "You're set",
-        body: "Narrator remembers pace in Tools. Enjoy hands-free chapters.",
+        body: "Narrator pace and voices live under Tools → Read Aloud for conversions.",
         action: "next",
         cta: "Done",
       },
@@ -267,29 +291,30 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
     id: "audiobook-generator",
     title: "Audiobook generator",
     short: "Turn text into audio",
-    blurb: "Use Tools → Read Aloud to convert chapters into an offline audiobook.",
+    blurb: "We'll take you to Tools → Read Aloud and open the converter.",
     icon: "wrench",
     loungeWidget: true,
     steps: [
       {
         id: "tts-nav",
         title: "Open Tools",
-        body: "Audiobook conversion lives under Tools. Tap Tools to continue.",
+        body: "Tap Tools — audiobook conversion lives here.",
         target: '[data-guide="nav-tools"]',
         action: "tap-target",
       },
       {
         id: "tts-tile",
         title: "Read Aloud",
-        body: "Tap Read Aloud to jump to the built-in audiobook converter.",
+        body: "Tap Read Aloud — we'll scroll you to the converter.",
         target: '[data-guide="tools-tts"]',
         tab: "tools",
+        open: "tools-tts",
         action: "tap-target",
       },
       {
         id: "tts-panel",
         title: "Generate audio",
-        body: "Pick a book from your library, choose a voice, and generate. Files stay on this device for offline listening.",
+        body: "Pick a library book, choose a voice, and generate. Files stay on this device.",
         target: '[data-guide="tts-tools-panel"]',
         tab: "tools",
         action: "next",
@@ -301,31 +326,31 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
     id: "add-news-source",
     title: "Add a news source",
     short: "Custom RSS",
-    blurb: "Paste any RSS/Atom URL into Manage Sources on the Read tab.",
+    blurb: "We'll open Read → Manage Sources so you can paste an RSS URL.",
     icon: "plus",
     loungeWidget: true,
     steps: [
       {
         id: "add-feed-tab",
         title: "Open Read",
-        body: "We'll open the Read tab so you can add a custom source.",
+        body: "Tap Read to manage your news sources.",
         target: '[data-guide="nav-feed"]',
-        tab: "feed",
-        action: "next",
-        cta: "Continue",
+        action: "tap-target",
       },
       {
         id: "add-feed-manage",
         title: "Manage sources",
-        body: "Tap Manage to open your feed list.",
+        body: "Manage Sources is opening — you'll add a custom feed next.",
         target: '[data-guide="feed-manage"]',
         tab: "feed",
-        action: "tap-target",
+        open: "feed-manage",
+        action: "next",
+        cta: "Show URL field",
       },
       {
         id: "add-feed-url",
         title: "Paste an RSS URL",
-        body: "Enter a feed URL (many news sites publish /rss or /feed) and add it. We'll finish when a source is added.",
+        body: "Enter a feed URL (/rss or /feed on many sites) and add it. We'll finish when a source is added.",
         target: '[data-guide="feed-add-url"]',
         tab: "feed",
         action: "wait-event",
@@ -384,7 +409,6 @@ export function pickLoungeGuideWidgets(limit = 2): GuideDefinition[] {
   const pending = GUIDE_CATALOG.filter(
     (g) => g.loungeWidget && getGuideStatus(g.id) === "pending"
   );
-  // Stable-ish shuffle per day so the set feels random but not frantic
   const day = Math.floor(Date.now() / 86_400_000);
   const scored = pending.map((g, i) => {
     const hash = (g.id.charCodeAt(0) * 31 + g.id.length * 17 + day + i * 13) % 997;
