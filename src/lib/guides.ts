@@ -472,9 +472,9 @@ export function clearJourney() {
   saveJourney(null);
 }
 
-/** Default post-onboarding queue — guide book first, then Discover + Read. */
+/** Default post-onboarding queue — guide book only; more guides come from the last chapter. */
 export function startPostOnboardingJourney() {
-  const queue: GuideId[] = ["walkthrough-book", "first-book-search", "news-feed"];
+  const queue: GuideId[] = ["walkthrough-book"];
   const filtered = queue.filter((id) => getGuideStatus(id) === "pending");
   if (!filtered.length) {
     saveJourney(null);

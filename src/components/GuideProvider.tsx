@@ -90,6 +90,12 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
 
       setActive(null);
 
+      if (guideId === "walkthrough-book") {
+        saveJourney(null);
+        setJourney(null);
+        return;
+      }
+
       setJourney((prev) => {
         const j = prev || loadJourney();
         if (!j?.active) return j;

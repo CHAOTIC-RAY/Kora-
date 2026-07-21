@@ -491,7 +491,7 @@ export default function App() {
     );
     if (wantTour) {
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("kora-guide:start-journey"));
+        window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id: "walkthrough-book" } }));
       }, 700);
     }
   };
@@ -2163,6 +2163,13 @@ export default function App() {
     setActiveBook(book);
     setLastReadBook(book);
     localStorage.setItem("kindle_last_read", JSON.stringify(book));
+    if (isWalkthroughBook(book)) {
+      setReaderPrefs((prev: typeof readerPrefs) => {
+        const next = { ...prev, isContinuous: true };
+        localStorage.setItem("kora_reader_prefs", JSON.stringify(next));
+        return next;
+      });
+    }
     emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
     if (isWalkthroughBook(book)) {
       // Complete the Lounge "open the book" step first, then drop any spotlight.

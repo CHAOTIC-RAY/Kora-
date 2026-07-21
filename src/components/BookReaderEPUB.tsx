@@ -1158,8 +1158,49 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     currentChapterIdx >= chapters.length - 1 &&
     (useScrollLayout || currentPageNum >= totalPages);
 
+  const syncSelectionFromRange = useCallback((range: Range, textOverride?: string) => {
+    const container = contentRef.current;
+    if (!container) return;
+    if (!container.contains(range.startContainer) && !container.contains(range.endContainer)) return;
+
+    const text = (textOverride ?? range.toString()).trim();
+    if (!text) return;
+
+    justSelectedAtRef.current = Date.now();
+    setSelectedText(text);
+    try {
+      window.dispatchEvent(new CustomEvent("kora-guide:text-selected", { detail: { len: text.length } }));
+    } catch {
+      /* ignore */
+    }
+
+    const rect = range.getBoundingClientRect();
+    const rects = range.getClientRects();
+    if (rects.length > 0) {
+      const firstRect = rects[0];
+      const lastRect = rects[rects.length - 1];
+      setSelectionPins({
+        start: { x: firstRect.left, y: firstRect.top, height: firstRect.height },
+        end: { x: lastRect.right, y: lastRect.top, height: lastRect.height },
+      });
+    } else {
+      setSelectionPins({ start: null, end: null });
+    }
+
+    setSelectionCoords({
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 10,
+      top: rect.top,
+      bottom: rect.bottom,
+    });
+    void prefetchSelectionDictionary(text);
+  }, [prefetchSelectionDictionary]);
+
   // Native text selection toolbar — no separate "selection mode" required
   useEffect(() => {
+    const readerRoot = document.getElementById("epub-reader-container");
+    if (!readerRoot) return;
+
     let rafId: number | null = null;
 
     const handleSelection = () => {
@@ -1184,46 +1225,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               const container = contentRef.current;
               // Only trigger selection mode if selecting text inside the book reader content area
                 if (container && (container.contains(range.startContainer) || container.contains(range.endContainer))) {
-                const text = selection.toString().trim();
-                justSelectedAtRef.current = Date.now();
-                setSelectedText(text);
-                if (text.length > 0) {
-                  try {
-                    window.dispatchEvent(new CustomEvent("kora-guide:text-selected", { detail: { len: text.length } }));
-                  } catch {
-                    /* ignore */
-                  }
-                }
-                
-                const rect = range.getBoundingClientRect();
-                
-                const rects = range.getClientRects();
-                if (rects.length > 0) {
-                  const firstRect = rects[0];
-                  const lastRect = rects[rects.length - 1];
-                  setSelectionPins({
-                    start: {
-                      x: firstRect.left,
-                      y: firstRect.top,
-                      height: firstRect.height
-                    },
-                    end: {
-                      x: lastRect.right,
-                      y: lastRect.top,
-                      height: lastRect.height
-                    }
-                  });
-                } else {
-                  setSelectionPins({ start: null, end: null });
-                }
-
-                setSelectionCoords({
-                  x: rect.left + rect.width / 2,
-                  y: rect.bottom + 10,
-                  top: rect.top,
-                  bottom: rect.bottom,
-                });
-                void prefetchSelectionDictionary(text);
+                syncSelectionFromRange(range);
               }
             }
           } catch (e) {
@@ -1306,30 +1308,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       if (!sel) return false;
       sel.removeAllRanges();
       sel.addRange(newRange);
-      justSelectedAtRef.current = Date.now();
-      setSelectedText(word);
-      try {
-        const rect = newRange.getBoundingClientRect();
-        const rects = newRange.getClientRects();
-        if (rects.length > 0) {
-          const firstRect = rects[0];
-          const lastRect = rects[rects.length - 1];
-          setSelectionPins({
-            start: { x: firstRect.left, y: firstRect.top, height: firstRect.height },
-            end: { x: lastRect.right, y: lastRect.top, height: lastRect.height },
-          });
-        }
-        setSelectionCoords({
-          x: rect.left + rect.width / 2,
-          y: rect.bottom + 10,
-          top: rect.top,
-          bottom: rect.bottom,
-        });
-        void prefetchSelectionDictionary(word);
-        lookupDictionary(word);
-      } catch {
-        /* ignore */
-      }
+      syncSelectionFromRange(newRange, word);
       return true;
     };
 
@@ -1376,8 +1355,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       try {
         sel.removeAllRanges();
         sel.addRange(fixed);
-        justSelectedAtRef.current = Date.now();
         gestureSelectActive = true;
+        syncSelectionFromRange(fixed);
         return true;
       } catch {
         return false;
@@ -1480,7 +1459,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         // Don't hijack an in-progress drag selection
         if (movedDuringPress || !isPointerDownRef.current) return;
         selectWordAtPoint(pressStartX, pressStartY);
-      }, 380);
+      }, 320);
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -1530,26 +1509,26 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       if (e.cancelable) e.preventDefault();
     };
 
-    // Capture phase so we preventDefault before native column selection starts.
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("pointermove", handlePointerMove, true);
-    document.addEventListener("pointerup", handlePointerUp, true);
-    document.addEventListener("pointercancel", handlePointerUp, true);
-    document.addEventListener("touchmove", handleTouchMove, { passive: false });
+    // Capture phase on the reader only — avoids fighting the rest of the app.
+    readerRoot.addEventListener("pointerdown", handlePointerDown, true);
+    readerRoot.addEventListener("pointermove", handlePointerMove, true);
+    readerRoot.addEventListener("pointerup", handlePointerUp, true);
+    readerRoot.addEventListener("pointercancel", handlePointerUp, true);
+    readerRoot.addEventListener("touchmove", handleTouchMove, { passive: false });
 
     return () => {
       document.removeEventListener("selectionchange", handleSelection);
       document.removeEventListener("dblclick", handleDoubleClick);
       document.removeEventListener("click", handleTripleClick);
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("pointermove", handlePointerMove, true);
-      document.removeEventListener("pointerup", handlePointerUp, true);
-      document.removeEventListener("pointercancel", handlePointerUp, true);
-      document.removeEventListener("touchmove", handleTouchMove);
+      readerRoot.removeEventListener("pointerdown", handlePointerDown, true);
+      readerRoot.removeEventListener("pointermove", handlePointerMove, true);
+      readerRoot.removeEventListener("pointerup", handlePointerUp, true);
+      readerRoot.removeEventListener("pointercancel", handlePointerUp, true);
+      readerRoot.removeEventListener("touchmove", handleTouchMove);
       if (pressTimer) clearTimeout(pressTimer);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [prefetchSelectionDictionary]);
+  }, [prefetchSelectionDictionary, syncSelectionFromRange]);
 
   // Prevent viewport rubber-banding only while dragging selection handles.
   // Scope preventDefault — blanket touchmove blocks break iOS Safari scrolling.
