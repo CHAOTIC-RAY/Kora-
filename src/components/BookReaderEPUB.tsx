@@ -493,7 +493,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   const useDoubleColumns = doubleColumns && !isMobile;
-  const useScrollLayout = isContinuous;
+  const isWalkthroughGuide = isWalkthroughBook(book);
+  const useScrollLayout = isWalkthroughGuide || isContinuous;
   const columnGapPx = useDoubleColumns ? 40 : 0;
   // Full-width tap zones fight touch text selection on phones — keep turns in the margins.
   const effectivePageTurnMode =
@@ -2595,7 +2596,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       data-scroll-mode={useScrollLayout ? "continuous" : "paged"}
       className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200 ${
         useScrollLayout ? "kora-scroll-reader" : "kora-paged-reader"
-      }`}
+      }${isWalkthroughGuide ? " kora-walkthrough-reader" : ""}`}
       style={{
         paddingTop: "var(--kora-safe-top)",
         paddingBottom: "var(--kora-safe-bottom)",
@@ -3980,11 +3981,22 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
                       onClick={handleEpubContentClick}
                     />
+
+                    {useScrollLayout && (
+                      <div
+                        className={`mt-10 pt-4 border-t flex justify-between items-center text-[10px] font-sans opacity-55 ${activeTheme.border} ${activeTheme.text}`}
+                      >
+                        <span>End of {chapters[currentChapterIdx]?.title}</span>
+                        <span>
+                          {Math.round(((currentChapterIdx + 1) / Math.max(1, chapters.length)) * 100)}% read
+                        </span>
+                      </div>
+                    )}
                   </motion.article>
                 </div>
 
-                {/* Chapter end label — outside column flow so it doesn't create blank trailing pages */}
-                {(useScrollLayout || currentPageNum >= totalPages) && (
+                {/* Chapter end label — paged mode only (absolute, outside column flow) */}
+                {!useScrollLayout && currentPageNum >= totalPages && (
                   <div
                     className={`pointer-events-none absolute left-0 right-0 bottom-14 md:bottom-16 px-4 md:px-8 flex justify-between items-center text-[10px] font-sans opacity-55 ${activeTheme.text}`}
                   >

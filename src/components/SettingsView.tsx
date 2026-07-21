@@ -28,7 +28,10 @@ import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
-import { APP_SKINS, type AppSkinId } from "../lib/appSkin";
+import {
+  isWalkthroughAdvancedMenuEnabled,
+  setWalkthroughAdvancedMenuEnabled,
+} from "../lib/walkthroughBook";
 
 const SKIN_PREVIEW: Record<
   AppSkinId,
@@ -209,9 +212,19 @@ function SettingsView({
   });
 
   const [newsReaderPrefs, setNewsReaderPrefs] = useState<NewsReaderPrefs>(() => loadNewsReaderPrefs());
+  const [walkthroughAdvancedMenu, setWalkthroughAdvancedMenu] = useState(() =>
+    isWalkthroughAdvancedMenuEnabled()
+  );
   const setNRP = (patch: Partial<NewsReaderPrefs>) => {
     setNewsReaderPrefs(patchNewsReaderPrefs(patch));
   };
+
+  useEffect(() => {
+    const syncWalkthroughMenu = () =>
+      setWalkthroughAdvancedMenu(isWalkthroughAdvancedMenuEnabled());
+    window.addEventListener("kora-walkthrough-visibility", syncWalkthroughMenu);
+    return () => window.removeEventListener("kora-walkthrough-visibility", syncWalkthroughMenu);
+  }, []);
 
   useEffect(() => {
     const sync = () => setNewsReaderPrefs(loadNewsReaderPrefs());
@@ -1724,6 +1737,19 @@ function SettingsView({
               <p className="text-[10px] leading-relaxed text-kindle-text-muted italic">
                 A minimal, high-performance reader environment for digital sovereignty.
               </p>
+              <Row
+                title="Walkthrough book options"
+                desc="Show edit, delete, and metadata actions on Getting started with Kora"
+              >
+                <Toggle
+                  on={walkthroughAdvancedMenu}
+                  onClick={() => {
+                    const next = !walkthroughAdvancedMenu;
+                    setWalkthroughAdvancedMenuEnabled(next);
+                    setWalkthroughAdvancedMenu(next);
+                  }}
+                />
+              </Row>
               {onOpenOnboarding && (
                 <button
                   type="button"

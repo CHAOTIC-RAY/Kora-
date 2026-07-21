@@ -132,15 +132,31 @@ export default function GuideSpotlight({
 
   /** Full-reader / page-interaction steps must not trap pointer events in the dim panes. */
   const passThroughHole =
-    !!step.target &&
-    (step.target.includes("reader-surface") ||
-      step.event === "kora-guide:text-selected" ||
-      step.event === "kora-guide:walkthrough-opened");
+    guide.id === "walkthrough-book" ||
+    (!!step.target &&
+      (step.target.includes("reader-surface") ||
+        step.event === "kora-guide:text-selected" ||
+        step.event === "kora-guide:walkthrough-opened"));
 
   // Tip card placement
   const tipStyle = (() => {
+    const pinBottom =
+      step.placement === "bottom" ||
+      step.target?.includes("reader-settings-panel");
+
+    if (pinBottom) {
+      return {
+        bottom: "calc(5.5rem + env(safe-area-inset-bottom, 0px))",
+        left: 16,
+        right: 16,
+        maxWidth: "28rem",
+        marginLeft: "auto",
+        marginRight: "auto",
+      } as React.CSSProperties;
+    }
+
     // Full-reader interaction steps: pin tip under the chrome so page text stays free.
-    if (passThroughHole) {
+    if (passThroughHole && step.target?.includes("reader-surface")) {
       return {
         top: "calc(4.25rem + env(safe-area-inset-top, 0px))",
         left: 16,

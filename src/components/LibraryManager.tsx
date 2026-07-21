@@ -9,6 +9,7 @@ import {
   hideWalkthroughBookFromLibrary,
   isWalkthroughBook,
   isWalkthroughBookHidden,
+  isWalkthroughAdvancedMenuEnabled,
   showWalkthroughBookInLibrary,
 } from "../lib/walkthroughBook";
 import BookCoverEditor from "./BookCoverEditor";
@@ -262,9 +263,15 @@ function LibraryManager({
   const [filterType, setFilterType] = useState<"all" | "book" | "audiobook">("all");
   const [sortBy, setSortBy] = useState<string>("dateAdded");
   const [walkthroughHidden, setWalkthroughHidden] = useState(() => isWalkthroughBookHidden());
+  const [walkthroughAdvancedMenu, setWalkthroughAdvancedMenu] = useState(() =>
+    isWalkthroughAdvancedMenuEnabled()
+  );
 
   useEffect(() => {
-    const sync = () => setWalkthroughHidden(isWalkthroughBookHidden());
+    const sync = () => {
+      setWalkthroughHidden(isWalkthroughBookHidden());
+      setWalkthroughAdvancedMenu(isWalkthroughAdvancedMenuEnabled());
+    };
     window.addEventListener("kora-walkthrough-visibility", sync);
     window.addEventListener("storage", sync);
     return () => {
@@ -995,6 +1002,8 @@ function LibraryManager({
               const cardKey = isDownloadingCard
                 ? `dl-${book.downloadId || book.id}`
                 : book.id;
+              const walkthroughMinimalMenu =
+                isWalkthroughBook(book) && !walkthroughAdvancedMenu;
               return (
                 <div
                   key={cardKey}
@@ -1146,7 +1155,9 @@ function LibraryManager({
                     </button>
 
                     <div className="absolute top-2 right-2 hidden md:flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-                      {isCached && <DownloadBookBtn book={book} />}
+                      {!walkthroughMinimalMenu && isCached && <DownloadBookBtn book={book} />}
+                      {!walkthroughMinimalMenu && (
+                        <>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1173,6 +1184,8 @@ function LibraryManager({
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1699,6 +1712,8 @@ function LibraryManager({
                     Open & Read Book
                   </button>
 
+                  {!(isWalkthroughBook(longPressedBook) && !walkthroughAdvancedMenu) && (
+                    <>
                   <button
                     onClick={() => {
                       setEditingCoverBook(longPressedBook);
@@ -1731,6 +1746,8 @@ function LibraryManager({
                     <Tag className="w-4 h-4 text-kindle-text-muted" />
                     Organize Tags
                   </button>
+                    </>
+                  )}
 
                   {isWalkthroughBook(longPressedBook) ? (
                     <button
@@ -1747,6 +1764,7 @@ function LibraryManager({
                     </button>
                   ) : null}
 
+                  {!(isWalkthroughBook(longPressedBook) && !walkthroughAdvancedMenu) && (
                   <button
                     onClick={() => {
                       setActiveBookForDelete(longPressedBook);
@@ -1757,6 +1775,7 @@ function LibraryManager({
                     <Trash2 className="w-4 h-4 text-red-500" />
                     Delete Book
                   </button>
+                  )}
                 </>
               )}
 

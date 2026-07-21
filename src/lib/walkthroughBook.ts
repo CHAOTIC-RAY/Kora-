@@ -1,7 +1,7 @@
 /**
  * Built-in "Getting started with Kora" EPUB — always available in the library
- * (can be hidden). In-reader spotlights cover settings/Narrator/highlight;
- * the last chapters (terms + what's next) are read without a final popup.
+ * (can be hidden). In-reader spotlights cover settings and Narrator;
+ * terms and next steps live in the last chapters (no final popup).
  */
 
 import { buildEpubFromText } from "./epubTools";
@@ -11,135 +11,76 @@ import { storeBookFile, getBookFile } from "../db/indexedDB";
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
 /** Bump to rebuild EPUB for users who already have an older copy */
-export const WALKTHROUGH_CONTENT_VERSION = 5;
+export const WALKTHROUGH_CONTENT_VERSION = 6;
 
 const HIDDEN_KEY = "kora_walkthrough_book_hidden";
 const VERSION_KEY = "kora_walkthrough_book_version";
+const ADVANCED_MENU_KEY = "kora_walkthrough_book_advanced_menu";
 
 const CHAPTERS: Array<{ title: string; text?: string; html?: string }> = [
   {
-    title: "Welcome to Kora",
-    text: `Welcome — this short book is your interactive tour of Kora.
+    title: "Welcome",
+    text: `Welcome — this short guide walks you through Kora.
 
-As you read, spotlight tips will appear over the reader. They walk you through display settings, Voice Narrator, and highlights. Follow along at your own pace — tap Next on each tip, or Skip step if you already know the gesture.
+Spotlight tips appear as you read. They cover display settings and Voice Narrator. Tap Next on each tip, or Skip step if you already know the gesture.
 
-After the highlight step, the spotlights stop. Scroll through the remaining chapters here for terms, regulations, and what to do next. There is no final popup — everything you need is on the page.`,
+After Narrator, the spotlights stop. Keep scrolling for terms and what to do next — everything is in this book, with no final popup.`,
   },
   {
-    title: "Your library shelf",
-    text: `Library is home.
+    title: "Library & Discover",
+    text: `Library is home — every title you download or import lands on the shelf. Tap a cover to open it; progress bars show how far you have read.
 
-Every downloaded or imported title lands on this shelf. Tap a cover to open it. Progress bars show how far you have read. The three-dot menu on a book lets you edit cover and metadata, organize tags, or remove a title.
+Discover is where new reading starts. Search by title or author, pick a format, and download. Finished downloads appear in Library.
 
-Getting started with Kora (this book) sits near the top of Newest so you can find it again. Prefer a clean shelf? Hide this book from its menu — Show book appears at the top of Library when it is hidden.
-
-Offline copies show a checkmark. Cloud-only titles download when you open them, if sync is set up.`,
+This guide book sits near the top of Newest. Hide it from the library menu anytime — Show book appears at the top when it is hidden.`,
   },
   {
-    title: "Discover new books",
-    text: `Discover is where new reading starts.
+    title: "Lounge",
+    text: `Lounge is an optional home screen: Continue resumes your latest book, and Guides cards offer extra spotlight tours later (sync, news, audiobooks).
 
-Search by title or author, skim results, and download a format you like. Downloads appear in Library when they finish. You can pause, resume, or stop a download from Library while it runs.
-
-The last chapter of this guide includes a button to download your first real book.`,
+You do not need Lounge to read. It is there when you want one place to resume and explore.`,
   },
   {
-    title: "Lounge & Continue",
-    text: `Lounge is a calm home screen for what you were doing.
+    title: "Reading & Narrator",
+    text: `Tap the gear in the reader for font size, theme, spacing, and scroll vs pages. The spotlight tour will ask you to try a couple of settings.
 
-Continue picks up your latest book or audiobook. Paper and Discover tiles jump you into news and search. Guides cards offer optional spotlight tours later — sync, news sources, audiobook tools, and more.
+Tap headphones to hear the current chapter with Voice Narrator. Pause anytime from the panel or mini player.
 
-You do not need Lounge to read. It is there when you want a single place to resume and explore.`,
+Long-press text in any book to highlight, add a note, or look up a word — try it whenever you like.`,
   },
   {
-    title: "Reading settings",
-    text: `Open any ebook, then tap the gear in the top bar.
+    title: "Terms (summary)",
+    text: `Important points — full legal text appears during onboarding. By using Kora you agree that:
 
-Font size — A+ and A− until the page feels comfortable.
-Theme — Sepia, Night, Paper, and others.
-Typeface — Lora, Lexend, Inter, and more.
-Spacing — line height, letter spacing, and margins.
-Layout — paginated pages or continuous scroll.
+1. Client only — Kora is a reader and search client. It does not host book files; it queries third-party indices you choose.
 
-The spotlight tour will ask you to open settings and change the font size plus one more preference. Page-turn zones, swipe options, and brightness live in the same panel.`,
+2. Your responsibility — Comply with copyright where you live. Only access works you have the right to use.
+
+3. No piracy — Do not infringe copyright or distribute protected works without permission.
+
+4. Takedowns — Kora cannot remove files at their source; rights holders contact the host platform.
+
+5. Privacy — Progress and notes stay in your browser. Optional sign-in syncs metadata, not your files.
+
+6. No warranty — Kora is provided as-is; third-party links are at your own risk.`,
   },
   {
-    title: "Voice Narrator",
-    text: `While a book is open, tap the headphones icon to hear the current chapter.
-
-Pick a system voice and speed, then press Play. Pause anytime from the panel or the mini player. The tour will ask you to try Narrator on this page.
-
-For longer offline audiobooks generated from text, open Tools → Read Aloud later.`,
-  },
-  {
-    title: "Highlights, notes & dictionary",
-    text: `Long-press a word (or drag across a phrase) to select it.
-
-When the toolbar appears you can:
-• Highlight — yellow, green, blue, or pink
-• Note — attach a thought to the passage
-• Dictionary — look up a word offline when available
-• Copy or share — depending on your device
-
-The spotlight tour ends after you make a selection. Practice on the next chapter if you want a second try.`,
-  },
-  {
-    title: "Practice — try a highlight",
-    text: `Use this page for practice. Long-press any word below — try “whisper,” “lantern,” or “chapter.”
-
-The evening light settled across the desk like a soft whisper. A single lantern threw a warm pool onto the open chapter, and the page waited — patient, familiar, ready for whatever came next.
-
-A second paragraph gives you more room to drag a longer selection. The margin notes you save here stay with this book, just like any other title on your shelf.
-
-When you are done, keep scrolling — terms and next steps are in the chapters ahead.`,
-  },
-  {
-    title: "Read tab & sync (short)",
-    text: `Read tab — headlines and Daily Brief when you want news beside your books. Manage feed sources from Read.
-
-Sync — sign in to align library progress and preferences across devices. Tools → Devices & Sync lists linked devices. Book files stay on each device; metadata and progress can sync when you are signed in.
-
-Optional Lounge guides cover Read and sync in more detail later.`,
-  },
-  {
-    title: "Terms & regulations (summary)",
-    text: `Important points — full legal text is shown during onboarding. By using Kora you agree that:
-
-1. Client only — Kora is a reader and search client. It does not host book files on Kora servers; it queries third-party indices and mirrors you choose to use.
-
-2. Your responsibility — You are solely responsible for complying with copyright and intellectual property laws where you live. Only download or convert works you have the right to access (public domain, open access, fair use, or a license you own).
-
-3. No piracy — Do not use Kora to infringe copyright or distribute protected works without permission.
-
-4. Takedowns — Kora cannot remove files at their source. Rights holders must contact the host platform or API that serves a file.
-
-5. Privacy — Reading progress, highlights, and notes are stored locally in your browser (IndexedDB). Raw book content is not uploaded to Kora servers. Optional sign-in syncs library metadata, not your files.
-
-6. No warranty — Kora is provided as-is. You use third-party links and tools at your own risk.
-
-If you disagree, stop using the app and remove downloaded files from your device.`,
-  },
-  {
-    title: "What's next — scroll to finish",
-    html: `<p><strong>You are almost done.</strong> The spotlight tour is complete. Scroll through this chapter, then use the buttons below when you are ready.</p>
-<p><strong>Download your first book</strong> opens Discover and starts a short download tour.</p>
+    title: "What's next",
+    html: `<p><strong>You're done with the tour.</strong> Use the buttons below when you're ready.</p>
 <p class="kora-cta-row">
 <button type="button" data-kora-guide-cta="first-book">Download your first book</button>
 </p>
-<p><strong>Other optional guides</strong> (also in Lounge → Guides):</p>
+<p><strong>More optional guides</strong> (Lounge → Guides):</p>
 <ul class="kora-guide-list">
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="first-book-search">Find your first book — search &amp; download</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="sync-setup">Setup &amp; sync — prefs and devices</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="news-feed">Morning paper — Read tab &amp; headlines</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="reader-tour">Reader studio — settings, narrator, notes</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="narrator-mode">Voice Narrator — hands-free reading</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="audiobook-generator">Audiobook generator — text to audio</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="add-news-source">Add a news source</button></li>
+<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="first-book-search">Find your first book</button></li>
+<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="sync-setup">Setup &amp; sync</button></li>
+<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="news-feed">Morning paper — Read tab</button></li>
+<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="narrator-mode">Voice Narrator deep dive</button></li>
 </ul>
 <p class="kora-cta-row">
 <button type="button" data-kora-guide-cta="more-guides" class="kora-cta-secondary">Open Lounge guides</button>
 </p>
-<p>You can hide this guide book anytime from its library menu (⋯). Reopen it from Library whenever you want a refresher.</p>`,
+<p>Hide this guide from its library menu (⋯) anytime. Reopen from Library when you want a refresher.</p>`,
   },
 ];
 
@@ -161,7 +102,7 @@ function buildMetadata(): BookMetadata {
       lastReadTime: now,
     },
     dateAdded: now + 1_000_000_000,
-    description: "Interactive walkthrough: spotlights for settings, Narrator, and highlights; terms and next steps in the book.",
+    description: "Short interactive walkthrough: settings, Narrator, terms, and next steps in the book.",
   };
 }
 
@@ -177,6 +118,25 @@ export function setWalkthroughBookHidden(hidden: boolean) {
   try {
     if (hidden) localStorage.setItem(HIDDEN_KEY, "true");
     else localStorage.removeItem(HIDDEN_KEY);
+    window.dispatchEvent(new CustomEvent("kora-walkthrough-visibility"));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** When false (default), the walkthrough book only offers Hide in library menus. */
+export function isWalkthroughAdvancedMenuEnabled(): boolean {
+  try {
+    return localStorage.getItem(ADVANCED_MENU_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function setWalkthroughAdvancedMenuEnabled(enabled: boolean) {
+  try {
+    if (enabled) localStorage.setItem(ADVANCED_MENU_KEY, "true");
+    else localStorage.removeItem(ADVANCED_MENU_KEY);
     window.dispatchEvent(new CustomEvent("kora-walkthrough-visibility"));
   } catch {
     /* ignore */

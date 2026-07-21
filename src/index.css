@@ -313,6 +313,10 @@
   -webkit-touch-callout: default;
 }
 
+#epub-reader-container.kora-walkthrough-reader.kora-scroll-reader article {
+  padding-bottom: 2.5rem;
+}
+
 /*
  * Keep long-press selection helpers for continuous scroll mode.
  */

@@ -204,13 +204,10 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
     return () => window.clearTimeout(t);
   }, [currentStep?.id, currentStep?.open, paused]);
 
-  // In-book highlight step needs a clear page — close Narrator chrome first.
+  // Close Narrator chrome before highlight steps in other guides.
   useEffect(() => {
     if (paused || !currentStep) return;
-    if (
-      currentStep.id === "wt-highlight" ||
-      currentStep.event === "kora-guide:text-selected"
-    ) {
+    if (currentStep.event === "kora-guide:text-selected") {
       window.dispatchEvent(
         new CustomEvent("kora-guide:prepare-reader", {
           detail: { closeNarrator: true },
