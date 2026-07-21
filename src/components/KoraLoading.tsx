@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { motion } from "motion/react";
-import { KoraWordmark } from "./KoraLogo";
+import { motion, useReducedMotion } from "motion/react";
+import { KoraWordmarkAnimated } from "./KoraLogo";
 
 export type KoraLoadingContext =
   | "app"
@@ -66,7 +66,8 @@ export default function KoraLoading({
   categorySource,
   compact = false,
 }: KoraLoadingProps) {
-  const wordmarkSize = compact ? "h-8" : "h-11";
+  const reduceMotion = useReducedMotion();
+  const wordmarkSize = compact ? "h-8 w-auto" : "h-12 w-auto sm:h-14";
 
   const resolved = useMemo(
     () => (message ? message : resolveMessage(context, query, categorySource)),
@@ -93,24 +94,35 @@ export default function KoraLoading({
 
   return (
     <div
-      className={`flex flex-col items-center justify-center ${compact ? "gap-4" : "gap-6"}`}
+      className={`flex flex-col items-center justify-center ${compact ? "gap-4" : "gap-7"}`}
       role="status"
       aria-live="polite"
       aria-label={statusMessage}
     >
       <motion.div
-        initial={{ opacity: 0.55, y: 4 }}
-        animate={{ opacity: [0.55, 1, 0.55], y: [2, 0, 2] }}
-        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+        initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
       >
-        <KoraWordmark className={`${wordmarkSize} text-kindle-text`} />
+        <KoraWordmarkAnimated
+          className={`${wordmarkSize} text-kindle-text`}
+          compact={compact}
+        />
       </motion.div>
 
       <motion.p
         key={statusMessage}
         initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: [0.5, 1, 0.5] }}
-        transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        animate={
+          reduceMotion
+            ? { opacity: 0.75 }
+            : { opacity: [0.45, 0.9, 0.45] }
+        }
+        transition={
+          reduceMotion
+            ? { duration: 0.2 }
+            : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
+        }
         className="max-w-[220px] text-center text-[8px] leading-relaxed font-medium text-kindle-text-muted/80 sm:max-w-xs sm:text-[9px]"
       >
         {statusMessage}
