@@ -36,6 +36,7 @@ const BookReaderText = lazy(() => import("./components/BookReaderText"));
 const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
+import BetaChannelBadge from "./components/BetaChannelBadge";
 import { enqueueAudiobookDownload, handleAudiobookSwMessage } from "./lib/audiobookSyncQueue";
 import { enqueueEbookDownload } from "./lib/ebookDownloadQueue";
 import {
@@ -2206,8 +2207,9 @@ export default function App() {
             aria-label={loungeEnabled ? "Kora Lounge" : "Kora Library Home"}
           >
             <KoraIcon className="w-7 h-7 text-kindle-text" />
-            <div className="hidden sm:block pr-4 border-r border-kindle-border">
+            <div className="hidden sm:flex items-center gap-2 pr-4 border-r border-kindle-border">
               <KoraWordmark className="h-4 text-kindle-text" />
+              <BetaChannelBadge />
             </div>
           </button>
           <div className="flex flex-1 min-w-0 max-w-sm sm:max-w-md md:max-w-xl lg:max-w-2xl">

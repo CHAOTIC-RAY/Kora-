@@ -356,6 +356,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
 
 export interface Env {
   BROWSER: any;
+  APP_CHANNEL?: string;
   NYT_API_KEY?: string;
   GOOGLE_BOOKS_API_KEY?: string;
   NYT_BOOKS_API_KEY?: string;

@@ -14,3 +14,13 @@ run_worker_first = ["/api/*"]
 [browser]
 binding = "BROWSER"
 
+# Public production Worker (deploy from `main` with deploy:prod).
+[env.production]
+name = "kora"
+vars = { APP_CHANNEL = "production" }
+
+# Beta sandbox Worker (deploy from `beta` with deploy:beta).
+[env.beta]
+name = "kora-beta"
+vars = { APP_CHANNEL = "beta" }
+
