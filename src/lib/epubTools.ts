@@ -247,15 +247,23 @@ export async function buildEpubFromText(opts: {
   const oebps = zip.folder("OEBPS");
   oebps?.folder("styles")?.file(
     "style.css",
-    `body{font-family:serif;line-height:1.6;margin:1.2em}
-h1{font-size:1.4em;margin:0 0 1em}
-p{margin:0 0 0.9em;text-indent:1.2em}
-p:first-of-type{text-indent:0}
-p.kora-cta-row{text-indent:0;margin:1.4em 0;display:flex;flex-direction:column;gap:0.65em}
-ul.kora-guide-list{list-style:none;padding:0;margin:1em 0;text-indent:0}
-ul.kora-guide-list li{margin:0 0 0.5em;text-indent:0}
-ul.kora-guide-list button{width:100%;font-family:sans-serif;font-size:0.85em;font-weight:600;text-align:left;padding:0.75em 0.9em;border-radius:0.65em;border:1px solid #1a1a1a;background:transparent;color:#1a1a1a;cursor:pointer}
-button[data-kora-guide-cta]{font-family:sans-serif;font-size:0.85em;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:0.85em 1em;border-radius:0.75em;border:none;background:#1a1a1a;color:#f5f5f5;cursor:pointer;text-align:center}
+    `body{font-family:serif;line-height:1.6;margin:1em;max-width:42em}
+h1{font-size:1.35em;margin:0 0 0.85em;line-height:1.25}
+p{margin:0 0 0.75em;text-indent:0}
+.kora-guide-wrap{display:flex;flex-direction:column;gap:0.85em}
+.kora-guide-card{border:1px solid rgba(0,0,0,0.12);border-radius:0.75em;padding:0.9em 1em;margin:0}
+.kora-guide-muted{background:rgba(0,0,0,0.03)}
+.kora-lead{font-size:1.02em;margin:0 0 0.65em}
+.kora-label{font-family:sans-serif;font-size:0.68em;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;margin:0 0 0.5em;opacity:0.65}
+.kora-checklist,.kora-terms-list{margin:0.4em 0 0;padding-left:1.15em}
+.kora-checklist li,.kora-terms-list li{margin:0 0 0.45em}
+.kora-note{font-size:0.92em;opacity:0.8;font-style:italic;margin-top:0.5em}
+.kora-footnote{font-size:0.85em;opacity:0.7;margin:0.5em 0 0}
+p.kora-cta-row{text-indent:0;margin:0.85em 0 0;display:flex;flex-direction:column;gap:0.55em}
+ul.kora-guide-list{list-style:none;padding:0;margin:0.65em 0 0;text-indent:0}
+ul.kora-guide-list li{margin:0 0 0.45em;text-indent:0}
+ul.kora-guide-list button{width:100%;font-family:sans-serif;font-size:0.85em;font-weight:600;text-align:left;padding:0.7em 0.85em;border-radius:0.65em;border:1px solid rgba(0,0,0,0.18);background:transparent;color:inherit;cursor:pointer}
+button[data-kora-guide-cta]{font-family:sans-serif;font-size:0.82em;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:0.8em 1em;border-radius:999px;border:none;background:#1a1a1a;color:#f5f5f5;cursor:pointer;text-align:center;width:100%;max-width:100%;box-sizing:border-box}
 button[data-kora-guide-cta].kora-cta-secondary{background:transparent;color:#1a1a1a;border:1px solid #1a1a1a}
 button[data-kora-guide-cta][data-guide-id]{text-transform:none;letter-spacing:0.01em;font-weight:600}`
   );

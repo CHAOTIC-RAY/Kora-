@@ -1,7 +1,7 @@
 /**
  * Built-in "Getting started with Kora" EPUB — always available in the library
  * (can be hidden). In-reader spotlights cover settings and Narrator;
- * terms and next steps live in the last chapters (no final popup).
+ * terms, P2P sync, and next steps live in the book (no final popup).
  */
 
 import { buildEpubFromText } from "./epubTools";
@@ -11,7 +11,7 @@ import { storeBookFile, getBookFile } from "../db/indexedDB";
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
 /** Bump to rebuild EPUB for users who already have an older copy */
-export const WALKTHROUGH_CONTENT_VERSION = 6;
+export const WALKTHROUGH_CONTENT_VERSION = 7;
 
 const HIDDEN_KEY = "kora_walkthrough_book_hidden";
 const VERSION_KEY = "kora_walkthrough_book_version";
@@ -20,57 +20,106 @@ const ADVANCED_MENU_KEY = "kora_walkthrough_book_advanced_menu";
 const CHAPTERS: Array<{ title: string; text?: string; html?: string }> = [
   {
     title: "Welcome",
-    text: `Welcome — this short guide walks you through Kora.
-
-Spotlight tips appear as you read. They cover display settings and Voice Narrator. Tap Next on each tip, or Skip step if you already know the gesture.
-
-After Narrator, the spotlights stop. Keep scrolling for terms and what to do next — everything is in this book, with no final popup.`,
+    html: `<div class="kora-guide-wrap">
+<section class="kora-guide-card">
+<p class="kora-lead"><strong>Welcome to Kora.</strong> This short guide lives on your shelf — read it at your own pace.</p>
+<p>Spotlight tips appear inside the reader for settings and Voice Narrator. After that, keep scrolling here for sync, terms, and next steps.</p>
+</section>
+<section class="kora-guide-card kora-guide-muted">
+<p class="kora-label">Quick map</p>
+<ul class="kora-checklist">
+<li><strong>Library</strong> — your shelf</li>
+<li><strong>Discover</strong> — search &amp; download</li>
+<li><strong>Lounge</strong> — resume &amp; optional tours</li>
+<li><strong>Tools</strong> — P2P sync &amp; devices</li>
+</ul>
+</section>
+</div>`,
   },
   {
     title: "Library & Discover",
-    text: `Library is home — every title you download or import lands on the shelf. Tap a cover to open it; progress bars show how far you have read.
-
-Discover is where new reading starts. Search by title or author, pick a format, and download. Finished downloads appear in Library.
-
-This guide book sits near the top of Newest. Hide it from the library menu anytime — Show book appears at the top when it is hidden.`,
+    html: `<div class="kora-guide-wrap">
+<section class="kora-guide-card">
+<p class="kora-label">Library</p>
+<p>Every downloaded or imported title lands here. Tap a cover to open it. Progress bars show how far you have read.</p>
+<p>This guide book sits near the top of <strong>Newest</strong>. Hide it from the library menu (⋯) anytime — <strong>Show book</strong> appears when hidden.</p>
+</section>
+<section class="kora-guide-card">
+<p class="kora-label">Discover</p>
+<p>Search by title or author, pick a format, and download. Finished downloads appear in Library. Pause or stop downloads from the shelf while they run.</p>
+</section>
+</div>`,
   },
   {
-    title: "Lounge",
-    text: `Lounge is an optional home screen: Continue resumes your latest book, and Guides cards offer extra spotlight tours later (sync, news, audiobooks).
-
-You do not need Lounge to read. It is there when you want one place to resume and explore.`,
+    title: "P2P sync & devices",
+    html: `<div class="kora-guide-wrap">
+<section class="kora-guide-card">
+<p class="kora-lead"><strong>How sync works in Kora</strong></p>
+<p>Kora keeps <strong>book files on your device</strong>. Sign-in syncs shelf metadata, reading progress, highlights, and notes — not the raw EPUB bytes.</p>
+</section>
+<section class="kora-guide-card">
+<p class="kora-label">Peer-to-peer (P2P) transfer</p>
+<p>When a title shows a <strong>P2P</strong> badge, another nearby device running Kora may share the file directly — no cloud upload of the book itself.</p>
+<ul class="kora-checklist">
+<li>Open <strong>Tools → Devices &amp; Sync</strong></li>
+<li>Enable sharing on both devices on the same network</li>
+<li>Tap a cloud-only book — proximity transfer can fill the local copy</li>
+</ul>
+<p class="kora-note">P2P is optional and device-local. It speeds up moving files you already own between your own phones or tablets.</p>
+</section>
+<section class="kora-guide-card kora-guide-muted">
+<p class="kora-label">Account sync</p>
+<p>Sign in to align progress across devices. WebDAV and manual export also live under Devices &amp; Sync for power users.</p>
+<p class="kora-cta-row">
+<button type="button" data-kora-guide-cta="start-guide" data-guide-id="sync-setup">Start sync setup tour</button>
+</p>
+</section>
+</div>`,
   },
   {
     title: "Reading & Narrator",
-    text: `Tap the gear in the reader for font size, theme, spacing, and scroll vs pages. The spotlight tour will ask you to try a couple of settings.
-
-Tap headphones to hear the current chapter with Voice Narrator. Pause anytime from the panel or mini player.
-
-Long-press text in any book to highlight, add a note, or look up a word — try it whenever you like.`,
+    html: `<div class="kora-guide-wrap">
+<section class="kora-guide-card">
+<p class="kora-label">Reader settings</p>
+<p>Tap the <strong>gear</strong> in any book for font size, theme, spacing, and scroll vs pages. The spotlight tour will ask you to try a couple of settings.</p>
+</section>
+<section class="kora-guide-card">
+<p class="kora-label">Voice Narrator</p>
+<p>Tap <strong>headphones</strong> to hear the current chapter. Pause anytime from the panel or mini player.</p>
+</section>
+<section class="kora-guide-card kora-guide-muted">
+<p class="kora-label">Highlights &amp; notes</p>
+<p>Long-press any word to highlight, add a note, or look up a definition. Works in every book once the tour finishes.</p>
+</section>
+</div>`,
   },
   {
     title: "Terms (summary)",
-    text: `Important points — full legal text appears during onboarding. By using Kora you agree that:
-
-1. Client only — Kora is a reader and search client. It does not host book files; it queries third-party indices you choose.
-
-2. Your responsibility — Comply with copyright where you live. Only access works you have the right to use.
-
-3. No piracy — Do not infringe copyright or distribute protected works without permission.
-
-4. Takedowns — Kora cannot remove files at their source; rights holders contact the host platform.
-
-5. Privacy — Progress and notes stay in your browser. Optional sign-in syncs metadata, not your files.
-
-6. No warranty — Kora is provided as-is; third-party links are at your own risk.`,
+    html: `<div class="kora-guide-wrap">
+<section class="kora-guide-card">
+<p class="kora-lead">You agreed to these during setup. Key points:</p>
+<ol class="kora-terms-list">
+<li><strong>Client only</strong> — Kora queries third-party indices; it does not host files.</li>
+<li><strong>Your responsibility</strong> — Only access works you have the right to use.</li>
+<li><strong>No piracy</strong> — Do not infringe copyright.</li>
+<li><strong>Takedowns</strong> — Contact the host platform, not Kora.</li>
+<li><strong>Privacy</strong> — Files and notes stay on your device unless you sync metadata.</li>
+<li><strong>No warranty</strong> — Use third-party links at your own risk.</li>
+</ol>
+</section>
+</div>`,
   },
   {
     title: "What's next",
-    html: `<p><strong>You're done with the tour.</strong> Use the buttons below when you're ready.</p>
+    html: `<div class="kora-guide-wrap">
+<section class="kora-guide-card">
+<p class="kora-lead"><strong>Tour complete.</strong> Pick a next step:</p>
 <p class="kora-cta-row">
 <button type="button" data-kora-guide-cta="first-book">Download your first book</button>
 </p>
-<p><strong>More optional guides</strong> (Lounge → Guides):</p>
+</section>
+<section class="kora-guide-card kora-guide-muted">
+<p class="kora-label">More guides (Lounge → Guides)</p>
 <ul class="kora-guide-list">
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="first-book-search">Find your first book</button></li>
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="sync-setup">Setup &amp; sync</button></li>
@@ -80,7 +129,9 @@ Long-press text in any book to highlight, add a note, or look up a word — try 
 <p class="kora-cta-row">
 <button type="button" data-kora-guide-cta="more-guides" class="kora-cta-secondary">Open Lounge guides</button>
 </p>
-<p>Hide this guide from its library menu (⋯) anytime. Reopen from Library when you want a refresher.</p>`,
+</section>
+<p class="kora-footnote">Hide this guide from its library menu anytime. Reopen from Library when you want a refresher.</p>
+</div>`,
   },
 ];
 
@@ -102,7 +153,7 @@ function buildMetadata(): BookMetadata {
       lastReadTime: now,
     },
     dateAdded: now + 1_000_000_000,
-    description: "Short interactive walkthrough: settings, Narrator, terms, and next steps in the book.",
+    description: "Interactive walkthrough: settings, Narrator, P2P sync, terms, and next steps.",
   };
 }
 

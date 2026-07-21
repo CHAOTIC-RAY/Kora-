@@ -55,7 +55,7 @@ import {
   setDailyNewsBriefEnabled as persistDailyNewsBriefEnabled,
   syncServiceWorkerPrefs,
 } from "./lib/swBridge";
-import { applySelectedFeedSources } from "./lib/feedStorage";
+import { applySelectedFeedSources, DEFAULT_FEED_SUBSCRIPTIONS } from "./lib/feedStorage";
 import Quote from "./components/Quote";
 import FeedView from "./components/FeedView";
 import DownloadBookBtn from "./components/DownloadBookBtn";
@@ -429,7 +429,6 @@ export default function App() {
 
   const handleOnboardingComplete = async (prefs: {
     nickname: string;
-    archetype: string;
     displayTheme: string;
     appSkin: AppSkinId;
     fontSize: number;
@@ -437,12 +436,9 @@ export default function App() {
     dailyGoal: number;
     autoCache: boolean;
     dailyReminders: boolean;
-    selectedFeedUrls: string[];
-    startInteractiveTour?: boolean;
   }) => {
     localStorage.setItem("kora_onboarding_completed", "true");
     localStorage.setItem("kora_user_nickname", prefs.nickname);
-    localStorage.setItem("kora_user_archetype", prefs.archetype);
     localStorage.setItem("kora_display_theme", prefs.displayTheme);
     localStorage.setItem("kora_daily_reminders", String(prefs.dailyReminders));
     setDisplayTheme(prefs.displayTheme);
@@ -467,12 +463,11 @@ export default function App() {
     setSearchPrefs(updatedSearch);
     localStorage.setItem("kora_search_prefs", JSON.stringify(updatedSearch));
 
-    applySelectedFeedSources(prefs.selectedFeedUrls);
+    applySelectedFeedSources(DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl));
 
     setShowOnboarding(false);
     localStorage.setItem("kora_first_book_nudge", "true");
     setShowFirstBookNudge(true);
-    const wantTour = prefs.startInteractiveTour !== false;
 
     // Seed the interactive walkthrough book onto the shelf, then land in Library.
     try {
@@ -485,15 +480,11 @@ export default function App() {
 
     switchTab("library");
     toast.success(
-      wantTour
-        ? `Welcome, ${prefs.nickname}! Open Getting started with Kora — spotlights will guide you inside the book.`
-        : `Welcome, ${prefs.nickname}! Your library is ready.`
+      `Welcome, ${prefs.nickname}! Tap Getting started with Kora on your shelf — the guide book will walk you through Kora.`
     );
-    if (wantTour) {
-      window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id: "walkthrough-book" } }));
-      }, 700);
-    }
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id: "walkthrough-book" } }));
+    }, 700);
   };
 
   // Reader / reading preferences (persisted, consumed by BookReaderEPUB on open)

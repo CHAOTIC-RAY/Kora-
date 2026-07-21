@@ -21,6 +21,7 @@ import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
 import { hydrateBookFile, canHydrateBook, loadSyncPrefs } from "../lib/crossDeviceSync";
 import FluidOverlay from "./FluidOverlay";
+import { useGuidesOptional } from "./GuideProvider";
 
 function findActiveDownload(book: { id?: string; md5?: string; downloadId?: string }, downloads: any[] = []) {
   const bookKeys = new Set(
@@ -266,6 +267,11 @@ function LibraryManager({
   const [walkthroughAdvancedMenu, setWalkthroughAdvancedMenu] = useState(() =>
     isWalkthroughAdvancedMenuEnabled()
   );
+  const guidesApi = useGuidesOptional();
+  const showOpenGuideBanner =
+    !walkthroughHidden &&
+    guidesApi?.active?.guideId === "walkthrough-book" &&
+    guidesApi.active.stepIndex === 0;
 
   useEffect(() => {
     const sync = () => {
@@ -848,6 +854,18 @@ function LibraryManager({
           </button>
         </div>
       </header>
+
+      {showOpenGuideBanner && (
+        <div className="w-full rounded-xl border border-kindle-accent/40 bg-kindle-accent/10 px-3 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <p className="text-[11px] sm:text-xs text-kindle-text font-sans leading-snug">
+            <span className="font-bold">Start here:</span> Tap{" "}
+            <span className="font-bold">Getting started with Kora</span> below to open your guide book.
+          </p>
+          <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-kindle-accent">
+            Step 1 of tour
+          </span>
+        </div>
+      )}
 
       {walkthroughHidden && (
         <div className="w-full rounded-xl border border-kindle-border bg-kindle-card/80 px-3 py-2.5 flex items-center justify-between gap-3">
