@@ -52,6 +52,10 @@ const CONTINUE_AUTO_FLIP_MS = 22_000;
 const DISCOVER_AUTO_FLIP_MS = 12_000;
 const AUTO_FLIP_TICK_MS = 1000;
 const MANUAL_PAUSE_MS = 28_000;
+const CONTINUE_SWIPE_THRESHOLD_PX = 48;
+const CONTINUE_SWIPE_MAX_VERTICAL_PX = 72;
+
+type SwipeTracker = { x: number; y: number; active: boolean };
 
 function isAudiobook(book: BookMetadata) {
   return book.extension?.toLowerCase() === "audiobook";
@@ -238,6 +242,8 @@ export default function LoungeView({
   const discoverPauseUntil = useRef(0);
   const continueLastFlipAt = useRef(Date.now());
   const discoverLastFlipAt = useRef(Date.now());
+  const continueSwipeRef = useRef<SwipeTracker | null>(null);
+  const continueDidSwipeRef = useRef(false);
 
   useEffect(() => {
     // Persist the Book-first default so a remount doesn't flash Listen from storage.
@@ -410,6 +416,62 @@ export default function LoungeView({
     else onOpenTab("discover");
   };
 
+  const flipContinueMode = (direction: "book" | "audio") => {
+    if (direction === modes.continue) return;
+    if (direction === "audio" && !hasContinueAudio) return;
+    if (direction === "book" && !hasContinueBook) return;
+    setMode("continue", direction, true);
+    continueDidSwipeRef.current = true;
+  };
+
+  const onContinuePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    continueSwipeRef.current = { x: e.clientX, y: e.clientY, active: true };
+    continueDidSwipeRef.current = false;
+  };
+
+  const onContinuePointerMove = (e: React.PointerEvent) => {
+    const track = continueSwipeRef.current;
+    if (!track?.active) return;
+    const dx = e.clientX - track.x;
+    const dy = e.clientY - track.y;
+    if (Math.abs(dy) > CONTINUE_SWIPE_MAX_VERTICAL_PX && Math.abs(dy) > Math.abs(dx)) {
+      track.active = false;
+    }
+  };
+
+  const finishContinueSwipe = (clientX: number, clientY: number) => {
+    const track = continueSwipeRef.current;
+    continueSwipeRef.current = null;
+    if (!track?.active) return;
+
+    const dx = clientX - track.x;
+    const dy = clientY - track.y;
+    if (Math.abs(dx) < CONTINUE_SWIPE_THRESHOLD_PX || Math.abs(dx) < Math.abs(dy)) return;
+
+    if (dx < 0) {
+      flipContinueMode("audio");
+    } else {
+      flipContinueMode("book");
+    }
+  };
+
+  const onContinuePointerUp = (e: React.PointerEvent) => {
+    finishContinueSwipe(e.clientX, e.clientY);
+  };
+
+  const onContinuePointerCancel = () => {
+    continueSwipeRef.current = null;
+  };
+
+  const handleContinueTileClick = () => {
+    if (continueDidSwipeRef.current) {
+      continueDidSwipeRef.current = false;
+      return;
+    }
+    openContinue();
+  };
+
   const openDiscover = () => {
     if (discoverHero && onSearchDiscover) onSearchDiscover(discoverHero.title);
     else onOpenTab("discover");
@@ -489,7 +551,7 @@ export default function LoungeView({
           <TileShell
             delay={0.02}
             className="relative bg-kindle-card order-1 md:order-none"
-            onClick={openContinue}
+            onClick={handleContinueTileClick}
             label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
           >
             <div className="absolute inset-0 pointer-events-none">
@@ -517,7 +579,13 @@ export default function LoungeView({
               )}
             </div>
 
-            <div className="relative flex flex-col">
+            <div
+              className="relative flex flex-col touch-pan-y"
+              onPointerDown={onContinuePointerDown}
+              onPointerMove={onContinuePointerMove}
+              onPointerUp={onContinuePointerUp}
+              onPointerCancel={onContinuePointerCancel}
+            >
               <div
                 className="px-4 md:px-5 pt-4 flex items-center justify-between gap-2 shrink-0"
                 onClick={(e) => e.stopPropagation()}
