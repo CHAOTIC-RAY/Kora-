@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   Book,
+  BookOpen,
   Check,
   ChevronRight,
   ChevronLeft,
@@ -10,7 +11,9 @@ import {
   MousePointerClick,
   ArrowDownToLine,
   Palette,
-  Type,
+  Compass,
+  Rss,
+  Headphones,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -49,8 +52,35 @@ interface OnboardingModalProps {
   onOpenAuth: () => void;
 }
 
-const STEP_LABELS = ["Reader", "Appearance", "Legal", "Account"] as const;
+const STEP_LABELS = ["Welcome", "Appearance", "Legal", "Account"] as const;
 const TOTAL_STEPS = STEP_LABELS.length;
+
+const KORA_INTRO_FEATURES = [
+  {
+    icon: BookOpen,
+    title: "Read & listen",
+    description: "EPUBs, PDFs, and audiobooks with highlights, notes, and a built-in narrator.",
+    tone: "text-kindle-accent",
+  },
+  {
+    icon: Compass,
+    title: "Discover & save",
+    description: "Search catalogs, download to your library, and keep books offline in this browser.",
+    tone: "text-sky-500",
+  },
+  {
+    icon: Rss,
+    title: "Feeds & news",
+    description: "Follow RSS sources and daily briefs in the Read tab without leaving Kora.",
+    tone: "text-emerald-500",
+  },
+  {
+    icon: Headphones,
+    title: "Tools & sync",
+    description: "Transcribe audio, transfer files device-to-device, and sync shelf progress across devices.",
+    tone: "text-violet-500",
+  },
+] as const;
 
 export default function OnboardingModal({
   isOpen,
@@ -63,7 +93,6 @@ export default function OnboardingModal({
 }: OnboardingModalProps) {
   const [step, setStep] = useState(1);
   const [nickname, setNickname] = useState("");
-  const [fontSize, setFontSize] = useState(18);
   const [isContinuous, setIsContinuous] = useState(false);
   const [dailyGoal, setDailyGoal] = useState(30);
   const [autoCache, setAutoCache] = useState(true);
@@ -76,7 +105,7 @@ export default function OnboardingModal({
     nickname: nickname.trim() || "Reader",
     displayTheme: currentTheme,
     appSkin,
-    fontSize,
+    fontSize: 18,
     isContinuous,
     dailyGoal,
     autoCache,
@@ -151,14 +180,14 @@ export default function OnboardingModal({
               >
                 <header className="text-center space-y-1.5">
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-kindle-accent/10 text-[10px] uppercase font-bold tracking-widest rounded-full text-kindle-text">
-                    <Type className="w-3 h-3" />
-                    Reader setup
+                    <BookOpen className="w-3 h-3" />
+                    Welcome
                   </span>
                   <h2 className="text-xl sm:text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    How you read
+                    What Kora can do
                   </h2>
                   <p className="text-xs text-kindle-text-muted max-w-sm mx-auto">
-                    Font size and page style for ebooks. You can change these anytime in the reader gear menu.
+                    Your reading app for ebooks, audiobooks, feeds, and tools — all in one place. Set a few preferences below.
                   </p>
                 </header>
 
@@ -176,25 +205,26 @@ export default function OnboardingModal({
                 </div>
 
                 <div className="p-3.5 bg-kindle-card border border-kindle-border rounded-xl space-y-2.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-kindle-text-muted">
-                      Font size
-                    </span>
-                    <span className="font-mono text-xs font-bold">{fontSize}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="12"
-                    max="32"
-                    value={fontSize}
-                    onChange={(e) => setFontSize(parseInt(e.target.value, 10))}
-                    className="w-full h-1.5 bg-kindle-border rounded-lg appearance-none cursor-pointer accent-kindle-accent"
-                  />
-                  <div
-                    className="p-2.5 border border-kindle-border/50 rounded-lg bg-kindle-bg/50 text-center font-serif text-kindle-text"
-                    style={{ fontSize: `${fontSize}px` }}
-                  >
-                    The love of books is the best of hobbies.
+                  <span className="text-[10px] uppercase tracking-wider font-bold text-kindle-text-muted">
+                    What you get
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {KORA_INTRO_FEATURES.map((feature) => (
+                      <div
+                        key={feature.title}
+                        className="flex items-start gap-2.5 p-2.5 rounded-lg border border-kindle-border/60 bg-kindle-bg/40"
+                      >
+                        <feature.icon className={`w-4 h-4 shrink-0 mt-0.5 ${feature.tone}`} />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">
+                            {feature.title}
+                          </p>
+                          <p className="text-[10px] text-kindle-text-muted leading-snug mt-0.5">
+                            {feature.description}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
