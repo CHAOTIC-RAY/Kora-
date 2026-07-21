@@ -53,6 +53,20 @@ export async function fetchFeedPreview(url: string): Promise<FeedArticlePreview>
   return response.json();
 }
 
+export function markFeedImageBroken(itemId: string): void {
+  try {
+    const items = getFeedItems();
+    const next = items.map((item) =>
+      item.id === itemId ? { ...item, imageUrl: undefined } : item
+    );
+    if (next.some((item, i) => item.imageUrl !== items[i]?.imageUrl)) {
+      saveFeedItems(dedupeFeedItems(next));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 export function resolveFeedImageSrc(url: string | undefined | null): string | null {
   if (!url?.trim()) return null;
   let trimmed = url.trim();

@@ -35,7 +35,7 @@ import {
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
-import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
+import { getItemThumbnail, prefetchFeedPreviews, resolveFeedImageSrc, markFeedImageBroken } from "../lib/feedPreview";
 import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
@@ -248,7 +248,10 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
                 className={`w-full h-full object-cover pointer-events-none ${grayscaleCovers ? "grayscale" : ""}`}
                 referrerPolicy="no-referrer"
                 decoding="async"
-                onError={() => setThumbFailed(true)}
+                onError={() => {
+                  setThumbFailed(true);
+                  markFeedImageBroken(item.id);
+                }}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-kindle-bg">

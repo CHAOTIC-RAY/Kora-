@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";
 import { getFeedItems } from "../lib/feedStorage";
+import type { FeedItem } from "../lib/feedStorage";
+import { markFeedImageBroken, resolveFeedImageSrc } from "../lib/feedPreview";
 import {
   loadLoungeModes,
   saveLoungeMode,
@@ -127,6 +129,39 @@ function loadFeaturedFromCache(opts?: { audiobooksOnly?: boolean }): FeaturedBoo
   } catch {
     return [];
   }
+}
+
+function FeedPaperThumb({
+  item,
+  grayscaleCovers = false,
+}: {
+  item: FeedItem;
+  grayscaleCovers?: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+  const src = failed ? null : resolveFeedImageSrc(item.imageUrl);
+
+  if (!src) {
+    return (
+      <div className="w-11 h-11 rounded-lg bg-kindle-bg border border-kindle-border flex items-center justify-center shrink-0">
+        <Rss className="w-3.5 h-3.5 text-kindle-text-muted opacity-40" />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      className={`w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0 ${grayscaleCovers ? "grayscale" : ""}`}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        setFailed(true);
+        markFeedImageBroken(item.id);
+      }}
+    />
+  );
 }
 
 function ModeSwitch({
@@ -749,19 +784,7 @@ export default function LoungeView({
               {newsItems.length ? (
                 newsItems.map((item) => (
                   <div key={item.id} className="px-4 md:px-5 py-2.5 flex gap-2.5 hover:bg-kindle-bg/40 transition">
-                    {item.imageUrl ? (
-                      <img
-                        src={item.imageUrl}
-                        alt=""
-                        className={`w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0 ${grayscaleCovers ? "grayscale" : ""}`}
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <div className="w-11 h-11 rounded-lg bg-kindle-bg border border-kindle-border flex items-center justify-center shrink-0">
-                        <Rss className="w-3.5 h-3.5 text-kindle-text-muted opacity-40" />
-                      </div>
-                    )}
+                    <FeedPaperThumb item={item} grayscaleCovers={grayscaleCovers} />
                     <div className="min-w-0 flex-1">
                       <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mb-0.5 truncate">
                         {item.subscriptionTitle}

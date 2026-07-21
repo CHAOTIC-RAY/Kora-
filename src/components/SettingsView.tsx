@@ -28,6 +28,7 @@ import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
+import { APP_SKINS, type AppSkinId } from "../lib/appSkin";
 import {
   isWalkthroughAdvancedMenuEnabled,
   setWalkthroughAdvancedMenuEnabled,
