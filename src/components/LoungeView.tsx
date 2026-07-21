@@ -366,6 +366,7 @@ export default function LoungeView({
     });
   }, [userNickname, lastReadBook, books, greetingTick]);
 
+  const reduceMotion = useReducedMotion();
   const progress = Math.min(100, Math.round(continueBook?.progress?.percent || 0));
   const discoverHero = discoverItems[0];
   // Same strip length for Trending and Audio so the list UI stays consistent
@@ -385,20 +386,68 @@ export default function LoungeView({
 
   return (
     <div className="pb-6 md:pb-10 space-y-2.5 md:space-y-3">
-      <header>
-        <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-kindle-accent">Lounge</p>
-        <AnimatePresence mode="wait">
-          <motion.h2
-            key={greeting.title}
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={{ duration: 0.35 }}
-            className="mt-1 text-2xl md:text-3xl font-lexend font-bold tracking-tight text-kindle-text"
+      <header className="relative overflow-hidden pb-0.5">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="block h-px w-5 bg-kindle-accent/70"
+            aria-hidden
+          />
+          <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-kindle-accent">
+            Lounge
+          </p>
+        </div>
+
+        <div className="relative mt-2.5 md:mt-3">
+          {/* Oversized decorative quote */}
+          <motion.span
+            key={`q-${greeting.title}`}
+            aria-hidden
+            initial={reduceMotion ? false : { opacity: 0, scale: 0.92, y: 6 }}
+            animate={{ opacity: 0.12, scale: 1, y: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.7, ease: [0.22, 1, 0.36, 1] }}
+            className="pointer-events-none absolute -left-1 -top-6 md:-top-8 font-serif text-[5.5rem] md:text-[7rem] leading-none text-kindle-accent select-none"
           >
-            {greeting.title}
-          </motion.h2>
-        </AnimatePresence>
+            “
+          </motion.span>
+
+          <AnimatePresence mode="wait">
+            <motion.h2
+              key={greeting.title}
+              initial={
+                reduceMotion ? false : { opacity: 0, y: 10, filter: "blur(4px)" }
+              }
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={
+                reduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, y: -6, filter: "blur(3px)" }
+              }
+              transition={{ duration: reduceMotion ? 0.15 : 0.55, ease: [0.22, 1, 0.36, 1] }}
+              className="relative max-w-2xl pl-1 font-serif italic font-medium text-[1.65rem] md:text-[2.15rem] leading-[1.25] tracking-[-0.01em] text-kindle-text"
+            >
+              <span className="text-kindle-accent/55 not-italic font-normal mr-0.5 select-none" aria-hidden>
+                “
+              </span>
+              {greeting.title}
+              <span className="text-kindle-accent/55 not-italic font-normal ml-0.5 select-none" aria-hidden>
+                ”
+              </span>
+            </motion.h2>
+          </AnimatePresence>
+
+          <motion.div
+            key={`rule-${greeting.title}`}
+            initial={reduceMotion ? false : { scaleX: 0, opacity: 0 }}
+            animate={{ scaleX: 1, opacity: 1 }}
+            transition={{
+              delay: reduceMotion ? 0 : 0.2,
+              duration: reduceMotion ? 0 : 0.55,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+            className="mt-3 h-px w-16 origin-left bg-gradient-to-r from-kindle-accent/70 via-kindle-accent/25 to-transparent"
+            aria-hidden
+          />
+        </div>
       </header>
 
       {/* Bento: independent column stacks — widgets size to content, no equal-row stretch */}
