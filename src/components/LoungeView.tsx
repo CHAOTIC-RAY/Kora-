@@ -452,7 +452,7 @@ export default function LoungeView({
 
       {/* Bento: independent column stacks — widgets size to content, no equal-row stretch */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 md:items-start">
-        {/* Left column — Continue first, then Shelf + Guides fill under it */}
+        {/* Left column — Continue first, then Shelf */}
         <div className="flex flex-col gap-4 md:gap-5 min-w-0">
           <TileShell
             delay={0.02}
@@ -637,13 +637,9 @@ export default function LoungeView({
               <p className="text-xs text-kindle-text-muted py-1">Books you open will line up here.</p>
             )}
           </TileShell>
-
-          <TileShell delay={0.14} className="bg-kindle-card/60 p-3 md:p-4">
-            <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
-          </TileShell>
         </div>
 
-        {/* Right column — Paper, Discover, Notes stack independently */}
+        {/* Right column — Paper, Discover, Guides (under Discover on mobile), Notes */}
         <div className="flex flex-col gap-4 md:gap-5 min-w-0">
           <TileShell
             delay={0.06}
@@ -841,6 +837,10 @@ export default function LoungeView({
                 {isDiscoverAudio ? "Explore audiobooks →" : "Explore discover →"}
               </p>
             </div>
+          </TileShell>
+
+          <TileShell delay={0.14} className="bg-kindle-card/60 p-3 md:p-4">
+            <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
           </TileShell>
 
           <TileShell delay={0.16} className="bg-kindle-card/60 p-3 md:p-4">
