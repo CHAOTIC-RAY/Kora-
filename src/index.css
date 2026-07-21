@@ -268,6 +268,12 @@
   color: inherit;
 }
 
+/*
+ * Default: allow native select on reader text. Paginated mode overrides this
+ * on the surface AND all descendants — a prior rule only set `none` on the
+ * container, so `.reader-select-surface * { user-select: text !important }`
+ * kept winning and CSS columns snapped every selection to chapter start.
+ */
 .reader-select-surface,
 .reader-select-surface * {
   -webkit-user-select: text !important;
@@ -291,13 +297,16 @@
 }
 
 #epub-reader-container.kora-paged-reader .reader-select-surface,
-#epub-reader-container.kora-paged-reader article {
+#epub-reader-container.kora-paged-reader .reader-select-surface *,
+#epub-reader-container.kora-paged-reader article,
+#epub-reader-container.kora-paged-reader article * {
   -webkit-user-select: none !important;
   user-select: none !important;
-  -webkit-touch-callout: none;
+  -webkit-touch-callout: none !important;
 }
 
-#epub-reader-container.kora-scroll-reader .reader-select-surface {
+#epub-reader-container.kora-scroll-reader .reader-select-surface,
+#epub-reader-container.kora-scroll-reader .reader-select-surface * {
   touch-action: pan-y;
   -webkit-user-select: text !important;
   user-select: text !important;
