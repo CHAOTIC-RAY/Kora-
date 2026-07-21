@@ -311,6 +311,12 @@ interface BookReaderEPUBProps {
     themeManuallySet?: boolean;
     grayscaleImages?: boolean;
     hideImages?: boolean;
+    /** When true, mouse wheel does not turn pages in paginated mode */
+    disableMouseScroll?: boolean;
+    /** Enable vertical swipe-to-turn in paginated mode */
+    swipeToTurn?: boolean;
+    /** Which swipe direction advances to the next page */
+    swipeDirection?: "up" | "down";
   };
   onReaderPrefsChange?: (prefs: any) => void;
 }
@@ -362,8 +368,17 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 0); // KOReader-style page overlap (px repeated across page turns)
   const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
   const [hyphenation, setHyphenation] = useState<boolean>(readerPrefs?.hyphenation ?? true);
-  const [pageTurnMode, setPageTurnMode] = useState<string>(readerPrefs?.pageTurnMode ?? "fifty-fifty");
+  const [pageTurnMode, setPageTurnMode] = useState<string>(() => {
+    const mode = readerPrefs?.pageTurnMode ?? "fifty-fifty";
+    // Legacy rename: swipe-only → keys-only
+    return mode === "swipe-only" ? "keys-only" : mode;
+  });
   const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(readerPrefs?.pageTransitionEffect ?? "paper-flip");
+  const [disableMouseScroll, setDisableMouseScroll] = useState<boolean>(readerPrefs?.disableMouseScroll ?? false);
+  const [swipeToTurn, setSwipeToTurn] = useState<boolean>(readerPrefs?.swipeToTurn ?? false);
+  const [swipeDirection, setSwipeDirection] = useState<"up" | "down">(
+    readerPrefs?.swipeDirection === "down" ? "down" : "up"
+  );
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
 
   // Responsive mobile state — used for single-column layout and disabling dual-page mode
@@ -430,6 +445,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         setTurningChapterIdx(prevChapterIdxRef.current);
         setTurnDirection(dir);
         setIsTurningPage(true);
+        // Safety: spring onAnimationComplete can miss — never leave overlay stuck (blank page)
+        window.setTimeout(() => setIsTurningPage(false), 900);
       }
 
       prevPageNumRef.current = currentPageNum;
@@ -463,10 +480,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         pageTransitionEffect,
         themeManuallySet,
         grayscaleImages,
-        hideImages
+        hideImages,
+        disableMouseScroll,
+        swipeToTurn,
+        swipeDirection,
       });
     }
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, onReaderPrefsChange]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection, onReaderPrefsChange]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
@@ -545,6 +565,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   } | null>(null);
   const isPointerDownRef = useRef<boolean>(false);
   const wheelPageThrottleRef = useRef<number>(0);
+  const pageCanvasRef = useRef<HTMLDivElement | null>(null);
+  const disableMouseScrollRef = useRef(disableMouseScroll);
+  disableMouseScrollRef.current = disableMouseScroll;
+  const useScrollLayoutRef = useRef(useScrollLayout);
+  useScrollLayoutRef.current = useScrollLayout;
 
   // Font & theme presets (KOReader-aligned)
   const fontFamilies = READER_FONTS;
@@ -783,10 +808,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       pageTurnMode,
       pageTransitionEffect,
       themeManuallySet,
-      grayscaleImages
+      grayscaleImages,
+      hideImages,
+      disableMouseScroll,
+      swipeToTurn,
+      swipeDirection,
     };
     localStorage.setItem("kora_reader_prefs", JSON.stringify(prefs));
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection]);
 
   useEffect(() => {
     loadEpubFile();
@@ -1511,12 +1540,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       return;
     }
 
-    // On phones, ignore horizontal swipes over the text body — they fight selection.
-    // Keep edge-swipe-to-close and narrow margin page swipes only.
+    // Vertical swipe-to-turn (opt-in). Horizontal edge swipe still closes the reader.
     const edgeSwipe = start.x < 28 || start.x > (typeof window !== "undefined" ? window.innerWidth - 28 : 9999);
-    const allowPageSwipe = !isMobile || edgeSwipe;
-    // In iOS Safari (not installed PWA), left-edge swipe is the browser Back gesture —
-    // don't steal it to close the reader (causes "touch errors" / accidental exits).
     const iosBrowser =
       typeof navigator !== "undefined" &&
       (/iPad|iPhone|iPod/i.test(navigator.userAgent) ||
@@ -1526,23 +1551,31 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         (window.navigator as Navigator & { standalone?: boolean }).standalone === true
       );
 
-    // Check if it's a swipe (fast flick or drag)
-    if (allowPageSwipe && duration < 500 && Math.abs(diffX) > 40 && Math.abs(diffY) < 60) {
-      // Swipe from left edge → close reader (installed PWA / Android only)
-      if (!iosBrowser && start.x < 50 && diffX > 45) {
-        onClose();
-        return;
-      }
+    // Close reader: left-edge swipe right (installed PWA / Android only)
+    if (
+      !iosBrowser &&
+      edgeSwipe &&
+      start.x < 50 &&
+      duration < 500 &&
+      diffX > 45 &&
+      Math.abs(diffY) < 60
+    ) {
+      onClose();
+      return;
+    }
 
-      if (diffX > 40) {
-        // Swipe Right -> Prev Page
-        handlePrevPage();
-        return;
-      } else if (diffX < -40) {
-        // Swipe Left -> Next Page
-        handleNextPage();
-        return;
-      }
+    if (
+      !useScrollLayout &&
+      swipeToTurn &&
+      duration < 550 &&
+      Math.abs(diffY) > 48 &&
+      Math.abs(diffY) > Math.abs(diffX) * 1.2
+    ) {
+      const swipedUp = diffY < 0;
+      const nextOnUp = swipeDirection === "up";
+      if (swipedUp === nextOnUp) handleNextPage();
+      else handlePrevPage();
+      return;
     }
 
     // Only fire standard tap handler if pointer barely moved (prevent text selection drag conflicts)
@@ -1578,6 +1611,25 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [currentChapterIdx, chapters.length, currentPageNum, totalPages]);
+
+  // Non-passive wheel listener — React's onWheel is passive and cannot preventDefault.
+  useEffect(() => {
+    const el = pageCanvasRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (useScrollLayoutRef.current) return;
+      if (e.cancelable) e.preventDefault();
+      if (disableMouseScrollRef.current) return;
+      if (Math.abs(e.deltaY) < 8 && Math.abs(e.deltaX) < 8) return;
+      const now = Date.now();
+      if (now - wheelPageThrottleRef.current < 280) return;
+      wheelPageThrottleRef.current = now;
+      if (e.deltaY > 0 || e.deltaX > 0) handleNextPage();
+      else handlePrevPage();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [currentChapterIdx, chapters.length, currentPageNum, totalPages, useScrollLayout, loading]);
 
   async function lookupDictionary(word: string) {
     const clean = extractLookupWord(word);
@@ -2823,7 +2875,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         { label: "Classic E-Reader", val: "classic-ereader", desc: "Left 25% goes backward, right 75% goes forward." },
                         { label: "Margins Only (15%)", val: "margins-only", desc: "Only tapping outer 15% edges turns pages." },
                         { label: "Floating Buttons", val: "floating-buttons", desc: "Use on-screen circular buttons to turn pages." },
-                        { label: "Swipe & Keys Only", val: "swipe-only", desc: "Disable tap-to-turn entirely." }
+                        { label: "Keys Only", val: "keys-only", desc: "Disable tap-to-turn entirely. Use keyboard arrows or space." }
                       ].map((mode) => (
                         <button
                           key={mode.val}
@@ -2840,6 +2892,65 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       ))}
                     </div>
                   </div>
+
+                  {!useScrollLayout && (
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold">Disable mouse scroll</h4>
+                        <p className="text-[10px] text-kindle-text-muted">Block wheel from turning pages in tap-to-turn mode</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDisableMouseScroll(!disableMouseScroll)}
+                        className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${disableMouseScroll ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                        aria-pressed={disableMouseScroll}
+                      >
+                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${disableMouseScroll ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
+                      </button>
+                    </div>
+                  )}
+
+                  {!useScrollLayout && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-xs font-bold">Swipe to turn</h4>
+                          <p className="text-[10px] text-kindle-text-muted">Vertical swipe turns the page</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSwipeToTurn(!swipeToTurn)}
+                          className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${swipeToTurn ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                          aria-pressed={swipeToTurn}
+                        >
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${swipeToTurn ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
+                        </button>
+                      </div>
+                      {swipeToTurn && (
+                        <div className="flex gap-2 p-1 bg-neutral-500/10 rounded-xl font-sans text-xs">
+                          {(
+                            [
+                              { val: "up" as const, label: "Swipe up → next" },
+                              { val: "down" as const, label: "Swipe down → next" },
+                            ]
+                          ).map((opt) => (
+                            <button
+                              key={opt.val}
+                              type="button"
+                              onClick={() => setSwipeDirection(opt.val)}
+                              className={`flex-1 py-1.5 rounded-lg transition ${
+                                swipeDirection === opt.val
+                                  ? "bg-kindle-text text-kindle-bg shadow"
+                                  : "hover:bg-neutral-500/10 text-kindle-text-muted hover:text-kindle-text"
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Page Transition Effect */}
                   <div>
@@ -3443,23 +3554,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 } ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
                 <div
+                  ref={pageCanvasRef}
                   className={`w-full h-full relative flex items-start justify-start ${
                     useScrollLayout
                       ? "overflow-y-auto overflow-x-hidden overscroll-y-contain"
                       : "overflow-hidden overscroll-none"
                   }`}
                   style={{ perspective: "1200px" }}
-                  onWheel={(e) => {
-                    // Paginated mode: never scroll the page canvas — turn pages instead.
-                    if (useScrollLayout) return;
-                    e.preventDefault();
-                    if (Math.abs(e.deltaY) < 8 && Math.abs(e.deltaX) < 8) return;
-                    const now = Date.now();
-                    if (now - wheelPageThrottleRef.current < 280) return;
-                    wheelPageThrottleRef.current = now;
-                    if (e.deltaY > 0 || e.deltaX > 0) handleNextPage();
-                    else handlePrevPage();
-                  }}
                 >
                   {/* Turn.js style 3D page flip transition */}
                   {!useScrollLayout && pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
@@ -3473,6 +3574,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         animate={{ rotateY: turnDirection === "next" ? -180 : 180 }}
                         transition={{ type: "spring", stiffness: 180, damping: 22, mass: 0.9 }}
                         onAnimationComplete={() => setIsTurningPage(false)}
+                        onAnimationStart={() => {
+                          // Keep underlying page visible — overlay is decorative only
+                        }}
                         style={{
                           position: "absolute",
                           top: 0,
@@ -3486,6 +3590,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             : "left center",
                           transformStyle: "preserve-3d",
                           willChange: "transform",
+                          pointerEvents: "none",
                         }}
                       >
                         {/* Front Face: Old Page */}
@@ -3632,7 +3737,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   )}
 
                   {/* Visual page slide feedback */}
-                  <AnimatePresence mode="popLayout">
+                  <AnimatePresence>
                     {tapFeedback && (
                       <motion.div
                         key={tapFeedback}
@@ -3657,7 +3762,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       x: useScrollLayout ? 0 : -(currentPageNum - 1) * pageStep,
                       rotateY: 0,
                       skewY: 0,
-                      scaleX: 1
+                      scaleX: 1,
+                      opacity: 1,
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
                     className={`w-full ml-0 cursor-text ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
@@ -3671,7 +3777,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       WebkitUserSelect: useScrollLayout ? "text" : "none",
                       userSelect: useScrollLayout ? "text" : "none",
                       WebkitTouchCallout: useScrollLayout ? "default" : "none",
-                      touchAction: useScrollLayout ? "pan-y" : "manipulation",
+                      touchAction: useScrollLayout ? "pan-y" : swipeToTurn ? "pan-x" : "manipulation",
                       ...(useScrollLayout
                         ? {
                             height: "auto",
