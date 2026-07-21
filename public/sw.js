@@ -7,14 +7,15 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v9";
-const API_CACHE = "kora-api-v9";
+const SHELL_CACHE = "kora-shell-v10";
+const API_CACHE = "kora-api-v10";
 const COVER_CACHE = "kora-covers-v1";
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.
 const SHELL_ASSETS = [
   "/",
   "/index.html",
+  "/share",
   "/manifest.json",
   "/favicon.svg",
   "/apple-touch-icon.png",
@@ -1116,6 +1117,7 @@ self.addEventListener("fetch", (event) => {
           if (res && res.status === 200) {
             cache.put("/index.html", res.clone());
             cache.put("/", res.clone());
+            cache.put("/share", res.clone());
           }
           return res;
         } catch (e) {

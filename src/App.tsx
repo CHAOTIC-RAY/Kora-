@@ -1407,15 +1407,21 @@ export default function App() {
     })();
   }, [user?.uid]);
 
-  // Web Share Target API helper to extract a URL
+  // Web Share Target API helper to extract a URL from shared title/text/url fields.
+  // Android often puts the link in `text` (or `title`) and leaves `url` empty.
   function extractUrl(text: string | null): string | null {
     if (!text) return null;
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const matches = text.match(urlRegex);
-    return matches ? matches[0] : null;
+    const trimmed = text.trim();
+    if (/^https?:\/\/\S+$/i.test(trimmed)) return trimmed.replace(/[),.;:!?]+$/g, "");
+    const urlRegex = /https?:\/\/[^\s<>"')\]]+/gi;
+    const matches = trimmed.match(urlRegex);
+    if (matches?.[0]) return matches[0].replace(/[),.;:!?]+$/g, "");
+    const wwwMatch = trimmed.match(/\bwww\.[^\s<>"')\]]+/i);
+    if (wwwMatch?.[0]) return `https://${wwwMatch[0].replace(/[),.;:!?]+$/g, "")}`;
+    return null;
   }
 
-  // Handle incoming mobile shared webpages automatically
+  // Handle incoming mobile shared webpages / text (Web Share Target → /share?...).
   useEffect(() => {
     if (loadingAuth) return; // wait until auth is complete
 
@@ -1423,21 +1429,92 @@ export default function App() {
     const sharedText = searchParams.get("text");
     const sharedUrlParam = searchParams.get("url");
     const sharedTitle = searchParams.get("title");
+    const isShareRoute =
+      window.location.pathname === "/share" ||
+      window.location.pathname === "/share/";
+    const hasSharePayload = !!(sharedText || sharedUrlParam || sharedTitle);
 
-    const rawUrl = sharedUrlParam || sharedText;
-    const extractedUrl = extractUrl(rawUrl);
+    if (!isShareRoute && !hasSharePayload) return;
+    // Ignore ordinary PWA launch (?source=pwa) with no share fields.
+    if (!hasSharePayload) {
+      if (isShareRoute) {
+        window.history.replaceState({}, document.title, "/");
+      }
+      return;
+    }
+
+    const extractedUrl =
+      extractUrl(sharedUrlParam) ||
+      extractUrl(sharedText) ||
+      extractUrl(sharedTitle);
+
+    // Clean query parameters so reloads don't convert again
+    window.history.replaceState({}, document.title, "/");
 
     if (extractedUrl) {
       console.log("[PWA Share Target] Detected shared URL:", extractedUrl);
       setSharingUrl(extractedUrl);
-      
-      // Clean query parameters from URL so reloads don't convert again
-      const cleanUrl = window.location.origin + window.location.pathname;
-      window.history.replaceState({}, document.title, cleanUrl);
-
-      // Start conversion
-      handleConvertSharedUrl(extractedUrl, sharedTitle || "Shared Article");
+      void handleConvertSharedUrl(extractedUrl, sharedTitle || "Shared Article");
+      return;
     }
+
+    // Plain text share (no URL) → save as a clipped HTML note in the library.
+    const bodyText = (sharedText || sharedTitle || "").trim();
+    if (!bodyText) return;
+
+    const noteTitle =
+      (sharedTitle && sharedTitle.trim() && sharedTitle.trim() !== bodyText
+        ? sharedTitle.trim()
+        : bodyText.split(/\n/)[0].slice(0, 80)) || "Shared Note";
+
+    void (async () => {
+      setSharingStatus("converting");
+      setSharingError(null);
+      setSharingUrl("shared text");
+      try {
+        const bookId = `clipper-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        const escaped = bodyText
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        const htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${noteTitle
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</title></head><body><article><h1>${noteTitle
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")}</h1><pre style="white-space:pre-wrap;font-family:inherit;line-height:1.5">${escaped}</pre></article></body></html>`;
+
+        const newBook: BookMetadata = {
+          id: bookId,
+          title: noteTitle,
+          author: "Shared Text",
+          extension: "html",
+          size: `${(htmlContent.length / 1024).toFixed(1)} KB`,
+          tags: ["Clipped", "Shared"],
+          status: "to-read",
+          progress: { percent: 0, lastReadTime: Date.now() },
+          dateAdded: Date.now(),
+          description: "Saved from a share to Kora",
+        };
+
+        await storeBookFile(
+          bookId,
+          new Blob([htmlContent], { type: "text/html" }),
+          `${newBook.title}.html`,
+          "html"
+        );
+        await syncBookToCloud(user?.uid || "", newBook);
+        setSharingStatus("success");
+        await refreshLibrary(user?.uid || "");
+        setActiveBook(newBook);
+        setTimeout(() => setSharingStatus("idle"), 5000);
+      } catch (err: any) {
+        console.error("[PWA Share Target Error]:", err);
+        setSharingError(err.message || "Failed to save shared text.");
+        setSharingStatus("error");
+      }
+    })();
   }, [loadingAuth, user]);
 
   async function handleConvertSharedUrl(urlToConvert: string, initialTitle: string) {

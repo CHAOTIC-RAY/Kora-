@@ -14,7 +14,7 @@
   "categories": ["books", "entertainment", "news"],
   "prefer_related_applications": false,
   "share_target": {
-    "action": "/",
+    "action": "https://kora.chaoticstudio.workers.dev/share",
     "method": "GET",
     "enctype": "application/x-www-form-urlencoded",
     "params": {
