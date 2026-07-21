@@ -135,17 +135,43 @@ function clampSelectionMenuPosition(
  */
 function rootUsesCssColumns(root: HTMLElement): boolean {
   const style = getComputedStyle(root);
-  const cw = style.columnWidth || style.webkitColumnWidth;
+  const cw = style.columnWidth || (style as CSSStyleDeclaration & { webkitColumnWidth?: string }).webkitColumnWidth;
   if (cw && cw !== "auto" && parseFloat(cw) > 0) return true;
   const count = style.columnCount || (style as CSSStyleDeclaration & { webkitColumnCount?: string }).webkitColumnCount;
   if (count && count !== "auto" && Number(count) > 1) return true;
   return false;
 }
 
+function rectVisibleInClip(rect: DOMRectReadOnly, clip: DOMRectReadOnly, pad = 1): boolean {
+  return (
+    rect.width >= 0.25 &&
+    rect.height >= 0.25 &&
+    rect.right >= clip.left + pad &&
+    rect.left <= clip.right - pad &&
+    rect.bottom >= clip.top + pad &&
+    rect.top <= clip.bottom - pad
+  );
+}
+
+function collectTextNodes(scope: Node): Text[] {
+  const out: Text[] = [];
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.textContent && /\S/.test(node.textContent)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  let current: Node | null;
+  while ((current = walker.nextNode())) out.push(current as Text);
+  return out;
+}
+
 function findCaretRangeAtPoint(x: number, y: number, root: HTMLElement | null): Range | null {
   if (!root) return null;
 
-  const skipNative = rootUsesCssColumns(root) || /matrix|translate/i.test(getComputedStyle(root).transform);
+  const skipNative =
+    rootUsesCssColumns(root) || /matrix|translate/i.test(getComputedStyle(root).transform);
 
   if (!skipNative) {
     let native: Range | null = null;
@@ -168,82 +194,138 @@ function findCaretRangeAtPoint(x: number, y: number, root: HTMLElement | null): 
     }
   }
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      return node.textContent && /\S/.test(node.textContent)
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT;
-    },
-  });
+  // Only score glyph boxes that sit inside the visible page clip — off-page
+  // CSS-column fragments otherwise steal the hit test toward chapter start.
+  const clipEl =
+    (root.closest("#epub-reader-container") as HTMLElement | null) ||
+    root.parentElement ||
+    root;
+  const clip = clipEl.getBoundingClientRect();
+
+  // Prefer the element under the finger so we don't scan the whole chapter.
+  let seed: Node = root;
+  try {
+    for (const el of document.elementsFromPoint(x, y)) {
+      if (el instanceof Element && (el === root || root.contains(el))) {
+        seed = el;
+        break;
+      }
+    }
+  } catch {
+    /* elementsFromPoint can throw in detached docs */
+  }
+
+  let candidates = collectTextNodes(seed);
+  if (candidates.length === 0 && seed !== root) {
+    let parent: Element | null = seed instanceof Element ? seed.parentElement : null;
+    while (parent && root.contains(parent)) {
+      candidates = collectTextNodes(parent);
+      if (candidates.length > 0) break;
+      if (parent === root) break;
+      parent = parent.parentElement;
+    }
+  }
+  if (candidates.length === 0) candidates = collectTextNodes(root);
 
   let best: { node: Text; offset: number; dist: number } | null = null;
-  let current: Node | null;
-  while ((current = walker.nextNode())) {
-    const textNode = current as Text;
+
+  for (const textNode of candidates) {
     const len = textNode.length;
     if (!len) continue;
 
     const whole = document.createRange();
     whole.selectNodeContents(textNode);
-    const nodeRects = whole.getClientRects();
+    const lineRects = whole.getClientRects();
     let nodeNear = false;
-    for (let i = 0; i < nodeRects.length; i++) {
-      if (distPointToRect(x, y, nodeRects[i]) <= 36) {
+    for (let i = 0; i < lineRects.length; i++) {
+      const line = lineRects[i];
+      if (!rectVisibleInClip(line, clip)) continue;
+      if (distPointToRect(x, y, line) <= 28) {
         nodeNear = true;
         break;
       }
     }
     if (!nodeNear) continue;
 
-    // Binary-search character offset for accuracy inside long text nodes.
-    let lo = 0;
-    let hi = len;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      const probe = document.createRange();
-      probe.setStart(textNode, mid);
-      probe.setEnd(textNode, Math.min(len, mid + 1));
-      const rect = probe.getBoundingClientRect();
-      if (rect.width < 0.25 && rect.height < 0.25) {
-        // Empty glyph box — nudge forward
-        lo = mid;
-        continue;
-      }
-      // Prefer the side of the box the pointer is on; also track vertical.
-      if (y < rect.top - 2) {
-        hi = mid;
-      } else if (y > rect.bottom + 2) {
-        lo = mid;
-      } else if (x < rect.left + rect.width * 0.5) {
-        hi = mid;
-      } else {
-        lo = mid;
-      }
-    }
-
-    // Score nearby offsets around the binary result.
-    for (let i = Math.max(0, lo - 2); i <= Math.min(len, lo + 3); i++) {
+    // Per-glyph scan — binary search + getBoundingClientRect is wrong across
+    // CSS column / multi-line fragmentation (union boxes jump to page start).
+    for (let i = 0; i < len; i++) {
       const slice = document.createRange();
-      const end = Math.min(len, Math.max(i + 1, i));
-      slice.setStart(textNode, Math.min(i, len - 1));
-      slice.setEnd(textNode, end === i ? Math.min(len, i + 1) : end);
+      slice.setStart(textNode, i);
+      slice.setEnd(textNode, Math.min(len, i + 1));
       const rects = slice.getClientRects();
       for (let r = 0; r < rects.length; r++) {
         const rect = rects[r];
-        if (rect.width < 0.25 && rect.height < 0.25) continue;
+        if (!rectVisibleInClip(rect, clip)) continue;
         const dist = distPointToRect(x, y, rect);
-        const bias = Math.abs(y - (rect.top + rect.height / 2)) * 0.15;
+        if (dist > 28) continue;
+        const bias = Math.abs(y - (rect.top + rect.height / 2)) * 0.2;
         const score = dist + bias;
         if (!best || score < best.dist) {
           const ratio = rect.width > 0 ? (x - rect.left) / rect.width : 0;
-          const offset = i + (ratio > 0.55 ? 1 : 0);
-          best = { node: textNode, offset: Math.min(len, Math.max(0, offset)), dist: score };
+          const offset = Math.min(len, Math.max(0, i + (ratio > 0.55 ? 1 : 0)));
+          best = { node: textNode, offset, dist: score };
         }
       }
     }
   }
 
-  if (!best || best.dist > 40) return null;
+  // If the finger missed tight glyph boxes, retry against the full root once.
+  if ((!best || best.dist > 32) && seed !== root) {
+    return findCaretRangeAtPointOnNodes(x, y, collectTextNodes(root), clip);
+  }
+
+  if (!best || best.dist > 32) return null;
+  const range = document.createRange();
+  range.setStart(best.node, best.offset);
+  range.collapse(true);
+  return range;
+}
+
+function findCaretRangeAtPointOnNodes(
+  x: number,
+  y: number,
+  candidates: Text[],
+  clip: DOMRectReadOnly
+): Range | null {
+  let best: { node: Text; offset: number; dist: number } | null = null;
+  for (const textNode of candidates) {
+    const len = textNode.length;
+    if (!len) continue;
+    const whole = document.createRange();
+    whole.selectNodeContents(textNode);
+    const lineRects = whole.getClientRects();
+    let nodeNear = false;
+    for (let i = 0; i < lineRects.length; i++) {
+      const line = lineRects[i];
+      if (!rectVisibleInClip(line, clip)) continue;
+      if (distPointToRect(x, y, line) <= 28) {
+        nodeNear = true;
+        break;
+      }
+    }
+    if (!nodeNear) continue;
+    for (let i = 0; i < len; i++) {
+      const slice = document.createRange();
+      slice.setStart(textNode, i);
+      slice.setEnd(textNode, Math.min(len, i + 1));
+      const rects = slice.getClientRects();
+      for (let r = 0; r < rects.length; r++) {
+        const rect = rects[r];
+        if (!rectVisibleInClip(rect, clip)) continue;
+        const dist = distPointToRect(x, y, rect);
+        if (dist > 28) continue;
+        const bias = Math.abs(y - (rect.top + rect.height / 2)) * 0.2;
+        const score = dist + bias;
+        if (!best || score < best.dist) {
+          const ratio = rect.width > 0 ? (x - rect.left) / rect.width : 0;
+          const offset = Math.min(len, Math.max(0, i + (ratio > 0.55 ? 1 : 0)));
+          best = { node: textNode, offset, dist: score };
+        }
+      }
+    }
+  }
+  if (!best || best.dist > 32) return null;
   const range = document.createRange();
   range.setStart(best.node, best.offset);
   range.collapse(true);
@@ -1169,16 +1251,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const container = contentRef.current;
       if (!container) return false;
 
+      const pagedColumns = rootUsesCssColumns(container);
       const startCaret =
         gestureStartCaret || findCaretRangeAtPoint(pressStartX, pressStartY, container);
       const endCaret = findCaretRangeAtPoint(lastX, lastY, container);
       if (!startCaret || !endCaret) return false;
-      gestureStartCaret = startCaret;
+      if (!gestureStartCaret) {
+        try {
+          gestureStartCaret = startCaret.cloneRange();
+        } catch {
+          gestureStartCaret = startCaret;
+        }
+      }
 
       const sel = window.getSelection();
       if (!sel) return false;
 
-      if (!force && sel.rangeCount > 0) {
+      // In column/paginated mode always rebuild — never trust native ranges.
+      if (!force && !pagedColumns && sel.rangeCount > 0) {
         const current = sel.getRangeAt(0);
         if (container.contains(current.startContainer) || container.contains(current.endContainer)) {
           // Only trust native selection when BOTH boundaries match the gesture.
@@ -1250,7 +1340,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         clearNativeSelection();
       }
 
-      gestureStartCaret = findCaretRangeAtPoint(pressStartX, pressStartY, container);
+      const start = findCaretRangeAtPoint(pressStartX, pressStartY, container);
+      if (start) {
+        try {
+          gestureStartCaret = start.cloneRange();
+        } catch {
+          gestureStartCaret = start;
+        }
+      }
 
       if (pressTimer) clearTimeout(pressTimer);
       pressTimer = setTimeout(() => {
@@ -1308,20 +1405,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       if (e.cancelable) e.preventDefault();
     };
 
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handlePointerUp);
-    document.addEventListener("pointercancel", handlePointerUp);
+    // Capture phase so we preventDefault before native column selection starts.
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("pointermove", handlePointerMove, true);
+    document.addEventListener("pointerup", handlePointerUp, true);
+    document.addEventListener("pointercancel", handlePointerUp, true);
     document.addEventListener("touchmove", handleTouchMove, { passive: false });
 
     return () => {
       document.removeEventListener("selectionchange", handleSelection);
       document.removeEventListener("dblclick", handleDoubleClick);
       document.removeEventListener("click", handleTripleClick);
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handlePointerUp);
-      document.removeEventListener("pointercancel", handlePointerUp);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("pointermove", handlePointerMove, true);
+      document.removeEventListener("pointerup", handlePointerUp, true);
+      document.removeEventListener("pointercancel", handlePointerUp, true);
       document.removeEventListener("touchmove", handleTouchMove);
       if (pressTimer) clearTimeout(pressTimer);
       if (rafId) cancelAnimationFrame(rafId);
