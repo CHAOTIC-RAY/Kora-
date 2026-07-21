@@ -13,7 +13,7 @@ export interface DictionaryEntry {
 const FALLBACK_DICTIONARY: DictionaryEntry[] = [
   {
     word: "kora",
-    definition: "A next-generation, e-ink inspired digital library and ebook reader built with meticulous visual pairing, persistent cloud synchronization, and offline-first technology.",
+    definition: "Your reading lounge — an e-ink inspired digital library for books, audiobooks, and news, with cloud sync and offline-first reading.",
     partOfSpeech: "noun",
     example: "I am reading my favorite fantasy series on Kora.",
     isCustom: false

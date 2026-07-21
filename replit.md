@@ -1,4 +1,4 @@
-# Kora — Next-Gen Ebook Reader
+# Kora — Your Reading Lounge
 
 A Kindle-inspired ebook reader built with React 19, Vite 6, Tailwind CSS 4, and an Express backend. Supports offline-first reading via IndexedDB, with optional Firebase cloud sync.
 

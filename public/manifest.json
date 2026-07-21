@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "Kora - Next-Gen Ebook Reader",
+  "name": "Kora — Your Reading Lounge",
   "short_name": "Kora",
-  "description": "A highly polished, Kindle-inspired next-generation ebook reader with offline capabilities, cloud sync, and direct downloads.",
+  "description": "Your reading lounge for books, audiobooks, and news — offline-ready, cloud-synced, and built to keep going.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",

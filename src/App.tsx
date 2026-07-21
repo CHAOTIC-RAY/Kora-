@@ -2701,7 +2701,7 @@ export default function App() {
           </div>
 
           <div className="pt-4 border-t border-kindle-border/50 w-full flex flex-col items-center gap-1">
-            <p>© 2026 Kora • Next-Gen Reader</p>
+            <p>© 2026 Kora • Your reading lounge</p>
             <p className="font-mono uppercase tracking-[0.2em] opacity-50 text-[9px]">Secure Firestore Cloud Persistence</p>
           </div>
         </div>
