@@ -27,7 +27,7 @@ import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
 import LoungeView from "./components/LoungeView";
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
-import { ensureWalkthroughBook, WALKTHROUGH_BOOK_ID, isWalkthroughBook } from "./lib/walkthroughBook";
+import { ensureWalkthroughBook, isWalkthroughBook } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
