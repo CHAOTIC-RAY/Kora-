@@ -276,14 +276,39 @@
 }
 
 /*
- * Keep long-press selection, but disable double-tap / pinch zoom on the page
- * (touch-action: auto re-enabled accidental zoom on iOS Safari).
+ * Paginated reader: hide scrollbars and block native text-select (CSS columns
+ * snap selection to chapter start — we rebuild ranges from pointer carets).
  */
-#epub-reader-container .reader-select-surface {
-  touch-action: manipulation;
+#epub-reader-container.kora-paged-reader,
+#epub-reader-container.kora-paged-reader * {
+  scrollbar-width: none;
+}
+#epub-reader-container.kora-paged-reader::-webkit-scrollbar,
+#epub-reader-container.kora-paged-reader *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+}
+
+#epub-reader-container.kora-paged-reader .reader-select-surface,
+#epub-reader-container.kora-paged-reader article {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none;
+}
+
+#epub-reader-container.kora-scroll-reader .reader-select-surface {
+  touch-action: pan-y;
   -webkit-user-select: text !important;
   user-select: text !important;
   -webkit-touch-callout: default;
+}
+
+/*
+ * Keep long-press selection helpers for continuous scroll mode.
+ */
+#epub-reader-container .reader-select-surface {
+  touch-action: manipulation;
 }
 
 /* Keep highlight marks selectable but clearly painted above EPUB theme colors */

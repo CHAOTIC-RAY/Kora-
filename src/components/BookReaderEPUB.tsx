@@ -130,28 +130,42 @@ function clampSelectionMenuPosition(
 
 /**
  * Hit-test a caret in reader content. Native caretRangeFromPoint is unreliable
- * with CSS multi-column pagination (often snaps to the chapter start).
+ * with CSS multi-column pagination (often snaps to the chapter start) — skip it
+ * whenever the root uses columns / horizontal page translation.
  */
+function rootUsesCssColumns(root: HTMLElement): boolean {
+  const style = getComputedStyle(root);
+  const cw = style.columnWidth || style.webkitColumnWidth;
+  if (cw && cw !== "auto" && parseFloat(cw) > 0) return true;
+  const count = style.columnCount || (style as CSSStyleDeclaration & { webkitColumnCount?: string }).webkitColumnCount;
+  if (count && count !== "auto" && Number(count) > 1) return true;
+  return false;
+}
+
 function findCaretRangeAtPoint(x: number, y: number, root: HTMLElement | null): Range | null {
   if (!root) return null;
 
-  let native: Range | null = null;
-  if (document.caretRangeFromPoint) {
-    native = document.caretRangeFromPoint(x, y);
-  } else if ((document as any).caretPositionFromPoint) {
-    const pos = (document as any).caretPositionFromPoint(x, y);
-    if (pos?.offsetNode) {
-      native = document.createRange();
-      native.setStart(pos.offsetNode, pos.offset);
-      native.collapse(true);
+  const skipNative = rootUsesCssColumns(root) || /matrix|translate/i.test(getComputedStyle(root).transform);
+
+  if (!skipNative) {
+    let native: Range | null = null;
+    if (document.caretRangeFromPoint) {
+      native = document.caretRangeFromPoint(x, y);
+    } else if ((document as any).caretPositionFromPoint) {
+      const pos = (document as any).caretPositionFromPoint(x, y);
+      if (pos?.offsetNode) {
+        native = document.createRange();
+        native.setStart(pos.offsetNode, pos.offset);
+        native.collapse(true);
+      }
     }
-  }
-  if (
-    native &&
-    root.contains(native.startContainer) &&
-    isCollapsedRangeNearPoint(native, x, y, 40)
-  ) {
-    return native;
+    if (
+      native &&
+      root.contains(native.startContainer) &&
+      isCollapsedRangeNearPoint(native, x, y, 28)
+    ) {
+      return native;
+    }
   }
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -169,41 +183,67 @@ function findCaretRangeAtPoint(x: number, y: number, root: HTMLElement | null): 
     const len = textNode.length;
     if (!len) continue;
 
-    // Probe whole node fragments first (cheap reject for off-screen column pages).
     const whole = document.createRange();
     whole.selectNodeContents(textNode);
     const nodeRects = whole.getClientRects();
     let nodeNear = false;
     for (let i = 0; i < nodeRects.length; i++) {
-      if (distPointToRect(x, y, nodeRects[i]) <= 48) {
+      if (distPointToRect(x, y, nodeRects[i]) <= 36) {
         nodeNear = true;
         break;
       }
     }
     if (!nodeNear) continue;
 
-    // Walk characters in steps for speed, then refine locally.
-    const step = Math.max(1, Math.floor(len / 80));
-    for (let i = 0; i < len; i += step) {
-      const end = Math.min(len, i + Math.max(step, 1));
+    // Binary-search character offset for accuracy inside long text nodes.
+    let lo = 0;
+    let hi = len;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      const probe = document.createRange();
+      probe.setStart(textNode, mid);
+      probe.setEnd(textNode, Math.min(len, mid + 1));
+      const rect = probe.getBoundingClientRect();
+      if (rect.width < 0.25 && rect.height < 0.25) {
+        // Empty glyph box — nudge forward
+        lo = mid;
+        continue;
+      }
+      // Prefer the side of the box the pointer is on; also track vertical.
+      if (y < rect.top - 2) {
+        hi = mid;
+      } else if (y > rect.bottom + 2) {
+        lo = mid;
+      } else if (x < rect.left + rect.width * 0.5) {
+        hi = mid;
+      } else {
+        lo = mid;
+      }
+    }
+
+    // Score nearby offsets around the binary result.
+    for (let i = Math.max(0, lo - 2); i <= Math.min(len, lo + 3); i++) {
       const slice = document.createRange();
-      slice.setStart(textNode, i);
-      slice.setEnd(textNode, end);
+      const end = Math.min(len, Math.max(i + 1, i));
+      slice.setStart(textNode, Math.min(i, len - 1));
+      slice.setEnd(textNode, end === i ? Math.min(len, i + 1) : end);
       const rects = slice.getClientRects();
       for (let r = 0; r < rects.length; r++) {
         const rect = rects[r];
-        if (rect.width < 0.5 && rect.height < 0.5) continue;
+        if (rect.width < 0.25 && rect.height < 0.25) continue;
         const dist = distPointToRect(x, y, rect);
-        if (!best || dist < best.dist) {
+        const bias = Math.abs(y - (rect.top + rect.height / 2)) * 0.15;
+        const score = dist + bias;
+        if (!best || score < best.dist) {
           const ratio = rect.width > 0 ? (x - rect.left) / rect.width : 0;
-          const offset = i + Math.round(Math.min(1, Math.max(0, ratio)) * (end - i));
-          best = { node: textNode, offset: Math.min(len, Math.max(0, offset)), dist };
+          const offset = i + (ratio > 0.55 ? 1 : 0);
+          best = { node: textNode, offset: Math.min(len, Math.max(0, offset)), dist: score };
         }
       }
     }
   }
 
-  if (!best || best.dist > 48) return null;
+  if (!best || best.dist > 40) return null;
   const range = document.createRange();
   range.setStart(best.node, best.offset);
   range.collapse(true);
@@ -504,6 +544,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     originalEndOffset: number;
   } | null>(null);
   const isPointerDownRef = useRef<boolean>(false);
+  const wheelPageThrottleRef = useRef<number>(0);
 
   // Font & theme presets (KOReader-aligned)
   const fontFamilies = READER_FONTS;
@@ -1197,6 +1238,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
+      // Paginated CSS columns: kill native selection immediately — it always snaps
+      // to the chapter start. We rebuild ranges from carets ourselves.
+      const pagedColumns = !!(container && rootUsesCssColumns(container));
+      if (pagedColumns) {
+        try {
+          e.preventDefault();
+        } catch {
+          /* ignore */
+        }
+        clearNativeSelection();
+      }
+
       gestureStartCaret = findCaretRangeAtPoint(pressStartX, pressStartY, container);
 
       if (pressTimer) clearTimeout(pressTimer);
@@ -1216,7 +1269,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const dx = Math.abs(e.clientX - pressStartX);
       const dy = Math.abs(e.clientY - pressStartY);
       // Allow finger jitter before canceling long-press / treating as drag.
-      if (dx > 12 || dy > 12) {
+      if (dx > 8 || dy > 8) {
         movedDuringPress = true;
         if (pressTimer) {
           clearTimeout(pressTimer);
@@ -2313,7 +2366,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   return (
     <div
       id="epub-reader-container"
-      className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}
+      data-scroll-mode={useScrollLayout ? "continuous" : "paged"}
+      className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200 ${
+        useScrollLayout ? "kora-scroll-reader" : "kora-paged-reader"
+      }`}
       style={{
         paddingTop: "var(--kora-safe-top)",
         paddingBottom: "var(--kora-safe-bottom)",
@@ -2324,6 +2380,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         maxHeight: "var(--kora-vvh, 100dvh)",
         top: "var(--kora-vv-offset-top, 0px)",
         boxSizing: "border-box",
+        overflow: "hidden",
       }}
     >
       {/* 1. Header Toolbar */}
@@ -3381,9 +3438,29 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     setShowSettings(false);
                   }
                 }}
-                className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start select-text cursor-text mx-auto ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
+                className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start cursor-text mx-auto overflow-hidden ${
+                  useScrollLayout ? "select-text" : "select-none"
+                } ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
-                <div className={`w-full h-full ${useScrollLayout ? "overflow-y-auto overflow-x-hidden" : "overflow-hidden"} relative flex items-start justify-start`} style={{ perspective: "1200px" }}>
+                <div
+                  className={`w-full h-full relative flex items-start justify-start ${
+                    useScrollLayout
+                      ? "overflow-y-auto overflow-x-hidden overscroll-y-contain"
+                      : "overflow-hidden overscroll-none"
+                  }`}
+                  style={{ perspective: "1200px" }}
+                  onWheel={(e) => {
+                    // Paginated mode: never scroll the page canvas — turn pages instead.
+                    if (useScrollLayout) return;
+                    e.preventDefault();
+                    if (Math.abs(e.deltaY) < 8 && Math.abs(e.deltaX) < 8) return;
+                    const now = Date.now();
+                    if (now - wheelPageThrottleRef.current < 280) return;
+                    wheelPageThrottleRef.current = now;
+                    if (e.deltaY > 0 || e.deltaX > 0) handleNextPage();
+                    else handlePrevPage();
+                  }}
+                >
                   {/* Turn.js style 3D page flip transition */}
                   {!useScrollLayout && pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
                     <div 
@@ -3583,14 +3660,17 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       scaleX: 1
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
-                    className={`w-full ml-0 select-text cursor-text ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
+                    className={`w-full ml-0 cursor-text ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
+                      useScrollLayout ? "select-text" : "select-none"
+                    }`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,
-                      WebkitUserSelect: "text",
-                      userSelect: "text",
-                      WebkitTouchCallout: "default",
-                      // Allow our pointer handlers to own drag-select in column mode.
+                      // Paginated columns: disable native select (snaps to chapter start).
+                      // Programmatic Selection API still paints the highlight.
+                      WebkitUserSelect: useScrollLayout ? "text" : "none",
+                      userSelect: useScrollLayout ? "text" : "none",
+                      WebkitTouchCallout: useScrollLayout ? "default" : "none",
                       touchAction: useScrollLayout ? "pan-y" : "manipulation",
                       ...(useScrollLayout
                         ? {
@@ -3603,7 +3683,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             columnGap: `${columnGapPx}px`,
                             height: "100%",
                             columnFill: "auto",
-                            overflow: "visible",
+                            overflow: "hidden",
                             boxShadow: useDoubleColumns ? "inset 50% 0 0 -20px rgba(0,0,0,0.10)" : "none",
                             transformOrigin: flipDirection === "next" ? "left center" : "right center",
                           }),
@@ -3919,10 +3999,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => setDoubleColumns(!doubleColumns)}
-                    className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
+                    className={`hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition shrink-0 ${
+                      doubleColumns
+                        ? theme === "dark"
+                          ? "bg-white text-neutral-950 border-transparent"
+                          : "bg-neutral-900 text-white border-transparent"
+                        : theme === "dark"
+                          ? "bg-white/10 text-white border-white/25 hover:bg-white/15"
+                          : "bg-white text-neutral-800 border-neutral-300 hover:bg-neutral-50"
+                    }`}
                     title="Toggle two-column spread (KOReader style)"
+                    aria-pressed={doubleColumns}
                   >
-                    <Layout className="w-3.5 h-3.5" /> 2-Page
+                    <Layout className="w-3.5 h-3.5 shrink-0" />
+                    <span>2-Page</span>
                   </button>
 
                   {!(pageTurnMode === "fifty-fifty" || pageTurnMode === "classic-ereader" || pageTurnMode === "margins-only") && (
