@@ -473,6 +473,8 @@ export default function App() {
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
   const [feedInitialUrl, setFeedInitialUrl] = useState<string | null>(null);
+  const [feedInitialFilter, setFeedInitialFilter] = useState<"all" | "unread" | "saved" | "briefs" | null>(null);
+  const shortcutHandledRef = useRef(false);
 
   // Restore minimized audiobook player after reload if playback was active.
   useEffect(() => {
@@ -1370,6 +1372,21 @@ export default function App() {
         switchTab("library");
       } else if (data.type === "open-feed-briefs") {
         switchTab("feed");
+        setFeedInitialFilter("briefs");
+      } else if (data.type === "open-continue") {
+        const saved = localStorage.getItem("kindle_last_read");
+        if (saved) {
+          try {
+            const book = JSON.parse(saved);
+            if (book?.id) {
+              setActiveBook(book);
+              return;
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+        switchTab(isLoungeEnabled() ? "lounge" : "library");
       } else if (data.type === "brief-notification-shown") {
         markBriefNotificationShown();
       } else if (data.type === "bgf-retry") {
@@ -1696,6 +1713,75 @@ export default function App() {
   useEffect(() => {
     void updateCachedBookIndex();
   }, [books, updateCachedBookIndex]);
+
+  // Keep home-screen / Widgets Board "Continue" tile in sync with last-read book.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const book = lastReadBook;
+    const controller = navigator.serviceWorker.controller;
+    if (!controller) return;
+    const ext = (book?.extension || "").toLowerCase();
+    const kind = book?.audiobookTracks?.length || ext === "audio" || ext === "mp3" ? "audio" : "book";
+    controller.postMessage({
+      type: "sync-widget-data",
+      continue: book
+        ? {
+            title: book.title || "Continue reading",
+            author: book.author || "",
+            percent: book.progress?.percent ?? 0,
+            kind,
+          }
+        : null,
+    });
+  }, [lastReadBook]);
+
+  // App shortcuts + widget deep links: /?go=continue|feed|library|discover|lounge|tools
+  useEffect(() => {
+    if (loadingAuth || shortcutHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const go = (params.get("go") || params.get("tab") || "").toLowerCase();
+    const briefs = params.get("briefs") === "1";
+    if (!go && !briefs) return;
+
+    shortcutHandledRef.current = true;
+    const clean = new URL(window.location.href);
+    ["go", "tab", "briefs", "source"].forEach((k) => clean.searchParams.delete(k));
+    const qs = clean.searchParams.toString();
+    window.history.replaceState({}, document.title, clean.pathname + (qs ? `?${qs}` : ""));
+
+    if (go === "continue") {
+      if (loadingLibrary) {
+        shortcutHandledRef.current = false;
+        return;
+      }
+      if (lastReadBook) {
+        void handleOpenBook(lastReadBook);
+      } else {
+        switchTab(loungeEnabled ? "lounge" : "library");
+      }
+      return;
+    }
+    if (go === "feed" || go === "news" || briefs) {
+      switchTab("feed");
+      if (briefs || go === "news") setFeedInitialFilter("briefs");
+      return;
+    }
+    if (go === "library") {
+      switchTab("library");
+      return;
+    }
+    if (go === "discover") {
+      switchTab("discover");
+      return;
+    }
+    if (go === "lounge") {
+      switchTab(loungeEnabled ? "lounge" : "library");
+      return;
+    }
+    if (go === "tools" || go === "clipper") {
+      switchTab("tools");
+    }
+  }, [loadingAuth, loadingLibrary, lastReadBook, loungeEnabled, switchTab]);
 
   // Keep track of the active tab before transitioning to settings
   const prevTabRef = useRef<AppTab>("library");
@@ -2193,6 +2279,8 @@ export default function App() {
             onOpenBook={handleOpenBook}
             initialUrl={feedInitialUrl}
             onClearInitialUrl={() => setFeedInitialUrl(null)}
+            initialFilter={feedInitialFilter}
+            onClearInitialFilter={() => setFeedInitialFilter(null)}
             grayscaleCovers={grayscaleCovers}
           />
                   </div>

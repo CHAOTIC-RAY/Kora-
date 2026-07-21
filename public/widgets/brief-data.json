@@ -1,0 +1,5 @@
+{
+  "headline": "Your morning headlines",
+  "lines": "Enable Daily News Brief in Settings, or open News to catch up.",
+  "openUrl": "https://kora.chaoticstudio.workers.dev/?go=feed&briefs=1&source=widget"
+}

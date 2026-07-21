@@ -41,16 +41,19 @@ import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
 import TodayNewsBriefCard from "./TodayNewsBriefCard";
 
+type FeedFilter = "all" | "unread" | "saved" | "briefs";
+
 interface FeedViewProps {
   userId?: string;
   onRefreshLibrary?: () => void | Promise<void>;
   onOpenBook?: (book: BookMetadata) => void;
   initialUrl?: string | null;
   onClearInitialUrl?: () => void;
+  initialFilter?: FeedFilter | null;
+  onClearInitialFilter?: () => void;
   grayscaleCovers?: boolean;
 }
 
-type FeedFilter = "all" | "unread" | "saved" | "briefs";
 /** Only two card sizes: full-width hero + half-width tile. */
 type BentoVariant = "featured" | "default";
 
@@ -345,6 +348,8 @@ function FeedView({
   onOpenBook,
   initialUrl,
   onClearInitialUrl,
+  initialFilter,
+  onClearInitialFilter,
   grayscaleCovers = false,
 }: FeedViewProps) {
   const [subscriptions, setSubscriptions] = useState<FeedSubscription[]>([]);
@@ -360,6 +365,12 @@ function FeedView({
 
   const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
   const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
+
+  useEffect(() => {
+    if (!initialFilter) return;
+    setFilter(initialFilter);
+    onClearInitialFilter?.();
+  }, [initialFilter, onClearInitialFilter]);
 
   useEffect(() => {
     const onOpen = (e: Event) => {

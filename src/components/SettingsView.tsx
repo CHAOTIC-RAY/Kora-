@@ -1203,6 +1203,13 @@ function SettingsView({
               <Row title="Daily News Brief" desc="Morning notification with headlines from your RSS feeds">
                 <Toggle on={dailyNewsBriefEnabled} onClick={() => onChangeDailyNewsBrief?.(!dailyNewsBriefEnabled)} />
               </Row>
+              <div className="rounded-xl border border-kindle-border bg-kindle-bg/60 px-3.5 py-3 space-y-1.5">
+                <p className="text-[11px] font-bold text-kindle-text">Home screen shortcuts</p>
+                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                  With Kora installed as a PWA, long-press the app icon to pin Continue, News, Library, or Discover to your home screen.
+                  On Windows 11 (Edge), add Continue or Daily Brief from the Widgets board.
+                </p>
+              </div>
               <Row title="Lounge tab" desc="Show the Lounge dashboard as your default home screen">
                 <Toggle on={loungeEnabled} onClick={() => onChangeLoungeEnabled?.(!loungeEnabled)} />
               </Row>

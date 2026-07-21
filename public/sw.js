@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v10";
-const API_CACHE = "kora-api-v10";
+const SHELL_CACHE = "kora-shell-v11";
+const API_CACHE = "kora-api-v11";
 const COVER_CACHE = "kora-covers-v1";
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.
@@ -23,7 +23,18 @@ const SHELL_ASSETS = [
   "/icon-512.png",
   "/fonts/opendyslexic-regular.woff2",
   "/fonts/opendyslexic-bold.woff2",
+  "/widgets/continue-template.json",
+  "/widgets/continue-data.json",
+  "/widgets/brief-template.json",
+  "/widgets/brief-data.json",
+  "/shortcuts/continue.png",
+  "/shortcuts/news.png",
+  "/shortcuts/library.png",
+  "/shortcuts/discover.png",
 ];
+const WIDGET_CONTINUE_TAG = "kora-continue";
+const WIDGET_BRIEF_TAG = "kora-brief";
+const WIDGET_ORIGIN = "https://kora.chaoticstudio.workers.dev";
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
 const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
@@ -73,6 +84,9 @@ self.addEventListener("activate", (event) => {
       } catch (e) {}
       warmApiCache();
       await resumePartialDownloads();
+      try {
+        await refreshInstalledWidgets();
+      } catch (e) {}
     })()
   );
 });
@@ -645,6 +659,149 @@ async function downloadBookBGF(payload) {
   }
 }
 
+/* ---------- PWA widgets (Windows Widgets Board / Edge) ---------- */
+function widgetsApi() {
+  return self.widgets || null;
+}
+
+async function fetchText(url) {
+  const res = await fetch(absoluteUrl(url));
+  if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+  return res.text();
+}
+
+async function buildContinueWidgetData() {
+  const prefs = (await getPrefs("app")) || {};
+  const widget = prefs.widgetContinue || {};
+  const title = widget.title || "Your reading lounge";
+  const subtitle = widget.author
+    ? `by ${widget.author}`
+    : "Open Kora to pick up where you left off";
+  const percent = typeof widget.percent === "number" ? Math.round(widget.percent) : null;
+  const progress =
+    percent != null && percent > 0 ? `${percent}% complete` : widget.kind === "audio" ? "Audiobook" : "";
+  return JSON.stringify({
+    title,
+    subtitle,
+    progress,
+    openUrl: `${WIDGET_ORIGIN}/?go=continue&source=widget`,
+  });
+}
+
+async function buildBriefWidgetData(briefs) {
+  const list = briefs || [];
+  const top = list.slice(0, 3);
+  const headline = top[0]
+    ? top[0].title
+    : "Your morning headlines";
+  const lines = top.length
+    ? top.map((b) => `• ${b.source}: ${b.title}`).join("\n")
+    : "Enable Daily News Brief in Settings, or open News to catch up.";
+  return JSON.stringify({
+    headline,
+    lines,
+    openUrl: `${WIDGET_ORIGIN}/?go=feed&briefs=1&source=widget`,
+  });
+}
+
+async function renderWidgetByTag(tag, dataOverride) {
+  const api = widgetsApi();
+  if (!api || typeof api.getByTag !== "function") return;
+  try {
+    const widget = await api.getByTag(tag);
+    if (!widget || !widget.definition) return;
+    const templateUrl = widget.definition.msAcTemplate || widget.definition.ms_ac_template;
+    if (!templateUrl) return;
+    const template = await fetchText(templateUrl);
+    let data = dataOverride;
+    if (!data) {
+      if (tag === WIDGET_CONTINUE_TAG) data = await buildContinueWidgetData();
+      else if (tag === WIDGET_BRIEF_TAG) data = await buildBriefWidgetData();
+      else if (widget.definition.data) data = await fetchText(widget.definition.data);
+      else data = "{}";
+    }
+    await api.updateByTag(tag, { template, data });
+  } catch (err) {
+    console.warn("[SW] renderWidgetByTag failed:", tag, err);
+  }
+}
+
+async function refreshInstalledWidgets() {
+  const api = widgetsApi();
+  if (!api) return;
+  try {
+    if (typeof api.getByTag === "function") {
+      await renderWidgetByTag(WIDGET_CONTINUE_TAG);
+      await renderWidgetByTag(WIDGET_BRIEF_TAG);
+      return;
+    }
+  } catch (e) {
+    /* fall through */
+  }
+}
+
+async function onWidgetInstall(widget) {
+  await renderWidgetByTag(widget.definition?.tag || widget.tag);
+  try {
+    const tag = widget.definition?.tag;
+    if (tag && self.registration.periodicSync) {
+      const tags = await self.registration.periodicSync.getTags();
+      if (!tags.includes(tag)) {
+        await self.registration.periodicSync.register(tag, { minInterval: 60 * 60 * 1000 });
+      }
+    }
+  } catch (e) {
+    /* periodic sync optional */
+  }
+}
+
+async function onWidgetUninstall(widget) {
+  try {
+    const tag = widget.definition?.tag;
+    if (tag && self.registration.periodicSync) {
+      const remaining = await (widgetsApi()?.getByTag?.(tag));
+      if (!remaining || !(remaining.instances || []).length) {
+        await self.registration.periodicSync.unregister(tag);
+      }
+    }
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+self.addEventListener("widgetinstall", (event) => {
+  event.waitUntil(onWidgetInstall(event.widget));
+});
+
+self.addEventListener("widgetuninstall", (event) => {
+  event.waitUntil(onWidgetUninstall(event.widget));
+});
+
+self.addEventListener("widgetclick", (event) => {
+  const action = event.action;
+  event.waitUntil(
+    (async () => {
+      if (action === "open-continue") {
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        if (clients[0]) {
+          clients[0].focus();
+          clients[0].postMessage({ type: "open-continue" });
+        } else {
+          await self.clients.openWindow("/?go=continue&source=widget");
+        }
+      } else if (action === "open-brief") {
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        if (clients[0]) {
+          clients[0].focus();
+          clients[0].postMessage({ type: "open-feed-briefs" });
+        } else {
+          await self.clients.openWindow("/?go=feed&briefs=1&source=widget");
+        }
+      }
+    })()
+  );
+});
+
 /* ---------- Daily news brief ---------- */
 function isNewsBriefItem(item) {
   const haystack = `${item.title || ""} ${item.link || ""} ${item.summary || ""}`.toLowerCase();
@@ -723,6 +880,12 @@ async function maybeShowDailyBriefNotification(force = false) {
   const briefs = await fetchFeedBriefs(prefs.subscriptions || []);
   if (!briefs.length) return;
 
+  try {
+    await renderWidgetByTag(WIDGET_BRIEF_TAG, await buildBriefWidgetData(briefs));
+  } catch (e) {
+    /* widgets optional */
+  }
+
   const headlines = briefs.slice(0, 3).map((b) => `• ${b.source}: ${b.title}`).join("\n");
   if (self.registration && self.registration.showNotification) {
     await self.registration.showNotification("Your daily news brief", {
@@ -744,7 +907,26 @@ self.addEventListener("message", (event) => {
     return;
   }
   if (data.type === "sync-prefs") {
-    event.waitUntil(putPrefs("app", data.prefs || {}));
+    event.waitUntil(
+      (async () => {
+        await putPrefs("app", data.prefs || {});
+        await refreshInstalledWidgets();
+      })()
+    );
+    return;
+  }
+  if (data.type === "sync-widget-data") {
+    event.waitUntil(
+      (async () => {
+        const prefs = (await getPrefs("app")) || {};
+        const next = {
+          ...prefs,
+          widgetContinue: data.continue || prefs.widgetContinue || null,
+        };
+        await putPrefs("app", next);
+        await renderWidgetByTag(WIDGET_CONTINUE_TAG);
+      })()
+    );
     return;
   }
   if (data.type === "check-daily-brief") {
@@ -913,6 +1095,9 @@ self.addEventListener("backgroundfetchclick", (event) => {
 self.addEventListener("periodicsync", (event) => {
   if (event.tag === PERIODIC_SYNC_TAG) {
     event.waitUntil(maybeShowDailyBriefNotification());
+  }
+  if (event.tag === WIDGET_CONTINUE_TAG || event.tag === WIDGET_BRIEF_TAG) {
+    event.waitUntil(renderWidgetByTag(event.tag));
   }
 });
 
