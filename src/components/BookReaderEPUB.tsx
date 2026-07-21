@@ -54,21 +54,15 @@ import {
   wrapSelectionWithHighlight,
 } from "../lib/readerHighlights";
 import { isWalkthroughBook } from "../lib/walkthroughBook";
-import { completeGuide, setGuideStatus } from "../lib/guides";
+import { completeGuide, type GuideId } from "../lib/guides";
 
-function emitWalkthroughBookCta(action: "first-book" | "more-guides") {
+function emitWalkthroughBookCta(
+  action: "first-book" | "more-guides" | "start-guide",
+  guideId?: GuideId
+) {
   window.dispatchEvent(
     new CustomEvent("kora-guide:book-cta", {
-      detail: { action },
-    })
-  );
-}
-
-function replayWalkthroughGuide() {
-  setGuideStatus("walkthrough-book", "pending");
-  window.dispatchEvent(
-    new CustomEvent("kora-guide:start", {
-      detail: { id: "walkthrough-book", force: true, stepIndex: 1 },
+      detail: { action, guideId },
     })
   );
 }
@@ -1138,9 +1132,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       e.preventDefault();
       e.stopPropagation();
       const action = cta.getAttribute("data-kora-guide-cta");
+      const guideId = cta.getAttribute("data-guide-id") as GuideId | null;
       if (action === "first-book" || action === "more-guides") {
         completeGuide("walkthrough-book");
         emitWalkthroughBookCta(action);
+      } else if (action === "start-guide" && guideId) {
+        completeGuide("walkthrough-book");
+        emitWalkthroughBookCta("start-guide", guideId);
       }
       return;
     }
@@ -4026,7 +4024,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`rounded-2xl border px-3 py-3 shadow-lg backdrop-blur-sm ${activeTheme.card} ${activeTheme.border} ${activeTheme.text}`}
                     >
                       <p className="text-[11px] font-sans opacity-70 mb-2">
-                        End of Getting started — continue with a tour anytime.
+                        End of Getting started — pick a next step from this page or the buttons below.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <button
@@ -4037,7 +4035,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             emitWalkthroughBookCta("first-book");
                           }}
                         >
-                          First book tour
+                          Download your first book
                         </button>
                         <button
                           type="button"
@@ -4047,14 +4045,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             emitWalkthroughBookCta("more-guides");
                           }}
                         >
-                          More guides
-                        </button>
-                        <button
-                          type="button"
-                          className={`rounded-full border px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider ${activeTheme.border}`}
-                          onClick={() => replayWalkthroughGuide()}
-                        >
-                          Replay guide
+                          Lounge guides
                         </button>
                       </div>
                     </div>

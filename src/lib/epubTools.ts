@@ -252,8 +252,12 @@ h1{font-size:1.4em;margin:0 0 1em}
 p{margin:0 0 0.9em;text-indent:1.2em}
 p:first-of-type{text-indent:0}
 p.kora-cta-row{text-indent:0;margin:1.4em 0;display:flex;flex-direction:column;gap:0.65em}
+ul.kora-guide-list{list-style:none;padding:0;margin:1em 0;text-indent:0}
+ul.kora-guide-list li{margin:0 0 0.5em;text-indent:0}
+ul.kora-guide-list button{width:100%;font-family:sans-serif;font-size:0.85em;font-weight:600;text-align:left;padding:0.75em 0.9em;border-radius:0.65em;border:1px solid #1a1a1a;background:transparent;color:#1a1a1a;cursor:pointer}
 button[data-kora-guide-cta]{font-family:sans-serif;font-size:0.85em;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:0.85em 1em;border-radius:0.75em;border:none;background:#1a1a1a;color:#f5f5f5;cursor:pointer;text-align:center}
-button[data-kora-guide-cta].kora-cta-secondary{background:transparent;color:#1a1a1a;border:1px solid #1a1a1a}`
+button[data-kora-guide-cta].kora-cta-secondary{background:transparent;color:#1a1a1a;border:1px solid #1a1a1a}
+button[data-kora-guide-cta][data-guide-id]{text-transform:none;letter-spacing:0.01em;font-weight:600}`
   );
 
   const manifestItems: string[] = [

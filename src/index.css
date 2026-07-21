@@ -895,5 +895,30 @@ h1, h2, h3, h4 {
   border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
 }
 
+.epub-content ul.kora-guide-list {
+  list-style: none;
+  padding: 0 !important;
+  margin: 1em 0 !important;
+  text-indent: 0 !important;
+}
+
+.epub-content ul.kora-guide-list li {
+  margin: 0 0 0.5em !important;
+  padding: 0 !important;
+  text-indent: 0 !important;
+}
+
+.epub-content ul.kora-guide-list button,
+.epub-content button[data-kora-guide-cta][data-guide-id] {
+  width: 100%;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font-weight: 600;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+}
+
 @import "./styles/skin-fonts.css";
 @import "./styles/app-skins.css";

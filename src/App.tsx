@@ -388,14 +388,33 @@ export default function App() {
   // Last-page CTAs inside the Getting started book
   useEffect(() => {
     const onBookCta = (e: Event) => {
-      const action = (e as CustomEvent).detail?.action as string | undefined;
-      if (action === "first-book") {
+      const detail = (e as CustomEvent).detail || {};
+      const action = detail.action as string | undefined;
+      if (action === "first-book" || (action === "start-guide" && detail.guideId === "first-book-search")) {
         setActiveBook(null);
         switchTab("discover");
         window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent("kora-guide:start", {
-              detail: { id: "first-book-search", force: true },
+              detail: { id: detail.guideId || "first-book-search", force: true },
+            })
+          );
+        }, 400);
+      } else if (action === "start-guide" && detail.guideId) {
+        setActiveBook(null);
+        const tab =
+          detail.guideId === "news-feed" || detail.guideId === "add-news-source"
+            ? "feed"
+            : detail.guideId === "audiobook-generator"
+              ? "tools"
+              : isLoungeEnabled()
+                ? "lounge"
+                : "library";
+        switchTab(tab as AppTab);
+        window.setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("kora-guide:start", {
+              detail: { id: detail.guideId, force: true },
             })
           );
         }, 400);
@@ -467,7 +486,7 @@ export default function App() {
     switchTab("library");
     toast.success(
       wantTour
-        ? `Welcome, ${prefs.nickname}! Open Getting started with Kora on your shelf to begin.`
+        ? `Welcome, ${prefs.nickname}! Open Getting started with Kora on your shelf and read through it.`
         : `Welcome, ${prefs.nickname}! Your library is ready.`
     );
     if (wantTour) {
@@ -2146,20 +2165,14 @@ export default function App() {
     localStorage.setItem("kindle_last_read", JSON.stringify(book));
     emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
     if (isWalkthroughBook(book)) {
+      // Complete the Lounge "open the book" step first, then drop any spotlight.
       emitGuideEvent("kora-guide:walkthrough-opened", { bookId: book.id });
-      // Continue the in-book tour once the reader chrome is mounted.
       window.setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("kora-guide:start", {
-            detail: { id: "walkthrough-book", force: true, stepIndex: 1 },
-          })
-        );
-      }, 450);
+        window.dispatchEvent(new CustomEvent("kora-guide:clear-active"));
+      }, 120);
     } else {
-      // Never leave the walkthrough spotlight covering other titles.
-      window.dispatchEvent(
-        new CustomEvent("kora-guide:clear-if", { detail: { id: "walkthrough-book" } })
-      );
+      // Guide overlays block long-press selection — never leave them over a reader.
+      window.dispatchEvent(new CustomEvent("kora-guide:clear-active"));
     }
   }
 
@@ -2172,7 +2185,7 @@ export default function App() {
   }
 
   return (
-    <GuideProvider onSwitchTab={switchTab} paused={showOnboarding}>
+    <GuideProvider onSwitchTab={switchTab} paused={showOnboarding || readerOpen || audiobookFullscreen}>
     <div
       id="app-root-container"
       data-skin={appSkin}

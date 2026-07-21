@@ -74,6 +74,15 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
   const currentStep =
     currentGuide && active ? currentGuide.steps[active.stepIndex] || null : null;
 
+  // Older builds may leave an out-of-range stepIndex after catalog shrinks.
+  useEffect(() => {
+    if (!active || !currentGuide) return;
+    if (active.stepIndex >= currentGuide.steps.length) {
+      completeGuide(active.guideId);
+      setActive(null);
+    }
+  }, [active, currentGuide]);
+
   const finishGuideAndAdvanceJourney = useCallback(
     (guideId: GuideId, status: "completed" | "dismissed") => {
       if (status === "completed") completeGuide(guideId);
@@ -259,15 +268,18 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
         setActive(null);
       }
     };
+    const onClearActive = () => setActive(null);
     window.addEventListener("kora-guide:start", onStart);
     window.addEventListener("kora-guide:start-journey", onJourney);
     window.addEventListener("kora-guide:book-cta", onBookCta);
     window.addEventListener("kora-guide:clear-if", onClearIf);
+    window.addEventListener("kora-guide:clear-active", onClearActive);
     return () => {
       window.removeEventListener("kora-guide:start", onStart);
       window.removeEventListener("kora-guide:start-journey", onJourney);
       window.removeEventListener("kora-guide:book-cta", onBookCta);
       window.removeEventListener("kora-guide:clear-if", onClearIf);
+      window.removeEventListener("kora-guide:clear-active", onClearActive);
     };
   }, [startGuide, startJourney, skipAllGuides, active]);
 
