@@ -216,7 +216,11 @@ export default function LoungeView({
   onStartGuide,
   onOpenAnnotations,
 }: LoungeViewProps) {
-  const [modes, setModes] = useState(loadLoungeModes);
+  const [modes, setModes] = useState(() => ({
+    ...loadLoungeModes(),
+    // Continue always opens on Book, then auto-loops to Listen.
+    continue: "book",
+  }));
   const [featured, setFeatured] = useState<FeaturedBook[]>([]);
   const [featuredAudio, setFeaturedAudio] = useState<FeaturedBook[]>([]);
   const [feedTick, setFeedTick] = useState(0);
@@ -225,6 +229,12 @@ export default function LoungeView({
   const discoverPauseUntil = useRef(0);
   const continueLastFlipAt = useRef(Date.now());
   const discoverLastFlipAt = useRef(Date.now());
+
+  useEffect(() => {
+    // Persist the Book-first default so a remount doesn't flash Listen from storage.
+    saveLoungeMode("continue", "book");
+    continueLastFlipAt.current = Date.now();
+  }, []);
 
   useEffect(() => {
     setFeatured(loadFeaturedFromCache({ audiobooksOnly: false }));
@@ -273,7 +283,18 @@ export default function LoungeView({
   const hasDiscoverTrending = featured.length > 0;
   const hasDiscoverAudio = recentAudio.length > 0 || featuredAudio.length > 0;
 
-  // Smooth auto flip — Continue stays longer on book/listen than Discover on trending/audio
+  // If there are no books to continue, fall back to Listen instead of an empty Book pane.
+  useEffect(() => {
+    if (hasContinueBook || !hasContinueAudio) return;
+    setModes((prev) => {
+      if (prev.continue === "audio") return prev;
+      saveLoungeMode("continue", "audio");
+      return { ...prev, continue: "audio" };
+    });
+  }, [hasContinueBook, hasContinueAudio]);
+
+  // Continue: Book → Listen → Book… (always starts on Book above)
+  // Discover: Trending ↔ Audio on its own cadence
   useEffect(() => {
     const id = window.setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
@@ -287,7 +308,8 @@ export default function LoungeView({
           hasContinueAudio &&
           now - continueLastFlipAt.current >= CONTINUE_AUTO_FLIP_MS
         ) {
-          const flipped = prev.continue === "audio" ? "book" : "audio";
+          // Explicit loop order: book → audio → book
+          const flipped = prev.continue === "book" ? "audio" : "book";
           next = { ...next, continue: flipped };
           saveLoungeMode("continue", flipped);
           continueLastFlipAt.current = now;
