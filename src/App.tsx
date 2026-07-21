@@ -217,6 +217,31 @@ export default function App() {
   const [mountedTabs, setMountedTabs] = useState<Set<AppTab>>(
     () => new Set<AppTab>([isLoungeEnabled() ? "lounge" : "library"])
   );
+
+  const scrollActiveTabToTop = useCallback(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    const root = document.getElementById("app-root-container");
+    if (root) root.scrollTop = 0;
+
+    const main = document.querySelector("main.kora-main-mobile") as HTMLElement | null;
+    if (main) main.scrollTop = 0;
+
+    const panel = document.querySelector(".kora-tab-panel:not([hidden])") as HTMLElement | null;
+    if (panel) {
+      panel.scrollTop = 0;
+      panel.querySelectorAll<HTMLElement>(".overflow-y-auto, .overflow-auto, .overflow-y-scroll").forEach((el) => {
+        el.scrollTop = 0;
+      });
+    }
+  }, []);
+
   const switchTab = useCallback((tab: AppTab) => {
     // Sync active tab for instant chrome/content swap (startTransition felt laggy).
     setActiveTab(tab);
@@ -226,7 +251,20 @@ export default function App() {
       next.add(tab);
       return next;
     });
-  }, []);
+    // Scroll after the new panel is shown (double rAF covers keep-alive unhide).
+    requestAnimationFrame(() => {
+      scrollActiveTabToTop();
+      requestAnimationFrame(scrollActiveTabToTop);
+    });
+  }, [scrollActiveTabToTop]);
+
+  // Belts-and-suspenders: any activeTab change lands at the top.
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollActiveTabToTop();
+      requestAnimationFrame(scrollActiveTabToTop);
+    });
+  }, [activeTab, scrollActiveTabToTop]);
 
   // Warm secondary tabs in the background so later switches stay keep-alive-fast.
   useEffect(() => {
