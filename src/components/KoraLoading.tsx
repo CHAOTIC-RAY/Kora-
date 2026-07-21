@@ -84,7 +84,7 @@ export default function KoraLoading({
     if (!Array.isArray(resolved) || resolved.length < 2) return;
     const timer = window.setInterval(() => {
       setCycleIndex((i) => (i + 1) % resolved.length);
-    }, 2800);
+    }, 1600);
     return () => window.clearInterval(timer);
   }, [resolved]);
 
@@ -102,7 +102,7 @@ export default function KoraLoading({
       <motion.div
         initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
       >
         <KoraWordmarkAnimated
           className={`${wordmarkSize} text-kindle-text`}
@@ -121,7 +121,7 @@ export default function KoraLoading({
         transition={
           reduceMotion
             ? { duration: 0.2 }
-            : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }
+            : { duration: 1.5, repeat: Infinity, ease: "easeInOut" }
         }
         className="max-w-[220px] text-center text-[8px] leading-relaxed font-medium text-kindle-text-muted/80 sm:max-w-xs sm:text-[9px]"
       >

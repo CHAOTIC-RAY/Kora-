@@ -54,8 +54,8 @@ export function KoraWordmarkAnimated({
   compact = false,
 }: KoraWordmarkAnimatedProps) {
   const reduceMotion = useReducedMotion();
-  const rise = compact ? 6 : 10;
-  const cycle = compact ? 3.2 : 3.6;
+  const rise = compact ? 5 : 8;
+  const cycle = compact ? 1.5 : 1.7;
 
   if (reduceMotion) {
     return <KoraWordmark className={className} fill={fill} />;
@@ -67,7 +67,7 @@ export function KoraWordmarkAnimated({
         className="pointer-events-none absolute -inset-x-6 -inset-y-3 rounded-full"
         aria-hidden
         animate={{ opacity: [0.05, 0.18, 0.05], scale: [0.96, 1.04, 0.96] }}
-        transition={{ duration: cycle, repeat: Infinity, ease: "easeInOut", delay: 0.55 }}
+        transition={{ duration: cycle, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
         style={{
           background:
             "radial-gradient(ellipse at 50% 55%, color-mix(in srgb, var(--kindle-accent, #c4a574) 42%, transparent), transparent 70%)",
@@ -86,7 +86,7 @@ export function KoraWordmarkAnimated({
         variants={{
           hidden: {},
           show: {
-            transition: { staggerChildren: 0.09, delayChildren: 0.06 },
+            transition: { staggerChildren: 0.04, delayChildren: 0.02 },
           },
         }}
       >
@@ -101,9 +101,9 @@ export function KoraWordmarkAnimated({
                 y: 0,
                 transition: {
                   type: "spring",
-                  stiffness: 380,
-                  damping: 28,
-                  mass: 0.7,
+                  stiffness: 520,
+                  damping: 32,
+                  mass: 0.5,
                 },
               },
             }}
@@ -130,7 +130,7 @@ export function KoraWordmarkAnimated({
             repeat: Infinity,
             ease: [0.45, 0.05, 0.25, 1],
             times: [0, 0.28, 0.7, 1],
-            delay: 0.5,
+            delay: 0.18,
           }}
         />
       </div>
