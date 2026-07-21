@@ -91,6 +91,43 @@ function isCollapsedRangeNearPoint(range: Range, x: number, y: number, maxDist =
   }
 }
 
+/** True only if the start (or end) boundary of a range sits near a point — not any mid-selection rect. */
+function rangeBoundaryNearPoint(
+  range: Range,
+  boundary: "start" | "end",
+  x: number,
+  y: number,
+  maxDist = 48
+): boolean {
+  try {
+    const probe = range.cloneRange();
+    probe.collapse(boundary === "start");
+    return isCollapsedRangeNearPoint(probe, x, y, maxDist);
+  } catch {
+    return false;
+  }
+}
+
+function clampSelectionMenuPosition(
+  x: number,
+  preferTop: boolean,
+  anchorTop: number,
+  anchorBottom: number
+): { left: number; top: number; transform: string } {
+  const padX = 12;
+  const safeTop = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kora-safe-top")) || 0;
+  const safeBottom =
+    Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--kora-safe-bottom")) || 0;
+  const menuH = 168;
+  const left = Math.min(window.innerWidth - padX, Math.max(padX, x));
+  if (preferTop) {
+    const top = Math.max(safeTop + 8 + menuH, anchorTop - 12);
+    return { left, top, transform: "translate(-50%, -100%)" };
+  }
+  const top = Math.min(window.innerHeight - safeBottom - 12 - menuH, anchorBottom + 12);
+  return { left, top: Math.max(safeTop + 8, top), transform: "translate(-50%, 0)" };
+}
+
 /**
  * Hit-test a caret in reader content. Native caretRangeFromPoint is unreliable
  * with CSS multi-column pagination (often snaps to the chapter start).
@@ -1025,6 +1062,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     let lastY = 0;
     let movedDuringPress = false;
     let pressInsideContent = false;
+    let gestureSelectActive = false;
+    let gestureStartCaret: Range | null = null;
 
     const selectWordAtPoint = (x: number, y: number) => {
       const container = contentRef.current;
@@ -1084,36 +1123,45 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
 
     /** CSS columns often anchor native selection at chapter start — rebuild from touch points. */
-    const correctSelectionFromGesture = () => {
-      if (!pressInsideContent || !movedDuringPress) return;
+    const applyGestureSelection = (force = false): boolean => {
+      if (!pressInsideContent) return false;
       const container = contentRef.current;
-      if (!container) return;
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
+      if (!container) return false;
 
-      const current = sel.getRangeAt(0);
-      if (!container.contains(current.startContainer) && !container.contains(current.endContainer)) {
-        return;
+      const startCaret =
+        gestureStartCaret || findCaretRangeAtPoint(pressStartX, pressStartY, container);
+      const endCaret = findCaretRangeAtPoint(lastX, lastY, container);
+      if (!startCaret || !endCaret) return false;
+      gestureStartCaret = startCaret;
+
+      const sel = window.getSelection();
+      if (!sel) return false;
+
+      if (!force && sel.rangeCount > 0) {
+        const current = sel.getRangeAt(0);
+        if (container.contains(current.startContainer) || container.contains(current.endContainer)) {
+          // Only trust native selection when BOTH boundaries match the gesture.
+          // Checking "any rect near press start" was wrong — a snapped-from-top
+          // selection always overlaps the finger and never got corrected.
+          const startOk = rangeBoundaryNearPoint(current, "start", pressStartX, pressStartY, 52);
+          const endOk = rangeBoundaryNearPoint(current, "end", lastX, lastY, 52);
+          if (startOk && endOk) return false;
+        }
       }
 
-      const startCaret = findCaretRangeAtPoint(pressStartX, pressStartY, container);
-      const endCaret = findCaretRangeAtPoint(lastX, lastY, container);
-      if (!startCaret || !endCaret) return;
-
-      // If the native anchor is already near where the user started, keep it.
-      if (isCollapsedRangeNearPoint(current, pressStartX, pressStartY, 40)) return;
-
       const fixed = buildRangeFromCarets(startCaret, endCaret);
-      if (!fixed || fixed.collapsed) return;
+      if (!fixed || fixed.collapsed) return false;
       const text = fixed.toString();
-      if (!text.trim()) return;
+      if (!text.trim()) return false;
 
       try {
         sel.removeAllRanges();
         sel.addRange(fixed);
         justSelectedAtRef.current = Date.now();
+        gestureSelectActive = true;
+        return true;
       } catch {
-        /* ignore */
+        return false;
       }
     };
 
@@ -1124,6 +1172,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       if (targetEl?.closest?.("[data-kora-selection-ui]")) {
         isPointerDownRef.current = false;
         pressInsideContent = false;
+        gestureSelectActive = false;
+        gestureStartCaret = null;
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
@@ -1133,6 +1183,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
       isPointerDownRef.current = true;
       movedDuringPress = false;
+      gestureSelectActive = false;
+      gestureStartCaret = null;
       pressStartX = lastX = e.clientX;
       pressStartY = lastY = e.clientY;
 
@@ -1144,6 +1196,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         setSelectionPins({ start: null, end: null });
         return;
       }
+
+      gestureStartCaret = findCaretRangeAtPoint(pressStartX, pressStartY, container);
 
       if (pressTimer) clearTimeout(pressTimer);
       pressTimer = setTimeout(() => {
@@ -1157,14 +1211,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const handlePointerMove = (e: PointerEvent) => {
       lastX = e.clientX;
       lastY = e.clientY;
+      if (!pressInsideContent || !isPointerDownRef.current) return;
+
       const dx = Math.abs(e.clientX - pressStartX);
       const dy = Math.abs(e.clientY - pressStartY);
       // Allow finger jitter before canceling long-press / treating as drag.
-      if (dx > 16 || dy > 16) {
+      if (dx > 12 || dy > 12) {
         movedDuringPress = true;
         if (pressTimer) {
           clearTimeout(pressTimer);
           pressTimer = null;
+        }
+        // Take over selection while dragging — native CSS-column selection snaps to chapter top.
+        if (applyGestureSelection(true)) {
+          try {
+            e.preventDefault();
+          } catch {
+            /* ignore */
+          }
         }
       }
     };
@@ -1176,15 +1240,26 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         clearTimeout(pressTimer);
         pressTimer = null;
       }
-      correctSelectionFromGesture();
+      if (movedDuringPress) {
+        applyGestureSelection(true);
+      }
       handleSelection();
       pressInsideContent = false;
+      gestureSelectActive = false;
+      gestureStartCaret = null;
+    };
+
+    // Non-passive touchmove so we can preventDefault once custom selection is active.
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!gestureSelectActive || !pressInsideContent) return;
+      if (e.cancelable) e.preventDefault();
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
     document.addEventListener("pointermove", handlePointerMove);
     document.addEventListener("pointerup", handlePointerUp);
     document.addEventListener("pointercancel", handlePointerUp);
+    document.addEventListener("touchmove", handleTouchMove, { passive: false });
 
     return () => {
       document.removeEventListener("selectionchange", handleSelection);
@@ -1194,6 +1269,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       document.removeEventListener("pointermove", handlePointerMove);
       document.removeEventListener("pointerup", handlePointerUp);
       document.removeEventListener("pointercancel", handlePointerUp);
+      document.removeEventListener("touchmove", handleTouchMove);
       if (pressTimer) clearTimeout(pressTimer);
       if (rafId) cancelAnimationFrame(rafId);
     };
@@ -2235,9 +2311,23 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const activeTheme = themes[theme] || themes.sepia;
 
   return (
-    <div id="epub-reader-container" className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}>
+    <div
+      id="epub-reader-container"
+      className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}
+      style={{
+        paddingTop: "var(--kora-safe-top)",
+        paddingBottom: "var(--kora-safe-bottom)",
+        paddingLeft: "var(--kora-safe-left)",
+        paddingRight: "var(--kora-safe-right)",
+        // Prefer the visual viewport on mobile PWAs so chrome isn't clipped.
+        height: "var(--kora-vvh, 100dvh)",
+        maxHeight: "var(--kora-vvh, 100dvh)",
+        top: "var(--kora-vv-offset-top, 0px)",
+        boxSizing: "border-box",
+      }}
+    >
       {/* 1. Header Toolbar */}
-      <header className={`flex items-center justify-between px-6 py-4 border-b ${activeTheme.border} bg-opacity-95`}>
+      <header className={`flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b ${activeTheme.border} bg-opacity-95 shrink-0`}>
         <div className="flex items-center gap-4">
           <button 
             id="close-reader-btn"
@@ -3493,13 +3583,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       scaleX: 1
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
-                    className={`w-full ml-0 select-text cursor-text touch-manipulation ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
+                    className={`w-full ml-0 select-text cursor-text ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,
                       WebkitUserSelect: "text",
                       userSelect: "text",
                       WebkitTouchCallout: "default",
+                      // Allow our pointer handlers to own drag-select in column mode.
+                      touchAction: useScrollLayout ? "pan-y" : "manipulation",
                       ...(useScrollLayout
                         ? {
                             height: "auto",
@@ -3770,26 +3862,29 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
 
               {/* Footer Chapter Navigate Buttons */}
-              <footer className={`px-6 py-4 border-t ${activeTheme.border} flex items-center justify-between font-sans shrink-0`}>
+              <footer
+                className={`px-4 sm:px-6 pt-3 pb-3 border-t ${activeTheme.border} flex items-center justify-between gap-2 font-sans shrink-0`}
+              >
                 {!(pageTurnMode === "fifty-fifty" || pageTurnMode === "classic-ereader" || pageTurnMode === "margins-only") ? (
                   <button
                     id="prev-chapter-btn"
                     disabled={currentChapterIdx === 0 && currentPageNum === 1}
                     onClick={handlePrevPage}
-                    className={`flex items-center justify-center p-3 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
+                    className={`flex items-center justify-center w-11 h-11 shrink-0 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
                       theme === "dark"
                         ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
                         : "bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50"
                     } disabled:opacity-30`}
                     title="Previous Page"
+                    aria-label="Previous page"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                 ) : (
-                  <div className="w-[100px] hidden sm:block" />
+                  <div className="w-11 shrink-0 hidden sm:block" />
                 )}
 
-                <div className="flex flex-col items-center min-w-0 flex-1 max-w-md px-2">
+                <div className="flex flex-col items-center min-w-0 flex-1 max-w-md px-1 sm:px-2">
                   <label className="sr-only" htmlFor="reader-progress-scrubber">Reading progress</label>
                   <input
                     id="reader-progress-scrubber"
@@ -3811,7 +3906,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     className="w-full max-w-xs accent-kindle-accent h-1.5 bg-neutral-200 rounded-full appearance-none cursor-pointer"
                     aria-valuetext={timeLeftLabel}
                   />
-                  <span className="text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90 mt-1.5 text-center">
+                  <span className="text-[10px] sm:text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90 mt-1.5 text-center leading-snug">
                     {useScrollLayout
                       ? `chapter ${currentChapterIdx + 1} of ${chapters.length} • ${Math.min(100, Math.max(0, Math.round(((currentChapterIdx + 1) / (chapters.length || 1)) * 100)))}%`
                       : `page ${currentPageNum} of ${totalPages} (Ch. ${currentChapterIdx + 1}) • ${Math.min(100, Math.max(0, Math.round(
@@ -3821,7 +3916,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => setDoubleColumns(!doubleColumns)}
                     className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition ${doubleColumns ? "bg-kindle-accent text-white border-transparent" : "border-kindle-border hover:bg-neutral-500/10"}`}
@@ -3835,12 +3930,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       id="next-chapter-btn"
                       disabled={currentChapterIdx === chapters.length - 1 && currentPageNum === totalPages}
                       onClick={handleNextPage}
-                      className={`flex items-center justify-center p-3 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
+                      className={`flex items-center justify-center w-11 h-11 shrink-0 rounded-full shadow-sm border backdrop-blur-xs transition-all duration-200 ${
                         theme === "dark"
                           ? "bg-neutral-900/60 text-white border-white/10 hover:bg-neutral-800"
                           : "bg-neutral-900 text-white border-neutral-800 hover:bg-neutral-800"
                       } disabled:opacity-30`}
                       title="Next Page"
+                      aria-label="Next page"
                     >
                       <ChevronRight className="w-5 h-5" />
                     </button>
@@ -3909,18 +4005,22 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       )}
 
       {/* Native-style floating selection menu */}
-      {selectedText && selectionCoords && !isDraggingSelection && (
+      {selectedText && selectionCoords && !isDraggingSelection && (() => {
+        const preferTop = selectionCoords.bottom > window.innerHeight * 0.62;
+        const pos = clampSelectionMenuPosition(
+          selectionCoords.x,
+          preferTop,
+          selectionCoords.top,
+          selectionCoords.bottom
+        );
+        return (
         <div
           data-kora-selection-ui
           className="fixed z-[9999] max-w-[min(96vw,24rem)] animate-in fade-in zoom-in-95 duration-150"
           style={{
-            left: `${selectionCoords.x}px`,
-            top: selectionCoords.bottom > window.innerHeight * 0.62
-              ? `${selectionCoords.top - 12}px`
-              : `${selectionCoords.bottom + 12}px`,
-            transform: selectionCoords.bottom > window.innerHeight * 0.62
-              ? "translate(-50%, -100%)"
-              : "translate(-50%, 0)",
+            left: `${pos.left}px`,
+            top: `${pos.top}px`,
+            transform: pos.transform,
             boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
           }}
           onPointerDown={(e) => e.stopPropagation()}
@@ -4043,7 +4143,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
