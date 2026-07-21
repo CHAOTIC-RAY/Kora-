@@ -89,6 +89,7 @@ interface AudiobookPlayerProps {
   onMinimize?: () => void;
   onExpand?: () => void;
   onProgressUpdate?: (book: BookMetadata) => void;
+  onPlayingChange?: (playing: boolean) => void;
 }
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -166,6 +167,7 @@ export default function AudiobookPlayer({
   onMinimize,
   onExpand,
   onProgressUpdate,
+  onPlayingChange,
 }: AudiobookPlayerProps) {
   const tracks = book.audiobookTracks || [];
   const isTtsBook = book.source === "browser-tts" || tracks.some((track) => isBrowserTtsTrack(track.src));
@@ -538,6 +540,18 @@ export default function AudiobookPlayer({
     }
   };
   togglePlayRef.current = togglePlay;
+
+  useEffect(() => {
+    onPlayingChange?.(isPlaying);
+  }, [isPlaying, onPlayingChange]);
+
+  useEffect(() => {
+    const onRemoteToggle = () => {
+      void togglePlayRef.current?.();
+    };
+    window.addEventListener("kora-audiobook:toggle-play", onRemoteToggle);
+    return () => window.removeEventListener("kora-audiobook:toggle-play", onRemoteToggle);
+  }, []);
 
   const skip = (delta: number) => {
     if (isTtsBook) {

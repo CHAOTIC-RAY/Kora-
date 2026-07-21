@@ -7,6 +7,7 @@ import {
   Rss,
   Sparkles,
   Play,
+  Pause,
   ArrowRight,
 } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";
@@ -28,11 +29,15 @@ interface LoungeViewProps {
   userNickname?: string;
   userId?: string;
   grayscaleCovers?: boolean;
+  audiobookPlayback?: BookMetadata | null;
+  audiobookPlaying?: boolean;
   onOpenBook: (book: BookMetadata) => void;
   onOpenTab: (tab: "library" | "discover" | "feed") => void;
   onSearchDiscover?: (query: string) => void;
   onStartGuide?: (id: GuideId) => void;
   onOpenAnnotations?: () => void;
+  onToggleAudiobookPlay?: () => void;
+  onExpandAudiobook?: () => void;
 }
 
 type FeaturedBook = {
@@ -210,11 +215,15 @@ export default function LoungeView({
   userNickname,
   userId = "",
   grayscaleCovers = false,
+  audiobookPlayback = null,
+  audiobookPlaying = false,
   onOpenBook,
   onOpenTab,
   onSearchDiscover,
   onStartGuide,
   onOpenAnnotations,
+  onToggleAudiobookPlay,
+  onExpandAudiobook,
 }: LoungeViewProps) {
   const [modes, setModes] = useState(() => ({
     ...loadLoungeModes(),
@@ -472,13 +481,14 @@ export default function LoungeView({
         </div>
       </header>
 
-      {/* Bento: independent column stacks — widgets size to content, no equal-row stretch */}
+      {/* Bento: mobile order Continue → Paper → Discover → Shelf → Notes → Guides;
+          desktop keeps two columns (left: Continue/Shelf/Notes, right: Paper/Discover/Guides). */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5 md:items-start">
-        {/* Left column — Continue, Shelf, Annotate & Notes */}
-        <div className="flex flex-col gap-4 md:gap-5 min-w-0">
+        {/* Left column */}
+        <div className="contents md:flex md:flex-col md:gap-5 md:min-w-0">
           <TileShell
             delay={0.02}
-            className="relative bg-kindle-card"
+            className="relative bg-kindle-card order-1 md:order-none"
             onClick={openContinue}
             label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
           >
@@ -575,7 +585,7 @@ export default function LoungeView({
                               <p className="text-sm text-kindle-text-muted truncate">{continueAuthor}</p>
                             ) : null}
                           </div>
-                          <div className="space-y-2.5 mt-auto">
+                            <div className="space-y-2.5 mt-auto">
                             <div className="h-1.5 rounded-full bg-white/10 overflow-hidden w-full">
                               <motion.div
                                 className="h-full rounded-full bg-kindle-accent"
@@ -584,17 +594,56 @@ export default function LoungeView({
                                 transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                               />
                             </div>
-                            <span className="inline-flex w-fit items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
-                              {isAudiobook(continueBook) ? (
-                                <>
-                                  <Play className="w-3.5 h-3.5 fill-current" /> Resume
-                                </>
-                              ) : (
-                                <>
-                                  <BookOpen className="w-3.5 h-3.5" /> Resume
-                                </>
-                              )}
-                            </span>
+                            {isAudiobook(continueBook) ? (
+                              <div
+                                className="pointer-events-auto flex items-center gap-2"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {audiobookPlayback?.id === continueBook.id && audiobookPlaying ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onExpandAudiobook?.()}
+                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-kindle-accent/20 text-kindle-text text-[10px] font-bold uppercase tracking-widest border border-kindle-accent/30"
+                                  >
+                                    <span className="relative flex h-2 w-2">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-kindle-accent opacity-60" />
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-kindle-accent" />
+                                    </span>
+                                    Now playing
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (audiobookPlayback?.id === continueBook.id) {
+                                      onToggleAudiobookPlay?.();
+                                    } else {
+                                      onOpenBook(continueBook);
+                                    }
+                                  }}
+                                  className="inline-flex w-fit items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg"
+                                  aria-label={
+                                    audiobookPlayback?.id === continueBook.id && audiobookPlaying
+                                      ? "Pause"
+                                      : "Play"
+                                  }
+                                >
+                                  {audiobookPlayback?.id === continueBook.id && audiobookPlaying ? (
+                                    <>
+                                      <Pause className="w-3.5 h-3.5 fill-current" /> Pause
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Play className="w-3.5 h-3.5 fill-current" /> Play
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="inline-flex w-fit items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
+                                <BookOpen className="w-3.5 h-3.5" /> Resume
+                              </span>
+                            )}
                           </div>
                         </div>
                       </>
@@ -614,7 +663,7 @@ export default function LoungeView({
             </div>
           </TileShell>
 
-          <TileShell delay={0.04} className="bg-kindle-card/70 px-4 md:px-5 pt-3 pb-3.5">
+          <TileShell delay={0.04} className="bg-kindle-card/70 px-4 md:px-5 pt-3 pb-3.5 order-4 md:order-none">
             <div className="flex items-center justify-between gap-2 mb-2.5">
               <div className="flex items-center gap-2">
                 <BookOpen className="w-3.5 h-3.5 text-kindle-accent" />
@@ -660,7 +709,7 @@ export default function LoungeView({
             )}
           </TileShell>
 
-          <TileShell delay={0.08} className="bg-kindle-card/60 p-3 md:p-4">
+          <TileShell delay={0.08} className="bg-kindle-card/60 p-3 md:p-4 order-5 md:order-none">
             <LoungeNotesWidget
               books={books}
               userId={userId}
@@ -671,10 +720,10 @@ export default function LoungeView({
         </div>
 
         {/* Right column — Paper, Discover, Guides */}
-        <div className="flex flex-col gap-4 md:gap-5 min-w-0">
+        <div className="contents md:flex md:flex-col md:gap-5 md:min-w-0">
           <TileShell
             delay={0.06}
-            className="bg-kindle-card/55 flex flex-col"
+            className="bg-kindle-card/55 flex flex-col order-2 md:order-none"
             onClick={() => onOpenTab("feed")}
             label="Open news paper"
           >
@@ -732,7 +781,7 @@ export default function LoungeView({
 
           <TileShell
             delay={0.1}
-            className="relative bg-kindle-bg"
+            className="relative bg-kindle-bg order-3 md:order-none"
             onClick={openDiscover}
             label="Open Discover"
           >
@@ -870,7 +919,7 @@ export default function LoungeView({
             </div>
           </TileShell>
 
-          <TileShell delay={0.14} className="bg-kindle-card/60 p-3 md:p-4">
+          <TileShell delay={0.14} className="bg-kindle-card/60 p-3 md:p-4 order-6 md:order-none">
             <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
           </TileShell>
         </div>

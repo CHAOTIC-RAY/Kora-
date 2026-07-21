@@ -198,24 +198,43 @@ function absoluteUrl(url) {
   }
 }
 
+/** Last OS-notified percent bucket (0–10) per download — avoids % spam */
+const lastNotifiedBucket = new Map();
+
 async function showProgressNotif(payload, percent, transferred, opts = {}) {
   if (!self.registration || !self.registration.showNotification) return;
   const downloadId = payload.downloadId || payload.jobId;
   const title = payload.title || payload.bookTitle || payload.trackTitle || "file";
+  const status = opts.status || "downloading";
+  const pct = percent == null ? null : Math.max(0, Math.min(100, percent));
 
   if (downloadId) {
     downloadProgressSnapshot.set(downloadId, {
       title,
-      percent: percent == null ? null : Math.max(0, Math.min(100, percent)),
+      percent: pct,
       transferred: transferred || "",
-      status: opts.status || "downloading",
+      status,
     });
   }
 
-  await refreshGroupedDownloadNotification();
+  // Only re-notify the OS tray every ~10% (or on status / first / complete).
+  // Updating every percent with renotify:true was spamming Edge/Windows.
+  const force = !!opts.force || status === "paused" || pct === 0 || pct === 100;
+  const bucket = pct == null ? -1 : Math.floor(pct / 10);
+  if (!force && downloadId) {
+    const prev = lastNotifiedBucket.get(downloadId);
+    if (prev === bucket) return;
+    lastNotifiedBucket.set(downloadId, bucket);
+  } else if (downloadId && pct === 100) {
+    lastNotifiedBucket.delete(downloadId);
+  } else if (downloadId && force) {
+    lastNotifiedBucket.set(downloadId, bucket);
+  }
+
+  await refreshGroupedDownloadNotification({ renotify: force });
 }
 
-async function refreshGroupedDownloadNotification() {
+async function refreshGroupedDownloadNotification(opts = {}) {
   if (!self.registration || !self.registration.showNotification) return;
 
   const entries = [...downloadProgressSnapshot.entries()];
@@ -282,7 +301,7 @@ async function refreshGroupedDownloadNotification() {
     await self.registration.showNotification(title, {
       body: lines.join("\n"),
       tag: "kora-dl-group",
-      renotify: true,
+      renotify: opts.renotify === true,
       silent: true,
       data: {
         downloadId: primaryId,
@@ -401,7 +420,7 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
               : formatBytes(received);
 
             const now = Date.now();
-            if (now - lastNotif > 400 || percent === 100) {
+            if (now - lastNotif > 2000 || percent === 100 || percent === 0) {
               lastNotif = now;
               await postToClients({
                 type: "download-progress",
@@ -410,7 +429,9 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
                 transferred,
                 speed: speed > 0 ? `${formatBytes(speed)}/s` : "",
               });
-              await showProgressNotif(payload, percent, transferred);
+              await showProgressNotif(payload, percent, transferred, {
+                force: percent === 0 || percent === 100,
+              });
             }
 
             if (received - lastFlush >= PARTIAL_FLUSH_BYTES) {

@@ -19,6 +19,7 @@ import {
   type GuideDefinition,
   type GuideId,
   type GuideStep,
+  type GuideStepLink,
   type JourneyState,
 } from "../lib/guides";
 import GuideSpotlight from "./GuideSpotlight";
@@ -257,12 +258,44 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
           stepIndex={active!.stepIndex}
           stepCount={currentGuide.steps.length}
           onNext={nextStep}
-          onSkip={() => dismissActive(false)}
+          onSkip={skipStep}
           onSkipAll={skipAllGuides}
           onDismissForever={() => dismissActive(true)}
           onTargetActivated={
             currentStep.action === "tap-target" ? nextStep : undefined
           }
+          onStepLink={(link) => {
+            if (link.tab) onSwitchTab(link.tab);
+            if (link.finishTour) {
+              skipAllGuides();
+              if (active) completeGuide(active.guideId);
+              return;
+            }
+            if (link.startGuide) {
+              const nextId = link.startGuide;
+              if (active) completeGuide(active.guideId);
+              setActive(null);
+              // Keep journey moving toward this guide if present
+              setJourney((prev) => {
+                const j = prev || loadJourney();
+                if (!j?.active) return j;
+                const idx = j.queue.indexOf(nextId);
+                if (idx >= 0) {
+                  const next = { ...j, index: idx };
+                  saveJourney(next);
+                  return next;
+                }
+                return j;
+              });
+              window.setTimeout(() => {
+                if (getGuideStatus(nextId) === "pending") {
+                  setActive({ guideId: nextId, stepIndex: 0 });
+                }
+              }, 350);
+              return;
+            }
+            nextStep();
+          }}
         />
       )}
     </GuideContext.Provider>

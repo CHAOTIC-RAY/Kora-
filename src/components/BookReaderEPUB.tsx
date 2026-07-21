@@ -2698,6 +2698,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       onClick={() => {
                         setTheme(tKey);
                         setThemeManuallySet(true);
+                        window.dispatchEvent(new CustomEvent("kora-guide:reader-setting-changed"));
                       }}
                       aria-label={`${th.label} theme`}
                       aria-pressed={theme === tKey}
@@ -2722,6 +2723,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       onClick={() => {
                         setTheme(tKey);
                         setThemeManuallySet(true);
+                        window.dispatchEvent(new CustomEvent("kora-guide:reader-setting-changed"));
                       }}
                       aria-label={`${th.label} theme`}
                       aria-pressed={theme === tKey}
@@ -2760,20 +2762,26 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             </div>
 
             {/* Font Size Adjuster */}
-            <div className="mb-4">
+            <div className="mb-4" data-guide="reader-font-size">
               <div className="flex justify-between items-center mb-2">
                 <label className="text-xs opacity-75 font-sans font-semibold">Font Size</label>
                 <span className="text-xs font-mono">{fontSize}px</span>
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setFontSize(Math.max(12, fontSize - 1))}
+                  onClick={() => {
+                    setFontSize(Math.max(12, fontSize - 1));
+                    window.dispatchEvent(new CustomEvent("kora-guide:font-size-changed"));
+                  }}
                   className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
                 >
                   A -
                 </button>
                 <button
-                  onClick={() => setFontSize(Math.min(32, fontSize + 1))}
+                  onClick={() => {
+                    setFontSize(Math.min(32, fontSize + 1));
+                    window.dispatchEvent(new CustomEvent("kora-guide:font-size-changed"));
+                  }}
                   className="flex-1 p-2 border border-neutral-500/20 rounded-lg text-sm hover:bg-neutral-500/10 font-bold"
                 >
                   A +
@@ -2812,7 +2820,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       {[1.2, 1.6, 2.0].map((spacing) => (
                         <button
                           key={spacing}
-                          onClick={() => setLineSpacing(spacing)}
+                          onClick={() => {
+                            setLineSpacing(spacing);
+                            window.dispatchEvent(new CustomEvent("kora-guide:reader-setting-changed"));
+                          }}
                           className={`p-2 text-xs rounded-lg border text-center font-sans transition ${
                             lineSpacing === spacing
                               ? "bg-kindle-text text-kindle-bg border-transparent"
@@ -2918,7 +2929,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       <p className="text-[10px] text-kindle-text-muted">Scroll instead of page-by-page turns</p>
                     </div>
                     <button
-                      onClick={() => setIsContinuous(!isContinuous)}
+                      onClick={() => {
+                        setIsContinuous(!isContinuous);
+                        window.dispatchEvent(new CustomEvent("kora-guide:reader-setting-changed"));
+                      }}
                       className={`w-10 h-5 rounded-full transition-colors relative ${isContinuous ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
                       aria-pressed={isContinuous}
                     >

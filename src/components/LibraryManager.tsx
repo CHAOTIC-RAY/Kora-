@@ -720,6 +720,9 @@ function LibraryManager({
         return matchesSearch && matchesStatus && matchesTag && matchesType;
       })
       .sort((a, b) => {
+        // Pin the walkthrough guide book at the top of Newest
+        if (a.id === "kora-walkthrough-guide" && b.id !== "kora-walkthrough-guide") return -1;
+        if (b.id === "kora-walkthrough-guide" && a.id !== "kora-walkthrough-guide") return 1;
         if (sortBy === "dateAdded") {
           return b.dateAdded - a.dateAdded;
         }
@@ -953,6 +956,7 @@ function LibraryManager({
               return (
                 <div
                   key={cardKey}
+                  data-guide={book.id === "kora-walkthrough-guide" ? "walkthrough-book" : undefined}
                   style={{ contentVisibility: "auto", containIntrinsicSize: "auto 280px" }}
                   onTouchStart={(e) => !isManageMode && startLongPress(book, e)}
                   onTouchEnd={isManageMode ? undefined : endLongPress}

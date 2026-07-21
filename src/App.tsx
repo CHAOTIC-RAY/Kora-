@@ -27,6 +27,7 @@ import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
 import LoungeView from "./components/LoungeView";
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
+import { ensureWalkthroughBook, WALKTHROUGH_BOOK_ID, isWalkthroughBook } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
@@ -316,6 +317,7 @@ export default function App() {
   );
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
   const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
+  const [audiobookPlaying, setAudiobookPlaying] = useState(false);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
     const saved = localStorage.getItem("kindle_last_read");
     return saved ? JSON.parse(saved) : null;
@@ -383,7 +385,7 @@ export default function App() {
     return () => window.removeEventListener("kora-guide:open", onOpen);
   }, []);
 
-  const handleOnboardingComplete = (prefs: {
+  const handleOnboardingComplete = async (prefs: {
     nickname: string;
     archetype: string;
     displayTheme: string;
@@ -429,18 +431,22 @@ export default function App() {
     localStorage.setItem("kora_first_book_nudge", "true");
     setShowFirstBookNudge(true);
     const wantTour = prefs.startInteractiveTour !== false;
-    // Land on Lounge when enabled; otherwise Discover for the first-book nudge.
-    if (isLoungeEnabled()) {
-      switchTab("lounge");
-      toast.success(
-        wantTour
-          ? `Welcome, ${prefs.nickname}! Interactive guides will walk you through Sync → first book → reader → news.`
-          : `Welcome, ${prefs.nickname}! Your Lounge is ready — open Guides anytime from the dashboard.`
-      );
-    } else {
-      switchTab("discover");
-      toast.success(`Welcome, ${prefs.nickname}! Search Discover to add your first book.`);
+
+    // Seed the interactive walkthrough book onto the shelf, then land in Library.
+    try {
+      await ensureWalkthroughBook(user?.uid || "");
+      await refreshLibrary(user?.uid || "");
+      await updateCachedBookIndex();
+    } catch (err) {
+      console.warn("Failed to seed walkthrough book", err);
     }
+
+    switchTab("library");
+    toast.success(
+      wantTour
+        ? `Welcome, ${prefs.nickname}! Open Getting started with Kora on your shelf to begin.`
+        : `Welcome, ${prefs.nickname}! Your library is ready.`
+    );
     if (wantTour) {
       window.setTimeout(() => {
         window.dispatchEvent(new CustomEvent("kora-guide:start-journey"));
@@ -1890,6 +1896,7 @@ export default function App() {
 
   const closeAudiobook = useCallback(() => {
     setAudiobookPlayback(null);
+    setAudiobookPlaying(false);
     setActiveBook(null);
     refreshLibrary();
   }, [refreshLibrary]);
@@ -2096,6 +2103,9 @@ export default function App() {
     setLastReadBook(book);
     localStorage.setItem("kindle_last_read", JSON.stringify(book));
     emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
+    if (isWalkthroughBook(book)) {
+      emitGuideEvent("kora-guide:walkthrough-opened", { bookId: book.id });
+    }
   }
 
   if (loadingAuth) {
@@ -2261,6 +2271,8 @@ export default function App() {
               userNickname={userNickname}
               userId={user?.uid || ""}
               grayscaleCovers={grayscaleCovers}
+              audiobookPlayback={audiobookPlayback}
+              audiobookPlaying={audiobookPlaying}
               onOpenBook={handleOpenBook}
               onOpenTab={(tab) => switchTab(tab)}
               onSearchDiscover={(query) => {
@@ -2271,6 +2283,12 @@ export default function App() {
                 window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
               }}
               onOpenAnnotations={() => setShowAnnotationsHub(true)}
+              onToggleAudiobookPlay={() => {
+                window.dispatchEvent(new CustomEvent("kora-audiobook:toggle-play"));
+              }}
+              onExpandAudiobook={() => {
+                if (audiobookPlayback) setActiveBook(audiobookPlayback);
+              }}
             />
           </div>
         )}
@@ -2535,6 +2553,7 @@ export default function App() {
             onMinimize={() => dismissAudiobookFullscreen()}
             onExpand={() => setActiveBook(audiobookPlayback)}
             onClose={handleAudiobookClose}
+            onPlayingChange={setAudiobookPlaying}
             onProgressUpdate={(updatedBook) => {
               setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
               setLastReadBook(updatedBook);

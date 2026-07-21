@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { X, ChevronRight, Sparkles } from "lucide-react";
-import type { GuideDefinition, GuideStep } from "../lib/guides";
+import type { GuideDefinition, GuideStep, GuideStepLink } from "../lib/guides";
 
 type Rect = { top: number; left: number; width: number; height: number };
 
@@ -48,6 +48,7 @@ type GuideSpotlightProps = {
   onSkipAll?: () => void;
   onDismissForever: () => void;
   onTargetActivated?: () => void;
+  onStepLink?: (link: GuideStepLink) => void;
 };
 
 export default function GuideSpotlight({
@@ -60,6 +61,7 @@ export default function GuideSpotlight({
   onSkipAll,
   onDismissForever,
   onTargetActivated,
+  onStepLink,
 }: GuideSpotlightProps) {
   const reduceMotion = useReducedMotion();
   const [hole, setHole] = useState<Rect | null>(null);
@@ -247,8 +249,23 @@ export default function GuideSpotlight({
                   <h3 className="text-sm font-bold mt-0.5">{step.title}</h3>
                   <p className="text-[12px] text-kindle-text-muted mt-1 leading-relaxed">{step.body}</p>
 
+                  {step.links && step.links.length > 0 && (
+                    <div className="flex flex-col gap-2 mt-3">
+                      {step.links.map((link) => (
+                        <button
+                          key={link.label}
+                          type="button"
+                          onClick={() => onStepLink?.(link)}
+                          className="w-full text-left px-3 py-2 rounded-xl border border-kindle-border bg-kindle-bg/60 hover:bg-kindle-bg text-[11px] font-bold text-kindle-text transition"
+                        >
+                          {link.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex flex-wrap items-center gap-2 mt-3">
-                    {(showNext || step.cta) && (
+                    {(showNext || step.cta) && !step.links?.length && (
                       <button
                         type="button"
                         onClick={onNext}
@@ -258,6 +275,16 @@ export default function GuideSpotlight({
                         <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                       </button>
                     )}
+                    {(showNext || step.cta) && step.links?.length ? (
+                      <button
+                        type="button"
+                        onClick={onNext}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-kindle-border text-[11px] font-bold uppercase tracking-wider text-kindle-text-muted"
+                      >
+                        {step.cta || "Next"}
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                      </button>
+                    ) : null}
                     {step.action === "tap-target" && (
                       <span className="text-[10px] text-kindle-text-muted font-medium">
                         Tap the highlighted control
@@ -271,8 +298,14 @@ export default function GuideSpotlight({
                             ? "Submit a search…"
                             : step.event?.includes("book-added")
                               ? "Download a book…"
-                              : step.event?.includes("reader")
+                              : step.event?.includes("walkthrough")
+                                ? "Open the guide book…"
+                            : step.event?.includes("reader")
                                 ? "Open a book…"
+                                : step.event?.includes("font-size")
+                                  ? "Change the font size…"
+                                  : step.event?.includes("reader-setting")
+                                    ? "Change a setting…"
                                 : step.event?.includes("feed")
                                   ? "Add a source…"
                                   : step.event?.includes("text-selected")
@@ -285,7 +318,7 @@ export default function GuideSpotlight({
                       onClick={onSkip}
                       className="ml-auto text-[11px] font-semibold text-kindle-text-muted hover:text-kindle-text px-2 py-1"
                     >
-                      Skip guide
+                      Skip step
                     </button>
                     {onSkipAll && (
                       <button

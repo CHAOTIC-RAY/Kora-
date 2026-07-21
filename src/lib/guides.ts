@@ -2,11 +2,12 @@
  * Interactive guides — catalog, persistence, and helpers.
  * Status: pending | completed | dismissed (swipe forever).
  *
- * Guides take you to real tabs/controls (spotlight + tap/wait),
- * and use a shared setup popup for reading preferences.
+ * Post-onboarding journey starts with the in-library walkthrough book,
+ * then Discover (first download) and Read tab.
  */
 
 export type GuideId =
+  | "walkthrough-book"
   | "sync-setup"
   | "first-book-search"
   | "reader-tour"
@@ -28,6 +29,16 @@ export type GuideOpenAction =
   | "tools-sync"
   | "tools-tts";
 
+export type GuideStepLink = {
+  label: string;
+  /** Start another guide after finishing the current one */
+  startGuide?: GuideId;
+  /** Switch app tab */
+  tab?: "lounge" | "library" | "discover" | "feed" | "tools" | "settings";
+  /** Mark current guide complete and clear remaining journey */
+  finishTour?: boolean;
+};
+
 export type GuideStep = {
   id: string;
   title: string;
@@ -44,6 +55,8 @@ export type GuideStep = {
   placement?: "top" | "bottom" | "left" | "right" | "auto";
   /** Optional CTA label when action is next */
   cta?: string;
+  /** Extra action buttons (e.g. end-of-tour shortcuts) */
+  links?: GuideStepLink[];
 };
 
 export type GuideDefinition = {
@@ -65,12 +78,98 @@ const JOURNEY_KEY = "kora_guides_journey_v1";
 
 export const GUIDE_CATALOG: GuideDefinition[] = [
   {
+    id: "walkthrough-book",
+    title: "Getting started book",
+    short: "Open the guide book",
+    blurb: "Open Getting started with Kora in Library — settings, Narrator, and highlights live inside the book.",
+    icon: "book",
+    journey: true,
+    loungeWidget: true,
+    steps: [
+      {
+        id: "wt-open-book",
+        title: "Open your guide book",
+        body: "Tap Getting started with Kora on your shelf — the tour continues inside the reader.",
+        target: '[data-guide="walkthrough-book"]',
+        tab: "library",
+        action: "wait-event",
+        event: "kora-guide:walkthrough-opened",
+      },
+      {
+        id: "wt-features",
+        title: "Features at a glance",
+        body: "This book covers display settings, Voice Narrator, and highlights. Follow the spotlights — we'll ask you to try each one.",
+        action: "next",
+        cta: "Start with settings",
+      },
+      {
+        id: "wt-open-settings",
+        title: "Open reading settings",
+        body: "Tap the gear to open in-reader settings — font, theme, margins, and more.",
+        target: "#toggle-settings-btn",
+        action: "tap-target",
+      },
+      {
+        id: "wt-font-size",
+        title: "Change the font size",
+        body: "Tap A+ or A− to resize the text. We'll continue when the size changes.",
+        target: '[data-guide="reader-font-size"]',
+        action: "wait-event",
+        event: "kora-guide:font-size-changed",
+      },
+      {
+        id: "wt-more-settings",
+        title: "Tweak one more setting",
+        body: "Change theme, line spacing, or tap vs scroll — anything you like — then we'll move on.",
+        target: '[data-guide="reader-settings-panel"]',
+        action: "wait-event",
+        event: "kora-guide:reader-setting-changed",
+      },
+      {
+        id: "wt-narrator",
+        title: "Try Voice Narrator",
+        body: "Tap headphones to hear this page read aloud. Pause anytime from the mini player.",
+        target: "#toggle-audiobook-btn",
+        action: "tap-target",
+      },
+      {
+        id: "wt-highlight",
+        title: "Highlight a word",
+        body: "Long-press a word on the page, then choose Highlight (or Note / Dictionary). That finishes the in-book tour.",
+        action: "wait-event",
+        event: "kora-guide:text-selected",
+      },
+      {
+        id: "wt-next-paths",
+        title: "What next?",
+        body: "You've got the reader basics. Grab a real book from Discover, skim the Read tab, or finish other guides from Lounge anytime.",
+        action: "next",
+        cta: "Done for now",
+        links: [
+          {
+            label: "Download first book",
+            startGuide: "first-book-search",
+            tab: "discover",
+          },
+          {
+            label: "Open Read tab",
+            startGuide: "news-feed",
+            tab: "feed",
+          },
+          {
+            label: "More guides later",
+            finishTour: true,
+          },
+        ],
+      },
+    ],
+  },
+  {
     id: "sync-setup",
     title: "Setup & sync",
     short: "Prefs + cross-device sync",
     blurb: "We'll open a setup popup, then take you to Sign in and Devices & Sync.",
     icon: "cloud",
-    journey: true,
     loungeWidget: true,
     steps: [
       {
@@ -147,7 +246,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "search-open",
         title: "Open it to read",
-        body: "Tap Library, then open your new book — next tour covers the reader.",
+        body: "Tap Library, then open your new book — you're ready to read for real.",
         target: '[data-guide="nav-library"]',
         tab: "library",
         action: "wait-event",
@@ -159,9 +258,8 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
     id: "reader-tour",
     title: "Reader studio",
     short: "Settings, narrator, notes",
-    blurb: "Open a book and we'll spotlight display settings, Narrator, and highlights.",
+    blurb: "Open any EPUB and we'll spotlight display settings, Narrator, and highlights.",
     icon: "book",
-    journey: true,
     loungeWidget: true,
     steps: [
       {
@@ -171,14 +269,6 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
         tab: "library",
         action: "wait-event",
         event: "kora-guide:reader-opened",
-      },
-      {
-        id: "reader-setup",
-        title: "Quick reading setup",
-        body: "Confirm font size and page-turn style in the setup popup — same prefs used everywhere.",
-        open: "setup",
-        action: "wait-event",
-        event: "kora-guide:setup-saved",
       },
       {
         id: "reader-settings",
@@ -449,9 +539,9 @@ export function clearJourney() {
   saveJourney(null);
 }
 
-/** Default post-onboarding queue */
+/** Default post-onboarding queue — guide book first, then Discover + Read. */
 export function startPostOnboardingJourney() {
-  const queue: GuideId[] = ["sync-setup", "first-book-search", "reader-tour", "news-feed"];
+  const queue: GuideId[] = ["walkthrough-book", "first-book-search", "news-feed"];
   const filtered = queue.filter((id) => getGuideStatus(id) === "pending");
   if (!filtered.length) {
     saveJourney(null);

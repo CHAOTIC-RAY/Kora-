@@ -892,7 +892,7 @@ export default function OnboardingModal({
                   />
                   <span className="text-[11px] text-kindle-text-muted leading-relaxed">
                     <span className="font-bold text-kindle-text block">Start interactive tour after setup</span>
-                    Spotlight overlays for Sync, first book, reader, and news. Uncheck to skip — you can still open Guides from Lounge anytime.
+                    Opens Getting started with Kora in your library — settings, Narrator, and highlights. Uncheck to skip — Guides stay available on Lounge.
                   </span>
                 </label>
               </motion.div>
