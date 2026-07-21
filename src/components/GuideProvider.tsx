@@ -11,6 +11,7 @@ import {
   dismissGuideForever,
   getGuide,
   getGuideStatus,
+  setGuideStatus,
   GUIDE_CATALOG,
   clearJourney,
   loadJourney,
@@ -106,11 +107,15 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
   );
 
   const startGuide = useCallback(
-    (id: GuideId) => {
-      if (getGuideStatus(id) !== "pending") return;
+    (id: GuideId, opts?: { force?: boolean; stepIndex?: number }) => {
       const def = getGuide(id);
       if (!def?.steps.length) return;
-      setActive({ guideId: id, stepIndex: 0 });
+      if (!opts?.force && getGuideStatus(id) !== "pending") return;
+      if (opts?.force && getGuideStatus(id) !== "pending") {
+        setGuideStatus(id, "pending");
+      }
+      const stepIndex = Math.max(0, Math.min(def.steps.length - 1, opts?.stepIndex ?? 0));
+      setActive({ guideId: id, stepIndex });
     },
     []
   );
@@ -209,17 +214,39 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
   // Listen for external start requests
   useEffect(() => {
     const onStart = (e: Event) => {
-      const id = (e as CustomEvent).detail?.id as GuideId | undefined;
-      if (id) startGuide(id);
+      const detail = (e as CustomEvent).detail || {};
+      const id = detail.id as GuideId | undefined;
+      if (id) {
+        startGuide(id, {
+          force: !!detail.force,
+          stepIndex: typeof detail.stepIndex === "number" ? detail.stepIndex : undefined,
+        });
+      }
     };
     const onJourney = () => startJourney();
+    const onBookCta = (e: Event) => {
+      const action = (e as CustomEvent).detail?.action as string | undefined;
+      if (action === "more-guides") {
+        skipAllGuides();
+        return;
+      }
+      if (action === "first-book") {
+        // Close the walkthrough spotlight; App starts first-book-search.
+        if (active?.guideId === "walkthrough-book") {
+          completeGuide("walkthrough-book");
+          setActive(null);
+        }
+      }
+    };
     window.addEventListener("kora-guide:start", onStart);
     window.addEventListener("kora-guide:start-journey", onJourney);
+    window.addEventListener("kora-guide:book-cta", onBookCta);
     return () => {
       window.removeEventListener("kora-guide:start", onStart);
       window.removeEventListener("kora-guide:start-journey", onJourney);
+      window.removeEventListener("kora-guide:book-cta", onBookCta);
     };
-  }, [startGuide, startJourney]);
+  }, [startGuide, startJourney, skipAllGuides, active]);
 
   const value = useMemo<GuideContextValue>(
     () => ({

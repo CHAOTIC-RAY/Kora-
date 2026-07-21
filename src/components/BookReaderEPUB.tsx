@@ -53,6 +53,25 @@ import {
   applyHighlightsToHtml,
   wrapSelectionWithHighlight,
 } from "../lib/readerHighlights";
+import { isWalkthroughBook } from "../lib/walkthroughBook";
+import { completeGuide, setGuideStatus } from "../lib/guides";
+
+function emitWalkthroughBookCta(action: "first-book" | "more-guides") {
+  window.dispatchEvent(
+    new CustomEvent("kora-guide:book-cta", {
+      detail: { action },
+    })
+  );
+}
+
+function replayWalkthroughGuide() {
+  setGuideStatus("walkthrough-book", "pending");
+  window.dispatchEvent(
+    new CustomEvent("kora-guide:start", {
+      detail: { id: "walkthrough-book", force: true, stepIndex: 1 },
+    })
+  );
+}
 
 function extractLookupWord(text: string): string {
   const trimmed = text.trim();
@@ -1098,6 +1117,35 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setShowHighlightColors,
     });
   }, []);
+
+  const handleEpubContentClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const target = e.target as HTMLElement;
+    const cta = target.closest("[data-kora-guide-cta]") as HTMLElement | null;
+    if (cta) {
+      e.preventDefault();
+      e.stopPropagation();
+      const action = cta.getAttribute("data-kora-guide-cta");
+      if (action === "first-book" || action === "more-guides") {
+        completeGuide("walkthrough-book");
+        emitWalkthroughBookCta(action);
+      }
+      return;
+    }
+    const anchor = target.closest("a");
+    if (anchor) {
+      e.preventDefault();
+      const href = anchor.getAttribute("href") || "";
+      if (href.startsWith("http")) {
+        setExternalLinkToOpen(href);
+      }
+    }
+  }, []);
+
+  const showWalkthroughEndCtas =
+    isWalkthroughBook(book) &&
+    chapters.length > 0 &&
+    currentChapterIdx >= chapters.length - 1 &&
+    (useScrollLayout || currentPageNum >= totalPages);
 
   // Native text selection toolbar — no separate "selection mode" required
   useEffect(() => {
@@ -2516,6 +2564,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   return (
     <div
       id="epub-reader-container"
+      data-guide="reader-surface"
       data-scroll-mode={useScrollLayout ? "continuous" : "paged"}
       className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200 ${
         useScrollLayout ? "kora-scroll-reader" : "kora-paged-reader"
@@ -3744,17 +3793,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             <div 
                               className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
                               dangerouslySetInnerHTML={{ __html: chapters[turningChapterIdx]?.content || "" }}
-                              onClick={(e) => {
-                                const target = e.target as HTMLElement;
-                                const anchor = target.closest("a");
-                                if (anchor) {
-                                  e.preventDefault();
-                                  const href = anchor.getAttribute("href") || "";
-                                  if (href.startsWith("http")) {
-                                    setExternalLinkToOpen(href);
-                                  }
-                                }
-                              }}
+                              onClick={handleEpubContentClick}
                             />
                           </div>
                           {/* Page curl edge shader */}
@@ -3824,17 +3863,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             <div 
                               className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
                               dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
-                              onClick={(e) => {
-                                const target = e.target as HTMLElement;
-                                const anchor = target.closest("a");
-                                if (anchor) {
-                                  e.preventDefault();
-                                  const href = anchor.getAttribute("href") || "";
-                                  if (href.startsWith("http")) {
-                                    setExternalLinkToOpen(href);
-                                  }
-                                }
-                              }}
+                              onClick={handleEpubContentClick}
                             />
                           </div>
                           {/* Shading / Shadow Overlay during curl fold */}
@@ -3921,17 +3950,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       id="epub-text-viewer"
                       className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
                       dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
-                      onClick={(e) => {
-                        const target = e.target as HTMLElement;
-                        const anchor = target.closest("a");
-                        if (anchor) {
-                          e.preventDefault();
-                          const href = anchor.getAttribute("href") || "";
-                          if (href.startsWith("http")) {
-                            setExternalLinkToOpen(href);
-                          }
-                        }
-                      }}
+                      onClick={handleEpubContentClick}
                     />
                   </motion.article>
                 </div>
@@ -3943,6 +3962,51 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   >
                     <span>End of {chapters[currentChapterIdx]?.title}</span>
                     <span>{Math.round((currentChapterIdx / Math.max(1, chapters.length)) * 100)}% read</span>
+                  </div>
+                )}
+
+                {showWalkthroughEndCtas && (
+                  <div
+                    className={`absolute left-3 right-3 md:left-8 md:right-8 z-30 flex flex-col gap-2 ${
+                      useScrollLayout ? "bottom-20 md:bottom-24" : "bottom-20 md:bottom-24"
+                    }`}
+                  >
+                    <div
+                      className={`rounded-2xl border px-3 py-3 shadow-lg backdrop-blur-sm ${activeTheme.card} ${activeTheme.border} ${activeTheme.text}`}
+                    >
+                      <p className="text-[11px] font-sans opacity-70 mb-2">
+                        End of Getting started — continue with a tour anytime.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider text-white bg-kindle-accent"
+                          onClick={() => {
+                            completeGuide("walkthrough-book");
+                            emitWalkthroughBookCta("first-book");
+                          }}
+                        >
+                          First book tour
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-full border px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider ${activeTheme.border}`}
+                          onClick={() => {
+                            completeGuide("walkthrough-book");
+                            emitWalkthroughBookCta("more-guides");
+                          }}
+                        >
+                          More guides
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-full border px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider ${activeTheme.border}`}
+                          onClick={() => replayWalkthroughGuide()}
+                        >
+                          Replay guide
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 

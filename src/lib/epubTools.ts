@@ -224,12 +224,12 @@ export async function buildEpubFromText(opts: {
   title: string;
   creator?: string;
   language?: string;
-  chapters: Array<{ title: string; text: string }>;
+  chapters: Array<{ title: string; text?: string; html?: string }>;
 }): Promise<Blob> {
   const title = opts.title.trim() || "Untitled";
   const creator = opts.creator?.trim() || "Kora";
   const language = opts.language?.trim() || "en";
-  const chapters = opts.chapters.filter((ch) => ch.text.trim());
+  const chapters = opts.chapters.filter((ch) => (ch.html && ch.html.trim()) || (ch.text && ch.text.trim()));
   if (!chapters.length) throw new Error("Add at least one chapter with text.");
 
   const zip = new JSZip();
@@ -250,7 +250,10 @@ export async function buildEpubFromText(opts: {
     `body{font-family:serif;line-height:1.6;margin:1.2em}
 h1{font-size:1.4em;margin:0 0 1em}
 p{margin:0 0 0.9em;text-indent:1.2em}
-p:first-of-type{text-indent:0}`
+p:first-of-type{text-indent:0}
+p.kora-cta-row{text-indent:0;margin:1.4em 0;display:flex;flex-direction:column;gap:0.65em}
+button[data-kora-guide-cta]{font-family:sans-serif;font-size:0.85em;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;padding:0.85em 1em;border-radius:0.75em;border:none;background:#1a1a1a;color:#f5f5f5;cursor:pointer;text-align:center}
+button[data-kora-guide-cta].kora-cta-secondary{background:transparent;color:#1a1a1a;border:1px solid #1a1a1a}`
   );
 
   const manifestItems: string[] = [
@@ -263,10 +266,10 @@ p:first-of-type{text-indent:0}`
   chapters.forEach((chapter, index) => {
     const id = `chap${index + 1}`;
     const href = `text/${id}.xhtml`;
-    oebps?.file(
-      href,
-      chapterXhtml(chapter.title || `Chapter ${index + 1}`, textToParagraphHtml(chapter.text))
-    );
+    const bodyHtml = chapter.html?.trim()
+      ? chapter.html
+      : textToParagraphHtml(chapter.text || "");
+    oebps?.file(href, chapterXhtml(chapter.title || `Chapter ${index + 1}`, bodyHtml));
     manifestItems.push(`<item id="${id}" href="${href}" media-type="application/xhtml+xml"/>`);
     spineItems.push(`<itemref idref="${id}"/>`);
     navPoints.push(

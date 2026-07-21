@@ -864,5 +864,36 @@ h1, h2, h3, h4 {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
+/* In-book walkthrough CTA buttons (EPUB stylesheet is stripped at load) */
+.epub-content p.kora-cta-row {
+  text-indent: 0 !important;
+  margin: 1.25em 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65em;
+}
+
+.epub-content button[data-kora-guide-cta] {
+  font-family: inherit;
+  font-size: 0.78em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.85em 1em;
+  border-radius: 999px;
+  border: none;
+  background: var(--kindle-accent, #1a1a1a);
+  color: #f5f5f5;
+  cursor: pointer;
+  text-align: center;
+  max-width: 100%;
+}
+
+.epub-content button[data-kora-guide-cta].kora-cta-secondary {
+  background: transparent;
+  color: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+}
+
 @import "./styles/skin-fonts.css";
 @import "./styles/app-skins.css";

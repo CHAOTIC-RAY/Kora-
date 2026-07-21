@@ -27,7 +27,7 @@ import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
 import LoungeView from "./components/LoungeView";
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
-import { ensureWalkthroughBook, isWalkthroughBook } from "./lib/walkthroughBook";
+import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
@@ -384,6 +384,29 @@ export default function App() {
     window.addEventListener("kora-guide:open", onOpen);
     return () => window.removeEventListener("kora-guide:open", onOpen);
   }, []);
+
+  // Last-page CTAs inside the Getting started book
+  useEffect(() => {
+    const onBookCta = (e: Event) => {
+      const action = (e as CustomEvent).detail?.action as string | undefined;
+      if (action === "first-book") {
+        setActiveBook(null);
+        switchTab("discover");
+        window.setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("kora-guide:start", {
+              detail: { id: "first-book-search", force: true },
+            })
+          );
+        }, 400);
+      } else if (action === "more-guides") {
+        setActiveBook(null);
+        switchTab(isLoungeEnabled() ? "lounge" : "library");
+      }
+    };
+    window.addEventListener("kora-guide:book-cta", onBookCta);
+    return () => window.removeEventListener("kora-guide:book-cta", onBookCta);
+  }, [switchTab]);
 
   const handleOnboardingComplete = async (prefs: {
     nickname: string;
@@ -1848,8 +1871,19 @@ export default function App() {
   const refreshLibrary = useCallback(async (uid = user?.uid || "", opts?: { promptDeviceDownloads?: boolean }) => {
     setLoadingLibrary(true);
     try {
+      if (!isWalkthroughBookHidden()) {
+        try {
+          await ensureWalkthroughBook(uid);
+        } catch (e) {
+          console.warn("Walkthrough book seed failed", e);
+        }
+      }
       const data = await loadLibrary(uid);
-      setBooks(data);
+      setBooks(
+        isWalkthroughBookHidden()
+          ? data.filter((b) => !isWalkthroughBook(b))
+          : data
+      );
 
       if (opts?.promptDeviceDownloads && uid) {
         const promptKey = `kora_device_dl_prompted_${uid}`;
@@ -1873,6 +1907,14 @@ export default function App() {
       setLoadingLibrary(false);
     }
   }, [user?.uid]);
+
+  useEffect(() => {
+    const onVis = () => {
+      void refreshLibrary(user?.uid || "");
+    };
+    window.addEventListener("kora-walkthrough-visibility", onVis);
+    return () => window.removeEventListener("kora-walkthrough-visibility", onVis);
+  }, [refreshLibrary, user?.uid]);
 
   const removeBooksFromLibrary = useCallback((bookIds: string[]) => {
     if (!bookIds.length) return;
@@ -2105,6 +2147,14 @@ export default function App() {
     emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
     if (isWalkthroughBook(book)) {
       emitGuideEvent("kora-guide:walkthrough-opened", { bookId: book.id });
+      // Replay in-book guide from the features step (book is already open).
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("kora-guide:start", {
+            detail: { id: "walkthrough-book", force: true, stepIndex: 1 },
+          })
+        );
+      }, 450);
     }
   }
 

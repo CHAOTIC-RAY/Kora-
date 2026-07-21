@@ -3,7 +3,14 @@ import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, Sparkles, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff } from "lucide-react";
+import {
+  WALKTHROUGH_BOOK_ID,
+  hideWalkthroughBookFromLibrary,
+  isWalkthroughBook,
+  isWalkthroughBookHidden,
+  showWalkthroughBookInLibrary,
+} from "../lib/walkthroughBook";
 import BookCoverEditor from "./BookCoverEditor";
 import BookMetadataEditor from "./BookMetadataEditor";
 import DownloadBookBtn from "./DownloadBookBtn";
@@ -254,6 +261,17 @@ function LibraryManager({
   const [filterTag, setFilterTag] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "book" | "audiobook">("all");
   const [sortBy, setSortBy] = useState<string>("dateAdded");
+  const [walkthroughHidden, setWalkthroughHidden] = useState(() => isWalkthroughBookHidden());
+
+  useEffect(() => {
+    const sync = () => setWalkthroughHidden(isWalkthroughBookHidden());
+    window.addEventListener("kora-walkthrough-visibility", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("kora-walkthrough-visibility", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
   
   // Custom Tag States
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -721,8 +739,8 @@ function LibraryManager({
       })
       .sort((a, b) => {
         // Pin the walkthrough guide book at the top of Newest
-        if (a.id === "kora-walkthrough-guide" && b.id !== "kora-walkthrough-guide") return -1;
-        if (b.id === "kora-walkthrough-guide" && a.id !== "kora-walkthrough-guide") return 1;
+        if (a.id === WALKTHROUGH_BOOK_ID && b.id !== WALKTHROUGH_BOOK_ID) return -1;
+        if (b.id === WALKTHROUGH_BOOK_ID && a.id !== WALKTHROUGH_BOOK_ID) return 1;
         if (sortBy === "dateAdded") {
           return b.dateAdded - a.dateAdded;
         }
@@ -823,6 +841,30 @@ function LibraryManager({
           </button>
         </div>
       </header>
+
+      {walkthroughHidden && (
+        <div className="w-full rounded-xl border border-kindle-border bg-kindle-card/80 px-3 py-2.5 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-kindle-text-muted font-sans leading-snug">
+            Getting started book is hidden from your shelf.
+          </p>
+          <button
+            type="button"
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition"
+            onClick={async () => {
+              try {
+                await showWalkthroughBookInLibrary(userId);
+                setWalkthroughHidden(false);
+                onRefreshLibrary();
+              } catch (err) {
+                console.warn("Failed to restore walkthrough book", err);
+              }
+            }}
+          >
+            <Eye className="w-3.5 h-3.5" />
+            Show book
+          </button>
+        </div>
+      )}
 
       {/* 3. Full Library Section with Search/Filter */}
       <section className="w-full min-w-0 space-y-5">
@@ -956,7 +998,7 @@ function LibraryManager({
               return (
                 <div
                   key={cardKey}
-                  data-guide={book.id === "kora-walkthrough-guide" ? "walkthrough-book" : undefined}
+                  data-guide={book.id === WALKTHROUGH_BOOK_ID ? "walkthrough-book" : undefined}
                   style={{ contentVisibility: "auto", containIntrinsicSize: "auto 280px" }}
                   onTouchStart={(e) => !isManageMode && startLongPress(book, e)}
                   onTouchEnd={isManageMode ? undefined : endLongPress}
@@ -1689,6 +1731,21 @@ function LibraryManager({
                     <Tag className="w-4 h-4 text-kindle-text-muted" />
                     Organize Tags
                   </button>
+
+                  {isWalkthroughBook(longPressedBook) ? (
+                    <button
+                      onClick={() => {
+                        hideWalkthroughBookFromLibrary();
+                        setWalkthroughHidden(true);
+                        setLongPressedBook(null);
+                        onRefreshLibrary();
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                    >
+                      <EyeOff className="w-4 h-4 text-kindle-text-muted" />
+                      Hide from library
+                    </button>
+                  ) : null}
 
                   <button
                     onClick={() => {

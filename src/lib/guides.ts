@@ -142,22 +142,18 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
       {
         id: "wt-next-paths",
         title: "What next?",
-        body: "You've got the reader basics. Grab a real book from Discover, skim the Read tab, or finish other guides from Lounge anytime.",
+        body: "You're on the last chapter. Use First book tour to download a real title, or More guides for the full Lounge catalog. These buttons stay on the last page of this book.",
         action: "next",
         cta: "Done for now",
         links: [
           {
-            label: "Download first book",
+            label: "First book tour",
             startGuide: "first-book-search",
             tab: "discover",
           },
           {
-            label: "Open Read tab",
-            startGuide: "news-feed",
-            tab: "feed",
-          },
-          {
-            label: "More guides later",
+            label: "More guides",
+            tab: "lounge",
             finishTour: true,
           },
         ],
