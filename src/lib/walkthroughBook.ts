@@ -11,7 +11,10 @@ import { storeBookFile, getBookFile } from "../db/indexedDB";
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
 /** Bump to rebuild EPUB for users who already have an older copy */
-export const WALKTHROUGH_CONTENT_VERSION = 7;
+export const WALKTHROUGH_CONTENT_VERSION = 8;
+
+/** Static guidebook-style cover (served from /public). */
+export const WALKTHROUGH_COVER_URL = "/getting-started-kora-cover.jpg";
 
 const HIDDEN_KEY = "kora_walkthrough_book_hidden";
 const VERSION_KEY = "kora_walkthrough_book_version";
@@ -42,7 +45,7 @@ const CHAPTERS: Array<{ title: string; text?: string; html?: string }> = [
 <section class="kora-guide-card">
 <p class="kora-label">Library</p>
 <p>Every downloaded or imported title lands here. Tap a cover to open it. Progress bars show how far you have read.</p>
-<p>This guide book sits near the top of <strong>Newest</strong>. Hide it from the library menu (⋯) anytime — <strong>Show book</strong> appears when hidden.</p>
+<p>This guide book lives on your shelf with your other titles. Hide it from the library menu (⋯) anytime — <strong>Show book</strong> appears when hidden.</p>
 </section>
 <section class="kora-guide-card">
 <p class="kora-label">Discover</p>
@@ -89,7 +92,7 @@ const CHAPTERS: Array<{ title: string; text?: string; html?: string }> = [
 </section>
 <section class="kora-guide-card kora-guide-muted">
 <p class="kora-label">Highlights &amp; notes</p>
-<p>Long-press any word to highlight, add a note, or look up a definition. Works in every book once the tour finishes.</p>
+<p>Tap the <strong>highlighter</strong> icon, then select text to highlight, look up a definition, or save a note.</p>
 </section>
 </div>`,
   },
@@ -148,11 +151,13 @@ function buildMetadata(): BookMetadata {
     source: "kora-guide",
     tags: ["Guide", "Kora"],
     status: "to-read",
+    coverUrl: WALKTHROUGH_COVER_URL,
     progress: {
       percent: 0,
       lastReadTime: now,
     },
-    dateAdded: now + 1_000_000_000,
+    // Sort with normal newest order — do not pin above real books.
+    dateAdded: now - 60_000,
     description: "Interactive walkthrough: settings, Narrator, P2P sync, terms, and next steps.",
   };
 }
@@ -228,7 +233,18 @@ export async function ensureWalkthroughBook(userId: string): Promise<BookMetadat
   });
 
   const meta = existingMeta
-    ? { ...existingMeta, size: `${(blob.size / 1024).toFixed(1)} KB`, dateModified: Date.now() }
+    ? {
+        ...existingMeta,
+        size: `${(blob.size / 1024).toFixed(1)} KB`,
+        dateModified: Date.now(),
+        coverUrl: existingMeta.coverUrl || WALKTHROUGH_COVER_URL,
+        // Drop legacy inflated dateAdded that forced this book to the top.
+        dateAdded:
+          typeof existingMeta.dateAdded === "number" &&
+          existingMeta.dateAdded > Date.now() + 86_400_000
+            ? Date.now() - 60_000
+            : existingMeta.dateAdded,
+      }
     : { ...buildMetadata(), size: `${(blob.size / 1024).toFixed(1)} KB` };
 
   await storeBookFile(WALKTHROUGH_BOOK_ID, blob, meta.filename || "getting-started-with-kora.epub", "epub");

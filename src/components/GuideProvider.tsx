@@ -204,13 +204,13 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
     return () => window.clearTimeout(t);
   }, [currentStep?.id, currentStep?.open, paused]);
 
-  // Close Narrator chrome before highlight steps in other guides.
+  // Close Narrator chrome and enable annotate before selection steps.
   useEffect(() => {
     if (paused || !currentStep) return;
     if (currentStep.event === "kora-guide:text-selected") {
       window.dispatchEvent(
         new CustomEvent("kora-guide:prepare-reader", {
-          detail: { closeNarrator: true },
+          detail: { closeNarrator: true, enableAnnotate: true },
         })
       );
     }

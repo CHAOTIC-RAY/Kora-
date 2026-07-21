@@ -542,13 +542,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         setTurnDirection(dir);
         setIsTurningPage(true);
         // Safety: spring onAnimationComplete can miss — never leave overlay stuck (blank page)
-        window.setTimeout(() => setIsTurningPage(false), 900);
+        window.setTimeout(() => setIsTurningPage(false), 650);
       }
 
       prevPageNumRef.current = currentPageNum;
       prevChapterIdxRef.current = currentChapterIdx;
     }
   }, [currentPageNum, currentChapterIdx, pageTransitionEffect, shouldAnimate, isTurningPage]);
+
+  // Keep page index in range whenever totalPages shrinks (font/layout changes).
+  useEffect(() => {
+    if (totalPages > 0 && currentPageNum > totalPages) {
+      setCurrentPageNum(totalPages);
+    }
+  }, [totalPages, currentPageNum]);
 
   // Disable animation temporarily during visual style changes
   useEffect(() => {
@@ -588,6 +595,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [showToc, setShowToc] = useState<boolean>(false);
   const [showSettings, setShowSettings] = useState<boolean>(false);
   const [showNotes, setShowNotes] = useState<boolean>(false);
+  /** Annotate mode: text selection + dictionary/highlight toolbar (not the notes sidebar). */
+  const [annotateMode, setAnnotateMode] = useState<boolean>(false);
+  const annotateModeRef = useRef(false);
+  annotateModeRef.current = annotateMode;
 
   const dismissReaderSettings = useAndroidBackLayer(showSettings, "reader-settings", () => setShowSettings(false));
   const dismissReaderToc = useAndroidBackLayer(showToc, "reader-toc", () => setShowToc(false));
@@ -648,10 +659,25 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         setShowAudiobook(false);
         setIsAudiobookExpanded(false);
       }
+      if (detail.enableAnnotate) {
+        setAnnotateMode(true);
+        setShowNotes(false);
+      }
     };
     window.addEventListener("kora-guide:prepare-reader", onPrep);
     return () => window.removeEventListener("kora-guide:prepare-reader", onPrep);
   }, []);
+
+  // Drop any lingering browser selection when annotate mode turns off.
+  useEffect(() => {
+    if (!annotateMode) {
+      try {
+        window.getSelection()?.removeAllRanges();
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [annotateMode]);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -717,6 +743,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       setContainerWidth(textWidth);
       pageStepRef.current = step;
       setPageStep(step);
+      // Clamp — stale high page indexes translate content off-screen (blank page).
+      setCurrentPageNum((prev) => Math.min(Math.max(1, prev), calculatedPages));
     }, 150);
   };
 
@@ -1126,6 +1154,41 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     });
   }, []);
 
+  useAndroidBackLayer(annotateMode, "reader-annotate", () => {
+    setAnnotateMode(false);
+    dismissSelection();
+  });
+
+  const exitAnnotateMode = useCallback(() => {
+    setAnnotateMode(false);
+    dismissSelection();
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      /* ignore */
+    }
+  }, [dismissSelection]);
+
+  const toggleAnnotateMode = useCallback(() => {
+    setAnnotateMode((prev) => {
+      const next = !prev;
+      if (!next) {
+        dismissSelection();
+        try {
+          window.getSelection()?.removeAllRanges();
+        } catch {
+          /* ignore */
+        }
+      } else {
+        setShowNotes(false);
+        setShowToc(false);
+        setShowSettings(false);
+        setShowAudiobook(false);
+      }
+      return next;
+    });
+  }, [dismissSelection]);
+
   const handleEpubContentClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
     const target = e.target as HTMLElement;
     const cta = target.closest("[data-kora-guide-cta]") as HTMLElement | null;
@@ -1197,7 +1260,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     void prefetchSelectionDictionary(text);
   }, [prefetchSelectionDictionary]);
 
-  // Native text selection toolbar — no separate "selection mode" required
+  // Text selection toolbar — only while annotate mode is on
   useEffect(() => {
     const readerRoot = document.getElementById("epub-reader-container");
     if (!readerRoot) return;
@@ -1205,12 +1268,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     let rafId: number | null = null;
 
     const handleSelection = () => {
+      if (!annotateModeRef.current) {
+        return;
+      }
       if (rafId) {
         cancelAnimationFrame(rafId);
       }
 
       rafId = requestAnimationFrame(() => {
         rafId = null;
+        if (!annotateModeRef.current) return;
         const selection = window.getSelection();
         if (selection && selection.toString().trim().length > 0) {
           // If the pointer is down (meaning active dragging/selecting is happening)
@@ -1244,8 +1311,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
     document.addEventListener("selectionchange", handleSelection);
     
-    // Dictionary lookup on double tap -> also enters select mode for convenience!
+    // Dictionary lookup on double tap — annotate mode only
     const handleDoubleClick = async () => {
+      if (!annotateModeRef.current) return;
       const selection = window.getSelection();
       const word = selection?.toString().trim();
       if (word && word.length > 0 && word.split(/\s+/).length === 1) {
@@ -1257,6 +1325,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
     // Support triple-click (3X) to select a whole sentence/paragraph
     const handleTripleClick = (e: MouseEvent) => {
+      if (!annotateModeRef.current) return;
       if (e.detail === 3) {
         const selection = window.getSelection();
         const text = selection?.toString().trim();
@@ -1365,6 +1434,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     };
 
     const handlePointerDown = (e: PointerEvent) => {
+      if (!annotateModeRef.current) {
+        isPointerDownRef.current = false;
+        pressInsideContent = false;
+        gestureSelectActive = false;
+        gestureStartCaret = null;
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        return;
+      }
+
       const targetEl = e.target as HTMLElement | null;
       // Taps on the floating selection menu / pins must NOT tear down the menu
       // before click handlers run (that made Highlight / Note / Web appear dead).
@@ -1564,6 +1645,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     playFlipSound();
     setTapFeedback("next");
     setTimeout(() => setTapFeedback(null), 350);
+    dismissSelection();
     if (useScrollLayout) {
       if (currentChapterIdx < chapters.length - 1) {
         const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
@@ -1572,7 +1654,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       return;
     }
     if (currentPageNum < totalPages) {
-      setCurrentPageNum((prev) => prev + 1);
+      setCurrentPageNum((prev) => Math.min(prev + 1, totalPages));
     } else if (currentChapterIdx < chapters.length - 1) {
       const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
       if (next !== currentChapterIdx) updateProgress(next, false);
@@ -1583,6 +1665,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     playFlipSound();
     setTapFeedback("prev");
     setTimeout(() => setTapFeedback(null), 350);
+    dismissSelection();
     if (useScrollLayout) {
       if (currentChapterIdx > 0) {
         const prev = nextReadableChapterIndex(chapters, currentChapterIdx, -1);
@@ -1591,7 +1674,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       return;
     }
     if (currentPageNum > 1) {
-      setCurrentPageNum((prev) => prev - 1);
+      setCurrentPageNum((prev) => Math.max(prev - 1, 1));
     } else if (currentChapterIdx > 0) {
       const prev = nextReadableChapterIndex(chapters, currentChapterIdx, -1);
       if (prev !== currentChapterIdx) updateProgress(prev, true);
@@ -2142,10 +2225,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       pushLocation(currentChapterIdx, currentPageNum);
     }
 
-    // Disable transition temporarily and reset page index synchronously
+    // Disable transition temporarily and reset page index synchronously.
+    // Never use an out-of-range page (e.g. 999) — that translates content off-screen.
     setShouldAnimate(false);
-    setCurrentPageNum(goToLastPage ? 999 : 1);
+    setCurrentPageNum(1);
     setCurrentChapterIdx(newChapterIdx);
+    setIsTurningPage(false);
     
     // Save scroll position at top of new chapter
     if (contentRef.current) {
@@ -2642,19 +2727,30 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {annotateMode && (
+            <span className="hidden sm:inline-flex items-center rounded-lg border border-kindle-accent/30 bg-kindle-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-kindle-accent">
+              Select text
+            </span>
+          )}
           <button
             data-guide="reader-notes-btn"
-            onClick={() => { setShowNotes(!showNotes); setShowSettings(false); setShowToc(false); setShowAudiobook(false); }}
+            onClick={() => {
+              setShowNotes(!showNotes);
+              setShowSettings(false);
+              setShowToc(false);
+              setShowAudiobook(false);
+              if (!showNotes) exitAnnotateMode();
+            }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? 'bg-neutral-500/20' : ''}`}
-            title="Highlights & Notes"
-            aria-label="Highlights and notes"
+            title="Saved highlights & notes"
+            aria-label="Saved highlights and notes"
             aria-pressed={showNotes}
           >
             <FileText className="w-5 h-5" />
           </button>
           <button
             id="toggle-toc-btn"
-            onClick={() => { setShowToc(!showToc); setShowSettings(false); setShowAudiobook(false); setShowNotes(false); }}
+            onClick={() => { setShowToc(!showToc); setShowSettings(false); setShowAudiobook(false); setShowNotes(false); if (!showToc) exitAnnotateMode(); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showToc ? 'bg-neutral-500/20' : ''}`}
             title="Chapters"
           >
@@ -2663,7 +2759,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           
           <button
             id="toggle-settings-btn"
-            onClick={() => { setShowSettings(!showSettings); setShowToc(false); setShowAudiobook(false); setShowNotes(false); }}
+            onClick={() => { setShowSettings(!showSettings); setShowToc(false); setShowAudiobook(false); setShowNotes(false); if (!showSettings) exitAnnotateMode(); }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showSettings ? 'bg-neutral-500/20' : ''}`}
             title="Display Settings"
           >
@@ -2684,6 +2780,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 setShowToc(false);
                 setShowSettings(false);
                 setShowNotes(false);
+                exitAnnotateMode();
               }
             }}
             className={`p-2 rounded-xl hover:bg-neutral-500/10 transition relative ${showAudiobook ? 'bg-kindle-accent/20 text-kindle-accent' : ''}`}
@@ -2696,14 +2793,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           </button>
 
           <button
-            onClick={() => {
-              setShowNotes(true);
-              setShowToc(false);
-              setShowSettings(false);
-              setShowAudiobook(false);
-            }}
-            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? "bg-kindle-accent/20 text-kindle-accent font-semibold" : ""}`}
-            title="Highlights & Notes"
+            data-guide="reader-annotate-btn"
+            onClick={toggleAnnotateMode}
+            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${annotateMode ? "bg-kindle-accent/20 text-kindle-accent font-semibold" : ""}`}
+            title={annotateMode ? "Done selecting" : "Annotate — select text"}
+            aria-label={annotateMode ? "Exit annotate mode" : "Annotate — select text"}
+            aria-pressed={annotateMode}
           >
             <Highlighter className="w-5 h-5" />
           </button>
@@ -3470,7 +3565,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 
                 {highlightsData.length === 0 ? (
                   <div className="text-center p-6 border border-dashed border-kindle-border rounded-xl">
-                    <p className="text-xs text-kindle-text-muted italic">Select text in the book to create highlights.</p>
+                    <p className="text-xs text-kindle-text-muted italic">
+                      Tap the highlighter icon, then select text to create highlights.
+                    </p>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -3739,8 +3836,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     setShowSettings(false);
                   }
                 }}
-                className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start cursor-text mx-auto overflow-hidden ${
-                  useScrollLayout ? "select-text" : "select-none"
+                className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start mx-auto overflow-hidden ${
+                  annotateMode
+                    ? useScrollLayout
+                      ? "select-text cursor-text"
+                      : "select-none cursor-text"
+                    : "select-none cursor-default"
                 } ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
                 <div
@@ -3752,10 +3853,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   }`}
                   style={{ perspective: "1200px" }}
                 >
-                  {/* Turn.js style 3D page flip transition */}
+                  {/* Turn.js style 3D page flip transition — decorative only; never blocks reading */}
                   {!useScrollLayout && pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
                     <div 
-                      className="absolute inset-0 pointer-events-none z-50 overflow-hidden"
+                      className="absolute inset-0 pointer-events-none z-40 overflow-hidden"
+                      aria-hidden
                       style={{ perspective: "2500px" }}
                     >
                       <motion.div
@@ -3929,25 +4031,30 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   <motion.article 
                     ref={contentRef}
                     animate={{ 
-                      x: useScrollLayout ? 0 : -(currentPageNum - 1) * pageStep,
+                      x: useScrollLayout
+                        ? 0
+                        : -(Math.min(Math.max(1, currentPageNum), Math.max(1, totalPages)) - 1) *
+                          Math.max(1, pageStep),
                       rotateY: 0,
                       skewY: 0,
                       scaleX: 1,
                       opacity: 1,
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
-                    className={`w-full ml-0 cursor-text ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
-                      useScrollLayout ? "select-text" : "select-none"
+                    className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
+                      annotateMode && useScrollLayout ? "select-text cursor-text" : "select-none"
                     }`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,
-                      // Paginated columns: disable native select (snaps to chapter start).
-                      // Programmatic Selection API still paints the highlight.
-                      WebkitUserSelect: useScrollLayout ? "text" : "none",
-                      userSelect: useScrollLayout ? "text" : "none",
-                      WebkitTouchCallout: useScrollLayout ? "default" : "none",
+                      // Selection only while annotate mode is on (paginated still uses custom long-press).
+                      WebkitUserSelect: annotateMode && useScrollLayout ? "text" : "none",
+                      userSelect: annotateMode && useScrollLayout ? "text" : "none",
+                      WebkitTouchCallout: annotateMode && useScrollLayout ? "default" : "none",
                       touchAction: useScrollLayout ? "pan-y" : swipeToTurn ? "pan-x" : "manipulation",
+                      // Keep content visible under paper-flip overlay
+                      opacity: 1,
+                      visibility: "visible" as const,
                       ...(useScrollLayout
                         ? {
                             height: "auto",

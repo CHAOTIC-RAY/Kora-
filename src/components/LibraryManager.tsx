@@ -751,9 +751,6 @@ function LibraryManager({
         return matchesSearch && matchesStatus && matchesTag && matchesType;
       })
       .sort((a, b) => {
-        // Pin the walkthrough guide book at the top of Newest
-        if (a.id === WALKTHROUGH_BOOK_ID && b.id !== WALKTHROUGH_BOOK_ID) return -1;
-        if (b.id === WALKTHROUGH_BOOK_ID && a.id !== WALKTHROUGH_BOOK_ID) return 1;
         if (sortBy === "dateAdded") {
           return b.dateAdded - a.dateAdded;
         }
