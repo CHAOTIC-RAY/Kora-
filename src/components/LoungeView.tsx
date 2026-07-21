@@ -673,7 +673,7 @@ export default function LoungeView({
                       <img
                         src={item.imageUrl}
                         alt=""
-                        className="w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0"
+                        className={`w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0 ${grayscaleCovers ? "grayscale" : ""}`}
                         loading="lazy"
                         referrerPolicy="no-referrer"
                       />

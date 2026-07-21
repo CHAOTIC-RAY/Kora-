@@ -2116,6 +2116,7 @@ export default function App() {
             onOpenBook={handleOpenBook}
             initialUrl={feedInitialUrl}
             onClearInitialUrl={() => setFeedInitialUrl(null)}
+            grayscaleCovers={grayscaleCovers}
           />
                   </div>
         )}

@@ -19,6 +19,7 @@ interface FeedArticleReaderProps {
   item: FeedItem;
   queue?: FeedItem[];
   userId?: string;
+  grayscaleCovers?: boolean;
   onClose: () => void;
   onOpenItem?: (item: FeedItem) => void;
   onSaved?: () => void | Promise<void>;
@@ -56,6 +57,7 @@ export default function FeedArticleReader({
   item,
   queue = [],
   userId,
+  grayscaleCovers = false,
   onClose,
   onOpenItem,
   onSaved,
@@ -444,7 +446,7 @@ export default function FeedArticleReader({
                   ) : (
                     <div
                       dir="auto"
-                      className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext] animate-in fade-in duration-200`}
+                      className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext] animate-in fade-in duration-200 ${grayscaleCovers ? "[&_img]:grayscale" : ""}`}
                       style={{
                         fontSize: `${prefs.fontSize}px`,
                         lineHeight: prefs.lineSpacing,

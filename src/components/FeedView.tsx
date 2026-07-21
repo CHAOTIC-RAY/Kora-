@@ -47,6 +47,7 @@ interface FeedViewProps {
   onOpenBook?: (book: BookMetadata) => void;
   initialUrl?: string | null;
   onClearInitialUrl?: () => void;
+  grayscaleCovers?: boolean;
 }
 
 type FeedFilter = "all" | "unread" | "saved" | "briefs";
@@ -112,6 +113,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   cover,
   title,
   variant,
+  grayscaleCovers = false,
   onRead,
   onToggleRead,
   onSaveLater,
@@ -120,6 +122,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   cover: string | null;
   title: string;
   variant: BentoVariant;
+  grayscaleCovers?: boolean;
   onRead: () => void;
   onToggleRead: () => void;
   onSaveLater: () => void;
@@ -239,7 +242,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
               <img
                 src={cover}
                 alt=""
-                className="w-full h-full object-cover pointer-events-none"
+                className={`w-full h-full object-cover pointer-events-none ${grayscaleCovers ? "grayscale" : ""}`}
                 referrerPolicy="no-referrer"
                 decoding="async"
                 onError={() => setThumbFailed(true)}
@@ -342,6 +345,7 @@ function FeedView({
   onOpenBook,
   initialUrl,
   onClearInitialUrl,
+  grayscaleCovers = false,
 }: FeedViewProps) {
   const [subscriptions, setSubscriptions] = useState<FeedSubscription[]>([]);
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -632,6 +636,7 @@ function FeedView({
           items={retainedItems}
           selectedSourceId={selectedSubscriptionId}
           onRead={handleReadArticle}
+          grayscaleCovers={grayscaleCovers}
         />
       ) : refreshing && retainedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-kindle-text-muted">
@@ -666,6 +671,7 @@ function FeedView({
                 cover={cover}
                 title={title}
                 variant={getBentoVariant(index)}
+                grayscaleCovers={grayscaleCovers}
                 onRead={() => void handleReadArticle(item)}
                 onToggleRead={() => {
                   const nextRead = !item.read;
@@ -788,6 +794,7 @@ function FeedView({
           item={readingArticle}
           queue={visibleItems}
           userId={userId}
+          grayscaleCovers={grayscaleCovers}
           onClose={() => dismissFeedArticle()}
           onOpenItem={(next) => {
             markFeedItemRead(next.id, true);

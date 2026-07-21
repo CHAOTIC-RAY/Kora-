@@ -14,14 +14,17 @@ interface NewsInBriefPanelProps {
   items: FeedItem[];
   selectedSourceId?: string | null;
   onRead: (item: FeedItem) => void;
+  grayscaleCovers?: boolean;
 }
 
 function BriefCard({
   item,
   onRead,
+  grayscaleCovers = false,
 }: {
   item: BriefFeedItem;
   onRead: () => void;
+  grayscaleCovers?: boolean;
 }) {
   const cover = getItemThumbnail(item);
   const title = item.title.trim();
@@ -31,7 +34,12 @@ function BriefCard({
     <article className="bg-kindle-card border border-kindle-border rounded-2xl overflow-hidden flex flex-col h-full">
       {cover ? (
         <div className="w-full aspect-[16/9] bg-kindle-bg overflow-hidden">
-          <img src={cover} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          <img
+            src={cover}
+            alt=""
+            className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+            referrerPolicy="no-referrer"
+          />
         </div>
       ) : null}
       <div className="p-4 flex flex-col gap-3 flex-1">
@@ -72,7 +80,12 @@ function BriefCard({
   );
 }
 
-export default function NewsInBriefPanel({ items, selectedSourceId, onRead }: NewsInBriefPanelProps) {
+export default function NewsInBriefPanel({
+  items,
+  selectedSourceId,
+  onRead,
+  grayscaleCovers = false,
+}: NewsInBriefPanelProps) {
   const briefs = useMemo(() => {
     const filtered = selectedSourceId
       ? items.filter((item) => item.subscriptionId === selectedSourceId)
@@ -159,7 +172,12 @@ export default function NewsInBriefPanel({ items, selectedSourceId, onRead }: Ne
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {selectedBriefs.map((item) => (
-            <BriefCard key={item.id} item={item} onRead={() => onRead(item)} />
+            <BriefCard
+              key={item.id}
+              item={item}
+              onRead={() => onRead(item)}
+              grayscaleCovers={grayscaleCovers}
+            />
           ))}
         </div>
       )}
