@@ -2147,7 +2147,7 @@ export default function App() {
     emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
     if (isWalkthroughBook(book)) {
       emitGuideEvent("kora-guide:walkthrough-opened", { bookId: book.id });
-      // Replay in-book guide from the features step (book is already open).
+      // Continue the in-book tour once the reader chrome is mounted.
       window.setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent("kora-guide:start", {
@@ -2155,6 +2155,11 @@ export default function App() {
           })
         );
       }, 450);
+    } else {
+      // Never leave the walkthrough spotlight covering other titles.
+      window.dispatchEvent(
+        new CustomEvent("kora-guide:clear-if", { detail: { id: "walkthrough-book" } })
+      );
     }
   }
 

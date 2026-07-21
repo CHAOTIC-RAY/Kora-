@@ -114,6 +114,7 @@ export default function GuideSpotlight({
 
   // Scroll target into view
   useEffect(() => {
+    if (step.target?.includes("reader-surface")) return;
     const el = queryTarget(step.target);
     if (!el) return;
     try {
@@ -128,6 +129,13 @@ export default function GuideSpotlight({
     step.action === undefined ||
     (step.action === "tap-target" && !step.target) ||
     (step.action === "wait-event" && !step.event);
+
+  /** Full-reader / page-interaction steps must not trap pointer events in the dim panes. */
+  const passThroughHole =
+    !!step.target &&
+    (step.target.includes("reader-surface") ||
+      step.event === "kora-guide:text-selected" ||
+      step.event === "kora-guide:walkthrough-opened");
 
   // Tip card placement
   const tipStyle = (() => {
@@ -167,11 +175,11 @@ export default function GuideSpotlight({
           {hole ? (
             <>
               <div
-                className="absolute bg-black/62 pointer-events-auto"
+                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{ top: 0, left: 0, right: 0, height: hole.top }}
               />
               <div
-                className="absolute bg-black/62 pointer-events-auto"
+                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top + hole.height,
                   left: 0,
@@ -180,7 +188,7 @@ export default function GuideSpotlight({
                 }}
               />
               <div
-                className="absolute bg-black/62 pointer-events-auto"
+                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top,
                   left: 0,
@@ -189,7 +197,7 @@ export default function GuideSpotlight({
                 }}
               />
               <div
-                className="absolute bg-black/62 pointer-events-auto"
+                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top,
                   left: hole.left + hole.width,
@@ -226,7 +234,9 @@ export default function GuideSpotlight({
               )}
             </>
           ) : (
-            <div className="absolute inset-0 bg-black/55 pointer-events-auto" />
+            // No spotlight target: keep the tip readable but do NOT block the UI
+            // (otherwise wait-event steps like “select text” can never complete).
+            <div className="absolute inset-0 bg-black/35 pointer-events-none" />
           )}
 
           {/* Tip card — pointer events on */}

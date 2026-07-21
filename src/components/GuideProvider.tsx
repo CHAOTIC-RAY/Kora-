@@ -238,13 +238,21 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
         }
       }
     };
+    const onClearIf = (e: Event) => {
+      const id = (e as CustomEvent).detail?.id as GuideId | undefined;
+      if (id && active?.guideId === id) {
+        setActive(null);
+      }
+    };
     window.addEventListener("kora-guide:start", onStart);
     window.addEventListener("kora-guide:start-journey", onJourney);
     window.addEventListener("kora-guide:book-cta", onBookCta);
+    window.addEventListener("kora-guide:clear-if", onClearIf);
     return () => {
       window.removeEventListener("kora-guide:start", onStart);
       window.removeEventListener("kora-guide:start-journey", onJourney);
       window.removeEventListener("kora-guide:book-cta", onBookCta);
+      window.removeEventListener("kora-guide:clear-if", onClearIf);
     };
   }, [startGuide, startJourney, skipAllGuides, active]);
 

@@ -99,6 +99,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
         id: "wt-features",
         title: "Features at a glance",
         body: "This book covers display settings, Voice Narrator, and highlights. Follow the spotlights — we'll ask you to try each one.",
+        target: '[data-guide="reader-surface"]',
         action: "next",
         cta: "Start with settings",
       },
@@ -136,6 +137,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
         id: "wt-highlight",
         title: "Highlight a word",
         body: "Long-press a word on the page, then choose Highlight (or Note / Dictionary). That finishes the in-book tour.",
+        target: '[data-guide="reader-surface"]',
         action: "wait-event",
         event: "kora-guide:text-selected",
       },
@@ -143,6 +145,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
         id: "wt-next-paths",
         title: "What next?",
         body: "You're on the last chapter. Use First book tour to download a real title, or More guides for the full Lounge catalog. These buttons stay on the last page of this book.",
+        target: '[data-guide="reader-surface"]',
         action: "next",
         cta: "Done for now",
         links: [
