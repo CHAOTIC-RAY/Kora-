@@ -486,7 +486,7 @@ export default function App() {
     switchTab("library");
     toast.success(
       wantTour
-        ? `Welcome, ${prefs.nickname}! Open Getting started with Kora on your shelf and read through it.`
+        ? `Welcome, ${prefs.nickname}! Open Getting started with Kora — spotlights will guide you inside the book.`
         : `Welcome, ${prefs.nickname}! Your library is ready.`
     );
     if (wantTour) {
@@ -1949,6 +1949,7 @@ export default function App() {
   const isAudiobookBook = activeBook?.extension?.toLowerCase() === "audiobook";
   const audiobookFullscreen = !!(audiobookPlayback && activeBook?.id === audiobookPlayback.id);
   const readerOpen = !!activeBook && !isAudiobookBook;
+  const walkthroughReaderOpen = !!(activeBook && isWalkthroughBook(activeBook));
 
   const closeReader = useCallback(() => {
     setActiveBook(null);
@@ -2172,13 +2173,15 @@ export default function App() {
     }
     emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
     if (isWalkthroughBook(book)) {
-      // Complete the Lounge "open the book" step first, then drop any spotlight.
       emitGuideEvent("kora-guide:walkthrough-opened", { bookId: book.id });
       window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("kora-guide:clear-active"));
-      }, 120);
+        window.dispatchEvent(
+          new CustomEvent("kora-guide:start", {
+            detail: { id: "walkthrough-book", force: true, stepIndex: 1 },
+          })
+        );
+      }, 450);
     } else {
-      // Guide overlays block long-press selection — never leave them over a reader.
       window.dispatchEvent(new CustomEvent("kora-guide:clear-active"));
     }
   }
@@ -2192,7 +2195,10 @@ export default function App() {
   }
 
   return (
-    <GuideProvider onSwitchTab={switchTab} paused={showOnboarding || readerOpen || audiobookFullscreen}>
+    <GuideProvider
+      onSwitchTab={switchTab}
+      paused={showOnboarding || (readerOpen && !walkthroughReaderOpen) || audiobookFullscreen}
+    >
     <div
       id="app-root-container"
       data-skin={appSkin}

@@ -4003,7 +4003,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       className={`rounded-2xl border px-3 py-3 shadow-lg backdrop-blur-sm ${activeTheme.card} ${activeTheme.border} ${activeTheme.text}`}
                     >
                       <p className="text-[11px] font-sans opacity-70 mb-2">
-                        End of Getting started — pick a next step from this page or the buttons below.
+                        End of Getting started — scroll the last chapter for terms and next steps.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         <button

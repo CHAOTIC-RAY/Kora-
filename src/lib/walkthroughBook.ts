@@ -1,6 +1,7 @@
 /**
  * Built-in "Getting started with Kora" EPUB — always available in the library
- * (can be hidden). Content is the tour; no spotlight overlay inside the reader.
+ * (can be hidden). In-reader spotlights cover settings/Narrator/highlight;
+ * the last chapters (terms + what's next) are read without a final popup.
  */
 
 import { buildEpubFromText } from "./epubTools";
@@ -10,7 +11,7 @@ import { storeBookFile, getBookFile } from "../db/indexedDB";
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
 /** Bump to rebuild EPUB for users who already have an older copy */
-export const WALKTHROUGH_CONTENT_VERSION = 4;
+export const WALKTHROUGH_CONTENT_VERSION = 5;
 
 const HIDDEN_KEY = "kora_walkthrough_book_hidden";
 const VERSION_KEY = "kora_walkthrough_book_version";
@@ -18,13 +19,11 @@ const VERSION_KEY = "kora_walkthrough_book_version";
 const CHAPTERS: Array<{ title: string; text?: string; html?: string }> = [
   {
     title: "Welcome to Kora",
-    text: `Welcome — this short book is your map of Kora.
+    text: `Welcome — this short book is your interactive tour of Kora.
 
-Read it like any other title. Turn pages at your own pace. There is no quiz and no popup tour inside these chapters: everything useful is written here.
+As you read, spotlight tips will appear over the reader. They walk you through display settings, Voice Narrator, and highlights. Follow along at your own pace — tap Next on each tip, or Skip step if you already know the gesture.
 
-You will learn how the Library shelf works, how Discover finds new books, how the reader settings feel, how Voice Narrator speaks a page, and how highlights and notes stick to a passage.
-
-When you reach the last chapter, you can download your first real book or jump into other optional guides from Lounge.`,
+After the highlight step, the spotlights stop. Scroll through the remaining chapters here for terms, regulations, and what to do next. There is no final popup — everything you need is on the page.`,
   },
   {
     title: "Your library shelf",
@@ -42,7 +41,7 @@ Offline copies show a checkmark. Cloud-only titles download when you open them, 
 
 Search by title or author, skim results, and download a format you like. Downloads appear in Library when they finish. You can pause, resume, or stop a download from Library while it runs.
 
-After you finish this guide book, the last chapter can send you on a First book tour that walks through a real search and download.`,
+The last chapter of this guide includes a button to download your first real book.`,
   },
   {
     title: "Lounge & Continue",
@@ -60,15 +59,17 @@ Font size — A+ and A− until the page feels comfortable.
 Theme — Sepia, Night, Paper, and others.
 Typeface — Lora, Lexend, Inter, and more.
 Spacing — line height, letter spacing, and margins.
-Layout — paginated pages or continuous scroll. Try both; continuous scroll makes selecting text feel most like a normal web page.
+Layout — paginated pages or continuous scroll.
 
-Page-turn zones, swipe options, and brightness live in the same panel. Changes apply immediately and sync with your other Kora preferences.`,
+The spotlight tour will ask you to open settings and change the font size plus one more preference. Page-turn zones, swipe options, and brightness live in the same panel.`,
   },
   {
     title: "Voice Narrator",
     text: `While a book is open, tap the headphones icon to hear the current chapter.
 
-Pick a system voice and speed, then press Play. Pause anytime from the panel or the mini player. Narrator is meant for the page you are on — for longer offline audiobooks generated from text, open Tools → Read Aloud later.`,
+Pick a system voice and speed, then press Play. Pause anytime from the panel or the mini player. The tour will ask you to try Narrator on this page.
+
+For longer offline audiobooks generated from text, open Tools → Read Aloud later.`,
   },
   {
     title: "Highlights, notes & dictionary",
@@ -80,7 +81,7 @@ When the toolbar appears you can:
 • Dictionary — look up a word offline when available
 • Copy or share — depending on your device
 
-Practice on the next chapter. If selection feels stubborn in paginated mode, switch the gear to continuous scroll — then try again.`,
+The spotlight tour ends after you make a selection. Practice on the next chapter if you want a second try.`,
   },
   {
     title: "Practice — try a highlight",
@@ -90,27 +91,37 @@ The evening light settled across the desk like a soft whisper. A single lantern 
 
 A second paragraph gives you more room to drag a longer selection. The margin notes you save here stay with this book, just like any other title on your shelf.
 
-When you are done practicing, turn to the last chapter for Download your first book and a list of other optional guides.`,
+When you are done, keep scrolling — terms and next steps are in the chapters ahead.`,
   },
   {
-    title: "Read tab & Daily Brief",
-    text: `The Read tab is your morning paper.
+    title: "Read tab & sync (short)",
+    text: `Read tab — headlines and Daily Brief when you want news beside your books. Manage feed sources from Read.
 
-Open headlines, save articles, and skim the Daily Brief when you want news beside your books. Feed sources can be managed from Read — add, remove, or reorder what you follow.
+Sync — sign in to align library progress and preferences across devices. Tools → Devices & Sync lists linked devices. Book files stay on each device; metadata and progress can sync when you are signed in.
 
-A separate Lounge guide can walk through Read in more detail when you want it.`,
+Optional Lounge guides cover Read and sync in more detail later.`,
   },
   {
-    title: "Sync across devices",
-    text: `Sign in to keep library progress and preferences aligned across phones and tablets.
+    title: "Terms & regulations (summary)",
+    text: `Important points — full legal text is shown during onboarding. By using Kora you agree that:
 
-Tools → Devices & Sync shows linked devices and sync options. Anonymous use still works on one device; signing in unlocks cross-device continuity.
+1. Client only — Kora is a reader and search client. It does not host book files on Kora servers; it queries third-party indices and mirrors you choose to use.
 
-There is an optional Setup & sync guide in Lounge if you want a step-by-step walkthrough later.`,
+2. Your responsibility — You are solely responsible for complying with copyright and intellectual property laws where you live. Only download or convert works you have the right to access (public domain, open access, fair use, or a license you own).
+
+3. No piracy — Do not use Kora to infringe copyright or distribute protected works without permission.
+
+4. Takedowns — Kora cannot remove files at their source. Rights holders must contact the host platform or API that serves a file.
+
+5. Privacy — Reading progress, highlights, and notes are stored locally in your browser (IndexedDB). Raw book content is not uploaded to Kora servers. Optional sign-in syncs library metadata, not your files.
+
+6. No warranty — Kora is provided as-is. You use third-party links and tools at your own risk.
+
+If you disagree, stop using the app and remove downloaded files from your device.`,
   },
   {
-    title: "What's next",
-    html: `<p>You have the lay of the land. Explore this book anytime — or hide it from Library when you are done.</p>
+    title: "What's next — scroll to finish",
+    html: `<p><strong>You are almost done.</strong> The spotlight tour is complete. Scroll through this chapter, then use the buttons below when you are ready.</p>
 <p><strong>Download your first book</strong> opens Discover and starts a short download tour.</p>
 <p class="kora-cta-row">
 <button type="button" data-kora-guide-cta="first-book">Download your first book</button>
@@ -128,7 +139,7 @@ There is an optional Setup & sync guide in Lounge if you want a step-by-step wal
 <p class="kora-cta-row">
 <button type="button" data-kora-guide-cta="more-guides" class="kora-cta-secondary">Open Lounge guides</button>
 </p>
-<p>Tip: swipe away guide cards on Lounge to hide them. You can always reopen this book from Library.</p>`,
+<p>You can hide this guide book anytime from its library menu (⋯). Reopen it from Library whenever you want a refresher.</p>`,
   },
 ];
 
@@ -150,7 +161,7 @@ function buildMetadata(): BookMetadata {
       lastReadTime: now,
     },
     dateAdded: now + 1_000_000_000,
-    description: "A short guide book for Library, Discover, reader settings, Narrator, and highlights.",
+    description: "Interactive walkthrough: spotlights for settings, Narrator, and highlights; terms and next steps in the book.",
   };
 }
 
