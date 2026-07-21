@@ -645,6 +645,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   const [externalLinkToOpen, setExternalLinkToOpen] = useState<string | null>(null);
 
+  // Walkthrough highlight step: close Narrator so its scrim doesn't eat long-press.
+  useEffect(() => {
+    const onPrep = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.closeNarrator) {
+        setShowAudiobook(false);
+        setIsAudiobookExpanded(false);
+      }
+    };
+    window.addEventListener("kora-guide:prepare-reader", onPrep);
+    return () => window.removeEventListener("kora-guide:prepare-reader", onPrep);
+  }, []);
+
   const contentRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const zipRef = useRef<JSZip | null>(null);
@@ -1389,6 +1402,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
+      // Guide tip / selection chrome — don't treat as page selection.
+      if (targetEl?.closest?.("[data-kora-guide-tip], [data-kora-selection-ui]")) {
+        isPointerDownRef.current = false;
+        pressInsideContent = false;
+        gestureSelectActive = false;
+        gestureStartCaret = null;
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        return;
+      }
+
       isPointerDownRef.current = true;
       movedDuringPress = false;
       gestureSelectActive = false;
@@ -1397,8 +1423,32 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       pressStartY = lastY = e.clientY;
 
       const container = contentRef.current;
-      const target = e.target as Node;
-      pressInsideContent = !!(container && container.contains(target));
+      // Guide dimmers / narrator scrims sit above the page — walk the hit stack
+      // so long-press still reaches book text underneath pass-through layers.
+      let overContent = !!(container && container.contains(e.target as Node));
+      if (!overContent && container) {
+        try {
+          for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+            if (!(el instanceof Element)) continue;
+            if (el.closest?.("[data-kora-selection-ui], [data-kora-guide-tip]")) {
+              overContent = false;
+              break;
+            }
+            // Scrims / dimmers: keep looking for page text below them
+            if (el.closest?.("[data-kora-pass-through]")) continue;
+            if (el === container || container.contains(el)) {
+              overContent = true;
+              break;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+        if (!overContent) {
+          overContent = !!findCaretRangeAtPoint(e.clientX, e.clientY, container);
+        }
+      }
+      pressInsideContent = overContent;
       if (!pressInsideContent) {
         setSelectionCoords(null);
         setSelectionPins({ start: null, end: null });
@@ -3168,6 +3218,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           <>
             {/* Mobile expanded backdrop */}
             <div
+              data-kora-pass-through
               className={`absolute inset-0 z-30 bg-black/25 md:hidden transition-opacity ${isAudiobookExpanded ? "opacity-100" : "opacity-0 pointer-events-none"}`}
               onClick={() => setIsAudiobookExpanded(false)}
             />

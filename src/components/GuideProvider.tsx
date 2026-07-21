@@ -189,6 +189,21 @@ export function GuideProvider({ children, onSwitchTab, paused = false }: GuidePr
     return () => window.clearTimeout(t);
   }, [currentStep?.id, currentStep?.open, paused]);
 
+  // In-book highlight step needs a clear page — close Narrator chrome first.
+  useEffect(() => {
+    if (paused || !currentStep) return;
+    if (
+      currentStep.id === "wt-highlight" ||
+      currentStep.event === "kora-guide:text-selected"
+    ) {
+      window.dispatchEvent(
+        new CustomEvent("kora-guide:prepare-reader", {
+          detail: { closeNarrator: true },
+        })
+      );
+    }
+  }, [currentStep?.id, currentStep?.event, paused]);
+
   // Wait for custom events
   useEffect(() => {
     if (paused || !currentStep || currentStep.action !== "wait-event" || !currentStep.event) {

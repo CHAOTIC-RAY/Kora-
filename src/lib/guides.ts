@@ -138,6 +138,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
         title: "Highlight a word",
         body: "Long-press a word on the page, then choose Highlight (or Note / Dictionary). That finishes the in-book tour.",
         target: '[data-guide="reader-surface"]',
+        placement: "top",
         action: "wait-event",
         event: "kora-guide:text-selected",
       },

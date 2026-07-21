@@ -139,6 +139,17 @@ export default function GuideSpotlight({
 
   // Tip card placement
   const tipStyle = (() => {
+    // Full-reader interaction steps: pin tip under the chrome so page text stays free.
+    if (passThroughHole) {
+      return {
+        top: "calc(4.25rem + env(safe-area-inset-top, 0px))",
+        left: 16,
+        right: 16,
+        maxWidth: "28rem",
+        marginLeft: "auto",
+        marginRight: "auto",
+      } as React.CSSProperties;
+    }
     if (!hole) {
       return { bottom: "calc(5.5rem + env(safe-area-inset-bottom))", left: 16, right: 16 } as React.CSSProperties;
     }
@@ -175,10 +186,12 @@ export default function GuideSpotlight({
           {hole ? (
             <>
               <div
+                data-kora-pass-through
                 className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{ top: 0, left: 0, right: 0, height: hole.top }}
               />
               <div
+                data-kora-pass-through
                 className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top + hole.height,
@@ -188,6 +201,7 @@ export default function GuideSpotlight({
                 }}
               />
               <div
+                data-kora-pass-through
                 className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top,
@@ -197,6 +211,7 @@ export default function GuideSpotlight({
                 }}
               />
               <div
+                data-kora-pass-through
                 className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top,
@@ -236,11 +251,12 @@ export default function GuideSpotlight({
           ) : (
             // No spotlight target: keep the tip readable but do NOT block the UI
             // (otherwise wait-event steps like “select text” can never complete).
-            <div className="absolute inset-0 bg-black/35 pointer-events-none" />
+            <div data-kora-pass-through className="absolute inset-0 bg-black/35 pointer-events-none" />
           )}
 
           {/* Tip card — pointer events on */}
           <motion.div
+            data-kora-guide-tip
             className="absolute pointer-events-auto z-10 mx-auto max-w-md"
             style={tipStyle}
             initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.96 }}
