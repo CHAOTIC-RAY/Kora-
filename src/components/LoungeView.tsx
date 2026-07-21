@@ -401,168 +401,168 @@ export default function LoungeView({
         </AnimatePresence>
       </header>
 
-      <div className="flex flex-col gap-3 md:gap-4 md:grid md:grid-cols-2 md:items-start">
-        {/* Left stack — Continue sizes to content; Shelf fills under it */}
-        <div className="contents md:flex md:flex-col md:gap-3 md:gap-4 md:col-start-1 md:row-start-1">
-        {/* Continue — whole hero opens book */}
-        <TileShell
-          delay={0.02}
-          className="order-1 relative bg-kindle-card"
-          onClick={openContinue}
-          label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
-        >
-          <div className="absolute inset-0 pointer-events-none">
-            {continueBook?.coverUrl ? (
-              <>
-                <CachedCoverImage
-                  coverUrl={continueBook.coverUrl}
-                  bookTitle={continueBook.title}
-                  fallback="empty"
-                  className={`absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-30 ${
-                    grayscaleCovers ? "grayscale" : ""
-                  }`}
-                  referrerPolicy="no-referrer"
+      {/* Bento: independent column stacks — widgets size to content, no equal-row stretch */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 md:items-start">
+        {/* Left column — Continue first, then Shelf + Guides fill under it */}
+        <div className="flex flex-col gap-3 md:gap-4 min-w-0">
+          <TileShell
+            delay={0.02}
+            className="relative bg-kindle-card"
+            onClick={openContinue}
+            label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
+          >
+            <div className="absolute inset-0 pointer-events-none">
+              {continueBook?.coverUrl ? (
+                <>
+                  <CachedCoverImage
+                    coverUrl={continueBook.coverUrl}
+                    bookTitle={continueBook.title}
+                    fallback="empty"
+                    className={`absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-30 ${
+                      grayscaleCovers ? "grayscale" : ""
+                    }`}
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-b from-kindle-bg/50 via-kindle-bg/75 to-kindle-bg" />
+                </>
+              ) : (
+                <div
+                  className="absolute inset-0 opacity-55"
+                  style={{
+                    backgroundImage:
+                      "radial-gradient(ellipse at 20% 10%, color-mix(in srgb, var(--kindle-accent) 20%, transparent), transparent 55%)",
+                  }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-b from-kindle-bg/50 via-kindle-bg/75 to-kindle-bg" />
-              </>
-            ) : (
+              )}
+            </div>
+
+            <div className="relative flex flex-col">
               <div
-                className="absolute inset-0 opacity-55"
-                style={{
-                  backgroundImage:
-                    "radial-gradient(ellipse at 20% 10%, color-mix(in srgb, var(--kindle-accent) 20%, transparent), transparent 55%)",
-                }}
-              />
-            )}
-          </div>
-
-          <div className="relative flex flex-col">
-            <div className="px-4 md:px-5 pt-4 flex items-center justify-between gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
-                  Continue
-                </h3>
+                className="px-4 md:px-5 pt-4 flex items-center justify-between gap-2 shrink-0"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
+                    Continue
+                  </h3>
+                </div>
+                <ModeSwitch
+                  value={modes.continue}
+                  onChange={(m) => setMode("continue", m, true)}
+                  options={[
+                    { id: "book", label: "Book" },
+                    { id: "audio", label: "Listen" },
+                  ]}
+                />
               </div>
-              <ModeSwitch
-                value={modes.continue}
-                onChange={(m) => setMode("continue", m, true)}
-                options={[
-                  { id: "book", label: "Book" },
-                  { id: "audio", label: "Listen" },
-                ]}
-              />
-            </div>
 
-            {/* Hero: proper 2:3 cover left, meta column right — height follows content */}
-            <div className="w-full text-left px-3.5 md:px-5 pb-4 pt-2 pointer-events-none">
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={`${modes.continue}-${continueBook?.id || "empty"}`}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.35 }}
-                  className="flex items-stretch gap-3.5 md:gap-5"
-                >
-                  {continueBook ? (
-                    <>
-                      <div className="relative shrink-0 w-[6.75rem] sm:w-[7.5rem] md:w-[8.25rem] aspect-[2/3] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.45)] bg-kindle-card ring-1 ring-white/5">
-                        {continueBook.coverUrl ? (
-                          <CachedCoverImage
-                            coverUrl={continueBook.coverUrl}
-                            bookTitle={continueBook.title}
-                            className={`absolute inset-0 w-full h-full object-cover object-center ${grayscaleCovers ? "grayscale" : ""}`}
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center bg-kindle-bg">
-                            {isAudiobook(continueBook) ? (
-                              <Headphones className="w-10 h-10 text-kindle-text-muted" />
-                            ) : (
-                              <BookOpen className="w-10 h-10 text-kindle-text-muted" />
-                            )}
-                          </div>
-                        )}
-                        {isAudiobook(continueBook) && (
-                          <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider leading-none shadow">
-                            Audio
-                          </span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5 gap-2">
-                        <div className="space-y-1.5">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-                            {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
-                          </p>
-                          <h4 className="text-xl md:text-2xl font-lexend font-bold text-kindle-text leading-[1.15] line-clamp-4">
-                            {continueBook.title}
-                          </h4>
-                          {continueAuthor ? (
-                            <p className="text-sm text-kindle-text-muted truncate">{continueAuthor}</p>
-                          ) : null}
-                        </div>
-                        <div className="space-y-2.5 mt-auto">
-                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden w-full">
-                            <motion.div
-                              className="h-full rounded-full bg-kindle-accent"
-                              initial={{ width: 0 }}
-                              animate={{ width: `${progress}%` }}
-                              transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+              <div className="w-full text-left px-3.5 md:px-5 pb-4 pt-2 pointer-events-none">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={`${modes.continue}-${continueBook?.id || "empty"}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.35 }}
+                    className="flex items-stretch gap-3.5 md:gap-5"
+                  >
+                    {continueBook ? (
+                      <>
+                        <div className="relative shrink-0 w-[6.75rem] sm:w-[7.5rem] md:w-[8.25rem] aspect-[2/3] rounded-2xl overflow-hidden border border-white/15 shadow-[0_18px_40px_rgba(0,0,0,0.45)] bg-kindle-card ring-1 ring-white/5">
+                          {continueBook.coverUrl ? (
+                            <CachedCoverImage
+                              coverUrl={continueBook.coverUrl}
+                              bookTitle={continueBook.title}
+                              className={`absolute inset-0 w-full h-full object-cover object-center ${grayscaleCovers ? "grayscale" : ""}`}
+                              referrerPolicy="no-referrer"
                             />
-                          </div>
-                          <span className="inline-flex w-fit items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
-                            {isAudiobook(continueBook) ? (
-                              <>
-                                <Play className="w-3.5 h-3.5 fill-current" /> Resume
-                              </>
-                            ) : (
-                              <>
-                                <BookOpen className="w-3.5 h-3.5" /> Resume
-                              </>
-                            )}
-                          </span>
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center bg-kindle-bg">
+                              {isAudiobook(continueBook) ? (
+                                <Headphones className="w-10 h-10 text-kindle-text-muted" />
+                              ) : (
+                                <BookOpen className="w-10 h-10 text-kindle-text-muted" />
+                              )}
+                            </div>
+                          )}
+                          {isAudiobook(continueBook) && (
+                            <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded-md bg-kindle-text text-kindle-bg text-[8px] font-bold uppercase tracking-wider leading-none shadow">
+                              Audio
+                            </span>
+                          )}
                         </div>
+                        <div className="min-w-0 flex-1 flex flex-col justify-between py-0.5 gap-2">
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                              {isAudiobook(continueBook) ? "Listening" : "Reading"} · {progress}%
+                            </p>
+                            <h4 className="text-xl md:text-2xl font-lexend font-bold text-kindle-text leading-[1.15] line-clamp-4">
+                              {continueBook.title}
+                            </h4>
+                            {continueAuthor ? (
+                              <p className="text-sm text-kindle-text-muted truncate">{continueAuthor}</p>
+                            ) : null}
+                          </div>
+                          <div className="space-y-2.5 mt-auto">
+                            <div className="h-1.5 rounded-full bg-white/10 overflow-hidden w-full">
+                              <motion.div
+                                className="h-full rounded-full bg-kindle-accent"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${progress}%` }}
+                                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                              />
+                            </div>
+                            <span className="inline-flex w-fit items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg">
+                              {isAudiobook(continueBook) ? (
+                                <>
+                                  <Play className="w-3.5 h-3.5 fill-current" /> Resume
+                                </>
+                              ) : (
+                                <>
+                                  <BookOpen className="w-3.5 h-3.5" /> Resume
+                                </>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-2 py-4">
+                        <p className="text-sm text-kindle-text-muted">
+                          Nothing in progress yet. Tap to find something on Discover.
+                        </p>
+                        <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-kindle-accent">
+                          Browse Discover <ArrowRight className="w-3.5 h-3.5" />
+                        </span>
                       </div>
-                    </>
-                  ) : (
-                    <div className="space-y-2 py-4">
-                      <p className="text-sm text-kindle-text-muted">
-                        Nothing in progress yet. Tap to find something on Discover.
-                      </p>
-                      <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-kindle-accent">
-                        Browse Discover <ArrowRight className="w-3.5 h-3.5" />
-                      </span>
-                    </div>
-                  )}
-                </motion.div>
-              </AnimatePresence>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
             </div>
-          </div>
-        </TileShell>
+          </TileShell>
 
-        {/* Shelf — sits under Continue on md+ to fill the left column */}
-        <TileShell delay={0.04} className="order-4 md:order-none bg-kindle-card/70 px-4 md:px-5 pt-3 pb-3.5">
-          <div className="flex items-center justify-between gap-2 mb-2.5">
-            <div className="flex items-center gap-2">
-              <BookOpen className="w-3.5 h-3.5 text-kindle-accent" />
-              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
-                On your shelf
-              </p>
+          <TileShell delay={0.04} className="bg-kindle-card/70 px-4 md:px-5 pt-3 pb-3.5">
+            <div className="flex items-center justify-between gap-2 mb-2.5">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-3.5 h-3.5 text-kindle-accent" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
+                  On your shelf
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpenTab("library")}
+                className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
+              >
+                Library →
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => onOpenTab("library")}
-              className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
-            >
-              Library →
-            </button>
-          </div>
 
-          {shelfItems.length ? (
-            <div className="flex gap-2.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {shelfItems.map((book, i) => {
-                return (
+            {shelfItems.length ? (
+              <div className="flex gap-2.5 overflow-x-auto pb-0.5 -mx-0.5 px-0.5 snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {shelfItems.map((book, i) => (
                   <motion.button
                     key={book.id}
                     type="button"
@@ -582,178 +582,178 @@ export default function LoungeView({
                       />
                     </div>
                   </motion.button>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-xs text-kindle-text-muted py-1">Books you open will line up here.</p>
-          )}
-        </TileShell>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-kindle-text-muted py-1">Books you open will line up here.</p>
+            )}
+          </TileShell>
+
+          <TileShell delay={0.14} className="bg-kindle-card/60 p-3 md:p-4">
+            <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
+          </TileShell>
         </div>
 
-        {/* Right stack — Paper + Discover size independently */}
-        <div className="contents md:flex md:flex-col md:gap-3 md:gap-4 md:col-start-2 md:row-start-1">
-        {/* Paper */}
-        <TileShell
-          delay={0.06}
-          className="order-2 bg-kindle-card/55 flex flex-col"
-          onClick={() => onOpenTab("feed")}
-          label="Open news paper"
-        >
-          <div className="px-4 md:px-5 pt-4 pb-2 flex items-center justify-between gap-2 shrink-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <Rss className="w-3.5 h-3.5 text-kindle-accent shrink-0" />
-              <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text truncate">
-                The paper
-              </h3>
-            </div>
-            <ModeSwitch
-              value={modes.paper}
-              onChange={(m) => setMode("paper", m, true)}
-              options={[
-                { id: "latest", label: "Latest" },
-                { id: "unread", label: "Unread" },
-                { id: "saved", label: "Saved" },
-              ]}
-            />
-          </div>
-
-          <div className="divide-y divide-kindle-border/50 overflow-hidden">
-            {newsItems.length ? (
-              newsItems.map((item) => (
-                <div key={item.id} className="px-4 md:px-5 py-2.5 flex gap-2.5 hover:bg-kindle-bg/40 transition">
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt=""
-                      className="w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-11 h-11 rounded-lg bg-kindle-bg border border-kindle-border flex items-center justify-center shrink-0">
-                      <Rss className="w-3.5 h-3.5 text-kindle-text-muted opacity-40" />
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mb-0.5 truncate">
-                      {item.subscriptionTitle}
-                      {!item.read && <span className="ml-1.5 text-kindle-accent">New</span>}
-                    </p>
-                    <p className="text-[13px] font-bold text-kindle-text line-clamp-2 leading-snug">
-                      {item.title}
-                    </p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="px-5 py-8 text-center text-sm text-kindle-text-muted">No headlines yet.</div>
-            )}
-          </div>
-        </TileShell>
-
-        {/* Discover — whole card clickable, denser featured + cover */}
-        <TileShell
-          delay={0.1}
-          className="order-3 relative bg-kindle-bg"
-          onClick={openDiscover}
-          label="Open Discover"
-        >
-          <div className="absolute inset-0 pointer-events-none">
-            {discoverHero?.coverUrl ? (
-              <>
-                <CachedCoverImage
-                  coverUrl={discoverHero.coverUrl}
-                  bookTitle={discoverHero.title}
-                  fallback="empty"
-                  className={`absolute inset-0 w-full h-full object-cover opacity-35 ${
-                    grayscaleCovers ? "grayscale" : ""
-                  }`}
-                  referrerPolicy="no-referrer"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-kindle-bg via-kindle-bg/80 to-kindle-bg/35" />
-                <div className="absolute inset-0 bg-gradient-to-r from-kindle-bg/95 via-kindle-bg/55 to-kindle-bg/20" />
-              </>
-            ) : (
-              <div
-                className="absolute inset-0"
-                style={{
-                  backgroundImage:
-                    "radial-gradient(ellipse at 80% 20%, color-mix(in srgb, var(--kindle-accent) 16%, transparent), transparent 50%)",
-                }}
-              />
-            )}
-          </div>
-
-          <div className="relative p-4 md:p-5 flex flex-col gap-3">
-            <div className="flex items-center justify-between gap-2 shrink-0">
-              <div className="flex items-center gap-2">
-                <Compass className="w-3.5 h-3.5 text-kindle-accent" />
-                <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
-                  Discover
+        {/* Right column — Paper, Discover, Notes stack independently */}
+        <div className="flex flex-col gap-3 md:gap-4 min-w-0">
+          <TileShell
+            delay={0.06}
+            className="bg-kindle-card/55 flex flex-col"
+            onClick={() => onOpenTab("feed")}
+            label="Open news paper"
+          >
+            <div className="px-4 md:px-5 pt-4 pb-2 flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <Rss className="w-3.5 h-3.5 text-kindle-accent shrink-0" />
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text truncate">
+                  The paper
                 </h3>
               </div>
               <ModeSwitch
-                value={modes.discover}
-                onChange={(m) => setMode("discover", m, true)}
+                value={modes.paper}
+                onChange={(m) => setMode("paper", m, true)}
                 options={[
-                  { id: "trending", label: "Trending" },
-                  { id: "audiobooks", label: "Audio" },
+                  { id: "latest", label: "Latest" },
+                  { id: "unread", label: "Unread" },
+                  { id: "saved", label: "Saved" },
                 ]}
               />
             </div>
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={modes.discover}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.3 }}
-                className="flex flex-col gap-3"
-              >
-                {discoverHero ? (
-                  <>
-                    <div className="flex items-start gap-3.5 shrink-0">
-                      <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
-                        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-accent">
-                          {isDiscoverAudio ? "Featured listen" : "Featured"}
-                        </p>
-                        <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
-                          {discoverHero.title}
-                        </h4>
-                        {discoverHero.author ? (
-                          <p className="text-xs text-kindle-text-muted truncate">{discoverHero.author}</p>
-                        ) : isDiscoverAudio ? (
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-                            Audiobook
-                          </p>
-                        ) : null}
+            <div className="divide-y divide-kindle-border/50 overflow-hidden">
+              {newsItems.length ? (
+                newsItems.map((item) => (
+                  <div key={item.id} className="px-4 md:px-5 py-2.5 flex gap-2.5 hover:bg-kindle-bg/40 transition">
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt=""
+                        className="w-11 h-11 rounded-lg object-cover border border-kindle-border shrink-0"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-lg bg-kindle-bg border border-kindle-border flex items-center justify-center shrink-0">
+                        <Rss className="w-3.5 h-3.5 text-kindle-text-muted opacity-40" />
                       </div>
-                      {discoverHero.coverUrl && (
-                        <div className="relative shrink-0 w-[5.5rem] md:w-[6.25rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
-                          <CachedCoverImage
-                            coverUrl={discoverHero.coverUrl}
-                            bookTitle={discoverHero.title}
-                            className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
-                            referrerPolicy="no-referrer"
-                          />
-                          {isDiscoverAudio && (
-                            <span className="absolute top-1.5 right-1.5 px-1 py-0.5 rounded bg-kindle-text text-kindle-bg text-[7px] font-bold uppercase tracking-wider leading-none">
-                              Audio
-                            </span>
-                          )}
-                        </div>
-                      )}
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted mb-0.5 truncate">
+                        {item.subscriptionTitle}
+                        {!item.read && <span className="ml-1.5 text-kindle-accent">New</span>}
+                      </p>
+                      <p className="text-[13px] font-bold text-kindle-text line-clamp-2 leading-snug">
+                        {item.title}
+                      </p>
                     </div>
+                  </div>
+                ))
+              ) : (
+                <div className="px-5 py-8 text-center text-sm text-kindle-text-muted">No headlines yet.</div>
+              )}
+            </div>
+          </TileShell>
 
-                    {discoverRest.length > 0 && (
-                      <div
-                        className="flex gap-2.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {discoverRest.map((book, i) => {
-                          return (
+          <TileShell
+            delay={0.1}
+            className="relative bg-kindle-bg"
+            onClick={openDiscover}
+            label="Open Discover"
+          >
+            <div className="absolute inset-0 pointer-events-none">
+              {discoverHero?.coverUrl ? (
+                <>
+                  <CachedCoverImage
+                    coverUrl={discoverHero.coverUrl}
+                    bookTitle={discoverHero.title}
+                    fallback="empty"
+                    className={`absolute inset-0 w-full h-full object-cover opacity-35 ${
+                      grayscaleCovers ? "grayscale" : ""
+                    }`}
+                    referrerPolicy="no-referrer"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-kindle-bg via-kindle-bg/80 to-kindle-bg/35" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-kindle-bg/95 via-kindle-bg/55 to-kindle-bg/20" />
+                </>
+              ) : (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    backgroundImage:
+                      "radial-gradient(ellipse at 80% 20%, color-mix(in srgb, var(--kindle-accent) 16%, transparent), transparent 50%)",
+                  }}
+                />
+              )}
+            </div>
+
+            <div className="relative p-4 md:p-5 flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2">
+                  <Compass className="w-3.5 h-3.5 text-kindle-accent" />
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
+                    Discover
+                  </h3>
+                </div>
+                <ModeSwitch
+                  value={modes.discover}
+                  onChange={(m) => setMode("discover", m, true)}
+                  options={[
+                    { id: "trending", label: "Trending" },
+                    { id: "audiobooks", label: "Audio" },
+                  ]}
+                />
+              </div>
+
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={modes.discover}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="flex flex-col gap-3"
+                >
+                  {discoverHero ? (
+                    <>
+                      <div className="flex items-start gap-3.5 shrink-0">
+                        <div className="min-w-0 flex-1 space-y-1.5 pt-0.5">
+                          <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-accent">
+                            {isDiscoverAudio ? "Featured listen" : "Featured"}
+                          </p>
+                          <h4 className="text-lg md:text-xl font-lexend font-bold text-kindle-text leading-tight line-clamp-3">
+                            {discoverHero.title}
+                          </h4>
+                          {discoverHero.author ? (
+                            <p className="text-xs text-kindle-text-muted truncate">{discoverHero.author}</p>
+                          ) : isDiscoverAudio ? (
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                              Audiobook
+                            </p>
+                          ) : null}
+                        </div>
+                        {discoverHero.coverUrl && (
+                          <div className="relative shrink-0 w-[5.5rem] md:w-[6.25rem] aspect-[2/3] rounded-xl overflow-hidden border border-white/15 shadow-xl">
+                            <CachedCoverImage
+                              coverUrl={discoverHero.coverUrl}
+                              bookTitle={discoverHero.title}
+                              className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
+                              referrerPolicy="no-referrer"
+                            />
+                            {isDiscoverAudio && (
+                              <span className="absolute top-1.5 right-1.5 px-1 py-0.5 rounded bg-kindle-text text-kindle-bg text-[7px] font-bold uppercase tracking-wider leading-none">
+                                Audio
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {discoverRest.length > 0 && (
+                        <div
+                          className="flex gap-2.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {discoverRest.map((book, i) => (
                             <button
                               key={`${book.title}-${i}`}
                               type="button"
@@ -771,51 +771,37 @@ export default function LoungeView({
                                 referrerPolicy="no-referrer"
                               />
                             </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-center gap-2 py-6">
-                    <Compass className="w-7 h-7 text-kindle-text-muted opacity-30" />
-                    <p className="text-xs text-kindle-text-muted">
-                      {isDiscoverAudio
-                        ? "Open Discover → Audio to fill listens here"
-                        : "Tap to explore Discover"}
-                    </p>
-                  </div>
-                )}
-              </motion.div>
-            </AnimatePresence>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-center gap-2 py-6">
+                      <Compass className="w-7 h-7 text-kindle-text-muted opacity-30" />
+                      <p className="text-xs text-kindle-text-muted">
+                        {isDiscoverAudio
+                          ? "Open Discover → Audio to fill listens here"
+                          : "Tap to explore Discover"}
+                      </p>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
 
-            <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-              {isDiscoverAudio ? "Explore audiobooks →" : "Explore discover →"}
-            </p>
-          </div>
-        </TileShell>
-        </div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                {isDiscoverAudio ? "Explore audiobooks →" : "Explore discover →"}
+              </p>
+            </div>
+          </TileShell>
 
-        {/* Bottom row — Guides + Notes span full width, stack on narrow screens */}
-        <div className="order-5 contents sm:grid sm:grid-cols-2 sm:gap-3 md:gap-4 md:col-span-2 md:order-none">
-        <TileShell
-          delay={0.14}
-          className="order-5 sm:order-none bg-kindle-card/60 p-3 md:p-4"
-        >
-          <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
-        </TileShell>
-
-        <TileShell
-          delay={0.16}
-          className="order-6 sm:order-none bg-kindle-card/60 p-3 md:p-4"
-        >
-          <LoungeNotesWidget
-            books={books}
-            userId={userId}
-            onOpenBook={onOpenBook}
-            onOpenAnnotations={onOpenAnnotations}
-          />
-        </TileShell>
+          <TileShell delay={0.16} className="bg-kindle-card/60 p-3 md:p-4">
+            <LoungeNotesWidget
+              books={books}
+              userId={userId}
+              onOpenBook={onOpenBook}
+              onOpenAnnotations={onOpenAnnotations}
+            />
+          </TileShell>
         </div>
       </div>
     </div>
