@@ -42,7 +42,7 @@ public class KoraWidgetsPlugin extends Plugin {
           payload.put("lead", brief.optString("lead", ""));
           JSONArray headlines = new JSONArray();
           try {
-            JSArray arr = brief.getJSArray("headlines");
+            JSONArray arr = brief.optJSONArray("headlines");
             if (arr != null) {
               for (int i = 0; i < arr.length() && i < 3; i++) {
                 headlines.put(arr.optString(i, ""));
