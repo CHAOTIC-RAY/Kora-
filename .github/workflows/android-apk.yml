@@ -80,6 +80,7 @@ jobs:
         run: |
           echo "API base → $VITE_API_BASE_URL"
           echo "Channel  → $VITE_APP_CHANNEL"
+          echo "APK ver  → $VITE_APK_VERSION"
           npm run build:apk-web
 
       - name: Sync Capacitor Android project
