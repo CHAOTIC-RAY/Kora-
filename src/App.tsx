@@ -437,6 +437,7 @@ export default function App() {
     dailyGoal: number;
     autoCache: boolean;
     dailyReminders: boolean;
+    selectedFeedUrls?: string[];
   }) => {
     localStorage.setItem("kora_onboarding_completed", "true");
     localStorage.setItem("kora_user_nickname", prefs.nickname);
@@ -464,7 +465,11 @@ export default function App() {
     setSearchPrefs(updatedSearch);
     localStorage.setItem("kora_search_prefs", JSON.stringify(updatedSearch));
 
-    applySelectedFeedSources(DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl));
+    applySelectedFeedSources(
+      prefs.selectedFeedUrls?.length
+        ? prefs.selectedFeedUrls
+        : DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl)
+    );
 
     setShowOnboarding(false);
     localStorage.setItem("kora_first_book_nudge", "true");
