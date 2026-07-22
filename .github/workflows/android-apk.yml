@@ -1,0 +1,162 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "APK build type"
+        required: true
+        default: debug
+        type: choice
+        options:
+          - debug
+          - release
+      api_base_url:
+        description: "Cloudflare Worker / API origin (no trailing slash)"
+        required: false
+        default: ""
+  push:
+    branches: [main, beta]
+    paths:
+      - "android/**"
+      - "src/**"
+      - "public/**"
+      - "capacitor.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/android-apk.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "android/**"
+      - "capacitor.config.ts"
+      - ".github/workflows/android-apk.yml"
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Assemble Kora APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      JAVA_VERSION: "21"
+      NODE_VERSION: "22"
+      ANDROID_COMPILE_SDK: "36"
+      ANDROID_BUILD_TOOLS: "36.0.0"
+      # Override via repo Variable VITE_API_BASE_URL or workflow_dispatch input
+      VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.VITE_API_BASE_URL || 'https://kora.workers.dev' }}
+      VITE_APP_CHANNEL: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-${ANDROID_COMPILE_SDK}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build web assets for APK
+        run: |
+          echo "API base → $VITE_API_BASE_URL"
+          npm run build:apk-web
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Decode release keystore (optional)
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        env:
+          KORA_UPLOAD_KEYSTORE_BASE64: ${{ secrets.KORA_UPLOAD_KEYSTORE_BASE64 }}
+          KORA_UPLOAD_STORE_PASSWORD: ${{ secrets.KORA_UPLOAD_STORE_PASSWORD }}
+          KORA_UPLOAD_KEY_ALIAS: ${{ secrets.KORA_UPLOAD_KEY_ALIAS }}
+          KORA_UPLOAD_KEY_PASSWORD: ${{ secrets.KORA_UPLOAD_KEY_PASSWORD }}
+        run: |
+          if [ -z "${KORA_UPLOAD_KEYSTORE_BASE64:-}" ]; then
+            echo "No release keystore secret — building unsigned/release with debug fallback"
+            exit 0
+          fi
+          echo "$KORA_UPLOAD_KEYSTORE_BASE64" | base64 -d > android/app/kora-release.keystore
+          {
+            echo "KORA_UPLOAD_STORE_FILE=kora-release.keystore"
+            echo "KORA_UPLOAD_STORE_PASSWORD=$KORA_UPLOAD_STORE_PASSWORD"
+            echo "KORA_UPLOAD_KEY_ALIAS=$KORA_UPLOAD_KEY_ALIAS"
+            echo "KORA_UPLOAD_KEY_PASSWORD=$KORA_UPLOAD_KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Assemble Debug APK
+        if: ${{ github.event.inputs.build_type != 'release' }}
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace \
+            -PKORA_VERSION_CODE=${{ github.run_number }} \
+            -PKORA_VERSION_NAME=1.0.${{ github.run_number }}
+
+      - name: Assemble Release APK
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PKORA_VERSION_CODE=${{ github.run_number }} \
+            -PKORA_VERSION_NAME=1.0.${{ github.run_number }} \
+            ${KORA_UPLOAD_STORE_FILE:+-PKORA_UPLOAD_STORE_FILE=$KORA_UPLOAD_STORE_FILE} \
+            ${KORA_UPLOAD_STORE_PASSWORD:+-PKORA_UPLOAD_STORE_PASSWORD=$KORA_UPLOAD_STORE_PASSWORD} \
+            ${KORA_UPLOAD_KEY_ALIAS:+-PKORA_UPLOAD_KEY_ALIAS=$KORA_UPLOAD_KEY_ALIAS} \
+            ${KORA_UPLOAD_KEY_PASSWORD:+-PKORA_UPLOAD_KEY_PASSWORD=$KORA_UPLOAD_KEY_PASSWORD}
+
+      - name: Locate APK
+        id: apk
+        run: |
+          set -euo pipefail
+          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          echo "Found: $APK_PATH"
+          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$APK_PATH")" >> "$GITHUB_OUTPUT"
+          ls -lah "$APK_PATH"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kora-android-${{ github.event.inputs.build_type || 'debug' }}-${{ github.sha }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload to GitHub Release (manual release builds)
+        if: ${{ github.event.inputs.build_type == 'release' && github.ref == 'refs/heads/main' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-v1.0.${{ github.run_number }}
+          name: Kora Android APK v1.0.${{ github.run_number }}
+          files: ${{ steps.apk.outputs.path }}
+          generate_release_notes: true
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

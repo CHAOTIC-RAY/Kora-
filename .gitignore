@@ -18,3 +18,8 @@ Castwright/
 VoxLibri/
 vocalbook/
 services/*/work/
+*.keystore
+*.jks
+android/local.properties
+android/app/build/
+android/.gradle/

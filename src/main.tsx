@@ -5,13 +5,16 @@ import "./index.css";
 import { initAndroidGestureNavigation } from "./lib/androidGestures";
 import { initIosTouchGuards } from "./lib/iosPwa";
 import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "./lib/appVersion";
+import { initCapacitorShell, isNativeApp } from "./lib/capacitorNative";
 
 initAndroidGestureNavigation();
 initIosTouchGuards();
+void initCapacitorShell();
 
 // Register the service worker that keeps downloads alive in the background
 // and shows progress notifications. Updates are detected by PwaLifecycleBanner
 // which prompts (and can auto-apply) a reload — avoid blind reload loops here.
+// Capacitor Android already has native offline/IndexedDB; still register SW when supported.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
@@ -28,6 +31,9 @@ if ("serviceWorker" in navigator) {
       .catch((err) => {
         console.warn("[SW] registration failed:", err);
       });
+
+    // Skip auto-reload probe inside the APK (version.json is bundled).
+    if (isNativeApp()) return;
 
     // Early version probe — if deploy landed while this tab was open/cached,
     // kick a reload before the React tree mounts deeply. Guarded against loops.

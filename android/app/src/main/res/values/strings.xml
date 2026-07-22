@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kora</string>
+    <string name="title_activity_main">Kora</string>
+    <string name="package_name">app.kora.reader</string>
+    <string name="custom_url_scheme">app.kora.reader</string>
+</resources>
