@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import {
   Bookmark,
@@ -13,7 +13,6 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { motion, useMotionValue, useTransform } from "motion/react";
 import type { BookMetadata } from "../lib/firebase";
 import { prefetchFeedArticles } from "../lib/feedArticle";
 import {
@@ -137,69 +136,112 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const imageClass =
     variant === "featured" ? "w-full aspect-[16/9]" : "w-full aspect-[4/3]";
 
-  const x = useMotionValue(0);
+  // Manual swipe (no Framer Motion on the card) — Android WebView blinks text when
+  // every feed card keeps a compositor transform layer during vertical scroll.
+  const [dragX, setDragX] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const swipeRef = useRef<{ x: number; y: number; active: boolean } | null>(null);
 
-  // Dynamic transforms for underlay action states
-  const leftOpacity = useTransform(x, [0, 60], [0, 1]);
-  const leftScale = useTransform(x, [0, 120], [0.85, 1.15]);
-
-  const rightOpacity = useTransform(x, [-60, 0], [1, 0]);
-  const rightScale = useTransform(x, [-120, 0], [1.15, 0.85]);
-
-  const handleDragEnd = (_event: any, info: any) => {
+  const finishSwipe = (dx: number) => {
     setIsDragging(false);
+    setDragX(0);
+    swipeRef.current = null;
     const threshold = 120;
-    if (info.offset.x > threshold) {
-      onToggleRead();
-    } else if (info.offset.x < -threshold) {
-      onSaveLater();
+    if (dx > threshold) onToggleRead();
+    else if (dx < -threshold) onSaveLater();
+  };
+
+  const onCardPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    swipeRef.current = { x: e.clientX, y: e.clientY, active: false };
+  };
+
+  const onCardPointerMove = (e: React.PointerEvent) => {
+    const start = swipeRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (!start.active) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      // Vertical scroll wins — abandon swipe so list scrolling stays smooth.
+      if (Math.abs(dy) >= Math.abs(dx)) {
+        swipeRef.current = null;
+        setIsDragging(false);
+        setDragX(0);
+        return;
+      }
+      start.active = true;
+      setIsDragging(true);
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    setDragX(Math.max(-160, Math.min(160, dx)));
+  };
+
+  const onCardPointerUp = (e: React.PointerEvent) => {
+    const start = swipeRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    if (start.active) finishSwipe(dx);
+    else {
+      swipeRef.current = null;
+      // Tap (no horizontal drag) → open article
+      if (Math.abs(dx) < 10 && Math.abs(e.clientY - start.y) < 10) onRead();
     }
   };
 
+  const onCardPointerCancel = () => {
+    swipeRef.current = null;
+    setIsDragging(false);
+    setDragX(0);
+  };
+
+  const leftReveal = Math.max(0, Math.min(1, dragX / 60));
+  const rightReveal = Math.max(0, Math.min(1, -dragX / 60));
+
   return (
     <div className={`relative overflow-hidden rounded-2xl ${cardClass} flex flex-col h-full select-none`}>
-      {/* Swipe underlay — only while dragging so Android WebView does not composite it over text */}
+      {/* Swipe underlay — only while dragging */}
       {isDragging ? (
       <div
-        className="absolute inset-0 z-0 isolate bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none"
+        className="absolute inset-0 z-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none"
         aria-hidden
       >
-        {/* Left Action (swipe right) -> Mark Read */}
-        <motion.div
-          style={{ opacity: leftOpacity }}
+        <div
+          style={{ opacity: leftReveal }}
           className="flex items-center gap-2 text-kindle-text font-bold text-xs"
         >
-          <motion.div style={{ scale: leftScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
+          <div className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
             <CheckCircle2 className="w-5 h-5 text-kindle-text" />
-          </motion.div>
+          </div>
           <span>{item.read ? "Mark Unread" : "Mark Read"}</span>
-        </motion.div>
-
-        {/* Right Action (swipe left) -> Save Later */}
-        <motion.div
-          style={{ opacity: rightOpacity }}
+        </div>
+        <div
+          style={{ opacity: rightReveal }}
           className="flex items-center gap-2 text-kindle-accent font-bold text-xs ml-auto"
         >
           <span>{item.savedBookId ? "Saved" : "Save to Library"}</span>
-          <motion.div style={{ scale: rightScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
+          <div className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
             <Bookmark className="w-5 h-5 text-kindle-accent" />
-          </motion.div>
-        </motion.div>
+          </div>
+        </div>
       </div>
       ) : null}
 
-      {/* Swipeable Foreground Card */}
-      <motion.article
-        drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={{ left: 0.6, right: 0.6 }}
-        style={{ x }}
-        onDragStart={() => setIsDragging(true)}
-        onDragEnd={handleDragEnd}
-        onTap={() => onRead()}
-        className={`feed-article-card relative z-10 isolate bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col flex-1 touch-pan-y ${
-          item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
+      {/* Plain article — transform only while swiping (no idle compositor layer) */}
+      <article
+        onPointerDown={onCardPointerDown}
+        onPointerMove={onCardPointerMove}
+        onPointerUp={onCardPointerUp}
+        onPointerCancel={onCardPointerCancel}
+        style={isDragging ? { transform: `translate3d(${dragX}px,0,0)` } : undefined}
+        className={`feed-article-card relative z-10 bg-kindle-card border rounded-2xl overflow-hidden transition-shadow cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col flex-1 touch-pan-y ${
+          item.read
+            ? "border-kindle-border text-kindle-text-muted"
+            : "border-kindle-border shadow-sm"
         }`}
       >
         <div className="flex flex-col flex-1 min-h-0">
@@ -232,9 +274,9 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
               </p>
               <h3
                 dir={dir}
-                className={`font-lexend font-bold leading-snug text-kindle-text ${
-                  dir === "rtl" ? "font-thaana" : ""
-                } ${
+                className={`font-lexend font-bold leading-snug ${
+                  item.read ? "text-kindle-text-muted" : "text-kindle-text"
+                } ${dir === "rtl" ? "font-thaana" : ""} ${
                   variant === "featured" ? "text-base sm:text-lg" : "text-sm"
                 }`}
               >
@@ -291,7 +333,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
             )}
           </div>
         </div>
-      </motion.article>
+      </article>
     </div>
   );
 });

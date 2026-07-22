@@ -471,20 +471,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(() => {
     const saved = readerPrefs?.pageTransitionEffect;
     if (saved) return saved;
-    // Android WebView paper-flip often leaves a blank overlay after the turn.
+    // Android WebView paper-flip / spring often leaves a blank page after the turn.
     try {
-      if (/android/i.test(navigator.userAgent)) return "spring";
+      if (/android/i.test(navigator.userAgent)) return "none";
     } catch {
       /* ignore */
     }
     return "paper-flip";
   });
-  // Paper-flip compositor bugs on Capacitor: use spring visually even if prefs say paper-flip.
+  // Paper-flip + spring on CSS columns blank the page in Android WebView — force instant.
+  const isAndroidWebView =
+    typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
   const effectivePageTransition =
-    typeof navigator !== "undefined" &&
-    /android/i.test(navigator.userAgent) &&
-    pageTransitionEffect === "paper-flip"
-      ? "spring"
+    isAndroidWebView &&
+    (pageTransitionEffect === "paper-flip" || pageTransitionEffect === "spring")
+      ? "none"
       : pageTransitionEffect;
   const [disableMouseScroll, setDisableMouseScroll] = useState<boolean>(readerPrefs?.disableMouseScroll ?? false);
   const [swipeToTurn, setSwipeToTurn] = useState<boolean>(readerPrefs?.swipeToTurn ?? false);
@@ -698,7 +699,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     }
   }, [annotateMode]);
 
-  const contentRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLElement | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const zipRef = useRef<JSZip | null>(null);
   const rootDirRef = useRef<string>("");
@@ -724,6 +725,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   disableMouseScrollRef.current = disableMouseScroll;
   const useScrollLayoutRef = useRef(useScrollLayout);
   useScrollLayoutRef.current = useScrollLayout;
+  /** Cancels delayed scroll re-pins when the user scrolls or chapter changes again. */
+  const scrollPinGenRef = useRef(0);
+  const scrollPinTimersRef = useRef<number[]>([]);
+  const scrollPinCleanupRef = useRef<(() => void) | null>(null);
 
   // Font & theme presets (KOReader-aligned)
   const fontFamilies = READER_FONTS;
@@ -2266,6 +2271,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       pushLocation(currentChapterIdx, currentPageNum);
     }
 
+    // Cancel any in-flight chapter scroll pins from a previous switch.
+    scrollPinGenRef.current += 1;
+    scrollPinTimersRef.current.forEach((id) => window.clearTimeout(id));
+    scrollPinTimersRef.current = [];
+    scrollPinCleanupRef.current?.();
+    scrollPinCleanupRef.current = null;
+
     // Disable transition temporarily and reset page index synchronously.
     // Never use an out-of-range page (e.g. 999) — that translates content off-screen.
     setShouldAnimate(false);
@@ -2287,23 +2299,54 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         pageStepRef.current = textWidth;
         setPageStep(textWidth);
         setCurrentPageNum(1);
+
         // Scroll the real overflow container (pageCanvasRef), not the text column.
-        const applyScroll = () => {
-          if (!scroller) return;
-          if (goToLastPage) {
-            scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-          } else {
-            scroller.scrollTop = 0;
-          }
-        };
-        requestAnimationFrame(() => {
+        // Next chapter: pin to top ONCE. Do not re-force later — that yanks the user
+        // back up after they start reading. Prev chapter (end): soft re-pin until
+        // layout settles, cancelled as soon as the user scrolls.
+        if (scroller) {
+          const gen = scrollPinGenRef.current;
+          let userMoved = false;
+          const onUserScroll = () => {
+            userMoved = true;
+          };
+          scroller.addEventListener("scroll", onUserScroll, { passive: true });
+          const cleanup = () => {
+            scroller.removeEventListener("scroll", onUserScroll);
+            if (scrollPinCleanupRef.current === cleanup) scrollPinCleanupRef.current = null;
+          };
+          scrollPinCleanupRef.current = cleanup;
+
+          const applyScroll = () => {
+            if (gen !== scrollPinGenRef.current || userMoved || !pageCanvasRef.current) return;
+            const el = pageCanvasRef.current;
+            if (goToLastPage) {
+              el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+            } else {
+              el.scrollTop = 0;
+            }
+          };
+
           requestAnimationFrame(() => {
-            applyScroll();
-            // Chapter HTML / images may still expand — re-pin after layout.
-            window.setTimeout(applyScroll, 120);
-            window.setTimeout(applyScroll, 320);
+            requestAnimationFrame(() => {
+              applyScroll();
+              if (!goToLastPage) {
+                // Single pin is enough for chapter start.
+                window.setTimeout(cleanup, 50);
+                return;
+              }
+              // Images / late layout may grow height — re-pin bottom only if user hasn't scrolled.
+              const t1 = window.setTimeout(() => {
+                if (!userMoved) applyScroll();
+              }, 200);
+              const t2 = window.setTimeout(() => {
+                if (!userMoved) applyScroll();
+                cleanup();
+              }, 480);
+              scrollPinTimersRef.current.push(t1, t2);
+            });
           });
-        });
+        }
         setTimeout(() => setShouldAnimate(true), 150);
         return;
       }
@@ -3903,7 +3946,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       ? "overflow-y-auto overflow-x-hidden overscroll-y-contain"
                       : "overflow-hidden overscroll-none"
                   }`}
-                  style={{ perspective: "1200px" }}
+                  style={
+                    !useScrollLayout &&
+                    effectivePageTransition === "paper-flip" &&
+                    !isAndroidWebView
+                      ? { perspective: "1200px" }
+                      : undefined
+                  }
                 >
                   {/* Turn.js style 3D page flip transition — decorative only; never blocks reading */}
                   {!useScrollLayout && effectivePageTransition === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
@@ -4080,34 +4129,44 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       />
                     )}
                   </AnimatePresence>
-                  <motion.article 
-                    ref={contentRef}
-                    animate={{ 
+                  <motion.div
+                    className="w-full h-full"
+                    animate={{
                       x: useScrollLayout
                         ? 0
                         : -(Math.min(Math.max(1, currentPageNum), Math.max(1, totalPages)) - 1) *
                           Math.max(1, pageStep),
-                      rotateY: 0,
-                      skewY: 0,
-                      scaleX: 1,
-                      opacity: 1,
                     }}
-                    transition={shouldAnimate ? (effectivePageTransition === "paper-flip" ? { duration: 0 } : effectivePageTransition === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : effectivePageTransition === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
+                    transition={
+                      shouldAnimate
+                        ? effectivePageTransition === "paper-flip" ||
+                          effectivePageTransition === "none" ||
+                          isAndroidWebView
+                          ? { duration: 0 }
+                          : effectivePageTransition === "spring"
+                            ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 }
+                            : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }
+                        : { duration: 0 }
+                    }
+                    style={{
+                      // Never put CSS columns on this transformed node — Android WebView
+                      // blanks multi-column content after a compositor transform.
+                      willChange: useScrollLayout || isAndroidWebView ? "auto" : "transform",
+                    }}
+                  >
+                  <article 
+                    ref={contentRef}
                     className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
                       annotateMode ? "select-text cursor-text" : "select-none"
                     }`}
                     style={{
                       fontSize: `${fontSize}px`,
-                      opacity: 1,
                       lineHeight: lineSpacing,
-                      // Selection allowed whenever annotate mode is on.
                       WebkitUserSelect: annotateMode ? "text" : "none",
                       userSelect: annotateMode ? "text" : "none",
                       WebkitTouchCallout: annotateMode ? "default" : "none",
                       touchAction: annotateMode ? "auto" : useScrollLayout ? "pan-y" : swipeToTurn ? "pan-x" : "manipulation",
-                      // Keep content visible under paper-flip overlay
-                      opacity: 1,
-                      visibility: "visible" as const,
+                      visibility: "visible",
                       ...(useScrollLayout
                         ? {
                             height: "auto",
@@ -4121,7 +4180,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             columnFill: "auto",
                             overflow: "hidden",
                             boxShadow: useDoubleColumns ? "inset 50% 0 0 -20px rgba(0,0,0,0.10)" : "none",
-                            transformOrigin: flipDirection === "next" ? "left center" : "right center",
                           }),
                     } as React.CSSProperties}
                   >
@@ -4152,7 +4210,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         </span>
                       </div>
                     )}
-                  </motion.article>
+                  </article>
+                  </motion.div>
                 </div>
 
                 {/* Chapter end label — paged mode only (absolute, outside column flow) */}
