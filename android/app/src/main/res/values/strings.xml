@@ -4,4 +4,18 @@
     <string name="title_activity_main">Kora</string>
     <string name="package_name">app.kora.reader</string>
     <string name="custom_url_scheme">app.kora.reader</string>
+
+    <string name="widget_continue_label">Continue reading</string>
+    <string name="widget_continue_description">Jump back into the book or audiobook you were last reading</string>
+    <string name="widget_brief_label">Daily news brief</string>
+    <string name="widget_brief_description">Headlines from your subscribed news feeds</string>
+
+    <string name="shortcut_continue_short">Continue</string>
+    <string name="shortcut_continue_long">Continue reading</string>
+    <string name="shortcut_news_short">News</string>
+    <string name="shortcut_news_long">News &amp; briefs</string>
+    <string name="shortcut_library_short">Library</string>
+    <string name="shortcut_library_long">Open library</string>
+    <string name="shortcut_discover_short">Discover</string>
+    <string name="shortcut_discover_long">Discover books</string>
 </resources>

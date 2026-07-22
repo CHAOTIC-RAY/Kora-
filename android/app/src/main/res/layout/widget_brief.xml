@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_brief_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:contentDescription="@string/widget_brief_description">
+
+    <TextView
+        android:id="@+id/widget_brief_eyebrow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="DAILY BRIEF"
+        android:textAllCaps="true"
+        android:textColor="#C4A574"
+        android:textSize="10sp"
+        android:letterSpacing="0.12"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_brief_lead"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="Today across your feeds"
+        android:textColor="#F7F3E3"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_brief_line1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#D6D3D1"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_brief_line2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#D6D3D1"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_brief_line3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#D6D3D1"
+        android:textSize="12sp" />
+</LinearLayout>

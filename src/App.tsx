@@ -93,6 +93,12 @@ import {
   readStoredAppSkin,
   skinBodyClass,
 } from "./lib/appSkin";
+import {
+  briefPayloadFromFeeds,
+  continuePayloadFromBook,
+  syncAndroidHomeWidgets,
+} from "./lib/androidWidgets";
+import { isNativeAndroid } from "./lib/capacitorNative";
 
 const BASE_MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
@@ -1797,73 +1803,161 @@ export default function App() {
   }, [books, updateCachedBookIndex]);
 
   // Keep home-screen / Widgets Board "Continue" tile in sync with last-read book.
+  // Also push Continue + Daily Brief into native Android App Widgets for the APK.
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
     const book = lastReadBook;
-    const controller = navigator.serviceWorker.controller;
-    if (!controller) return;
     const ext = (book?.extension || "").toLowerCase();
     const kind = book?.audiobookTracks?.length || ext === "audio" || ext === "mp3" ? "audio" : "book";
-    controller.postMessage({
-      type: "sync-widget-data",
-      continue: book
-        ? {
-            title: book.title || "Continue reading",
-            author: book.author || "",
-            percent: book.progress?.percent ?? 0,
-            kind,
-          }
-        : null,
+    if ("serviceWorker" in navigator) {
+      const controller = navigator.serviceWorker.controller;
+      if (controller) {
+        controller.postMessage({
+          type: "sync-widget-data",
+          continue: book
+            ? {
+                title: book.title || "Continue reading",
+                author: book.author || "",
+                percent: book.progress?.percent ?? 0,
+                kind,
+              }
+            : null,
+        });
+      }
+    }
+    void syncAndroidHomeWidgets({
+      continue: continuePayloadFromBook(book),
+      brief: briefPayloadFromFeeds(),
     });
   }, [lastReadBook]);
 
-  // App shortcuts + widget deep links: /?go=continue|feed|library|discover|lounge|tools
+  // Refresh brief headlines on the Android widget when the app resumes / periodically.
   useEffect(() => {
-    if (loadingAuth || shortcutHandledRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    const go = (params.get("go") || params.get("tab") || "").toLowerCase();
-    const briefs = params.get("briefs") === "1";
-    if (!go && !briefs) return;
+    if (!isNativeAndroid()) return;
+    const pushBrief = () => {
+      void syncAndroidHomeWidgets({
+        continue: continuePayloadFromBook(lastReadBook),
+        brief: briefPayloadFromFeeds(),
+      });
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible") pushBrief();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const timer = window.setInterval(pushBrief, 5 * 60 * 1000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(timer);
+    };
+  }, [lastReadBook]);
 
-    shortcutHandledRef.current = true;
-    const clean = new URL(window.location.href);
-    ["go", "tab", "briefs", "source"].forEach((k) => clean.searchParams.delete(k));
-    const qs = clean.searchParams.toString();
-    window.history.replaceState({}, document.title, clean.pathname + (qs ? `?${qs}` : ""));
+  // App shortcuts + widget deep links: /?go=continue|feed|library|discover|lounge|tools
+  // Also accepts CustomEvent('kora-deeplink') from MainActivity for warm starts.
+  useEffect(() => {
+    const routeFromParams = (params: URLSearchParams) => {
+      const go = (params.get("go") || params.get("tab") || "").toLowerCase();
+      const briefs = params.get("briefs") === "1";
+      if (!go && !briefs) return false;
 
-    if (go === "continue") {
-      if (loadingLibrary) {
-        shortcutHandledRef.current = false;
+      if (go === "continue") {
+        if (loadingLibrary) return false;
+        if (lastReadBook) {
+          void handleOpenBook(lastReadBook);
+        } else {
+          switchTab(loungeEnabled ? "lounge" : "library");
+        }
+        return true;
+      }
+      if (go === "feed" || go === "news" || briefs) {
+        switchTab("feed");
+        if (briefs || go === "news") setFeedInitialFilter("briefs");
+        return true;
+      }
+      if (go === "library") {
+        switchTab("library");
+        return true;
+      }
+      if (go === "discover") {
+        switchTab("discover");
+        return true;
+      }
+      if (go === "lounge") {
+        switchTab(loungeEnabled ? "lounge" : "library");
+        return true;
+      }
+      if (go === "tools" || go === "clipper") {
+        switchTab("tools");
+        return true;
+      }
+      return false;
+    };
+
+    if (!loadingAuth && !shortcutHandledRef.current) {
+      const params = new URLSearchParams(window.location.search);
+      const go = (params.get("go") || params.get("tab") || "").toLowerCase();
+      const briefs = params.get("briefs") === "1";
+      if (go || briefs) {
+        if (go === "continue" && loadingLibrary) {
+          // wait for library
+        } else {
+          shortcutHandledRef.current = true;
+          const clean = new URL(window.location.href);
+          ["go", "tab", "briefs", "source"].forEach((k) => clean.searchParams.delete(k));
+          const qs = clean.searchParams.toString();
+          window.history.replaceState({}, document.title, clean.pathname + (qs ? `?${qs}` : ""));
+          routeFromParams(params);
+        }
+      }
+    }
+
+    const onDeepLink = (event: Event) => {
+      const detail = (event as CustomEvent<{ href?: string; search?: string }>).detail || {};
+      let params: URLSearchParams;
+      try {
+        if (detail.href) {
+          params = new URL(detail.href, window.location.origin).searchParams;
+        } else if (detail.search) {
+          params = new URLSearchParams(detail.search.startsWith("?") ? detail.search.slice(1) : detail.search);
+        } else {
+          return;
+        }
+      } catch {
         return;
       }
-      if (lastReadBook) {
-        void handleOpenBook(lastReadBook);
-      } else {
-        switchTab(loungeEnabled ? "lounge" : "library");
-      }
-      return;
+      shortcutHandledRef.current = true;
+      routeFromParams(params);
+    };
+    window.addEventListener("kora-deeplink", onDeepLink as EventListener);
+
+    let removeAppUrl: (() => void) | undefined;
+    if (isNativeAndroid()) {
+      void import("@capacitor/app")
+        .then(({ App }) =>
+          App.addListener("appUrlOpen", ({ url }) => {
+            try {
+              const parsed = new URL(url);
+              shortcutHandledRef.current = true;
+              routeFromParams(parsed.searchParams);
+            } catch {
+              /* ignore */
+            }
+          })
+        )
+        .then((handle) => {
+          removeAppUrl = () => {
+            void handle?.remove();
+          };
+        })
+        .catch(() => {
+          /* ignore */
+        });
     }
-    if (go === "feed" || go === "news" || briefs) {
-      switchTab("feed");
-      if (briefs || go === "news") setFeedInitialFilter("briefs");
-      return;
-    }
-    if (go === "library") {
-      switchTab("library");
-      return;
-    }
-    if (go === "discover") {
-      switchTab("discover");
-      return;
-    }
-    if (go === "lounge") {
-      switchTab(loungeEnabled ? "lounge" : "library");
-      return;
-    }
-    if (go === "tools" || go === "clipper") {
-      switchTab("tools");
-    }
+
+    return () => {
+      window.removeEventListener("kora-deeplink", onDeepLink as EventListener);
+      removeAppUrl?.();
+    };
   }, [loadingAuth, loadingLibrary, lastReadBook, loungeEnabled, switchTab]);
+
 
   // Keep track of the active tab before transitioning to settings
   const prevTabRef = useRef<AppTab>("library");

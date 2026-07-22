@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="continue"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_continue_short"
+        android:shortcutLongLabel="@string/shortcut_continue_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="https://localhost/?go=continue&amp;source=shortcut"
+            android:targetClass="app.kora.reader.MainActivity"
+            android:targetPackage="app.kora.reader" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="news"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_news_short"
+        android:shortcutLongLabel="@string/shortcut_news_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="https://localhost/?go=feed&amp;briefs=1&amp;source=shortcut"
+            android:targetClass="app.kora.reader.MainActivity"
+            android:targetPackage="app.kora.reader" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="library"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_library_short"
+        android:shortcutLongLabel="@string/shortcut_library_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="https://localhost/?go=library&amp;source=shortcut"
+            android:targetClass="app.kora.reader.MainActivity"
+            android:targetPackage="app.kora.reader" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="discover"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_discover_short"
+        android:shortcutLongLabel="@string/shortcut_discover_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="https://localhost/?go=discover&amp;source=shortcut"
+            android:targetClass="app.kora.reader.MainActivity"
+            android:targetPackage="app.kora.reader" />
+    </shortcut>
+</shortcuts>

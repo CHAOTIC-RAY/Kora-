@@ -1051,6 +1051,12 @@ function SettingsView({
               <Row title="Daily News Brief" desc="Morning notification with headlines from your RSS feeds">
                 <Toggle on={dailyNewsBriefEnabled} onClick={() => onChangeDailyNewsBrief?.(!dailyNewsBriefEnabled)} />
               </Row>
+              {typeof navigator !== "undefined" && /android/i.test(navigator.userAgent) ? (
+                <p className="text-[10px] text-kindle-text-muted leading-relaxed px-0.5">
+                  Tip: long-press the Kora app icon for Continue / News / Library shortcuts, or add the
+                  Continue and Daily Brief widgets from your home screen widget picker.
+                </p>
+              ) : null}
             </div>
           )}
         </section>

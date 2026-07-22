@@ -38,6 +38,7 @@ import { clipUrlToLibrary } from "../lib/feedClipper";
 import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
 import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
+import { briefPayloadFromFeeds, syncAndroidHomeWidgets } from "../lib/androidWidgets";
 import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
@@ -334,6 +335,7 @@ function FeedView({
       const incoming = await refreshAllSubscriptions(activeSubs);
       const merged = mergeFeedItems(incoming);
       setItems(merged);
+      void syncAndroidHomeWidgets({ brief: briefPayloadFromFeeds() });
       const fetchedIds = new Set(activeSubs.map((sub) => sub.id));
       saveFeedSubscriptions(
         subs.map((sub) =>

@@ -84,6 +84,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Deep links from home-screen widgets / launcher shortcuts -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="localhost" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+
             <!-- Open shared text / URLs into Kora (web clipper / share target) -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -124,6 +136,31 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
+        </receiver>
+
+        <!-- Home-screen widgets -->
+        <receiver
+            android:name=".widgets.ContinueWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_continue_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_continue_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widgets.BriefWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_brief_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_brief_info" />
         </receiver>
     </application>
 </manifest>
