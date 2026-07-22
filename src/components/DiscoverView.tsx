@@ -145,7 +145,10 @@ async function injectMetadataIntoEpub(
   return fileBlob;
 }
 
-// Define all possible categories tied to their connector IDs
+// Define all possible categories tied to their connector IDs.
+// Stable Discover order: NYT → Goodreads → NetGalley → Audiobooks
+const FEED_SOURCE_ORDER = ["nyt", "goodreads", "netgalley", "audiobook"] as const;
+
 const ALL_CATEGORIES = [
   { id: "hardcover-fiction",    title: "NYT: Hardcover Fiction",    query: "hardcover-fiction", source: "nyt" },
   { id: "hardcover-nonfiction", title: "NYT: Hardcover Nonfiction", query: "hardcover-nonfiction", source: "nyt" },
@@ -162,10 +165,6 @@ const ALL_CATEGORIES = [
   { id: "goodreads-best-ever",  title: "Goodreads: Best Ever",     query: "1.Best_Books_Ever", source: "goodreads" },
   { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
   { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
-  { id: "audiobooks-popular",   title: "Popular Audiobooks",        query: "popular", source: "audiobook", mode: "popular" },
-  { id: "audiobooks-fiction",   title: "Fiction Audiobooks",        query: "fiction", source: "audiobook", mode: "search" },
-  { id: "audiobooks-mystery",   title: "Mystery & Thriller Audiobooks", query: "mystery thriller", source: "audiobook", mode: "search" },
-  { id: "audiobooks-scifi",     title: "Sci-Fi & Fantasy Audiobooks", query: "science fiction fantasy", source: "audiobook", mode: "search" },
   { id: "netgalley-recent-audiobooks", title: "NetGalley: Recent Audiobooks", query: "recentlyAddedAudiobooks", source: "netgalley" },
   { id: "netgalley-requested-audiobooks", title: "NetGalley: Most Requested Audiobooks", query: "mostRequestedAudiobooks", source: "netgalley" },
   { id: "netgalley-recent-drcs", title: "NetGalley: Recently Added Books", query: "recentlyAddedDRCs", source: "netgalley" },
@@ -176,7 +175,16 @@ const ALL_CATEGORIES = [
   { id: "netgalley-romance", title: "NetGalley: Romance", query: "21", source: "netgalley" },
   { id: "netgalley-fiction", title: "NetGalley: General Fiction", query: "35", source: "netgalley" },
   { id: "netgalley-ya", title: "NetGalley: Young Adult", query: "27", source: "netgalley" },
+  { id: "audiobooks-popular",   title: "Popular Audiobooks",        query: "popular", source: "audiobook", mode: "popular" },
+  { id: "audiobooks-fiction",   title: "Fiction Audiobooks",        query: "fiction", source: "audiobook", mode: "search" },
+  { id: "audiobooks-mystery",   title: "Mystery & Thriller Audiobooks", query: "mystery thriller", source: "audiobook", mode: "search" },
+  { id: "audiobooks-scifi",     title: "Sci-Fi & Fantasy Audiobooks", query: "science fiction fantasy", source: "audiobook", mode: "search" },
 ];
+
+function sourceRank(source?: string) {
+  const idx = FEED_SOURCE_ORDER.indexOf(source as (typeof FEED_SOURCE_ORDER)[number]);
+  return idx === -1 ? FEED_SOURCE_ORDER.length : idx;
+}
 
 function getCategoryDescription(category: { source?: string }) {
   if (category.source === "netgalley") {
@@ -731,7 +739,9 @@ function DiscoverView({
           if (parsed && typeof parsed === "object") {
             setFeaturedData(parsed);
             setLoadingFeatured(false);
-            // Same-day cache is fresh enough — skip background NYT/Goodreads refresh.
+            // Keep NYT/Goodreads instant, but always refresh secondary feeds
+            // (NetGalley especially) so empty/stale cache rows recover.
+            void loadSecondaryFeaturedContent(parsed, null, true);
             return;
           }
         } catch {
@@ -903,23 +913,6 @@ function DiscoverView({
     });
     setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(goodreadsResults.map((res) => [res.id, res.books])) }));
 
-    const audiobookCats = ALL_CATEGORIES.filter((cat) => cat.source === "audiobook");
-    const audiobookResults = await Promise.all(
-      audiobookCats.map(async (cat) => {
-        try {
-          const books = await fetchAudiobookCategory(cat);
-          return { id: cat.id, books };
-        } catch (err) {
-          console.error(`Failed to load audiobooks for ${cat.title}:`, err);
-          return { id: cat.id, books: [] };
-        }
-      })
-    );
-    audiobookResults.forEach((res) => {
-      mergedData[res.id] = res.books;
-    });
-    setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(audiobookResults.map((res) => [res.id, res.books])) }));
-
     const netgalleyCats = ALL_CATEGORIES.filter((cat) => cat.source === "netgalley");
     const netgalleyResults = await Promise.all(
       netgalleyCats.map(async (cat) => {
@@ -937,10 +930,28 @@ function DiscoverView({
     });
     setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(netgalleyResults.map((res) => [res.id, res.books])) }));
 
+    const audiobookCats = ALL_CATEGORIES.filter((cat) => cat.source === "audiobook");
+    const audiobookResults = await Promise.all(
+      audiobookCats.map(async (cat) => {
+        try {
+          const books = await fetchAudiobookCategory(cat);
+          return { id: cat.id, books };
+        } catch (err) {
+          console.error(`Failed to load audiobooks for ${cat.title}:`, err);
+          return { id: cat.id, books: [] };
+        }
+      })
+    );
+    audiobookResults.forEach((res) => {
+      mergedData[res.id] = res.books;
+    });
+    setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(audiobookResults.map((res) => [res.id, res.books])) }));
+
     if (nytError) {
       const hasGoodreads = goodreadsResults.some((res) => res.books.length > 0);
-      if (hasGoodreads) {
-        setFeedNotice("NYT Best Sellers API currently unavailable — displaying Goodreads picks and popular archives.");
+      const hasNetgalley = netgalleyResults.some((res) => res.books.length > 0);
+      if (hasGoodreads || hasNetgalley) {
+        setFeedNotice("NYT Best Sellers API currently unavailable — displaying other catalog picks.");
         setError(null);
       } else if (!background) {
         setError(`Featured content unavailable. ${nytError}`);
@@ -1608,7 +1619,12 @@ function DiscoverView({
       const res = await fetch(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
       if (!res.ok) throw new Error("Failed to load NetGalley category");
       const data = await res.json();
-      const results = data.results || [];
+      // Worker returns `results`; older Express routes returned `books`
+      const results = Array.isArray(data.results)
+        ? data.results
+        : Array.isArray(data.books)
+          ? data.books
+          : [];
       const mapped = results.map((b: any) => ({
         title: b.title,
         author: b.author || "Unknown",
@@ -1620,7 +1636,9 @@ function DiscoverView({
         isAudiobook: b.isAudiobook,
         isGoogleBook: false
       }));
-      tempStorage.set(cacheKey, mapped);
+      if (mapped.length > 0) {
+        tempStorage.set(cacheKey, mapped);
+      }
       return mapped;
     } catch (err) {
       console.error("NetGalley category fetch error:", err);
@@ -3398,7 +3416,7 @@ function DiscoverView({
             </div>
           )}
 
-          {/* Feed Filter Tabs */}
+          {/* Feed Filter Tabs — fixed order: All → NYT → Goodreads → NetGalley → Audiobooks */}
           <div id="discover-feeds" className="flex items-center justify-between border-b border-kindle-border/40 pb-2">
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
               <button
@@ -3412,7 +3430,24 @@ function DiscoverView({
                 All Feeds
               </button>
               <button
-                onClick={() => setFeedFilter("goodreads")}
+                onClick={() => {
+                  if (audiobookLibraryMode) closeAudiobookLibrary();
+                  setFeedFilter("nyt");
+                }}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  feedFilter === "nyt"
+                    ? "border-kindle-text text-kindle-text"
+                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                <NytIcon className="w-3.5 h-3.5 text-kindle-text" />
+                NYT Best Sellers
+              </button>
+              <button
+                onClick={() => {
+                  if (audiobookLibraryMode) closeAudiobookLibrary();
+                  setFeedFilter("goodreads");
+                }}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   feedFilter === "goodreads"
                     ? "border-kindle-text text-kindle-text"
@@ -3423,15 +3458,18 @@ function DiscoverView({
                 Goodreads Favorites
               </button>
               <button
-                onClick={() => setFeedFilter("nyt")}
+                onClick={() => {
+                  if (audiobookLibraryMode) closeAudiobookLibrary();
+                  setFeedFilter("netgalley");
+                }}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "nyt"
+                  feedFilter === "netgalley"
                     ? "border-kindle-text text-kindle-text"
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                <NytIcon className="w-3.5 h-3.5 text-kindle-text" />
-                NYT Best Sellers
+                <NetgalleyIcon className="w-3.5 h-3.5 text-kindle-accent" />
+                NetGalley Catalog
               </button>
               <button
                 onClick={() => {
@@ -3449,20 +3487,6 @@ function DiscoverView({
               >
                 <Headphones className="w-3.5 h-3.5 text-kindle-text" />
                 Audiobooks
-              </button>
-              <button
-                onClick={() => {
-                  if (audiobookLibraryMode) closeAudiobookLibrary();
-                  setFeedFilter("netgalley");
-                }}
-                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "netgalley"
-                    ? "border-kindle-text text-kindle-text"
-                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
-                }`}
-              >
-                <NetgalleyIcon className="w-3.5 h-3.5 text-kindle-accent" />
-                NetGalley Catalog
               </button>
             </div>
             <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
@@ -3485,11 +3509,7 @@ function DiscoverView({
               const filteredCategories = ALL_CATEGORIES.filter(cat => {
                 if (feedFilter === "all") return true;
                 return cat.source === feedFilter;
-              }).sort((a, b) => {
-                if (a.source === "audiobook" && b.source !== "audiobook") return 1;
-                if (b.source === "audiobook" && a.source !== "audiobook") return -1;
-                return 0;
-              });
+              }).sort((a, b) => sourceRank(a.source) - sourceRank(b.source));
               const totalBooks = filteredCategories.reduce((n, c) => n + (featuredData[c.id]?.length || 0), 0);
               if (totalBooks === 0) {
                 return (
@@ -3498,7 +3518,7 @@ function DiscoverView({
                     <p className="text-sm font-bold text-kindle-text-muted">No trending titles right now</p>
                     <p className="text-xs text-kindle-text-muted/70 max-w-sm">Use the search above to find any book across the global archives.</p>
                     <button
-                      onClick={() => loadFeaturedContent()}
+                      onClick={() => loadFeaturedContent(true)}
                       className="flex items-center gap-2 px-4 py-2 border border-kindle-border rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition"
                     >
                       <RefreshCw className="w-3.5 h-3.5" /> Refresh
@@ -3506,12 +3526,10 @@ function DiscoverView({
                   </div>
                 );
               }
-              // Randomize category order and books within each list for the featured widget
-              const shuffledCats = [...filteredCategories].sort(() => Math.random() - 0.5);
-              return shuffledCats.map((cat) => {
-                const rawBooks = featuredData[cat.id];
-                if (!Array.isArray(rawBooks) || rawBooks.length === 0) return null;
-                const books = [...rawBooks].sort(() => Math.random() - 0.5);
+              // Stable feed order (NYT → Goodreads → NetGalley → Audiobooks); do not shuffle
+              return filteredCategories.map((cat) => {
+                const books = featuredData[cat.id];
+                if (!Array.isArray(books) || books.length === 0) return null;
                 return (
                   <section key={cat.id} className="discover-category-section space-y-3">
                     <div className="flex items-center justify-between">

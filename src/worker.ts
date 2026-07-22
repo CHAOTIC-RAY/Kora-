@@ -3141,7 +3141,8 @@ export default {
     if (path === "/api/netgalley/search") {
       const q = url.searchParams.get("q") || "";
       const isAudiobook = url.searchParams.get("isAudiobook") === "true";
-      const results = await searchNetgalleyCatalog(q, { isAudiobook });
+      const ngFetch = (target: string) => fetchPageHtmlWithProxies(target, "covers.bksh.co");
+      const results = await searchNetgalleyCatalog(q, { isAudiobook, fetchHtml: ngFetch });
       return new Response(JSON.stringify({ results, source: "NetGalley" }), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
@@ -3150,7 +3151,8 @@ export default {
     if (path === "/api/netgalley/book") {
       const title = url.searchParams.get("title") || "";
       const author = url.searchParams.get("author") || "";
-      const details = await getNetgalleyBookDetails(title, author);
+      const ngFetch = (target: string) => fetchPageHtmlWithProxies(target, "covers.bksh.co");
+      const details = await getNetgalleyBookDetails(title, author, ngFetch);
       return new Response(JSON.stringify({ details, source: "NetGalley" }), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
@@ -3166,8 +3168,9 @@ export default {
     if (path === "/api/netgalley/category") {
       const cat = url.searchParams.get("cat") || url.searchParams.get("path") || "16";
       const limit = parseInt(url.searchParams.get("limit") || "24", 10);
-      const results = await fetchNetgalleyCategoryListings(cat, limit);
-      return new Response(JSON.stringify({ results, source: "NetGalley", cat }), {
+      const ngFetch = (target: string) => fetchPageHtmlWithProxies(target, "covers.bksh.co");
+      const results = await fetchNetgalleyCategoryListings(cat, limit, ngFetch);
+      return new Response(JSON.stringify({ results, books: results, source: "NetGalley", cat }), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
     }
@@ -3800,7 +3803,7 @@ export default {
         return new Response("Inline image URLs cannot be proxied", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio[0-9]*\.(com|club)|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gstatic\.com|goodreads\.com|cloudfront\.net|amazonaws\.com|wikimedia\.org|wikipedia\.org)$/i;
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio[0-9]*\.(com|club)|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gstatic\.com|goodreads\.com|cloudfront\.net|amazonaws\.com|wikimedia\.org|wikipedia\.org|bksh\.co|covers\.bksh\.co|netgalley\.com|www\.netgalley\.com)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);

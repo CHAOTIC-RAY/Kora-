@@ -2395,8 +2395,9 @@ app.get("/api/netgalley/categories", (_req, res) => {
 app.get("/api/netgalley/category", async (req, res) => {
   try {
     const cat = String(req.query.cat || "");
-    const books = await fetchNetgalleyCategoryListings(cat, 24);
-    res.json({ books });
+    const results = await fetchNetgalleyCategoryListings(cat, 24);
+    // `results` is the contract used by DiscoverView / Cloudflare Worker
+    res.json({ results, books: results, source: "NetGalley", cat });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "NetGalley category failed" });
   }

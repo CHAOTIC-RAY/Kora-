@@ -11,69 +11,166 @@ export interface NetgalleyBookResult {
   isAudiobook?: boolean;
 }
 
+export type NetgalleyHtmlFetcher = (url: string) => Promise<string>;
+
+const DEFAULT_HEADERS: Record<string, string> = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  Referer: "https://www.netgalley.com/",
+};
+
+async function defaultFetchHtml(url: string): Promise<string> {
+  const res = await fetch(url, { headers: DEFAULT_HEADERS });
+  if (!res.ok) throw new Error(`NetGalley fetch failed (${res.status})`);
+  return res.text();
+}
+
+function parseNetgalleyListingHtml(
+  html: string,
+  options: { limit: number; isAudiobookHint?: boolean; fallbackTitle?: string }
+): NetgalleyBookResult[] {
+  const $ = cheerio.load(html);
+  const results: NetgalleyBookResult[] = [];
+  const seenIds = new Set<string>();
+  const limit = options.limit;
+
+  const pushResult = (partial: Omit<NetgalleyBookResult, "coverUrl"> & { coverUrl?: string }) => {
+    if (!partial.bookId || seenIds.has(partial.bookId) || results.length >= limit) return;
+    seenIds.add(partial.bookId);
+    results.push({
+      ...partial,
+      coverUrl: partial.coverUrl || `https://covers.bksh.co/cover${partial.bookId}-large.png`,
+    });
+  };
+
+  // Preferred: schema.org Book blocks (stable across layout changes)
+  $('[itemtype*="schema.org/Book"], [itemtype*="Book"]').each((_, el) => {
+    if (results.length >= limit) return;
+    const $el = $(el);
+    const link =
+      $el.find('a[href*="/catalog/book/"], a[href*="/catalog/title/"], a[href*="/catalog/audiobook/"]').first().attr("href") ||
+      $el.closest("a").attr("href") ||
+      "";
+    const match = link.match(/\/catalog\/(?:book|title|audiobook)\/(\d+)/);
+    const bookId =
+      match?.[1] ||
+      ($el.find("img[src*='covers.bksh.co/cover']").attr("src") || "").match(/cover(\d+)/)?.[1] ||
+      null;
+    if (!bookId) return;
+
+    const title =
+      $el.find('[itemprop="name"]').first().text().trim() ||
+      ($el.find("img[alt]").attr("alt") || "").replace(/^(book|audio)?\s*cover for\s+/i, "").trim();
+    const author =
+      $el.find('[itemprop="author"] [itemprop="name"], [itemprop="author"]').first().text().trim().replace(/^by\s+/i, "") ||
+      "";
+    const publisher = $el.find('[itemprop="publisher"] [itemprop="name"], [itemprop="publisher"]').first().text().trim();
+    const coverSrc = $el.find("img[src*='covers.bksh.co'], img[itemprop='image']").first().attr("src") || "";
+    const coverUrl = coverSrc.includes("covers.bksh.co")
+      ? coverSrc.replace(/-small\.png/i, "-large.png")
+      : `https://covers.bksh.co/cover${bookId}-large.png`;
+
+    if (!title && !bookId) return;
+    pushResult({
+      bookId,
+      title: title || options.fallbackTitle || `NetGalley Book #${bookId}`,
+      author,
+      publisher,
+      coverUrl,
+      netgalleyUrl: link
+        ? link.startsWith("http")
+          ? link
+          : `https://www.netgalley.com${link}`
+        : `https://www.netgalley.com/catalog/book/${bookId}`,
+      isAudiobook: options.isAudiobookHint || /audiobook/i.test(link),
+    });
+  });
+
+  if (results.length >= Math.min(6, limit)) return results;
+
+  // Fallback: catalog deep links
+  $('a[href*="/catalog/book/"], a[href*="/catalog/title/"], a[href*="/catalog/audiobook/"]').each((_, el) => {
+    if (results.length >= limit) return;
+    const href = $(el).attr("href") || "";
+    const match = href.match(/\/catalog\/(?:book|title|audiobook)\/(\d+)/);
+    const bookId = match ? match[1] : null;
+    if (!bookId || seenIds.has(bookId)) return;
+
+    const imgAlt = $(el).find("img").attr("alt") || "";
+    let title = "";
+    if (/^(book|audio)?\s*cover for /i.test(imgAlt)) {
+      title = imgAlt.replace(/^(book|audio)?\s*cover for\s+/i, "").trim();
+    }
+
+    const parent = $(el).closest(
+      '[itemtype*="Book"], .card, .title-card, .book-card, .carousel-1-book, div[class*="col"], tr, li, article'
+    );
+
+    if (!title) {
+      title =
+        parent.find('.headline [itemprop="name"], a.headline, [itemprop="name"], .title, h3, h4').first().text().trim() ||
+        $(el).attr("title") ||
+        "";
+    }
+
+    const author =
+      parent
+        .find('[itemprop="author"] [itemprop="name"], .author, .by-author, .author-name')
+        .first()
+        .text()
+        .trim()
+        .replace(/^by\s+/i, "") || "";
+
+    const publisher = parent
+      .find('[itemprop="publisher"] [itemprop="name"], .publisher, .pub-name')
+      .first()
+      .text()
+      .trim();
+
+    const coverSrc = parent.find("img[src*='covers.bksh.co'], img").first().attr("src") || "";
+    const coverUrl = coverSrc.includes("covers.bksh.co")
+      ? coverSrc.replace(/-small\.png/i, "-large.png")
+      : `https://covers.bksh.co/cover${bookId}-large.png`;
+
+    pushResult({
+      bookId,
+      title: title || options.fallbackTitle || `NetGalley Book #${bookId}`,
+      author,
+      publisher,
+      coverUrl,
+      netgalleyUrl: href.startsWith("http") ? href : `https://www.netgalley.com${href}`,
+      isAudiobook: options.isAudiobookHint || href.includes("audiobook"),
+    });
+  });
+
+  return results;
+}
+
 /**
  * Searches the NetGalley catalog (https://www.netgalley.com/catalog) for book/audiobook metadata and covers.
  */
 export async function searchNetgalleyCatalog(
   query: string,
-  options?: { isAudiobook?: boolean; limit?: number }
+  options?: { isAudiobook?: boolean; limit?: number; fetchHtml?: NetgalleyHtmlFetcher }
 ): Promise<NetgalleyBookResult[]> {
   const limit = options?.limit || 5;
   const isAudiobook = options?.isAudiobook || false;
+  const fetchHtml = options?.fetchHtml || defaultFetchHtml;
 
-  const searchQuery = isAudiobook && !query.toLowerCase().includes("audiobook")
-    ? `${query} audiobook`
-    : query;
+  const searchQuery =
+    isAudiobook && !query.toLowerCase().includes("audiobook") ? `${query} audiobook` : query;
 
   const searchUrl = `https://www.netgalley.com/catalog?q=${encodeURIComponent(searchQuery)}`;
 
   try {
-    const res = await fetch(searchUrl, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9"
-      }
+    const html = await fetchHtml(searchUrl);
+    return parseNetgalleyListingHtml(html, {
+      limit,
+      isAudiobookHint: isAudiobook,
+      fallbackTitle: query,
     });
-
-    if (!res.ok) return [];
-
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const results: NetgalleyBookResult[] = [];
-    const seenIds = new Set<string>();
-
-    $("a[href*='/catalog/book/'], a[href*='/catalog/title/'], a[href*='/catalog/audiobook/']").each((_, el) => {
-      if (results.length >= limit) return;
-
-      const href = $(el).attr("href") || "";
-      const match = href.match(/\/catalog\/(?:book|title|audiobook)\/(\d+)/);
-      const bookId = match ? match[1] : null;
-
-      if (!bookId || seenIds.has(bookId)) return;
-
-      const parent = $(el).closest(".col, .card, tr, li, div[class*='col'], .title-card, .book-card");
-      const cardTitle = parent.find(".title, .title-link, h3, h4, strong, a").first().text().trim() || $(el).attr("title") || "";
-      const cardAuthor = parent.find(".author, .by-author, .author-name, span.small").text().trim().replace(/^by\s+/i, "");
-      const cardPub = parent.find(".publisher, .pub-name, .publisher-name").text().trim();
-      const cardDesc = parent.find(".description, .synopsis, p").text().trim();
-
-      const coverUrl = `https://covers.bksh.co/cover${bookId}-large.png`;
-      seenIds.add(bookId);
-
-      results.push({
-        bookId,
-        title: cardTitle || query,
-        author: cardAuthor,
-        publisher: cardPub,
-        description: cardDesc,
-        coverUrl,
-        netgalleyUrl: `https://www.netgalley.com${href}`,
-        isAudiobook: isAudiobook || href.includes("audiobook")
-      });
-    });
-
-    return results;
   } catch (error) {
     console.error("[NetGalley] Catalog search error:", error);
     return [];
@@ -86,7 +183,7 @@ export async function searchNetgalleyCatalog(
 export async function getNetgalleyCoverUrl(
   title: string,
   author?: string,
-  options?: { isAudiobook?: boolean }
+  options?: { isAudiobook?: boolean; fetchHtml?: NetgalleyHtmlFetcher }
 ): Promise<string | null> {
   if (!title) return null;
 
@@ -95,18 +192,19 @@ export async function getNetgalleyCoverUrl(
 
   const results = await searchNetgalleyCatalog(query, {
     isAudiobook: options?.isAudiobook,
-    limit: 3
+    limit: 3,
+    fetchHtml: options?.fetchHtml,
   });
 
   if (results.length > 0) {
     return results[0].coverUrl;
   }
 
-  // Fallback try title alone
   if (author) {
     const titleOnlyResults = await searchNetgalleyCatalog(cleanTitle, {
       isAudiobook: options?.isAudiobook,
-      limit: 1
+      limit: 1,
+      fetchHtml: options?.fetchHtml,
     });
     if (titleOnlyResults.length > 0) {
       return titleOnlyResults[0].coverUrl;
@@ -116,9 +214,6 @@ export async function getNetgalleyCoverUrl(
   return null;
 }
 
-/**
- * Fetches detailed book metadata from NetGalley.
- */
 export interface NetgalleyCategory {
   id: string;
   name: string;
@@ -147,12 +242,9 @@ export const NETGALLEY_CATEGORIES: NetgalleyCategory[] = [
   { id: "11", name: "LGBTQIAP+", path: "/catalog/category/11", type: "category" },
   { id: "1", name: "Arts & Photography", path: "/catalog/category/1", type: "category" },
   { id: "37", name: "Children's Fiction", path: "/catalog/category/37", type: "category" },
-  { id: "44", name: "Middle Grade", path: "/catalog/category/44", type: "category" }
+  { id: "44", name: "Middle Grade", path: "/catalog/category/44", type: "category" },
 ];
 
-/**
- * Returns available NetGalley catalog categories
- */
 export function getNetgalleyCategories(): NetgalleyCategory[] {
   return NETGALLEY_CATEGORIES;
 }
@@ -162,7 +254,8 @@ export function getNetgalleyCategories(): NetgalleyCategory[] {
  */
 export async function fetchNetgalleyCategoryListings(
   catPathOrId: string,
-  limit = 24
+  limit = 24,
+  fetchHtml: NetgalleyHtmlFetcher = defaultFetchHtml
 ): Promise<NetgalleyBookResult[]> {
   let targetPath = catPathOrId;
   if (!targetPath.startsWith("/")) {
@@ -173,91 +266,25 @@ export async function fetchNetgalleyCategoryListings(
   const url = `https://www.netgalley.com${targetPath}`;
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-      }
+    const html = await fetchHtml(url);
+    return parseNetgalleyListingHtml(html, {
+      limit,
+      isAudiobookHint: targetPath.toLowerCase().includes("audiobook"),
     });
-
-    if (!res.ok) return [];
-
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const results: NetgalleyBookResult[] = [];
-    const seenIds = new Set<string>();
-
-    $("a[href*='/catalog/book/'], a[href*='/catalog/title/'], a[href*='/catalog/audiobook/']").each((_, el) => {
-      if (results.length >= limit) return;
-
-      const href = $(el).attr("href") || "";
-      const match = href.match(/\/catalog\/(?:book|title|audiobook)\/(\d+)/);
-      const bookId = match ? match[1] : null;
-
-      if (!bookId || seenIds.has(bookId)) return;
-
-      const imgAlt = $(el).find("img").attr("alt") || "";
-      let title = "";
-      if (/^(book|audio)?\s*cover for /i.test(imgAlt)) {
-        title = imgAlt.replace(/^(book|audio)?\s*cover for\s+/i, "").trim();
-      }
-
-      const parent = $(el).closest(
-        ".card, .title-card, .book-card, .carousel-1-book, div[class*='col'], tr, li"
-      );
-
-      if (!title) {
-        title =
-          parent.find(".headline [itemprop='name'], a.headline, [itemprop='name'], .title, h3, h4")
-            .first()
-            .text()
-            .trim() || $(el).attr("title") || "";
-      }
-
-      const author =
-        parent
-          .find("[itemprop='author'] [itemprop='name'], .author, .by-author, .author-name, span.small")
-          .first()
-          .text()
-          .trim()
-          .replace(/^by\s+/i, "") || "";
-
-      const publisher = parent
-        .find("[itemprop='publisher'] [itemprop='name'], .publisher, .pub-name")
-        .first()
-        .text()
-        .trim();
-
-      const coverUrl = `https://covers.bksh.co/cover${bookId}-large.png`;
-      seenIds.add(bookId);
-
-      if (title || bookId) {
-        results.push({
-          bookId,
-          title: title || `NetGalley Book #${bookId}`,
-          author,
-          publisher,
-          coverUrl,
-          netgalleyUrl: href.startsWith("http") ? href : `https://www.netgalley.com${href}`,
-          isAudiobook:
-            targetPath.toLowerCase().includes("audiobook") || href.includes("audiobook"),
-        });
-      }
-    });
-
-    return results;
   } catch (error) {
     console.error(`[NetGalley] Category fetch error for ${targetPath}:`, error);
     return [];
   }
 }
 
-/**
- * Fetches details for a NetGalley book by title/author
- */
-export async function getNetgalleyBookDetails(title: string, author?: string) {
-  const results = await searchNetgalleyCatalog(author ? `${title} ${author}` : title, { limit: 1 });
+export async function getNetgalleyBookDetails(
+  title: string,
+  author?: string,
+  fetchHtml?: NetgalleyHtmlFetcher
+) {
+  const results = await searchNetgalleyCatalog(author ? `${title} ${author}` : title, {
+    limit: 1,
+    fetchHtml,
+  });
   return results.length > 0 ? results[0] : null;
 }
-
