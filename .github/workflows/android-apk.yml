@@ -3,42 +3,30 @@ name: Build Android APK
 on:
   workflow_dispatch:
     inputs:
-      build_type:
-        description: "APK build type"
-        required: true
-        default: debug
-        type: choice
-        options:
-          - debug
-          - release
       api_base_url:
         description: "Cloudflare Worker / API origin (no trailing slash)"
         required: false
         default: ""
+      publish_release:
+        description: "Publish GitHub Release"
+        required: true
+        default: true
+        type: boolean
   push:
     branches: [main, beta]
-    paths:
-      - "android/**"
-      - "src/**"
-      - "public/**"
-      - "capacitor.config.ts"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/android-apk.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "android/**"
-      - "capacitor.config.ts"
-      - ".github/workflows/android-apk.yml"
 
 concurrency:
-  group: android-apk-${{ github.ref }}
+  group: android-apk-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   build-apk:
-    name: Assemble Kora APK
+    name: Assemble & release Kora APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -47,9 +35,10 @@ jobs:
       NODE_VERSION: "22"
       ANDROID_COMPILE_SDK: "36"
       ANDROID_BUILD_TOOLS: "36.0.0"
-      # Override via repo Variable VITE_API_BASE_URL or workflow_dispatch input
-      VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.VITE_API_BASE_URL || 'https://kora.workers.dev' }}
-      VITE_APP_CHANNEL: production
+      VITE_API_BASE_URL: ${{ github.event.inputs.api_base_url || vars.VITE_API_BASE_URL || 'https://kora.chaoticstudio.workers.dev' }}
+      VITE_APP_CHANNEL: ${{ github.ref_name == 'beta' && 'beta' || 'production' }}
+      KORA_VERSION_NAME: 1.0.${{ github.run_number }}
+      KORA_VERSION_CODE: ${{ github.run_number }}
 
     steps:
       - name: Checkout
@@ -81,82 +70,159 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Generate launcher icons from Kora logo
+        run: node scripts/generate-android-icons.mjs
+
       - name: Build web assets for APK
         run: |
           echo "API base → $VITE_API_BASE_URL"
+          echo "Channel  → $VITE_APP_CHANNEL"
           npm run build:apk-web
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
 
-      - name: Decode release keystore (optional)
-        if: ${{ github.event.inputs.build_type == 'release' }}
+      - name: Configure signing keystore
+        id: signing
         env:
           KORA_UPLOAD_KEYSTORE_BASE64: ${{ secrets.KORA_UPLOAD_KEYSTORE_BASE64 }}
           KORA_UPLOAD_STORE_PASSWORD: ${{ secrets.KORA_UPLOAD_STORE_PASSWORD }}
           KORA_UPLOAD_KEY_ALIAS: ${{ secrets.KORA_UPLOAD_KEY_ALIAS }}
           KORA_UPLOAD_KEY_PASSWORD: ${{ secrets.KORA_UPLOAD_KEY_PASSWORD }}
         run: |
-          if [ -z "${KORA_UPLOAD_KEYSTORE_BASE64:-}" ]; then
-            echo "No release keystore secret — building unsigned/release with debug fallback"
-            exit 0
+          set -euo pipefail
+          if [ -n "${KORA_UPLOAD_KEYSTORE_BASE64:-}" ]; then
+            echo "$KORA_UPLOAD_KEYSTORE_BASE64" | base64 -d > android/app/kora-upload.keystore
+            STORE_FILE="kora-upload.keystore"
+            STORE_PASS="$KORA_UPLOAD_STORE_PASSWORD"
+            KEY_ALIAS="$KORA_UPLOAD_KEY_ALIAS"
+            KEY_PASS="$KORA_UPLOAD_KEY_PASSWORD"
+            SIGNING_SOURCE="upload-secret"
+          else
+            STORE_FILE="keystore/kora-ci.jks"
+            STORE_PASS="koraci-release"
+            KEY_ALIAS="kora"
+            KEY_PASS="koraci-release"
+            SIGNING_SOURCE="ci-keystore"
           fi
-          echo "$KORA_UPLOAD_KEYSTORE_BASE64" | base64 -d > android/app/kora-release.keystore
+
           {
-            echo "KORA_UPLOAD_STORE_FILE=kora-release.keystore"
-            echo "KORA_UPLOAD_STORE_PASSWORD=$KORA_UPLOAD_STORE_PASSWORD"
-            echo "KORA_UPLOAD_KEY_ALIAS=$KORA_UPLOAD_KEY_ALIAS"
-            echo "KORA_UPLOAD_KEY_PASSWORD=$KORA_UPLOAD_KEY_PASSWORD"
+            echo "KORA_UPLOAD_STORE_FILE=$STORE_FILE"
+            echo "KORA_UPLOAD_STORE_PASSWORD=$STORE_PASS"
+            echo "KORA_UPLOAD_KEY_ALIAS=$KEY_ALIAS"
+            echo "KORA_UPLOAD_KEY_PASSWORD=$KEY_PASS"
+            echo "SIGNING_SOURCE=$SIGNING_SOURCE"
           } >> "$GITHUB_ENV"
 
-      - name: Assemble Debug APK
-        if: ${{ github.event.inputs.build_type != 'release' }}
-        working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace \
-            -PKORA_VERSION_CODE=${{ github.run_number }} \
-            -PKORA_VERSION_NAME=1.0.${{ github.run_number }}
+          KEYTOOL_OUT=$(keytool -list -v \
+            -keystore "android/app/$STORE_FILE" \
+            -alias "$KEY_ALIAS" \
+            -storepass "$STORE_PASS" 2>/dev/null)
+
+          SHA1=$(echo "$KEYTOOL_OUT" | sed -n 's/.*SHA1: //p' | head -n1 | tr -d '[:space:]')
+          SHA256=$(echo "$KEYTOOL_OUT" | sed -n 's/.*SHA256: //p' | head -n1 | tr -d '[:space:]')
+
+          echo "sha1=$SHA1" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "source=$SIGNING_SOURCE" >> "$GITHUB_OUTPUT"
+          echo "alias=$KEY_ALIAS" >> "$GITHUB_OUTPUT"
+
+          mkdir -p artifacts
+          {
+            echo "Kora Android signing fingerprints"
+            echo "================================="
+            echo "Version:     $KORA_VERSION_NAME"
+            echo "Commit:      ${{ github.sha }}"
+            echo "Branch:      ${{ github.ref_name }}"
+            echo "Signing:     $SIGNING_SOURCE"
+            echo "Key alias:   $KEY_ALIAS"
+            echo "Application: app.kora.reader"
+            echo ""
+            echo "SHA-1:   $SHA1"
+            echo "SHA-256: $SHA256"
+          } | tee artifacts/FINGERPRINTS.txt
 
       - name: Assemble Release APK
-        if: ${{ github.event.inputs.build_type == 'release' }}
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace \
-            -PKORA_VERSION_CODE=${{ github.run_number }} \
-            -PKORA_VERSION_NAME=1.0.${{ github.run_number }} \
-            ${KORA_UPLOAD_STORE_FILE:+-PKORA_UPLOAD_STORE_FILE=$KORA_UPLOAD_STORE_FILE} \
-            ${KORA_UPLOAD_STORE_PASSWORD:+-PKORA_UPLOAD_STORE_PASSWORD=$KORA_UPLOAD_STORE_PASSWORD} \
-            ${KORA_UPLOAD_KEY_ALIAS:+-PKORA_UPLOAD_KEY_ALIAS=$KORA_UPLOAD_KEY_ALIAS} \
-            ${KORA_UPLOAD_KEY_PASSWORD:+-PKORA_UPLOAD_KEY_PASSWORD=$KORA_UPLOAD_KEY_PASSWORD}
+            -PKORA_VERSION_CODE=$KORA_VERSION_CODE \
+            -PKORA_VERSION_NAME=$KORA_VERSION_NAME \
+            -PKORA_UPLOAD_STORE_FILE=$KORA_UPLOAD_STORE_FILE \
+            -PKORA_UPLOAD_STORE_PASSWORD=$KORA_UPLOAD_STORE_PASSWORD \
+            -PKORA_UPLOAD_KEY_ALIAS=$KORA_UPLOAD_KEY_ALIAS \
+            -PKORA_UPLOAD_KEY_PASSWORD=$KORA_UPLOAD_KEY_PASSWORD
 
-      - name: Locate APK
+      - name: Locate & rename APK
         id: apk
         run: |
           set -euo pipefail
-          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
-          echo "Found: $APK_PATH"
-          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "$APK_PATH")" >> "$GITHUB_OUTPUT"
-          ls -lah "$APK_PATH"
+          RAW=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          test -n "$RAW"
+          OUT="artifacts/Kora-${KORA_VERSION_NAME}-${GITHUB_SHA::7}.apk"
+          mkdir -p artifacts
+          cp "$RAW" "$OUT"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$OUT")" >> "$GITHUB_OUTPUT"
+          ls -lah "$OUT"
+          # Verify signature + print cert digests from the APK itself
+          "$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/apksigner" verify --print-certs "$OUT" | tee artifacts/APK_SIGNATURE.txt || true
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kora-android-${{ github.event.inputs.build_type || 'debug' }}-${{ github.sha }}
-          path: ${{ steps.apk.outputs.path }}
+          name: kora-android-release-${{ github.sha }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            artifacts/FINGERPRINTS.txt
+            artifacts/APK_SIGNATURE.txt
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 60
 
-      - name: Upload to GitHub Release (manual release builds)
-        if: ${{ github.event.inputs.build_type == 'release' && github.ref == 'refs/heads/main' }}
+      - name: Publish GitHub Release
+        if: >
+          github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && (github.event.inputs.publish_release == 'true' || github.event.inputs.publish_release == true))
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-v1.0.${{ github.run_number }}
-          name: Kora Android APK v1.0.${{ github.run_number }}
-          files: ${{ steps.apk.outputs.path }}
+          tag_name: apk-v${{ env.KORA_VERSION_NAME }}
+          name: Kora Android APK v${{ env.KORA_VERSION_NAME }}
+          files: |
+            ${{ steps.apk.outputs.path }}
+            artifacts/FINGERPRINTS.txt
+            artifacts/APK_SIGNATURE.txt
+          fail_on_unmatched_files: true
           generate_release_notes: true
-          draft: true
+          draft: false
+          prerelease: ${{ github.ref_name == 'beta' }}
+          body: |
+            ## Kora Android APK
+
+            Installable release build with storage, GPU/WebView acceleration, voice narrator, offline library, and notification permissions.
+
+            | | |
+            |---|---|
+            | **Version** | `v${{ env.KORA_VERSION_NAME }}` |
+            | **Commit** | `${{ github.sha }}` |
+            | **Branch** | `${{ github.ref_name }}` |
+            | **Channel** | `${{ env.VITE_APP_CHANNEL }}` |
+            | **App ID** | `app.kora.reader` |
+            | **Signing** | `${{ steps.signing.outputs.source }}` (`${{ steps.signing.outputs.alias }}`) |
+
+            ### Certificate fingerprints
+
+            ```
+            SHA-1:   ${{ steps.signing.outputs.sha1 }}
+            SHA-256: ${{ steps.signing.outputs.sha256 }}
+            ```
+
+            ### Install
+
+            1. Download `Kora-${{ env.KORA_VERSION_NAME }}-*.apk`
+            2. Enable install from unknown sources (if prompted)
+            3. Open the APK on your Android device
+
+            Home-screen icon uses the official Kora logo.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

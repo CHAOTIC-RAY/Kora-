@@ -20,6 +20,7 @@ vocalbook/
 services/*/work/
 *.keystore
 *.jks
+!android/app/keystore/kora-ci.jks
 android/local.properties
 android/app/build/
 android/.gradle/

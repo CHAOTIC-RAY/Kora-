@@ -19,11 +19,25 @@ android {
     }
     signingConfigs {
         release {
-            if (project.hasProperty('KORA_UPLOAD_STORE_FILE')) {
-                storeFile file(KORA_UPLOAD_STORE_FILE)
-                storePassword KORA_UPLOAD_STORE_PASSWORD
-                keyAlias KORA_UPLOAD_KEY_ALIAS
-                keyPassword KORA_UPLOAD_KEY_PASSWORD
+            // Prefer upload-key properties from CI secrets; fall back to committed CI keystore.
+            def storePath = project.hasProperty('KORA_UPLOAD_STORE_FILE')
+                ? KORA_UPLOAD_STORE_FILE
+                : 'keystore/kora-ci.jks'
+            def storePass = project.hasProperty('KORA_UPLOAD_STORE_PASSWORD')
+                ? KORA_UPLOAD_STORE_PASSWORD
+                : 'koraci-release'
+            def alias = project.hasProperty('KORA_UPLOAD_KEY_ALIAS')
+                ? KORA_UPLOAD_KEY_ALIAS
+                : 'kora'
+            def keyPass = project.hasProperty('KORA_UPLOAD_KEY_PASSWORD')
+                ? KORA_UPLOAD_KEY_PASSWORD
+                : 'koraci-release'
+            def store = file(storePath)
+            if (store.exists()) {
+                storeFile store
+                storePassword storePass
+                keyAlias alias
+                keyPassword keyPass
             }
         }
     }
@@ -37,9 +51,7 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (project.hasProperty('KORA_UPLOAD_STORE_FILE')) {
-                signingConfig signingConfigs.release
-            }
+            signingConfig signingConfigs.release
         }
     }
     compileOptions {

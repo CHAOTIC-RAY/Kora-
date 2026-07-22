@@ -48,10 +48,13 @@ captures/
 .idea/modules.xml
 .idea/navEditor.xml
 
-# Keystore files — never commit
+# Keystore files — never commit production keys
 *.jks
 *.keystore
 kora-release.keystore
+# Allow the dedicated CI sideload keystore (fingerprints published on Releases)
+!app/keystore/kora-ci.jks
+!app/keystore/FINGERPRINTS.md
 
 # External native build folder
 .externalNativeBuild
