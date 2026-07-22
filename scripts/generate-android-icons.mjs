@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Generate Android launcher + notification icons from the Kora logo.
- * Source: public/icon-512.png (preferred) or public/favicon.svg via sharp.
+ * Generate Android launcher + notification icons from the Kora "K" wordmark.
+ * Prefer public/favicon.svg (serif K on dark squircle). Optionally refresh
+ * public/icon-512.png so PWA / APK stay aligned.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -14,6 +15,8 @@ const resDir = path.join(root, "android/app/src/main/res");
 
 const SOURCE_PNG = path.join(root, "public/icon-512.png");
 const SOURCE_SVG = path.join(root, "public/favicon.svg");
+// Force K mark: set KORA_ICON_SOURCE=png to use the legacy book icon instead.
+const FORCE_PNG = process.env.KORA_ICON_SOURCE === "png";
 
 const DENSITIES = [
   { name: "mdpi", size: 48, fg: 108 },
@@ -23,16 +26,16 @@ const DENSITIES = [
   { name: "xxxhdpi", size: 192, fg: 432 },
 ];
 
-const BG = { r: 15, g: 15, b: 16, alpha: 1 }; // #0F0F10
-
 async function loadSource() {
+  if (!FORCE_PNG && fs.existsSync(SOURCE_SVG)) {
+    console.log("icon source → public/favicon.svg (Kora K)");
+    return sharp(SOURCE_SVG, { density: 512 }).ensureAlpha();
+  }
   if (fs.existsSync(SOURCE_PNG)) {
+    console.log("icon source → public/icon-512.png");
     return sharp(SOURCE_PNG).ensureAlpha();
   }
-  if (fs.existsSync(SOURCE_SVG)) {
-    return sharp(SOURCE_SVG, { density: 384 }).ensureAlpha();
-  }
-  throw new Error("No icon source found (public/icon-512.png or public/favicon.svg)");
+  throw new Error("No icon source found (public/favicon.svg or public/icon-512.png)");
 }
 
 async function writePng(filePath, buffer) {
@@ -43,7 +46,23 @@ async function writePng(filePath, buffer) {
 
 async function main() {
   const source = await loadSource();
-  const master = await source.png().toBuffer();
+  const master = await source
+    .resize(512, 512, {
+      fit: "cover",
+      position: "centre",
+      background: { r: 15, g: 15, b: 16, alpha: 1 },
+    })
+    .png()
+    .toBuffer();
+
+  // Keep PWA / manifest icon in sync with the APK K mark
+  if (!FORCE_PNG && fs.existsSync(SOURCE_SVG)) {
+    await writePng(SOURCE_PNG, master);
+    const apple = await sharp(master).resize(180, 180).png().toBuffer();
+    await writePng(path.join(root, "public/apple-touch-icon.png"), apple);
+    const pwa192 = await sharp(master).resize(192, 192).png().toBuffer();
+    await writePng(path.join(root, "public/icon-192.png"), pwa192);
+  }
 
   // Full-bleed legacy launchers (square + round mask)
   for (const d of DENSITIES) {
@@ -56,11 +75,14 @@ async function main() {
     await writePng(path.join(dir, "ic_launcher.png"), square);
     await writePng(path.join(dir, "ic_launcher_round.png"), square);
 
-    // Adaptive foreground: logo inset ~18% safe zone on transparent canvas
-    const inset = Math.round(d.fg * 0.18);
+    // Adaptive foreground: logo inset ~12% — K mark already has squircle padding
+    const inset = Math.round(d.fg * 0.12);
     const inner = d.fg - inset * 2;
     const logo = await sharp(master)
-      .resize(inner, inner, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .resize(inner, inner, {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
       .png()
       .toBuffer();
     const foreground = await sharp({
@@ -87,7 +109,10 @@ async function main() {
   ];
   for (const n of notifSizes) {
     const mono = await sharp(master)
-      .resize(n.size, n.size, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .resize(n.size, n.size, {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
       .ensureAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
@@ -109,7 +134,9 @@ async function main() {
         data[i + 3] = 255;
       }
     }
-    const out = await sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } })
+    const out = await sharp(data, {
+      raw: { width: info.width, height: info.height, channels: 4 },
+    })
       .png()
       .toBuffer();
     await writePng(path.join(resDir, n.dir, "ic_stat_kora.png"), out);
@@ -121,6 +148,10 @@ async function main() {
     .png()
     .toBuffer();
   await writePng(path.join(resDir, "drawable", "splash.png"), splash);
+  await writePng(
+    path.join(resDir, "drawable", "ic_stat_kora.png"),
+    await sharp(master).resize(48, 48).png().toBuffer()
+  );
 
   // Adaptive background color
   const bgXml = `<?xml version="1.0" encoding="utf-8"?>
@@ -142,7 +173,7 @@ async function main() {
   fs.writeFileSync(path.join(resDir, "mipmap-anydpi-v26/ic_launcher.xml"), adaptive);
   fs.writeFileSync(path.join(resDir, "mipmap-anydpi-v26/ic_launcher_round.xml"), adaptive);
   console.log("updated adaptive icon XML");
-  console.log("Done — Android icons generated from Kora logo.");
+  console.log("Done — Android icons generated from Kora K logo.");
 }
 
 main().catch((err) => {

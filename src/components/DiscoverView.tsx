@@ -2994,7 +2994,10 @@ function DiscoverView({
                           const attempt = parseInt(t.dataset.attempt || "0");
                           t.dataset.attempt = String(attempt + 1);
                           if (attempt === 0) {
-                            t.src = `/api/cover-redirect?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || "")}`;
+                            t.src =
+                              resolveCoverImageSrc(
+                                `/api/cover-redirect?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || "")}`
+                              ) || "";
                             return;
                           }
                           t.style.display = "none";
@@ -3090,14 +3093,20 @@ function DiscoverView({
 
                           // Attempt 1: if we have a real ISBN, try OpenLibrary by ISBN
                           if (attempt === 0 && book.isbn && /^\d{10,13}$/.test(book.isbn)) {
-                            target.src = `https://covers.openlibrary.org/b/isbn/${book.isbn}-M.jpg`;
+                            target.src =
+                              resolveCoverImageSrc(
+                                `https://covers.openlibrary.org/b/isbn/${book.isbn}-M.jpg`
+                              ) || "";
                             return;
                           }
                           // Attempt 2: try cover redirect API (NYT + OpenLibrary title search)
                           if (attempt === 1) {
                             const encodedTitle = encodeURIComponent(book.title);
                             const encodedAuthor = encodeURIComponent(book.author || "");
-                            target.src = `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${book.md5}`;
+                            target.src =
+                              resolveCoverImageSrc(
+                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${book.md5}`
+                              ) || "";
                             return;
                           }
                           // All fallbacks exhausted: show typography placeholder
@@ -3270,9 +3279,7 @@ function DiscoverView({
                         src={
                           viewingCategory.source === "audiobook"
                             ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl)
-                            : viewingCategory.source === "netgalley"
-                              ? (book.coverUrl || resolveCoverImageSrc(book.coverUrl) || "")
-                              : resolveCoverImageSrc(book.coverUrl) || ""
+                            : resolveCoverImageSrc(book.coverUrl) || ""
                         }
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -3591,9 +3598,7 @@ function DiscoverView({
                               src={
                                 cat.source === "audiobook"
                                   ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl)
-                                  : cat.source === "netgalley"
-                                    ? (book.coverUrl || resolveCoverImageSrc(book.coverUrl) || "")
-                                    : (resolveCoverImageSrc(book.coverUrl) || "")
+                                  : (resolveCoverImageSrc(book.coverUrl) || "")
                               }
                               alt={book.title}
                               className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -3603,7 +3608,10 @@ function DiscoverView({
                                 const attempt = parseInt(target.dataset.attempt || "0");
                                 target.dataset.attempt = String(attempt + 1);
                                 if (attempt === 0) {
-                                  target.src = `/api/cover-redirect?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || "")}`;
+                                  target.src =
+                                    resolveCoverImageSrc(
+                                      `/api/cover-redirect?title=${encodeURIComponent(book.title)}&author=${encodeURIComponent(book.author || "")}`
+                                    ) || "";
                                   return;
                                 }
                                 target.style.display = "none";

@@ -199,6 +199,16 @@ export async function initCapacitorShell(): Promise<void> {
     /* ignore */
   }
 
+  // Mirror dark chrome on the system navigation bar (gesture indicator strip).
+  // Capacitor has no NavigationBar plugin here — use the CSS/env insets +
+  // MainActivity Java theme. Also ensure the WebView document fills the bar area.
+  try {
+    document.documentElement.style.backgroundColor = "#18181B";
+    if (document.body) document.body.style.backgroundColor = "#18181B";
+  } catch {
+    /* ignore */
+  }
+
   try {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     await SplashScreen.hide();

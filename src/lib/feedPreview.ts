@@ -1,3 +1,4 @@
+import { resolveApiUrl } from "./capacitorNative";
 import { FeedItem, getFeedItems, saveFeedItems } from "./feedStorage";
 import { dedupeFeedItems } from "./feedNormalize";
 
@@ -74,9 +75,11 @@ export function resolveFeedImageSrc(url: string | undefined | null): string | nu
     trimmed = `https://${trimmed.slice(7)}`;
   }
   if (trimmed.startsWith("data:")) return trimmed;
-  if (trimmed.startsWith("/")) return trimmed;
+  // Absolute API / static paths must resolve to the Worker on Capacitor —
+  // <img src> bypasses the fetch shim.
+  if (trimmed.startsWith("/")) return resolveApiUrl(trimmed);
   if (trimmed.includes("google.com/s2/favicons")) return null;
-  return `/api/feed/image?url=${encodeURIComponent(trimmed)}`;
+  return resolveApiUrl(`/api/feed/image?url=${encodeURIComponent(trimmed)}`);
 }
 
 export function getFaviconUrl(link: string): string | null {
