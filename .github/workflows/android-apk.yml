@@ -71,7 +71,9 @@ jobs:
         run: npm ci
 
       - name: Generate launcher icons from Kora logo
-        run: node scripts/generate-android-icons.mjs
+        run: |
+          npm install --no-save sharp
+          node scripts/generate-android-icons.mjs
 
       - name: Build web assets for APK
         run: |
