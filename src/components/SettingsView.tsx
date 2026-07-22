@@ -6,8 +6,9 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import {
   loadNewsReaderPrefs,
@@ -31,6 +32,16 @@ import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
+import { isNativeAndroid } from "../lib/capacitorNative";
+import {
+  ApkReleaseInfo,
+  checkForApkUpdate,
+  downloadAndInstallApk,
+  getInstalledApkLabel,
+  getLastApkCheckAt,
+  isApkAutoUpdateEnabled,
+  setApkAutoUpdateEnabled,
+} from "../lib/apkUpdater";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -202,6 +213,19 @@ function SettingsView({
   const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
   const [showLiveLogs, setShowLiveLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState(() => logger.getLogs());
+  const [apkAutoUpdate, setApkAutoUpdate] = useState(() => isApkAutoUpdateEnabled());
+  const [apkLabel, setApkLabel] = useState("Kora");
+  const [apkChecking, setApkChecking] = useState(false);
+  const [apkInstalling, setApkInstalling] = useState(false);
+  const [apkProgress, setApkProgress] = useState(0);
+  const [apkAvailable, setApkAvailable] = useState<ApkReleaseInfo | null>(null);
+  const [apkLastCheck, setApkLastCheck] = useState(() => getLastApkCheckAt());
+  const isAndroidApk = isNativeAndroid();
+
+  useEffect(() => {
+    if (!isAndroidApk) return;
+    void getInstalledApkLabel().then(setApkLabel);
+  }, [isAndroidApk]);
 
   useEffect(() => {
     if (showLiveLogs) {
@@ -1584,7 +1608,7 @@ function SettingsView({
           <div className="space-y-4">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">Version</span>
-              <span className="font-mono font-bold">Kora 1.2.0</span>
+              <span className="font-mono font-bold">{isAndroidApk ? apkLabel : "Kora 1.2.0"}</span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">Powered by</span>
@@ -1602,6 +1626,122 @@ function SettingsView({
                 Kora Repository
               </a>
             </div>
+
+            {isAndroidApk && (
+              <div className="pt-3 space-y-3 border-t border-kindle-border/50">
+                <div className="flex items-center gap-2">
+                  <Download className="w-3.5 h-3.5 text-kindle-accent" />
+                  <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">
+                    App updates
+                  </h4>
+                </div>
+                <Row
+                  title="Auto-check for updates"
+                  desc="Periodically check GitHub Releases and notify when a newer APK is ready"
+                >
+                  <Toggle
+                    on={apkAutoUpdate}
+                    onClick={() => {
+                      const next = !apkAutoUpdate;
+                      setApkAutoUpdate(next);
+                      setApkAutoUpdateEnabled(next);
+                    }}
+                  />
+                </Row>
+
+                {apkAvailable ? (
+                  <div className="rounded-xl border border-kindle-border bg-kindle-bg/60 p-3 space-y-2">
+                    <p className="text-[11px] font-bold text-kindle-text">
+                      Update available — v{apkAvailable.versionName}
+                    </p>
+                    <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                      Downloaded from GitHub Releases. Android will ask to install the package.
+                    </p>
+                    {apkInstalling && (
+                      <div className="h-1.5 rounded-full bg-kindle-card overflow-hidden">
+                        <div
+                          className="h-full bg-kindle-accent transition-all"
+                          style={{ width: `${Math.max(2, apkProgress)}%` }}
+                        />
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      disabled={apkInstalling}
+                      onClick={async () => {
+                        setApkInstalling(true);
+                        setApkProgress(0);
+                        try {
+                          await downloadAndInstallApk(apkAvailable, (p) => setApkProgress(p.percent));
+                          toast.success("Opening installer…");
+                        } catch (err: any) {
+                          toast.error(err?.message || "Install failed");
+                        } finally {
+                          setApkInstalling(false);
+                        }
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-kindle-text text-kindle-bg font-bold text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
+                    >
+                      {apkInstalling ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          {apkProgress > 0 ? `Downloading ${apkProgress}%` : "Preparing…"}
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-3.5 h-3.5" />
+                          Download &amp; Install
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  disabled={apkChecking || apkInstalling}
+                  onClick={async () => {
+                    setApkChecking(true);
+                    try {
+                      const result = await checkForApkUpdate();
+                      setApkLastCheck(result.checkedAt);
+                      if (result.update) {
+                        setApkAvailable(result.update);
+                        toast.success(`Update found: v${result.update.versionName}`);
+                        window.dispatchEvent(
+                          new CustomEvent("kora-apk-update", { detail: result.update })
+                        );
+                      } else {
+                        setApkAvailable(null);
+                        toast.success("You're on the latest APK");
+                      }
+                    } catch (err: any) {
+                      toast.error(err?.message || "Update check failed");
+                    } finally {
+                      setApkChecking(false);
+                    }
+                  }}
+                  className="w-full py-2.5 px-3 border border-kindle-border hover:bg-kindle-bg rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {apkChecking ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Checking GitHub…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Check for updates
+                    </>
+                  )}
+                </button>
+                {apkLastCheck > 0 && (
+                  <p className="text-[9px] text-kindle-text-muted text-center">
+                    Last checked {new Date(apkLastCheck).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="pt-2 space-y-2 border-t border-kindle-border/50">
               <p className="text-[10px] leading-relaxed text-kindle-text-muted italic">

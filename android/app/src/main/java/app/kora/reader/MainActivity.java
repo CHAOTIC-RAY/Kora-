@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(KoraWidgetsPlugin.class);
+    registerPlugin(ApkInstallPlugin.class);
     super.onCreate(savedInstanceState);
     applyDarkSystemBars();
     // Cold start: Capacitor loads the intent URL; also notify SPA for query routing.

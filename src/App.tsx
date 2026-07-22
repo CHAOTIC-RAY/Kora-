@@ -64,6 +64,7 @@ import GuideSetupPopup from "./components/GuideSetupPopup";
 import DailyReminderModal from "./components/DailyReminderModal";
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
+import ApkUpdateBanner from "./components/ApkUpdateBanner";
 import AnnotationsHub from "./components/AnnotationsHub";
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
@@ -3222,6 +3223,7 @@ export default function App() {
       />
 
       <PwaLifecycleBanner />
+      <ApkUpdateBanner />
 
       {showAnnotationsHub && (
         <AnnotationsHub

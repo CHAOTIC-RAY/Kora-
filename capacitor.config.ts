@@ -22,6 +22,9 @@ const config: CapacitorConfig = {
       "covers.bksh.co",
       "openlibrary.org",
       "covers.openlibrary.org",
+      "github.com",
+      "api.github.com",
+      "*.githubusercontent.com",
     ],
   },
   android: {
