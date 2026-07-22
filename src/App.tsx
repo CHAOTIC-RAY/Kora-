@@ -2967,7 +2967,7 @@ export default function App() {
 
       {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book */}
       {!readerOpen && (
-      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border/80 rounded-2xl kora-safe-bottom">
+      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden">
         <LayoutGroup id="kora-mobile-tabs">
           <nav className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`} aria-label="Main">
             {mobileTabs.map(({ id, label, Icon }) => {
