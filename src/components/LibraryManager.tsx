@@ -840,6 +840,8 @@ function LibraryManager({
         isDownloadingCard: true,
         downloadStatus: d.status,
         activeDownload: d,
+        // Keep failed cards visibly greyed in the library grid
+        failedDownload: d.status === "error",
       };
     });
 
@@ -1128,11 +1130,11 @@ function LibraryManager({
                     )}
 
                     {book.extension?.toLowerCase() === "audiobook" ? (
-                      <div className={`w-full ${!isCached ? "opacity-40 grayscale" : ""}`}>
+                      <div className={`w-full ${!isCached || book.failedDownload || activeDownload?.status === "error" ? "opacity-40 grayscale" : ""}`}>
                         <AudiobookCassetteCard
                           title={book.title}
                           coverUrl={book.coverUrl}
-                          grayscaleCovers={grayscaleCovers}
+                          grayscaleCovers={grayscaleCovers || book.failedDownload || activeDownload?.status === "error"}
                           hideCovers={hideCovers}
                           orientation="portrait"
                         />
@@ -1141,7 +1143,7 @@ function LibraryManager({
                       <>
                         <img
                           src={resolveCoverImageSrc(book.coverUrl) || ""}
-                          className={`w-full aspect-[2/3] object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale-app" : ""} ${!isCached ? "grayscale opacity-40 brightness-110 contrast-75" : ""}`}
+                          className={`w-full aspect-[2/3] object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers || book.failedDownload || activeDownload?.status === "error" ? "grayscale-app" : ""} ${!isCached || book.failedDownload || activeDownload?.status === "error" ? "grayscale opacity-40 brightness-110 contrast-75" : ""}`}
                           referrerPolicy="no-referrer"
                           onContextMenu={(e) => e.preventDefault()}
                           onError={(e) => {
@@ -1157,7 +1159,7 @@ function LibraryManager({
                         </div>
                       </>
                     ) : (
-                      <div className={`w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center ${!isCached ? "opacity-40 grayscale" : ""}`}>
+                      <div className={`w-full aspect-[2/3] bg-kindle-card flex flex-col items-center justify-center p-4 text-center ${!isCached || book.failedDownload || activeDownload?.status === "error" ? "opacity-40 grayscale" : ""}`}>
                         <BookOpen className="w-8 h-8 text-kindle-text-muted mb-2" />
                         <span className="text-[8px] uppercase font-bold text-kindle-text-muted tracking-widest line-clamp-3">{book.title}</span>
                       </div>
@@ -1257,13 +1259,23 @@ function LibraryManager({
                     
                     <div className="flex items-center justify-between text-[8px] text-kindle-text-muted font-bold tracking-tight mt-0.5">
                       <div className="flex items-center gap-1">
-                        <span>{progressPercent}%</span>
-                        <span>•</span>
-                        <span className="uppercase">{book.extension?.toLowerCase() === "audiobook" ? "tape" : book.extension}</span>
-                        <span>•</span>
-                        <span className="uppercase">
-                          {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
-                        </span>
+                        {book.failedDownload || activeDownload?.status === "error" ? (
+                          <>
+                            <span className="text-red-500 uppercase">Failed</span>
+                            <span>•</span>
+                            <span className="uppercase">{book.extension?.toLowerCase() === "audiobook" ? "tape" : book.extension || "file"}</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>{progressPercent}%</span>
+                            <span>•</span>
+                            <span className="uppercase">{book.extension?.toLowerCase() === "audiobook" ? "tape" : book.extension}</span>
+                            <span>•</span>
+                            <span className="uppercase">
+                              {book.status === "completed" ? "Done" : book.status === "reading" ? "Reading" : "New"}
+                            </span>
+                          </>
+                        )}
                       </div>
                       
                       <div className="shrink-0" title={

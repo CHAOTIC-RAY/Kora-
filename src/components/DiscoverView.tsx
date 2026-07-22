@@ -3506,9 +3506,12 @@ function DiscoverView({
                   </div>
                 );
               }
-              return filteredCategories.map((cat) => {
-                const books = featuredData[cat.id];
-                if (!Array.isArray(books) || books.length === 0) return null;
+              // Randomize category order and books within each list for the featured widget
+              const shuffledCats = [...filteredCategories].sort(() => Math.random() - 0.5);
+              return shuffledCats.map((cat) => {
+                const rawBooks = featuredData[cat.id];
+                if (!Array.isArray(rawBooks) || rawBooks.length === 0) return null;
+                const books = [...rawBooks].sort(() => Math.random() - 0.5);
                 return (
                   <section key={cat.id} className="discover-category-section space-y-3">
                     <div className="flex items-center justify-between">
@@ -3633,7 +3636,7 @@ function DiscoverView({
                 </section>
               );
             });
-            })()
+          })()
           )}
 
           {/* Explore Categories Dashboard */}
@@ -3732,17 +3735,25 @@ function DiscoverView({
               </div>
 
               {/* Multi-Format Selector */}
-              {selectedBook.variants && selectedBook.variants.length > 1 && (
+              {(selectedBook.variants?.length > 0 || selectedBook.language || selectedBook.extension) && (
                 <div className="space-y-3 p-4 bg-kindle-bg/50 border border-kindle-border rounded-2xl">
-                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted text-center">Switch Format / Mirror</h4>
+                  <h4 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted text-center">
+                    {selectedBook.variants?.length > 1 ? "Switch Format / Mirror" : "Download Edition"}
+                  </h4>
                   <div className="flex flex-wrap justify-center gap-2">
-                    {selectedBook.variants.map((v: any, vIdx: number) => {
-                      const isActive = selectedVariant?.id === v.id || selectedVariant?.md5 === v.md5;
-                      const lang = formatLanguage(v.language || selectedBook?.language || "English");
+                    {(selectedBook.variants?.length
+                      ? selectedBook.variants
+                      : [selectedVariant || selectedBook]
+                    ).map((v: any, vIdx: number) => {
+                      const isActive =
+                        selectedVariant?.id === v.id ||
+                        selectedVariant?.md5 === v.md5 ||
+                        (!selectedBook.variants?.length && vIdx === 0);
+                      const lang = formatLanguage(v.language || selectedBook?.language || "");
                       return (
                         <button
                           key={vIdx}
-                          onClick={() => handleGetDownloadLinks(selectedBook, v)}
+                          onClick={() => selectedBook.variants?.length > 1 && handleGetDownloadLinks(selectedBook, v)}
                           className={`px-3 py-1.5 rounded-xl text-left border transition duration-200 cursor-pointer ${
                             isActive
                               ? "bg-kindle-accent/10 border-kindle-accent text-kindle-accent shadow-sm"
@@ -3750,17 +3761,15 @@ function DiscoverView({
                           }`}
                         >
                           <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-extrabold uppercase font-mono">{v.extension || "EPUB"}</span>
-                            <span className="text-[9px] opacity-70">· {v.size || "..."}</span>
-                            {lang && (
-                              <span className={`text-[8px] font-bold font-mono uppercase px-1.5 py-0.5 rounded border ${
-                                isActive
-                                  ? "bg-kindle-accent/20 border-kindle-accent/40 text-kindle-accent"
-                                  : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
-                              }`}>
-                                {lang}
-                              </span>
-                            )}
+                            <span className="text-[10px] font-extrabold uppercase font-mono">{v.extension || selectedBook.extension || "EPUB"}</span>
+                            <span className="text-[9px] opacity-70">· {v.size || selectedBook.size || "..."}</span>
+                            <span className={`text-[8px] font-bold font-mono uppercase px-1.5 py-0.5 rounded border ${
+                              isActive
+                                ? "bg-kindle-accent/20 border-kindle-accent/40 text-kindle-accent"
+                                : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
+                            }`}>
+                              {lang || "LANG?"}
+                            </span>
                           </div>
                         </button>
                       );

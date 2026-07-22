@@ -188,19 +188,19 @@ export async function fetchNetgalleyCategoryListings(
     const results: NetgalleyBookResult[] = [];
     const seenIds = new Set<string>();
 
-    $("a[href*='/catalog/book/']").each((_, el) => {
+    $("a[href*='/catalog/book/'], a[href*='/catalog/title/'], a[href*='/catalog/audiobook/']").each((_, el) => {
       if (results.length >= limit) return;
 
       const href = $(el).attr("href") || "";
-      const match = href.match(/\/catalog\/book\/(\d+)/);
+      const match = href.match(/\/catalog\/(?:book|title|audiobook)\/(\d+)/);
       const bookId = match ? match[1] : null;
 
       if (!bookId || seenIds.has(bookId)) return;
 
       const imgAlt = $(el).find("img").attr("alt") || "";
       let title = "";
-      if (imgAlt.toLowerCase().startsWith("book cover for ")) {
-        title = imgAlt.replace(/^book cover for\s+/i, "").trim();
+      if (/^(book|audio)?\s*cover for /i.test(imgAlt)) {
+        title = imgAlt.replace(/^(book|audio)?\s*cover for\s+/i, "").trim();
       }
 
       const parent = $(el).closest(
@@ -239,8 +239,9 @@ export async function fetchNetgalleyCategoryListings(
           author,
           publisher,
           coverUrl,
-          netgalleyUrl: `https://www.netgalley.com${href}`,
-          isAudiobook: targetPath.toLowerCase().includes("audiobook") || href.includes("audiobook")
+          netgalleyUrl: href.startsWith("http") ? href : `https://www.netgalley.com${href}`,
+          isAudiobook:
+            targetPath.toLowerCase().includes("audiobook") || href.includes("audiobook"),
         });
       }
     });

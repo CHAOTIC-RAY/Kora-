@@ -28,6 +28,13 @@ import {
 } from "./src/lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./src/lib/libgenProxy";
+import {
+  getNetgalleyCoverUrl,
+  getNetgalleyBookDetails,
+  getNetgalleyCategories,
+  fetchNetgalleyCategoryListings,
+  searchNetgalleyCatalog,
+} from "./src/lib/netgalley";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./src/lib/feedServer";
 
 dotenv.config();
@@ -2233,9 +2240,43 @@ app.post("/api/goodreads/reviews", express.json(), async (req, res) => {
 // Cover lookup endpoint - redirects to best available cover
 app.get("/api/cover-redirect", async (req, res) => {
   try {
-    const { title, author, isbn, md5 } = req.query;
+    const { title, author, isbn, md5, type, isAudiobook: isAudioParam, media } = req.query;
+    const isAudiobook =
+      isAudioParam === "true" || type === "audiobook" || media === "audio";
 
-    // 1. Try NYT first for best quality covers
+    const proxyImage = async (imgUrl: string) => {
+      try {
+        const imgRes = await fetch(imgUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36",
+            Referer: "https://www.netgalley.com/",
+          },
+        });
+        if (imgRes.ok) {
+          res.setHeader("Content-Type", imgRes.headers.get("content-type") || "image/jpeg");
+          res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+          const arrayBuffer = await imgRes.arrayBuffer();
+          return res.send(Buffer.from(arrayBuffer));
+        }
+      } catch (_) {}
+      return null;
+    };
+
+    // 1. AUDIOBOOKS: NetGalley is the primary cover source
+    if (isAudiobook && title) {
+      try {
+        const ngCover = await getNetgalleyCoverUrl(String(title), String(author || ""), {
+          isAudiobook: true,
+        });
+        if (ngCover) {
+          const proxied = await proxyImage(ngCover);
+          if (proxied) return;
+        }
+      } catch (_) {}
+    }
+
+    // 2. Try NYT first for best quality covers
     if (title) {
       const nytCover = await findNytCover(title as string, (author as string) || "");
       if (nytCover) {
@@ -2243,12 +2284,12 @@ app.get("/api/cover-redirect", async (req, res) => {
       }
     }
 
-    // 2. Try OpenLibrary by ISBN
+    // 3. Try OpenLibrary by ISBN
     if (isbn && /^\d{10,13}$/.test(isbn as string)) {
       return res.redirect(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`);
     }
 
-    // 3. Try OpenLibrary by title/author
+    // 4. Try OpenLibrary by title/author
     if (title) {
       const searchUrl = new URL("https://openlibrary.org/search.json");
       searchUrl.searchParams.append("title", title as string);
@@ -2268,7 +2309,18 @@ app.get("/api/cover-redirect", async (req, res) => {
       }
     }
 
-    // 4. Fallback to Anna's Archive by MD5 (proxied to bypass hotlinking/SSL issues)
+    // 5. BOOKS: NetGalley as secondary main source for covers
+    if (title) {
+      try {
+        const ngCover = await getNetgalleyCoverUrl(String(title), String(author || ""));
+        if (ngCover) {
+          const proxied = await proxyImage(ngCover);
+          if (proxied) return;
+        }
+      } catch (_) {}
+    }
+
+    // 6. Fallback to Anna's Archive by MD5 (proxied to bypass hotlinking/SSL issues)
     if (md5) {
       const domains = ["annas-archive.org", "annas-archive.se", "annas-archive.li", "annas-archive.gl"];
       for (const domain of domains) {
@@ -2290,7 +2342,7 @@ app.get("/api/cover-redirect", async (req, res) => {
       }
     }
 
-    // 5. Try Google Books API fallback
+    // 7. Try Google Books API fallback
     if (title) {
       try {
         const gUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(`intitle:${title as string} ${author ? `inauthor:${author}` : ""}`)}&maxResults=1`;
@@ -2310,6 +2362,43 @@ app.get("/api/cover-redirect", async (req, res) => {
   } catch (err: any) {
     console.error("Cover redirect failed:", err);
     res.status(500).send("Cover lookup error");
+  }
+});
+
+// NetGalley catalog APIs (parity with Cloudflare worker)
+app.get("/api/netgalley/search", async (req, res) => {
+  try {
+    const q = String(req.query.q || "");
+    const isAudiobook = req.query.isAudiobook === "true" || req.query.type === "audiobook";
+    const results = await searchNetgalleyCatalog(q, { isAudiobook, limit: 20 });
+    res.json({ results });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "NetGalley search failed" });
+  }
+});
+
+app.get("/api/netgalley/book", async (req, res) => {
+  try {
+    const title = String(req.query.title || "");
+    const author = String(req.query.author || "");
+    const book = await getNetgalleyBookDetails(title, author);
+    res.json({ book });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "NetGalley book lookup failed" });
+  }
+});
+
+app.get("/api/netgalley/categories", (_req, res) => {
+  res.json({ categories: getNetgalleyCategories() });
+});
+
+app.get("/api/netgalley/category", async (req, res) => {
+  try {
+    const cat = String(req.query.cat || "");
+    const books = await fetchNetgalleyCategoryListings(cat, 24);
+    res.json({ books });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "NetGalley category failed" });
   }
 });
 

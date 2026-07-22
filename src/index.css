@@ -386,16 +386,21 @@
 
 .reader-select-surface,
 .reader-select-surface * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Annotate mode: allow native text selection (scroll + paged long-press rebuild) */
+#epub-reader-container.annotate-on .reader-select-surface,
+#epub-reader-container.annotate-on .reader-select-surface * {
   -webkit-user-select: text !important;
   user-select: text !important;
   -webkit-touch-callout: default;
 }
 
-/* Allow native text selection gestures; pan-y alone made column hit-testing worse on Android */
-#epub-reader-container .reader-select-surface {
+#epub-reader-container.annotate-on .reader-select-surface {
   touch-action: auto;
-  -webkit-user-select: text !important;
-  user-select: text !important;
 }
 
 /* Keep highlight marks selectable but clearly painted above EPUB theme colors */

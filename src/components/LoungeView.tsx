@@ -410,27 +410,41 @@ export default function LoungeView({
   }, [hasContinueBook, hasContinueAudio, hasDiscoverTrending, hasDiscoverAudio]);
 
   const continueBook = useMemo(() => {
-    const freshLastRead = lastReadBook ? books.find((b) => b.id === lastReadBook.id) || lastReadBook : null;
+    const freshLastRead = lastReadBook
+      ? books.find((b) => b.id === lastReadBook.id) || lastReadBook
+      : null;
+    // Prefer live library metadata (covers update after ensureWalkthroughBook)
+    const withFreshCover = (book: BookMetadata | null | undefined) => {
+      if (!book) return null;
+      const live = books.find((b) => b.id === book.id);
+      return live ? { ...book, ...live, coverUrl: live.coverUrl || book.coverUrl } : book;
+    };
     if (modes.continue === "audio") {
-      return (
+      return withFreshCover(
         recentAudio.find((b) => b.id === freshLastRead?.id) ||
-        recentAudio[0] ||
-        (freshLastRead && isAudiobook(freshLastRead) ? freshLastRead : null)
+          recentAudio[0] ||
+          (freshLastRead && isAudiobook(freshLastRead) ? freshLastRead : null)
       );
     }
-    return (
+    return withFreshCover(
       recentBooks.find((b) => b.id === freshLastRead?.id) ||
-      (freshLastRead && !isAudiobook(freshLastRead) ? freshLastRead : null) ||
-      recentBooks[0] ||
-      null
+        (freshLastRead && !isAudiobook(freshLastRead) ? freshLastRead : null) ||
+        recentBooks[0] ||
+        null
     );
   }, [modes.continue, recentBooks, recentAudio, lastReadBook, books]);
 
   const shelfItems = useMemo(() => {
     const pool = modes.continue === "audio" ? recentAudio : recentBooks;
-    const rest = continueBook ? pool.filter((b) => b.id !== continueBook.id) : pool;
-    return (rest.length ? rest : pool).slice(0, 7);
-  }, [modes.continue, recentBooks, recentAudio, continueBook]);
+    const freshen = (book: BookMetadata) => {
+      const live = books.find((b) => b.id === book.id);
+      return live ? { ...book, ...live, coverUrl: live.coverUrl || book.coverUrl } : book;
+    };
+    const rest = continueBook
+      ? pool.filter((b) => b.id !== continueBook.id).map(freshen)
+      : pool.map(freshen);
+    return (rest.length ? rest : pool.map(freshen)).slice(0, 7);
+  }, [modes.continue, recentBooks, recentAudio, continueBook, books]);
 
   const newsItems = useMemo(() => {
     void feedTick;

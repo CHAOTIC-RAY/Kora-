@@ -11,7 +11,7 @@ import { storeBookFile, getBookFile } from "../db/indexedDB";
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
 /** Bump to rebuild EPUB for users who already have an older copy */
-export const WALKTHROUGH_CONTENT_VERSION = 10;
+export const WALKTHROUGH_CONTENT_VERSION = 11;
 
 /** Static guidebook-style cover (served from /public). */
 export const WALKTHROUGH_COVER_URL = "/getting-started-kora-cover.svg";
@@ -220,9 +220,21 @@ export async function ensureWalkthroughBook(userId: string): Promise<BookMetadat
   const existingMeta = getLocalLibrary().find((b) => b.id === WALKTHROUGH_BOOK_ID);
   const cached = await getBookFile(WALKTHROUGH_BOOK_ID);
   const needsRebuild = !cached?.blob || storedContentVersion() < WALKTHROUGH_CONTENT_VERSION;
+  const needsCoverRefresh =
+    !!existingMeta &&
+    (!existingMeta.coverUrl ||
+      existingMeta.coverUrl.includes("getting-started-kora-cover.jpg") ||
+      existingMeta.coverUrl !== WALKTHROUGH_COVER_URL);
 
   if (existingMeta && cached?.blob && !needsRebuild) {
-    return existingMeta;
+    if (!needsCoverRefresh) return existingMeta;
+    const patched = {
+      ...existingMeta,
+      coverUrl: WALKTHROUGH_COVER_URL,
+      dateModified: Date.now(),
+    };
+    await syncBookToCloud(userId || "", patched);
+    return patched;
   }
 
   const blob = await buildEpubFromText({
@@ -237,7 +249,7 @@ export async function ensureWalkthroughBook(userId: string): Promise<BookMetadat
         ...existingMeta,
         size: `${(blob.size / 1024).toFixed(1)} KB`,
         dateModified: Date.now(),
-        coverUrl: existingMeta.coverUrl || WALKTHROUGH_COVER_URL,
+        coverUrl: WALKTHROUGH_COVER_URL,
         // Drop legacy inflated dateAdded that forced this book to the top.
         dateAdded:
           typeof existingMeta.dateAdded === "number" &&

@@ -1675,6 +1675,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const handleContainerClick = (e: React.PointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
 
+    // Annotate mode: never turn pages on tap — selection / toolbar only.
+    if (annotateModeRef.current) {
+      const sel = window.getSelection();
+      if ((sel && sel.toString().trim().length > 0) || selectedText.trim().length > 0) {
+        if (Date.now() - justSelectedAtRef.current < 600) return;
+        if (!target.closest?.("[data-kora-selection-ui]")) {
+          // Keep selection unless tapping empty chrome outside the text
+          if (!target.closest?.(".reader-select-surface, #epub-text-viewer")) {
+            dismissSelection();
+          }
+        }
+      }
+      return;
+    }
+
     // Handle internal TOC links (data-epub-href)
     const epubLink = target.closest("[data-epub-href]") as HTMLElement | null;
     if (epubLink) {
@@ -1775,6 +1790,22 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const sel = window.getSelection();
     const hasSelection =
       (sel && sel.toString().trim().length > 0) || selectedText.trim().length > 0;
+
+    // Annotate mode: do not turn pages or close on swipe — let selection finish.
+    if (annotateModeRef.current) {
+      if (hasSelection && Date.now() - justSelectedAtRef.current >= 600) {
+        if (Math.abs(diffX) < 12 && Math.abs(diffY) < 12) {
+          const target = e.target as HTMLElement;
+          if (
+            !target.closest?.("[data-kora-selection-ui]") &&
+            !target.closest?.(".reader-select-surface, #epub-text-viewer")
+          ) {
+            dismissSelection();
+          }
+        }
+      }
+      return;
+    }
 
     if (hasSelection) {
       // Don't dismiss on the same gesture that created the selection (long-press / drag).
@@ -2672,7 +2703,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       data-scroll-mode={useScrollLayout ? "continuous" : "paged"}
       className={`fixed inset-0 z-[100] flex flex-col touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200 ${
         useScrollLayout ? "kora-scroll-reader" : "kora-paged-reader"
-      }${isWalkthroughGuide ? " kora-walkthrough-reader" : ""}`}
+      }${isWalkthroughGuide ? " kora-walkthrough-reader" : ""}${annotateMode ? " annotate-on" : ""}`}
       style={{
         paddingTop: "var(--kora-safe-top)",
         paddingBottom: "var(--kora-safe-bottom)",
