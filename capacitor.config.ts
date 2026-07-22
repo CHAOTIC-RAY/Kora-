@@ -51,6 +51,11 @@ const config: CapacitorConfig = {
       resize: "body",
       resizeOnFullScreen: true,
     },
+    FirebaseAuthentication: {
+      // JS SDK remains canonical; native layer only obtains the Google credential.
+      skipNativeAuth: true,
+      providers: ["google.com"],
+    },
   },
 };
 

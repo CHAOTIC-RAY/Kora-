@@ -13,11 +13,10 @@ import {
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  signOut, 
+  signOut as firebaseSignOut,
   User,
-  GoogleAuthProvider,
-  signInWithPopup
 } from "firebase/auth";
+import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
 import LibraryManager from "./components/LibraryManager";
@@ -1695,7 +1694,7 @@ export default function App() {
             const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
             if (Date.now() - creationTime >= thirtyDaysMs) {
               console.log("Guest account expired (30 days limit). Resetting session...");
-              await signOut(auth);
+              await firebaseSignOut(auth);
             }
           } catch (e) {
             console.error("Error checking guest expiration:", e);
@@ -2079,7 +2078,7 @@ export default function App() {
     }
   }
 
-  // Handle Google Sign-In
+  // Handle Google Sign-In (native Credential Manager on APK, popup on web)
   async function handleGoogleSignIn() {
     if (!auth) {
       setAuthError("Authentication is unavailable. Check your connection or disable ad blockers for this site.");
@@ -2088,13 +2087,17 @@ export default function App() {
     setAuthError(null);
     setLoadingAuth(true);
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      await signInWithGoogle(auth);
       setShowAuthModal(false);
     } catch (err: any) {
       console.error("Google sign in failed:", err);
-      // Suppress showing canceled error if user closed the popup
-      if (err.code !== "auth/popup-closed-by-user") {
+      // Suppress canceled / closed flows
+      const code = err?.code || "";
+      if (
+        code !== "auth/popup-closed-by-user" &&
+        code !== "auth/cancelled-popup-request" &&
+        !/cancel|dismiss|closed/i.test(String(err?.message || ""))
+      ) {
         setAuthError(err.message || "Google Sign-In failed.");
       }
     } finally {
@@ -2104,14 +2107,12 @@ export default function App() {
 
   // Handle logout (returns to anonymous account)
   async function handleSignOut() {
-    if (auth) {
-      try {
-        await signOut(auth);
-        setUser(null);
-        // Will auto trigger onAuthStateChanged and sign back in anonymously
-      } catch (err) {
-        console.error("Sign out failed:", err);
-      }
+    try {
+      await signOutGoogle(auth);
+      setUser(null);
+      // Will auto trigger onAuthStateChanged and sign back in anonymously
+    } catch (err) {
+      console.error("Sign out failed:", err);
     }
   }
 
