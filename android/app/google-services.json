@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "591622610805-tdisn0i68qbui7p4o37e5ugt7caraqm3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "app.kora.reader",
+            "certificate_hash": "cbdcce55454e3e48d4ee1bddca9a66f0fe80d1e9"
+          }
+        },
+        {
           "client_id": "591622610805-d7rk0dflv6bbmgebsof9f932nj0lcd11.apps.googleusercontent.com",
           "client_type": 3
         }
