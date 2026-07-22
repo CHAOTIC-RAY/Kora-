@@ -494,7 +494,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   const useDoubleColumns = doubleColumns && !isMobile;
   const isWalkthroughGuide = isWalkthroughBook(book);
-  const useScrollLayout = isWalkthroughGuide || isContinuous;
+  // Respect Continuous Scroll preference for every book (including the guide).
+  // Overflow content should paginate to the next page when continuous mode is off.
+  const useScrollLayout = isContinuous;
   const columnGapPx = useDoubleColumns ? 40 : 0;
   // Full-width tap zones fight touch text selection on phones — keep turns in the margins.
   const effectivePageTurnMode =

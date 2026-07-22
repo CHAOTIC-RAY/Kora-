@@ -2171,13 +2171,6 @@ export default function App() {
     setActiveBook(book);
     setLastReadBook(book);
     localStorage.setItem("kindle_last_read", JSON.stringify(book));
-    if (isWalkthroughBook(book)) {
-      setReaderPrefs((prev: typeof readerPrefs) => {
-        const next = { ...prev, isContinuous: true };
-        localStorage.setItem("kora_reader_prefs", JSON.stringify(next));
-        return next;
-      });
-    }
     emitGuideEvent("kora-guide:reader-opened", { bookId: book.id });
     if (isWalkthroughBook(book)) {
       emitGuideEvent("kora-guide:walkthrough-opened", { bookId: book.id });
