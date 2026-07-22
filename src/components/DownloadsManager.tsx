@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Download, CheckCircle, Clock, FileWarning, Trash2, Globe, Sparkles, AlertTriangle, ArrowRight, Loader2, Pause, Play } from "lucide-react";
+import { Download, CheckCircle, Clock, FileWarning, Trash2, Globe, Sparkles, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { storeBookFile } from "../db/indexedDB";
 
@@ -9,8 +9,6 @@ interface DownloadsManagerProps {
   downloads: any[];
   onSetDownloads: (downloads: any[]) => void;
   onRetryDownload?: (dl: any) => void;
-  onPauseDownload?: (downloadId: string) => void;
-  onResumeDownload?: (downloadId: string) => void;
 }
 
 export default function DownloadsManager({ 
@@ -18,9 +16,7 @@ export default function DownloadsManager({
   onRefreshLibrary,
   downloads,
   onSetDownloads,
-  onRetryDownload,
-  onPauseDownload,
-  onResumeDownload,
+  onRetryDownload
 }: DownloadsManagerProps) {
   const [clipperUrl, setClipperUrl] = useState<string>("");
   const [clipStatus, setClipStatus] = useState<"idle" | "fetching" | "converting" | "saving" | "success" | "error">("idle");
@@ -260,40 +256,9 @@ export default function DownloadsManager({
                       </div>
                     </div>
                   )}
-                  {dl.status === "paused" && (
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-[10px] font-mono font-bold text-kindle-text-muted">
-                        {dl.percent != null ? `${dl.percent}% · Paused` : "Paused"}
-                      </span>
-                      <div className="w-20 sm:w-32 h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden border border-kindle-border">
-                        <div
-                          className="h-full bg-kindle-text-muted/50 rounded-full"
-                          style={{ width: `${dl.percent || 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
                   {dl.status === "error" && <FileWarning className="w-5 h-5 text-red-500" />}
-                  {dl.status === "downloading" && onPauseDownload && (
-                    <button
-                      title="Pause download"
-                      onClick={() => onPauseDownload(dl.id)}
-                      className="p-2 text-kindle-text-muted hover:text-kindle-accent transition"
-                    >
-                      <Pause className="w-4 h-4" />
-                    </button>
-                  )}
-                  {dl.status === "paused" && onResumeDownload && (
-                    <button
-                      title="Resume download"
-                      onClick={() => onResumeDownload(dl.id)}
-                      className="p-2 text-kindle-text-muted hover:text-kindle-accent transition"
-                    >
-                      <Play className="w-4 h-4" />
-                    </button>
-                  )}
                   {/* Cancel an in-progress download (tells the SW to abort) */}
-                  {(dl.status === "downloading" || dl.status === "paused") && (
+                  {dl.status === "downloading" && (
                     <button
                       title="Cancel download"
                       onClick={() => {

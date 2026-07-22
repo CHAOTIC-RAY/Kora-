@@ -5,8 +5,8 @@ import {
   User as UserIcon, ShieldCheck, BookOpen,
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
-  Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, Circle, Sparkles, Wifi
+  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper
 } from "lucide-react";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import {
@@ -28,41 +28,9 @@ import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
-import { APP_SKINS, type AppSkinId } from "../lib/appSkin";
-import {
-  isWalkthroughAdvancedMenuEnabled,
-  setWalkthroughAdvancedMenuEnabled,
-} from "../lib/walkthroughBook";
-
-const SKIN_PREVIEW: Record<
-  AppSkinId,
-  { preview: string; dots: string; icon: typeof Layout }
-> = {
-  kora: {
-    preview: "border-kindle-border bg-kindle-card/80 backdrop-blur-sm",
-    dots: "rounded-md",
-    icon: Layout,
-  },
-  paper: {
-    preview: "border-amber-900/15 bg-[#f4ede3]",
-    dots: "rounded-sm",
-    icon: BookOpen,
-  },
-  studio: {
-    preview: "border-2 border-kindle-text bg-kindle-bg",
-    dots: "rounded-none",
-    icon: AlignLeft,
-  },
-  soft: {
-    preview: "border-kindle-border/50 bg-kindle-card shadow-md",
-    dots: "rounded-full",
-    icon: Circle,
-  },
-};
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
-import EbookToolsPanel from "./EbookToolsPanel";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -87,17 +55,13 @@ interface SettingsViewProps {
   grayscaleCovers: boolean;
   hideCovers?: boolean;
   displayTheme: string;
-  appSkin?: AppSkinId;
   dailyRemindersEnabled?: boolean;
   onChangeDailyReminders?: (enabled: boolean) => void;
   dailyNewsBriefEnabled?: boolean;
   onChangeDailyNewsBrief?: (enabled: boolean) => void;
-  loungeEnabled?: boolean;
-  onChangeLoungeEnabled?: (enabled: boolean) => void;
   onToggleGrayscale: () => void;
   onToggleHideCovers?: () => void;
   onChangeTheme: (theme: string) => void;
-  onChangeAppSkin?: (skin: AppSkinId) => void;
   onSignOut: () => void;
   onSignIn: () => void;
   readerPrefs: ReaderPrefs;
@@ -170,17 +134,13 @@ function SettingsView({
   grayscaleCovers,
   hideCovers = false,
   displayTheme,
-  appSkin = "kora",
   dailyRemindersEnabled = false,
   onChangeDailyReminders,
   dailyNewsBriefEnabled = false,
   onChangeDailyNewsBrief,
-  loungeEnabled = true,
-  onChangeLoungeEnabled,
   onToggleGrayscale,
   onToggleHideCovers,
   onChangeTheme,
-  onChangeAppSkin,
   onSignOut,
   onSignIn,
   readerPrefs,
@@ -213,19 +173,9 @@ function SettingsView({
   });
 
   const [newsReaderPrefs, setNewsReaderPrefs] = useState<NewsReaderPrefs>(() => loadNewsReaderPrefs());
-  const [walkthroughAdvancedMenu, setWalkthroughAdvancedMenu] = useState(() =>
-    isWalkthroughAdvancedMenuEnabled()
-  );
   const setNRP = (patch: Partial<NewsReaderPrefs>) => {
     setNewsReaderPrefs(patchNewsReaderPrefs(patch));
   };
-
-  useEffect(() => {
-    const syncWalkthroughMenu = () =>
-      setWalkthroughAdvancedMenu(isWalkthroughAdvancedMenuEnabled());
-    window.addEventListener("kora-walkthrough-visibility", syncWalkthroughMenu);
-    return () => window.removeEventListener("kora-walkthrough-visibility", syncWalkthroughMenu);
-  }, []);
 
   useEffect(() => {
     const sync = () => setNewsReaderPrefs(loadNewsReaderPrefs());
@@ -248,30 +198,6 @@ function SettingsView({
       [key]: !prev[key]
     }));
   };
-
-  const scrollToToolsSection = (sectionId: string, beforeScroll?: () => void) => {
-    beforeScroll?.();
-    requestAnimationFrame(() => {
-      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  };
-
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      const open = (e as CustomEvent).detail?.open as string | undefined;
-      if (open === "tools-sync") {
-        scrollToToolsSection("devices-sync-panel");
-      } else if (open === "tools-tts") {
-        scrollToToolsSection("tts-tools-panel", () => {
-          setExpandedCategories((prev) =>
-            prev.tts ? prev : { ...prev, tts: true }
-          );
-        });
-      }
-    };
-    window.addEventListener("kora-guide:open", onOpen);
-    return () => window.removeEventListener("kora-guide:open", onOpen);
-  }, []);
 
   const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
   const [showLiveLogs, setShowLiveLogs] = useState(false);
@@ -526,7 +452,7 @@ function SettingsView({
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
     { id: "font-sans", label: "Sans" },
-    { id: "font-lexend", label: "Lexend" },
+    { id: "font-lexend", label: "Rakuten Sans" },
     { id: "font-opendyslexic", label: "OpenDyslexic" },
     { id: "font-mono", label: "Mono" },
     { id: "font-bookerly", label: "Bookerly" },
@@ -649,63 +575,7 @@ function SettingsView({
               </Row>
 
               <div className="space-y-2.5">
-                <div>
-                  <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">App Skin</h4>
-                  <p className="text-[10px] text-kindle-text-muted mt-1">
-                    Skins change chrome, materials, shapes, and UI fonts. Display themes only recolor the active skin. Reader fonts are separate.
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {APP_SKINS.map((skin) => {
-                    const selected = appSkin === skin.id;
-                    const preview = SKIN_PREVIEW[skin.id];
-                    const SkinIcon = preview.icon;
-                    return (
-                      <button
-                        key={skin.id}
-                        type="button"
-                        onClick={() => onChangeAppSkin?.(skin.id)}
-                        className={`relative overflow-hidden flex flex-col items-start gap-2 p-3 rounded-2xl border text-left transition cursor-pointer ${
-                          selected
-                            ? "border-kindle-accent shadow-xs ring-1 ring-kindle-accent/30 bg-kindle-bg"
-                            : "border-kindle-border hover:bg-kindle-bg opacity-80"
-                        }`}
-                      >
-                        <div
-                          className={`w-full h-14 rounded-xl border overflow-hidden ${preview.preview}`}
-                        >
-                          <div className="h-full flex items-end justify-center pb-2 px-3 gap-1.5">
-                            {[0, 1, 2, 3].map((i) => (
-                              <span
-                                key={i}
-                                className={`w-3.5 h-3.5 ${preview.dots} ${
-                                  i === 1 ? "bg-kindle-accent" : "bg-kindle-border"
-                                }`}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <SkinIcon className="w-3.5 h-3.5 text-kindle-text-muted" />
-                          <span className="text-[10px] font-bold uppercase tracking-widest">{skin.label}</span>
-                        </div>
-                        <span className="text-[9px] text-kindle-text-muted leading-snug">{skin.description}</span>
-                        <span className="text-[8px] text-kindle-text-muted/80 uppercase tracking-wider font-mono">
-                          UI: {skin.uiFont}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-2.5">
-                <div>
-                  <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
-                  <p className="text-[10px] text-kindle-text-muted mt-1">
-                    Color palette only — White, Yellow, Grey, or Blue — for whichever skin is selected.
-                  </p>
-                </div>
+                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => onChangeTheme("theme-light-white")}
@@ -745,37 +615,30 @@ function SettingsView({
 
         {view === "tools" && (
         <>
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-kindle-accent" />
+            <h2 className="text-2xl font-lexend font-bold text-kindle-text">Tools</h2>
+          </div>
+          <p className="text-[11px] text-kindle-text-muted leading-relaxed max-w-2xl">
+            Import, convert, and manage your ebooks. EPUB and PDF utilities live here.
+          </p>
+        </section>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { id: "import", icon: Upload, label: "Import", desc: "Add files", sectionId: "import-tools-panel" },
-            { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox", sectionId: "import-tools-panel" },
-            { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch", sectionId: "folder-tools-panel" },
-            { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert", sectionId: "tts-tools-panel" },
-            { id: "sync", icon: Wifi, label: "Sync", desc: "Devices & cloud", sectionId: "devices-sync-panel" },
+            { id: "import", icon: Upload, label: "Import", desc: "Add files" },
+            { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox" },
+            { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch" },
+            { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert" },
           ].map((tool) => (
             <button
               key={tool.id}
-              data-guide={
-                tool.id === "tts" ? "tools-tts" : tool.id === "sync" ? "tools-sync" : undefined
-              }
               onClick={() => {
-                if (tool.id === "cloud") {
-                  scrollToToolsSection(tool.sectionId, () => setShowCloudImport(true));
-                  return;
-                }
-                if (tool.id === "folder") {
-                  scrollToToolsSection(tool.sectionId, () => {
-                    if (!expandedCategories.folder) toggleCategory("folder");
-                  });
-                  return;
-                }
-                if (tool.id === "tts") {
-                  scrollToToolsSection(tool.sectionId, () => {
-                    if (!expandedCategories.tts) toggleCategory("tts");
-                  });
-                  return;
-                }
-                scrollToToolsSection(tool.sectionId);
+                if (tool.id === "cloud") setShowCloudImport(true);
+                else if (tool.id === "folder") toggleCategory("folder");
+                else if (tool.id === "tts") toggleCategory("tts");
+                else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
               className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
             >
@@ -790,58 +653,29 @@ function SettingsView({
           ))}
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {[
-            { id: "epub-tools", icon: FileText, label: "EPUB Tools", desc: "Extract, build, metadata" },
-            { id: "pdf-tools", icon: Files, label: "PDF Tools", desc: "Merge, rotate, split" },
-            { id: "clipper", icon: Globe, label: "Web Clipper", desc: "URL → ebook" },
-            { id: "highlights", icon: Download, label: "Highlights", desc: "Export Markdown" },
+            { icon: FileText, label: "EPUB Tools", desc: "Merge, split, metadata — coming soon", soon: true },
+            { icon: Files, label: "PDF Tools", desc: "Extract, compress, rotate — coming soon", soon: true },
           ].map((tool) => (
-            <button
-              key={tool.id}
-              type="button"
-              onClick={() => {
-                const target =
-                  tool.id === "clipper"
-                    ? "web-clipper-panel"
-                    : "ebook-tools-panel";
-                document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
-                if (tool.id !== "clipper") {
-                  window.dispatchEvent(new CustomEvent("kora-tools-focus", { detail: tool.id }));
-                }
-              }}
-              className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
+            <div
+              key={tool.label}
+              className="bg-kindle-card/60 border border-kindle-border/70 rounded-2xl p-4 flex flex-col gap-2 opacity-70"
             >
-              <div className="p-2 rounded-xl bg-kindle-bg border border-kindle-border w-fit">
-                <tool.icon className="w-4 h-4 text-kindle-accent" />
+              <div className="p-2 rounded-xl bg-kindle-bg/80 border border-kindle-border w-fit">
+                <tool.icon className="w-4 h-4 text-kindle-text-muted" />
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
                 <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
               </div>
-            </button>
+            </div>
           ))}
         </div>
 
-        <div id="ebook-tools-panel">
-          <EbookToolsPanel userId={userId} books={books as BookMetadata[]} />
-        </div>
+        <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
 
-        <div id="web-clipper-panel">
-          <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
-        </div>
-
-        <div id="devices-sync-panel" data-guide="tools-sync-panel">
-          {isActive ? (
-            <DevicesSyncPanel
-              userId={userId}
-              books={books}
-              onCachedIdsChanged={onCachedIdsChanged}
-            />
-          ) : null}
-        </div>
-
-        <section id="import-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
           <div className="flex items-center gap-2">
             <Upload className="w-4 h-4 text-kindle-accent" />
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Import Files</h3>
@@ -1217,16 +1051,6 @@ function SettingsView({
               <Row title="Daily News Brief" desc="Morning notification with headlines from your RSS feeds">
                 <Toggle on={dailyNewsBriefEnabled} onClick={() => onChangeDailyNewsBrief?.(!dailyNewsBriefEnabled)} />
               </Row>
-              <div className="rounded-xl border border-kindle-border bg-kindle-bg/60 px-3.5 py-3 space-y-1.5">
-                <p className="text-[11px] font-bold text-kindle-text">Home screen shortcuts</p>
-                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-                  With Kora installed as a PWA, long-press the app icon to pin Continue, News, Library, or Discover to your home screen.
-                  On Windows 11 (Edge), add Continue or Daily Brief from the Widgets board.
-                </p>
-              </div>
-              <Row title="Lounge tab" desc="Show the Lounge dashboard as your default home screen">
-                <Toggle on={loungeEnabled} onClick={() => onChangeLoungeEnabled?.(!loungeEnabled)} />
-              </Row>
             </div>
           )}
         </section>
@@ -1380,6 +1204,45 @@ function SettingsView({
 
         {view === "settings" && (
         <>
+        {showCloudImport && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
+            <div className="relative w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl shadow-2xl p-8 text-center text-kindle-text">
+              <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Cloud className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold mb-2">Cloud Connectivity</h3>
+              <p className="text-xs text-kindle-text-muted mb-8 leading-relaxed">
+                Connect your Google Drive or Dropbox to instantly sync your entire ebook collection. 
+                Secure OAuth integration ensures your data stays private.
+              </p>
+              <div className="space-y-3">
+                <button 
+                  className="w-full py-3.5 bg-[#4285F4] text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:brightness-110 transition cursor-pointer"
+                  onClick={() => alert("Cloud Sync Integration: Please set up Google OAuth in AI Studio settings to enable this feature.")}
+                >
+                  Connect Google Drive
+                </button>
+                <button 
+                  className="w-full py-3.5 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition cursor-pointer"
+                  onClick={() => setShowCloudImport(false)}
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Devices & cross-device sync — only when settings tab is visible */}
+        {view === "settings" && isActive ? (
+          <DevicesSyncPanel
+            userId={userId}
+            books={books}
+            onCachedIdsChanged={onCachedIdsChanged}
+          />
+        ) : null}
+
         {/* Data & Storage */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
@@ -1490,7 +1353,7 @@ function SettingsView({
         {view === "tools" && (
         <>
         {expandedCategories.folder && (
-        <section id="folder-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs space-y-5 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center justify-between gap-3 border-b border-kindle-border pb-3">
             <div className="flex items-center gap-3">
               <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
@@ -1671,7 +1534,7 @@ function SettingsView({
         )}
 
         {/* Read Aloud — collapsed by default, near bottom */}
-        <section id="tts-tools-panel" data-guide="tts-tools-panel" className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
           <div
             onClick={() => toggleCategory("tts")}
             className="flex items-center justify-between cursor-pointer select-none"
@@ -1738,19 +1601,6 @@ function SettingsView({
               <p className="text-[10px] leading-relaxed text-kindle-text-muted italic">
                 A minimal, high-performance reader environment for digital sovereignty.
               </p>
-              <Row
-                title="Walkthrough book options"
-                desc="Show edit, delete, and metadata actions on Getting started with Kora"
-              >
-                <Toggle
-                  on={walkthroughAdvancedMenu}
-                  onClick={() => {
-                    const next = !walkthroughAdvancedMenu;
-                    setWalkthroughAdvancedMenuEnabled(next);
-                    setWalkthroughAdvancedMenu(next);
-                  }}
-                />
-              </Row>
               {onOpenOnboarding && (
                 <button
                   type="button"
@@ -1765,36 +1615,6 @@ function SettingsView({
           </div>
         </section>
         </>
-        )}
-
-        {showCloudImport && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
-            <div className="relative w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl shadow-2xl p-8 text-center text-kindle-text">
-              <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Cloud className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-bold mb-2">Cloud Connectivity</h3>
-              <p className="text-xs text-kindle-text-muted mb-8 leading-relaxed">
-                Connect your Google Drive or Dropbox to instantly sync your entire ebook collection.
-                Secure OAuth integration ensures your data stays private.
-              </p>
-              <div className="space-y-3">
-                <button
-                  className="w-full py-3.5 bg-[#4285F4] text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:brightness-110 transition cursor-pointer"
-                  onClick={() => alert("Cloud Sync Integration: Please set up Google OAuth in AI Studio settings to enable this feature.")}
-                >
-                  Connect Google Drive
-                </button>
-                <button
-                  className="w-full py-3.5 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition cursor-pointer"
-                  onClick={() => setShowCloudImport(false)}
-                >
-                  Maybe Later
-                </button>
-              </div>
-            </div>
-          </div>
         )}
       </div>
     </div>

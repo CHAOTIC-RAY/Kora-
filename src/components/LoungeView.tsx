@@ -9,6 +9,7 @@ import {
   Play,
   Pause,
   ArrowRight,
+  Shuffle,
 } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";
 import { getFeedItems } from "../lib/feedStorage";
@@ -100,6 +101,30 @@ function dedupeFeatured(items: FeaturedBook[], limit = 12): FeaturedBook[] {
   return out;
 }
 
+const FALLBACK_FEATURED_BOOKS: FeaturedBook[] = [
+  { title: "Yesteryear", author: "Caro Claire Burke", coverUrl: "https://books.google.com/books/content?id=3R3mEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "The Calamity Club", author: "Kathryn Stockett", coverUrl: "https://books.google.com/books/content?id=4R3mEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Exquisite Enemy", author: "L.J. Shen", coverUrl: "https://books.google.com/books/content?id=5R3mEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Love You More", author: "Emily Giffin", coverUrl: "https://books.google.com/books/content?id=6R3mEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "The Correspondent", author: "Virginia Bailey", coverUrl: "https://books.google.com/books/content?id=7R3mEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Carl's Doomsday Scenario", author: "Matt Dinniman", coverUrl: "https://books.google.com/books/content?id=8R3mEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Project Hail Mary", author: "Andy Weir", coverUrl: "https://books.google.com/books/content?id=5DsDEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Tomorrow, and Tomorrow, and Tomorrow", author: "Gabrielle Zevin", coverUrl: "https://books.google.com/books/content?id=8mE0EAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "The Seven Husbands of Evelyn Hugo", author: "Taylor Jenkins Reid", coverUrl: "https://books.google.com/books/content?id=P3R3CwAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Demon Copperhead", author: "Barbara Kingsolver", coverUrl: "https://books.google.com/books/content?id=2dFpEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Fourth Wing", author: "Rebecca Yarros", coverUrl: "https://books.google.com/books/content?id=bL-ZEAAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+  { title: "Lessons in Chemistry", author: "Bonnie Garmus", coverUrl: "https://books.google.com/books/content?id=XmR3CwAAQBAJ&printsec=frontcover&img=1&zoom=1" },
+];
+
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 function isAudiobookCacheKey(key: string) {
   const k = key.toLowerCase();
   return k.startsWith("audiobooks-") || k.includes("audiobook");
@@ -108,26 +133,33 @@ function isAudiobookCacheKey(key: string) {
 function loadFeaturedFromCache(opts?: { audiobooksOnly?: boolean }): FeaturedBook[] {
   try {
     const raw = localStorage.getItem("kora_discover_featured_cache");
-    if (!raw) return [];
-    const data = JSON.parse(raw) as Record<string, any[]>;
     const pooled: FeaturedBook[] = [];
     const audioOnly = !!opts?.audiobooksOnly;
 
-    for (const [key, list] of Object.entries(data || {})) {
-      if (!Array.isArray(list)) continue;
-      const audioKey = isAudiobookCacheKey(key);
-      if (audioOnly && !audioKey) continue;
-      if (!audioOnly && audioKey) continue;
+    if (raw) {
+      const data = JSON.parse(raw) as Record<string, any[]>;
+      for (const [key, list] of Object.entries(data || {})) {
+        if (!Array.isArray(list)) continue;
+        const audioKey = isAudiobookCacheKey(key);
+        if (audioOnly && !audioKey) continue;
+        if (!audioOnly && audioKey) continue;
 
-      for (const book of list.slice(0, audioOnly ? 12 : 8)) {
-        const normalized = normalizeFeaturedBook(book, audioKey ? "audiobook" : "ebook");
-        if (normalized) pooled.push(normalized);
+        for (const book of list) {
+          const normalized = normalizeFeaturedBook(book, audioKey ? "audiobook" : "ebook");
+          if (normalized) pooled.push(normalized);
+        }
       }
     }
 
-    return dedupeFeatured(pooled, audioOnly ? 16 : 12);
+    if (pooled.length === 0) {
+      pooled.push(...FALLBACK_FEATURED_BOOKS);
+    }
+
+    // Shuffle pooled items randomly so hero book and featured booklist are chosen randomly
+    const shuffled = shuffleArray(pooled);
+    return dedupeFeatured(shuffled, audioOnly ? 20 : 16);
   } catch {
-    return [];
+    return shuffleArray(FALLBACK_FEATURED_BOOKS);
   }
 }
 
@@ -306,6 +338,8 @@ export default function LoungeView({
       if (id === "discover") {
         discoverPauseUntil.current = Date.now() + MANUAL_PAUSE_MS;
         discoverLastFlipAt.current = Date.now();
+        setFeatured(loadFeaturedFromCache({ audiobooksOnly: false }));
+        setFeaturedAudio(loadFeaturedFromCache({ audiobooksOnly: true }));
       }
     }
     saveLoungeMode(id, mode);
@@ -376,20 +410,21 @@ export default function LoungeView({
   }, [hasContinueBook, hasContinueAudio, hasDiscoverTrending, hasDiscoverAudio]);
 
   const continueBook = useMemo(() => {
+    const freshLastRead = lastReadBook ? books.find((b) => b.id === lastReadBook.id) || lastReadBook : null;
     if (modes.continue === "audio") {
       return (
-        recentAudio.find((b) => b.id === lastReadBook?.id) ||
+        recentAudio.find((b) => b.id === freshLastRead?.id) ||
         recentAudio[0] ||
-        (lastReadBook && isAudiobook(lastReadBook) ? lastReadBook : null)
+        (freshLastRead && isAudiobook(freshLastRead) ? freshLastRead : null)
       );
     }
     return (
-      recentBooks.find((b) => b.id === lastReadBook?.id) ||
-      (lastReadBook && !isAudiobook(lastReadBook) ? lastReadBook : null) ||
+      recentBooks.find((b) => b.id === freshLastRead?.id) ||
+      (freshLastRead && !isAudiobook(freshLastRead) ? freshLastRead : null) ||
       recentBooks[0] ||
       null
     );
-  }, [modes.continue, recentBooks, recentAudio, lastReadBook]);
+  }, [modes.continue, recentBooks, recentAudio, lastReadBook, books]);
 
   const shelfItems = useMemo(() => {
     const pool = modes.continue === "audio" ? recentAudio : recentBooks;
@@ -841,6 +876,19 @@ export default function LoungeView({
                   <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
                     Discover
                   </h3>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFeatured(loadFeaturedFromCache({ audiobooksOnly: false }));
+                      setFeaturedAudio(loadFeaturedFromCache({ audiobooksOnly: true }));
+                    }}
+                    className="p-1 rounded-full hover:bg-white/10 text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+                    title="Randomize featured book & list"
+                    aria-label="Randomize featured book & list"
+                  >
+                    <Shuffle className="w-3 h-3" />
+                  </button>
                 </div>
                 <ModeSwitch
                   value={modes.discover}

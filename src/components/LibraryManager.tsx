@@ -58,15 +58,30 @@ function LibraryDownloadOverlay({
   const isError = download.status === "error";
   const isPaused = download.status === "paused";
   return (
-    <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-kindle-card/70 backdrop-blur-[1px]">
+    <div
+      className={`absolute inset-0 z-20 flex flex-col items-center justify-center ${
+        isError
+          ? "bg-black/75 dark:bg-black/85 backdrop-blur-[2px]"
+          : "bg-kindle-card/75 backdrop-blur-[1px]"
+      }`}
+    >
       {!hideCovers && book.coverUrl ? (
         <img
           src={resolveCoverImageSrc(book.coverUrl) || ""}
-          className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale"
+          className="absolute inset-0 w-full h-full object-cover opacity-25 grayscale saturate-0 brightness-75 contrast-125"
           referrerPolicy="no-referrer"
           alt=""
         />
       ) : null}
+
+      {/* Top right status badge */}
+      {isError && (
+        <span className="absolute top-2 right-2 z-30 px-2 py-0.5 rounded-md bg-red-600/90 border border-red-500/50 text-[8px] font-bold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
+          <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+          <span>FAILED</span>
+        </span>
+      )}
+
       <div className="absolute inset-0 overflow-hidden">
         {!isError && !isPaused && (
           <div
@@ -84,7 +99,7 @@ function LibraryDownloadOverlay({
               e.preventDefault();
               onRetry();
             }}
-            className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-kindle-accent/15 hover:text-kindle-accent active:scale-90 transition"
+            className="p-1.5 rounded-full bg-red-600 text-white shadow-md hover:bg-red-500 active:scale-90 transition"
             title="Retry download"
             aria-label="Retry download"
           >
@@ -144,7 +159,7 @@ function LibraryDownloadOverlay({
               e.preventDefault();
               onDelete();
             }}
-            className="p-1.5 rounded-full bg-kindle-bg/95 border border-kindle-border text-kindle-text shadow-md hover:bg-red-500/15 hover:text-red-500 active:scale-90 transition"
+            className="p-1.5 rounded-full bg-black/60 border border-white/20 text-white/80 shadow-md hover:bg-red-600 hover:text-white active:scale-90 transition"
             title="Remove download"
             aria-label="Remove download"
           >
@@ -152,33 +167,57 @@ function LibraryDownloadOverlay({
           </button>
         )}
       </div>
-      <div className="relative w-14 h-14 rounded-full flex items-center justify-center bg-kindle-bg/80 border border-kindle-border shadow">
+
+      <div className="relative flex flex-col items-center justify-center p-2 text-center">
         {isError ? (
-          <AlertTriangle className="w-6 h-6 text-red-500" />
+          <>
+            <div className="w-11 h-11 rounded-full flex items-center justify-center bg-red-500/20 border border-red-500/40 text-red-500 shadow-md backdrop-blur-md mb-2">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-red-300 drop-shadow px-2">
+              {download.error === "Cancelled" ? "Stopped" : "Download Failed"}
+            </span>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onRetry();
+                }}
+                className="mt-2.5 px-3 py-1 rounded-full bg-red-600 hover:bg-red-500 text-white text-[9px] font-bold uppercase tracking-wider shadow-md active:scale-95 transition flex items-center gap-1"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Retry</span>
+              </button>
+            )}
+          </>
         ) : (
           <>
-            <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
-              <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-kindle-border" />
-              <circle
-                cx="18"
-                cy="18"
-                r="15.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                className="text-kindle-accent transition-all duration-300"
-                strokeDasharray={97.4}
-                strokeDashoffset={97.4 - (97.4 * Math.max(0, Math.min(100, pct))) / 100}
-              />
-            </svg>
-            <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
+            <div className="relative w-14 h-14 rounded-full flex items-center justify-center bg-kindle-bg/80 border border-kindle-border shadow">
+              <svg viewBox="0 0 36 36" className="w-14 h-14 -rotate-90">
+                <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-kindle-border" />
+                <circle
+                  cx="18"
+                  cy="18"
+                  r="15.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  className="text-kindle-accent transition-all duration-300"
+                  strokeDasharray={97.4}
+                  strokeDashoffset={97.4 - (97.4 * Math.max(0, Math.min(100, pct))) / 100}
+                />
+              </svg>
+              <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
+            </div>
+            <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted px-2 text-center">
+              {isPaused ? "Paused" : "Downloading…"}
+            </span>
           </>
         )}
       </div>
-      <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted px-2 text-center">
-        {isError ? (download.error === "Cancelled" ? "Stopped" : "Failed") : isPaused ? "Paused" : "Downloading…"}
-      </span>
     </div>
   );
 }
@@ -201,6 +240,7 @@ interface LibraryManagerProps {
   onResumeDownload?: (downloadId: string) => void;
   onSearchTrigger?: (query: string) => void;
   onOpenAnnotations?: () => void;
+  onBookUpdated?: (book: BookMetadata) => void;
 }
 
 function calculateStreak(stats: Record<string, { minutes: number }>): number {
@@ -256,6 +296,7 @@ function LibraryManager({
   onResumeDownload,
   onSearchTrigger,
   onOpenAnnotations,
+  onBookUpdated,
 }: LibraryManagerProps) {
   // Filters & sorting
   const [search, setSearch] = useState<string>("");
@@ -775,12 +816,12 @@ function LibraryManager({
   // so we synthesize cards with id = download id/md5.
   const activeDownloadKeys = new Set(
     (downloads || [])
-      .filter((d) => d.status === "downloading" || d.status === "error")
+      .filter((d) => d.status === "downloading" || d.status === "error" || d.status === "paused")
       .flatMap((d) => [d.id, d.md5].filter(Boolean).map(String))
   );
 
   const downloadingBooks: any[] = (downloads || [])
-    .filter((d) => d.status === "downloading" || d.status === "error")
+    .filter((d) => d.status === "downloading" || d.status === "error" || d.status === "paused")
     .map((d) => {
       let coverUrl = d.coverUrl || "";
       if (!coverUrl) {
@@ -1052,7 +1093,12 @@ function LibraryManager({
                       isLongPressedRef.current = false;
                       return;
                     }
-                    if (isDownloadingCard) return; // don't open a half-downloaded book
+                    if (isDownloadingCard) {
+                      if (activeDownload?.status === "error" && onRetryDownload) {
+                        onRetryDownload(activeDownload.id);
+                      }
+                      return; // don't open a half-downloaded book
+                    }
                     onBookSelected(book);
                   }}
                   className={`kindle-card w-full min-w-0 overflow-hidden group flex flex-col cursor-pointer transition duration-300 select-none relative ${
@@ -1435,6 +1481,9 @@ function LibraryManager({
           userId={userId}
           onClose={() => setEditingCoverBook(null)}
           onUpdate={(updatedBook) => {
+            if (onBookUpdated) {
+              onBookUpdated(updatedBook);
+            }
             onRefreshLibrary();
             setEditingCoverBook(null);
           }}

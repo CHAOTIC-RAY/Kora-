@@ -56,13 +56,38 @@ export async function enrichBookMetadata(userId: string, book: BookMetadata): Pr
       enrichedBook.language = googleBook.language;
     }
     
-    // 2. Find Book Cover if missing
+    // 2. Secondary Main Source: NetGalley Catalog Lookup
+    try {
+      const cleanTitle = book.title.replace(/\.[^/.]+$/, "").trim();
+      const ngRes = await fetch(`/api/netgalley/book?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(book.author || "")}`);
+      if (ngRes.ok) {
+        const ngData = await ngRes.json();
+        const ngDetails = ngData.details;
+        if (ngDetails) {
+          if (!enrichedBook.description && ngDetails.description) {
+            enrichedBook.description = ngDetails.description;
+          }
+          if (!enrichedBook.publisher && ngDetails.publisher) {
+            enrichedBook.publisher = ngDetails.publisher;
+          }
+          const hasPlaceholderCover = !enrichedBook.coverUrl || 
+                                      enrichedBook.coverUrl.includes("placeholder") || 
+                                      enrichedBook.coverUrl.includes("cover-redirect");
+          if (hasPlaceholderCover && ngDetails.coverUrl) {
+            enrichedBook.coverUrl = ngDetails.coverUrl;
+            console.log(`[MetadataEnricher] Updated cover from NetGalley for "${book.title}"`);
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 3. Find Book Cover if missing
     const hasPlaceholderCover = !enrichedBook.coverUrl || 
                                 enrichedBook.coverUrl.includes("placeholder") || 
                                 enrichedBook.coverUrl.includes("cover-redirect");
                                 
-    if (hasPlaceholderCover && googleBook.imageLinks?.thumbnail) {
-      // Upgrade to high quality if possible by using the proxy (proxy handles -M to -L upgrade)
+    if (hasPlaceholderCover && googleBook?.imageLinks?.thumbnail) {
+      // Upgrade to high quality if possible by using the proxy
       enrichedBook.coverUrl = googleBook.imageLinks.thumbnail.replace("http:", "https:");
       console.log(`[MetadataEnricher] Updated cover for "${book.title}"`);
     }

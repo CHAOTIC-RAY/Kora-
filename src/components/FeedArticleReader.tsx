@@ -19,7 +19,6 @@ interface FeedArticleReaderProps {
   item: FeedItem;
   queue?: FeedItem[];
   userId?: string;
-  grayscaleCovers?: boolean;
   onClose: () => void;
   onOpenItem?: (item: FeedItem) => void;
   onSaved?: () => void | Promise<void>;
@@ -57,14 +56,12 @@ export default function FeedArticleReader({
   item,
   queue = [],
   userId,
-  grayscaleCovers = false,
   onClose,
   onOpenItem,
   onSaved,
 }: FeedArticleReaderProps) {
   const [stack, setStack] = useState<StackEntry[]>([]);
   const [saving, setSaving] = useState(false);
-  const [userHasScrolled, setUserHasScrolled] = useState(false);
   const { prefs, updatePrefs } = useNewsReaderPrefs();
   const [showSettings, setShowSettings] = useState(false);
   const [chromeVisible, setChromeVisible] = useState(true);
@@ -129,7 +126,6 @@ export default function FeedArticleReader({
 
     sessionStartIdRef.current = item.id;
     hasUserScrolledRef.current = false;
-    setUserHasScrolled(false);
     const cached = entryFromCache(item);
     setStack([cached || placeholderEntry(item)]);
     scrollRef.current?.scrollTo({ top: 0 });
@@ -140,43 +136,41 @@ export default function FeedArticleReader({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to external item jumps
   }, [item.id, fillEntry]);
 
-  // Append the next article only after the user scrolls near the bottom.
+  // Grow the stack forward so the next stories are already rendered below.
   useEffect(() => {
-    const root = scrollRef.current;
-    if (!root || !queue.length) return;
+    if (!queue.length) return;
+    const last = stack[stack.length - 1];
+    if (!last) return;
 
-    const maybeAppendNext = () => {
-      if ((root.scrollTop || 0) > 48) {
-        if (!hasUserScrolledRef.current) {
-          hasUserScrolledRef.current = true;
-          setUserHasScrolled(true);
-        }
+    const lastIdx = queue.findIndex((entry) => entry.id === last.item.id);
+    if (lastIdx < 0) return;
+
+    const upcoming = queue.slice(lastIdx + 1, lastIdx + 3);
+    const missing = upcoming.filter((entry) => !stack.some((s) => s.item.id === entry.id));
+    if (!missing.length) return;
+
+    setStack((prev) => {
+      const next = [...prev];
+      for (const feedItem of missing) {
+        if (next.some((entry) => entry.item.id === feedItem.id)) continue;
+        next.push(entryFromCache(feedItem) || placeholderEntry(feedItem));
       }
-      if (!hasUserScrolledRef.current) return;
+      return next;
+    });
 
-      const { scrollTop, scrollHeight, clientHeight } = root;
-      const nearBottom = scrollTop + clientHeight >= scrollHeight - 220;
-      if (!nearBottom) return;
-
-      const last = stack[stack.length - 1];
-      if (!last?.ready || last.error) return;
-
-      const lastIdx = queue.findIndex((entry) => entry.id === last.item.id);
-      if (lastIdx < 0 || lastIdx >= queue.length - 1) return;
-
-      const nextItem = queue[lastIdx + 1];
-      if (stack.some((entry) => entry.item.id === nextItem.id)) return;
-
-      setStack((prev) => [...prev, entryFromCache(nextItem) || placeholderEntry(nextItem)]);
-      if (!peekFeedArticle(nextItem)) {
-        void fillEntry(nextItem);
+    for (const feedItem of missing) {
+      if (!peekFeedArticle(feedItem)) {
+        void fillEntry(feedItem);
       }
-      void prefetchFeedArticles(queue.slice(lastIdx + 2, lastIdx + 4), 2);
-    };
-
-    root.addEventListener("scroll", maybeAppendNext, { passive: true });
-    return () => root.removeEventListener("scroll", maybeAppendNext);
+    }
   }, [stack, queue, fillEntry]);
+
+  // Prefetch a couple ahead in the background (cache warm even before stack append).
+  useEffect(() => {
+    const idx = queue.findIndex((entry) => entry.id === item.id);
+    if (idx < 0) return;
+    void prefetchFeedArticles(queue.slice(idx + 1, idx + 4), 3);
+  }, [queue, item.id]);
 
   // As the user scrolls, the most visible article becomes the active one — no remount.
   useEffect(() => {
@@ -337,10 +331,8 @@ export default function FeedArticleReader({
         ref={scrollRef}
         className="flex-1 overflow-y-auto overscroll-y-contain min-h-0 scroll-smooth"
         onScroll={() => {
-          const top = scrollRef.current?.scrollTop || 0;
-          if (top > 48 && !hasUserScrolledRef.current) {
+          if ((scrollRef.current?.scrollTop || 0) > 48) {
             hasUserScrolledRef.current = true;
-            setUserHasScrolled(true);
           }
         }}
         onClick={() => {
@@ -446,7 +438,7 @@ export default function FeedArticleReader({
                   ) : (
                     <div
                       dir="auto"
-                      className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext] animate-in fade-in duration-200 ${grayscaleCovers ? "[&_img]:grayscale" : ""}`}
+                      className={`feed-article-content max-w-none ${prefs.fontFamily} ${theme.content} [&_*]:[unicode-bidi:plaintext] animate-in fade-in duration-200`}
                       style={{
                         fontSize: `${prefs.fontSize}px`,
                         lineHeight: prefs.lineSpacing,
@@ -463,7 +455,7 @@ export default function FeedArticleReader({
               className={`mx-auto px-6 pb-[calc(var(--kora-safe-bottom)+4rem)] pt-2 ${prefs.marginSize}`}
               onClick={(e) => e.stopPropagation()}
             >
-              {userHasScrolled && (() => {
+              {(() => {
                 const last = stack[stack.length - 1];
                 const lastIdx = last ? queue.findIndex((entry) => entry.id === last.item.id) : -1;
                 const nextQueued =

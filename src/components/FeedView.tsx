@@ -13,8 +13,9 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { motion, useMotionValue, useTransform, animate } from "motion/react";
+import { motion, useMotionValue, useTransform } from "motion/react";
 import type { BookMetadata } from "../lib/firebase";
+import { prefetchFeedArticles } from "../lib/feedArticle";
 import {
   addFeedSubscription,
   ensureDefaultSubscriptions,
@@ -23,25 +24,24 @@ import {
   getFeedItems,
   isCuratedFeedUrl,
   isDefaultFeedUrl,
-  isFeedItemSaved,
   isFeedSubscriptionEnabled,
   isInternationalFeedUrl,
   markFeedItemRead,
-  markFeedItemSavedForLater,
+  markFeedItemSaved,
   mergeFeedItems,
   removeFeedSubscription,
   saveFeedSubscriptions,
   setFeedSubscriptionEnabled,
 } from "../lib/feedStorage";
 import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
+import { clipUrlToLibrary } from "../lib/feedClipper";
+import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
-import { getItemThumbnail, prefetchFeedPreviews, resolveFeedImageSrc, markFeedImageBroken } from "../lib/feedPreview";
+import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
 import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
 import TodayNewsBriefCard from "./TodayNewsBriefCard";
-
-type FeedFilter = "all" | "unread" | "saved" | "briefs";
 
 interface FeedViewProps {
   userId?: string;
@@ -49,11 +49,9 @@ interface FeedViewProps {
   onOpenBook?: (book: BookMetadata) => void;
   initialUrl?: string | null;
   onClearInitialUrl?: () => void;
-  initialFilter?: FeedFilter | null;
-  onClearInitialFilter?: () => void;
-  grayscaleCovers?: boolean;
 }
 
+type FeedFilter = "all" | "unread" | "saved" | "briefs";
 /** Only two card sizes: full-width hero + half-width tile. */
 type BentoVariant = "featured" | "default";
 
@@ -114,18 +112,18 @@ function getBentoVariant(index: number): BentoVariant {
 const FeedArticleCard = React.memo(function FeedArticleCard({
   item,
   cover,
+  busy,
   title,
   variant,
-  grayscaleCovers = false,
   onRead,
   onToggleRead,
   onSaveLater,
 }: {
   item: FeedItem;
   cover: string | null;
+  busy: boolean;
   title: string;
   variant: BentoVariant;
-  grayscaleCovers?: boolean;
   onRead: () => void;
   onToggleRead: () => void;
   onSaveLater: () => void;
@@ -133,19 +131,12 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const [thumbFailed, setThumbFailed] = useState(false);
   const showThumb = cover && !thumbFailed;
   const dir = textDirection(title);
-  const saved = isFeedItemSaved(item);
 
   const cardClass = variant === "featured" ? "sm:col-span-2" : "sm:col-span-1";
   const imageClass =
     variant === "featured" ? "w-full aspect-[16/9]" : "w-full aspect-[4/3]";
 
   const x = useMotionValue(0);
-  const dragMovedRef = React.useRef(false);
-  const pointerStartRef = React.useRef<{ x: number; y: number; active: boolean }>({
-    x: 0,
-    y: 0,
-    active: false,
-  });
 
   // Dynamic transforms for underlay action states
   const leftOpacity = useTransform(x, [0, 60], [0, 1]);
@@ -154,50 +145,20 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const rightOpacity = useTransform(x, [-60, 0], [1, 0]);
   const rightScale = useTransform(x, [-120, 0], [1.15, 0.85]);
 
-  const handleDragStart = () => {
-    dragMovedRef.current = false;
-  };
-
-  const handleDrag = (_event: unknown, info: { offset: { x: number } }) => {
-    if (Math.abs(info.offset.x) > 12) dragMovedRef.current = true;
-  };
-
-  const handleDragEnd = (_event: unknown, info: { offset: { x: number } }) => {
-    const threshold = 100;
+  const handleDragEnd = (_event: any, info: any) => {
+    const threshold = 120;
     if (info.offset.x > threshold) {
-      animate(x, 0, { type: "spring", stiffness: 520, damping: 42 });
       onToggleRead();
-      return;
-    }
-    if (info.offset.x < -threshold) {
-      animate(x, 0, { type: "spring", stiffness: 520, damping: 42 });
+    } else if (info.offset.x < -threshold) {
       onSaveLater();
-      return;
     }
-    animate(x, 0, { type: "spring", stiffness: 420, damping: 36 });
-  };
-
-  const handlePointerDown = (event: React.PointerEvent) => {
-    pointerStartRef.current = { x: event.clientX, y: event.clientY, active: true };
-    dragMovedRef.current = false;
-  };
-
-  const handlePointerUp = (event: React.PointerEvent) => {
-    if (!pointerStartRef.current.active) return;
-    pointerStartRef.current.active = false;
-    if (dragMovedRef.current) return;
-    const dx = Math.abs(event.clientX - pointerStartRef.current.x);
-    const dy = Math.abs(event.clientY - pointerStartRef.current.y);
-    // Ignore scroll / swipe jitter — only treat as a tap when movement is tiny.
-    if (dx > 12 || dy > 12) return;
-    onRead();
   };
 
   return (
-    <div className={`relative overflow-hidden rounded-2xl ${cardClass} h-full select-none`}>
-      {/* Swipe Underlay — must stay under the card (z-0) or it paints over titles */}
-      <div className="absolute inset-0 z-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
-        {/* Left Action (swipe right) -> Mark as read */}
+    <div className={`relative overflow-hidden rounded-2xl ${cardClass} flex flex-col h-full select-none`}>
+      {/* Swipe Underlay */}
+      <div className="absolute inset-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
+        {/* Left Action (swipe right) -> Mark Read */}
         <motion.div
           style={{ opacity: leftOpacity }}
           className="flex items-center gap-2 text-kindle-text font-bold text-xs"
@@ -205,35 +166,30 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
           <motion.div style={{ scale: leftScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
             <CheckCircle2 className="w-5 h-5 text-kindle-text" />
           </motion.div>
-          <span>{item.read ? "Mark as unread" : "Mark as read"}</span>
+          <span>{item.read ? "Mark Unread" : "Mark Read"}</span>
         </motion.div>
 
-        {/* Right Action (swipe left) -> Save */}
+        {/* Right Action (swipe left) -> Save Later */}
         <motion.div
           style={{ opacity: rightOpacity }}
           className="flex items-center gap-2 text-kindle-accent font-bold text-xs ml-auto"
         >
-          <span>{saved ? "Saved" : "Save"}</span>
+          <span>{item.savedBookId ? "Saved" : "Save to Library"}</span>
           <motion.div style={{ scale: rightScale }} className="p-1.5 rounded-full bg-kindle-card border border-kindle-border shadow-sm">
             <Bookmark className="w-5 h-5 text-kindle-accent" />
           </motion.div>
         </motion.div>
       </div>
 
-      {/* Swipeable Foreground Card — z-10 keeps titles/summaries above the underlay */}
+      {/* Swipeable Foreground Card */}
       <motion.article
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.12}
-        dragMomentum={false}
-        dragDirectionLock
-        style={{ x, touchAction: "pan-y" }}
-        onDragStart={handleDragStart}
-        onDrag={handleDrag}
+        dragElastic={{ left: 0.6, right: 0.6 }}
+        style={{ x }}
         onDragEnd={handleDragEnd}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        className={`feed-article-card relative z-10 bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col h-full touch-pan-y contain-layout ${
+        onTap={() => onRead()}
+        className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col flex-1 touch-pan-y ${
           item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
         }`}
       >
@@ -245,13 +201,10 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
               <img
                 src={cover}
                 alt=""
-                className={`w-full h-full object-cover pointer-events-none ${grayscaleCovers ? "grayscale" : ""}`}
+                className="w-full h-full object-cover pointer-events-none"
                 referrerPolicy="no-referrer"
-                decoding="async"
-                onError={() => {
-                  setThumbFailed(true);
-                  markFeedImageBroken(item.id);
-                }}
+                loading="lazy"
+                onError={() => setThumbFailed(true)}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
@@ -273,7 +226,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
                 className={`font-lexend font-bold leading-snug text-kindle-text ${
                   dir === "rtl" ? "font-thaana" : ""
                 } ${
-                  variant === "featured" ? "text-base sm:text-lg line-clamp-3" : "text-sm line-clamp-3"
+                  variant === "featured" ? "text-base sm:text-lg" : "text-sm"
                 }`}
               >
                 {title}
@@ -282,7 +235,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
                 <p
                   dir={textDirection(item.summary)}
                   className={`text-kindle-text-muted mt-1.5 leading-relaxed ${
-                    variant === "featured" ? "text-xs line-clamp-2" : "text-[11px] line-clamp-2"
+                    variant === "featured" ? "text-xs" : "text-[11px]"
                   }`}
                 >
                   {item.summary}
@@ -291,50 +244,40 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
             </div>
 
             <div
-              className="flex items-center justify-center gap-1.5 mt-auto min-w-0"
+              className="flex items-center gap-1.5 mt-auto min-w-0"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
-              onPointerUp={(e) => e.stopPropagation()}
             >
               <button
-                type="button"
-                onClick={onSaveLater}
-                className={`inline-flex items-center justify-center w-9 h-9 rounded-xl border transition shrink-0 ${
-                  saved
-                    ? "border-kindle-text bg-kindle-text text-kindle-bg"
-                    : "border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg"
-                }`}
-                title={saved ? "Remove from saved" : "Save for later"}
-                aria-label={saved ? "Remove from saved" : "Save for later"}
-                aria-pressed={saved}
+                onClick={onRead}
+                disabled={busy}
+                className="hidden sm:flex flex-1 items-center justify-center gap-1 px-2.5 py-1.5 rounded-xl bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-wider hover:opacity-90 transition disabled:opacity-50 min-w-0"
               >
-                <Bookmark className="w-4 h-4 shrink-0" />
+                {busy ? <Loader2 className="w-3 h-3 animate-spin shrink-0" /> : <Newspaper className="w-3.5 h-3.5 shrink-0" />}
+                <span className="truncate">Read</span>
               </button>
               <button
-                type="button"
                 onClick={onToggleRead}
-                className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0"
-                title={item.read ? "Mark as unread" : "Mark as read"}
-                aria-label={item.read ? "Mark as unread" : "Mark as read"}
+                className="flex-1 px-2.5 py-1.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition min-w-0"
+                title={item.read ? "Mark unread" : "Mark read"}
               >
-                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span className="truncate">{item.read ? "Unread" : "Done"}</span>
               </button>
               <a
                 href={item.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0"
-                title="Open in new tab"
-                aria-label="Open in new tab"
+                className="p-1.5 rounded-xl border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition shrink-0 flex items-center justify-center"
+                title="Open original"
               >
-                <ExternalLink className="w-4 h-4 shrink-0" />
+                <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
 
-            {saved && (
-              <p className="text-[9px] text-kindle-text-muted flex items-center gap-1">
-                <Bookmark className="w-3 h-3" />
-                Saved — find it under the Saved chip
+            {item.savedBookId && (
+              <p className="text-[9px] text-emerald-600 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                Saved to library
               </p>
             )}
           </div>
@@ -351,9 +294,6 @@ function FeedView({
   onOpenBook,
   initialUrl,
   onClearInitialUrl,
-  initialFilter,
-  onClearInitialFilter,
-  grayscaleCovers = false,
 }: FeedViewProps) {
   const [subscriptions, setSubscriptions] = useState<FeedSubscription[]>([]);
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -369,22 +309,6 @@ function FeedView({
   const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
   const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
 
-  useEffect(() => {
-    if (!initialFilter) return;
-    setFilter(initialFilter);
-    onClearInitialFilter?.();
-  }, [initialFilter, onClearInitialFilter]);
-
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      if ((e as CustomEvent).detail?.open === "feed-manage") {
-        setShowManageFeeds(true);
-      }
-    };
-    window.addEventListener("kora-guide:open", onOpen);
-    return () => window.removeEventListener("kora-guide:open", onOpen);
-  }, []);
-
   const loadLocalState = useCallback(() => {
     const subs = ensureDefaultSubscriptions();
     setSubscriptions(subs);
@@ -395,6 +319,7 @@ function FeedView({
     try {
       const withPreviews = await prefetchFeedPreviews(merged, 20);
       setItems(withPreviews);
+      void prefetchFeedArticles(withPreviews.slice(0, 5), 5);
     } catch {
       setItems(merged);
     }
@@ -481,7 +406,7 @@ function FeedView({
         if (filter === "briefs") return false;
         if (selectedSubscriptionId && item.subscriptionId !== selectedSubscriptionId) return false;
         if (filter === "unread" && item.read) return false;
-        if (filter === "saved" && !isFeedItemSaved(item)) return false;
+        if (filter === "saved" && !item.savedBookId) return false;
         return true;
       })
       .sort((a, b) => b.publishedAt - a.publishedAt);
@@ -530,11 +455,6 @@ function FeedView({
       setSubscriptions(ensureDefaultSubscriptions());
       setShowManageFeeds(false);
       setAddFeedUrl("");
-      try {
-        window.dispatchEvent(new CustomEvent("kora-guide:feed-added"));
-      } catch {
-        /* ignore */
-      }
       await refreshFeeds();
     } catch (err) {
       setAddFeedError((err as Error).message || "Could not subscribe to this feed.");
@@ -549,16 +469,32 @@ function FeedView({
     setReadingArticle(item);
   };
 
-  const handleSaveLater = useCallback((item: FeedItem) => {
-    const nextSaved = !isFeedItemSaved(item);
-    markFeedItemSavedForLater(item.id, nextSaved);
-    setItems(getFeedItems());
-    if (nextSaved) {
-      toast.success("Saved — find it under the Saved chip");
-    } else {
-      toast.success("Removed from Saved");
+  const handleSaveLater = useCallback(async (item: FeedItem) => {
+    if (item.savedBookId) {
+      toast("Already saved to library", { icon: "📖" });
+      return;
     }
-  }, []);
+    const tId = toast.loading(`Saving “${item.title}” to library…`);
+    try {
+      const book = await clipUrlToLibrary({
+        url: item.link,
+        userId,
+        tags: [
+          "Feed",
+          item.subscriptionTitle,
+          ...(isTelegramArticleLink(item.link) ? ["Telegram"] : []),
+        ],
+        sourceLabel: item.subscriptionTitle,
+      });
+      markFeedItemSaved(item.id, book.id);
+      setItems(getFeedItems());
+      await onRefreshLibrary?.();
+      toast.success("Saved to library for offline reading", { id: tId });
+    } catch (err) {
+      console.error(err);
+      toast.error((err as Error).message || "Could not save to library.", { id: tId });
+    }
+  }, [userId, onRefreshLibrary]);
 
   return (
     <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
@@ -579,7 +515,6 @@ function FeedView({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            data-guide="feed-manage"
             onClick={() => setShowManageFeeds(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition"
           >
@@ -650,7 +585,6 @@ function FeedView({
           items={retainedItems}
           selectedSourceId={selectedSubscriptionId}
           onRead={handleReadArticle}
-          grayscaleCovers={grayscaleCovers}
         />
       ) : refreshing && retainedItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-kindle-text-muted">
@@ -660,21 +594,17 @@ function FeedView({
       ) : visibleItems.length === 0 ? (
         <div className="bg-kindle-card border border-kindle-border rounded-2xl p-12 text-center">
           <Newspaper className="w-12 h-12 text-kindle-text-muted mx-auto mb-4 opacity-50" />
-          <h3 className="text-lg font-lexend font-bold mb-2">
-            {filter === "saved" ? "No saved articles" : "No articles here yet"}
-          </h3>
+          <h3 className="text-lg font-lexend font-bold mb-2">No articles here yet</h3>
           <p className="text-sm text-kindle-text-muted max-w-md mx-auto">
-            {filter === "saved"
-              ? "Tap Save on a story to keep it here for later. Saved stories stay in the news tab only."
-              : "Add a feed source with Manage above, or share an article link to Kora from your browser."}
+            Add a feed source with Manage above, or share an article link to Kora from your browser.
           </p>
         </div>
       ) : (
-        <div className="space-y-4" data-guide="feed-list">
+        <div className="space-y-4">
           {filter === "all" && !selectedSubscriptionId && (
             <TodayNewsBriefCard items={retainedItems} onReadArticle={handleReadArticle} />
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-fr">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {visibleItems.map((item, index) => {
             const cover = getItemThumbnail(item);
             const title = displayTitle(item);
@@ -683,9 +613,9 @@ function FeedView({
                 key={item.id}
                 item={item}
                 cover={cover}
+                busy={false}
                 title={title}
                 variant={getBentoVariant(index)}
-                grayscaleCovers={grayscaleCovers}
                 onRead={() => void handleReadArticle(item)}
                 onToggleRead={() => {
                   const nextRead = !item.read;
@@ -697,7 +627,7 @@ function FeedView({
                     toast.success("Marked as unread");
                   }
                 }}
-                onSaveLater={() => handleSaveLater(item)}
+                onSaveLater={() => void handleSaveLater(item)}
               />
             );
           })}
@@ -776,7 +706,7 @@ function FeedView({
               <p className="text-[10px] text-kindle-text-muted">
                 Paste a website or RSS link, or a public Telegram channel (@name or t.me/name).
               </p>
-              <form onSubmit={handleAddSubscription} className="space-y-3" data-guide="feed-add-url">
+              <form onSubmit={handleAddSubscription} className="space-y-3">
                 <input
                   type="text"
                   required
@@ -808,7 +738,6 @@ function FeedView({
           item={readingArticle}
           queue={visibleItems}
           userId={userId}
-          grayscaleCovers={grayscaleCovers}
           onClose={() => dismissFeedArticle()}
           onOpenItem={(next) => {
             markFeedItemRead(next.id, true);

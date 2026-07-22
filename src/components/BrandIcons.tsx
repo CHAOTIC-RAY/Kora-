@@ -35,3 +35,24 @@ export function NytIcon({ className = "w-3.5 h-3.5" }: BrandIconProps) {
     </svg>
   );
 }
+
+export function NetgalleyIcon({ className = "w-3.5 h-3.5" }: BrandIconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      role="img"
+    >
+      <title>NetGalley</title>
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+      />
+    </svg>
+  );
+}

@@ -11,10 +11,10 @@ import { storeBookFile, getBookFile } from "../db/indexedDB";
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
 /** Bump to rebuild EPUB for users who already have an older copy */
-export const WALKTHROUGH_CONTENT_VERSION = 8;
+export const WALKTHROUGH_CONTENT_VERSION = 10;
 
 /** Static guidebook-style cover (served from /public). */
-export const WALKTHROUGH_COVER_URL = "/getting-started-kora-cover.jpg";
+export const WALKTHROUGH_COVER_URL = "/getting-started-kora-cover.svg";
 
 const HIDDEN_KEY = "kora_walkthrough_book_hidden";
 const VERSION_KEY = "kora_walkthrough_book_version";

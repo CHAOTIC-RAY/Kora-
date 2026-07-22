@@ -25,7 +25,7 @@ import {
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
-import { GoodreadsIcon, NytIcon } from "./BrandIcons";
+import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
 
 function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
   const display = getDisplayRating(book);
@@ -163,14 +163,25 @@ const ALL_CATEGORIES = [
   { id: "goodreads-read-once",  title: "Goodreads: Read Once",      query: "264.Books_That_Everyone_Should_Read_At_Least_Once", source: "goodreads" },
   { id: "goodreads-21st",       title: "Goodreads: 21st Century",   query: "7.Best_Books_of_the_21st_Century", source: "goodreads" },
   { id: "audiobooks-popular",   title: "Popular Audiobooks",        query: "popular", source: "audiobook", mode: "popular" },
-  { id: "audiobooks-fiction",   title: "Fiction",                   query: "fiction", source: "audiobook", mode: "search" },
-  { id: "audiobooks-mystery",   title: "Mystery & Thriller",        query: "mystery thriller", source: "audiobook", mode: "search" },
-  { id: "audiobooks-scifi",     title: "Sci-Fi & Fantasy",          query: "science fiction fantasy", source: "audiobook", mode: "search" },
-  { id: "audiobooks-classics",  title: "Classics",                  query: "classic literature", source: "audiobook", mode: "search" },
-  { id: "audiobooks-biography", title: "Biography & Memoir",        query: "biography memoir", source: "audiobook", mode: "search" },
+  { id: "audiobooks-fiction",   title: "Fiction Audiobooks",        query: "fiction", source: "audiobook", mode: "search" },
+  { id: "audiobooks-mystery",   title: "Mystery & Thriller Audiobooks", query: "mystery thriller", source: "audiobook", mode: "search" },
+  { id: "audiobooks-scifi",     title: "Sci-Fi & Fantasy Audiobooks", query: "science fiction fantasy", source: "audiobook", mode: "search" },
+  { id: "netgalley-recent-audiobooks", title: "NetGalley: Recent Audiobooks", query: "recentlyAddedAudiobooks", source: "netgalley" },
+  { id: "netgalley-requested-audiobooks", title: "NetGalley: Most Requested Audiobooks", query: "mostRequestedAudiobooks", source: "netgalley" },
+  { id: "netgalley-recent-drcs", title: "NetGalley: Recently Added Books", query: "recentlyAddedDRCs", source: "netgalley" },
+  { id: "netgalley-requested-drcs", title: "NetGalley: Most Requested Books", query: "mostRequested", source: "netgalley" },
+  { id: "netgalley-mystery", title: "NetGalley: Mystery & Thrillers", query: "16", source: "netgalley" },
+  { id: "netgalley-scifi", title: "NetGalley: Sci-Fi & Fantasy", query: "22", source: "netgalley" },
+  { id: "netgalley-horror", title: "NetGalley: Horror", query: "41", source: "netgalley" },
+  { id: "netgalley-romance", title: "NetGalley: Romance", query: "21", source: "netgalley" },
+  { id: "netgalley-fiction", title: "NetGalley: General Fiction", query: "35", source: "netgalley" },
+  { id: "netgalley-ya", title: "NetGalley: Young Adult", query: "27", source: "netgalley" },
 ];
 
 function getCategoryDescription(category: { source?: string }) {
+  if (category.source === "netgalley") {
+    return "Official catalog listings from NetGalley. Browse digital review copies (DRCs), requested audiobooks, and genre collections.";
+  }
   if (category.source === "audiobook") {
     return "Popular audiobooks from free streaming archives. Click any title for downloads and listening options.";
   }
@@ -229,7 +240,7 @@ function DiscoverView({
     return tempStorage.get<any>("preferred_source") || "google";
   });
   const [loadingFeatured, setLoadingFeatured] = useState<boolean>(true);
-  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook">("all");
+  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook" | "netgalley">("all");
   const [audiobookLibraryMode, setAudiobookLibraryMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
@@ -308,6 +319,30 @@ function DiscoverView({
       return [];
     }
   });
+
+  function formatLanguage(langRaw?: string): string | null {
+    if (!langRaw) return null;
+    const l = String(langRaw).trim().toLowerCase();
+    if (!l || l === "unknown" || l === "n/a" || l === "undefined" || l === "null") return null;
+
+    if (l.includes("english") || l === "en" || l === "eng") return "EN";
+    if (l.includes("spanish") || l === "es" || l === "spa") return "ES";
+    if (l.includes("french") || l === "fr" || l === "fra" || l === "fre") return "FR";
+    if (l.includes("german") || l === "de" || l === "deu" || l === "ger") return "DE";
+    if (l.includes("russian") || l === "ru" || l === "rus") return "RU";
+    if (l.includes("chinese") || l === "zh" || l === "zho" || l === "chi") return "ZH";
+    if (l.includes("japanese") || l === "ja" || l === "jpn") return "JA";
+    if (l.includes("italian") || l === "it" || l === "ita") return "IT";
+    if (l.includes("portuguese") || l === "pt" || l === "por") return "PT";
+    if (l.includes("dutch") || l === "nl" || l === "nld" || l === "dut") return "NL";
+    if (l.includes("arabic") || l === "ar" || l === "ara") return "AR";
+    if (l.includes("hindi") || l === "hi" || l === "hin") return "HI";
+    if (l.includes("korean") || l === "ko" || l === "kor") return "KO";
+    if (l.includes("turkish") || l === "tr" || l === "tur") return "TR";
+
+    if (l.length <= 4) return l.toUpperCase();
+    return l.slice(0, 3).toUpperCase();
+  }
 
   /** Instant mirrors from known md5 / directUrl — shown before the API finishes. */
   function buildInstantMirrors(variant: any): any[] {
@@ -885,6 +920,23 @@ function DiscoverView({
     });
     setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(audiobookResults.map((res) => [res.id, res.books])) }));
 
+    const netgalleyCats = ALL_CATEGORIES.filter((cat) => cat.source === "netgalley");
+    const netgalleyResults = await Promise.all(
+      netgalleyCats.map(async (cat) => {
+        try {
+          const books = await fetchNetgalleyCategory(cat);
+          return { id: cat.id, books };
+        } catch (err) {
+          console.error(`Failed to load NetGalley category ${cat.title}:`, err);
+          return { id: cat.id, books: [] };
+        }
+      })
+    );
+    netgalleyResults.forEach((res) => {
+      mergedData[res.id] = res.books;
+    });
+    setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(netgalleyResults.map((res) => [res.id, res.books])) }));
+
     if (nytError) {
       const hasGoodreads = goodreadsResults.some((res) => res.books.length > 0);
       if (hasGoodreads) {
@@ -1354,6 +1406,23 @@ function DiscoverView({
   };
 
   async function fetchPage(term: string, source: string, page: number): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
+    if (source === "netgalley") {
+      const res = await fetch(
+        `/api/netgalley/search?q=${encodeURIComponent(term.trim())}`,
+        { signal: AbortSignal.timeout(14000) }
+      );
+      if (!res.ok) throw new Error(`NetGalley search failed with status: ${res.status}`);
+      const data = await res.json();
+      const results = (data.results || []).map((b: any) => ({
+        ...b,
+        id: b.bookId || b.id,
+        sourceId: "netgalley",
+        coverUrl: b.coverUrl || null,
+        url: b.netgalleyUrl || b.url,
+      }));
+      return { books: results, totalCount: results.length, hasMore: false };
+    }
+
     const res = await fetch(
       `/api/annas-archive/search?q=${encodeURIComponent(term.trim())}&source=${source}&page=${page}`,
       { signal: AbortSignal.timeout(14000) }
@@ -1530,6 +1599,35 @@ function DiscoverView({
     }
   }
 
+  async function fetchNetgalleyCategory(category: any) {
+    const cacheKey = `netgalley_cat_${category.query || category.id}`;
+    const cached = tempStorage.get<any[]>(cacheKey);
+    if (cached && cached.length > 0) return cached;
+
+    try {
+      const res = await fetch(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
+      if (!res.ok) throw new Error("Failed to load NetGalley category");
+      const data = await res.json();
+      const results = data.results || [];
+      const mapped = results.map((b: any) => ({
+        title: b.title,
+        author: b.author || "Unknown",
+        coverUrl: b.coverUrl,
+        searchQuery: `${b.title} ${b.author || ""}`.trim(),
+        publisher: b.publisher,
+        netgalleyUrl: b.netgalleyUrl,
+        source: "netgalley",
+        isAudiobook: b.isAudiobook,
+        isGoogleBook: false
+      }));
+      tempStorage.set(cacheKey, mapped);
+      return mapped;
+    } catch (err) {
+      console.error("NetGalley category fetch error:", err);
+      return [];
+    }
+  }
+
   async function handleCategoryClick(category: any) {
     setLoadingCategory(true);
     setViewingCategory(category);
@@ -1545,6 +1643,10 @@ function DiscoverView({
         setCategoryPreviousDate(null);
       } else if (category.source === "audiobook") {
         const books = await fetchAudiobookCategory(category);
+        setCategoryBooks(Array.isArray(books) ? books : []);
+        setCategoryPreviousDate(null);
+      } else if (category.source === "netgalley") {
+        const books = await fetchNetgalleyCategory(category);
         setCategoryBooks(Array.isArray(books) ? books : []);
         setCategoryPreviousDate(null);
       } else {
@@ -2783,6 +2885,7 @@ function DiscoverView({
                 <div className="flex flex-wrap items-center gap-2">
                   {[
                     { id: "all", label: "All", icon: Globe },
+                    { id: "netgalley", label: "NetGalley", icon: NetgalleyIcon },
                     { id: "annas", label: "Anna's Archive", icon: Database },
                     { id: "libgen", label: "LibGen", icon: Layers },
                     { id: "zlib", label: "Z-Library", icon: Library },
@@ -3167,7 +3270,9 @@ function DiscoverView({
                         src={
                           viewingCategory.source === "audiobook"
                             ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl)
-                            : resolveCoverImageSrc(book.coverUrl) || ""
+                            : viewingCategory.source === "netgalley"
+                              ? (book.coverUrl || resolveCoverImageSrc(book.coverUrl) || "")
+                              : resolveCoverImageSrc(book.coverUrl) || ""
                         }
                         alt={book.title}
                         className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
@@ -3345,9 +3450,23 @@ function DiscoverView({
                 <Headphones className="w-3.5 h-3.5 text-kindle-text" />
                 Audiobooks
               </button>
+              <button
+                onClick={() => {
+                  if (audiobookLibraryMode) closeAudiobookLibrary();
+                  setFeedFilter("netgalley");
+                }}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  feedFilter === "netgalley"
+                    ? "border-kindle-text text-kindle-text"
+                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                <NetgalleyIcon className="w-3.5 h-3.5 text-kindle-accent" />
+                NetGalley Catalog
+              </button>
             </div>
             <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
-              {feedFilter === "all" ? "Showing all" : feedFilter === "goodreads" ? "Goodreads lists" : feedFilter === "audiobook" ? "Audiobooks" : "NYT Best Sellers"}
+              {feedFilter === "all" ? "Showing all" : feedFilter === "goodreads" ? "Goodreads lists" : feedFilter === "audiobook" ? "Audiobooks" : feedFilter === "netgalley" ? "NetGalley Catalog" : "NYT Best Sellers"}
             </div>
           </div>
 
@@ -3399,6 +3518,8 @@ function DiscoverView({
                             <Headphones className="w-4 h-4 text-kindle-text" />
                           ) : cat.source === "goodreads" ? (
                             <GoodreadsIcon className="w-4 h-4 text-[#553B08] dark:text-[#D9C5A0]" />
+                          ) : cat.source === "netgalley" ? (
+                            <NetgalleyIcon className="w-4 h-4 text-kindle-accent" />
                           ) : cat.source === "nyt" ? (
                             <NytIcon className="w-4 h-4 text-kindle-text" />
                           ) : cat.id.includes("fiction") ? (
@@ -3464,7 +3585,13 @@ function DiscoverView({
                           <BookRatingBadge book={book} />
                           {!hideCovers && book.coverUrl ? (
                             <img loading="lazy" decoding="async"
-                              src={cat.source === "audiobook" ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl) : (resolveCoverImageSrc(book.coverUrl) || "")}
+                              src={
+                                cat.source === "audiobook"
+                                  ? (getAudiobookCoverSrc(book.coverUrl) || book.coverUrl)
+                                  : cat.source === "netgalley"
+                                    ? (book.coverUrl || resolveCoverImageSrc(book.coverUrl) || "")
+                                    : (resolveCoverImageSrc(book.coverUrl) || "")
+                              }
                               alt={book.title}
                               className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${grayscaleCovers ? "grayscale" : ""}`}
                               referrerPolicy="no-referrer"
@@ -3611,6 +3738,7 @@ function DiscoverView({
                   <div className="flex flex-wrap justify-center gap-2">
                     {selectedBook.variants.map((v: any, vIdx: number) => {
                       const isActive = selectedVariant?.id === v.id || selectedVariant?.md5 === v.md5;
+                      const lang = formatLanguage(v.language || selectedBook?.language || "English");
                       return (
                         <button
                           key={vIdx}
@@ -3624,6 +3752,15 @@ function DiscoverView({
                           <div className="flex items-center gap-1.5">
                             <span className="text-[10px] font-extrabold uppercase font-mono">{v.extension || "EPUB"}</span>
                             <span className="text-[9px] opacity-70">· {v.size || "..."}</span>
+                            {lang && (
+                              <span className={`text-[8px] font-bold font-mono uppercase px-1.5 py-0.5 rounded border ${
+                                isActive
+                                  ? "bg-kindle-accent/20 border-kindle-accent/40 text-kindle-accent"
+                                  : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
+                              }`}>
+                                {lang}
+                              </span>
+                            )}
                           </div>
                         </button>
                       );
@@ -4023,6 +4160,7 @@ function DiscoverView({
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {featuredDownloadVariants.map((v, idx) => {
                                   const isActive = selectedFeaturedVariant?.md5 === v.md5 || selectedFeaturedVariant?.id === v.id;
+                                  const lang = formatLanguage(v.language || selectedFeaturedBook?.language || featuredBookDetails?.language || "English");
                                   return (
                                     <button
                                       key={idx}
@@ -4038,7 +4176,18 @@ function DiscoverView({
                                     >
                                       <div className="flex items-center justify-between mb-1.5">
                                         <span className={`text-[11px] font-black uppercase font-mono ${isActive ? "text-kindle-accent" : "text-kindle-text"}`}>{v.extension || "EPUB"}</span>
-                                        <span className="text-[8px] opacity-60 font-mono bg-kindle-card px-1 py-0.5 rounded border border-kindle-border">{v.size || "N/A"}</span>
+                                        <div className="flex items-center gap-1">
+                                          {lang && (
+                                            <span className={`text-[8px] font-bold font-mono uppercase px-1 py-0.5 rounded border ${
+                                              isActive
+                                                ? "bg-kindle-accent/20 border-kindle-accent/40 text-kindle-accent"
+                                                : "bg-kindle-card border-kindle-border text-kindle-text-muted"
+                                            }`}>
+                                              {lang}
+                                            </span>
+                                          )}
+                                          <span className="text-[8px] opacity-60 font-mono bg-kindle-card px-1 py-0.5 rounded border border-kindle-border">{v.size || "N/A"}</span>
+                                        </div>
                                       </div>
                                       <div className="flex items-center gap-1.5">
                                         <div className={`w-1 h-1 rounded-full ${isActive ? 'bg-kindle-accent' : 'bg-kindle-accent/20'}`} />

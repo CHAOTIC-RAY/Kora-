@@ -1890,11 +1890,20 @@ export default function App() {
         }
       }
       const data = await loadLibrary(uid);
-      setBooks(
-        isWalkthroughBookHidden()
-          ? data.filter((b) => !isWalkthroughBook(b))
-          : data
-      );
+      const finalBooks = isWalkthroughBookHidden()
+        ? data.filter((b) => !isWalkthroughBook(b))
+        : data;
+      setBooks(finalBooks);
+
+      setLastReadBook((current) => {
+        if (!current) return current;
+        const updated = finalBooks.find((b) => b.id === current.id);
+        if (updated) {
+          localStorage.setItem("kindle_last_read", JSON.stringify(updated));
+          return updated;
+        }
+        return current;
+      });
 
       if (opts?.promptDeviceDownloads && uid) {
         const promptKey = `kora_device_dl_prompted_${uid}`;
@@ -2392,6 +2401,16 @@ export default function App() {
             onSearchTrigger={(query) => {
               setDiscoverInitialQuery(query);
               switchTab("discover");
+            }}
+            onBookUpdated={(updatedBook) => {
+              setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
+              setLastReadBook((current) => {
+                if (current && current.id === updatedBook.id) {
+                  localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+                  return updatedBook;
+                }
+                return current;
+              });
             }}
           />
                   </div>

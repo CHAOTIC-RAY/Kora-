@@ -22,6 +22,13 @@ import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
+import {
+  getNetgalleyCoverUrl,
+  searchNetgalleyCatalog,
+  getNetgalleyBookDetails,
+  getNetgalleyCategories,
+  fetchNetgalleyCategoryListings
+} from "./lib/netgalley";
 declare const HTMLRewriter: any;
 
 async function sha256(message: string): Promise<string> {
@@ -341,6 +348,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         extension: extension.toUpperCase(),
         size: size,
         source: r.source || "Rave",
+        language: r.language || r.lang || r.language_code || r.language_names || r.info?.language || undefined,
         downloadUrl: r.directUrl || r.downloadUrl || "",
         iaId: r.source === "Internet Archive" ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
         coverUrl
@@ -3007,8 +3015,44 @@ export default {
       const md5 = url.searchParams.get("md5");
       const title = url.searchParams.get("title");
       const author = url.searchParams.get("author");
+      const type = url.searchParams.get("type");
+      const isAudiobook = url.searchParams.get("isAudiobook") === "true" || type === "audiobook" || url.searchParams.get("media") === "audio";
 
-      // Try OpenLibrary by title/author first
+      // Helper to fetch and proxy an image URL
+      const proxyImage = async (imgUrl: string) => {
+        try {
+          const imgRes = await fetch(imgUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36",
+              "Referer": "https://www.netgalley.com/"
+            }
+          });
+          if (imgRes.ok) {
+            const body = await imgRes.arrayBuffer();
+            return new Response(body, {
+              headers: {
+                "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
+                "Cache-Control": "public, max-age=604800, immutable",
+                "Access-Control-Allow-Origin": "*"
+              }
+            });
+          }
+        } catch (_) {}
+        return null;
+      };
+
+      // 1. FOR AUDIOBOOKS: NetGalley is the MAIN (Primary) source for audiobook covers
+      if (isAudiobook && title) {
+        try {
+          const ngCover = await getNetgalleyCoverUrl(title, author || "", { isAudiobook: true });
+          if (ngCover) {
+            const proxied = await proxyImage(ngCover);
+            if (proxied) return proxied;
+          }
+        } catch (_) {}
+      }
+
+      // 2. Try OpenLibrary by title/author
       if (title) {
         try {
           const searchUrl = new URL("https://openlibrary.org/search.json");
@@ -3022,20 +3066,20 @@ export default {
             const firstBook = olData.docs?.[0];
             if (firstBook?.cover_i) {
               const coverUrl = `https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`;
-              const imgRes = await fetch(coverUrl, {
-                headers: { "User-Agent": "Mozilla/5.0" }
-              });
-              if (imgRes.ok) {
-                const body = await imgRes.arrayBuffer();
-                return new Response(body, {
-                  headers: {
-                    "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
-                    "Cache-Control": "public, max-age=604800, immutable",
-                    "Access-Control-Allow-Origin": "*"
-                  }
-                });
-              }
+              const proxied = await proxyImage(coverUrl);
+              if (proxied) return proxied;
             }
+          }
+        } catch (_) {}
+      }
+
+      // 3. SECONDARY MAIN SOURCE FOR BOOK COVERS: NetGalley catalog
+      if (title) {
+        try {
+          const ngCover = await getNetgalleyCoverUrl(title, author || "");
+          if (ngCover) {
+            const proxied = await proxyImage(ngCover);
+            if (proxied) return proxied;
           }
         } catch (_) {}
       }
@@ -3043,19 +3087,8 @@ export default {
       if (isbn && /^\d{10,13}$/.test(isbn)) {
         try {
           const openLibraryUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
-          const olRes = await fetch(openLibraryUrl, {
-            headers: { "User-Agent": "Mozilla/5.0" }
-          });
-          if (olRes.ok) {
-            const body = await olRes.arrayBuffer();
-            return new Response(body, {
-              headers: {
-                "Content-Type": olRes.headers.get("Content-Type") || "image/jpeg",
-                "Cache-Control": "public, max-age=604800, immutable",
-                "Access-Control-Allow-Origin": "*"
-              }
-            });
-          }
+          const proxied = await proxyImage(openLibraryUrl);
+          if (proxied) return proxied;
         } catch (_) {}
       }
 
@@ -3093,17 +3126,8 @@ export default {
             const gData = await gRes.json();
             const thumb = gData.items?.[0]?.volumeInfo?.imageLinks?.thumbnail?.replace("http:", "https:");
             if (thumb) {
-              const imgRes = await fetch(thumb, { headers: { "User-Agent": "Mozilla/5.0" } });
-              if (imgRes.ok) {
-                const body = await imgRes.arrayBuffer();
-                return new Response(body, {
-                  headers: {
-                    "Content-Type": imgRes.headers.get("Content-Type") || "image/jpeg",
-                    "Cache-Control": "public, max-age=604800, immutable",
-                    "Access-Control-Allow-Origin": "*"
-                  }
-                });
-              }
+              const proxied = await proxyImage(thumb);
+              if (proxied) return proxied;
             }
           }
         } catch (_) {}
@@ -3111,6 +3135,41 @@ export default {
 
       // If all fails, return a 404
       return new Response("No cover found", { status: 404 });
+    }
+
+    // NetGalley API Endpoints
+    if (path === "/api/netgalley/search") {
+      const q = url.searchParams.get("q") || "";
+      const isAudiobook = url.searchParams.get("isAudiobook") === "true";
+      const results = await searchNetgalleyCatalog(q, { isAudiobook });
+      return new Response(JSON.stringify({ results, source: "NetGalley" }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+    }
+
+    if (path === "/api/netgalley/book") {
+      const title = url.searchParams.get("title") || "";
+      const author = url.searchParams.get("author") || "";
+      const details = await getNetgalleyBookDetails(title, author);
+      return new Response(JSON.stringify({ details, source: "NetGalley" }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+    }
+
+    if (path === "/api/netgalley/categories") {
+      const categories = getNetgalleyCategories();
+      return new Response(JSON.stringify({ categories, source: "NetGalley" }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
+    }
+
+    if (path === "/api/netgalley/category") {
+      const cat = url.searchParams.get("cat") || url.searchParams.get("path") || "16";
+      const limit = parseInt(url.searchParams.get("limit") || "24", 10);
+      const results = await fetchNetgalleyCategoryListings(cat, limit);
+      return new Response(JSON.stringify({ results, source: "NetGalley", cat }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
     }
 
     // 7. Z-Library Domains

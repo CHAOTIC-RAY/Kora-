@@ -202,7 +202,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
     { name: "Bookerly", value: "font-bookerly" },
     { name: "ChareInk7SP", value: "font-chareink" },
     { name: "Lexica Ultralegible", value: "font-lexica" },
-    { name: "Lexend", value: "font-rakuten" },
+    { name: "Rakuten Sans", value: "font-rakuten" },
   ];
 
   async function load() {

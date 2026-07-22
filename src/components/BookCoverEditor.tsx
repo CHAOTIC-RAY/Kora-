@@ -86,7 +86,25 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
           .catch(() => [])
       );
 
-      // 3. Anna's Archive dynamic search
+      // 3. NetGalley Catalog
+      searchPromises.push(
+        fetch(`/api/netgalley/search?q=${encodeURIComponent(searchQuery)}`)
+          .then(async (res) => {
+            if (!res.ok) return [];
+            const data = await res.json();
+            const list = data.results || [];
+            return list
+              .filter((item: any) => item && item.coverUrl)
+              .map((item: any) => ({
+                url: `/api/proxy-image?url=${encodeURIComponent(item.coverUrl)}`,
+                source: "NetGalley"
+              }))
+              .slice(0, 6);
+          })
+          .catch(() => [])
+      );
+
+      // 4. Anna's Archive dynamic search
       searchPromises.push(
         fetch(`/api/annas-archive/search?q=${encodeURIComponent(searchQuery)}`)
           .then(async (res) => {

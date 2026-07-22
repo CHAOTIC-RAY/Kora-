@@ -303,7 +303,7 @@ export async function scrapePopularAudiobooks(
         title: b.title,
         author: b.author || "Unknown",
         description: `Listen free on ${source === "hdaudiobooks" ? "HDAudiobooks" : "FullLengthAudiobooks"}.`,
-        coverUrl: b.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author || "")}`,
+        coverUrl: b.coverUrl || `/api/cover-redirect?type=audiobook&title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author || "")}`,
         link: b.link,
         listenUrl: b.link,
         listenUrlAlt: b.link,
@@ -390,7 +390,7 @@ export function extractBestBookLinkFromSearch(
 export function mapPopularAudiobooks() {
   return POPULAR_AUDIOBOOKS.map((b: any) => ({
     ...b,
-    coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+    coverUrl: `/api/cover-redirect?type=audiobook&title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
     link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
     listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
     listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,

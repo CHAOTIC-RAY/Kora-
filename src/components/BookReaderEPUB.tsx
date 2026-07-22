@@ -1448,42 +1448,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
       const targetEl = e.target as HTMLElement | null;
       // Taps on the floating selection menu / pins must NOT tear down the menu
-      // before click handlers run (that made Highlight / Note / Web appear dead).
-      if (targetEl?.closest?.("[data-kora-selection-ui]")) {
+      if (targetEl?.closest?.("[data-kora-selection-ui], [data-kora-guide-tip]")) {
         isPointerDownRef.current = false;
         pressInsideContent = false;
-        gestureSelectActive = false;
-        gestureStartCaret = null;
-        if (pressTimer) {
-          clearTimeout(pressTimer);
-          pressTimer = null;
-        }
-        return;
-      }
-
-      // Guide tip / selection chrome — don't treat as page selection.
-      if (targetEl?.closest?.("[data-kora-guide-tip], [data-kora-selection-ui]")) {
-        isPointerDownRef.current = false;
-        pressInsideContent = false;
-        gestureSelectActive = false;
-        gestureStartCaret = null;
-        if (pressTimer) {
-          clearTimeout(pressTimer);
-          pressTimer = null;
-        }
         return;
       }
 
       isPointerDownRef.current = true;
-      movedDuringPress = false;
-      gestureSelectActive = false;
-      gestureStartCaret = null;
-      pressStartX = lastX = e.clientX;
-      pressStartY = lastY = e.clientY;
-
       const container = contentRef.current;
-      // Guide dimmers / narrator scrims sit above the page — walk the hit stack
-      // so long-press still reaches book text underneath pass-through layers.
+      const pagedColumns = !!(container && rootUsesCssColumns(container));
+
       let overContent = !!(container && container.contains(e.target as Node));
       if (!overContent && container) {
         try {
@@ -1508,43 +1482,54 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         }
       }
       pressInsideContent = overContent;
+
       if (!pressInsideContent) {
         setSelectionCoords(null);
         setSelectionPins({ start: null, end: null });
         return;
       }
 
-      // Paginated CSS columns: kill native selection immediately — it always snaps
-      // to the chapter start. We rebuild ranges from carets ourselves.
-      const pagedColumns = !!(container && rootUsesCssColumns(container));
+      movedDuringPress = false;
+      gestureSelectActive = false;
+      gestureStartCaret = null;
+      pressStartX = lastX = e.clientX;
+      pressStartY = lastY = e.clientY;
+
       if (pagedColumns) {
-        try {
-          e.preventDefault();
-        } catch {
-          /* ignore */
+        // Clear old selection only if nothing is currently selected to start fresh
+        const currentSel = window.getSelection();
+        if (!currentSel || currentSel.isCollapsed) {
+          clearNativeSelection();
         }
-        clearNativeSelection();
-      }
 
-      const start = findCaretRangeAtPoint(pressStartX, pressStartY, container);
-      if (start) {
-        try {
-          gestureStartCaret = start.cloneRange();
-        } catch {
-          gestureStartCaret = start;
+        const start = findCaretRangeAtPoint(pressStartX, pressStartY, container);
+        if (start) {
+          try {
+            gestureStartCaret = start.cloneRange();
+          } catch {
+            gestureStartCaret = start;
+          }
         }
-      }
 
-      if (pressTimer) clearTimeout(pressTimer);
-      pressTimer = setTimeout(() => {
-        pressTimer = null;
-        // Don't hijack an in-progress drag selection
-        if (movedDuringPress || !isPointerDownRef.current) return;
-        selectWordAtPoint(pressStartX, pressStartY);
-      }, 320);
+        if (pressTimer) clearTimeout(pressTimer);
+        pressTimer = setTimeout(() => {
+          pressTimer = null;
+          // Don't hijack an in-progress drag selection
+          if (movedDuringPress || !isPointerDownRef.current) return;
+          selectWordAtPoint(pressStartX, pressStartY);
+        }, 320);
+      }
     };
 
     const handlePointerMove = (e: PointerEvent) => {
+      const container = contentRef.current;
+      const pagedColumns = !!(container && rootUsesCssColumns(container));
+
+      if (!pagedColumns) {
+        // Let browser native selection handle selection dragging natively in scroll layouts
+        return;
+      }
+
       lastX = e.clientX;
       lastY = e.clientY;
       if (!pressInsideContent || !isPointerDownRef.current) return;
@@ -1572,20 +1557,26 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const handlePointerUp = () => {
       isPointerDownRef.current = false;
       setIsDraggingSelection(false);
-      if (pressTimer) {
-        clearTimeout(pressTimer);
-        pressTimer = null;
+
+      const container = contentRef.current;
+      const pagedColumns = !!(container && rootUsesCssColumns(container));
+
+      if (pagedColumns) {
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        if (movedDuringPress) {
+          applyGestureSelection(true);
+        }
       }
-      if (movedDuringPress) {
-        applyGestureSelection(true);
-      }
+
       handleSelection();
       pressInsideContent = false;
       gestureSelectActive = false;
       gestureStartCaret = null;
     };
 
-    // Non-passive touchmove so we can preventDefault once custom selection is active.
     const handleTouchMove = (e: TouchEvent) => {
       if (!gestureSelectActive || !pressInsideContent) return;
       if (e.cancelable) e.preventDefault();
@@ -3838,9 +3829,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 }}
                 className={`flex-1 min-h-0 w-full relative py-3 px-3 md:py-8 md:px-16 flex items-start justify-start mx-auto overflow-hidden ${
                   annotateMode
-                    ? useScrollLayout
-                      ? "select-text cursor-text"
-                      : "select-none cursor-text"
+                    ? "select-text cursor-text"
                     : "select-none cursor-default"
                 } ${useDoubleColumns ? "max-w-[95%] xl:max-w-7xl px-4 md:px-8" : marginSize}`}
               >
@@ -4042,16 +4031,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     }}
                     transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
                     className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
-                      annotateMode && useScrollLayout ? "select-text cursor-text" : "select-none"
+                      annotateMode ? "select-text cursor-text" : "select-none"
                     }`}
                     style={{
                       fontSize: `${fontSize}px`,
                       lineHeight: lineSpacing,
-                      // Selection only while annotate mode is on (paginated still uses custom long-press).
-                      WebkitUserSelect: annotateMode && useScrollLayout ? "text" : "none",
-                      userSelect: annotateMode && useScrollLayout ? "text" : "none",
-                      WebkitTouchCallout: annotateMode && useScrollLayout ? "default" : "none",
-                      touchAction: useScrollLayout ? "pan-y" : swipeToTurn ? "pan-x" : "manipulation",
+                      // Selection allowed whenever annotate mode is on.
+                      WebkitUserSelect: annotateMode ? "text" : "none",
+                      userSelect: annotateMode ? "text" : "none",
+                      WebkitTouchCallout: annotateMode ? "default" : "none",
+                      touchAction: annotateMode ? "auto" : useScrollLayout ? "pan-y" : swipeToTurn ? "pan-x" : "manipulation",
                       // Keep content visible under paper-flip overlay
                       opacity: 1,
                       visibility: "visible" as const,

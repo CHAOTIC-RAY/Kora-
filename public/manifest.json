@@ -1,20 +1,15 @@
 {
-  "id": "/",
-  "name": "Kora — Your Reading Lounge",
+  "name": "Kora - Next-Gen Ebook Reader",
   "short_name": "Kora",
-  "description": "Your reading lounge for books, audiobooks, and news — offline-ready, cloud-synced, and built to keep going.",
-  "start_url": "/?source=pwa",
-  "scope": "/",
+  "description": "A highly polished, Kindle-inspired next-generation ebook reader with offline capabilities, cloud sync, and direct downloads.",
+  "start_url": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#18181B",
   "theme_color": "#18181B",
-  "orientation": "any",
-  "lang": "en",
-  "categories": ["books", "entertainment", "news"],
-  "prefer_related_applications": false,
+  "orientation": "portrait-primary",
   "share_target": {
-    "action": "https://kora.chaoticstudio.workers.dev/share",
+    "action": "/",
     "method": "GET",
     "enctype": "application/x-www-form-urlencoded",
     "params": {
@@ -23,110 +18,24 @@
       "url": "url"
     }
   },
-  "shortcuts": [
-    {
-      "name": "Continue reading",
-      "short_name": "Continue",
-      "description": "Pick up your last book or audiobook",
-      "url": "/?go=continue&source=shortcut",
-      "icons": [{ "src": "/shortcuts/continue.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "News & briefs",
-      "short_name": "News",
-      "description": "Open your feed and daily briefs",
-      "url": "/?go=feed&briefs=1&source=shortcut",
-      "icons": [{ "src": "/shortcuts/news.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "Library",
-      "short_name": "Library",
-      "description": "Browse your books and downloads",
-      "url": "/?go=library&source=shortcut",
-      "icons": [{ "src": "/shortcuts/library.png", "sizes": "192x192", "type": "image/png" }]
-    },
-    {
-      "name": "Discover books",
-      "short_name": "Discover",
-      "description": "Search and download new reads",
-      "url": "/?go=discover&source=shortcut",
-      "icons": [{ "src": "/shortcuts/discover.png", "sizes": "192x192", "type": "image/png" }]
-    }
-  ],
-  "widgets": [
-    {
-      "name": "Continue reading",
-      "short_name": "Continue",
-      "description": "Jump back into the book or audiobook you were last reading",
-      "tag": "kora-continue",
-      "template": "kora-continue",
-      "ms_ac_template": "/widgets/continue-template.json",
-      "data": "/widgets/continue-data.json",
-      "type": "application/json",
-      "update": 3600,
-      "multiple": false,
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }],
-      "screenshots": [
-        {
-          "src": "/widgets/continue-screenshot.png",
-          "sizes": "600x400",
-          "label": "Continue reading widget",
-          "platform": "windows"
-        }
-      ]
-    },
-    {
-      "name": "Daily news brief",
-      "short_name": "Brief",
-      "description": "Headlines from your subscribed news feeds",
-      "tag": "kora-brief",
-      "template": "kora-brief",
-      "ms_ac_template": "/widgets/brief-template.json",
-      "data": "/widgets/brief-data.json",
-      "type": "application/json",
-      "update": 3600,
-      "multiple": false,
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }],
-      "screenshots": [
-        {
-          "src": "/widgets/brief-screenshot.png",
-          "sizes": "600x400",
-          "label": "Daily news brief widget",
-          "platform": "windows"
-        }
-      ]
-    }
-  ],
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }

@@ -1,6 +1,6 @@
 @font-face {
-  font-family: "OpenDyslexic";
-  src: url("https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff") format("woff");
+  font-family: "Faruma";
+  src: url("/fonts/faruma.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -8,9 +8,81 @@
 
 @font-face {
   font-family: "OpenDyslexic";
-  src: url("https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff") format("woff");
+  src: url("/fonts/opendyslexic-regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "OpenDyslexic";
+  src: url("/fonts/opendyslexic-bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bookerly";
+  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "ChareInk7SP";
+  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
   font-display: swap;
 }
 
@@ -24,7 +96,55 @@
 
 @font-face {
   font-family: "Lexica Ultralegible";
+  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Italic.otf") format("opentype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lexica Ultralegible";
   src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Lexica Ultralegible";
+  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-BoldItalic.otf") format("opentype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rakuten Sans";
+  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rakuten Sans";
+  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Nata Sans";
+  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Nata Sans";
+  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -51,22 +171,18 @@
 }
 
 @theme {
-  /* App UI fonts — overridden per skin via --font-ui in skin-fonts.css */
-  --font-ui: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
-  --font-ui-display: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
-
-  /* Reader / book typography (not changed by app skin) */
-  --font-sans: "Inter", system-ui, sans-serif;
+  /* Use Lora as the primary body font — matching the Kora wordmark's serif personality */
+  --font-sans: "Lora", "Inter", ui-serif, Georgia, serif;
   --font-serif: "Lora", ui-serif, Georgia, serif;
-  --font-display: "Lexend", "Inter", sans-serif;
+  --font-display: "Nata Sans", "Rakuten Sans", "Inter", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-lexend: "Lexend", "Inter", sans-serif;
-  --font-thaana: "Noto Sans Thaana", "MV Waheed", sans-serif;
+  --font-lexend: "Nata Sans", "Rakuten Sans", "Inter", sans-serif;
+  --font-thaana: "Faruma", "Noto Sans Thaana", "MV Waheed", sans-serif;
   --font-opendyslexic: "OpenDyslexic", "Lexend", sans-serif;
-  --font-bookerly: "Lora", ui-serif, Georgia, serif;
-  --font-chareink: "Lora", ui-serif, Georgia, serif;
+  --font-bookerly: "Bookerly", serif;
+  --font-chareink: "ChareInk7SP", serif;
   --font-lexica: "Lexica Ultralegible", sans-serif;
-  --font-rakuten: "Lexend", sans-serif;
+  --font-rakuten: "Rakuten Sans", sans-serif;
 
   --color-kindle-bg: var(--theme-bg);
   --color-kindle-text: var(--theme-text);
@@ -268,12 +384,6 @@
   color: inherit;
 }
 
-/*
- * Default: allow native select on reader text. Paginated mode overrides this
- * on the surface AND all descendants — a prior rule only set `none` on the
- * container, so `.reader-select-surface * { user-select: text !important }`
- * kept winning and CSS columns snapped every selection to chapter start.
- */
 .reader-select-surface,
 .reader-select-surface * {
   -webkit-user-select: text !important;
@@ -281,47 +391,11 @@
   -webkit-touch-callout: default;
 }
 
-/*
- * Paginated reader: hide scrollbars and block native text-select (CSS columns
- * snap selection to chapter start — we rebuild ranges from pointer carets).
- */
-#epub-reader-container.kora-paged-reader,
-#epub-reader-container.kora-paged-reader * {
-  scrollbar-width: none;
-}
-#epub-reader-container.kora-paged-reader::-webkit-scrollbar,
-#epub-reader-container.kora-paged-reader *::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
-}
-
-#epub-reader-container.kora-paged-reader .reader-select-surface,
-#epub-reader-container.kora-paged-reader .reader-select-surface *,
-#epub-reader-container.kora-paged-reader article,
-#epub-reader-container.kora-paged-reader article * {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  -webkit-touch-callout: none !important;
-}
-
-#epub-reader-container.kora-scroll-reader .reader-select-surface,
-#epub-reader-container.kora-scroll-reader .reader-select-surface * {
-  touch-action: pan-y;
+/* Allow native text selection gestures; pan-y alone made column hit-testing worse on Android */
+#epub-reader-container .reader-select-surface {
+  touch-action: auto;
   -webkit-user-select: text !important;
   user-select: text !important;
-  -webkit-touch-callout: default;
-}
-
-#epub-reader-container.kora-walkthrough-reader.kora-scroll-reader article {
-  padding-bottom: 2.5rem;
-}
-
-/*
- * Keep long-press selection helpers for continuous scroll mode.
- */
-#epub-reader-container .reader-select-surface {
-  touch-action: manipulation;
 }
 
 /* Keep highlight marks selectable but clearly painted above EPUB theme colors */
@@ -485,16 +559,6 @@ mark.kora-hl-pink {
 html {
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-  /* Default: block double-tap zoom without breaking scroll / long-press */
-  touch-action: manipulation;
-}
-
-html,
-body {
-  touch-action: manipulation;
-  -webkit-overflow-scrolling: touch;
 }
 
 html.kora-gesture-nav,
@@ -502,87 +566,9 @@ html.kora-gesture-nav body {
   touch-action: manipulation;
 }
 
-html.kora-android body,
-html.kora-ios body {
+html.kora-android body {
   padding-left: var(--kora-safe-left);
   padding-right: var(--kora-safe-right);
-}
-
-/*
- * iOS Safari zooms the viewport when a focused control is < 16px.
- * Force readable control size without changing visual density much.
- */
-@supports (-webkit-touch-callout: none) {
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
-  textarea,
-  select {
-    font-size: 16px !important;
-  }
-}
-
-/* Visual viewport + keyboard (set by iosPwa.ts) */
-:root {
-  --kora-vvh: 100dvh;
-  --kora-keyboard-inset: 0px;
-  --kora-vv-offset-top: 0px;
-}
-
-html.kora-ios,
-html.kora-standalone {
-  height: 100%;
-  height: -webkit-fill-available;
-}
-
-html.kora-ios body,
-html.kora-standalone body {
-  min-height: 100%;
-  min-height: -webkit-fill-available;
-  min-height: 100dvh;
-  /* Kill rubber-band chaining into the browser chrome */
-  overscroll-behavior-y: none;
-  position: relative;
-}
-
-html.kora-standalone body {
-  /* Installed PWA: status bar is translucent — keep content clear of notch */
-  padding-top: 0;
-}
-
-/* When the software keyboard is open, lift fixed chrome above it */
-html.kora-keyboard-open .kora-mobile-footer,
-html.kora-keyboard-open .kora-mobile-media-dock,
-html.kora-keyboard-open .kora-audiobook-mini,
-html.kora-keyboard-open .kora-mobile-fab {
-  bottom: calc(1.25rem + var(--kora-safe-bottom) + var(--kora-keyboard-inset)) !important;
-}
-
-html.kora-keyboard-open .fixed.bottom-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\] {
-  bottom: calc(4.5rem + env(safe-area-inset-bottom) + var(--kora-keyboard-inset)) !important;
-}
-
-/* Prefer dynamic visual viewport height for full-screen shells */
-html.kora-ios #epub-reader-container,
-html.kora-standalone #epub-reader-container {
-  height: var(--kora-vvh, 100dvh);
-  max-height: var(--kora-vvh, 100dvh);
-}
-
-/* iOS: avoid sticky hover sticky-states after tap — prefer coarse pointer MQ */
-@media (hover: none) and (pointer: coarse) {
-  button:focus {
-    outline: none;
-  }
-  button:focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--kindle-accent, #c4a574) 70%, transparent);
-    outline-offset: 2px;
-  }
-}
-
-/* Soften momentum scroll only on iOS panes */
-html.kora-ios .overflow-y-auto,
-html.kora-ios .overflow-auto {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
 }
 
 .kora-safe-top {
@@ -614,49 +600,6 @@ html.kora-ios .overflow-auto {
 
 .kora-tab-panel[hidden] {
   display: none !important;
-}
-
-/* Soft, quick enter when a keep-alive panel becomes visible */
-.kora-tab-panel:not([hidden]) {
-  animation: kora-tab-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes kora-tab-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .kora-tab-panel:not([hidden]) {
-    animation: none;
-  }
-}
-
-.kora-desktop-nav-item {
-  transition:
-    color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 0.14s cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 0.14s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.kora-desktop-nav-item.is-active {
-  transform: translateY(-0.5px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .kora-desktop-nav-item,
-  .kora-desktop-nav-item.is-active {
-    transition: none;
-    transform: none;
-  }
 }
 
 .discover-category-section {
@@ -731,7 +674,7 @@ html.kora-ios .overflow-auto {
 /* ── Base body ── */
 body {
   margin: 0;
-  font-family: var(--font-ui);
+  font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.6;
   overflow-x: hidden;
@@ -745,24 +688,22 @@ body {
 #root {
   min-height: 100vh;
   min-height: 100dvh;
-  min-height: var(--kora-vvh, 100dvh);
 }
 
-/* Headings — skin UI display font (scoped in skin-fonts.css for app shell) */
+/* Headings use Lexend for display contrast */
 h1, h2, h3, h4 {
-  font-family: var(--font-ui-display);
+  font-family: var(--font-lexend);
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
-/* Reader-only font utilities — unaffected by app skin */
-.font-serif { font-family: var(--font-serif); }
+/* Wordmark / brand text should always be Lexend */
+.font-display { font-family: var(--font-lexend); }
 .font-thaana { font-family: var(--font-thaana); }
 .font-bookerly { font-family: var(--font-bookerly); }
 .font-chareink { font-family: var(--font-chareink); }
 .font-lexica { font-family: var(--font-lexica); }
 .font-rakuten { font-family: var(--font-rakuten); }
-.font-opendyslexic { font-family: var(--font-opendyslexic); }
 
 [dir="rtl"] .font-thaana,
 .font-thaana[dir="rtl"],
@@ -868,118 +809,7 @@ h1, h2, h3, h4 {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-/* In-book walkthrough CTA buttons (EPUB stylesheet is stripped at load) */
-/* In-book walkthrough layout (EPUB stylesheet is stripped at load) */
-.epub-content .kora-guide-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85em;
-  margin: 0.25em 0 1em;
+/* Precise focus-mode styles targeting library header */
+div#root:nth-of-type(1) > div#app-root-container:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div#library-manager-section:nth-of-type(1) > header:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1) {
+  font-family: "Nata Sans", sans-serif;
 }
-
-.epub-content .kora-guide-card {
-  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
-  border-radius: 0.85em;
-  padding: 0.9em 1em;
-  margin: 0 !important;
-  text-indent: 0 !important;
-}
-
-.epub-content .kora-guide-muted {
-  background: color-mix(in srgb, currentColor 4%, transparent);
-}
-
-.epub-content .kora-lead {
-  font-size: 1.02em;
-  margin: 0 0 0.65em !important;
-  text-indent: 0 !important;
-}
-
-.epub-content .kora-label {
-  font-family: inherit;
-  font-size: 0.68em;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin: 0 0 0.5em !important;
-  opacity: 0.65;
-  text-indent: 0 !important;
-}
-
-.epub-content .kora-checklist,
-.epub-content .kora-terms-list {
-  margin: 0.4em 0 0 !important;
-  padding-left: 1.15em;
-  text-indent: 0 !important;
-}
-
-.epub-content .kora-checklist li,
-.epub-content .kora-terms-list li {
-  margin: 0 0 0.45em !important;
-  text-indent: 0 !important;
-}
-
-.epub-content .kora-note,
-.epub-content .kora-footnote {
-  text-indent: 0 !important;
-  font-size: 0.9em;
-  opacity: 0.75;
-}
-
-.epub-content p.kora-cta-row {
-  text-indent: 0 !important;
-  margin: 1.25em 0 !important;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65em;
-}
-
-.epub-content button[data-kora-guide-cta] {
-  font-family: inherit;
-  font-size: 0.78em;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 0.85em 1em;
-  border-radius: 999px;
-  border: none;
-  background: var(--kindle-accent, #1a1a1a);
-  color: #f5f5f5;
-  cursor: pointer;
-  text-align: center;
-  max-width: 100%;
-}
-
-.epub-content button[data-kora-guide-cta].kora-cta-secondary {
-  background: transparent;
-  color: inherit;
-  border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
-}
-
-.epub-content ul.kora-guide-list {
-  list-style: none;
-  padding: 0 !important;
-  margin: 1em 0 !important;
-  text-indent: 0 !important;
-}
-
-.epub-content ul.kora-guide-list li {
-  margin: 0 0 0.5em !important;
-  padding: 0 !important;
-  text-indent: 0 !important;
-}
-
-.epub-content ul.kora-guide-list button,
-.epub-content button[data-kora-guide-cta][data-guide-id] {
-  width: 100%;
-  text-transform: none;
-  letter-spacing: 0.01em;
-  font-weight: 600;
-  text-align: left;
-  background: transparent;
-  color: inherit;
-  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
-}
-
-@import "./styles/skin-fonts.css";
-@import "./styles/app-skins.css";

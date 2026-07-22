@@ -118,11 +118,6 @@ export default function WebClipperPanel({ userId = "", onRefreshLibrary }: WebCl
           {clipError}
         </p>
       )}
-
-      <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-        On Android, install Kora as a PWA, then use Share → Kora to send links or text here.
-        If Kora is missing from the share sheet after an update, remove the home-screen app and install it again so the share target refreshes.
-      </p>
     </section>
   );
 }
