@@ -588,6 +588,9 @@ html.kora-android body {
   bottom: calc(1.25rem + var(--kora-safe-bottom));
   left: calc(1rem + var(--kora-safe-left));
   right: calc(1rem + var(--kora-safe-right));
+  /* Opaque fallback so feed/list content never shows through the tab bar */
+  background: var(--theme-card, var(--color-kindle-card, #f7f3e3));
+  isolation: isolate;
 }
 
 .kora-tab-bar {

@@ -36,9 +36,10 @@ body.skin-kora .kora-desktop-nav {
 
 body.skin-kora .kora-mobile-footer {
   border-radius: 1rem;
-  background: color-mix(in srgb, var(--theme-card) 90%, transparent);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  /* Solid fill — backdrop-filter is unreliable on mobile WebViews and lets content bleed through */
+  background: var(--theme-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
 }
 
@@ -277,10 +278,10 @@ body.skin-soft .kora-desktop-nav-item.is-active {
 body.skin-soft .kora-mobile-footer {
   max-width: min(24rem, calc(100vw - 2rem));
   border-radius: 9999px;
-  border-color: color-mix(in srgb, var(--theme-border) 50%, transparent) !important;
-  background: color-mix(in srgb, var(--theme-card) 88%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  border-color: color-mix(in srgb, var(--theme-border) 70%, transparent) !important;
+  background: var(--theme-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset);
 }
 
