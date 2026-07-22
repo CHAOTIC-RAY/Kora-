@@ -3,7 +3,6 @@
 
     <!-- Base application theme. -->
     <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
@@ -25,20 +24,19 @@
         <item name="android:enforceStatusBarContrast">false</item>
     </style>
 
-
     <!--
-      Android 12+ uses Theme.SplashScreen attrs (windowSplashScreen*).
-      Legacy windowBackground alone defaults to a white system splash.
+      Launch theme for Capacitor. Android 12+ attrs also live in values-v31/.
+      Do NOT use Capacitor's default splash drawable as the animated icon.
     -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/colorPrimaryDark</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_kora</item>
         <item name="windowSplashScreenIconBackgroundColor">@color/colorPrimaryDark</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
         <item name="android:windowSplashScreenBackground">@color/colorPrimaryDark</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_kora</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@color/colorPrimaryDark</item>
-        <item name="android:windowBackground">@color/colorPrimaryDark</item>
+        <item name="android:windowBackground">@drawable/splash</item>
         <item name="android:statusBarColor">@color/colorPrimaryDark</item>
         <item name="android:navigationBarColor">@color/colorPrimaryDark</item>
         <item name="android:enforceNavigationBarContrast">false</item>

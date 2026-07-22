@@ -26,7 +26,8 @@ export function isNativeApp(): boolean {
 export function getApiBaseUrl(): string {
   const fromEnv = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
   if (fromEnv) return fromEnv;
-  // Fallback: relative paths (web / PWA)
+  // Capacitor APK must never fall back to relative /api (that hits https://localhost).
+  if (isNativeApp()) return "https://kora.chaoticstudio.workers.dev";
   return "";
 }
 

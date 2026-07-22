@@ -138,6 +138,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
     variant === "featured" ? "w-full aspect-[16/9]" : "w-full aspect-[4/3]";
 
   const x = useMotionValue(0);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Dynamic transforms for underlay action states
   const leftOpacity = useTransform(x, [0, 60], [0, 1]);
@@ -147,6 +148,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   const rightScale = useTransform(x, [-120, 0], [1.15, 0.85]);
 
   const handleDragEnd = (_event: any, info: any) => {
+    setIsDragging(false);
     const threshold = 120;
     if (info.offset.x > threshold) {
       onToggleRead();
@@ -157,8 +159,12 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
 
   return (
     <div className={`relative overflow-hidden rounded-2xl ${cardClass} flex flex-col h-full select-none`}>
-      {/* Swipe Underlay */}
-      <div className="absolute inset-0 z-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
+      {/* Swipe underlay — only while dragging so Android WebView does not composite it over text */}
+      {isDragging ? (
+      <div
+        className="absolute inset-0 z-0 isolate bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none"
+        aria-hidden
+      >
         {/* Left Action (swipe right) -> Mark Read */}
         <motion.div
           style={{ opacity: leftOpacity }}
@@ -181,6 +187,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
           </motion.div>
         </motion.div>
       </div>
+      ) : null}
 
       {/* Swipeable Foreground Card */}
       <motion.article
@@ -188,9 +195,10 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={{ left: 0.6, right: 0.6 }}
         style={{ x }}
+        onDragStart={() => setIsDragging(true)}
         onDragEnd={handleDragEnd}
         onTap={() => onRead()}
-        className={`feed-article-card relative z-10 bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col flex-1 touch-pan-y ${
+        className={`feed-article-card relative z-10 isolate bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col flex-1 touch-pan-y ${
           item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
         }`}
       >

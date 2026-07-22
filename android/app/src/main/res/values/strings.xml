@@ -5,10 +5,10 @@
     <string name="package_name">app.kora.reader</string>
     <string name="custom_url_scheme">app.kora.reader</string>
 
-    <string name="widget_continue_label">Continue reading</string>
-    <string name="widget_continue_description">Jump back into the book or audiobook you were last reading</string>
-    <string name="widget_brief_label">Daily news brief</string>
-    <string name="widget_brief_description">Headlines from your subscribed news feeds</string>
+    <string name="widget_continue_label">Kora · Continue</string>
+    <string name="widget_continue_description">Jump back into the book or audiobook you were last reading in Kora</string>
+    <string name="widget_brief_label">Kora · Daily Brief</string>
+    <string name="widget_brief_description">Headlines from your subscribed Kora news feeds</string>
 
     <string name="shortcut_continue_short">Continue</string>
     <string name="shortcut_continue_long">Continue reading</string>

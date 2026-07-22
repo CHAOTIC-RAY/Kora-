@@ -1,32 +1,40 @@
 package app.kora.reader;
 
+import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Window;
+import androidx.core.splashscreen.SplashScreen;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import app.kora.reader.widgets.BriefWidgetProvider;
+import app.kora.reader.widgets.ContinueWidgetProvider;
 import app.kora.reader.widgets.KoraWidgetsPlugin;
 import com.getcapacitor.BridgeActivity;
 import org.json.JSONObject;
 
 /**
- * Main Capacitor activity. Forces a dark system navigation bar so Android's
- * gesture indicator / contrast scrim does not paint a bright white strip under
- * the floating tab bar. Registers the home-screen widgets plugin.
+ * Main Capacitor activity.
+ * Installs the Android 12+ splash screen before super.onCreate so the system
+ * never falls back to a white Capacitor default.
  */
 public class MainActivity extends BridgeActivity {
   private static final int KORA_SURFACE = Color.parseColor("#18181B");
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    // MUST run before super.onCreate — keeps the themed splash until WebView is ready.
+    SplashScreen.installSplashScreen(this);
+
     registerPlugin(KoraWidgetsPlugin.class);
     registerPlugin(ApkInstallPlugin.class);
     super.onCreate(savedInstanceState);
     applyDarkSystemBars();
-    // Cold start: Capacitor loads the intent URL; also notify SPA for query routing.
+    enableHomeScreenWidgets();
     handleWidgetDeepLink(getIntent());
   }
 
@@ -37,10 +45,27 @@ public class MainActivity extends BridgeActivity {
     handleWidgetDeepLink(intent);
   }
 
-  /**
-   * Widget / shortcut VIEW intents → dispatch kora-deeplink so the SPA can route
-   * without a full WebView reload (works for warm starts with singleTask).
-   */
+  /** Ensure widget providers stay enabled so OEMs list them in the picker. */
+  private void enableHomeScreenWidgets() {
+    try {
+      PackageManager pm = getPackageManager();
+      if (pm == null) return;
+      ComponentName[] widgets =
+          new ComponentName[] {
+            new ComponentName(this, ContinueWidgetProvider.class),
+            new ComponentName(this, BriefWidgetProvider.class),
+          };
+      for (ComponentName widget : widgets) {
+        pm.setComponentEnabledSetting(
+            widget,
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP);
+      }
+    } catch (Exception ignored) {
+      /* ignore */
+    }
+  }
+
   private void handleWidgetDeepLink(Intent intent) {
     if (intent == null) return;
     Uri data = intent.getData();

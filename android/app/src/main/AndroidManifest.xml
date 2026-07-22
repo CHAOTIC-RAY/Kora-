@@ -138,9 +138,10 @@
             </intent-filter>
         </receiver>
 
-        <!-- Home-screen widgets -->
+        <!-- Home-screen widgets (fully-qualified names; UPDATE-only filter is required) -->
         <receiver
-            android:name=".widgets.ContinueWidgetProvider"
+            android:name="app.kora.reader.widgets.ContinueWidgetProvider"
+            android:enabled="true"
             android:exported="true"
             android:label="@string/widget_continue_label">
             <intent-filter>
@@ -152,7 +153,8 @@
         </receiver>
 
         <receiver
-            android:name=".widgets.BriefWidgetProvider"
+            android:name="app.kora.reader.widgets.BriefWidgetProvider"
+            android:enabled="true"
             android:exported="true"
             android:label="@string/widget_brief_label">
             <intent-filter>

@@ -160,6 +160,67 @@ async function main() {
     await sharp(master).resize(48, 48).png().toBuffer()
   );
 
+  // Android 12+ Theme.SplashScreen animated icon: cream K on transparent
+  // (system masks to circle; never use Capacitor default / adaptive FG here).
+  async function makeSplashIcon(size) {
+    const logo = await sharp(master)
+      .resize(Math.round(size * 0.72), Math.round(size * 0.72), {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const { data, info } = logo;
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3];
+      const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      if (a < 16 || lum < 40) {
+        data[i] = 0;
+        data[i + 1] = 0;
+        data[i + 2] = 0;
+        data[i + 3] = 0;
+      } else {
+        // Match brand cream on the dark splash background
+        data[i] = 247;
+        data[i + 1] = 243;
+        data[i + 2] = 227;
+        data[i + 3] = 255;
+      }
+    }
+    const cutout = await sharp(data, {
+      raw: { width: info.width, height: info.height, channels: 4 },
+    })
+      .png()
+      .toBuffer();
+    return sharp({
+      create: {
+        width: size,
+        height: size,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([{ input: cutout, gravity: "centre" }])
+      .png()
+      .toBuffer();
+  }
+
+  const splashIconSizes = [
+    { dir: "drawable", size: 288 },
+    { dir: "drawable-mdpi", size: 192 },
+    { dir: "drawable-hdpi", size: 288 },
+    { dir: "drawable-xhdpi", size: 384 },
+    { dir: "drawable-xxhdpi", size: 576 },
+    { dir: "drawable-xxxhdpi", size: 768 },
+  ];
+  for (const s of splashIconSizes) {
+    await writePng(
+      path.join(resDir, s.dir, "ic_splash_kora.png"),
+      await makeSplashIcon(s.size)
+    );
+  }
+
   const splashSizes = {
     "drawable-port-mdpi": [320, 480],
     "drawable-port-hdpi": [480, 800],

@@ -40,4 +40,21 @@ public final class WidgetIntents {
       BriefWidgetProvider.updateAll(context, manager, briefIds);
     }
   }
+
+  /** Returns true if the pin request was accepted by the launcher. */
+  public static boolean requestPin(Context context, String which) {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) {
+      return false;
+    }
+    AppWidgetManager manager = AppWidgetManager.getInstance(context);
+    if (manager == null || !manager.isRequestPinAppWidgetSupported()) {
+      return false;
+    }
+    Class<?> provider =
+        "brief".equalsIgnoreCase(which)
+            ? BriefWidgetProvider.class
+            : ContinueWidgetProvider.class;
+    ComponentName name = new ComponentName(context, provider);
+    return manager.requestPinAppWidget(name, null, null);
+  }
 }

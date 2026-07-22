@@ -34,12 +34,14 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 400,
+      launchShowDuration: 0,
       launchAutoHide: true,
       backgroundColor: "#18181B",
       showSpinner: false,
+      // Legacy pre-12 ImageView splash (Android 12+ uses Theme.SplashScreen + ic_splash_kora).
       androidSplashResourceName: "splash",
       androidScaleType: "CENTER_CROP",
+      splashFullScreen: true,
     },
     StatusBar: {
       style: "DARK",

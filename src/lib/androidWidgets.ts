@@ -26,6 +26,10 @@ type KoraWidgetsPlugin = {
     brief?: WidgetBriefPayload | null;
   }): Promise<{ ok?: boolean }>;
   refresh(): Promise<void>;
+  requestPin(options: { which: "continue" | "brief" }): Promise<{
+    ok?: boolean;
+    supported?: boolean;
+  }>;
 };
 
 const KoraWidgets = registerPlugin<KoraWidgetsPlugin>("KoraWidgets");
@@ -108,5 +112,19 @@ export async function refreshAndroidHomeWidgets(): Promise<void> {
     await KoraWidgets.refresh();
   } catch (err) {
     console.warn("[KoraWidgets] refresh failed", err);
+  }
+}
+
+/** Ask the launcher to pin a Kora widget (Android 8+). */
+export async function requestPinAndroidWidget(
+  which: "continue" | "brief"
+): Promise<boolean> {
+  if (!isNativeAndroid()) return false;
+  try {
+    const result = await KoraWidgets.requestPin({ which });
+    return Boolean(result?.ok || result?.supported);
+  } catch (err) {
+    console.warn("[KoraWidgets] requestPin failed", err);
+    return false;
   }
 }

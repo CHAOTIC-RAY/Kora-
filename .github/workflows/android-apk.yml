@@ -71,11 +71,6 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Generate launcher icons from Kora logo
-        run: |
-          npm install --no-save sharp
-          node scripts/generate-android-icons.mjs
-
       - name: Build web assets for APK
         run: |
           echo "API base → $VITE_API_BASE_URL"
@@ -85,6 +80,12 @@ jobs:
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
+
+      # Re-apply icons after sync so Capacitor never leaves the default splash mark.
+      - name: Refresh Android splash + launcher icons
+        run: |
+          npm install --no-save sharp
+          node scripts/generate-android-icons.mjs
 
       - name: Configure signing keystore
         id: signing

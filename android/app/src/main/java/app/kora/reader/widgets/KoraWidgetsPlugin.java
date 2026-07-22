@@ -74,4 +74,22 @@ public class KoraWidgetsPlugin extends Plugin {
       call.reject("Failed to refresh widgets: " + e.getMessage(), e);
     }
   }
+
+  /**
+   * Prompt the launcher to pin a Kora widget (Android 8+).
+   * options.which: "continue" | "brief"
+   */
+  @PluginMethod
+  public void requestPin(PluginCall call) {
+    try {
+      String which = call.getString("which", "continue");
+      boolean ok = WidgetIntents.requestPin(getContext(), which);
+      JSObject ret = new JSObject();
+      ret.put("ok", ok);
+      ret.put("supported", ok);
+      call.resolve(ret);
+    } catch (Exception e) {
+      call.reject("Failed to pin widget: " + e.getMessage(), e);
+    }
+  }
 }

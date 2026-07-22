@@ -42,6 +42,7 @@ import {
   isApkAutoUpdateEnabled,
   setApkAutoUpdateEnabled,
 } from "../lib/apkUpdater";
+import { requestPinAndroidWidget } from "../lib/androidWidgets";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -1075,10 +1076,45 @@ function SettingsView({
               <Row title="Daily News Brief" desc="Morning notification with headlines from your RSS feeds">
                 <Toggle on={dailyNewsBriefEnabled} onClick={() => onChangeDailyNewsBrief?.(!dailyNewsBriefEnabled)} />
               </Row>
-              {typeof navigator !== "undefined" && /android/i.test(navigator.userAgent) ? (
+              {isAndroidApk ? (
+                <div className="space-y-2 px-0.5">
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Add Kora home-screen widgets, or long-press the app icon for Continue / News / Library shortcuts.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await requestPinAndroidWidget("continue");
+                        toast[ok ? "success" : "error"](
+                          ok
+                            ? "Confirm the Continue widget on your home screen"
+                            : "Open your widget picker and search “Kora”"
+                        );
+                      }}
+                      className="py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition"
+                    >
+                      Pin Continue
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await requestPinAndroidWidget("brief");
+                        toast[ok ? "success" : "error"](
+                          ok
+                            ? "Confirm the Daily Brief widget on your home screen"
+                            : "Open your widget picker and search “Kora”"
+                        );
+                      }}
+                      className="py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition"
+                    >
+                      Pin Brief
+                    </button>
+                  </div>
+                </div>
+              ) : typeof navigator !== "undefined" && /android/i.test(navigator.userAgent) ? (
                 <p className="text-[10px] text-kindle-text-muted leading-relaxed px-0.5">
-                  Tip: long-press the Kora app icon for Continue / News / Library shortcuts, or add the
-                  Continue and Daily Brief widgets from your home screen widget picker.
+                  Tip: install the Kora APK to use Continue and Daily Brief home-screen widgets.
                 </p>
               ) : null}
             </div>
