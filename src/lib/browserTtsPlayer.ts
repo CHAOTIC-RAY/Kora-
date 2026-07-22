@@ -370,21 +370,40 @@ export class BrowserTtsPlayer {
     this.callbacks.onPositionChange?.(this.playbackPosition);
   }
 
-  private async waitForVoices(timeoutMs = 1200): Promise<void> {
+  private async waitForVoices(timeoutMs = 4000): Promise<void> {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     if (getSpeechVoices().length) return;
 
     await new Promise<void>((resolve) => {
       const finish = () => resolve();
       const timer = window.setTimeout(finish, timeoutMs);
+      const poll = window.setInterval(() => {
+        try {
+          void window.speechSynthesis.getVoices();
+        } catch {
+          /* ignore */
+        }
+        if (getSpeechVoices().length) {
+          window.clearTimeout(timer);
+          window.clearInterval(poll);
+          window.speechSynthesis.removeEventListener("voiceschanged", handler);
+          resolve();
+        }
+      }, 200);
       const handler = () => {
         if (getSpeechVoices().length) {
           window.clearTimeout(timer);
+          window.clearInterval(poll);
           window.speechSynthesis.removeEventListener("voiceschanged", handler);
           resolve();
         }
       };
       window.speechSynthesis.addEventListener("voiceschanged", handler);
+      try {
+        void window.speechSynthesis.getVoices();
+      } catch {
+        /* ignore */
+      }
     });
   }
 

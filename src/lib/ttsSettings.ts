@@ -227,10 +227,61 @@ export function groupVoicesByLanguage(voices: SpeechSynthesisVoice[]): Array<{
 
 export function subscribeToVoicesChanged(callback: () => void): () => void {
   if (typeof window === "undefined" || !window.speechSynthesis) return () => {};
+
   const handler = () => callback();
   window.speechSynthesis.addEventListener("voiceschanged", handler);
-  callback();
-  return () => window.speechSynthesis.removeEventListener("voiceschanged", handler);
+  // Android WebView often never fires voiceschanged — also assign the legacy handler.
+  try {
+    window.speechSynthesis.onvoiceschanged = handler;
+  } catch {
+    /* ignore */
+  }
+
+  // Prime immediately + poll briefly (WebView populates voices asynchronously).
+  const prime = () => {
+    try {
+      void window.speechSynthesis.getVoices();
+    } catch {
+      /* ignore */
+    }
+    callback();
+  };
+  prime();
+
+  const started = Date.now();
+  const poll = window.setInterval(() => {
+    prime();
+    if (getSpeechVoices().length > 0 || Date.now() - started > 5000) {
+      window.clearInterval(poll);
+    }
+  }, 250);
+
+  return () => {
+    window.clearInterval(poll);
+    window.speechSynthesis.removeEventListener("voiceschanged", handler);
+    try {
+      if (window.speechSynthesis.onvoiceschanged === handler) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
+/** Call on a user gesture / Capacitor boot so Android WebView loads TTS voices. */
+export function primeSpeechVoices(): SpeechSynthesisVoice[] {
+  if (typeof window === "undefined" || !window.speechSynthesis) return [];
+  try {
+    // Empty utterance kick-starts voice enumeration on some Android WebViews.
+    const kick = new SpeechSynthesisUtterance("");
+    kick.volume = 0;
+    window.speechSynthesis.speak(kick);
+    window.speechSynthesis.cancel();
+  } catch {
+    /* ignore */
+  }
+  return window.speechSynthesis.getVoices();
 }
 
 export async function speakTestPhrase(phrase = "This is how your narrator will sound.") {

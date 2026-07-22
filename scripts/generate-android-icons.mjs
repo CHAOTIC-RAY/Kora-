@@ -142,16 +142,50 @@ async function main() {
     await writePng(path.join(resDir, n.dir, "ic_stat_kora.png"), out);
   }
 
-  // Splash-friendly full logo
-  const splash = await sharp(master)
-    .resize(512, 512, { fit: "cover" })
+  // Splash: dark #18181B canvas with centered K mark (all density / orientation folders)
+  const splashBg = { r: 24, g: 24, b: 27, alpha: 1 };
+  const splashLogo = await sharp(master)
+    .resize(220, 220, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .png()
     .toBuffer();
-  await writePng(path.join(resDir, "drawable", "splash.png"), splash);
+  const splashSquare = await sharp({
+    create: { width: 512, height: 512, channels: 4, background: splashBg },
+  })
+    .composite([{ input: splashLogo, gravity: "centre" }])
+    .png()
+    .toBuffer();
+  await writePng(path.join(resDir, "drawable", "splash.png"), splashSquare);
   await writePng(
     path.join(resDir, "drawable", "ic_stat_kora.png"),
     await sharp(master).resize(48, 48).png().toBuffer()
   );
+
+  const splashSizes = {
+    "drawable-port-mdpi": [320, 480],
+    "drawable-port-hdpi": [480, 800],
+    "drawable-port-xhdpi": [720, 1280],
+    "drawable-port-xxhdpi": [1080, 1920],
+    "drawable-port-xxxhdpi": [1440, 2560],
+    "drawable-land-mdpi": [480, 320],
+    "drawable-land-hdpi": [800, 480],
+    "drawable-land-xhdpi": [1280, 720],
+    "drawable-land-xxhdpi": [1920, 1080],
+    "drawable-land-xxxhdpi": [2560, 1440],
+  };
+  for (const [dir, [w, h]] of Object.entries(splashSizes)) {
+    const logoSize = Math.round(Math.min(w, h) * 0.28);
+    const scaled = await sharp(master)
+      .resize(logoSize, logoSize, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .png()
+      .toBuffer();
+    const buf = await sharp({
+      create: { width: w, height: h, channels: 4, background: splashBg },
+    })
+      .composite([{ input: scaled, gravity: "centre" }])
+      .png()
+      .toBuffer();
+    await writePng(path.join(resDir, dir, "splash.png"), buf);
+  }
 
   // Adaptive background color
   const bgXml = `<?xml version="1.0" encoding="utf-8"?>

@@ -438,7 +438,12 @@ export default function AudiobookPlayer({
 
       try {
         const url = await resolveTrackUrl(index);
-        audioRef.current.crossOrigin = url.startsWith("blob:") ? null : "anonymous";
+        // Avoid forcing CORS mode unless Web Audio needs it — blob URLs stay local.
+        if (url.startsWith("blob:")) {
+          audioRef.current.removeAttribute("crossorigin");
+        } else {
+          audioRef.current.crossOrigin = "anonymous";
+        }
         audioRef.current.src = url;
         audioRef.current.playbackRate = speed;
         pendingTrackLoad.current = { index, resumeTime: savedResume };

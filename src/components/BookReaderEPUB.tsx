@@ -468,7 +468,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     // Legacy rename: swipe-only → keys-only
     return mode === "swipe-only" ? "keys-only" : mode;
   });
-  const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(readerPrefs?.pageTransitionEffect ?? "paper-flip");
+  const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(() => {
+    const saved = readerPrefs?.pageTransitionEffect;
+    if (saved) return saved;
+    // Android WebView paper-flip often leaves a blank overlay after the turn.
+    try {
+      if (/android/i.test(navigator.userAgent)) return "spring";
+    } catch {
+      /* ignore */
+    }
+    return "paper-flip";
+  });
+  // Paper-flip compositor bugs on Capacitor: use spring visually even if prefs say paper-flip.
+  const effectivePageTransition =
+    typeof navigator !== "undefined" &&
+    /android/i.test(navigator.userAgent) &&
+    pageTransitionEffect === "paper-flip"
+      ? "spring"
+      : pageTransitionEffect;
   const [disableMouseScroll, setDisableMouseScroll] = useState<boolean>(readerPrefs?.disableMouseScroll ?? false);
   const [swipeToTurn, setSwipeToTurn] = useState<boolean>(readerPrefs?.swipeToTurn ?? false);
   const [swipeDirection, setSwipeDirection] = useState<"up" | "down">(
@@ -538,19 +555,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       
       setFlipDirection(dir);
 
-      if (pageTransitionEffect === "paper-flip" && shouldAnimate && !isTurningPage && !prefersReducedMotion) {
+      if (effectivePageTransition === "paper-flip" && shouldAnimate && !isTurningPage && !prefersReducedMotion) {
         setTurningPageNum(prevPageNumRef.current);
         setTurningChapterIdx(prevChapterIdxRef.current);
         setTurnDirection(dir);
         setIsTurningPage(true);
         // Safety: spring onAnimationComplete can miss — never leave overlay stuck (blank page)
-        window.setTimeout(() => setIsTurningPage(false), 650);
+        window.setTimeout(() => setIsTurningPage(false), 400);
       }
 
       prevPageNumRef.current = currentPageNum;
       prevChapterIdxRef.current = currentChapterIdx;
     }
-  }, [currentPageNum, currentChapterIdx, pageTransitionEffect, shouldAnimate, isTurningPage]);
+  }, [currentPageNum, currentChapterIdx, effectivePageTransition, shouldAnimate, isTurningPage]);
 
   // Keep page index in range whenever totalPages shrinks (font/layout changes).
   useEffect(() => {
@@ -2255,15 +2272,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setCurrentPageNum(1);
     setCurrentChapterIdx(newChapterIdx);
     setIsTurningPage(false);
-    
-    // Save scroll position at top of new chapter
-    if (contentRef.current) {
-      contentRef.current.scrollTop = 0;
-    }
 
     // Recalculate pages for the new chapter and set target page index
     setTimeout(() => {
       const container = contentRef.current;
+      const scroller = pageCanvasRef.current;
       if (!container) return;
       const textWidth = container.getBoundingClientRect().width;
       if (textWidth <= 0) return;
@@ -2274,6 +2287,23 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         pageStepRef.current = textWidth;
         setPageStep(textWidth);
         setCurrentPageNum(1);
+        // Scroll the real overflow container (pageCanvasRef), not the text column.
+        const applyScroll = () => {
+          if (!scroller) return;
+          if (goToLastPage) {
+            scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+          } else {
+            scroller.scrollTop = 0;
+          }
+        };
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            applyScroll();
+            // Chapter HTML / images may still expand — re-pin after layout.
+            window.setTimeout(applyScroll, 120);
+            window.setTimeout(applyScroll, 320);
+          });
+        });
         setTimeout(() => setShouldAnimate(true), 150);
         return;
       }
@@ -3467,7 +3497,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         className="w-full p-2 text-xs rounded-lg border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current"
                       >
                         {voices.length === 0 ? (
-                          <option value="">No System Voices</option>
+                          <option value="">Loading voices… (install a system TTS engine if empty)</option>
                         ) : (
                           voices.map((v) => (
                             <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
@@ -3876,7 +3906,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   style={{ perspective: "1200px" }}
                 >
                   {/* Turn.js style 3D page flip transition — decorative only; never blocks reading */}
-                  {!useScrollLayout && pageTransitionEffect === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
+                  {!useScrollLayout && effectivePageTransition === "paper-flip" && shouldAnimate && isTurningPage && !prefersReducedMotion && (
                     <div 
                       className="absolute inset-0 pointer-events-none z-40 overflow-hidden"
                       aria-hidden
@@ -4062,12 +4092,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       scaleX: 1,
                       opacity: 1,
                     }}
-                    transition={shouldAnimate ? (pageTransitionEffect === "paper-flip" ? { duration: 0 } : pageTransitionEffect === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : pageTransitionEffect === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
+                    transition={shouldAnimate ? (effectivePageTransition === "paper-flip" ? { duration: 0 } : effectivePageTransition === "spring" ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 } : effectivePageTransition === "none" ? { duration: 0 } : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }) : { duration: 0 }}
                     className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
                       annotateMode ? "select-text cursor-text" : "select-none"
                     }`}
                     style={{
                       fontSize: `${fontSize}px`,
+                      opacity: 1,
                       lineHeight: lineSpacing,
                       // Selection allowed whenever annotate mode is on.
                       WebkitUserSelect: annotateMode ? "text" : "none",

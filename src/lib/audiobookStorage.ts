@@ -3,6 +3,7 @@
  */
 
 import { getDB, AUDIOBOOK_TRACK_STORE } from "../db/indexedDB";
+import { resolveApiUrl } from "./capacitorNative";
 import { normalizeMediaUrl } from "./mediaUrl";
 
 const TRACK_STORE = AUDIOBOOK_TRACK_STORE;
@@ -92,7 +93,8 @@ export function getProxiedAudioUrl(src: string, referer?: string): string {
   const normalized = normalizeMediaUrl(src);
   const params = new URLSearchParams({ url: normalized });
   if (referer) params.set("referer", referer);
-  return `/api/proxy-file?${params.toString()}`;
+  // Absolute Worker URL required in Capacitor — <audio src> bypasses the fetch shim.
+  return resolveApiUrl(`/api/proxy-file?${params.toString()}`);
 }
 
 export async function downloadAudiobookTrack(

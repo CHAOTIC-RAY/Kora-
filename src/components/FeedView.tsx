@@ -158,7 +158,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   return (
     <div className={`relative overflow-hidden rounded-2xl ${cardClass} flex flex-col h-full select-none`}>
       {/* Swipe Underlay */}
-      <div className="absolute inset-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
+      <div className="absolute inset-0 z-0 bg-kindle-bg border border-kindle-border rounded-2xl flex items-center justify-between px-6 pointer-events-none">
         {/* Left Action (swipe right) -> Mark Read */}
         <motion.div
           style={{ opacity: leftOpacity }}
@@ -190,7 +190,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
         style={{ x }}
         onDragEnd={handleDragEnd}
         onTap={() => onRead()}
-        className={`feed-article-card bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col flex-1 touch-pan-y ${
+        className={`feed-article-card relative z-10 bg-kindle-card border rounded-2xl overflow-hidden transition cursor-pointer hover:border-kindle-text/40 hover:shadow-md flex flex-col flex-1 touch-pan-y ${
           item.read ? "border-kindle-border opacity-85" : "border-kindle-border shadow-sm"
         }`}
       >

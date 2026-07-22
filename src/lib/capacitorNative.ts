@@ -209,6 +209,29 @@ export async function initCapacitorShell(): Promise<void> {
     /* ignore */
   }
 
+  // Prime Android WebView TTS voice list early (often empty until touched).
+  try {
+    const { primeSpeechVoices } = await import("./ttsSettings");
+    primeSpeechVoices();
+    window.setTimeout(() => primeSpeechVoices(), 500);
+    window.setTimeout(() => primeSpeechVoices(), 1500);
+  } catch {
+    /* ignore */
+  }
+
+  // Re-prime voices on first user gesture (required on some WebViews).
+  try {
+    const once = () => {
+      void import("./ttsSettings").then(({ primeSpeechVoices }) => primeSpeechVoices());
+      window.removeEventListener("pointerdown", once);
+      window.removeEventListener("touchstart", once);
+    };
+    window.addEventListener("pointerdown", once, { once: true, passive: true });
+    window.addEventListener("touchstart", once, { once: true, passive: true });
+  } catch {
+    /* ignore */
+  }
+
   try {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     await SplashScreen.hide();
