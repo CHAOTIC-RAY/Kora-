@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   getPetById,
+  getPetMoodFrames,
   moodLabel,
-  PET_MOOD_FRAMES,
   PetId,
   PetMood,
   pickDominantMood,
   scoreTextMoods,
+  SPRITE_SIZE,
 } from "../lib/readerPet";
 
 interface ReaderPetCompanionProps {
@@ -20,7 +21,9 @@ interface ReaderPetCompanionProps {
   corner?: "br" | "bl";
 }
 
-const PIXEL = 4; // CSS px per sprite pixel → 12*4 = 48px sprite
+const PIXEL = 4; // CSS px per sprite pixel → 16*4 = 64px sprite
+const DISPLAY = SPRITE_SIZE * PIXEL;
+
 const FRAME_MS: Record<PetMood, number> = {
   idle: 520,
   sleepy: 900,
@@ -48,6 +51,7 @@ export default function ReaderPetCompanion({
   const [awakeBoostUntil, setAwakeBoostUntil] = useState(0);
 
   const pet = useMemo(() => getPetById(petId), [petId]);
+  const frames = useMemo(() => getPetMoodFrames(petId, mood), [petId, mood]);
 
   // Track reading activity / page turns
   useEffect(() => {
@@ -90,11 +94,10 @@ export default function ReaderPetCompanion({
     setFrameIdx(0);
     const ms = FRAME_MS[mood] || 500;
     const id = window.setInterval(() => {
-      const frames = PET_MOOD_FRAMES[mood] || PET_MOOD_FRAMES.idle;
-      setFrameIdx((i) => (i + 1) % frames.length);
+      setFrameIdx((i) => (i + 1) % Math.max(1, frames.length));
     }, ms);
     return () => window.clearInterval(id);
-  }, [mood, enabled]);
+  }, [mood, enabled, frames, petId]);
 
   // Draw sprite
   useEffect(() => {
@@ -104,8 +107,8 @@ export default function ReaderPetCompanion({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const frames = PET_MOOD_FRAMES[mood] || PET_MOOD_FRAMES.idle;
     const frame = frames[frameIdx % frames.length];
+    if (!frame) return;
     const size = frame.length;
     canvas.width = size;
     canvas.height = size;
@@ -113,16 +116,18 @@ export default function ReaderPetCompanion({
     ctx.clearRect(0, 0, size, size);
 
     for (let y = 0; y < size; y++) {
+      const row = frame[y];
+      if (!row) continue;
       for (let x = 0; x < size; x++) {
-        const idx = frame[y][x];
+        const idx = row[x];
         if (!idx) continue;
-        const color = pet.palette[idx] || pet.palette[1];
+        const color = pet.palette[idx] || pet.palette[2];
         if (!color || color === "transparent") continue;
         ctx.fillStyle = color;
         ctx.fillRect(x, y, 1, 1);
       }
     }
-  }, [enabled, mood, frameIdx, pet]);
+  }, [enabled, mood, frameIdx, pet, frames]);
 
   if (!enabled) return null;
 
@@ -152,12 +157,12 @@ export default function ReaderPetCompanion({
       >
         <div
           className={`relative ${hop ? "kora-pet-hop" : mood === "sleepy" ? "kora-pet-breathe" : "kora-pet-float"}`}
-          style={{ width: 12 * PIXEL, height: 12 * PIXEL }}
+          style={{ width: DISPLAY, height: DISPLAY }}
         >
           <canvas
             ref={canvasRef}
             className="w-full h-full"
-            style={{ imageRendering: "pixelated", width: 12 * PIXEL, height: 12 * PIXEL }}
+            style={{ imageRendering: "pixelated", width: DISPLAY, height: DISPLAY }}
           />
           {mood === "sleepy" ? (
             <span className="absolute -top-1 -right-0.5 text-[10px] opacity-80 kora-pet-zzz" aria-hidden>
@@ -202,5 +207,56 @@ export default function ReaderPetCompanion({
         .kora-pet-zzz { animation: kora-pet-zzz 1.8s ease-in-out infinite; }
       `}</style>
     </div>
+  );
+}
+
+/** Tiny static preview for the settings pet picker. */
+export function PetSpriteThumb({
+  petId,
+  sizePx = 28,
+}: {
+  petId: PetId;
+  sizePx?: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pet = useMemo(() => getPetById(petId), [petId]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const frame = getPetMoodFrames(petId, "idle")[0];
+    if (!frame) return;
+    const size = frame.length;
+    canvas.width = size;
+    canvas.height = size;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, size, size);
+    for (let y = 0; y < size; y++) {
+      const row = frame[y];
+      if (!row) continue;
+      for (let x = 0; x < size; x++) {
+        const idx = row[x];
+        if (!idx) continue;
+        const color = pet.palette[idx] || pet.palette[2];
+        if (!color || color === "transparent") continue;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }, [petId, pet]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="shrink-0"
+      style={{
+        width: sizePx,
+        height: sizePx,
+        imageRendering: "pixelated",
+      }}
+      aria-hidden
+    />
   );
 }
