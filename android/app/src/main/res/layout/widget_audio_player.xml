@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_audio_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:contentDescription="@string/widget_audio_description">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="72dp"
+            android:layout_height="56dp"
+            android:layout_marginEnd="12dp"
+            android:background="@drawable/widget_cassette_frame"
+            android:padding="4dp">
+
+            <ImageView
+                android:id="@+id/widget_audio_cover"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:contentDescription="@null" />
+
+            <TextView
+                android:id="@+id/widget_audio_cover_fallback"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="♪"
+                android:textColor="#C4A574"
+                android:textSize="20sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/widget_audio_eyebrow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="NOW PLAYING"
+                android:textAllCaps="true"
+                android:textColor="#C4A574"
+                android:textSize="10sp"
+                android:letterSpacing="0.12"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_audio_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:text="Audiobook"
+                android:textColor="#F7F3E3"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_audio_author"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#A8A29E"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_audio_progress"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="0%"
+            android:textColor="#C4A574"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/widget_audio_play"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/widget_round_btn"
+            android:contentDescription="@string/widget_audio_play"
+            android:padding="10dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/widget_ic_play" />
+
+        <ImageButton
+            android:id="@+id/widget_audio_pause"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/widget_round_btn"
+            android:contentDescription="@string/widget_audio_pause"
+            android:padding="10dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/widget_ic_pause" />
+
+        <ImageButton
+            android:id="@+id/widget_audio_open"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/widget_round_btn"
+            android:contentDescription="@string/widget_audio_open"
+            android:padding="10dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/widget_ic_open" />
+    </LinearLayout>
+</LinearLayout>

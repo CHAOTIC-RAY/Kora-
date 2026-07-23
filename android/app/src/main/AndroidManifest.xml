@@ -171,5 +171,54 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_brief_info" />
         </receiver>
+
+        <receiver
+            android:name="app.kora.reader.widgets.BookContinueWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/widget_book_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_book_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.kora.reader.widgets.AudioPlayerWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/widget_audio_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_audio_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.kora.reader.widgets.MiniGameWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/widget_game_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_game_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.kora.reader.widgets.MiniGameWidgetProvider$MiniGameClickReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="app.kora.reader.widgets.MINIGAME_LETTER" />
+                <action android:name="app.kora.reader.widgets.MINIGAME_BACKSPACE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

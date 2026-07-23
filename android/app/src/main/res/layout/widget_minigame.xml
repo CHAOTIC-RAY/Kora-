@@ -1,0 +1,184 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_game_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:contentDescription="@string/widget_game_description">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_game_eyebrow"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="MINI CROSSWORD"
+            android:textAllCaps="true"
+            android:textColor="#C4A574"
+            android:textSize="10sp"
+            android:letterSpacing="0.12"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_game_open"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/widget_chip"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="FULL GAME"
+            android:textColor="#F7F3E3"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_game_clue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="Clue"
+        android:textColor="#F7F3E3"
+        android:textSize="13sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_game_answer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:letterSpacing="0.35"
+        android:text="_ _ _ _"
+        android:textColor="#C4A574"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:id="@+id/widget_game_letters"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_game_letter0"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_margin="3dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="A"
+            android:textColor="#F7F3E3"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_game_letter1"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_margin="3dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="B"
+            android:textColor="#F7F3E3"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_game_letter2"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_margin="3dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="C"
+            android:textColor="#F7F3E3"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_game_letter3"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_margin="3dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="D"
+            android:textColor="#F7F3E3"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_game_letter4"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_margin="3dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="E"
+            android:textColor="#F7F3E3"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_game_letter5"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_margin="3dp"
+            android:background="@drawable/widget_round_btn"
+            android:gravity="center"
+            android:text="F"
+            android:textColor="#F7F3E3"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/widget_game_backspace"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/widget_chip"
+            android:paddingLeft="10dp"
+            android:paddingRight="10dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:text="⌫"
+            android:textColor="#F7F3E3"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_game_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#A8A29E"
+            android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

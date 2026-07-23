@@ -8,7 +8,16 @@
     <string name="widget_continue_label">Kora · Continue</string>
     <string name="widget_continue_description">Jump back into the book or audiobook you were last reading in Kora</string>
     <string name="widget_brief_label">Kora · Daily Brief</string>
-    <string name="widget_brief_description">Headlines from your subscribed Kora news feeds</string>
+    <string name="widget_brief_description">Headlines from your subscribed Kora news feeds — resize to fit more</string>
+    <string name="widget_book_label">Kora · Continue Book</string>
+    <string name="widget_book_description">Resume your latest ebook with cover art</string>
+    <string name="widget_audio_label">Kora · Audiobook Player</string>
+    <string name="widget_audio_description">Cassette cover and play controls for your latest audiobook</string>
+    <string name="widget_audio_play">Play</string>
+    <string name="widget_audio_pause">Pause</string>
+    <string name="widget_audio_open">Open player</string>
+    <string name="widget_game_label">Kora · Mini Crossword</string>
+    <string name="widget_game_description">Play a daily crossword clue on your home screen</string>
 
     <string name="shortcut_continue_short">Continue</string>
     <string name="shortcut_continue_long">Continue reading</string>

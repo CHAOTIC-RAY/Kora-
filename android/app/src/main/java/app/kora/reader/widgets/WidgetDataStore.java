@@ -13,7 +13,10 @@ public final class WidgetDataStore {
   public static final String PREFS = "kora_widgets";
 
   public static final String KEY_CONTINUE_JSON = "continue_json";
+  public static final String KEY_CONTINUE_BOOK_JSON = "continue_book_json";
+  public static final String KEY_CONTINUE_AUDIO_JSON = "continue_audio_json";
   public static final String KEY_BRIEF_JSON = "brief_json";
+  public static final String KEY_MINIGAME_JSON = "minigame_json";
   public static final String KEY_UPDATED_AT = "updated_at";
 
   private WidgetDataStore() {}
@@ -23,22 +26,31 @@ public final class WidgetDataStore {
   }
 
   public static void saveContinue(Context context, JSONObject payloadOrNull) {
-    SharedPreferences.Editor editor = prefs(context).edit();
-    if (payloadOrNull == null) {
-      editor.remove(KEY_CONTINUE_JSON);
-    } else {
-      editor.putString(KEY_CONTINUE_JSON, payloadOrNull.toString());
-    }
-    editor.putLong(KEY_UPDATED_AT, System.currentTimeMillis());
-    editor.apply();
+    writeJson(context, KEY_CONTINUE_JSON, payloadOrNull);
+  }
+
+  public static void saveContinueBook(Context context, JSONObject payloadOrNull) {
+    writeJson(context, KEY_CONTINUE_BOOK_JSON, payloadOrNull);
+  }
+
+  public static void saveContinueAudio(Context context, JSONObject payloadOrNull) {
+    writeJson(context, KEY_CONTINUE_AUDIO_JSON, payloadOrNull);
   }
 
   public static void saveBrief(Context context, JSONObject payloadOrNull) {
+    writeJson(context, KEY_BRIEF_JSON, payloadOrNull);
+  }
+
+  public static void saveMiniGame(Context context, JSONObject payloadOrNull) {
+    writeJson(context, KEY_MINIGAME_JSON, payloadOrNull);
+  }
+
+  private static void writeJson(Context context, String key, JSONObject payloadOrNull) {
     SharedPreferences.Editor editor = prefs(context).edit();
     if (payloadOrNull == null) {
-      editor.remove(KEY_BRIEF_JSON);
+      editor.remove(key);
     } else {
-      editor.putString(KEY_BRIEF_JSON, payloadOrNull.toString());
+      editor.putString(key, payloadOrNull.toString());
     }
     editor.putLong(KEY_UPDATED_AT, System.currentTimeMillis());
     editor.apply();
@@ -48,20 +60,36 @@ public final class WidgetDataStore {
     return readObject(prefs(context).getString(KEY_CONTINUE_JSON, null));
   }
 
+  public static JSONObject getContinueBook(Context context) {
+    JSONObject o = readObject(prefs(context).getString(KEY_CONTINUE_BOOK_JSON, null));
+    if (o != null) return o;
+    JSONObject any = getContinue(context);
+    if (any != null && !"audio".equalsIgnoreCase(any.optString("kind", "book"))) return any;
+    return null;
+  }
+
+  public static JSONObject getContinueAudio(Context context) {
+    JSONObject o = readObject(prefs(context).getString(KEY_CONTINUE_AUDIO_JSON, null));
+    if (o != null) return o;
+    JSONObject any = getContinue(context);
+    if (any != null && "audio".equalsIgnoreCase(any.optString("kind", "book"))) return any;
+    return null;
+  }
+
   public static JSONObject getBrief(Context context) {
     return readObject(prefs(context).getString(KEY_BRIEF_JSON, null));
   }
 
+  public static JSONObject getMiniGame(Context context) {
+    return readObject(prefs(context).getString(KEY_MINIGAME_JSON, null));
+  }
+
   public static String continueTitle(Context context) {
-    JSONObject o = getContinue(context);
-    if (o == null) return null;
-    return o.optString("title", null);
+    return optString(getContinue(context), "title", null);
   }
 
   public static String continueAuthor(Context context) {
-    JSONObject o = getContinue(context);
-    if (o == null) return "";
-    return o.optString("author", "");
+    return optString(getContinue(context), "author", "");
   }
 
   public static int continuePercent(Context context) {
@@ -71,15 +99,15 @@ public final class WidgetDataStore {
   }
 
   public static String continueKind(Context context) {
-    JSONObject o = getContinue(context);
-    if (o == null) return "book";
-    return o.optString("kind", "book");
+    return optString(getContinue(context), "kind", "book");
+  }
+
+  public static String continueCoverKey(Context context) {
+    return optString(getContinue(context), "coverKey", null);
   }
 
   public static String briefLead(Context context) {
-    JSONObject o = getBrief(context);
-    if (o == null) return null;
-    return o.optString("lead", null);
+    return optString(getBrief(context), "lead", null);
   }
 
   public static String[] briefHeadlines(Context context) {
@@ -87,11 +115,18 @@ public final class WidgetDataStore {
     if (o == null) return new String[0];
     JSONArray arr = o.optJSONArray("headlines");
     if (arr == null || arr.length() == 0) return new String[0];
-    String[] out = new String[Math.min(arr.length(), 3)];
-    for (int i = 0; i < out.length; i++) {
+    int n = Math.min(arr.length(), 6);
+    String[] out = new String[n];
+    for (int i = 0; i < n; i++) {
       out[i] = arr.optString(i, "");
     }
     return out;
+  }
+
+  public static String optString(JSONObject o, String key, String fallback) {
+    if (o == null) return fallback;
+    String v = o.optString(key, fallback);
+    return v;
   }
 
   private static JSONObject readObject(String raw) {

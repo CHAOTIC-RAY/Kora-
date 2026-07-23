@@ -29,15 +29,31 @@ public final class WidgetIntents {
 
   public static void refreshAll(Context context) {
     AppWidgetManager manager = AppWidgetManager.getInstance(context);
-    int[] continueIds =
-        manager.getAppWidgetIds(new ComponentName(context, ContinueWidgetProvider.class));
-    if (continueIds.length > 0) {
-      ContinueWidgetProvider.updateAll(context, manager, continueIds);
-    }
-    int[] briefIds =
-        manager.getAppWidgetIds(new ComponentName(context, BriefWidgetProvider.class));
-    if (briefIds.length > 0) {
-      BriefWidgetProvider.updateAll(context, manager, briefIds);
+    refreshProvider(context, manager, ContinueWidgetProvider.class);
+    refreshProvider(context, manager, BriefWidgetProvider.class);
+    refreshProvider(context, manager, BookContinueWidgetProvider.class);
+    refreshProvider(context, manager, AudioPlayerWidgetProvider.class);
+    refreshProvider(context, manager, MiniGameWidgetProvider.class);
+  }
+
+  private static void refreshProvider(
+      Context context, AppWidgetManager manager, Class<?> providerClass) {
+    int[] ids = manager.getAppWidgetIds(new ComponentName(context, providerClass));
+    if (ids.length == 0) return;
+    try {
+      if (providerClass == ContinueWidgetProvider.class) {
+        ContinueWidgetProvider.updateAll(context, manager, ids);
+      } else if (providerClass == BriefWidgetProvider.class) {
+        BriefWidgetProvider.updateAll(context, manager, ids);
+      } else if (providerClass == BookContinueWidgetProvider.class) {
+        BookContinueWidgetProvider.updateAll(context, manager, ids);
+      } else if (providerClass == AudioPlayerWidgetProvider.class) {
+        AudioPlayerWidgetProvider.updateAll(context, manager, ids);
+      } else if (providerClass == MiniGameWidgetProvider.class) {
+        MiniGameWidgetProvider.updateAll(context, manager, ids);
+      }
+    } catch (Exception ignored) {
+      /* provider may not be registered yet during upgrade */
     }
   }
 
@@ -50,10 +66,16 @@ public final class WidgetIntents {
     if (manager == null || !manager.isRequestPinAppWidgetSupported()) {
       return false;
     }
-    Class<?> provider =
-        "brief".equalsIgnoreCase(which)
-            ? BriefWidgetProvider.class
-            : ContinueWidgetProvider.class;
+    Class<?> provider = ContinueWidgetProvider.class;
+    if ("brief".equalsIgnoreCase(which)) {
+      provider = BriefWidgetProvider.class;
+    } else if ("book".equalsIgnoreCase(which) || "continue-book".equalsIgnoreCase(which)) {
+      provider = BookContinueWidgetProvider.class;
+    } else if ("audio".equalsIgnoreCase(which) || "continue-audio".equalsIgnoreCase(which)) {
+      provider = AudioPlayerWidgetProvider.class;
+    } else if ("game".equalsIgnoreCase(which) || "minigame".equalsIgnoreCase(which)) {
+      provider = MiniGameWidgetProvider.class;
+    }
     ComponentName name = new ComponentName(context, provider);
     return manager.requestPinAppWidget(name, null, null);
   }

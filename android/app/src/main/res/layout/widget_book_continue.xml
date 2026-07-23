@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/widget_continue_root"
+    android:id="@+id/widget_book_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="horizontal"
     android:padding="12dp"
     android:gravity="center_vertical"
-    android:contentDescription="@string/widget_continue_description">
+    android:contentDescription="@string/widget_book_description">
 
     <FrameLayout
-        android:layout_width="56dp"
+        android:layout_width="52dp"
         android:layout_height="72dp"
         android:layout_marginEnd="12dp">
 
         <ImageView
-            android:id="@+id/widget_continue_cover"
+            android:id="@+id/widget_book_cover"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@drawable/widget_cover_frame"
@@ -23,14 +23,14 @@
             android:contentDescription="@null" />
 
         <TextView
-            android:id="@+id/widget_continue_cover_fallback"
+            android:id="@+id/widget_book_cover_fallback"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@drawable/widget_cover_frame"
             android:gravity="center"
-            android:text="K"
+            android:text="B"
             android:textColor="#C4A574"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:textStyle="bold"
             android:visibility="gone" />
     </FrameLayout>
@@ -41,43 +41,21 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/widget_book_eyebrow"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/widget_continue_eyebrow"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:text="CONTINUE READING"
-                android:textAllCaps="true"
-                android:textColor="#C4A574"
-                android:textSize="10sp"
-                android:letterSpacing="0.12"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/widget_continue_kind"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/widget_chip"
-                android:paddingLeft="8dp"
-                android:paddingRight="8dp"
-                android:paddingTop="2dp"
-                android:paddingBottom="2dp"
-                android:text="BOOK"
-                android:textColor="#F7F3E3"
-                android:textSize="9sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:text="CONTINUE BOOK"
+            android:textAllCaps="true"
+            android:textColor="#C4A574"
+            android:textSize="10sp"
+            android:letterSpacing="0.12"
+            android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/widget_continue_title"
+            android:id="@+id/widget_book_title"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -92,26 +70,23 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <TextView
-                android:id="@+id/widget_continue_author"
+                android:id="@+id/widget_book_author"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:text="Author"
                 android:textColor="#A8A29E"
                 android:textSize="12sp" />
 
             <TextView
-                android:id="@+id/widget_continue_progress"
+                android:id="@+id/widget_book_progress"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="0%"
                 android:textColor="#C4A574"
                 android:textSize="13sp"
                 android:textStyle="bold" />

@@ -97,6 +97,9 @@ import {
 import {
   briefPayloadFromFeeds,
   continuePayloadFromBook,
+  isAudiobookMeta,
+  miniGamePayloadForToday,
+  pickLastReadOfKind,
   syncAndroidHomeWidgets,
 } from "./lib/androidWidgets";
 import { isNativeAndroid } from "./lib/capacitorNative";
@@ -1809,6 +1812,11 @@ export default function App() {
     const book = lastReadBook;
     const ext = (book?.extension || "").toLowerCase();
     const kind = book?.audiobookTracks?.length || ext === "audio" || ext === "mp3" ? "audio" : "book";
+    const lastBook = pickLastReadOfKind(books, "book", book);
+    const lastAudio = pickLastReadOfKind(books, "audio", book);
+    const audioPlaying =
+      Boolean(audiobookPlaying && audiobookPlayback && isAudiobookMeta(audiobookPlayback));
+
     if ("serviceWorker" in navigator) {
       const controller = navigator.serviceWorker.controller;
       if (controller) {
@@ -1820,6 +1828,7 @@ export default function App() {
                 author: book.author || "",
                 percent: book.progress?.percent ?? 0,
                 kind,
+                coverUrl: book.coverUrl || "",
               }
             : null,
         });
@@ -1827,17 +1836,29 @@ export default function App() {
     }
     void syncAndroidHomeWidgets({
       continue: continuePayloadFromBook(book),
+      continueBook: continuePayloadFromBook(lastBook),
+      continueAudio: continuePayloadFromBook(lastAudio || audiobookPlayback, {
+        playing: audioPlaying,
+      }),
       brief: briefPayloadFromFeeds(),
+      miniGame: miniGamePayloadForToday(),
     });
-  }, [lastReadBook]);
+  }, [lastReadBook, books, audiobookPlayback, audiobookPlaying]);
 
   // Refresh brief headlines on the Android widget when the app resumes / periodically.
   useEffect(() => {
     if (!isNativeAndroid()) return;
     const pushBrief = () => {
+      const lastBook = pickLastReadOfKind(books, "book", lastReadBook);
+      const lastAudio = pickLastReadOfKind(books, "audio", lastReadBook);
       void syncAndroidHomeWidgets({
         continue: continuePayloadFromBook(lastReadBook),
+        continueBook: continuePayloadFromBook(lastBook),
+        continueAudio: continuePayloadFromBook(lastAudio || audiobookPlayback, {
+          playing: Boolean(audiobookPlaying && audiobookPlayback),
+        }),
         brief: briefPayloadFromFeeds(),
+        miniGame: miniGamePayloadForToday(),
       });
     };
     const onVis = () => {
@@ -1849,7 +1870,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(timer);
     };
-  }, [lastReadBook]);
+  }, [lastReadBook, books, audiobookPlayback, audiobookPlaying]);
 
   // App shortcuts + widget deep links: /?go=continue|feed|library|discover|lounge|tools
   // Also accepts CustomEvent('kora-deeplink') from MainActivity for warm starts.
@@ -1857,15 +1878,47 @@ export default function App() {
     const routeFromParams = (params: URLSearchParams) => {
       const go = (params.get("go") || params.get("tab") || "").toLowerCase();
       const briefs = params.get("briefs") === "1";
+      const kind = (params.get("kind") || "").toLowerCase();
+      const action = (params.get("action") || "").toLowerCase();
       if (!go && !briefs) return false;
 
       if (go === "continue") {
         if (loadingLibrary) return false;
-        if (lastReadBook) {
-          void handleOpenBook(lastReadBook);
+        const wantAudio = kind === "audio";
+        const wantBook = kind === "book";
+        let target = lastReadBook;
+        if (wantAudio) {
+          target =
+            pickLastReadOfKind(books, "audio", lastReadBook) ||
+            audiobookPlayback ||
+            (isAudiobookMeta(lastReadBook) ? lastReadBook : null);
+        } else if (wantBook) {
+          target = pickLastReadOfKind(books, "book", lastReadBook);
+        }
+
+        if (target) {
+          void handleOpenBook(target);
+          if (wantAudio && (action === "play" || action === "pause")) {
+            window.setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent("kora-audiobook-widget-action", { detail: { action } })
+              );
+            }, 400);
+          }
         } else {
           switchTab(loungeEnabled ? "lounge" : "library");
         }
+        return true;
+      }
+      if (go === "crossword" || go === "minigame" || go === "wordsearch") {
+        switchTab("tools");
+        window.setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent("kora-open-tool", {
+              detail: { tool: go === "wordsearch" ? "wordsearch" : "crossword" },
+            })
+          );
+        }, 50);
         return true;
       }
       if (go === "feed" || go === "news" || briefs) {
@@ -1957,7 +2010,7 @@ export default function App() {
       window.removeEventListener("kora-deeplink", onDeepLink as EventListener);
       removeAppUrl?.();
     };
-  }, [loadingAuth, loadingLibrary, lastReadBook, loungeEnabled, switchTab]);
+  }, [loadingAuth, loadingLibrary, lastReadBook, loungeEnabled, switchTab, books, audiobookPlayback]);
 
 
   // Keep track of the active tab before transitioning to settings

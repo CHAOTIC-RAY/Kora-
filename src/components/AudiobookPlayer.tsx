@@ -638,6 +638,16 @@ export default function AudiobookPlayer({
   }, [authorLabel, book.coverUrl, book.title, currentTrackLabel, duration, isPlaying, isTtsBook, speed, stopPlayback, subtitle, tracks.length]);
 
   useEffect(() => {
+    const onWidget = (e: Event) => {
+      const action = (e as CustomEvent<{ action?: string }>).detail?.action;
+      if (action === "play" && !isPlayingRef.current) void togglePlayRef.current?.();
+      if (action === "pause" && isPlayingRef.current) void togglePlayRef.current?.();
+    };
+    window.addEventListener("kora-audiobook-widget-action", onWidget as EventListener);
+    return () => window.removeEventListener("kora-audiobook-widget-action", onWidget as EventListener);
+  }, []);
+
+  useEffect(() => {
     updateAudiobookMediaSession({
       title: (isTtsBook ? subtitle : currentTrackLabel) || book.title,
       artist: authorLabel || book.author || "Kora",

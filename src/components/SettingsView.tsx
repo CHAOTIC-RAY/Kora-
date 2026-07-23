@@ -251,6 +251,16 @@ function SettingsView({
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
+  useEffect(() => {
+    const onOpenTool = (e: Event) => {
+      const tool = (e as CustomEvent<{ tool?: string }>).detail?.tool;
+      if (tool === "crossword") setShowCrossword(true);
+      else if (tool === "wordsearch") setShowWordSearch(true);
+    };
+    window.addEventListener("kora-open-tool", onOpenTool as EventListener);
+    return () => window.removeEventListener("kora-open-tool", onOpenTool as EventListener);
+  }, []);
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1149,39 +1159,36 @@ function SettingsView({
                     Add Kora home-screen widgets, or long-press the app icon for Continue / News / Library shortcuts.
                   </p>
                   <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const ok = await requestPinAndroidWidget("continue");
-                        toast[ok ? "success" : "error"](
-                          ok
-                            ? "Confirm the Continue widget on your home screen"
-                            : "Open your widget picker and search “Kora”"
-                        );
-                      }}
-                      className="py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition"
-                    >
-                      Pin Continue
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const ok = await requestPinAndroidWidget("brief");
-                        toast[ok ? "success" : "error"](
-                          ok
-                            ? "Confirm the Daily Brief widget on your home screen"
-                            : "Open your widget picker and search “Kora”"
-                        );
-                      }}
-                      className="py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition"
-                    >
-                      Pin Brief
-                    </button>
+                    {(
+                      [
+                        ["continue", "Pin Continue"],
+                        ["brief", "Pin Brief"],
+                        ["book", "Pin Book"],
+                        ["audio", "Pin Audio"],
+                        ["game", "Pin Mini Game"],
+                      ] as const
+                    ).map(([which, label]) => (
+                      <button
+                        key={which}
+                        type="button"
+                        onClick={async () => {
+                          const ok = await requestPinAndroidWidget(which);
+                          toast[ok ? "success" : "error"](
+                            ok
+                              ? `Confirm the ${label.replace("Pin ", "")} widget on your home screen`
+                              : "Open your widget picker and search “Kora”"
+                          );
+                        }}
+                        className="py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition"
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ) : typeof navigator !== "undefined" && /android/i.test(navigator.userAgent) ? (
                 <p className="text-[10px] text-kindle-text-muted leading-relaxed px-0.5">
-                  Tip: install the Kora APK to use Continue and Daily Brief home-screen widgets.
+                  Tip: install the Kora APK to use Continue, Brief, Audiobook, and Mini Crossword home-screen widgets.
                 </p>
               ) : null}
             </div>

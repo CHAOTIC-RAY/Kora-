@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="14dp"
+    android:padding="12dp"
     android:contentDescription="@string/widget_brief_description">
 
     <TextView
@@ -21,6 +21,7 @@
         android:letterSpacing="0.12"
         android:textStyle="bold" />
 
+    <!-- Lead: marquee enabled from code when text does not fit -->
     <TextView
         android:id="@+id/widget_brief_lead"
         android:layout_width="match_parent"
@@ -31,35 +32,135 @@
         android:text="Today across your feeds"
         android:textColor="#F7F3E3"
         android:textSize="14sp"
-        android:textStyle="bold" />
+        android:textStyle="bold"
+        android:scrollHorizontally="true"
+        android:focusable="true"
+        android:marqueeRepeatLimit="marquee_forever" />
 
-    <TextView
-        android:id="@+id/widget_brief_line1"
+    <!-- Static headline stack when the widget is tall enough -->
+    <LinearLayout
+        android:id="@+id/widget_brief_static"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="#D6D3D1"
-        android:textSize="12sp" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/widget_brief_line2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="#D6D3D1"
-        android:textSize="12sp" />
+        <TextView
+            android:id="@+id/widget_brief_line1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
 
-    <TextView
-        android:id="@+id/widget_brief_line3"
+        <TextView
+            android:id="@+id/widget_brief_line2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_brief_line3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_brief_line4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_brief_line5"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Slow vertical cycle when headlines overflow the widget height -->
+    <ViewFlipper
+        android:id="@+id/widget_brief_flipper"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="#D6D3D1"
-        android:textSize="12sp" />
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="6dp"
+        android:autoStart="false"
+        android:flipInterval="4500"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_brief_flip1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_brief_flip2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_brief_flip3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_brief_flip4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_brief_flip5"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/widget_brief_flip6"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textColor="#D6D3D1"
+            android:textSize="12sp" />
+    </ViewFlipper>
 </LinearLayout>
