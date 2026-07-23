@@ -831,6 +831,17 @@ h1, h2, h3, h4 {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
+/* Hide horizontal scrollbar used for CSS-column paging via scrollLeft */
+.kora-page-canvas {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.kora-page-canvas::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* Precise focus-mode styles targeting library header */
 div#root:nth-of-type(1) > div#app-root-container:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div#library-manager-section:nth-of-type(1) > header:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1) {
   font-family: "Nata Sans", sans-serif;

@@ -738,38 +738,48 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   const recalculateLayout = () => {
     setTimeout(() => {
+      const scroller = pageCanvasRef.current;
       const container = contentRef.current;
       if (!container) return;
 
-      const rect = container.getBoundingClientRect();
-      const textWidth = rect.width;
-      if (textWidth <= 0) return;
+      // Measure the viewport (clipper), not the columns box — columnWidth is % based.
+      const viewport = Math.max(
+        1,
+        scroller?.clientWidth || container.getBoundingClientRect().width || 0
+      );
+      if (viewport <= 1) return;
 
       if (useScrollLayout) {
         setTotalPages(1);
-        setContainerWidth(textWidth);
-        pageStepRef.current = textWidth;
-        setPageStep(textWidth);
+        setContainerWidth(viewport);
+        pageStepRef.current = viewport;
+        setPageStep(viewport);
+        if (scroller) scroller.scrollLeft = 0;
         if (currentPageNum !== 1) setCurrentPageNum(1);
         return;
       }
 
-      const scrollWidth = container.scrollWidth;
-      const step = useDoubleColumns 
-        ? textWidth + columnGapPx 
-        : Math.max(1, textWidth - pageOverlap);
-      
-      const calculatedPages = useDoubleColumns
-        ? Math.max(1, Math.ceil((scrollWidth + columnGapPx) / (textWidth + columnGapPx)))
-        : Math.max(1, Math.ceil((Math.max(textWidth, scrollWidth - 10) - textWidth) / step) + 1);
+      // Force a layout pass so scrollWidth reflects all columns (overflow must be visible).
+      const scrollWidth = Math.max(container.scrollWidth, scroller?.scrollWidth || 0, viewport);
+      // One "page" = one viewport of columns (1 col, or 2 cols in dual mode).
+      const step = useDoubleColumns
+        ? viewport
+        : Math.max(1, viewport - Math.min(pageOverlap, Math.floor(viewport / 4)));
+
+      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
 
       setTotalPages(calculatedPages);
-      setContainerWidth(textWidth);
+      setContainerWidth(viewport);
       pageStepRef.current = step;
       setPageStep(step);
-      // Clamp — stale high page indexes translate content off-screen (blank page).
-      setCurrentPageNum((prev) => Math.min(Math.max(1, prev), calculatedPages));
-    }, 150);
+      setCurrentPageNum((prev) => {
+        const next = Math.min(Math.max(1, prev), calculatedPages);
+        if (scroller) {
+          scroller.scrollLeft = (next - 1) * step;
+        }
+        return next;
+      });
+    }, 50);
   };
 
   // Recalculate layout on resize or preference change
@@ -789,6 +799,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     letterSpacing,
     hyphenation
   ]);
+
+  // Keep the clipper scrolled to the active page (scrollLeft — never margin/transform).
+  useLayoutEffect(() => {
+    if (useScrollLayout) return;
+    const scroller = pageCanvasRef.current;
+    if (!scroller) return;
+    const step = Math.max(1, pageStepRef.current || pageStep);
+    const page = Math.min(Math.max(1, currentPageNum), Math.max(1, totalPages));
+    const left = (page - 1) * step;
+    if (Math.abs(scroller.scrollLeft - left) > 1) {
+      scroller.scrollLeft = left;
+    }
+  }, [currentPageNum, totalPages, pageStep, useScrollLayout, currentChapterIdx, useDoubleColumns]);
 
   // Handle asynchronous image loading inside the chapter text.
   // Re-run recalculateLayout when any image loads to avoid cut-off paragraphs.
@@ -2302,15 +2325,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       const container = contentRef.current;
       const scroller = pageCanvasRef.current;
       if (!container) return;
-      const textWidth = container.getBoundingClientRect().width;
-      if (textWidth <= 0) return;
+      const viewport = Math.max(
+        1,
+        scroller?.clientWidth || container.getBoundingClientRect().width || 0
+      );
+      if (viewport <= 1) return;
 
       if (useScrollLayout) {
         setTotalPages(1);
-        setContainerWidth(textWidth);
-        pageStepRef.current = textWidth;
-        setPageStep(textWidth);
+        setContainerWidth(viewport);
+        pageStepRef.current = viewport;
+        setPageStep(viewport);
         setCurrentPageNum(1);
+        if (scroller) scroller.scrollLeft = 0;
 
         // Scroll the real overflow container (pageCanvasRef), not the text column.
         // Next chapter: pin to top ONCE. Do not re-force later — that yanks the user
@@ -2363,24 +2390,23 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
-      const scrollWidth = container.scrollWidth;
-      const step = useDoubleColumns 
-        ? textWidth + columnGapPx 
-        : Math.max(1, textWidth - pageOverlap);
-      
-      const calculatedPages = useDoubleColumns
-        ? Math.max(1, Math.ceil((scrollWidth + columnGapPx) / (textWidth + columnGapPx)))
-        : Math.max(1, Math.ceil((Math.max(textWidth, scrollWidth - 10) - textWidth) / step) + 1);
+      const scrollWidth = Math.max(container.scrollWidth, scroller?.scrollWidth || 0, viewport);
+      const step = useDoubleColumns
+        ? viewport
+        : Math.max(1, viewport - Math.min(pageOverlap, Math.floor(viewport / 4)));
+      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
 
       setTotalPages(calculatedPages);
-      setContainerWidth(textWidth);
+      setContainerWidth(viewport);
       pageStepRef.current = step;
       setPageStep(step);
-      setCurrentPageNum(goToLastPage ? calculatedPages : 1);
+      const targetPage = goToLastPage ? calculatedPages : 1;
+      setCurrentPageNum(targetPage);
+      if (scroller) scroller.scrollLeft = (targetPage - 1) * step;
       
       // Re-enable animation after layout settles
       setTimeout(() => setShouldAnimate(true), 150);
-    }, 150);
+    }, 50);
 
     const percent = Math.round((newChapterIdx / chapters.length) * 100);
     const updated: BookMetadata = {
@@ -3953,16 +3979,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               >
                 <div
                   ref={pageCanvasRef}
-                  className={`w-full h-full relative flex items-start justify-start ${
+                  className={`w-full h-full relative kora-page-canvas ${
                     useScrollLayout
-                      ? "overflow-y-auto overflow-x-hidden overscroll-y-contain"
-                      : "overflow-hidden overscroll-none"
+                      ? "overflow-y-auto overflow-x-hidden overscroll-y-contain flex items-start justify-start"
+                      : "overflow-x-auto overflow-y-hidden overscroll-none block"
                   }`}
                   style={
-                    !useScrollLayout &&
-                    effectivePageTransition === "paper-flip" &&
-                    !isAndroidWebView
-                      ? { perspective: "1200px" }
+                    !useScrollLayout
+                      ? {
+                          scrollbarWidth: "none",
+                          msOverflowStyle: "none",
+                          overscrollBehaviorX: "none",
+                        }
                       : undefined
                   }
                 >
@@ -4142,31 +4170,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     )}
                   </AnimatePresence>
                   {/*
-                    Page by marginLeft — NOT transform. CSS multi-column paint blanks
-                    under compositor transforms in Chromium / Android WebView.
+                    Page via scrollLeft on the clipper. Columns must stay overflow:visible
+                    so horizontal columns aren't clipped (margin/transform paging showed blank
+                    pages after the turn).
                   */}
-                  <div
-                    className="w-full h-full"
-                    style={
-                      useScrollLayout
-                        ? undefined
-                        : {
-                            marginLeft: `-${
-                              (Math.min(Math.max(1, currentPageNum), Math.max(1, totalPages)) - 1) *
-                              Math.max(1, pageStep)
-                            }px`,
-                            transition:
-                              shouldAnimate &&
-                              !isAndroidWebView &&
-                              effectivePageTransition !== "none" &&
-                              effectivePageTransition !== "paper-flip"
-                                ? effectivePageTransition === "spring"
-                                  ? "margin-left 0.35s cubic-bezier(0.22, 1, 0.36, 1)"
-                                  : "margin-left 0.28s ease"
-                                : "none",
-                          }
-                    }
-                  >
                   <article 
                     ref={contentRef}
                     className={`w-full ml-0 ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
@@ -4188,11 +4195,14 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             overflow: "visible",
                           }
                         : {
-                            columnWidth: `${useDoubleColumns ? (containerWidth - columnGapPx) / 2 : containerWidth}px`,
+                            // % column width tracks the clipper — avoids stale px vs step mismatch.
+                            columnWidth: useDoubleColumns
+                              ? `calc((100% - ${columnGapPx}px) / 2)`
+                              : "100%",
                             columnGap: `${columnGapPx}px`,
                             height: "100%",
                             columnFill: "auto",
-                            overflow: "hidden",
+                            overflow: "visible",
                             boxShadow: useDoubleColumns ? "inset 50% 0 0 -20px rgba(0,0,0,0.10)" : "none",
                           }),
                     } as React.CSSProperties}
@@ -4225,7 +4235,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       </div>
                     )}
                   </article>
-                  </div>
                 </div>
 
                 {/* Chapter end label — paged mode only (absolute, outside column flow) */}
