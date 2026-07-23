@@ -29,6 +29,8 @@ import {
 } from "../lib/ttsSettings";
 import { prepareTextForNarration } from "../lib/ttsTextPrep";
 import { refreshNativeVoices, speakText } from "../lib/koraTts";
+import ReaderPetCompanion from "./ReaderPetCompanion";
+import { getPetById, READER_PETS, type PetId } from "../lib/readerPet";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
 import {
   PRIMARY_READER_THEME_KEYS,
@@ -416,6 +418,9 @@ interface BookReaderEPUBProps {
     disableMouseScroll?: boolean;
     /** Enable vertical swipe-to-turn in paginated mode */
     swipeToTurn?: boolean;
+    /** Reader companion pet */
+    petEnabled?: boolean;
+    petId?: string;
     /** Which swipe direction advances to the next page */
     swipeDirection?: "up" | "down";
   };
@@ -501,6 +506,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [swipeDirection, setSwipeDirection] = useState<"up" | "down">(
     readerPrefs?.swipeDirection === "down" ? "down" : "up"
   );
+  const [petEnabled, setPetEnabled] = useState<boolean>(readerPrefs?.petEnabled ?? false);
+  const [petId, setPetId] = useState<PetId>(() => getPetById(readerPrefs?.petId).id);
   const [shouldAnimate, setShouldAnimate] = useState<boolean>(true);
 
   // Responsive mobile state — used for single-column layout and disabling dual-page mode
@@ -616,9 +623,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         disableMouseScroll,
         swipeToTurn,
         swipeDirection,
+        petEnabled,
+        petId,
       });
     }
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection, onReaderPrefsChange]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection, petEnabled, petId, onReaderPrefsChange]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
@@ -643,6 +652,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const raw = chapters[currentChapterIdx]?.content || "";
     return applyHighlightsToHtml(raw, highlightsData, currentChapterIdx);
   }, [chapters, currentChapterIdx, highlightsData]);
+
+  /** Plain text for pet emotion lexicon (no AI). Prefer current chapter body. */
+  const petPageText = useMemo(() => {
+    const raw = chapters[currentChapterIdx]?.content || "";
+    return raw
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 12000);
+  }, [chapters, currentChapterIdx]);
+
+  const petPageSignal = currentChapterIdx * 100000 + currentPageNum;
 
   // AI/dictionary context states
   const [selectedText, setSelectedText] = useState<string>("");
@@ -1084,9 +1111,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       disableMouseScroll,
       swipeToTurn,
       swipeDirection,
+      petEnabled,
+      petId,
     };
     localStorage.setItem("kora_reader_prefs", JSON.stringify(prefs));
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection]);
+  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection, petEnabled, petId]);
 
   useEffect(() => {
     loadEpubFile();
@@ -2085,12 +2114,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     } finally {
       setDictLoading(false);
     }
-  }
-
-  function exportToPensieve() {
-    const content = `Book: ${book.title}\nAuthor: ${book.author}\n\nNotes:\n${book.notes || "No notes yet."}`;
-    const url = `https://github.com/CHAOTIC-RAY/Pensieve?content=${encodeURIComponent(content)}`;
-    window.open(url, "_blank");
   }
 
   async function loadEpubFile() {
@@ -3552,15 +3575,52 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
               </div>
             </div>
 
-            {/* Export Actions */}
-            <div className="pt-4 border-t border-kindle-border space-y-2 mt-4">
-              <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Export</h4>
-              <button
-                onClick={exportToPensieve}
-                className="w-full py-2.5 bg-[#1A1A1A] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition shadow-sm"
-              >
-                Export to Pensieve
-              </button>
+            {/* Reading companion pet */}
+            <div className="pt-4 border-t border-kindle-border space-y-3 mt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Reading Pet</h4>
+                  <p className="text-[10px] text-kindle-text-muted mt-0.5">
+                    Pixel buddy in the corner — reacts to the page mood (no AI).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPetEnabled(!petEnabled)}
+                  className={`w-10 h-5 rounded-full transition-colors relative shrink-0 ${petEnabled ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+                  aria-pressed={petEnabled}
+                >
+                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${petEnabled ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`} />
+                </button>
+              </div>
+              {petEnabled ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {READER_PETS.map((pet) => {
+                    const selected = petId === pet.id;
+                    return (
+                      <button
+                        key={pet.id}
+                        type="button"
+                        onClick={() => setPetId(pet.id)}
+                        className={`text-left rounded-xl border px-2.5 py-2 transition ${
+                          selected
+                            ? "border-kindle-text bg-kindle-text/10"
+                            : "border-kindle-border hover:bg-kindle-text/5"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className="w-2.5 h-2.5 rounded-sm shrink-0"
+                            style={{ background: pet.accent, boxShadow: `0 0 0 1px ${pet.accent}55` }}
+                          />
+                          <span className="text-[11px] font-bold font-mono tracking-wide">{pet.name}</span>
+                        </div>
+                        <p className="text-[9px] opacity-60 leading-snug line-clamp-2">{pet.tagline}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           </aside>
           </>
@@ -4781,6 +4841,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             </div>
           )}
         </main>
+
+        <ReaderPetCompanion
+          enabled={petEnabled && !loading && !error}
+          petId={petId}
+          pageText={petPageText}
+          pageSignal={petPageSignal}
+        />
       </div>
 
       {/* Kindle-Style Selection Pin Handles rendered at top level to avoid overflow clipping and CSS transform offsets */}

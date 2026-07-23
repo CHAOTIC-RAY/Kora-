@@ -443,20 +443,6 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
                 </div>
               </div>
             </div>
-
-            {/* Export */}
-            <div className="pt-4 border-t border-neutral-500/20 space-y-2 mt-4">
-              <button
-                onClick={() => {
-                  const exportContent = `Book: ${book.title}\n\n${content || ""}`;
-                  const url = `https://github.com/CHAOTIC-RAY/Pensieve?content=${encodeURIComponent(exportContent)}`;
-                  window.open(url, "_blank");
-                }}
-                className="w-full py-2.5 bg-[#1A1A1A] text-white rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition shadow-sm"
-              >
-                Export to Pensieve
-              </button>
-            </div>
           </aside>
         )}
 

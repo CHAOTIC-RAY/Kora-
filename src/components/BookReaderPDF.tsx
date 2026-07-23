@@ -334,17 +334,6 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
                   <span>Sync Progress</span>
                 )}
               </button>
-
-              <button
-                onClick={() => {
-                  const content = `Book: ${book.title}\nAuthor: ${book.author}\n\nNotes:\n${notes || "No notes yet."}`;
-                  const url = `https://github.com/CHAOTIC-RAY/Pensieve?content=${encodeURIComponent(content)}`;
-                  window.open(url, "_blank");
-                }}
-                className="w-full py-2.5 bg-neutral-100 text-kindle-text border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-neutral-200 transition"
-              >
-                Export to Pensieve
-              </button>
             </div>
           </div>
         </aside>
