@@ -5,7 +5,6 @@ import {
   Headphones,
   Compass,
   Rss,
-  Sparkles,
   Play,
   Pause,
   ArrowRight,
@@ -607,7 +606,7 @@ export default function LoungeView({
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+                  <BookOpen className="w-3.5 h-3.5 text-kindle-text-muted" />
                   <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text">
                     Continue
                   </h3>

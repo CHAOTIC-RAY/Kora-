@@ -6,7 +6,6 @@ import {
   Lightbulb,
   RefreshCw,
   Shuffle,
-  Sparkles,
   X,
 } from "lucide-react";
 import {
@@ -589,8 +588,7 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
               transition={{ type: "spring", stiffness: 260, damping: 24 }}
             >
               <div className="text-center space-y-2">
-                <Sparkles className="w-6 h-6 text-[#d4a574] mx-auto" />
-                <p className="text-sm opacity-70 leading-relaxed">
+                <p className="text-sm text-neutral-400 leading-relaxed">
                   Choose a mode, then a difficulty. Every level reshuffles forever.
                 </p>
               </div>
@@ -930,7 +928,7 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
                 transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 className="w-full max-w-sm rounded-3xl border border-[#d4a574]/40 bg-[#1c1915] p-6 text-center shadow-2xl"
               >
-                <Sparkles className="w-8 h-8 text-[#d4a574] mx-auto mb-3" />
+                <Grid3X3 className="w-7 h-7 text-neutral-400 mx-auto mb-3" />
                 <h3 className="font-serif text-2xl font-bold mb-1">Level clear</h3>
                 <p className="text-[12px] opacity-60 mb-5">
                   {DIFFICULTY_LABELS[difficulty].title} level {level} solved.

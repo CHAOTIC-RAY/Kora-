@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { 
-  X, Smartphone, Sparkles, RefreshCw, Zap, Download, 
+  X, Smartphone, RefreshCw, Zap, Download, 
   AlertCircle, Shield, Wifi, Radio, CheckCircle
 } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";

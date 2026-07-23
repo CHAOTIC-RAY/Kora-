@@ -9,7 +9,6 @@ import {
   RotateCw,
   SkipBack,
   SkipForward,
-  Sparkles,
   X,
 } from "lucide-react";
 import type { BookMetadata } from "../lib/firebase";
@@ -1013,7 +1012,7 @@ export default function AudiobookPlayer({
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <SkipForward className="w-3.5 h-3.5 shrink-0" />
                   <span className="text-[9px] font-bold uppercase tracking-widest font-lexend">Smart Skip</span>
                 </div>
                 <span className="text-[9px] font-bold uppercase">{smartSkip.enabled ? "On" : "Off"}</span>

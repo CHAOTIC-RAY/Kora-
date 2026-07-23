@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BookMetadata, getLocalLibrary, syncBookToCloud } from "../lib/firebase";
-import { X, Save, BookOpen, RefreshCw, Sparkles, Search, Loader2, Library } from "lucide-react";
+import { X, Save, BookOpen, RefreshCw, Search, Loader2, Library } from "lucide-react";
 import HardcoverCommunity from "./HardcoverCommunity";
 import { enrichBookMetadata } from "../lib/metadataEnricher";
 import {
@@ -213,7 +213,7 @@ export default function BookMetadataEditor({
               title="Enrich from Google Books"
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-widest bg-kindle-accent/10 text-kindle-accent hover:bg-kindle-accent/20 transition disabled:opacity-50"
             >
-              {enriching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+              {enriching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
               {enriching ? "Enriching..." : "Enrich"}
             </button>
             <button onClick={onClose} className="p-2 hover:bg-kindle-bg rounded-xl transition">

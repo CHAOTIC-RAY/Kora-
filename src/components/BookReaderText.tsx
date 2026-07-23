@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { ArrowLeft, RefreshCw, Database, FileText, Trash2, Settings, Type, Copy, Sparkles, Check, Globe, ChevronDown } from "lucide-react";
+import { ArrowLeft, RefreshCw, Database, FileText, Trash2, Settings, Type, Copy, Check, Globe, ChevronDown } from "lucide-react";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 
 interface BookReaderTextProps {

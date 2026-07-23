@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { PieChart, Sparkles, X } from "lucide-react";
+import { PieChart, X } from "lucide-react";
 import type { BookMetadata } from "../lib/firebase";
 import {
   buildReadingInsights,
@@ -161,8 +161,8 @@ export default function ReadingInsightsTool({ open, onClose, books }: ReadingIns
 
         <header className="relative z-10 flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,var(--kora-safe-top))] pb-3 border-b border-white/10">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-2 rounded-xl bg-[#d4a574]/15 border border-[#d4a574]/25">
-              <PieChart className="w-4 h-4 text-[#d4a574]" />
+            <div className="p-2 rounded-xl bg-white/5 border border-white/10">
+              <PieChart className="w-4 h-4 text-neutral-300" />
             </div>
             <div className="min-w-0">
               <h2 className="font-serif text-lg font-bold tracking-tight truncate">Reading Insights</h2>
@@ -184,9 +184,8 @@ export default function ReadingInsightsTool({ open, onClose, books }: ReadingIns
         <div className="relative z-10 flex-1 overflow-y-auto overscroll-contain px-4 py-6 pb-[max(1.5rem,var(--kora-safe-bottom))]">
           <div className="max-w-2xl mx-auto space-y-5">
             <div className="text-center space-y-2">
-              <Sparkles className="w-6 h-6 text-[#d4a574] mx-auto" />
-              <p className="text-sm opacity-70 leading-relaxed">
-                Vibrant pies of your library moods, pacing, and genres. Tap a slice to explore.
+              <p className="text-sm text-neutral-400 leading-relaxed">
+                Interactive pies of your library moods, pacing, and genres. Tap a slice to explore.
               </p>
             </div>
 

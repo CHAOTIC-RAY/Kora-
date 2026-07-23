@@ -47,7 +47,7 @@ import {
   recordPagesRead,
   recordReadingMinute,
 } from "../lib/readingStats";
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download, Sun, SunDim, Moon } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download, Sun, SunDim, Moon, ScanText } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "../lib/epubToc";
 import {
@@ -3044,11 +3044,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           <button
             type="button"
             onClick={cycleReadingBrightness}
-            className="p-2 rounded-xl hover:bg-neutral-500/10 transition"
+            className="p-2 rounded-xl hover:bg-neutral-500/10 transition text-neutral-300 dark:text-neutral-200"
             title={`Brightness ${brightness}% — tap to cycle`}
             aria-label={`Reading brightness ${brightness} percent. Tap to cycle presets.`}
           >
-            <BrightnessIcon className="w-5 h-5" />
+            <BrightnessIcon className="w-5 h-5" strokeWidth={1.75} />
           </button>
           <button
             id="toggle-toc-btn"
@@ -3097,12 +3097,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
           <button
             data-guide="reader-annotate-btn"
             onClick={toggleAnnotateMode}
-            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${annotateMode ? "bg-kindle-accent/20 text-kindle-accent font-semibold" : ""}`}
+            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${annotateMode ? "bg-white/15 text-neutral-100 font-semibold" : "text-neutral-300"}`}
             title={annotateMode ? "Done selecting" : "Annotate — select text"}
             aria-label={annotateMode ? "Exit annotate mode" : "Annotate — select text"}
             aria-pressed={annotateMode}
           >
-            <Highlighter className="w-5 h-5" />
+            <Highlighter className="w-5 h-5" strokeWidth={1.75} />
           </button>
         </div>
       </header>
@@ -4613,10 +4613,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       {/* Panel Header */}
                       <div className="px-6 py-4 border-b border-current/10 flex justify-between items-center bg-current/[0.02]">
                         <div className="flex items-center gap-2">
-                          <Sparkles className="w-5 h-5 text-amber-500 animate-pulse" />
+                          <ScanText className="w-5 h-5 text-neutral-400" />
                           <div>
                             <h3 className="text-sm font-black uppercase tracking-widest font-sans">Offline Selection Analyzer</h3>
-                            <p className="text-[10px] opacity-50 font-sans">100% offline dictionary & stats breakdown</p>
+                            <p className="text-[10px] opacity-50 font-sans">Dictionary & stats breakdown</p>
                           </div>
                         </div>
                         <button 

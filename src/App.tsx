@@ -72,7 +72,7 @@ import { toast, Toaster } from "react-hot-toast";
 import { logger } from "./lib/logger";
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
-  CloudLightning, Key, Smartphone, Sparkles, LogIn, Mail,
+  CloudLightning, Key, Smartphone, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle, Rss,
   RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench, Sofa

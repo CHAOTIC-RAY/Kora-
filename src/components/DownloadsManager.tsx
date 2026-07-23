@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Download, CheckCircle, Clock, FileWarning, Trash2, Globe, Sparkles, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
+import { Download, CheckCircle, Clock, FileWarning, Trash2, Globe, BookOpen, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { storeBookFile } from "../db/indexedDB";
 
@@ -150,7 +150,7 @@ export default function DownloadsManager({
               {(clipStatus === "fetching" || clipStatus === "converting" || clipStatus === "saving") ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5" />
+                <BookOpen className="w-3.5 h-3.5 text-kindle-text-muted" />
               )}
               {clipStatus === "idle" && "Convert"}
               {clipStatus === "fetching" && "Scraping..."}
@@ -174,7 +174,7 @@ export default function DownloadsManager({
               )}
               {clipStatus === "converting" && (
                 <div className="flex items-center gap-3 p-3 bg-kindle-accent/[0.04] border border-kindle-accent/15 rounded-xl animate-pulse">
-                  <Sparkles className="w-4 h-4 text-kindle-accent" />
+                  <BookOpen className="w-4 h-4 text-kindle-text-muted" />
                   <p className="text-[11px] font-medium text-kindle-text-muted">
                     Processing content, removing ads/clutter, and organizing into chapters...
                   </p>

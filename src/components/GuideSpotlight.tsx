@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { X, ChevronRight, Sparkles } from "lucide-react";
+import { X, ChevronRight, BookOpen } from "lucide-react";
 import type { GuideDefinition, GuideStep, GuideStepLink } from "../lib/guides";
 
 type Rect = { top: number; left: number; width: number; height: number };
@@ -282,7 +282,7 @@ export default function GuideSpotlight({
             <div className="rounded-2xl border border-kindle-border bg-kindle-card text-kindle-text shadow-2xl p-4">
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-xl bg-kindle-accent/15 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-4 h-4 text-kindle-accent" />
+                  <BookOpen className="w-4 h-4 text-neutral-400" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">

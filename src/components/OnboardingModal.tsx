@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import {
   Book,
+  BookOpen,
   Check,
   ChevronRight,
   ChevronLeft,
@@ -8,7 +9,6 @@ import {
   Heart,
   Library,
   Rss,
-  Sparkles,
   Globe,
   Target,
 } from "lucide-react";
@@ -617,7 +617,7 @@ export default function OnboardingModal({
                   : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
               }`}
             >
-              <Sparkles className="w-4 h-4" />
+              <BookOpen className="w-4 h-4 text-kindle-text-muted" />
               Get Started
             </button>
           )}

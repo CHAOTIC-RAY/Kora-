@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight, Lightbulb, RefreshCw, Search, Sparkles, X } from "lucide-react";
+import { ChevronRight, Lightbulb, RefreshCw, Search, X } from "lucide-react";
 import {
   cellsForWord,
   generateWordSearch,
@@ -264,8 +264,7 @@ export default function WordSearchGame({ open, onClose }: WordSearchGameProps) {
               animate={{ y: 0, opacity: 1 }}
             >
               <div className="text-center space-y-2">
-                <Sparkles className="w-6 h-6 text-[#d4a574] mx-auto" />
-                <p className="text-sm opacity-70 leading-relaxed">
+                <p className="text-sm text-neutral-400 leading-relaxed">
                   Drag in a straight line to catch hidden words. Endless randomized boards.
                 </p>
               </div>
@@ -483,7 +482,7 @@ export default function WordSearchGame({ open, onClose }: WordSearchGameProps) {
                 animate={{ scale: 1, y: 0, opacity: 1 }}
                 className="w-full max-w-sm rounded-3xl border border-[#d4a574]/40 bg-[#1c1915] p-6 text-center shadow-2xl"
               >
-                <Sparkles className="w-8 h-8 text-[#d4a574] mx-auto mb-3" />
+                <Search className="w-7 h-7 text-neutral-400 mx-auto mb-3" />
                 <h3 className="font-serif text-2xl font-bold mb-1">Level clear</h3>
                 <p className="text-[12px] opacity-60 mb-5">
                   {WORD_SEARCH_LABELS[difficulty].title} level {level} complete.

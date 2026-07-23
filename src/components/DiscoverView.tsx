@@ -6,7 +6,7 @@ import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, Sparkles, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause } from "lucide-react";
+import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
 import KoraLoading from "./KoraLoading";
@@ -2777,8 +2777,8 @@ function DiscoverView({
 
           {showFirstBookNudge && !searchMode && !viewingCategory && (
             <div className="rounded-2xl border border-kindle-accent/30 bg-kindle-accent/5 px-4 py-4 md:px-5 md:py-5 flex items-start gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
-              <div className="mt-0.5 rounded-xl bg-kindle-accent/15 p-2.5 text-kindle-accent shrink-0">
-                <Sparkles className="w-4 h-4" />
+              <div className="mt-0.5 rounded-xl bg-kindle-bg border border-kindle-border p-2.5 text-kindle-text-muted shrink-0">
+                <BookOpen className="w-4 h-4" />
               </div>
               <div className="flex-1 space-y-1">
                 <p className="text-sm font-bold text-kindle-text">Add your first book</p>
@@ -3371,7 +3371,7 @@ function DiscoverView({
         <div className="space-y-8">
           {feedNotice && !error && (
             <div className="flex items-center gap-3 p-3.5 bg-kindle-accent/[0.06] border border-kindle-accent/20 rounded-2xl">
-              <Sparkles className="w-4 h-4 text-kindle-accent shrink-0" />
+              <BookOpen className="w-4 h-4 text-kindle-text-muted shrink-0" />
               <p className="text-[11px] font-medium text-kindle-text-muted leading-snug">{feedNotice}</p>
             </div>
           )}
@@ -3535,7 +3535,7 @@ function DiscoverView({
                           ) : cat.id.includes("fiction") ? (
                             <BookMarked className="w-4 h-4 text-kindle-accent" />
                           ) : (
-                            <Sparkles className="w-4 h-4 text-kindle-accent" />
+                            <BookOpen className="w-4 h-4 text-kindle-text-muted" />
                           )}
                         </div>
                         <h3 className="text-lg font-lexend font-bold tracking-tight">{cat.title}</h3>
@@ -3671,7 +3671,7 @@ function DiscoverView({
                 {
                   section: "Popular Genres",
                   items: [
-                    { id: "sci-fi", label: "Sci-Fi & Fantasy", query: "science fiction fantasy", icon: Sparkles, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
+                    { id: "sci-fi", label: "Sci-Fi & Fantasy", query: "science fiction fantasy", icon: BookOpen, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
                     { id: "mystery", label: "Mystery & Thriller", query: "mystery thriller suspense", icon: Compass, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
                     { id: "biography", label: "Biography & Memoir", query: "biography memoir autobiography", icon: Library, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
                     { id: "history", label: "History & Politics", query: "history historical politics", icon: Database, color: "text-kindle-text bg-kindle-card hover:bg-kindle-bg border-kindle-border hover:border-kindle-accent/50" },
@@ -3796,7 +3796,7 @@ function DiscoverView({
                   >
                     <div>
                       <p className="text-xs font-bold font-sans flex items-center gap-1.5 text-white">
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-200 animate-pulse" />
+                        <Loader2 className="w-3.5 h-3.5 text-neutral-300 animate-spin" />
                         Recommended Direct Download
                       </p>
                       <p className="text-[10px] text-emerald-100/80 font-medium font-sans mt-0.5">

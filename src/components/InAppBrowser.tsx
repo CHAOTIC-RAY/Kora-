@@ -5,7 +5,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import JSZip from "jszip";
 import { 
   ArrowLeft, ArrowRight, RotateCw, Globe, Search, Home, 
-  Sparkles, CheckCircle, AlertCircle, Loader, Download, 
+  CheckCircle, AlertCircle, Loader, Download, 
   X, BookOpen, ExternalLink, ShieldAlert, Lock, HelpCircle,
   Sliders, Cookie, Shield, ShieldOff, Cpu, Trash2
 } from "lucide-react";
@@ -544,7 +544,7 @@ export default function InAppBrowser({ userId, onBookAdded, grayscaleCovers, ini
               <div className="p-3 rounded-xl bg-kindle-card border border-kindle-border flex flex-col gap-2 shadow-xs">
                 <div className="font-bold text-[10px] uppercase tracking-wider text-kindle-text-muted mb-1 flex items-center justify-between">
                   <span>Identity Spoofer</span>
-                  <Sparkles className="w-3.5 h-3.5 text-kindle-accent" />
+                  <BookOpen className="w-3.5 h-3.5 text-kindle-text-muted" />
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -669,7 +669,7 @@ export default function InAppBrowser({ userId, onBookAdded, grayscaleCovers, ini
 
               {/* Security and Interception Note */}
               <div className="mt-10 p-4 rounded-xl border border-dashed border-kindle-border bg-kindle-card text-left flex gap-3 max-w-lg">
-                <Sparkles className="w-5 h-5 text-kindle-accent shrink-0 mt-0.5" />
+                <BookOpen className="w-5 h-5 text-kindle-text-muted shrink-0 mt-0.5" />
                 <div>
                   <h4 className="text-xs font-bold text-kindle-text font-sans">How Does Interception Work?</h4>
                   <p className="text-[11px] text-kindle-text-muted font-sans mt-1 leading-relaxed">

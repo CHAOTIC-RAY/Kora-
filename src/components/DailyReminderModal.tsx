@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Sparkles, X, Flame, BookOpen, Quote } from "lucide-react";
+import { X, Flame, BookOpen, Quote } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 interface DailyReminderModalProps {
@@ -111,7 +111,7 @@ export default function DailyReminderModal({ isOpen, onClose, nickname }: DailyR
             {/* Header */}
             <div className="text-center space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-kindle-accent/10 rounded-full border border-kindle-accent/20">
-                <Sparkles className="w-4 h-4 text-kindle-accent" />
+                <BookOpen className="w-4 h-4 text-kindle-text-muted" />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text">Daily Motivation</span>
               </div>
               <h2 className="text-2xl font-display font-bold text-kindle-text tracking-tight">

@@ -8,7 +8,6 @@ import {
   Headphones,
   Wrench,
   Plus,
-  Sparkles,
   ChevronRight,
   X,
 } from "lucide-react";
@@ -101,7 +100,7 @@ export default function LoungeGuidesWidget({
           <div className="flex flex-col gap-2 flex-1 min-h-0">
             <GuideFeatureTile
               guide={featured}
-              Icon={ICONS[featured.icon] || Sparkles}
+              Icon={ICONS[featured.icon] || BookOpen}
               reduceMotion={!!reduceMotion}
               onDismiss={() => handleDismiss(featured.id)}
               onStart={() => handleStart(featured.id)}
@@ -117,7 +116,7 @@ export default function LoungeGuidesWidget({
                   <GuideMiniTile
                     key={guide.id}
                     guide={guide}
-                    Icon={ICONS[guide.icon] || Sparkles}
+                    Icon={ICONS[guide.icon] || BookOpen}
                     reduceMotion={!!reduceMotion}
                     onDismiss={() => handleDismiss(guide.id)}
                     onStart={() => handleStart(guide.id)}
@@ -129,7 +128,7 @@ export default function LoungeGuidesWidget({
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-3 py-8 gap-2 rounded-2xl border border-dashed border-kindle-border/70 bg-kindle-bg/35">
-            <Sparkles className="w-5 h-5 text-kindle-text-muted opacity-40" />
+            <BookOpen className="w-5 h-5 text-kindle-text-muted opacity-40" />
             <p className="text-xs text-kindle-text-muted leading-relaxed max-w-[14rem]">
               You&apos;re caught up — no pending guides right now.
             </p>
@@ -158,7 +157,7 @@ export default function LoungeGuidesWidget({
           <GuideFeatureTile
             key={guide.id}
             guide={guide}
-            Icon={ICONS[guide.icon] || Sparkles}
+            Icon={ICONS[guide.icon] || BookOpen}
             reduceMotion={!!reduceMotion}
             onDismiss={() => handleDismiss(guide.id)}
             onStart={() => handleStart(guide.id)}

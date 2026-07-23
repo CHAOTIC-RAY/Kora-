@@ -5,8 +5,8 @@ import {
   User as UserIcon, ShieldCheck, BookOpen,
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
-  Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart
+  Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Zap
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
@@ -1715,7 +1715,7 @@ function SettingsView({
             </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">Powered by</span>
-              <span className="font-bold flex items-center gap-1"><Sparkles className="w-3 h-3 text-kindle-accent" /> Rave Engine</span>
+              <span className="font-bold flex items-center gap-1 text-kindle-text"><Zap className="w-3 h-3 text-kindle-text-muted" /> Rave Engine</span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">GitHub</span>
@@ -1856,7 +1856,7 @@ function SettingsView({
                   onClick={onOpenOnboarding}
                   className="w-full mt-2 py-2 px-3 bg-kindle-accent text-kindle-bg hover:opacity-90 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <BookOpen className="w-3.5 h-3.5" />
                   Booknerd Setup & Walkthrough
                 </button>
               )}
