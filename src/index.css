@@ -866,9 +866,10 @@ h1, h2, h3, h4 {
 }
 
 /*
-  Tables must be allowed to fragment across CSS columns, otherwise a tall table
-  is clipped at the page bottom and never appears on the next page.
-  Keep each row together.
+  Tables must fragment across CSS columns, otherwise a tall table is clipped at
+  the page bottom and never appears on the next page. Rows taller than the page
+  must also be allowed to break — break-inside:avoid on oversized rows is what
+  produced half-cut lines + "page 2 of 2" with duplicated starts.
 */
 .epub-content table {
   width: 100% !important;
@@ -885,10 +886,12 @@ h1, h2, h3, h4 {
   display: table-row-group; /* allow header to repeat/break with body */
 }
 
-.epub-content tr {
-  break-inside: avoid !important;
-  -webkit-column-break-inside: avoid !important;
-  page-break-inside: avoid !important;
+.epub-content tr,
+.epub-content th,
+.epub-content td {
+  break-inside: auto !important;
+  -webkit-column-break-inside: auto !important;
+  page-break-inside: auto !important;
 }
 
 .epub-content td,
@@ -910,11 +913,13 @@ h1, h2, h3, h4 {
 }
 
 /* Hide horizontal scrollbar used for CSS-column paging via scrollLeft */
-.kora-page-canvas {
+.kora-page-canvas,
+.kora-paged-article {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-.kora-page-canvas::-webkit-scrollbar {
+.kora-page-canvas::-webkit-scrollbar,
+.kora-paged-article::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
