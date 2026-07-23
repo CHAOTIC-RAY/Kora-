@@ -29,6 +29,7 @@ import {
   getNetgalleyCategories,
   fetchNetgalleyCategoryListings
 } from "./lib/netgalley";
+import { lookupFictionDbSeriesPlacement } from "./lib/fictiondb";
 declare const HTMLRewriter: any;
 
 async function sha256(message: string): Promise<string> {
@@ -3170,6 +3171,36 @@ export default {
       return new Response(JSON.stringify({ results, source: "NetGalley", cat }), {
         headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
       });
+    }
+
+    // FictionDB series placement (order only) — used by Discover book details
+    if (path === "/api/fictiondb/series") {
+      try {
+        const title = url.searchParams.get("title") || "";
+        const author = url.searchParams.get("author") || "";
+        if (!title.trim()) {
+          return new Response(JSON.stringify({ error: "Missing title" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        const placement = await lookupFictionDbSeriesPlacement(title, author);
+        return new Response(JSON.stringify({ placement, source: "FictionDB" }), {
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=3600",
+          },
+        });
+      } catch (err: any) {
+        return new Response(
+          JSON.stringify({ error: err?.message || "FictionDB lookup failed", placement: null }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          }
+        );
+      }
     }
 
     // 7. Z-Library Domains

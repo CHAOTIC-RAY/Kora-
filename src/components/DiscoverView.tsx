@@ -233,6 +233,9 @@ function DiscoverView({
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const audiobookFetchGen = React.useRef(0);
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
+  const [featuredSeriesPlacement, setFeaturedSeriesPlacement] = useState<any | null>(null);
+  const [loadingFeaturedSeries, setLoadingFeaturedSeries] = useState(false);
+  const featuredSeriesGen = React.useRef(0);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
@@ -1043,6 +1046,34 @@ function DiscoverView({
     }
   };
 
+  const fetchFeaturedSeriesPlacement = async (title: string, author: string, generation: number) => {
+    if (!title?.trim()) {
+      setFeaturedSeriesPlacement(null);
+      setLoadingFeaturedSeries(false);
+      return;
+    }
+    setLoadingFeaturedSeries(true);
+    setFeaturedSeriesPlacement(null);
+    try {
+      const res = await fetch(
+        `/api/fictiondb/series?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author || "")}`
+      );
+      if (!res.ok) throw new Error("FictionDB lookup failed");
+      const data = await res.json();
+      if (generation !== featuredSeriesGen.current) return;
+      setFeaturedSeriesPlacement(data?.placement || null);
+    } catch (err) {
+      logger.warn("[Discover] FictionDB series lookup failed", err);
+      if (generation === featuredSeriesGen.current) {
+        setFeaturedSeriesPlacement(null);
+      }
+    } finally {
+      if (generation === featuredSeriesGen.current) {
+        setLoadingFeaturedSeries(false);
+      }
+    }
+  };
+
   const openBookDetail = (book: any) => {
     previewAudioRef.current?.pause();
     setPreviewTrackIdx(null);
@@ -1051,6 +1082,8 @@ function DiscoverView({
     setAudiobookDetailError(null);
     setFeaturedAudiobookSource(null);
     audiobookFetchGen.current += 1;
+    featuredSeriesGen.current += 1;
+    const seriesGen = featuredSeriesGen.current;
     setSelectedFeaturedBook(book);
     // Seed overview immediately from list data (NYT synopses, etc.) so the
     // panel is never empty while Google / Open Library enrich it.
@@ -1070,6 +1103,7 @@ function DiscoverView({
       setFeaturedBookDetails(null);
     }
     fetchFeaturedMetadata(book.title, book.author || "", undefined, book.description || "");
+    fetchFeaturedSeriesPlacement(book.title, book.author || "", seriesGen);
   };
 
   const closeBookDetail = () => {
@@ -1077,11 +1111,14 @@ function DiscoverView({
     setPreviewTrackIdx(null);
     setPreviewPlaying(false);
     audiobookFetchGen.current += 1;
+    featuredSeriesGen.current += 1;
     setSelectedFeaturedBook(null);
     setFeaturedAudiobookSource(null);
     setAudiobookDetail(null);
     setAudiobookDetailError(null);
     setAudiobookDetailLoading(false);
+    setFeaturedSeriesPlacement(null);
+    setLoadingFeaturedSeries(false);
   };
 
   const dismissDiscoverDetail = useAndroidBackLayer(
@@ -4048,6 +4085,66 @@ function DiscoverView({
                                 }
                               </div>
                             </div>
+
+                            {(loadingFeaturedSeries || featuredSeriesPlacement) && (
+                              <div className="flex flex-col">
+                                <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-3">
+                                  Series · FictionDB
+                                </span>
+                                {loadingFeaturedSeries && !featuredSeriesPlacement ? (
+                                  <div className="flex items-center gap-2 text-[10px] text-kindle-text-muted">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Looking up order…
+                                  </div>
+                                ) : featuredSeriesPlacement ? (
+                                  <div className="space-y-3">
+                                    <div className="px-2.5 py-1.5 bg-kindle-card rounded-lg text-[9px] text-kindle-text font-bold uppercase tracking-widest border border-kindle-border">
+                                      {featuredSeriesPlacement.position
+                                        ? `Book ${featuredSeriesPlacement.position} of ${featuredSeriesPlacement.total}`
+                                        : `${featuredSeriesPlacement.total || "?"} books`}
+                                      <span className="block mt-1 normal-case tracking-normal text-[11px] font-semibold text-kindle-accent">
+                                        {featuredSeriesPlacement.seriesName}
+                                      </span>
+                                    </div>
+                                    {Array.isArray(featuredSeriesPlacement.books) && featuredSeriesPlacement.books.length > 0 && (
+                                      <ol className="space-y-1.5 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                                        {featuredSeriesPlacement.books.map((b: any) => {
+                                          const isCurrent =
+                                            featuredSeriesPlacement.position != null &&
+                                            b.order === featuredSeriesPlacement.position;
+                                          return (
+                                            <li
+                                              key={`${b.order}-${b.title}`}
+                                              className={`flex items-start gap-2 text-[11px] leading-snug ${
+                                                isCurrent
+                                                  ? "text-kindle-text font-semibold"
+                                                  : "text-kindle-text-muted"
+                                              }`}
+                                            >
+                                              <span className={`shrink-0 w-5 text-[9px] font-bold tabular-nums ${isCurrent ? "text-kindle-accent" : ""}`}>
+                                                {b.order}
+                                              </span>
+                                              <span className="min-w-0">{b.title}</span>
+                                            </li>
+                                          );
+                                        })}
+                                      </ol>
+                                    )}
+                                    {featuredSeriesPlacement.seriesUrl && (
+                                      <a
+                                        href={featuredSeriesPlacement.seriesUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition-colors"
+                                      >
+                                        FictionDB
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
                             
                             <div className="flex flex-col">
                               <span className="text-[9px] text-kindle-text-muted uppercase tracking-widest font-bold mb-2">Author Profile</span>
@@ -4098,6 +4195,28 @@ function DiscoverView({
                           <span className="text-kindle-text-muted/40 font-light">· {featuredBookDetails.publishedDate.split('-')[0]}</span>
                         )}
                       </div>
+                      {(loadingFeaturedSeries || featuredSeriesPlacement) && (
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          {loadingFeaturedSeries && !featuredSeriesPlacement ? (
+                            <span className="inline-flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Series order
+                            </span>
+                          ) : featuredSeriesPlacement ? (
+                            <>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-kindle-card border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text">
+                                <Layers className="w-3 h-3 text-kindle-text-muted" />
+                                {featuredSeriesPlacement.position
+                                  ? `Book ${featuredSeriesPlacement.position} of ${featuredSeriesPlacement.total || "?"} · ${featuredSeriesPlacement.seriesName}`
+                                  : `${featuredSeriesPlacement.seriesName}${featuredSeriesPlacement.total ? ` · ${featuredSeriesPlacement.total} books` : ""}`}
+                              </span>
+                              <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted/70">
+                                FictionDB
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
 
                     <div className="space-y-10">
@@ -4142,6 +4261,54 @@ function DiscoverView({
                           )}
                         </div>
                       </section>
+
+                      {/* Series placement (FictionDB) — visible on all breakpoints; desktop also shows in Context & Genres */}
+                      {(loadingFeaturedSeries || featuredSeriesPlacement) && (
+                        <section className="md:hidden pt-2">
+                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-3">
+                            Series · FictionDB
+                          </h3>
+                          {loadingFeaturedSeries && !featuredSeriesPlacement ? (
+                            <div className="flex items-center gap-2 text-[10px] text-kindle-text-muted py-3">
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              Looking up series order…
+                            </div>
+                          ) : featuredSeriesPlacement ? (
+                            <div className="rounded-2xl border border-kindle-border bg-kindle-card/40 p-4 space-y-3">
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-kindle-text">
+                                {featuredSeriesPlacement.position
+                                  ? `Book ${featuredSeriesPlacement.position} of ${featuredSeriesPlacement.total}`
+                                  : `${featuredSeriesPlacement.total || "?"} books`}
+                                <span className="block mt-1 normal-case tracking-normal text-sm font-semibold text-kindle-accent">
+                                  {featuredSeriesPlacement.seriesName}
+                                </span>
+                              </p>
+                              {Array.isArray(featuredSeriesPlacement.books) && featuredSeriesPlacement.books.length > 0 && (
+                                <ol className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+                                  {featuredSeriesPlacement.books.map((b: any) => {
+                                    const isCurrent =
+                                      featuredSeriesPlacement.position != null &&
+                                      b.order === featuredSeriesPlacement.position;
+                                    return (
+                                      <li
+                                        key={`m-${b.order}-${b.title}`}
+                                        className={`flex items-start gap-2 text-[12px] ${
+                                          isCurrent ? "text-kindle-text font-semibold" : "text-kindle-text-muted"
+                                        }`}
+                                      >
+                                        <span className={`shrink-0 w-5 text-[10px] font-bold tabular-nums ${isCurrent ? "text-kindle-accent" : ""}`}>
+                                          {b.order}
+                                        </span>
+                                        <span>{b.title}</span>
+                                      </li>
+                                    );
+                                  })}
+                                </ol>
+                              )}
+                            </div>
+                          ) : null}
+                        </section>
+                      )}
 
                       {/* Download Links - Moved UP and made larger */}
                       <section id="featured-download-links-section" className="pt-8 border-t border-kindle-border">

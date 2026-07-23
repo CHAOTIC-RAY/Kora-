@@ -35,6 +35,7 @@ import {
   fetchNetgalleyCategoryListings,
   searchNetgalleyCatalog,
 } from "./src/lib/netgalley";
+import { lookupFictionDbSeriesPlacement } from "./src/lib/fictiondb";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./src/lib/feedServer";
 
 dotenv.config();
@@ -2399,6 +2400,22 @@ app.get("/api/netgalley/category", async (req, res) => {
     res.json({ books });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "NetGalley category failed" });
+  }
+});
+
+// FictionDB series placement (order only) — Discover book details
+app.get("/api/fictiondb/series", async (req, res) => {
+  try {
+    const title = String(req.query.title || "");
+    const author = String(req.query.author || "");
+    if (!title.trim()) {
+      return res.status(400).json({ error: "Missing title", placement: null });
+    }
+    const placement = await lookupFictionDbSeriesPlacement(title, author);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.json({ placement, source: "FictionDB" });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "FictionDB lookup failed", placement: null });
   }
 });
 
