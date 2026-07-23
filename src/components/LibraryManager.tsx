@@ -1564,8 +1564,10 @@ function LibraryManager({
         <BookMetadataEditor
           userId={userId}
           book={editingMetadataBook}
+          library={books}
           onClose={() => setEditingMetadataBook(null)}
           onSave={onRefreshLibrary}
+          onOpenBook={(b) => setEditingMetadataBook(b)}
         />
       )}
 

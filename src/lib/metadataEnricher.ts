@@ -110,6 +110,29 @@ export async function enrichBookMetadata(userId: string, book: BookMetadata): Pr
       enrichedBook.tags = Array.from(newTags);
       console.log(`[MetadataEnricher] Updated tags for "${book.title}": ${enrichedBook.tags.join(", ")}`);
     }
+
+    // 4. Series detection from title / Google subtitle patterns
+    try {
+      const { ensureSeriesFields, parseSeriesFromTitle } = await import("./seriesHelper");
+      const titleParsed = parseSeriesFromTitle(googleBook.title || enrichedBook.title || "");
+      const fromCurrent = ensureSeriesFields(enrichedBook);
+      if (!enrichedBook.series?.trim() && (fromCurrent.series || titleParsed?.series)) {
+        enrichedBook.series = fromCurrent.series || titleParsed?.series;
+      }
+      if (!enrichedBook.seriesNumber?.trim() && (fromCurrent.seriesNumber || titleParsed?.seriesNumber)) {
+        enrichedBook.seriesNumber = fromCurrent.seriesNumber || titleParsed?.seriesNumber;
+      }
+      // Google sometimes embeds series in subtitle like "A Something Novel #2"
+      if ((!enrichedBook.series || !enrichedBook.seriesNumber) && googleBook.subtitle) {
+        const subParsed = parseSeriesFromTitle(`${googleBook.title} (${googleBook.subtitle})`);
+        if (subParsed) {
+          enrichedBook.series = enrichedBook.series || subParsed.series;
+          enrichedBook.seriesNumber = enrichedBook.seriesNumber || subParsed.seriesNumber;
+        }
+      }
+    } catch (err) {
+      console.warn("[MetadataEnricher] Series detection skipped", err);
+    }
     
     // Final sync to cloud if changed
     if (JSON.stringify(enrichedBook) !== JSON.stringify(book)) {
