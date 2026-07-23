@@ -6,7 +6,7 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Sparkles, Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
@@ -33,6 +33,7 @@ import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
 import CrosswordGame from "./CrosswordGame";
+import WordSearchGame from "./WordSearchGame";
 import { isNativeAndroid } from "../lib/capacitorNative";
 import {
   ApkReleaseInfo,
@@ -245,6 +246,7 @@ function SettingsView({
   const [isDragActive, setIsDragActive] = useState<boolean>(false);
   const [showCloudImport, setShowCloudImport] = useState<boolean>(false);
   const [showCrossword, setShowCrossword] = useState<boolean>(false);
+  const [showWordSearch, setShowWordSearch] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -658,7 +660,8 @@ function SettingsView({
             { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox" },
             { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch" },
             { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert" },
-            { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Offline puzzles" },
+            { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Classic & letter wheel" },
+            { id: "wordsearch", icon: Search, label: "Word Search", desc: "Find hidden words" },
           ].map((tool) => (
             <button
               key={tool.id}
@@ -667,12 +670,13 @@ function SettingsView({
                 else if (tool.id === "folder") toggleCategory("folder");
                 else if (tool.id === "tts") toggleCategory("tts");
                 else if (tool.id === "crossword") setShowCrossword(true);
+                else if (tool.id === "wordsearch") setShowWordSearch(true);
                 else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
               className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
             >
               <div className="p-2 rounded-xl bg-kindle-bg border border-kindle-border w-fit">
-                <tool.icon className={`w-4 h-4 ${tool.id === "crossword" ? "text-[#d4a574]" : "text-kindle-accent"}`} />
+                <tool.icon className={`w-4 h-4 ${tool.id === "crossword" || tool.id === "wordsearch" ? "text-[#d4a574]" : "text-kindle-accent"}`} />
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
@@ -702,26 +706,43 @@ function SettingsView({
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowCrossword(true)}
-          className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
-        >
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
-              <Grid3X3 className="w-5 h-5 text-[#d4a574]" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Crossword</h3>
-                <span className="text-[8px] font-mono uppercase tracking-widest text-[#d4a574] opacity-80">Offline</span>
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setShowCrossword(true)}
+            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
+                <Grid3X3 className="w-5 h-5 text-[#d4a574]" />
               </div>
-              <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                Fullscreen word puzzles with Easy, Medium, and Hard — unlimited randomized levels. Works without network on the APK.
-              </p>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Crossword</h3>
+                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
+                  Classic clues or letter-wheel mode — Easy, Medium, Hard, unlimited levels.
+                </p>
+              </div>
             </div>
-          </div>
-        </button>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowWordSearch(true)}
+            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
+                <Search className="w-5 h-5 text-[#d4a574]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Word Search</h3>
+                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
+                  Drag straight lines to find hidden words — infinite randomized boards.
+                </p>
+              </div>
+            </div>
+          </button>
+        </div>
 
         <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
 
@@ -1826,6 +1847,7 @@ function SettingsView({
       </div>
 
       <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} />
+      <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} />
     </div>
   );
 }
