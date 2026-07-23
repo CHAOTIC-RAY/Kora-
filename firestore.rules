@@ -4,6 +4,16 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+
+    // Ephemeral Blip signaling only (SDP / ICE). Never store file bytes here.
+    match /blipRooms/{roomId} {
+      allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12;
+      match /{iceCol}/{iceId} {
+        allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12
+          && (iceCol == 'hostIce' || iceCol == 'guestIce');
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

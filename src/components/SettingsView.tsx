@@ -6,7 +6,7 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Zap
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Zap, Radio
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
@@ -32,6 +32,7 @@ import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
+import BlipTransferPanel from "./BlipTransferPanel";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
 import ReadingInsightsTool from "./ReadingInsightsTool";
@@ -249,6 +250,7 @@ function SettingsView({
   const [showCrossword, setShowCrossword] = useState<boolean>(false);
   const [showWordSearch, setShowWordSearch] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
+  const [showBlip, setShowBlip] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -256,6 +258,7 @@ function SettingsView({
       const tool = (e as CustomEvent<{ tool?: string }>).detail?.tool;
       if (tool === "crossword") setShowCrossword(true);
       else if (tool === "wordsearch") setShowWordSearch(true);
+      else if (tool === "blip") setShowBlip(true);
     };
     window.addEventListener("kora-open-tool", onOpenTool as EventListener);
     return () => window.removeEventListener("kora-open-tool", onOpenTool as EventListener);
@@ -675,6 +678,7 @@ function SettingsView({
             { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Classic & letter wheel" },
             { id: "wordsearch", icon: Search, label: "Word Search", desc: "Find hidden words" },
             { id: "insights", icon: PieChart, label: "Insights", desc: "Moods · pacing · genres" },
+            { id: "blip", icon: Radio, label: "Blip", desc: "P2P file transfer" },
           ].map((tool) => (
             <button
               key={tool.id}
@@ -685,6 +689,7 @@ function SettingsView({
                 else if (tool.id === "crossword") setShowCrossword(true);
                 else if (tool.id === "wordsearch") setShowWordSearch(true);
                 else if (tool.id === "insights") setShowInsights(true);
+                else if (tool.id === "blip") setShowBlip(true);
                 else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
               className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
@@ -769,6 +774,24 @@ function SettingsView({
                 <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Reading Insights</h3>
                 <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
                   Vibrant interactive pies of your reading moods, pacing, and genres.
+                </p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowBlip(true)}
+            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-kindle-accent/40 transition group"
+          >
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-kindle-bg border border-kindle-border shrink-0">
+                <Radio className="w-5 h-5 text-kindle-accent" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Blip Transfer</h3>
+                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
+                  Peer-to-peer files over Wi‑Fi or internet. Encrypted relay only if direct fails — no cloud storage.
                 </p>
               </div>
             </div>
@@ -1881,6 +1904,7 @@ function SettingsView({
         onClose={() => setShowInsights(false)}
         books={(books as BookMetadata[]) || getLocalLibrary()}
       />
+      <BlipTransferPanel open={showBlip} onClose={() => setShowBlip(false)} />
     </div>
   );
 }

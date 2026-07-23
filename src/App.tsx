@@ -1910,12 +1910,15 @@ export default function App() {
         }
         return true;
       }
-      if (go === "crossword" || go === "minigame" || go === "wordsearch") {
+      if (go === "crossword" || go === "minigame" || go === "wordsearch" || go === "blip") {
         switchTab("tools");
         window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent("kora-open-tool", {
-              detail: { tool: go === "wordsearch" ? "wordsearch" : "crossword" },
+              detail: {
+                tool:
+                  go === "wordsearch" ? "wordsearch" : go === "blip" ? "blip" : "crossword",
+              },
             })
           );
         }, 50);
