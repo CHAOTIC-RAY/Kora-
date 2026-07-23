@@ -2244,6 +2244,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     // Strip unneeded javascript or style tags that override user customizations
     chapterDoc.querySelectorAll("script, style, link[rel='stylesheet']").forEach(el => el.remove());
 
+    // Strip inline colors/backgrounds so night themes stay readable
+    chapterDoc.querySelectorAll("[style]").forEach((el) => {
+      const htmlEl = el as HTMLElement;
+      htmlEl.style.removeProperty("color");
+      htmlEl.style.removeProperty("background");
+      htmlEl.style.removeProperty("background-color");
+      htmlEl.style.removeProperty("background-image");
+      if (!(htmlEl.getAttribute("style") || "").trim()) {
+        htmlEl.removeAttribute("style");
+      }
+    });
+
     return chapterDoc.body?.innerHTML || "No content in chapter";
   }
 
@@ -4129,30 +4141,31 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       />
                     )}
                   </AnimatePresence>
-                  <motion.div
+                  {/*
+                    Page by marginLeft — NOT transform. CSS multi-column paint blanks
+                    under compositor transforms in Chromium / Android WebView.
+                  */}
+                  <div
                     className="w-full h-full"
-                    animate={{
-                      x: useScrollLayout
-                        ? 0
-                        : -(Math.min(Math.max(1, currentPageNum), Math.max(1, totalPages)) - 1) *
-                          Math.max(1, pageStep),
-                    }}
-                    transition={
-                      shouldAnimate
-                        ? effectivePageTransition === "paper-flip" ||
-                          effectivePageTransition === "none" ||
-                          isAndroidWebView
-                          ? { duration: 0 }
-                          : effectivePageTransition === "spring"
-                            ? { type: "spring", stiffness: 220, damping: 28, mass: 0.8 }
-                            : { type: "tween", ease: [0.33, 1, 0.68, 1], duration: 0.35 }
-                        : { duration: 0 }
+                    style={
+                      useScrollLayout
+                        ? undefined
+                        : {
+                            marginLeft: `-${
+                              (Math.min(Math.max(1, currentPageNum), Math.max(1, totalPages)) - 1) *
+                              Math.max(1, pageStep)
+                            }px`,
+                            transition:
+                              shouldAnimate &&
+                              !isAndroidWebView &&
+                              effectivePageTransition !== "none" &&
+                              effectivePageTransition !== "paper-flip"
+                                ? effectivePageTransition === "spring"
+                                  ? "margin-left 0.35s cubic-bezier(0.22, 1, 0.36, 1)"
+                                  : "margin-left 0.28s ease"
+                                : "none",
+                          }
                     }
-                    style={{
-                      // Never put CSS columns on this transformed node — Android WebView
-                      // blanks multi-column content after a compositor transform.
-                      willChange: useScrollLayout || isAndroidWebView ? "auto" : "transform",
-                    }}
                   >
                   <article 
                     ref={contentRef}
@@ -4167,6 +4180,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       WebkitTouchCallout: annotateMode ? "default" : "none",
                       touchAction: annotateMode ? "auto" : useScrollLayout ? "pan-y" : swipeToTurn ? "pan-x" : "manipulation",
                       visibility: "visible",
+                      color: "inherit",
                       ...(useScrollLayout
                         ? {
                             height: "auto",
@@ -4211,7 +4225,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       </div>
                     )}
                   </article>
-                  </motion.div>
+                  </div>
                 </div>
 
                 {/* Chapter end label — paged mode only (absolute, outside column flow) */}

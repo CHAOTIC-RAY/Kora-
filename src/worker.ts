@@ -3393,7 +3393,13 @@ export default {
         downloadUrl = normalizeMediaUrl(downloadUrl);
 
         // Fast path: stream audiobook/audio files with Range support
-        const isAudioRequest = /\.(mp3|m4a|ogg|wav|aac)(\?|$)/i.test(downloadUrl) || /ipaudio/i.test(downloadUrl);
+        const wantsAudio =
+          url.searchParams.get("audio") === "1" ||
+          /audio\//i.test(request.headers.get("Accept") || "");
+        const isAudioRequest =
+          wantsAudio ||
+          /\.(mp3|m4a|ogg|wav|aac|flac|opus)(\?|$)/i.test(downloadUrl) ||
+          /ipaudio|audiobook|audio\./i.test(downloadUrl);
         if (isAudioRequest) {
           try {
             const audioUrl = normalizeMediaUrl(downloadUrl);

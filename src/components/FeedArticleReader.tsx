@@ -136,40 +136,31 @@ export default function FeedArticleReader({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to external item jumps
   }, [item.id, fillEntry]);
 
-  // Grow the stack forward so the next stories are already rendered below.
-  useEffect(() => {
+  // Append at most ONE next story when the user is near the end — never walk the whole queue
+  // (that used to flood /api/convert-url → 503).
+  const appendNextIfNeeded = useCallback(() => {
     if (!queue.length) return;
     const last = stack[stack.length - 1];
     if (!last) return;
-
     const lastIdx = queue.findIndex((entry) => entry.id === last.item.id);
-    if (lastIdx < 0) return;
-
-    const upcoming = queue.slice(lastIdx + 1, lastIdx + 3);
-    const missing = upcoming.filter((entry) => !stack.some((s) => s.item.id === entry.id));
-    if (!missing.length) return;
+    if (lastIdx < 0 || lastIdx >= queue.length - 1) return;
+    const nextItem = queue[lastIdx + 1];
+    if (stack.some((s) => s.item.id === nextItem.id)) return;
 
     setStack((prev) => {
-      const next = [...prev];
-      for (const feedItem of missing) {
-        if (next.some((entry) => entry.item.id === feedItem.id)) continue;
-        next.push(entryFromCache(feedItem) || placeholderEntry(feedItem));
-      }
-      return next;
+      if (prev.some((entry) => entry.item.id === nextItem.id)) return prev;
+      return [...prev, entryFromCache(nextItem) || placeholderEntry(nextItem)];
     });
-
-    for (const feedItem of missing) {
-      if (!peekFeedArticle(feedItem)) {
-        void fillEntry(feedItem);
-      }
+    if (!peekFeedArticle(nextItem)) {
+      void fillEntry(nextItem);
     }
-  }, [stack, queue, fillEntry]);
+  }, [queue, stack, fillEntry]);
 
-  // Prefetch a couple ahead in the background (cache warm even before stack append).
+  // Prefetch only the immediate next article (cache warm, no convert-url storm).
   useEffect(() => {
     const idx = queue.findIndex((entry) => entry.id === item.id);
     if (idx < 0) return;
-    void prefetchFeedArticles(queue.slice(idx + 1, idx + 4), 3);
+    void prefetchFeedArticles(queue.slice(idx + 1, idx + 2), 1);
   }, [queue, item.id]);
 
   // As the user scrolls, the most visible article becomes the active one — no remount.
@@ -197,19 +188,19 @@ export default function FeedArticleReader({
           }
         }
 
-        if (!bestId || bestRatio < 0.35 || bestId === item.id) return;
+        if (!bestId || bestRatio < 0.45 || bestId === item.id) return;
         // Avoid jumping active story while the opening article is still settling.
         if (!hasUserScrolledRef.current && bestId !== sessionStartIdRef.current) return;
         const next = stack.find((entry) => entry.item.id === bestId);
-        if (!next?.ready || next.error) return;
+        if (!next) return;
 
         syncFromScrollRef.current = true;
         onOpenItem(next.item);
       },
       {
         root,
-        threshold: [0.15, 0.35, 0.55, 0.75],
-        rootMargin: "-18% 0px -42% 0px",
+        threshold: [0.25, 0.45, 0.65, 0.85],
+        rootMargin: "-10% 0px -10% 0px",
       }
     );
 
@@ -229,7 +220,7 @@ export default function FeedArticleReader({
     }
     const node = articleNodeRefs.current.get(item.id);
     if (!node || !stack.some((entry) => entry.item.id === item.id)) return;
-    node.scrollIntoView({ behavior: "smooth", block: "start" });
+    node.scrollIntoView({ behavior: "auto", block: "start" });
   }, [item.id, stack]);
 
   const handleSave = async () => {
@@ -262,7 +253,7 @@ export default function FeedArticleReader({
       if (node) {
         syncFromScrollRef.current = true;
         onOpenItem(feedItem);
-        node.scrollIntoView({ behavior: "smooth", block: "start" });
+        node.scrollIntoView({ behavior: "auto", block: "start" });
         return;
       }
       onOpenItem(feedItem);
@@ -329,10 +320,18 @@ export default function FeedArticleReader({
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto overscroll-y-contain min-h-0 scroll-smooth"
+        className="flex-1 overflow-y-auto overscroll-y-contain min-h-0"
+        style={{
+          scrollSnapType: "y mandatory",
+          WebkitOverflowScrolling: "touch",
+        }}
         onScroll={() => {
-          if ((scrollRef.current?.scrollTop || 0) > 48) {
-            hasUserScrolledRef.current = true;
+          const el = scrollRef.current;
+          if (!el) return;
+          if (el.scrollTop > 24) hasUserScrolledRef.current = true;
+          // Near end of current stack → append next story (TikTok-style endless feed).
+          if (el.scrollTop + el.clientHeight > el.scrollHeight - el.clientHeight * 0.85) {
+            appendNextIfNeeded();
           }
         }}
         onClick={() => {
@@ -365,9 +364,13 @@ export default function FeedArticleReader({
                     if (node) articleNodeRefs.current.set(entry.item.id, node);
                     else articleNodeRefs.current.delete(entry.item.id);
                   }}
-                  className={`mx-auto ${prefs.marginSize} ${
-                    index === 0 ? "pt-[calc(var(--kora-safe-top)+3.5rem)]" : "pt-10"
-                  } ${index < stack.length - 1 ? "pb-8 border-b border-kindle-border/40" : "pb-4"}`}
+                  className={`mx-auto ${prefs.marginSize} min-h-full flex flex-col ${
+                    index === 0 ? "pt-[calc(var(--kora-safe-top)+3.5rem)]" : "pt-8"
+                  } pb-[calc(var(--kora-safe-bottom)+5rem)]`}
+                  style={{
+                    scrollSnapAlign: "start",
+                    scrollSnapStop: "always",
+                  }}
                   onClick={(e) => {
                     if (showSettings) {
                       setShowSettings(false);
@@ -464,7 +467,7 @@ export default function FeedArticleReader({
                   ? stack.find((entry) => entry.item.id === nextQueued.id)
                   : null;
 
-                if (nextInStack && !nextInStack.ready) {
+                if (nextInStack && !nextInStack.ready && !nextInStack.error) {
                   return (
                     <div className={`flex items-center justify-center gap-2 py-6 ${theme.muted}`}>
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -479,11 +482,15 @@ export default function FeedArticleReader({
                   return (
                     <button
                       type="button"
-                      onClick={() => jumpToEntry(nextQueued)}
-                      className={`w-full text-left rounded-2xl border ${theme.border} ${theme.header} px-4 py-4 shadow-sm transition-transform active:scale-[0.99]`}
+                      onClick={() => {
+                        appendNextIfNeeded();
+                        // Jump immediately — don't wait for convert-url to finish.
+                        requestAnimationFrame(() => jumpToEntry(nextQueued));
+                      }}
+                      className={`w-full text-left rounded-2xl border ${theme.border} ${theme.header} px-4 py-4 shadow-sm transition-transform active:scale-[0.98]`}
                     >
                       <p className={`text-[9px] font-bold uppercase tracking-[0.2em] ${theme.muted}`}>
-                        Up next
+                        Swipe up · Next
                       </p>
                       <p
                         dir={textDirection(nextQueued.title)}

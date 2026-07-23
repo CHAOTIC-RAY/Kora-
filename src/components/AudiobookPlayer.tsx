@@ -438,18 +438,22 @@ export default function AudiobookPlayer({
 
       try {
         const url = await resolveTrackUrl(index);
-        // Avoid forcing CORS mode unless Web Audio needs it — blob URLs stay local.
-        if (url.startsWith("blob:")) {
-          audioRef.current.removeAttribute("crossorigin");
-        } else {
-          audioRef.current.crossOrigin = "anonymous";
-        }
-        audioRef.current.src = url;
-        audioRef.current.playbackRate = speed;
+        const audio = audioRef.current;
+        // Prefer no crossOrigin for Worker proxy — some Android WebViews fail CORS on media.
+        audio.removeAttribute("crossorigin");
+        audio.src = url;
+        audio.playbackRate = speed;
         pendingTrackLoad.current = { index, resumeTime: savedResume };
 
         if (autoPlay) {
-          await audioRef.current.play();
+          try {
+            await audio.play();
+          } catch (playErr) {
+            // Retry once with anonymous CORS in case the first mode blocked decode.
+            audio.crossOrigin = "anonymous";
+            audio.load();
+            await audio.play();
+          }
           setIsPlaying(true);
         }
         setCurrentTrack(index);

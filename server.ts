@@ -2795,7 +2795,10 @@ app.get("/api/proxy-file", async (req, res) => {
     const { normalizeMediaUrl, refererForMediaUrl } = await import("./src/lib/mediaUrl");
     targetUrl = normalizeMediaUrl(targetUrl);
 
-    const isAudioRequest = /\.(mp3|m4a|ogg|wav|aac)(\?|$)/i.test(targetUrl) || /ipaudio/i.test(targetUrl);
+    const isAudioRequest =
+      req.query.audio === "1" ||
+      /\.(mp3|m4a|ogg|wav|aac|flac|opus)(\?|$)/i.test(targetUrl) ||
+      /ipaudio|audiobook|audio\./i.test(targetUrl);
     if (isAudioRequest) {
       const clientReferer = (req.query.referer as string) || "";
       const referers = [

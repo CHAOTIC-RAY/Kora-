@@ -91,7 +91,7 @@ export async function isAudiobookFullyDownloaded(bookId: string, totalTracks: nu
 
 export function getProxiedAudioUrl(src: string, referer?: string): string {
   const normalized = normalizeMediaUrl(src);
-  const params = new URLSearchParams({ url: normalized });
+  const params = new URLSearchParams({ url: normalized, audio: "1" });
   if (referer) params.set("referer", referer);
   // Absolute Worker URL required in Capacitor — <audio src> bypasses the fetch shim.
   return resolveApiUrl(`/api/proxy-file?${params.toString()}`);

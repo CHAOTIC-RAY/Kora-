@@ -36,7 +36,7 @@ import { discoverFeed, refreshAllSubscriptions } from "../lib/feedClient";
 import { clipUrlToLibrary } from "../lib/feedClipper";
 import { isTelegramArticleLink } from "../lib/telegramFeed";
 import { isFeedItemWithinRetention } from "../lib/feedNormalize";
-import { getItemThumbnail, prefetchFeedPreviews } from "../lib/feedPreview";
+import { getItemThumbnail, markFeedImageBroken, prefetchFeedPreviews } from "../lib/feedPreview";
 import { briefPayloadFromFeeds, syncAndroidHomeWidgets } from "../lib/androidWidgets";
 import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
@@ -49,6 +49,7 @@ interface FeedViewProps {
   onOpenBook?: (book: BookMetadata) => void;
   initialUrl?: string | null;
   onClearInitialUrl?: () => void;
+  grayscaleCovers?: boolean;
 }
 
 type FeedFilter = "all" | "unread" | "saved" | "briefs";
@@ -115,6 +116,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   busy,
   title,
   variant,
+  grayscaleCovers,
   onRead,
   onToggleRead,
   onSaveLater,
@@ -124,6 +126,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
   busy: boolean;
   title: string;
   variant: BentoVariant;
+  grayscaleCovers?: boolean;
   onRead: () => void;
   onToggleRead: () => void;
   onSaveLater: () => void;
@@ -252,10 +255,15 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
               <img
                 src={cover}
                 alt=""
-                className="w-full h-full object-cover pointer-events-none"
+                className={`w-full h-full object-cover pointer-events-none ${
+                  grayscaleCovers ? "grayscale" : ""
+                }`}
                 referrerPolicy="no-referrer"
                 loading="lazy"
-                onError={() => setThumbFailed(true)}
+                onError={() => {
+                  setThumbFailed(true);
+                  markFeedImageBroken(item.id);
+                }}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-kindle-bg">
@@ -345,6 +353,7 @@ function FeedView({
   onOpenBook,
   initialUrl,
   onClearInitialUrl,
+  grayscaleCovers = false,
 }: FeedViewProps) {
   const [subscriptions, setSubscriptions] = useState<FeedSubscription[]>([]);
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -370,7 +379,7 @@ function FeedView({
     try {
       const withPreviews = await prefetchFeedPreviews(merged, 20);
       setItems(withPreviews);
-      void prefetchFeedArticles(withPreviews.slice(0, 5), 5);
+      void prefetchFeedArticles(withPreviews.slice(0, 2), 1);
     } catch {
       setItems(merged);
     }
@@ -668,6 +677,7 @@ function FeedView({
                 busy={false}
                 title={title}
                 variant={getBentoVariant(index)}
+                grayscaleCovers={grayscaleCovers}
                 onRead={() => void handleReadArticle(item)}
                 onToggleRead={() => {
                   const nextRead = !item.read;

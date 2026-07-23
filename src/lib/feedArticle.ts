@@ -240,6 +240,31 @@ export function prepareFeedArticleHtml(html: string, title: string): string {
 
 const FAILED_URL_CACHE = new Map<string, number>();
 const FAILED_URL_TTL_MS = 15 * 60 * 1000;
+/** Cap concurrent convert-url calls so the Worker / Browser binding cannot 503. */
+const CONVERT_INFLIGHT = new Map<string, Promise<{
+  title: string;
+  author?: string;
+  description?: string;
+  htmlContent: string;
+}>>();
+let convertActive = 0;
+const CONVERT_MAX_CONCURRENT = 2;
+const convertWaiters: Array<() => void> = [];
+
+async function acquireConvertSlot(): Promise<void> {
+  if (convertActive < CONVERT_MAX_CONCURRENT) {
+    convertActive += 1;
+    return;
+  }
+  await new Promise<void>((resolve) => convertWaiters.push(resolve));
+  convertActive += 1;
+}
+
+function releaseConvertSlot(): void {
+  convertActive = Math.max(0, convertActive - 1);
+  const next = convertWaiters.shift();
+  if (next) next();
+}
 
 function markUrlFetchFailed(url: string): void {
   FAILED_URL_CACHE.set(url.trim(), Date.now());
@@ -266,31 +291,45 @@ export async function fetchArticleContent(url: string): Promise<{
     throw new Error("Article fetch unavailable right now. Try again later or open the original link.");
   }
 
-  const response = await fetch("/api/convert-url", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: trimmed }),
-    signal: AbortSignal.timeout(22000),
-  });
+  const existing = CONVERT_INFLIGHT.get(trimmed);
+  if (existing) return existing;
 
-  if (!response.ok) {
-    if (response.status === 503 || response.status >= 500) {
-      markUrlFetchFailed(trimmed);
+  const job = (async () => {
+    await acquireConvertSlot();
+    try {
+      const response = await fetch("/api/convert-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: trimmed }),
+        signal: AbortSignal.timeout(22000),
+      });
+
+      if (!response.ok) {
+        if (response.status === 503 || response.status >= 500) {
+          markUrlFetchFailed(trimmed);
+        }
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP error ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.htmlContent || String(data.htmlContent).trim().length < 20) {
+        throw new Error("Article content was empty. Try opening the original link.");
+      }
+      return {
+        title: data.title || "Article",
+        author: data.author,
+        description: data.description,
+        htmlContent: data.htmlContent,
+      };
+    } finally {
+      releaseConvertSlot();
+      CONVERT_INFLIGHT.delete(trimmed);
     }
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || `HTTP error ${response.status}`);
-  }
+  })();
 
-  const data = await response.json();
-  if (!data.htmlContent || String(data.htmlContent).trim().length < 20) {
-    throw new Error("Article content was empty. Try opening the original link.");
-  }
-  return {
-    title: data.title || "Article",
-    author: data.author,
-    description: data.description,
-    htmlContent: data.htmlContent,
-  };
+  CONVERT_INFLIGHT.set(trimmed, job);
+  return job;
 }
 
 export async function loadFeedArticle(itemId: string, url: string): Promise<CachedFeedArticle> {
@@ -341,17 +380,16 @@ export function peekFeedArticle(item: FeedItem): CachedFeedArticle | null {
 
 export async function prefetchFeedArticles(
   items: Array<Pick<FeedItem, "id" | "link" | "title"> & Partial<Pick<FeedItem, "summary" | "imageUrl">>>,
-  limit = 5
+  limit = 2
 ): Promise<void> {
-  const targets = items.slice(0, limit);
-  await Promise.all(
-    targets.map(async (item) => {
-      if (getCachedFeedArticle(item.id)) return;
-      try {
-        await resolveFeedArticle(item as FeedItem);
-      } catch {
-        // best-effort background prefetch
-      }
-    })
-  );
+  const targets = items.slice(0, Math.min(limit, 2));
+  // Sequential — never blast convert-url in parallel from prefetch.
+  for (const item of targets) {
+    if (getCachedFeedArticle(item.id)) continue;
+    try {
+      await resolveFeedArticle(item as FeedItem);
+    } catch {
+      // best-effort background prefetch
+    }
+  }
 }

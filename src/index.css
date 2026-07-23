@@ -780,6 +780,7 @@ h1, h2, h3, h4 {
 /* EPUB Text Reader Style Overrides to Prevent Text Clipping on Mobile */
 .epub-content {
   box-sizing: border-box;
+  color: inherit;
 }
 
 .epub-content * {
@@ -787,6 +788,9 @@ h1, h2, h3, h4 {
   max-width: 100% !important;
   word-wrap: break-word !important;
   overflow-wrap: break-word !important;
+  /* EPUB inline colors often force black text on night/OLED themes */
+  color: inherit !important;
+  background-color: transparent !important;
 }
 
 /* Eliminate any negative margins or excessive left indents that shift text off-screen */

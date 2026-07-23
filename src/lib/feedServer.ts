@@ -327,13 +327,33 @@ export async function proxyFeedImage(imageUrl: string): Promise<Response> {
     return new Response("Upstream error", { status: upstream.status });
   }
 
-  const contentType = upstream.headers.get("content-type") || "";
-  if (!contentType.startsWith("image/")) {
-    return new Response("Not an image", { status: 415 });
+  const contentType = (upstream.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  const pathLooksLikeImage = /\.(avif|webp|png|jpe?g|gif|bmp|svg)(\?|$)/i.test(parsed.pathname);
+  const okType =
+    contentType.startsWith("image/") ||
+    ((contentType === "application/octet-stream" || contentType === "binary/octet-stream" || !contentType) &&
+      pathLooksLikeImage);
+  if (!okType) {
+    // Sniff magic bytes for mislabeled CDNs
+    const buf = new Uint8Array(await upstream.clone().arrayBuffer().catch(() => new ArrayBuffer(0)));
+    const isImg =
+      (buf[0] === 0xff && buf[1] === 0xd8) || // jpeg
+      (buf[0] === 0x89 && buf[1] === 0x50) || // png
+      (buf[0] === 0x47 && buf[1] === 0x49) || // gif
+      (buf[0] === 0x52 && buf[1] === 0x49) || // webp (RIFF)
+      (buf[0] === 0x00 && buf[1] === 0x00 && buf[2] === 0x00); // possible avif/heic ftyp
+    if (!isImg && !pathLooksLikeImage) {
+      return new Response("Not an image", { status: 415 });
+    }
+    const outHeaders = new Headers();
+    outHeaders.set("Content-Type", contentType.startsWith("image/") ? contentType : "image/jpeg");
+    outHeaders.set("Cache-Control", "public, max-age=86400");
+    outHeaders.set("Access-Control-Allow-Origin", "*");
+    return new Response(buf, { status: 200, headers: outHeaders });
   }
 
   const outHeaders = new Headers();
-  outHeaders.set("Content-Type", contentType);
+  outHeaders.set("Content-Type", contentType.startsWith("image/") ? contentType : "image/jpeg");
   outHeaders.set("Cache-Control", "public, max-age=86400");
   outHeaders.set("Access-Control-Allow-Origin", "*");
   return new Response(upstream.body, { status: 200, headers: outHeaders });
