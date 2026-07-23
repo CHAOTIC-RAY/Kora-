@@ -760,13 +760,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       }
 
       // Force a layout pass so scrollWidth reflects all columns (overflow must be visible).
+      void container.offsetWidth;
       const scrollWidth = Math.max(container.scrollWidth, scroller?.scrollWidth || 0, viewport);
       // One "page" = one viewport of columns (1 col, or 2 cols in dual mode).
       const step = useDoubleColumns
         ? viewport
         : Math.max(1, viewport - Math.min(pageOverlap, Math.floor(viewport / 4)));
 
-      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
+      // ceil(scrollWidth/step) under-counts when the last column is only partially filled.
+      const calculatedPages = Math.max(
+        1,
+        Math.ceil((scrollWidth - 1) / step)
+      );
 
       setTotalPages(calculatedPages);
       setContainerWidth(viewport);
@@ -2274,8 +2279,66 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       htmlEl.style.removeProperty("background");
       htmlEl.style.removeProperty("background-color");
       htmlEl.style.removeProperty("background-image");
+      // Absolute/fixed mid-chapter chrome clips instead of flowing to the next CSS column.
+      const pos = (htmlEl.style.position || "").toLowerCase();
+      if (pos === "absolute" || pos === "fixed") {
+        htmlEl.style.position = "static";
+        htmlEl.style.removeProperty("left");
+        htmlEl.style.removeProperty("right");
+        htmlEl.style.removeProperty("top");
+        htmlEl.style.removeProperty("bottom");
+        htmlEl.style.removeProperty("transform");
+      }
       if (!(htmlEl.getAttribute("style") || "").trim()) {
         htmlEl.removeAttribute("style");
+      }
+    });
+
+    // Normalize tables so rows can fragment across pages (tall unbreakable tables
+    // were clipped at the bottom and never appeared on the next page).
+    chapterDoc.querySelectorAll("table").forEach((table) => {
+      const el = table as HTMLTableElement;
+      el.style.breakInside = "auto";
+      el.style.setProperty("-webkit-column-break-inside", "auto");
+      el.style.width = "100%";
+      el.style.maxWidth = "100%";
+      el.style.tableLayout = "fixed";
+      el.querySelectorAll("tr").forEach((row) => {
+        const tr = row as HTMLTableRowElement;
+        tr.style.breakInside = "avoid";
+        tr.style.setProperty("-webkit-column-break-inside", "avoid");
+      });
+      // Drop empty spacer columns that collapse layout in fixed tables.
+      el.querySelectorAll("td, th").forEach((cell) => {
+        const c = cell as HTMLElement;
+        if (!(c.textContent || "").trim() && !c.querySelector("img,svg,image")) {
+          c.style.width = "0";
+          c.style.padding = "0";
+          c.style.border = "none";
+        }
+      });
+    });
+
+    // Soften mid-word footnote/aside spans that smash into neighboring letters
+    // (e.g. "your(interest rate)terest").
+    chapterDoc.querySelectorAll("span, aside, sup").forEach((node) => {
+      const el = node as HTMLElement;
+      const text = (el.textContent || "").trim();
+      if (!text) return;
+      const looksLikeNote =
+        /^\(.*\)$/.test(text) ||
+        el.tagName === "ASIDE" ||
+        /footnote|noteref|annotation|sidenote/i.test(el.className || "") ||
+        /footnote|noteref|annotation|sidenote/i.test(el.getAttribute("epub:type") || "");
+      if (!looksLikeNote) return;
+      el.style.display = "inline";
+      el.style.whiteSpace = "normal";
+      el.style.marginLeft = "0.15em";
+      el.style.marginRight = "0.15em";
+      el.style.fontSize = "0.85em";
+      el.style.opacity = "0.75";
+      if (!text.startsWith("(") && !text.startsWith("[")) {
+        el.textContent = `(${text})`;
       }
     });
 
@@ -2390,11 +2453,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
+      void container.offsetWidth;
       const scrollWidth = Math.max(container.scrollWidth, scroller?.scrollWidth || 0, viewport);
       const step = useDoubleColumns
         ? viewport
         : Math.max(1, viewport - Math.min(pageOverlap, Math.floor(viewport / 4)));
-      const calculatedPages = Math.max(1, Math.ceil(scrollWidth / step));
+      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - 1) / step));
 
       setTotalPages(calculatedPages);
       setContainerWidth(viewport);
@@ -4200,9 +4264,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                               ? `calc((100% - ${columnGapPx}px) / 2)`
                               : "100%",
                             columnGap: `${columnGapPx}px`,
-                            height: "100%",
+                            // Leave a small bottom gutter so the last line isn't half-clipped;
+                            // leftover content flows into the next CSS column / page.
+                            height: "calc(100% - 0.35em)",
                             columnFill: "auto",
                             overflow: "visible",
+                            paddingBottom: "0.35em",
                             boxShadow: useDoubleColumns ? "inset 50% 0 0 -20px rgba(0,0,0,0.10)" : "none",
                           }),
                     } as React.CSSProperties}
@@ -4219,7 +4286,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     {/* EPUB HTML Content Injection */}
                     <div 
                       id="epub-text-viewer"
-                      className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
+                      className={`epub-content reader-select-surface leading-relaxed ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
                       dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
                       onClick={handleEpubContentClick}
                     />

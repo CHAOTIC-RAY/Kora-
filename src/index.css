@@ -781,23 +781,36 @@ h1, h2, h3, h4 {
 .epub-content {
   box-sizing: border-box;
   color: inherit;
+  orphans: 3;
+  widows: 3;
 }
 
-.epub-content * {
+/* Avoid nuking table layout — max-width:100% on every cell collapses multi-col tables. */
+.epub-content *:not(table):not(thead):not(tbody):not(tfoot):not(tr):not(td):not(th):not(col):not(colgroup) {
   box-sizing: border-box;
   max-width: 100% !important;
   word-wrap: break-word !important;
   overflow-wrap: break-word !important;
-  /* EPUB inline colors often force black text on night/OLED themes */
+  color: inherit !important;
+  background-color: transparent !important;
+}
+
+.epub-content table,
+.epub-content thead,
+.epub-content tbody,
+.epub-content tfoot,
+.epub-content tr,
+.epub-content td,
+.epub-content th {
+  box-sizing: border-box;
   color: inherit !important;
   background-color: transparent !important;
 }
 
 /* Eliminate any negative margins or excessive left indents that shift text off-screen */
-.epub-content p, 
-.epub-content div, 
+.epub-content p,
+.epub-content div,
 .epub-content blockquote,
-.epub-content span,
 .epub-content li,
 .epub-content h1,
 .epub-content h2,
@@ -814,21 +827,86 @@ h1, h2, h3, h4 {
 .epub-content p {
   text-indent: 1.25em !important;
   margin-bottom: 0.5em !important;
+  break-inside: auto;
+  -webkit-column-break-inside: auto;
 }
 
-/* Fix any inline absolute/relative horizontal shifting */
-.epub-content [style*="position: absolute"],
-.epub-content [style*="position: relative"] {
+.epub-content h1,
+.epub-content h2,
+.epub-content h3,
+.epub-content h4,
+.epub-content h5,
+.epub-content h6 {
+  break-after: avoid;
+  -webkit-column-break-after: avoid;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+}
+
+/* Only de-absolute top-level chrome — leave table-internal positioning alone */
+.epub-content > [style*="position: absolute"],
+.epub-content > [style*="position: relative"] {
   position: static !important;
 }
 
-.epub-content img {
+.epub-content img,
+.epub-content svg,
+.epub-content figure {
   max-width: 100% !important;
+  /* Cap to column height so images create a new page instead of clipping mid-viewport */
+  max-height: 85% !important;
   height: auto !important;
   display: block;
   margin: 1.5rem auto !important;
   border-radius: 0.375rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/*
+  Tables must be allowed to fragment across CSS columns, otherwise a tall table
+  is clipped at the page bottom and never appears on the next page.
+  Keep each row together.
+*/
+.epub-content table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: collapse !important;
+  margin: 1em 0 !important;
+  break-inside: auto !important;
+  -webkit-column-break-inside: auto !important;
+  page-break-inside: auto !important;
+}
+
+.epub-content thead {
+  display: table-row-group; /* allow header to repeat/break with body */
+}
+
+.epub-content tr {
+  break-inside: avoid !important;
+  -webkit-column-break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+.epub-content td,
+.epub-content th {
+  max-width: none !important;
+  width: auto !important;
+  word-wrap: break-word !important;
+  overflow-wrap: anywhere !important;
+  vertical-align: top !important;
+  padding: 0.4em 0.55em !important;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent) !important;
+  text-indent: 0 !important;
+  margin: 0 !important;
+  white-space: normal !important;
+}
+
+.epub-content th {
+  font-weight: 700 !important;
 }
 
 /* Hide horizontal scrollbar used for CSS-column paging via scrollLeft */
