@@ -1,5 +1,15 @@
 import { SpeakChunk, buildSpeakChunks, estimateChunkDurationSeconds } from "./ttsTextPrep";
-import { getEffectiveSpeechRate, getSpeechVoices, getTtsSettings, resolveSpeechVoice, TtsQualityPreset } from "./ttsSettings";
+import {
+  cancelSpeech,
+  getEffectiveSpeechRate,
+  getSpeechVoices,
+  getTtsSettings,
+  resolveSpeechVoice,
+  TtsQualityPreset,
+  TtsVoice,
+  usesNativeTts,
+} from "./ttsSettings";
+import { refreshNativeVoices, speakText } from "./koraTts";
 import { TtsPlaybackPosition } from "./ttsProgress";
 import { getNeuralChapterCache } from "./neuralTtsCache";
 
@@ -69,7 +79,7 @@ export class BrowserTtsPlayer {
   private paused = false;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private callbacks: BrowserTtsPlayerCallbacks = {};
-  private selectedVoice: SpeechSynthesisVoice | null = null;
+  private selectedVoice: TtsVoice | null = null;
   private wakeLock: WakeLockSentinel | null = null;
   private visibilityHandler: (() => void) | null = null;
   private bookId: string | null = null;
@@ -192,7 +202,7 @@ export class BrowserTtsPlayer {
   }
 
   async play() {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
+    if (!usesNativeTts() && (typeof window === "undefined" || !window.speechSynthesis)) {
       this.callbacks.onError?.("Text-to-speech is not supported in this browser.");
       return;
     }
@@ -204,7 +214,7 @@ export class BrowserTtsPlayer {
     await this.waitForVoices();
     this.refreshVoice();
 
-    if (this.paused && window.speechSynthesis.paused) {
+    if (this.paused && !usesNativeTts() && window.speechSynthesis?.paused) {
       window.speechSynthesis.resume();
       this.paused = false;
       this.playing = true;
@@ -223,8 +233,14 @@ export class BrowserTtsPlayer {
   }
 
   pause() {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.pause();
+    void cancelSpeech();
+    if (!usesNativeTts() && typeof window !== "undefined" && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.pause();
+      } catch {
+        /* ignore */
+      }
+    }
     this.paused = true;
     this.playing = false;
     this.stopTick();
@@ -234,9 +250,7 @@ export class BrowserTtsPlayer {
   }
 
   stop(notify = true) {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
+    void cancelSpeech();
     this.playing = false;
     this.paused = false;
     this.stopTick();
@@ -371,6 +385,19 @@ export class BrowserTtsPlayer {
   }
 
   private async waitForVoices(timeoutMs = 4000): Promise<void> {
+    if (usesNativeTts()) {
+      if (getSpeechVoices().length) return;
+      await refreshNativeVoices();
+      if (getSpeechVoices().length) return;
+      const started = Date.now();
+      while (Date.now() - started < timeoutMs) {
+        await delay(200);
+        await refreshNativeVoices();
+        if (getSpeechVoices().length) return;
+      }
+      return;
+    }
+
     if (typeof window === "undefined" || !window.speechSynthesis) return;
     if (getSpeechVoices().length) return;
 
@@ -426,58 +453,35 @@ export class BrowserTtsPlayer {
 
     const sliceStart = index === this.chunkIndex && this.charOffset > 0 ? this.charOffset : 0;
     const spokenText = chunk.text.slice(sliceStart);
+    const settings = getTtsSettings();
+    this.refreshVoice();
 
-    await new Promise<void>((resolve) => {
-      const utterance = new SpeechSynthesisUtterance(spokenText);
-      const settings = getTtsSettings();
-      this.refreshVoice();
-      if (this.selectedVoice) utterance.voice = this.selectedVoice;
-      utterance.rate = getEffectiveSpeechRate(this.rate) * chunk.rateMultiplier;
-      utterance.pitch = settings.pitch * chunk.pitchMultiplier;
+    this.chunkIndex = index;
+    this.charOffset = sliceStart;
+    this.emitSubtitle(sliceStart);
+    this.emitTime();
 
-      utterance.onboundary = (event) => {
-        if (event.name !== "word" && event.name !== "sentence") return;
-        const absoluteOffset = sliceStart + event.charIndex;
-        this.chunkIndex = index;
-        this.charOffset = absoluteOffset;
-        const chunkDuration = this.chunkDurations[index] || 1;
-        const ratio = spokenText.length ? event.charIndex / spokenText.length : 0;
-        this.boundaryTime = chunkDuration * ratio;
-        this.emitSubtitle(absoluteOffset);
-        this.emitTime();
-      };
+    try {
+      await speakText(spokenText, {
+        rate: getEffectiveSpeechRate(this.rate) * chunk.rateMultiplier,
+        pitch: settings.pitch * chunk.pitchMultiplier,
+        voiceName: this.selectedVoice?.name,
+        voiceLang: this.selectedVoice?.lang || settings.voiceLang || "en-US",
+        voiceIndex: this.selectedVoice?.nativeIndex,
+      });
+    } catch (err) {
+      if (this.playing) {
+        console.warn("TTS chunk failed:", err, spokenText.slice(0, 80));
+      }
+    }
 
-      utterance.onstart = () => {
-        this.chunkIndex = index;
-        this.charOffset = sliceStart;
-        this.emitSubtitle(sliceStart);
-      };
+    if (!this.playing) return;
 
-      utterance.onend = async () => {
-        if (!this.playing) {
-          resolve();
-          return;
-        }
-        this.chunkIndex = index + 1;
-        this.charOffset = 0;
-        this.boundaryTime = 0;
-        this.emitTime();
-        if (chunk.pauseAfterMs > 0) await delay(chunk.pauseAfterMs);
-        resolve();
-      };
-
-      utterance.onerror = (event) => {
-        if (event.error === "interrupted" || event.error === "canceled") {
-          resolve();
-          return;
-        }
-        console.warn("TTS chunk failed:", event.error, spokenText.slice(0, 80));
-        resolve();
-      };
-
-      window.speechSynthesis.speak(utterance);
-    });
-
+    this.chunkIndex = index + 1;
+    this.charOffset = 0;
+    this.boundaryTime = 0;
+    this.emitTime();
+    if (chunk.pauseAfterMs > 0) await delay(chunk.pauseAfterMs);
     if (this.playing) {
       await this.speakFromIndex(index + 1);
     }

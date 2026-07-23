@@ -15,14 +15,20 @@ import {
 } from "../lib/firebase";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
 import {
+  cancelSpeech,
   getEffectiveSpeechRate,
   getSpeechVoices,
+  getTtsEngineHint,
   getTtsSettings,
+  openNativeTtsInstall,
   resolveSpeechVoice,
   saveTtsSettings,
   subscribeToVoicesChanged,
+  usesNativeTts,
+  type TtsVoice,
 } from "../lib/ttsSettings";
 import { prepareTextForNarration } from "../lib/ttsTextPrep";
+import { refreshNativeVoices, speakText } from "../lib/koraTts";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
 import {
   PRIMARY_READER_THEME_KEYS,
@@ -666,9 +672,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [isAudiobookExpanded, setIsAudiobookExpanded] = useState<boolean>(false);
   const [isPlayingSpeech, setIsPlayingSpeech] = useState<boolean>(false);
   const [speechRate, setSpeechRate] = useState<number>(1.0);
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voices, setVoices] = useState<TtsVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState<string>("");
+  const [ttsEngineHint, setTtsEngineHint] = useState<string | null>(null);
   const [currentParagraphIdx, setCurrentParagraphIdx] = useState<number>(-1);
+  const speechSessionRef = useRef(0);
   const [locationHistory, setLocationHistory] = useState<{ chapterIdx: number; pageNum: number }[]>([]);
   const [timeLeftLabel, setTimeLeftLabel] = useState<string>("");
 
@@ -2561,9 +2569,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
   // Stop current narration
   const stopSpeech = () => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
+    speechSessionRef.current += 1;
+    void cancelSpeech();
     setIsPlayingSpeech(false);
     setCurrentParagraphIdx(-1);
 
@@ -2632,13 +2639,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     }
   };
 
-  // Load available speech voices
+  // Load available speech voices (Android = native TextToSpeech)
   useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-
     const loadVoices = () => {
       const allVoices = getSpeechVoices();
       setVoices(allVoices);
+      setTtsEngineHint(getTtsEngineHint());
       const settings = getTtsSettings();
       const resolved = resolveSpeechVoice(settings.voiceName);
       if (resolved) {
@@ -2651,19 +2657,21 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const unsubscribe = subscribeToVoicesChanged(loadVoices);
     return () => {
       unsubscribe();
-      window.speechSynthesis.cancel();
+      void cancelSpeech();
     };
   }, []);
 
   // Speak a specific paragraph index
-  const speakParagraph = (idx: number) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-
-    window.speechSynthesis.cancel(); // Stop active speaking
+  const speakParagraph = async (idx: number, session?: number) => {
+    const activeSession = session ?? ++speechSessionRef.current;
+    if (session == null) {
+      await cancelSpeech();
+      if (activeSession !== speechSessionRef.current) return;
+    }
 
     const domElements = getDOMElementsToRead();
     if (idx < 0 || idx >= domElements.length) {
-      // End of chapter! Advance to next chapter if available
+      if (activeSession !== speechSessionRef.current) return;
       if (currentChapterIdx < chapters.length - 1) {
         const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
         if (next !== currentChapterIdx) {
@@ -2685,11 +2693,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
       quality: getTtsSettings().qualityPreset,
     });
     if (!textToSpeak) {
-      speakParagraph(idx + 1);
+      await speakParagraph(idx + 1, activeSession);
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
     const settings = getTtsSettings();
 
     try {
@@ -2697,46 +2704,44 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     } catch {
       /* ignore */
     }
-    
-    // Assign voice if selected
-    const selectedVoice = resolveSpeechVoice(selectedVoiceName || settings.voiceName);
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
+
+    if (usesNativeTts() && !getSpeechVoices().length) {
+      await refreshNativeVoices();
+      if (activeSession !== speechSessionRef.current) return;
+      setVoices(getSpeechVoices());
+      setTtsEngineHint(getTtsEngineHint());
     }
 
-    utterance.rate = getEffectiveSpeechRate(speechRate);
-    utterance.pitch = settings.pitch;
-
-    utterance.onend = () => {
-      speakParagraph(idx + 1);
-    };
-
-    utterance.onerror = (event) => {
-      if (event.error !== "interrupted") {
-        console.error("SpeechSynthesisUtterance error:", event);
-        setIsPlayingSpeech(false);
-      }
-    };
-
+    const selectedVoice = resolveSpeechVoice(selectedVoiceName || settings.voiceName);
     setIsPlayingSpeech(true);
-    window.speechSynthesis.speak(utterance);
+
+    try {
+      await speakText(textToSpeak, {
+        rate: getEffectiveSpeechRate(speechRate),
+        pitch: settings.pitch,
+        voiceName: selectedVoice?.name,
+        voiceLang: selectedVoice?.lang || settings.voiceLang || "en-US",
+        voiceIndex: selectedVoice?.nativeIndex,
+      });
+      if (activeSession !== speechSessionRef.current) return;
+      await speakParagraph(idx + 1, activeSession);
+    } catch (err) {
+      if (activeSession !== speechSessionRef.current) return;
+      console.error("Narrator TTS error:", err);
+      setTtsEngineHint(getTtsEngineHint() || (err as Error).message);
+      setIsPlayingSpeech(false);
+    }
   };
 
   // Toggle Play / Pause speech
   const toggleSpeechPlayback = () => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-
     if (isPlayingSpeech) {
-      window.speechSynthesis.pause();
+      speechSessionRef.current += 1;
+      void cancelSpeech();
       setIsPlayingSpeech(false);
     } else {
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-        setIsPlayingSpeech(true);
-      } else {
-        const startIdx = currentParagraphIdx >= 0 ? currentParagraphIdx : 0;
-        speakParagraph(startIdx);
-      }
+      const startIdx = currentParagraphIdx >= 0 ? currentParagraphIdx : 0;
+      void speakParagraph(startIdx);
     }
   };
 
@@ -3717,15 +3722,31 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         className="w-full p-2 text-xs rounded-lg border border-neutral-500/20 bg-transparent focus:ring-1 focus:ring-amber-500 focus:outline-none text-current"
                       >
                         {voices.length === 0 ? (
-                          <option value="">Loading voices… (install a system TTS engine if empty)</option>
+                          <option value="">
+                            {usesNativeTts()
+                              ? "Loading Android system voices…"
+                              : "Loading voices…"}
+                          </option>
                         ) : (
                           voices.map((v) => (
-                            <option key={v.name} value={v.name} className="text-neutral-900 bg-white">
-                              {v.name.slice(0, 24)} ({v.lang.split("-")[0].toUpperCase()})
+                            <option key={`${v.name}-${v.lang}`} value={v.name} className="text-neutral-900 bg-white">
+                              {v.name.slice(0, 28)} ({v.lang.split("-")[0].toUpperCase()})
                             </option>
                           ))
                         )}
                       </select>
+                      {ttsEngineHint ? (
+                        <p className="text-[10px] text-amber-500/90 mt-1.5 leading-snug">{ttsEngineHint}</p>
+                      ) : null}
+                      {usesNativeTts() && voices.length === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => void openNativeTtsInstall()}
+                          className="mt-2 text-[10px] font-bold uppercase tracking-wider text-amber-400 underline"
+                        >
+                          Open Android TTS settings
+                        </button>
+                      ) : null}
                     </div>
 
                     {/* Speed */}

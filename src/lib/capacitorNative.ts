@@ -210,9 +210,13 @@ export async function initCapacitorShell(): Promise<void> {
     /* ignore */
   }
 
-  // Prime Android WebView TTS voice list early (often empty until touched).
+  // Prime Android native TTS (and WebView speech as fallback) early.
   try {
-    const { primeSpeechVoices } = await import("./ttsSettings");
+    const { primeSpeechVoices, usesNativeTts } = await import("./ttsSettings");
+    if (usesNativeTts()) {
+      const { refreshNativeVoices } = await import("./koraTts");
+      await refreshNativeVoices();
+    }
     primeSpeechVoices();
     window.setTimeout(() => primeSpeechVoices(), 500);
     window.setTimeout(() => primeSpeechVoices(), 1500);

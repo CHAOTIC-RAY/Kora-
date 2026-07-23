@@ -1,6 +1,23 @@
+import {
+  getCachedNativeVoices,
+  refreshNativeVoices,
+  speakText as speakTextNative,
+  usesNativeTts,
+  cancelSpeech,
+  openNativeTtsInstall,
+  getNativeTtsStatus,
+  type KoraVoice,
+} from "./koraTts";
+
 export type TtsQualityPreset = "instant" | "balanced" | "studio";
 export type TtsPlaybackMode = "narrator" | "speed";
 export type TtsGenerationMode = "live" | "pregenerate";
+
+/** Voice shape shared by Web Speech + Android native TTS. */
+export type TtsVoice = Pick<
+  SpeechSynthesisVoice,
+  "name" | "lang" | "voiceURI" | "localService" | "default"
+> & { nativeIndex?: number };
 
 export interface TtsSettings {
   voiceName: string;
@@ -40,8 +57,21 @@ const PREFERRED_VOICE_NAMES = [
   "Microsoft Natural",
   "Google US English",
   "Google UK English Female",
+  "en-us-x-sfg",
+  "en-gb-x-rjs",
   "Natural",
 ];
+
+function asTtsVoice(voice: KoraVoice | SpeechSynthesisVoice): TtsVoice {
+  return {
+    name: voice.name,
+    lang: voice.lang,
+    voiceURI: voice.voiceURI || voice.name,
+    localService: voice.localService,
+    default: voice.default,
+    nativeIndex: "nativeIndex" in voice ? voice.nativeIndex : undefined,
+  };
+}
 
 export function getTtsSettings(): TtsSettings {
   try {
@@ -82,30 +112,36 @@ export function saveTtsSettings(patch: Partial<TtsSettings>) {
   return next;
 }
 
-export function getSpeechVoices(): SpeechSynthesisVoice[] {
+export function getSpeechVoices(): TtsVoice[] {
+  if (usesNativeTts()) {
+    const cached = getCachedNativeVoices();
+    if (cached.length) return cached.map(asTtsVoice);
+  }
   if (typeof window === "undefined" || !window.speechSynthesis) return [];
-  return window.speechSynthesis.getVoices();
+  return window.speechSynthesis.getVoices().map(asTtsVoice);
 }
 
-export function pickDefaultVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+export function pickDefaultVoice(voices: TtsVoice[]): TtsVoice | null {
   if (!voices.length) return null;
 
   for (const preferred of PREFERRED_VOICE_NAMES) {
     const match = voices.find(
-      (voice) => voice.name.includes(preferred) && voice.lang.toLowerCase().startsWith("en")
+      (voice) =>
+        (voice.name.includes(preferred) || voice.voiceURI?.includes(preferred)) &&
+        voice.lang.toLowerCase().startsWith("en")
     );
     if (match) return match;
   }
 
   return (
-    voices.find((v) => v.lang.startsWith("en-US") && /natural/i.test(v.name)) ||
-    voices.find((v) => v.lang.startsWith("en") && v.localService) ||
-    voices.find((v) => v.lang.startsWith("en")) ||
+    voices.find((v) => v.lang.toLowerCase().startsWith("en-us") && v.localService) ||
+    voices.find((v) => v.lang.toLowerCase().startsWith("en") && v.localService) ||
+    voices.find((v) => v.lang.toLowerCase().startsWith("en")) ||
     voices[0]
   );
 }
 
-export function resolveSpeechVoice(voiceName?: string, voiceLang?: string): SpeechSynthesisVoice | null {
+export function resolveSpeechVoice(voiceName?: string, voiceLang?: string): TtsVoice | null {
   const voices = getSpeechVoices();
   if (!voices.length) return null;
 
@@ -115,7 +151,9 @@ export function resolveSpeechVoice(voiceName?: string, voiceLang?: string): Spee
 
   if (targetName) {
     const exact = voices.find(
-      (v) => v.name === targetName && (!targetLang || v.lang === targetLang || v.lang.startsWith(`${targetLang}-`))
+      (v) =>
+        v.name === targetName &&
+        (!targetLang || v.lang === targetLang || v.lang.startsWith(`${targetLang}-`))
     );
     if (exact) return exact;
     const byName = voices.find((v) => v.name === targetName);
@@ -123,7 +161,9 @@ export function resolveSpeechVoice(voiceName?: string, voiceLang?: string): Spee
   }
 
   const langPool = targetLang
-    ? voices.filter((v) => v.lang === targetLang || v.lang.startsWith(`${targetLang.split("-")[0]}-`))
+    ? voices.filter(
+        (v) => v.lang === targetLang || v.lang.startsWith(`${targetLang.split("-")[0]}-`)
+      )
     : voices;
 
   if (targetLang && langPool.length) {
@@ -138,7 +178,9 @@ export function resolveSpeechVoice(voiceName?: string, voiceLang?: string): Spee
   return picked;
 }
 
-export function getUniqueVoiceLanguages(voices: SpeechSynthesisVoice[]): Array<{ code: string; label: string }> {
+export function getUniqueVoiceLanguages(
+  voices: TtsVoice[]
+): Array<{ code: string; label: string }> {
   const codes = new Set<string>();
   for (const voice of voices) {
     if (voice.lang) codes.add(voice.lang);
@@ -164,10 +206,7 @@ export function formatVoiceLanguageLabel(langCode: string): string {
   }
 }
 
-export function getVoicesForLanguage(
-  voices: SpeechSynthesisVoice[],
-  langCode: string
-): SpeechSynthesisVoice[] {
+export function getVoicesForLanguage(voices: TtsVoice[], langCode: string): TtsVoice[] {
   if (!langCode) return voices;
   const base = langCode.split("-")[0];
   return voices
@@ -175,8 +214,11 @@ export function getVoicesForLanguage(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function formatVoiceOptionLabel(voice: SpeechSynthesisVoice): string {
-  return voice.name.replace(/\s+Online\s+\(Natural\)/i, "").replace(/Multilingual/i, " Multilingual").trim();
+export function formatVoiceOptionLabel(voice: TtsVoice): string {
+  return voice.name
+    .replace(/\s+Online\s+\(Natural\)/i, "")
+    .replace(/Multilingual/i, " Multilingual")
+    .trim();
 }
 
 export function getEffectiveSpeechRate(baseRate = 1): number {
@@ -198,11 +240,11 @@ export function getQualityPresetLabel(preset: TtsQualityPreset): string {
   }
 }
 
-export function groupVoicesByLanguage(voices: SpeechSynthesisVoice[]): Array<{
+export function groupVoicesByLanguage(voices: TtsVoice[]): Array<{
   language: string;
-  voices: SpeechSynthesisVoice[];
+  voices: TtsVoice[];
 }> {
-  const groups = new Map<string, SpeechSynthesisVoice[]>();
+  const groups = new Map<string, TtsVoice[]>();
   for (const voice of voices) {
     const lang = voice.lang || "unknown";
     const languageLabel = (() => {
@@ -226,18 +268,36 @@ export function groupVoicesByLanguage(voices: SpeechSynthesisVoice[]): Array<{
 }
 
 export function subscribeToVoicesChanged(callback: () => void): () => void {
+  if (usesNativeTts()) {
+    let cancelled = false;
+    const emit = () => {
+      if (!cancelled) callback();
+    };
+    void refreshNativeVoices().then(emit);
+    const poll = window.setInterval(() => {
+      void refreshNativeVoices().then((voices) => {
+        emit();
+        if (voices.length > 0) window.clearInterval(poll);
+      });
+    }, 400);
+    const stopAt = window.setTimeout(() => window.clearInterval(poll), 8000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+      window.clearTimeout(stopAt);
+    };
+  }
+
   if (typeof window === "undefined" || !window.speechSynthesis) return () => {};
 
   const handler = () => callback();
   window.speechSynthesis.addEventListener("voiceschanged", handler);
-  // Android WebView often never fires voiceschanged — also assign the legacy handler.
   try {
     window.speechSynthesis.onvoiceschanged = handler;
   } catch {
     /* ignore */
   }
 
-  // Prime immediately + poll briefly (WebView populates voices asynchronously).
   const prime = () => {
     try {
       void window.speechSynthesis.getVoices();
@@ -269,11 +329,14 @@ export function subscribeToVoicesChanged(callback: () => void): () => void {
   };
 }
 
-/** Call on a user gesture / Capacitor boot so Android WebView loads TTS voices. */
-export function primeSpeechVoices(): SpeechSynthesisVoice[] {
+/** Call on a user gesture / Capacitor boot so Android WebView / native TTS loads voices. */
+export function primeSpeechVoices(): TtsVoice[] {
+  if (usesNativeTts()) {
+    void refreshNativeVoices();
+    return getSpeechVoices();
+  }
   if (typeof window === "undefined" || !window.speechSynthesis) return [];
   try {
-    // Empty utterance kick-starts voice enumeration on some Android WebViews.
     const kick = new SpeechSynthesisUtterance("");
     kick.volume = 0;
     window.speechSynthesis.speak(kick);
@@ -281,26 +344,39 @@ export function primeSpeechVoices(): SpeechSynthesisVoice[] {
   } catch {
     /* ignore */
   }
-  return window.speechSynthesis.getVoices();
+  return window.speechSynthesis.getVoices().map(asTtsVoice);
 }
 
 export async function speakTestPhrase(phrase = "This is how your narrator will sound.") {
-  if (typeof window === "undefined" || !window.speechSynthesis) {
-    throw new Error("Text-to-speech is not supported in this browser.");
-  }
   const settings = getTtsSettings();
+  if (usesNativeTts()) {
+    await refreshNativeVoices();
+  }
   const voice = resolveSpeechVoice(settings.voiceName, settings.voiceLang);
-  window.speechSynthesis.cancel();
-  await new Promise<void>((resolve, reject) => {
-    const utterance = new SpeechSynthesisUtterance(phrase);
-    if (voice) utterance.voice = voice;
-    utterance.rate = getEffectiveSpeechRate(1);
-    utterance.pitch = settings.pitch;
-    utterance.onend = () => resolve();
-    utterance.onerror = (event) => {
-      if (event.error !== "interrupted") reject(new Error("Voice test failed."));
-      else resolve();
-    };
-    window.speechSynthesis.speak(utterance);
-  });
+  await cancelSpeech();
+  try {
+    await speakTextNative(phrase, {
+      rate: getEffectiveSpeechRate(1),
+      pitch: settings.pitch,
+      voiceName: voice?.name,
+      voiceLang: voice?.lang || settings.voiceLang || "en-US",
+      voiceIndex: voice?.nativeIndex,
+    });
+  } catch (err) {
+    const hint = getNativeTtsStatus().error;
+    throw new Error(hint || (err as Error).message || "Voice test failed.");
+  }
 }
+
+export function getTtsEngineHint(): string | null {
+  if (!usesNativeTts()) return null;
+  const status = getNativeTtsStatus();
+  if (status.ready && getSpeechVoices().length > 0) return null;
+  if (status.error) return status.error;
+  if (!getSpeechVoices().length) {
+    return "Loading Android system TTS voices…";
+  }
+  return null;
+}
+
+export { openNativeTtsInstall, usesNativeTts, cancelSpeech };

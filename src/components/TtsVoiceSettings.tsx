@@ -4,15 +4,18 @@ import {
   formatVoiceOptionLabel,
   getQualityPresetLabel,
   getSpeechVoices,
+  getTtsEngineHint,
   getTtsSettings,
   getUniqueVoiceLanguages,
   getVoicesForLanguage,
+  openNativeTtsInstall,
   saveTtsSettings,
   speakTestPhrase,
   subscribeToVoicesChanged,
   TtsGenerationMode,
   TtsPlaybackMode,
   TtsQualityPreset,
+  usesNativeTts,
 } from "../lib/ttsSettings";
 
 interface TtsVoiceSettingsProps {
@@ -34,9 +37,13 @@ export default function TtsVoiceSettings({
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+  const [engineHint, setEngineHint] = useState<string | null>(null);
 
   useEffect(() => {
-    return subscribeToVoicesChanged(() => setVoices(getSpeechVoices()));
+    return subscribeToVoicesChanged(() => {
+      setVoices(getSpeechVoices());
+      setEngineHint(getTtsEngineHint());
+    });
   }, []);
 
   const languageOptions = useMemo(() => getUniqueVoiceLanguages(voices), [voices]);
@@ -131,7 +138,13 @@ export default function TtsVoiceSettings({
               className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
             >
               {voicesForLanguage.length === 0 ? (
-                <option value="">No voices for this language</option>
+                <option value="">
+                  {voices.length === 0
+                    ? usesNativeTts()
+                      ? "Loading Android system voices…"
+                      : "Loading voices…"
+                    : "No voices for this language"}
+                </option>
               ) : (
                 voicesForLanguage.map((voice) => (
                   <option key={`${voice.name}-${voice.lang}`} value={voice.name}>
@@ -142,6 +155,22 @@ export default function TtsVoiceSettings({
             </select>
           </div>
         </div>
+        {engineHint || (usesNativeTts() && voices.length === 0) ? (
+          <div className="space-y-1">
+            {engineHint ? (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">{engineHint}</p>
+            ) : null}
+            {usesNativeTts() && voices.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => void openNativeTtsInstall()}
+                className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 underline"
+              >
+                Open Android TTS settings
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
