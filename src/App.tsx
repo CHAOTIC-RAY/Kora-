@@ -65,6 +65,7 @@ import DailyReminderModal from "./components/DailyReminderModal";
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import ApkUpdateBanner from "./components/ApkUpdateBanner";
+import FooterApkBanner from "./components/FooterApkBanner";
 import AnnotationsHub from "./components/AnnotationsHub";
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
@@ -3166,20 +3167,22 @@ export default function App() {
       </footer>
       )}
 
-      {/* 6. Compact Desktop Footer */}
-      <footer className="hidden md:block border-t border-kindle-border py-10 px-4 text-center text-[10px] text-kindle-text-muted font-sans mt-auto bg-kindle-bg">
+      {/* 6. Site footer — APK download + contact (scrollable; clears mobile tab bar) */}
+      <footer className="border-t border-kindle-border py-10 px-4 text-center text-[10px] text-kindle-text-muted font-sans mt-auto bg-kindle-bg pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-10">
         <div className="flex flex-col items-center gap-4 max-w-2xl mx-auto">
+          <FooterApkBanner />
+
           <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">
             <span className="w-1 h-1 rounded-full bg-kindle-accent animate-pulse" />
             Created from passion by <a href="https://portfolio.chaoticstudio.workers.dev/studio" target="_blank" rel="noopener noreferrer" className="text-kindle-accent hover:underline">chaos.studio.mv</a>
             <span className="w-1 h-1 rounded-full bg-kindle-accent animate-pulse" />
           </div>
           
-          <div className="flex items-center gap-4 text-[10px] text-kindle-text-muted font-medium">
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] text-kindle-text-muted font-medium">
             <a href="mailto:chaos.studio.mv@gmail.com" className="hover:text-kindle-text transition">chaos.studio.mv@gmail.com</a>
-            <span>•</span>
-            <a href="https://t.me/+9609401011" target="_blank" rel="noopener noreferrer" className="hover:text-kindle-text transition">+960 9401011 (Telegram)</a>
-            <span>•</span>
+            <span className="hidden sm:inline">•</span>
+            <a href="https://t.me/WAFIG" target="_blank" rel="noopener noreferrer" className="hover:text-kindle-text transition">Telegram</a>
+            <span className="hidden sm:inline">•</span>
             <span className="font-bold tracking-[0.1em] text-kindle-text">chaos.studio</span>
           </div>
 
