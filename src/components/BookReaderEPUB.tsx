@@ -47,7 +47,7 @@ import {
   recordPagesRead,
   recordReadingMinute,
 } from "../lib/readingStats";
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, Sparkles, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download, Sun, SunDim, Moon } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "../lib/epubToc";
 import {
@@ -456,6 +456,20 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     setIsContinuous(readerPrefs?.isContinuous ?? false);
   }, [readerPrefs?.isContinuous]);
   const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
+
+  /** Reading-optimized brightness steps (page overlay). Header sun icon cycles these. */
+  const READING_BRIGHTNESS = [100, 85, 70, 55, 40] as const;
+  const cycleReadingBrightness = () => {
+    setBrightness((prev) => {
+      const exact = READING_BRIGHTNESS.indexOf(prev as (typeof READING_BRIGHTNESS)[number]);
+      if (exact >= 0) {
+        return READING_BRIGHTNESS[(exact + 1) % READING_BRIGHTNESS.length]!;
+      }
+      const nextLower = READING_BRIGHTNESS.find((v) => v < prev);
+      return nextLower ?? READING_BRIGHTNESS[0]!;
+    });
+  };
+  const BrightnessIcon = brightness >= 90 ? Sun : brightness >= 60 ? SunDim : Moon;
   const [grayscaleImages, setGrayscaleImages] = useState<boolean>(readerPrefs?.grayscaleImages ?? false);
   const [hideImages, setHideImages] = useState<boolean>(readerPrefs?.hideImages ?? false);
   
@@ -3028,20 +3042,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
             </span>
           )}
           <button
-            data-guide="reader-notes-btn"
-            onClick={() => {
-              setShowNotes(!showNotes);
-              setShowSettings(false);
-              setShowToc(false);
-              setShowAudiobook(false);
-              if (!showNotes) exitAnnotateMode();
-            }}
-            className={`p-2 rounded-xl hover:bg-neutral-500/10 transition ${showNotes ? 'bg-neutral-500/20' : ''}`}
-            title="Saved highlights & notes"
-            aria-label="Saved highlights and notes"
-            aria-pressed={showNotes}
+            type="button"
+            onClick={cycleReadingBrightness}
+            className="p-2 rounded-xl hover:bg-neutral-500/10 transition"
+            title={`Brightness ${brightness}% — tap to cycle`}
+            aria-label={`Reading brightness ${brightness} percent. Tap to cycle presets.`}
           >
-            <FileText className="w-5 h-5" />
+            <BrightnessIcon className="w-5 h-5" />
           </button>
           <button
             id="toggle-toc-btn"
@@ -3262,6 +3269,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 <label className="text-xs opacity-75 font-sans font-semibold">Brightness</label>
                 <span className="text-[10px] font-mono">{brightness}%</span>
               </div>
+              <div className="grid grid-cols-5 gap-1.5 mb-2">
+                {READING_BRIGHTNESS.map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setBrightness(level)}
+                    className={`py-1.5 rounded-lg border text-[10px] font-mono font-bold transition ${
+                      brightness === level
+                        ? "border-kindle-accent bg-kindle-accent/15 text-kindle-accent"
+                        : "border-neutral-500/20 hover:bg-neutral-500/10"
+                    }`}
+                    aria-pressed={brightness === level}
+                    aria-label={`Brightness ${level}%`}
+                  >
+                    {level}
+                  </button>
+                ))}
+              </div>
               <input
                 type="range"
                 min="20"
@@ -3271,6 +3296,22 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
               />
             </div>
+
+            <button
+              type="button"
+              data-guide="reader-notes-btn"
+              onClick={() => {
+                setShowNotes(true);
+                setShowSettings(false);
+                setShowToc(false);
+                setShowAudiobook(false);
+                exitAnnotateMode();
+              }}
+              className="mb-5 w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-neutral-500/20 hover:bg-neutral-500/10 transition text-left"
+            >
+              <FileText className="w-4 h-4 shrink-0 opacity-70" />
+              <span className="text-xs font-sans font-semibold">Saved highlights & notes</span>
+            </button>
 
             {/* COLLAPSIBLE SETTINGS - KEPT FULLY EXPANDED AS REQUESTED */}
             <div className="space-y-6 border-t border-neutral-500/15 pt-4">
