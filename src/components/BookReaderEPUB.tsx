@@ -3581,7 +3581,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 <div>
                   <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Reading Pet</h4>
                   <p className="text-[10px] text-kindle-text-muted mt-0.5">
-                    Kirby-style pixel buddy — type flair, reacts to page mood (no AI).
+                    Kirby-style pixel buddy — type flair, reacts to page mood.
                   </p>
                 </div>
                 <button
