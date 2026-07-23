@@ -4226,26 +4226,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
                     {useScrollLayout && (
                       <div
-                        className={`mt-10 pt-4 border-t flex justify-between items-center text-[10px] font-sans opacity-55 ${activeTheme.border} ${activeTheme.text}`}
+                        className={`mt-16 pt-6 pb-8 border-t flex justify-between items-center gap-3 text-[10px] font-sans opacity-55 ${activeTheme.border} ${activeTheme.text}`}
                       >
-                        <span>End of {chapters[currentChapterIdx]?.title}</span>
-                        <span>
+                        <span className="truncate">End of {chapters[currentChapterIdx]?.title}</span>
+                        <span className="shrink-0">
                           {Math.round(((currentChapterIdx + 1) / Math.max(1, chapters.length)) * 100)}% read
                         </span>
                       </div>
                     )}
                   </article>
                 </div>
-
-                {/* Chapter end label — paged mode only (absolute, outside column flow) */}
-                {!useScrollLayout && currentPageNum >= totalPages && (
-                  <div
-                    className={`pointer-events-none absolute left-0 right-0 bottom-14 md:bottom-16 px-4 md:px-8 flex justify-between items-center text-[10px] font-sans opacity-55 ${activeTheme.text}`}
-                  >
-                    <span>End of {chapters[currentChapterIdx]?.title}</span>
-                    <span>{Math.round((currentChapterIdx / Math.max(1, chapters.length)) * 100)}% read</span>
-                  </div>
-                )}
 
                 {showWalkthroughEndCtas && (
                   <div
@@ -4543,6 +4533,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     className="w-full max-w-xs accent-kindle-accent h-1.5 bg-neutral-200 rounded-full appearance-none cursor-pointer"
                     aria-valuetext={timeLeftLabel}
                   />
+                  {!useScrollLayout && currentPageNum >= totalPages ? (
+                    <span className="text-[9px] sm:text-[10px] font-mono tracking-wide opacity-60 mt-1 text-center leading-snug max-w-full truncate px-1">
+                      End of {chapters[currentChapterIdx]?.title}
+                      {" · "}
+                      {Math.round(
+                        ((currentChapterIdx + 1) / Math.max(1, chapters.length)) * 100
+                      )}
+                      % read
+                    </span>
+                  ) : null}
                   <span className="text-[10px] sm:text-[11px] font-bold font-mono tracking-wide text-kindle-text opacity-90 mt-1.5 text-center leading-snug">
                     {useScrollLayout
                       ? `chapter ${currentChapterIdx + 1} of ${chapters.length} • ${Math.min(100, Math.max(0, Math.round(((currentChapterIdx + 1) / (chapters.length || 1)) * 100)))}%`
