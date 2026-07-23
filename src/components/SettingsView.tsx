@@ -658,7 +658,7 @@ function SettingsView({
             { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox" },
             { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch" },
             { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert" },
-            { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Offline puzzles" },
+            { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Word puzzles" },
           ].map((tool) => (
             <button
               key={tool.id}
@@ -712,12 +712,9 @@ function SettingsView({
               <Grid3X3 className="w-5 h-5 text-[#d4a574]" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Crossword</h3>
-                <span className="text-[8px] font-mono uppercase tracking-widest text-[#d4a574] opacity-80">Offline</span>
-              </div>
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Crossword</h3>
               <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                Fullscreen word puzzles with Easy, Medium, and Hard — unlimited randomized levels. Works without network on the APK.
+                Easy, Medium, and Hard — unlimited randomized levels.
               </p>
             </div>
           </div>

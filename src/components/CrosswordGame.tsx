@@ -306,7 +306,7 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
               <p className="text-[10px] uppercase tracking-widest opacity-50 font-mono">
                 {screen === "play"
                   ? `${DIFFICULTY_LABELS[difficulty].title} · Level ${level}`
-                  : "Offline · Unlimited levels"}
+                  : "Unlimited levels"}
               </p>
             </div>
           </div>
@@ -331,7 +331,7 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
               <div className="text-center space-y-2">
                 <Sparkles className="w-6 h-6 text-[#d4a574] mx-auto" />
                 <p className="text-sm opacity-70 leading-relaxed">
-                  Pick a difficulty. Every level shuffles words and placements — works fully offline in the APK.
+                  Pick a difficulty. Every level shuffles words and placements.
                 </p>
               </div>
 
