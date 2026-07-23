@@ -460,6 +460,8 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   const [pageViewportHeight, setPageViewportHeight] = useState<number>(0);
   const [pageStep, setPageStep] = useState<number>(600);
   const pageStepRef = React.useRef<number>(600);
+  const contentHeightRef = React.useRef<number>(0);
+  const viewportHeightRef = React.useRef<number>(0);
   const [doubleColumns, setDoubleColumns] = useState<boolean>(readerPrefs?.doubleColumns ?? false); // Dual page mode
   const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 0); // KOReader-style page overlap (px repeated across page turns)
   const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
@@ -741,46 +743,93 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     const scroller = pageCanvasRef.current;
     const container = contentRef.current;
     if (!scroller || !container) return;
-    const left = Math.max(0, (Math.max(1, page) - 1) * Math.max(1, step));
-    // Scroll the multicol element itself — parent scrollLeft often doesn't
-    // expose CSS-column overflow, which made page 2 look like a duplicate of page 1.
-    container.scrollLeft = left;
+    const pageIndex = Math.max(0, Math.max(1, page) - 1);
+
+    if (useDoubleColumns) {
+      // Dual-page still uses CSS columns + horizontal scroll.
+      const left = pageIndex * Math.max(1, step);
+      container.scrollLeft = left;
+      scroller.scrollLeft = 0;
+      scroller.scrollTop = 0;
+      return;
+    }
+
+    // Single-column paged = vertical window. Overlap means the next page starts
+    // `overlap` px earlier so the last lines stay visible — never a side-by-side
+    // strip of the previous CSS column.
+    const viewportH = Math.max(1, viewportHeightRef.current || scroller.clientHeight);
+    const maxScroll = Math.max(0, (contentHeightRef.current || 0) - viewportH);
+    const top = Math.min(maxScroll, pageIndex * Math.max(1, step));
+    scroller.scrollTop = top;
     scroller.scrollLeft = 0;
-  }, []);
+    container.scrollLeft = 0;
+  }, [useDoubleColumns]);
+
+  const clearColumnStyles = (el: HTMLElement) => {
+    el.style.width = "";
+    el.style.maxWidth = "";
+    el.style.height = "";
+    el.style.columnWidth = "";
+    el.style.columnGap = "";
+    el.style.columnFill = "";
+    el.style.overflow = "";
+    el.style.overflowX = "";
+    el.style.overflowY = "";
+    (el.style as CSSStyleDeclaration & { WebkitColumnWidth?: string }).WebkitColumnWidth = "";
+  };
 
   const measurePagedPages = useCallback(
     (container: HTMLElement, viewport: number, viewportH: number) => {
-      const colW = useDoubleColumns
-        ? Math.max(1, Math.floor((viewport - columnGapPx) / 2))
-        : viewport;
-      const step = useDoubleColumns
-        ? viewport
-        : Math.max(1, viewport - Math.min(pageOverlap, Math.floor(viewport / 4)));
-
-      // Pixel column geometry must live in React state (applied via style=) so
-      // re-renders don't wipe DOM mutations and collapse back to 1–2 fake pages.
+      viewportHeightRef.current = viewportH;
       setContainerWidth(viewport);
       setPageViewportHeight(viewportH);
+
+      if (useDoubleColumns) {
+        const colW = Math.max(1, Math.floor((viewport - columnGapPx) / 2));
+        const step = viewport;
+
+        pageStepRef.current = step;
+        setPageStep(step);
+
+        container.style.width = `${viewport}px`;
+        container.style.maxWidth = `${viewport}px`;
+        container.style.height = `${viewportH}px`;
+        container.style.columnWidth = `${colW}px`;
+        container.style.columnGap = `${columnGapPx}px`;
+        container.style.columnFill = "auto";
+        container.style.overflowX = "auto";
+        container.style.overflowY = "hidden";
+        (container.style as CSSStyleDeclaration & { WebkitColumnWidth?: string }).WebkitColumnWidth =
+          `${colW}px`;
+
+        void container.offsetWidth;
+        const scrollWidth = Math.max(container.scrollWidth, viewport);
+        const calculatedPages = Math.max(1, Math.ceil((scrollWidth - 1) / step));
+        contentHeightRef.current = 0;
+        return { step, calculatedPages, colW };
+      }
+
+      // Single column: normal vertical flow + sliding window. Overlap shrinks the
+      // stride so trailing lines repeat at the top of the next page.
+      clearColumnStyles(container);
+      container.style.width = `${viewport}px`;
+      container.style.maxWidth = `${viewport}px`;
+      container.style.height = "auto";
+      container.style.overflow = "visible";
+
+      void container.offsetHeight;
+      const contentHeight = Math.max(viewportH, container.scrollHeight);
+      contentHeightRef.current = contentHeight;
+
+      const overlapPx = Math.max(0, Math.min(pageOverlap, Math.floor(viewportH / 3)));
+      const step = Math.max(1, viewportH - overlapPx);
       pageStepRef.current = step;
       setPageStep(step);
 
-      // Force layout with the new metrics before reading scrollWidth.
-      container.style.width = `${viewport}px`;
-      container.style.maxWidth = `${viewport}px`;
-      container.style.height = `${viewportH}px`;
-      container.style.columnWidth = `${colW}px`;
-      container.style.columnGap = `${useDoubleColumns ? columnGapPx : 0}px`;
-      container.style.columnFill = "auto";
-      container.style.overflowX = "auto";
-      container.style.overflowY = "hidden";
-      (container.style as CSSStyleDeclaration & { WebkitColumnWidth?: string }).WebkitColumnWidth =
-        `${colW}px`;
+      const maxScroll = Math.max(0, contentHeight - viewportH);
+      const calculatedPages = maxScroll <= 0 ? 1 : Math.ceil(maxScroll / step) + 1;
 
-      void container.offsetWidth;
-      const scrollWidth = Math.max(container.scrollWidth, viewport);
-      // -1 avoids a phantom empty last page from sub-pixel scrollWidth.
-      const calculatedPages = Math.max(1, Math.ceil((scrollWidth - 1) / step));
-      return { step, calculatedPages, colW };
+      return { step, calculatedPages, colW: viewport };
     },
     [useDoubleColumns, columnGapPx, pageOverlap],
   );
@@ -801,16 +850,9 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         setPageViewportHeight(0);
         pageStepRef.current = viewport;
         setPageStep(viewport);
-        container.style.width = "";
-        container.style.maxWidth = "";
-        container.style.height = "";
-        container.style.columnWidth = "";
-        container.style.columnGap = "";
-        container.style.columnFill = "";
-        container.style.overflowX = "";
-        container.style.overflowY = "";
-        (container.style as CSSStyleDeclaration & { WebkitColumnWidth?: string }).WebkitColumnWidth =
-          "";
+        contentHeightRef.current = 0;
+        viewportHeightRef.current = viewportH;
+        clearColumnStyles(container);
         container.scrollLeft = 0;
         scroller.scrollLeft = 0;
         scroller.scrollTop = 0;
@@ -818,11 +860,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         return;
       }
 
-      // Pixel column width + definite pixel height are required for CSS columns to
-      // fragment into horizontal pages. % heights often fail in nested flex layouts,
-      // which clips text and reports a fake 1–2 page width (duplicated pages).
       const { calculatedPages } = measurePagedPages(container, viewport, viewportH);
-
       setTotalPages(calculatedPages);
       setCurrentPageNum((prev) => Math.min(Math.max(1, prev), calculatedPages));
     }, 32);
@@ -846,7 +884,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
     hyphenation
   ]);
 
-  // Keep the multicol element scrolled to the active page.
+  // Keep the paged view scrolled to the active page (vertical window or dual columns).
   useLayoutEffect(() => {
     if (useScrollLayout) return;
     const step = Math.max(1, pageStepRef.current || pageStep);
@@ -3481,21 +3519,28 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     </div>
                   </div>
 
-                  {/* Page Overlap (KOReader-style) */}
-                  <div>
+                  {/* Page Overlap (KOReader-style) — single-column paged only */}
+                  <div className={useScrollLayout || useDoubleColumns ? "opacity-50 pointer-events-none" : ""}>
                     <div className="flex justify-between items-center mb-1.5">
                       <label className="text-[10px] opacity-75 font-sans uppercase font-bold tracking-wider">Page Overlap</label>
                       <span className="text-[10px] font-mono">{pageOverlap}px</span>
                     </div>
-                    <p className="text-[10px] text-kindle-text-muted mb-2 font-sans">Repeat the last few lines on the next page.</p>
+                    <p className="text-[10px] text-kindle-text-muted mb-2 font-sans">
+                      {useScrollLayout
+                        ? "Unavailable in continuous scroll."
+                        : useDoubleColumns
+                          ? "Unavailable in dual-page mode."
+                          : "Repeat the last few lines at the top of the next page."}
+                    </p>
                     <input
                       type="range"
                       min="0"
                       max="60"
                       step="2"
                       value={pageOverlap}
+                      disabled={useScrollLayout || useDoubleColumns}
                       onChange={(e) => setPageOverlap(parseInt(e.target.value))}
-                      className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer"
+                      className="w-full accent-kindle-accent h-1 bg-neutral-200 rounded-lg appearance-none cursor-pointer disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -4076,14 +4121,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                   className={`w-full h-full relative kora-page-canvas ${
                     useScrollLayout
                       ? "overflow-y-auto overflow-x-hidden overscroll-y-contain flex items-start justify-start"
-                      : "overflow-hidden overscroll-none block"
+                      : useDoubleColumns
+                        ? "overflow-hidden overscroll-none block"
+                        : "overflow-y-auto overflow-x-hidden overscroll-none block"
                   }`}
                   style={
                     !useScrollLayout
                       ? {
                           scrollbarWidth: "none",
                           msOverflowStyle: "none",
-                          overscrollBehaviorX: "none",
+                          overscrollBehavior: "none",
+                          // Programmatic paging only — don't let touch pans free-scroll.
+                          touchAction: annotateMode ? "auto" : "manipulation",
                         }
                       : undefined
                   }
@@ -4264,10 +4313,24 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                     )}
                   </AnimatePresence>
                   {/*
-                    Page via scrollLeft on the multicol article. Pixel width/height/
-                    columnWidth come from layout measurement — % columns collapse
-                    in nested flex and make page 2 duplicate page 1.
+                    Single-column paged: vertical sliding window (supports page overlap).
+                    Dual-column: CSS columns + horizontal scrollLeft.
                   */}
+                  {!useScrollLayout && !useDoubleColumns && pageOverlap > 0 && currentPageNum > 1 ? (
+                    <div className="sticky top-0 h-0 z-20 pointer-events-none" aria-hidden>
+                      <div
+                        className="absolute left-0 right-0 top-0 border-b border-current/25"
+                        style={{
+                          height: Math.min(
+                            pageOverlap,
+                            Math.floor((pageViewportHeight || 0) / 3) || pageOverlap,
+                          ),
+                          background:
+                            "linear-gradient(to bottom, color-mix(in srgb, currentColor 10%, transparent), transparent)",
+                        }}
+                      />
+                    </div>
+                  ) : null}
                   <article 
                     ref={contentRef}
                     className={`w-full ml-0 kora-paged-article ${fontFamily} ${letterSpacing} ${hyphenation ? "hyphens-auto text-justify" : "hyphens-none text-left"} selection:bg-kindle-accent/20 selection:text-kindle-text ${grayscaleImages ? "[&_img]:grayscale" : ""} ${hideImages ? "[&_img]:hidden [&_image]:hidden" : ""} [&_img]:select-none [&_img]:pointer-events-none [&_image]:select-none [&_image]:pointer-events-none ${
@@ -4288,24 +4351,27 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                             minHeight: "100%",
                             overflow: "visible",
                           }
-                        : {
-                            width: `${Math.max(1, containerWidth)}px`,
-                            maxWidth: `${Math.max(1, containerWidth)}px`,
-                            height: pageViewportHeight > 0 ? `${pageViewportHeight}px` : "100%",
-                            columnWidth: `${
-                              useDoubleColumns
-                                ? Math.max(1, Math.floor((containerWidth - columnGapPx) / 2))
-                                : Math.max(1, containerWidth)
-                            }px`,
-                            columnGap: `${useDoubleColumns ? columnGapPx : 0}px`,
-                            columnFill: "auto",
-                            overflowX: "auto",
-                            overflowY: "hidden",
-                            WebkitOverflowScrolling: "auto",
-                            scrollbarWidth: "none",
-                            msOverflowStyle: "none",
-                            boxShadow: useDoubleColumns ? "inset 50% 0 0 -20px rgba(0,0,0,0.10)" : "none",
-                          }),
+                        : useDoubleColumns
+                          ? {
+                              width: `${Math.max(1, containerWidth)}px`,
+                              maxWidth: `${Math.max(1, containerWidth)}px`,
+                              height: pageViewportHeight > 0 ? `${pageViewportHeight}px` : "100%",
+                              columnWidth: `${Math.max(1, Math.floor((containerWidth - columnGapPx) / 2))}px`,
+                              columnGap: `${columnGapPx}px`,
+                              columnFill: "auto",
+                              overflowX: "auto",
+                              overflowY: "hidden",
+                              WebkitOverflowScrolling: "auto",
+                              scrollbarWidth: "none",
+                              msOverflowStyle: "none",
+                              boxShadow: "inset 50% 0 0 -20px rgba(0,0,0,0.10)",
+                            }
+                          : {
+                              width: `${Math.max(1, containerWidth)}px`,
+                              maxWidth: `${Math.max(1, containerWidth)}px`,
+                              height: "auto",
+                              overflow: "visible",
+                            }),
                     } as React.CSSProperties}
                   >
                     <div className={`mb-6 border-b ${activeTheme.border} pb-4`}>
