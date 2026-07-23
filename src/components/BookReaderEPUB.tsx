@@ -29,7 +29,7 @@ import {
 } from "../lib/ttsSettings";
 import { prepareTextForNarration } from "../lib/ttsTextPrep";
 import { refreshNativeVoices, speakText } from "../lib/koraTts";
-import ReaderPetCompanion from "./ReaderPetCompanion";
+import ReaderPetCompanion, { PetSpriteThumb } from "./ReaderPetCompanion";
 import { getPetById, READER_PETS, type PetId } from "../lib/readerPet";
 import { runOfflineCompanion } from "../lib/offlineAssistant";
 import {
@@ -3581,7 +3581,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                 <div>
                   <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Reading Pet</h4>
                   <p className="text-[10px] text-kindle-text-muted mt-0.5">
-                    Pixel buddy in the corner — reacts to the page mood (no AI).
+                    Kirby-style pixel buddy — type flair, reacts to page mood.
                   </p>
                 </div>
                 <button
@@ -3609,10 +3609,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          <span
-                            className="w-2.5 h-2.5 rounded-sm shrink-0"
-                            style={{ background: pet.accent, boxShadow: `0 0 0 1px ${pet.accent}55` }}
-                          />
+                          <PetSpriteThumb petId={pet.id} sizePx={26} />
                           <span className="text-[11px] font-bold font-mono tracking-wide">{pet.name}</span>
                         </div>
                         <p className="text-[9px] opacity-60 leading-snug line-clamp-2">{pet.tagline}</p>

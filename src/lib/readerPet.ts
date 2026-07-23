@@ -2,6 +2,9 @@
  * Kora Reader Pet Companion — lexicon emotion cues + pet catalog.
  * No AI: moods come from keyword scores on the visible page text,
  * idle time, and clock hour (sleepy bias at night).
+ *
+ * Sprites are Kirby-inspired round pixel puffs (original Kora designs)
+ * with type flair — see readerPetSprites.ts.
  */
 
 export type PetMood =
@@ -21,237 +24,160 @@ export interface PetDefinition {
   id: PetId;
   name: string;
   tagline: string;
-  /** Palette: index 0 is transparent */
+  /**
+   * Palette indices for 16×16 Kirby-style sprites:
+   * 0 clear · 1 outline · 2 body · 3 shade · 4 eye-white · 5 pupil
+   * 6 blush · 7 feet · 8 accent-dark · 9 accent · 10 accent-light
+   * 11 hi-lite · 12 secondary
+   */
   palette: string[];
   /** Accent used in the picker chip */
   accent: string;
 }
 
-/** 12×12 frames — numbers index into pet.palette (0 = empty). */
+/** 16×16 frames — numbers index into pet.palette (0 = empty). */
 export type PetFrame = number[][];
+
+/** Shared round-puff body (Kirby-inspired pink) — accents differ per type. */
+const PUFF = {
+  outline: "#c45a78",
+  body: "#ffa0c8",
+  shade: "#f080b0",
+  eyeWhite: "#ffffff",
+  pupil: "#203060",
+  blush: "#ff7098",
+  feet: "#e84868",
+  hi: "#ffe8f0",
+} as const;
 
 export const READER_PETS: PetDefinition[] = [
   {
     id: "emberkit",
     name: "Emberkit",
-    tagline: "Warm fox-spark that flickers with the plot",
+    tagline: "Fire-type puff — flame crown flickers with the plot",
     accent: "#f97316",
-    palette: ["transparent", "#7c2d12", "#ea580c", "#fdba74", "#fff7ed", "#fbbf24"],
+    palette: [
+      "transparent",
+      PUFF.outline,
+      PUFF.body,
+      PUFF.shade,
+      PUFF.eyeWhite,
+      PUFF.pupil,
+      PUFF.blush,
+      PUFF.feet,
+      "#c04020",
+      "#ff6a20",
+      "#ffd24a",
+      PUFF.hi,
+      "#ff4020",
+    ],
   },
   {
     id: "tidrop",
     name: "Tidrop",
-    tagline: "Soft water blob that ripples with feeling",
+    tagline: "Water-type blob — splash crown ripples with feeling",
     accent: "#0ea5e9",
-    palette: ["transparent", "#0c4a6e", "#0284c7", "#7dd3fc", "#e0f2fe", "#38bdf8"],
+    palette: [
+      "transparent",
+      PUFF.outline,
+      PUFF.body,
+      PUFF.shade,
+      PUFF.eyeWhite,
+      PUFF.pupil,
+      PUFF.blush,
+      PUFF.feet,
+      "#1a60a0",
+      "#40a0d8",
+      "#90e0ff",
+      PUFF.hi,
+      "#2080c0",
+    ],
   },
   {
     id: "leafpup",
     name: "Leafpup",
-    tagline: "Leafy pup that sprouts when the story blooms",
+    tagline: "Grass-type sprout — leafy crown when stories bloom",
     accent: "#22c55e",
-    palette: ["transparent", "#14532d", "#16a34a", "#86efac", "#fefce8", "#a3e635"],
+    palette: [
+      "transparent",
+      PUFF.outline,
+      PUFF.body,
+      PUFF.shade,
+      PUFF.eyeWhite,
+      PUFF.pupil,
+      PUFF.blush,
+      PUFF.feet,
+      "#2e8038",
+      "#4cb050",
+      "#a8e888",
+      PUFF.hi,
+      "#208030",
+    ],
   },
   {
     id: "stormbat",
     name: "Stormbat",
-    tagline: "Tiny thunder-bat that jolts on page turns",
+    tagline: "Knight-type — masked warrior that jolts on page turns",
     accent: "#a855f7",
-    palette: ["transparent", "#3b0764", "#7e22ce", "#d8b4fe", "#faf5ff", "#facc15"],
+    palette: [
+      "transparent",
+      "#101828",
+      "#3a4a78",
+      "#2a3860",
+      "#d0d8e8",
+      "#f8e060",
+      "#6080c0",
+      "#6a2048",
+      "#1a1028",
+      "#6a58a0",
+      "#ffe080",
+      "#e8ecf4",
+      "#2a2048",
+    ],
   },
   {
     id: "moonmoth",
     name: "Moonmoth",
-    tagline: "Night moth that dozes under lamplight prose",
-    accent: "#6366f1",
-    palette: ["transparent", "#1e1b4b", "#4338ca", "#a5b4fc", "#eef2ff", "#f472b6"],
+    tagline: "Fairy-type — soft wings under lamplight prose",
+    accent: "#c084fc",
+    palette: [
+      "transparent",
+      PUFF.outline,
+      PUFF.body,
+      PUFF.shade,
+      PUFF.eyeWhite,
+      PUFF.pupil,
+      PUFF.blush,
+      PUFF.feet,
+      "#8060b0",
+      "#c8a0e8",
+      "#f8f0ff",
+      PUFF.hi,
+      "#e8d8f8",
+    ],
   },
   {
     id: "pebblet",
     name: "Pebblet",
-    tagline: "Stony pebble buddy — sturdy through every chapter",
-    accent: "#78716c",
-    palette: ["transparent", "#292524", "#57534e", "#a8a29e", "#fafaf9", "#f59e0b"],
+    tagline: "Rock-type — gem-crowned and sturdy through every chapter",
+    accent: "#a8a29e",
+    palette: [
+      "transparent",
+      "#2a2820",
+      "#b0a898",
+      "#908878",
+      "#faf8f4",
+      "#181610",
+      "#d8d0c0",
+      "#706858",
+      "#888078",
+      "#e05050",
+      "#5080e0",
+      "#e8e0d0",
+      "#50c870",
+    ],
   },
 ];
-
-const BODY: PetFrame = [
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 4, 2, 2, 4, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 3, 3, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 3, 3, 0, 0, 3, 3, 0, 0, 0, 0],
-];
-
-const IDLE_BOB: PetFrame = [
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 4, 2, 2, 4, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 3, 3, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 2, 3, 0, 0, 2, 3, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-];
-
-const SLEEP_A: PetFrame = [
-  [0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 5, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 1, 2, 2, 1, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 3, 3, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 0, 3, 3, 3, 3, 0, 0, 0, 0, 0],
-];
-
-const SLEEP_B: PetFrame = [
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 5, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 1, 2, 2, 1, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 3, 3, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 0, 3, 3, 3, 3, 0, 0, 0, 0, 0],
-];
-
-const HAPPY: PetFrame = [
-  [0, 0, 5, 2, 2, 2, 2, 5, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 4, 2, 2, 4, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 3, 3, 3, 3, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 0, 0, 0, 0, 2, 2, 0, 0, 0],
-  [0, 3, 3, 0, 0, 0, 0, 3, 3, 0, 0, 0],
-];
-
-const SAD: PetFrame = [
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 1, 2, 2, 1, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 1, 1, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0],
-  [0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0],
-  [0, 0, 0, 3, 0, 0, 3, 0, 0, 0, 0, 0],
-];
-
-const SCARED: PetFrame = [
-  [0, 5, 0, 2, 2, 2, 2, 0, 5, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 4, 4, 2, 2, 4, 4, 2, 0, 0, 0],
-  [0, 2, 2, 1, 2, 2, 1, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 3, 3, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 0, 0, 0, 0, 2, 2, 0, 0, 0],
-  [0, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0],
-  [0, 3, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0],
-];
-
-const ANGRY: PetFrame = [
-  [0, 1, 0, 2, 2, 2, 2, 0, 1, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 1, 4, 2, 2, 4, 1, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 1, 1, 1, 1, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0],
-];
-
-const LOVE: PetFrame = [
-  [0, 0, 5, 2, 2, 2, 2, 5, 0, 0, 0, 0],
-  [0, 5, 2, 2, 2, 2, 2, 2, 5, 0, 0, 0],
-  [0, 2, 2, 4, 2, 2, 4, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 3, 5, 5, 3, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 5, 5, 0, 0, 5, 5, 0, 0, 0, 0],
-];
-
-const CURIOUS: PetFrame = [
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 5, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 4, 2, 2, 2, 2, 4, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 3, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0],
-  [0, 0, 3, 0, 0, 0, 3, 3, 0, 0, 0, 0],
-];
-
-const PAGE_TURN: PetFrame = [
-  [0, 0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 4, 2, 2, 4, 2, 2, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0],
-  [0, 0, 0, 2, 2, 3, 3, 2, 2, 0, 0, 0],
-  [0, 0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0],
-  [0, 0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0],
-  [0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0],
-  [0, 2, 2, 0, 0, 0, 0, 0, 2, 2, 0, 0],
-  [0, 2, 2, 0, 0, 0, 0, 0, 2, 2, 0, 0],
-  [0, 3, 3, 0, 0, 0, 0, 0, 3, 3, 0, 0],
-];
-
-/** Shared silhouette animations — palette remaps give each pet its look. */
-export const PET_MOOD_FRAMES: Record<PetMood, PetFrame[]> = {
-  idle: [BODY, IDLE_BOB],
-  sleepy: [SLEEP_A, SLEEP_B],
-  happy: [HAPPY, BODY],
-  sad: [SAD, BODY],
-  scared: [SCARED, BODY],
-  angry: [ANGRY, BODY],
-  love: [LOVE, HAPPY],
-  curious: [CURIOUS, BODY],
-  pageTurn: [PAGE_TURN, HAPPY, BODY],
-};
 
 const LEXICON: Record<Exclude<PetMood, "idle" | "pageTurn" | "sleepy"> | "sleepy", string[]> = {
   happy: [
@@ -333,7 +259,6 @@ export function scoreTextMoods(text: string): MoodScores {
     }
   }
 
-  // Soften by density so long pages don't always max out.
   const density = Math.max(40, words.length);
   for (const key of Object.keys(scores) as Array<keyof MoodScores>) {
     scores[key] = scores[key] / (density / 80);
@@ -354,7 +279,6 @@ export function pickDominantMood(
   const idleMs = opts?.idleMs ?? 0;
   const hour = opts?.hour ?? new Date().getHours();
 
-  // Night + long idle → sleepy companion.
   const night = hour >= 22 || hour < 6;
   if (idleMs > 90_000 || (night && idleMs > 45_000) || scores.sleepy >= 1.4) {
     if (idleMs > 90_000 || scores.sleepy >= 1.8 || (night && idleMs > 45_000 && scores.sleepy >= 0.4)) {
@@ -375,7 +299,7 @@ export function pickDominantMood(
 }
 
 export function getPetById(id: PetId | string | undefined | null): PetDefinition {
-  return READER_PETS.find((p) => p.id === id) || READER_PETS[0];
+  return READER_PETS.find((p) => p.id === id) || READER_PETS[0]!;
 }
 
 export function moodLabel(mood: PetMood): string {
@@ -400,3 +324,5 @@ export function moodLabel(mood: PetMood): string {
       return "Page hop!";
   }
 }
+
+export { getPetMoodFrames, SPRITE_SIZE } from "./readerPetSprites";
