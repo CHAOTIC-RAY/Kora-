@@ -1911,14 +1911,14 @@ export default function App() {
         }
         return true;
       }
-      if (go === "crossword" || go === "minigame" || go === "wordsearch" || go === "blip") {
+      if (go === "crossword" || go === "minigame" || go === "wordsearch" || go === "p2p") {
         switchTab("tools");
         window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent("kora-open-tool", {
               detail: {
                 tool:
-                  go === "wordsearch" ? "wordsearch" : go === "blip" ? "blip" : "crossword",
+                  go === "wordsearch" ? "wordsearch" : go === "p2p" ? "p2p" : "crossword",
               },
             })
           );

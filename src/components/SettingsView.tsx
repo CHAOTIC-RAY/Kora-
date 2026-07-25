@@ -32,7 +32,7 @@ import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
-import BlipTransferPanel from "./BlipTransferPanel";
+import P2pTransferPanel from "./P2pTransferPanel";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
 import ReadingInsightsTool from "./ReadingInsightsTool";
@@ -250,7 +250,7 @@ function SettingsView({
   const [showCrossword, setShowCrossword] = useState<boolean>(false);
   const [showWordSearch, setShowWordSearch] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
-  const [showBlip, setShowBlip] = useState<boolean>(false);
+  const [showP2p, setShowP2p] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -258,7 +258,7 @@ function SettingsView({
       const tool = (e as CustomEvent<{ tool?: string }>).detail?.tool;
       if (tool === "crossword") setShowCrossword(true);
       else if (tool === "wordsearch") setShowWordSearch(true);
-      else if (tool === "blip") setShowBlip(true);
+      else if (tool === "p2p") setShowP2p(true);
     };
     window.addEventListener("kora-open-tool", onOpenTool as EventListener);
     return () => window.removeEventListener("kora-open-tool", onOpenTool as EventListener);
@@ -694,7 +694,7 @@ function SettingsView({
             { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Classic & letter wheel" },
             { id: "wordsearch", icon: Search, label: "Word Search", desc: "Find hidden words" },
             { id: "insights", icon: PieChart, label: "Insights", desc: "Moods · pacing · genres" },
-            { id: "blip", icon: Radio, label: "Blip", desc: "P2P file transfer" },
+            { id: "p2p", icon: Radio, label: "P2P", desc: "Peer-to-peer file transfer" },
           ].map((tool) => (
             <button
               key={tool.id}
@@ -705,7 +705,7 @@ function SettingsView({
                 else if (tool.id === "crossword") setShowCrossword(true);
                 else if (tool.id === "wordsearch") setShowWordSearch(true);
                 else if (tool.id === "insights") setShowInsights(true);
-                else if (tool.id === "blip") setShowBlip(true);
+                else if (tool.id === "p2p") setShowP2p(true);
                 else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
               }}
               className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
@@ -797,7 +797,7 @@ function SettingsView({
 
           <button
             type="button"
-            onClick={() => setShowBlip(true)}
+            onClick={() => setShowP2p(true)}
             className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-kindle-accent/40 transition group"
           >
             <div className="flex items-start gap-3">
@@ -805,7 +805,7 @@ function SettingsView({
                 <Radio className="w-5 h-5 text-kindle-accent" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Blip Transfer</h3>
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">P2P Transfer</h3>
                 <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
                   Peer-to-peer files over Wi‑Fi or internet. Encrypted relay only if direct fails — no cloud storage.
                 </p>
@@ -1920,7 +1920,7 @@ function SettingsView({
         onClose={() => setShowInsights(false)}
         books={(books as BookMetadata[]) || getLocalLibrary()}
       />
-      <BlipTransferPanel open={showBlip} onClose={() => setShowBlip(false)} />
+      <P2pTransferPanel open={showP2p} onClose={() => setShowP2p(false)} />
     </div>
   );
 }

@@ -1,38 +1,38 @@
 /**
- * Blip session: host/guest WebRTC data-channel file transfer.
+ * P2P session: host/guest WebRTC data-channel file transfer.
  * Direct P2P preferred; TURN relay only when ICE cannot connect directly.
  */
 
 import { getDeviceName } from "../crossDeviceSync/deviceRegistry";
 import { deriveRoomKey, encryptChunk, decryptChunk } from "./crypto";
-import { BLIP_ICE_CONFIG, detectConnectionMode } from "./iceConfig";
+import { P2P_ICE_CONFIG, detectConnectionMode } from "./iceConfig";
 import {
-  closeBlipRoom,
-  createBlipRoom,
-  generateBlipCode,
-  listenBlipIce,
-  listenBlipRoom,
-  normalizeBlipCode,
-  writeBlipAnswer,
-  writeBlipIce,
-  writeBlipOffer,
+  closeP2pRoom,
+  createP2pRoom,
+  generateP2pCode,
+  listenP2pIce,
+  listenP2pRoom,
+  normalizeP2pCode,
+  writeP2pAnswer,
+  writeP2pIce,
+  writeP2pOffer,
 } from "./signaling";
 import type {
-  BlipConnectionMode,
-  BlipFileMeta,
-  BlipPhase,
-  BlipRole,
-  BlipSessionState,
-  BlipTransferProgress,
+  P2pConnectionMode,
+  P2pFileMeta,
+  P2pPhase,
+  P2pRole,
+  P2pSessionState,
+  P2pTransferProgress,
 } from "./types";
 
 const CHUNK = 64 * 1024;
 const BUFFER_HIGH = 1024 * 1024;
 const BUFFER_LOW = 256 * 1024;
 
-type Listener = (state: BlipSessionState) => void;
+type Listener = (state: P2pSessionState) => void;
 
-function emptyState(): BlipSessionState {
+function emptyState(): P2pSessionState {
   return {
     phase: "idle",
     role: null,
@@ -44,8 +44,8 @@ function emptyState(): BlipSessionState {
   };
 }
 
-export class BlipSession {
-  private state: BlipSessionState = emptyState();
+export class P2pSession {
+  private state: P2pSessionState = emptyState();
   private listeners = new Set<Listener>();
   private pc: RTCPeerConnection | null = null;
   private channel: RTCDataChannel | null = null;
@@ -53,7 +53,7 @@ export class BlipSession {
   private unsubs: Array<() => void> = [];
   private incoming = new Map<
     string,
-    { meta: BlipFileMeta; chunks: ArrayBuffer[]; received: number }
+    { meta: P2pFileMeta; chunks: ArrayBuffer[]; received: number }
   >();
   private onFileReceived: ((file: File) => void) | null = null;
 
@@ -67,16 +67,16 @@ export class BlipSession {
     this.onFileReceived = fn;
   }
 
-  getSnapshot(): BlipSessionState {
+  getSnapshot(): P2pSessionState {
     return this.state;
   }
 
-  private set(patch: Partial<BlipSessionState>) {
+  private set(patch: Partial<P2pSessionState>) {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach((fn) => fn(this.state));
   }
 
-  private setPhase(phase: BlipPhase, extra?: Partial<BlipSessionState>) {
+  private setPhase(phase: P2pPhase, extra?: Partial<P2pSessionState>) {
     this.set({ phase, ...extra });
   }
 
@@ -88,30 +88,39 @@ export class BlipSession {
   async createRoom(): Promise<string> {
     this.close(false);
     this.setPhase("creating", { role: "host", error: null, progress: [] });
-    const code = generateBlipCode();
+    const code = generateP2pCode();
     const hostName = getDeviceName() || "Kora Host";
     this.key = await deriveRoomKey(code);
-    await createBlipRoom(code, hostName);
+    await createP2pRoom(code, hostName);
 
-    const pc = new RTCPeerConnection(BLIP_ICE_CONFIG);
+    const pc = new RTCPeerConnection(P2P_ICE_CONFIG);
     this.pc = pc;
-    const channel = pc.createDataChannel("kora-blip", { ordered: true });
+    const channel = pc.createDataChannel("kora-p2p", { ordered: true });
     channel.binaryType = "arraybuffer";
     this.wireChannel(channel);
 
     pc.onicecandidate = (ev) => {
-      if (ev.candidate) void writeBlipIce(code, "host", ev.candidate);
+      if (ev.candidate) void writeP2pIce(code, "host", ev.candidate);
     };
-    this.unsubs.push(listenBlipIce(code, "guest", pc));
+    this.unsubs.push(listenP2pIce(code, "guest", pc));
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    await writeBlipOffer(code, JSON.stringify(pc.localDescription));
+    await writeP2pOffer(code, JSON.stringify(pc.localDescription));
+
+    pc.onconnectionstatechange = () => {
+      const s = pc.connectionState;
+      if (s === "failed") {
+        this.setPhase("error", { error: "Connection failed — both devices need internet; a firewall may be blocking the relay." });
+      } else if (s === "connected") {
+        void detectConnectionMode(pc).then((mode) => this.set({ connectionMode: mode as P2pConnectionMode }));
+      }
+    };
 
     this.setPhase("waiting", { code, role: "host" });
 
     this.unsubs.push(
-      listenBlipRoom(code, async (room) => {
+      listenP2pRoom(code, async (room) => {
         if (!room) return;
         if (room.guestName) this.set({ peerName: room.guestName });
         if (room.answer && pc.signalingState !== "stable") {
@@ -132,19 +141,24 @@ export class BlipSession {
 
   async joinRoom(rawCode: string): Promise<void> {
     this.close(false);
-    const code = normalizeBlipCode(rawCode);
+    const code = normalizeP2pCode(rawCode);
     if (code.length < 6) throw new Error("Enter a valid 6-character code");
 
     this.setPhase("joining", { role: "guest", code, error: null, progress: [] });
     this.key = await deriveRoomKey(code);
     const guestName = getDeviceName() || "Kora Guest";
 
-    const pc = new RTCPeerConnection(BLIP_ICE_CONFIG);
+    const pc = new RTCPeerConnection(P2P_ICE_CONFIG);
     this.pc = pc;
     pc.onicecandidate = (ev) => {
-      if (ev.candidate) void writeBlipIce(code, "guest", ev.candidate);
+      if (ev.candidate) void writeP2pIce(code, "guest", ev.candidate);
     };
-    this.unsubs.push(listenBlipIce(code, "host", pc));
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === "failed") {
+        this.setPhase("error", { error: "Connection failed — both devices need internet; a firewall may be blocking the relay." });
+      }
+    };
+    this.unsubs.push(listenP2pIce(code, "host", pc));
 
     pc.ondatachannel = (ev) => {
       ev.channel.binaryType = "arraybuffer";
@@ -153,7 +167,7 @@ export class BlipSession {
 
     await new Promise<void>((resolve, reject) => {
       const timeout = window.setTimeout(() => reject(new Error("Room not found or expired")), 45_000);
-      const unsub = listenBlipRoom(code, async (room) => {
+      const unsub = listenP2pRoom(code, async (room) => {
         if (!room?.offer) return;
         try {
           window.clearTimeout(timeout);
@@ -162,7 +176,7 @@ export class BlipSession {
           await pc.setRemoteDescription(JSON.parse(room.offer));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          await writeBlipAnswer(code, JSON.stringify(pc.localDescription), guestName);
+          await writeP2pAnswer(code, JSON.stringify(pc.localDescription), guestName);
           unsub();
           resolve();
         } catch (err) {
@@ -189,7 +203,7 @@ export class BlipSession {
           /* ignore */
         }
         const mode = this.pc ? await detectConnectionMode(this.pc) : "unknown";
-        this.setPhase("ready", { connectionMode: mode as BlipConnectionMode });
+        this.setPhase("ready", { connectionMode: mode as P2pConnectionMode });
       })();
     };
 
@@ -213,7 +227,7 @@ export class BlipSession {
       try {
         const msg = JSON.parse(data);
         if (msg.type === "file-start") {
-          const meta = msg.file as BlipFileMeta;
+          const meta = msg.file as P2pFileMeta;
           this.incoming.set(meta.id, { meta, chunks: [], received: 0 });
           this.upsertProgress({
             fileId: meta.id,
@@ -280,7 +294,7 @@ export class BlipSession {
     });
   }
 
-  private upsertProgress(p: BlipTransferProgress) {
+  private upsertProgress(p: P2pTransferProgress) {
     const rest = this.state.progress.filter((x) => x.fileId !== p.fileId);
     this.set({ progress: [...rest, p] });
   }
@@ -312,7 +326,7 @@ export class BlipSession {
   private async sendOneFile(channel: RTCDataChannel, file: File): Promise<void> {
     if (!this.key) return;
     const fileId = `f_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-    const meta: BlipFileMeta = {
+    const meta: P2pFileMeta = {
       id: fileId,
       name: file.name,
       size: file.size,
@@ -382,7 +396,7 @@ export class BlipSession {
     this.key = null;
     this.incoming.clear();
     if (deleteRoom && code && this.state.role === "host") {
-      void closeBlipRoom(code);
+      void closeP2pRoom(code);
     }
     this.state = emptyState();
     this.listeners.forEach((fn) => fn(this.state));
@@ -396,7 +410,7 @@ export function formatBytes(n: number): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-export function connectionModeLabel(mode: BlipConnectionMode): string {
+export function connectionModeLabel(mode: P2pConnectionMode): string {
   if (mode === "direct") return "Direct P2P";
   if (mode === "relay") return "Encrypted relay";
   return "Connecting…";

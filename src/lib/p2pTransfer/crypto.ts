@@ -22,7 +22,7 @@ export async function deriveRoomKey(code: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const material = await crypto.subtle.importKey(
     "raw",
-    enc.encode(`kora-blip-v1:${code.toUpperCase().trim()}`),
+    enc.encode(`kora-p2p-v1:${code.toUpperCase().trim()}`),
     "PBKDF2",
     false,
     ["deriveKey"]
@@ -30,7 +30,7 @@ export async function deriveRoomKey(code: string): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
-      salt: enc.encode("kora-blip-salt"),
+      salt: enc.encode("kora-p2p-salt"),
       iterations: 100_000,
       hash: "SHA-256",
     },

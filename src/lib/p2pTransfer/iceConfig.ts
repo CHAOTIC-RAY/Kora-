@@ -1,29 +1,24 @@
 /**
- * ICE config: STUN for direct / LAN, free TURN as encrypted relay fallback.
+ * ICE config: STUN for direct / LAN, public TURN relays as fallback.
  * WebRTC DTLS encrypts data-channel bytes on both direct and relayed paths.
  * TURN only forwards opaque packets — no cloud file storage.
+ *
+ * We list several anonymous public TURN servers so that at least one relay is
+ * reachable across networks / NATs. Direct P2P is always preferred; the relay
+ * is only used when ICE cannot punch a direct path.
  */
 
-export const BLIP_ICE_CONFIG: RTCConfiguration = {
+export const P2P_ICE_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    // Open Relay Project — public TURN used only when direct ICE fails
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
+    // Cloudflare public TURN (anonymous, no credentials) — primary relay.
+    { urls: "turn:relay1.express.turn.dev:3478" },
+    { urls: "turn:relay1.express.turn.dev:3478?transport=tcp" },
+    // Open Relay Project — backup relay when direct ICE fails.
+    { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+    { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
   ],
   iceCandidatePoolSize: 4,
 };

@@ -588,7 +588,7 @@ html.kora-gesture-nav body {
 
 html.kora-android,
 html.kora-android body {
-  background-color: #18181b;
+  background-color: var(--theme-bg);
 }
 
 html.kora-android body {

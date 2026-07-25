@@ -15,14 +15,14 @@ import toast from "react-hot-toast";
 import { signInAnonymously } from "firebase/auth";
 import { auth, isRealFirebase } from "../lib/firebase";
 import {
-  BlipSession,
+  P2pSession,
   connectionModeLabel,
   formatBytes,
-  normalizeBlipCode,
-  type BlipSessionState,
-} from "../lib/blipTransfer";
+  normalizeP2pCode,
+  type P2pSessionState,
+} from "../lib/p2pTransfer";
 
-interface BlipTransferPanelProps {
+interface P2pTransferPanelProps {
   open: boolean;
   onClose: () => void;
 }
@@ -59,17 +59,17 @@ function ProgressRow({
   );
 }
 
-export default function BlipTransferPanel({ open, onClose }: BlipTransferPanelProps) {
-  const sessionRef = useRef<BlipSession | null>(null);
+export default function P2pTransferPanel({ open, onClose }: P2pTransferPanelProps) {
+  const sessionRef = useRef<P2pSession | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [state, setState] = useState<BlipSessionState>(() => new BlipSession().getSnapshot());
+  const [state, setState] = useState<P2pSessionState>(() => new P2pSession().getSnapshot());
   const [joinCode, setJoinCode] = useState("");
   const [received, setReceived] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    const session = new BlipSession();
+    const session = new P2pSession();
     sessionRef.current = session;
     const unsub = session.subscribe(setState);
     session.onReceive((file) => {
@@ -85,7 +85,7 @@ export default function BlipTransferPanel({ open, onClose }: BlipTransferPanelPr
 
   const ensureAuth = async () => {
     if (!isRealFirebase || !auth) {
-      throw new Error("Blip needs a network connection for room signaling");
+      throw new Error("P2P needs a network connection for room signaling");
     }
     if (!auth.currentUser) {
       await signInAnonymously(auth);
@@ -185,7 +185,7 @@ export default function BlipTransferPanel({ open, onClose }: BlipTransferPanelPr
               </div>
               <div className="min-w-0">
                 <h2 className="text-sm font-bold uppercase tracking-widest text-kindle-text">
-                  Blip Transfer
+                  P2P Transfer
                 </h2>
                 <p className="text-[10px] text-kindle-text-muted truncate">
                   Peer-to-peer · no cloud storage
@@ -236,7 +236,7 @@ export default function BlipTransferPanel({ open, onClose }: BlipTransferPanelPr
                 <div className="flex gap-2">
                   <input
                     value={joinCode}
-                    onChange={(e) => setJoinCode(normalizeBlipCode(e.target.value))}
+                    onChange={(e) => setJoinCode(normalizeP2pCode(e.target.value))}
                     placeholder="Enter code"
                     maxLength={8}
                     className="flex-1 bg-kindle-card border border-kindle-border rounded-xl px-4 py-3 text-sm tracking-[0.2em] uppercase font-mono focus:outline-none focus:border-kindle-accent"

@@ -1,5 +1,5 @@
 /**
- * Ephemeral Blip room signaling via Firestore.
+ * Ephemeral P2P room signaling via Firestore.
  * Only SDP / ICE — never file bytes.
  */
 
@@ -13,9 +13,9 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { db, isRealFirebase } from "../firebase";
-import type { BlipRoomDoc } from "./types";
+import type { P2pRoomDoc } from "./types";
 
-export function generateBlipCode(): string {
+export function generateP2pCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = crypto.getRandomValues(new Uint8Array(6));
   let out = "";
@@ -26,17 +26,17 @@ export function generateBlipCode(): string {
 }
 
 function roomRef(code: string) {
-  return doc(db, "blipRooms", code.toUpperCase());
+  return doc(db, "p2pRooms", code.toUpperCase());
 }
 
 function iceCol(code: string, role: "host" | "guest") {
-  return collection(db, "blipRooms", code.toUpperCase(), `${role}Ice`);
+  return collection(db, "p2pRooms", code.toUpperCase(), `${role}Ice`);
 }
 
-export async function createBlipRoom(code: string, hostName: string): Promise<void> {
-  if (!isRealFirebase || !db) throw new Error("Blip needs a network connection");
+export async function createP2pRoom(code: string, hostName: string): Promise<void> {
+  if (!isRealFirebase || !db) throw new Error("P2P needs a network connection");
   const now = Date.now();
-  const room: BlipRoomDoc = {
+  const room: P2pRoomDoc = {
     code: code.toUpperCase(),
     status: "open",
     hostName,
@@ -46,11 +46,11 @@ export async function createBlipRoom(code: string, hostName: string): Promise<vo
   await setDoc(roomRef(code), room);
 }
 
-export async function writeBlipOffer(code: string, offer: string): Promise<void> {
+export async function writeP2pOffer(code: string, offer: string): Promise<void> {
   await updateDoc(roomRef(code), { offer, updatedAt: Date.now() });
 }
 
-export async function writeBlipAnswer(
+export async function writeP2pAnswer(
   code: string,
   answer: string,
   guestName: string
@@ -63,7 +63,7 @@ export async function writeBlipAnswer(
   });
 }
 
-export async function writeBlipIce(
+export async function writeP2pIce(
   code: string,
   role: "host" | "guest",
   candidate: RTCIceCandidate
@@ -75,16 +75,16 @@ export async function writeBlipIce(
   });
 }
 
-export function listenBlipRoom(
+export function listenP2pRoom(
   code: string,
-  onData: (room: BlipRoomDoc | null) => void
+  onData: (room: P2pRoomDoc | null) => void
 ): Unsubscribe {
   return onSnapshot(roomRef(code), (snap) => {
-    onData(snap.exists() ? (snap.data() as BlipRoomDoc) : null);
+    onData(snap.exists() ? (snap.data() as P2pRoomDoc) : null);
   });
 }
 
-export function listenBlipIce(
+export function listenP2pIce(
   code: string,
   role: "host" | "guest",
   pc: RTCPeerConnection
@@ -99,7 +99,7 @@ export function listenBlipIce(
   });
 }
 
-export async function closeBlipRoom(code: string): Promise<void> {
+export async function closeP2pRoom(code: string): Promise<void> {
   try {
     await updateDoc(roomRef(code), { status: "closed", updatedAt: Date.now() });
   } catch {
@@ -112,6 +112,6 @@ export async function closeBlipRoom(code: string): Promise<void> {
   }
 }
 
-export function normalizeBlipCode(raw: string): string {
+export function normalizeP2pCode(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 8);
 }
