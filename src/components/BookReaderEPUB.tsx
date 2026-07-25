@@ -4242,7 +4242,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       ? "overflow-y-auto overflow-x-hidden overscroll-y-contain flex items-start justify-start"
                       : useDoubleColumns
                         ? "overflow-hidden overscroll-none block"
-                        : "overflow-y-auto overflow-x-hidden overscroll-none block"
+                        : "overflow-hidden overflow-x-hidden overscroll-none block"
                   }`}
                   style={
                     !useScrollLayout
