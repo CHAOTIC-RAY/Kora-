@@ -465,7 +465,22 @@ mark.kora-hl-pink {
   100% { transform: translateX(300%); }
 }
 
-/* ── Light White (Default) ── */
+/* Performance Mode: kill non-essential animations + effects for slow devices.
+   Toggled by adding `.perf-mode` to <html> from Settings. */
+.perf-mode *,
+.perf-mode *::before,
+.perf-mode *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+.perf-mode .cassette-tape-shimmer,
+.perf-mode [class*="shimmer"] {
+  animation: none !important;
+}
+
+
 :root, .theme-light-white {
   --theme-bg: #FAFAFA;
   --theme-text: #111111;

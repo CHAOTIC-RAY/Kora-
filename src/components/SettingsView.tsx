@@ -360,6 +360,18 @@ function SettingsView({
   // Download directory settings states
   const [realDirHandle, setRealDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [useVirtualDir, setUseVirtualDir] = useState<boolean>(() => localStorage.getItem("kora_use_virtual_dir") === "true");
+
+  // Performance toggle: trims non-essential animations + heavy rendering when on
+  // (older/slow devices, low battery). Persisted to localStorage.
+  const [performanceMode, setPerformanceMode] = useState<boolean>(
+    () => localStorage.getItem("kora_performance_mode") === "true"
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem("kora_performance_mode", performanceMode ? "true" : "false");
+      document.documentElement.classList.toggle("perf-mode", performanceMode);
+    } catch {}
+  }, [performanceMode]);
   const [virtualPath, setVirtualPath] = useState<string>(getVirtualDirectoryPath());
   const [virtualFiles, setVirtualFiles] = useState<VirtualBookFile[]>([]);
   const [isScanning, setIsScanning] = useState<boolean>(false);
@@ -616,6 +628,10 @@ function SettingsView({
 
               <Row title="Hide Cover Images" desc="Do not show any cover images in lists and carousels">
                 <Toggle on={hideCovers} onClick={onToggleHideCovers || (() => {})} />
+              </Row>
+
+              <Row title="Performance Mode" desc="Reduce animations and heavy effects for older or low-battery devices">
+                <Toggle on={performanceMode} onClick={() => setPerformanceMode(!performanceMode)} />
               </Row>
 
               <div className="space-y-2.5">

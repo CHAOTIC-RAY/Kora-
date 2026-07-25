@@ -65,6 +65,7 @@ import DailyReminderModal from "./components/DailyReminderModal";
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import ApkUpdateBanner from "./components/ApkUpdateBanner";
+import ApkFooterLink from "./components/ApkFooterLink";
 import AnnotationsHub from "./components/AnnotationsHub";
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
@@ -3186,6 +3187,9 @@ export default function App() {
           <div className="pt-4 border-t border-kindle-border/50 w-full flex flex-col items-center gap-1">
             <p>© 2026 Kora • Your reading lounge</p>
             <p className="font-mono uppercase tracking-[0.2em] opacity-50 text-[9px]">Secure Firestore Cloud Persistence</p>
+            <div className="pt-2">
+              <ApkFooterLink />
+            </div>
           </div>
         </div>
       </footer>

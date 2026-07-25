@@ -11,6 +11,14 @@ initAndroidGestureNavigation();
 initIosTouchGuards();
 void initCapacitorShell();
 
+// Apply Performance Mode immediately if the user enabled it previously,
+// so nothing animates before Settings mounts.
+try {
+  if (localStorage.getItem("kora_performance_mode") === "true") {
+    document.documentElement.classList.add("perf-mode");
+  }
+} catch {}
+
 // Register the service worker that keeps downloads alive in the background
 // and shows progress notifications. Updates are detected by PwaLifecycleBanner
 // which prompts (and can auto-apply) a reload — avoid blind reload loops here.

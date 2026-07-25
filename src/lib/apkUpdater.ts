@@ -334,3 +334,22 @@ export async function getInstalledApkLabel(): Promise<string> {
   if (!info.version || info.version === "0") return "Kora (dev)";
   return `Kora ${info.version}`;
 }
+
+/**
+ * Web/desktop-friendly: fetch the latest release APK URL (browser_download_url)
+ * without requiring the native Android installer. Used by the desktop footer
+ * "Download APK" link.
+ */
+export async function fetchLatestApkDownloadUrl(): Promise<{
+  url: string;
+  versionName: string;
+  size: number;
+} | null> {
+  try {
+    return await fetchLatestApkRelease().then((info) =>
+      info ? { url: info.apkUrl, versionName: info.versionName, size: info.apkSize } : null
+    );
+  } catch {
+    return null;
+  }
+}
