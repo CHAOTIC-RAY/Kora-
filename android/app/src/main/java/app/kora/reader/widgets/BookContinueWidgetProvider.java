@@ -30,18 +30,18 @@ public class BookContinueWidgetProvider extends AppWidgetProvider {
       views.setTextViewText(R.id.widget_book_eyebrow, "CONTINUE BOOK");
       views.setTextViewText(R.id.widget_book_title, "No ebook in progress");
       views.setTextViewText(R.id.widget_book_author, "Open a book in Kora");
-      views.setTextViewText(R.id.widget_book_progress, "—");
+      views.setProgressBar(R.id.widget_book_progress_bar, 100, 0, false);
       views.setViewVisibility(R.id.widget_book_cover, View.GONE);
       views.setViewVisibility(R.id.widget_book_cover_fallback, View.VISIBLE);
       views.setTextViewText(R.id.widget_book_cover_fallback, "B");
     } else {
-      views.setTextViewText(R.id.widget_book_eyebrow, "CONTINUE BOOK");
+      int percent = (int) Math.max(0, Math.min(100, payload.optDouble("percent", 0)));
+      views.setTextViewText(R.id.widget_book_eyebrow, "READING · " + percent + "%");
       views.setTextViewText(R.id.widget_book_title, title);
       String author = payload.optString("author", "");
       views.setTextViewText(
           R.id.widget_book_author, author.isEmpty() ? "Unknown author" : author);
-      int percent = (int) Math.round(payload.optDouble("percent", 0));
-      views.setTextViewText(R.id.widget_book_progress, Math.max(0, Math.min(100, percent)) + "%");
+      views.setProgressBar(R.id.widget_book_progress_bar, 100, percent, false);
       WidgetContinueBinder.bindCover(
           context,
           views,

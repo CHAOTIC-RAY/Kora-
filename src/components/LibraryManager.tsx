@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass } from "lucide-react";
 import {
   WALKTHROUGH_BOOK_ID,
   hideWalkthroughBookFromLibrary,
@@ -1048,6 +1048,16 @@ function LibraryManager({
           <div className="w-full py-24 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
             <BookOpen className="w-10 h-10 text-kindle-text-muted mx-auto mb-3 animate-pulse" />
             <h3 className="font-sans font-bold text-xs text-kindle-text-muted uppercase tracking-widest">No books found</h3>
+            {search?.trim() && onSearchTrigger ? (
+              <button
+                type="button"
+                onClick={() => onSearchTrigger(search.trim())}
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-widest shadow-lg hover:opacity-90 transition"
+              >
+                <Compass className="w-4 h-4" />
+                Search &ldquo;{search.trim()}&rdquo; in Discover
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-5">

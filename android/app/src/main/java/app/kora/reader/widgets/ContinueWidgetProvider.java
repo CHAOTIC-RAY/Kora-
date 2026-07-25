@@ -37,6 +37,7 @@ public class ContinueWidgetProvider extends AppWidgetProvider {
       views.setTextViewText(R.id.widget_continue_author, "Your next chapter is waiting");
       views.setTextViewText(R.id.widget_continue_progress, "—");
       views.setTextViewText(R.id.widget_continue_kind, "LIBRARY");
+      views.setProgressBar(R.id.widget_continue_progress_bar, 100, 0, false);
       views.setViewVisibility(R.id.widget_continue_cover, View.GONE);
       views.setViewVisibility(R.id.widget_continue_cover_fallback, View.VISIBLE);
       views.setTextViewText(R.id.widget_continue_cover_fallback, "K");
@@ -50,6 +51,7 @@ public class ContinueWidgetProvider extends AppWidgetProvider {
       views.setTextViewText(
           R.id.widget_continue_progress, Math.max(0, Math.min(100, percent)) + "%");
       views.setTextViewText(R.id.widget_continue_kind, isAudio ? "AUDIO" : "BOOK");
+      views.setProgressBar(R.id.widget_continue_progress_bar, 100, Math.max(0, Math.min(100, percent)), false);
       WidgetContinueBinder.bindCover(
           context,
           views,

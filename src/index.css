@@ -119,32 +119,32 @@
 }
 
 @font-face {
-  font-family: "Rakuten Sans";
-  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Regular.woff2") format("woff2");
+  font-family: "Nata Sans";
+  src: local("Lexend"), local("Lexend Regular");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Rakuten Sans";
-  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Bold.woff2") format("woff2");
+  font-family: "Nata Sans";
+  src: local("Lexend"), local("Lexend Medium");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Nata Sans";
-  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Regular.woff2") format("woff2");
+  font-family: "Rakuten Sans";
+  src: local("Lexend"), local("Lexend Regular");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
-  font-family: "Nata Sans";
-  src: url("https://r.r10s.jp/com/inc/home/200831/common/fonts/RakutenSansUI-Bold.woff2") format("woff2");
+  font-family: "Rakuten Sans";
+  src: local("Lexend"), local("Lexend Medium");
   font-weight: 700;
   font-style: normal;
   font-display: swap;

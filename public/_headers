@@ -5,3 +5,6 @@
 /sw.js
   Cache-Control: no-cache, must-revalidate
   Service-Worker-Allowed: /
+
+/*
+  Permissions-Policy: browsing-topics=(), join-ad-interest-group=(), run-ad-auction=(), attribution-reporting=()
