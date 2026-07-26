@@ -14,6 +14,15 @@ service cloud.firestore {
       }
     }
 
+    // Ephemeral P2P signaling (renamed from Blip). Same shape.
+    match /p2pRooms/{roomId} {
+      allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12;
+      match /{iceCol}/{iceId} {
+        allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12
+          && (iceCol == 'hostIce' || iceCol == 'guestIce');
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

@@ -848,8 +848,8 @@ self.addEventListener("fetch", (event) => {
               resolve(
                 new Response(
                   JSON.stringify(
-                    req.result
-                      .filter((r) => !r.bgf && !r.partial && !r.audiobook && r.blob)
+                    (req.result || [])
+                      .filter((r) => r && !r.bgf && !r.partial && !r.audiobook && r.blob)
                       .map((r) => r.id)
                   ),
                   {
