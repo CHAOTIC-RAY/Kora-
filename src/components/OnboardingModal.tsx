@@ -15,9 +15,8 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
 import {
-  CURATED_FEED_OPTIONS,
   DEFAULT_FEED_SUBSCRIPTIONS,
-  INTERNATIONAL_FEED_OPTIONS,
+  TOPIC_FEED_GROUPS,
 } from "../lib/feedStorage";
 import { DEFAULT_APP_SKIN, type AppSkinId } from "../lib/appSkin";
 
@@ -150,9 +149,17 @@ export default function OnboardingModal({
   const [autoCache, setAutoCache] = useState(true);
   const [dailyReminders, setDailyReminders] = useState(false);
   const [agreedToLicenses, setAgreedToLicenses] = useState(false);
-  const [selectedFeedUrls, setSelectedFeedUrls] = useState<string[]>(() =>
-    DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl)
-  );
+  const [selectedTopics, setSelectedTopics] = useState<string[]>(["local", "world"]);
+
+  // Feed URLs derived from selected topics (each topic bundles multiple site feeds).
+  const selectedFeedUrls = React.useMemo(() => {
+    const urls = new Set<string>();
+    for (const topicId of selectedTopics) {
+      const group = TOPIC_FEED_GROUPS.find((g) => g.id === topicId);
+      group?.feeds.forEach((f) => urls.add(f.feedUrl));
+    }
+    return Array.from(urls);
+  }, [selectedTopics]);
 
   if (!isOpen) return null;
 
@@ -191,12 +198,6 @@ export default function OnboardingModal({
         ? selectedFeedUrls
         : DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl),
     });
-  };
-
-  const toggleFeed = (feedUrl: string) => {
-    setSelectedFeedUrls((prev) =>
-      prev.includes(feedUrl) ? prev.filter((url) => url !== feedUrl) : [...prev, feedUrl]
-    );
   };
 
   return (
@@ -350,84 +351,59 @@ export default function OnboardingModal({
                         </h3>
                       </div>
                       <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-                        Choose Maldives and international RSS sources for your Read tab. Your Daily News Brief uses these.
+                        Pick topics you care about — each one loads several trusted site feeds into your Read tab. Your Daily News Brief uses these.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-kindle-text-muted shrink-0 pt-0.5">
-                      {selectedFeedUrls.length} selected
+                      {selectedFeedUrls.length} feeds
                     </span>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-kindle-text">
-                      <Rss className="w-3.5 h-3.5 text-sky-500" />
-                      Maldives
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => {
-                        const selected = selectedFeedUrls.includes(feed.feedUrl);
-                        return (
-                          <button
-                            key={feed.feedUrl}
-                            type="button"
-                            onClick={() => toggleFeed(feed.feedUrl)}
-                            className={`text-left px-3 py-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
-                              selected
-                                ? "border-kindle-accent bg-kindle-accent/10 text-kindle-text"
-                                : "border-kindle-border bg-kindle-bg/40 text-kindle-text-muted hover:text-kindle-text"
-                            }`}
-                          >
-                            <span className="text-xs font-bold truncate">{feed.title}</span>
-                            {selected && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-kindle-text">
-                      <Globe className="w-3.5 h-3.5 text-amber-500" />
-                      International
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {INTERNATIONAL_FEED_OPTIONS.map((feed) => {
-                        const selected = selectedFeedUrls.includes(feed.feedUrl);
-                        return (
-                          <button
-                            key={feed.feedUrl}
-                            type="button"
-                            onClick={() => toggleFeed(feed.feedUrl)}
-                            className={`text-left px-3 py-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
-                              selected
-                                ? "border-kindle-accent bg-kindle-accent/10 text-kindle-text"
-                                : "border-kindle-border bg-kindle-bg/40 text-kindle-text-muted hover:text-kindle-text"
-                            }`}
-                          >
-                            <span className="text-xs font-bold truncate">{feed.title}</span>
-                            {selected && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {TOPIC_FEED_GROUPS.map((group) => {
+                      const selected = selectedTopics.includes(group.id);
+                      const count = group.feeds.length;
+                      return (
+                        <button
+                          key={group.id}
+                          type="button"
+                          onClick={() =>
+                            setSelectedTopics((prev) =>
+                              prev.includes(group.id)
+                                ? prev.filter((id) => id !== group.id)
+                                : [...prev, group.id]
+                            )
+                          }
+                          className={`text-left px-3 py-2.5 rounded-xl border transition flex items-center justify-between gap-2 ${
+                            selected
+                              ? "border-kindle-accent bg-kindle-accent/10 text-kindle-text"
+                              : "border-kindle-border bg-kindle-bg/40 text-kindle-text-muted hover:text-kindle-text"
+                          }`}
+                        >
+                          <span className="text-xs font-bold truncate">{group.label}</span>
+                          <span className="flex items-center gap-1 shrink-0">
+                            <span className="text-[9px] font-mono text-kindle-text-muted">{count}</span>
+                            {selected && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        setSelectedFeedUrls(DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl))
-                      }
-                      className="px-3 py-1.5 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text"
-                    >
-                      Maldives only
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedFeedUrls(CURATED_FEED_OPTIONS.map((feed) => feed.feedUrl))}
+                      onClick={() => setSelectedTopics(TOPIC_FEED_GROUPS.map((g) => g.id))}
                       className="px-3 py-1.5 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text"
                     >
                       Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTopics([])}
+                      className="px-3 py-1.5 rounded-lg border border-kindle-border text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text"
+                    >
+                      Clear
                     </button>
                   </div>
                 </div>

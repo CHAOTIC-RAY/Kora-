@@ -97,10 +97,103 @@ export const INTERNATIONAL_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt"
   },
 ];
 
-export const CURATED_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = [
-  ...DEFAULT_FEED_SUBSCRIPTIONS,
-  ...INTERNATIONAL_FEED_OPTIONS,
+/** Topic → multiple site feeds. Used by onboarding so users pick interests, not raw URLs. */
+export interface TopicFeedGroup {
+  id: string;
+  label: string;
+  feeds: Omit<FeedSubscription, "id" | "addedAt">[];
+}
+
+export const TOPIC_FEED_GROUPS: TopicFeedGroup[] = [
+  {
+    id: "local",
+    label: "Local & Updates",
+    feeds: DEFAULT_FEED_SUBSCRIPTIONS,
+  },
+  {
+    id: "world",
+    label: "World News",
+    feeds: [
+      { title: "BBC World", siteUrl: "https://www.bbc.com/news/world", feedUrl: "https://feeds.bbci.co.uk/news/world/rss.xml" },
+      { title: "The Guardian World", siteUrl: "https://www.theguardian.com/world", feedUrl: "https://www.theguardian.com/world/rss" },
+      { title: "Reuters World", siteUrl: "https://www.reuters.com/world/", feedUrl: "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best" },
+      { title: "Al Jazeera", siteUrl: "https://www.aljazeera.com/", feedUrl: "https://www.aljazeera.com/xml/rss/all.xml" },
+      { title: "NPR News", siteUrl: "https://www.npr.org/", feedUrl: "https://feeds.npr.org/1001/rss.xml" },
+    ],
+  },
+  {
+    id: "technology",
+    label: "Technology",
+    feeds: [
+      { title: "The Verge", siteUrl: "https://www.theverge.com/", feedUrl: "https://www.theverge.com/rss/index.xml" },
+      { title: "Ars Technica", siteUrl: "https://arstechnica.com/", feedUrl: "http://feeds.arstechnica.com/arstechnica/index" },
+      { title: "TechCrunch", siteUrl: "https://techcrunch.com/", feedUrl: "https://techcrunch.com/feed/" },
+      { title: "Wired", siteUrl: "https://www.wired.com/", feedUrl: "https://www.wired.com/feed/rss" },
+    ],
+  },
+  {
+    id: "gaming",
+    label: "Gaming",
+    feeds: [
+      { title: "IGN", siteUrl: "https://www.ign.com/", feedUrl: "https://feeds.ign.com/ign/all" },
+      { title: "PC Gamer", siteUrl: "https://www.pcgamer.com/", feedUrl: "https://www.pcgamer.com/feeds/all" },
+      { title: "Polygon", siteUrl: "https://www.polygon.com/", feedUrl: "https://www.polygon.com/rss/index.xml" },
+      { title: "Eurogamer", siteUrl: "https://www.eurogamer.net/", feedUrl: "https://www.eurogamer.net/feed" },
+    ],
+  },
+  {
+    id: "movies",
+    label: "Movies & TV",
+    feeds: [
+      { title: "Variety", siteUrl: "https://variety.com/", feedUrl: "https://variety.com/feed/" },
+      { title: "The Hollywood Reporter", siteUrl: "https://www.hollywoodreporter.com/", feedUrl: "https://www.hollywoodreporter.com/feed/" },
+      { title: "Empire", siteUrl: "https://www.empireonline.com/", feedUrl: "https://www.empireonline.com/feed/" },
+      { title: "Collider", siteUrl: "https://collider.com/", feedUrl: "https://collider.com/feed/" },
+    ],
+  },
+  {
+    id: "science",
+    label: "Science",
+    feeds: [
+      { title: "NASA", siteUrl: "https://www.nasa.gov/", feedUrl: "https://www.nasa.gov/feed/" },
+      { title: "Nature", siteUrl: "https://www.nature.com/", feedUrl: "https://www.nature.com/nature.rss" },
+      { title: "Science Daily", siteUrl: "https://www.sciencedaily.com/", feedUrl: "https://www.sciencedaily.com/rss/all.xml" },
+      { title: "Ars Technica Science", siteUrl: "https://arstechnica.com/science/", feedUrl: "http://feeds.arstechnica.com/arstechnica/science" },
+    ],
+  },
+  {
+    id: "business",
+    label: "Business",
+    feeds: [
+      { title: "Bloomberg", siteUrl: "https://www.bloomberg.com/", feedUrl: "https://feeds.bloomberg.com/markets/news.rss" },
+      { title: "CNBC", siteUrl: "https://www.cnbc.com/", feedUrl: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partner=rss&id=10000664" },
+      { title: "Financial Times", siteUrl: "https://www.ft.com/", feedUrl: "https://www.ft.com/rss/home" },
+    ],
+  },
+  {
+    id: "sports",
+    label: "Sports",
+    feeds: [
+      { title: "ESPN", siteUrl: "https://www.espn.com/", feedUrl: "https://www.espn.com/espn/rss/news" },
+      { title: "BBC Sport", siteUrl: "https://www.bbc.com/sport", feedUrl: "https://feeds.bbci.co.uk/sport/rss.xml" },
+      { title: "Sky Sports", siteUrl: "https://www.skysports.com/", feedUrl: "https://www.skysports.com/rss/12040" },
+    ],
+  },
 ];
+
+export const TOPIC_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] =
+  TOPIC_FEED_GROUPS.flatMap((group) => group.feeds);
+
+export const CURATED_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt">[] = (() => {
+  const seen = new Set<string>();
+  const out: Omit<FeedSubscription, "id" | "addedAt">[] = [];
+  for (const feed of [...DEFAULT_FEED_SUBSCRIPTIONS, ...INTERNATIONAL_FEED_OPTIONS, ...TOPIC_FEED_OPTIONS]) {
+    if (seen.has(feed.feedUrl)) continue;
+    seen.add(feed.feedUrl);
+    out.push(feed);
+  }
+  return out;
+})();
 
 const DEFAULT_FEED_URLS = new Set(DEFAULT_FEED_SUBSCRIPTIONS.map((feed) => feed.feedUrl));
 const INTERNATIONAL_FEED_URLS = new Set(INTERNATIONAL_FEED_OPTIONS.map((feed) => feed.feedUrl));
