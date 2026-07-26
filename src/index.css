@@ -137,7 +137,7 @@
 
 @font-face {
   font-family: "Rakuten Sans";
-  src: local("Lexend"), local("Lexend Regular");
+  src: url("/fonts/RakutenSansUI-Regular.woff2") format("woff2");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -145,7 +145,15 @@
 
 @font-face {
   font-family: "Rakuten Sans";
-  src: local("Lexend"), local("Lexend Medium");
+  src: url("/fonts/RakutenSansUI-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Rakuten Sans";
+  src: url("/fonts/RakutenSansUI-Bold.woff2") format("woff2");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
