@@ -42,6 +42,7 @@ import { textDirection } from "../lib/textDirection";
 import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
 import TodayNewsBriefCard from "./TodayNewsBriefCard";
+import FeedTikTokScroll from "./FeedTikTokScroll";
 
 interface FeedViewProps {
   userId?: string;
@@ -53,6 +54,8 @@ interface FeedViewProps {
 }
 
 type FeedFilter = "all" | "unread" | "saved" | "briefs";
+/** Feed layout: classic card grid or TikTok-style vertical scroll. */
+type FeedLayout = "grid" | "scroll";
 /** Only two card sizes: full-width hero + half-width tile. */
 type BentoVariant = "featured" | "default";
 
@@ -365,6 +368,15 @@ function FeedView({
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
   const [addingFeed, setAddingFeed] = useState(false);
   const [readingArticle, setReadingArticle] = useState<FeedItem | null>(null);
+  const [feedLayout, setFeedLayout] = useState<FeedLayout>(() => {
+    const v = localStorage.getItem("kora_feed_layout");
+    return v === "scroll" || v === "grid" ? v : "grid";
+  });
+  const persistFeedLayout = (next: FeedLayout) => {
+    setFeedLayout(next);
+    localStorage.setItem("kora_feed_layout", next);
+  };
+  const performanceMode = localStorage.getItem("kora_performance_mode") === "1";
 
   const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
   const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
@@ -590,6 +602,23 @@ function FeedView({
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
+          <div className="flex items-center gap-0.5 rounded-xl border border-kindle-border bg-kindle-card p-0.5">
+            {(["grid", "scroll"] as FeedLayout[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => persistFeedLayout(mode)}
+                aria-pressed={feedLayout === mode}
+                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition ${
+                  feedLayout === mode
+                    ? "bg-kindle-text text-kindle-bg"
+                    : "text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                {mode === "grid" ? "Grid" : "Scroll"}
+              </button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -660,6 +689,14 @@ function FeedView({
             Add a feed source with Manage above, or share an article link to Kora from your browser.
           </p>
         </div>
+      ) : feedLayout === "scroll" ? (
+        <FeedTikTokScroll
+          items={visibleItems}
+          grayscaleCovers={grayscaleCovers}
+          perfMode={performanceMode}
+          onRead={(item) => void handleReadArticle(item)}
+          onSave={(item) => void handleSaveLater(item)}
+        />
       ) : (
         <div className="space-y-4">
           {filter === "all" && !selectedSubscriptionId && (
