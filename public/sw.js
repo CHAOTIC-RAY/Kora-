@@ -203,7 +203,9 @@ async function savePartialState(id, state) {
 
 async function resumePartialDownloads() {
   const all = await getAllDB();
-  const partials = all.filter((r) => r.partial && !r.bgf && (r.payload || r.audiobook));
+  const partials = (all || []).filter(
+    (r) => r && r.partial && !r.bgf && (r.payload || r.audiobook)
+  );
   for (const rec of partials) {
     if (rec.audiobook) {
       downloadAudiobookTrack(rec.audiobook, rec.received || 0, rec.chunks || [], rec.contentType || "audio/mpeg");

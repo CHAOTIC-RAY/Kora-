@@ -24,7 +24,7 @@
 
 @font-face {
   font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Regular.ttf") format("truetype");
+  src: local("Bookerly"), local(" serif");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -32,7 +32,7 @@
 
 @font-face {
   font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Bold.ttf") format("truetype");
+  src: local("Bookerly"), local(" serif");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -40,7 +40,7 @@
 
 @font-face {
   font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-Italic.ttf") format("truetype");
+  src: local("Bookerly"), local(" serif");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -48,7 +48,7 @@
 
 @font-face {
   font-family: "Bookerly";
-  src: url("https://raw.githubusercontent.com/itgoyo/Bookerly/master/Bookerly-BoldItalic.ttf") format("truetype");
+  src: local("Bookerly"), local(" serif");
   font-weight: 700;
   font-style: italic;
   font-display: swap;
@@ -56,7 +56,7 @@
 
 @font-face {
   font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Regular.ttf") format("truetype");
+  src: local("ChareInk"), local(" serif");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -64,7 +64,7 @@
 
 @font-face {
   font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Bold.ttf") format("truetype");
+  src: local("ChareInk"), local(" serif");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -72,7 +72,7 @@
 
 @font-face {
   font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-Italic.ttf") format("truetype");
+  src: local("ChareInk"), local(" serif");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -80,7 +80,7 @@
 
 @font-face {
   font-family: "ChareInk7SP";
-  src: url("https://raw.githubusercontent.com/Ting-Zhi/Kobo/master/ChareInk6SP-BoldItalic.ttf") format("truetype");
+  src: local("ChareInk"), local(" serif");
   font-weight: 700;
   font-style: italic;
   font-display: swap;
@@ -88,7 +88,7 @@
 
 @font-face {
   font-family: "Lexica Ultralegible";
-  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Regular.otf") format("opentype");
+  src: local("Lexica Ultralegible"), local(" sans-serif");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -96,7 +96,7 @@
 
 @font-face {
   font-family: "Lexica Ultralegible";
-  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Italic.otf") format("opentype");
+  src: local("Lexica Ultralegible"), local(" sans-serif");
   font-weight: 400;
   font-style: italic;
   font-display: swap;
@@ -104,7 +104,7 @@
 
 @font-face {
   font-family: "Lexica Ultralegible";
-  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-Bold.otf") format("opentype");
+  src: local("Lexica Ultralegible"), local(" sans-serif");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -112,11 +112,12 @@
 
 @font-face {
   font-family: "Lexica Ultralegible";
-  src: url("https://raw.githubusercontent.com/jacobxperez/lexica-ultralegible/main/fonts/otf/LexicaUltralegible-BoldItalic.otf") format("opentype");
+  src: local("Lexica Ultralegible"), local(" sans-serif");
   font-weight: 700;
   font-style: italic;
   font-display: swap;
 }
+
 
 @font-face {
   font-family: "Nata Sans";
