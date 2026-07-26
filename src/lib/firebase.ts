@@ -42,7 +42,10 @@ let initialized = false;
 function createFirestoreInstance(app: ReturnType<typeof initializeApp>) {
   const dbId = (rawFirebaseConfig as { firestoreDatabaseId?: string }).firestoreDatabaseId;
   const settings = {
-    experimentalForceLongPolling: true,
+    // Prefer the WebSocket transport (default). The previous
+    // experimentalForceLongPolling:true forced the HTTP /channel long-poll,
+    // which content blockers (uBlock/Brave Shields) flag as tracking and block
+    // with ERR_BLOCKED_BY_CLIENT. WebSocket is not matched by those rules.
     ignoreUndefinedProperties: true,
   };
 
