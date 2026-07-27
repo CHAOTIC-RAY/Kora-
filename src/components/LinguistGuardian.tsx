@@ -1,23 +1,31 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Swords, BookOpen, ScrollText, Brain, Crown, X, Share2, Copy, Check } from "lucide-react";
+import { Swords, BookOpen, ScrollText, Brain, Crown, X, Share2, Copy, Check, Wifi, Cpu, Users } from "lucide-react";
 import { getCustomDictionary, DictionaryEntry } from "../lib/dictionary";
+import { db, auth, isRealFirebase } from "../lib/firebase";
+import {
+  doc,
+  onSnapshot,
+  updateDoc,
+  setDoc,
+  deleteDoc,
+  getDoc,
+} from "firebase/firestore";
 
 /* ── Linguist Guardian ──────────────────────────────────────────────
-   2D-sprite word-battle in the spirit of Tuxemon / classic monster
-   RPGs. You command the Linguist (pixel owl-scholar); the boss is
-   "The Forgetting" (a purple ink-blob). Damage = correct answers.
-
-   • Single-player runs off your Reader Arsenal (words you highlight).
-   • "Share Battle" mints a link encoding the mode + a seed. Opening
-     the link starts the SAME battle from a fixed shared pool, so it
-     works fully offline — no Firestore needed for the shared challenge.
-   • Live 1v1 sync (battleRooms) still needs Firestore rules published.
+   2D-sprite word-battle (Tuxemon spirit). Three match types:
+     • solo  — you vs "The Forgetting" (practice; shareable via link)
+     • local — free-for-all, hot-seat, 2–3 players, any seats can be CPU
+     • online— free-for-all over Firestore rooms (needs rules published)
+   FFA rule: a correct answer splashes ALL opponents; a wrong answer
+   damages YOU. Last fighter standing wins.
    ─────────────────────────────────────────────────────────────────── */
 
 type Mode = "definer" | "cloze" | "sage";
 type Phase = "menu" | "play" | "win" | "lose";
-type Anim = "idle" | "playerStrike" | "bossHit" | "playerHit" | "bossStrike";
+type MatchType = "solo" | "local" | "online";
+type Sprite = "guardian" | "rival" | "boss";
+type SlotKind = "you" | "cpu" | "remote";
 
 interface ArsenalWord extends DictionaryEntry {
   mastery: number;
@@ -35,7 +43,6 @@ const MODES: { id: Mode; label: string; blurb: string; icon: typeof Swords }[] =
   { id: "sage", label: "The Sage", blurb: "Strategy · pick the word that fits the nuance", icon: Brain },
 ];
 
-// Fixed pool used for shared (link) battles so both players face identical words.
 const SHARED_POOL: ArsenalWord[] = [
   { word: "ephemeral", definition: "Lasting a very short time; transient.", example: "The beauty of the sunset was ephemeral.", isCustom: true, mastery: 0 },
   { word: "lucid", definition: "Expressed clearly; easy to understand.", example: "He gave a lucid explanation of the motif.", isCustom: true, mastery: 0 },
@@ -49,10 +56,7 @@ const SHARED_POOL: ArsenalWord[] = [
   { word: "profound", definition: "Very great or intense; showing deep insight.", example: "The book offered a profound reflection on time.", isCustom: true, mastery: 0 },
 ];
 
-const MASTERY_TO_LEVEL = (m: number) => Math.floor(m / 3) + 1;
-const PRESTIGE_AT = 9;
 const KEY = "kora_arsenal_mastery";
-
 function loadMastery(): Record<string, number> {
   try {
     return JSON.parse(localStorage.getItem(KEY) || "{}");
@@ -65,10 +69,7 @@ function saveMastery(m: Record<string, number>) {
 }
 function buildArsenal(): ArsenalWord[] {
   const custom = getCustomDictionary();
-  const base: ArsenalWord[] =
-    custom.length > 0
-      ? custom.map((e) => ({ ...e, mastery: 0 }))
-      : SHARED_POOL;
+  const base: ArsenalWord[] = custom.length > 0 ? custom.map((e) => ({ ...e, mastery: 0 })) : SHARED_POOL;
   const mastery = loadMastery();
   return base.map((e) => ({ ...e, mastery: mastery[e.word.toLowerCase()] || 0 }));
 }
@@ -78,7 +79,6 @@ function blankWord(sentence?: string, word?: string): string {
   return sentence.replace(re, "______");
 }
 
-// Seeded RNG (mulberry32) so a shared battle is reproducible.
 function mulberry32(seed: number) {
   return function () {
     seed |= 0;
@@ -97,9 +97,32 @@ function shuffle<T>(arr: T[], rnd: () => number): T[] {
   return a;
 }
 
-// ── Pixel sprites (16×16 char grids) ──────────────────────────────
+// Pure question builder (deterministic given pool + rng).
+function buildQuestion(m: Mode, pool: ArsenalWord[], rnd: () => number): Q {
+  const usable = pool.filter((w) => w.word && w.definition);
+  const target = usable[Math.floor(rnd() * usable.length)];
+  if (m === "definer") {
+    const others = shuffle(usable.filter((w) => w.word !== target.word), rnd).slice(0, 3);
+    return { prompt: `DEFINITION — ${target.definition}`, answer: target.word, options: shuffle([...others.map((w) => w.word), target.word], rnd), type: "choice" };
+  }
+  if (m === "cloze") {
+    return { prompt: `CLOZE — ${blankWord(target.example, target.word) || "Definition: " + target.definition}`, answer: target.word, options: [], type: "type" };
+  }
+  const others = shuffle(usable.filter((w) => w.word !== target.word), rnd).slice(0, 2);
+  const mood =
+    target.word === "somber"
+      ? "The mood is somber but hopeful — which word fits the nuance?"
+      : `A passage calls for a ${target.word} tone. Which Arsenal word lands the nuance?`;
+  return { prompt: `SAGE — ${mood}`, answer: target.word, options: shuffle([...others.map((w) => w.word), target.word], rnd), type: "choice" };
+}
+function buildQueue(m: Mode, pool: ArsenalWord[], seed: number, count = 80): Q[] {
+  const rnd = mulberry32(seed);
+  return Array.from({ length: count }, () => buildQuestion(m, pool, rnd));
+}
+
+// ── Pixel sprites ──────────────────────────────────────────────────
 type Palette = Record<string, string>;
-function PixelSprite({ grid, palette, scale = 7 }: { grid: string[]; palette: Palette; scale?: number }) {
+function PixelSprite({ grid, palette, scale = 6 }: { grid: string[]; palette: Palette; scale?: number }) {
   const w = grid[0].length;
   const h = grid.length;
   const rects: React.ReactNode[] = [];
@@ -110,132 +133,218 @@ function PixelSprite({ grid, palette, scale = 7 }: { grid: string[]; palette: Pa
     })
   );
   return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      width={w * scale}
-      height={h * scale}
-      shapeRendering="crispEdges"
-      style={{ imageRendering: "pixelated", display: "block" }}
-      aria-hidden
-    >
+    <svg viewBox={`0 0 ${w} ${h}`} width={w * scale} height={h * scale} shapeRendering="crispEdges" style={{ imageRendering: "pixelated", display: "block" }} aria-hidden>
       {rects}
     </svg>
   );
 }
 
 const GUARDIAN: string[] = [
-  "................",
-  "................",
-  ".....oooo.......",
-  "....oooooo......",
-  "...wwwwwwww.....",
-  "..wwwwwwwwww....",
-  "..wwkwwwwkww....",
-  "..wwkwkkwkkw....",
-  "..wwwwwwwwww....",
-  "...wwwoowwww....",
-  "...wwwwwwww.....",
-  "..wwwwwwwwww....",
-  "..wwwwwwwwww....",
-  "...wddwwddw.....",
-  "................",
-  "................",
+  "................","................",".....oooo.......","....oooooo......","...wwwwwwww.....","..wwwwwwwwww....","..wwkwwwwkww....","..wwkwkkwkkw....","..wwwwwwwwww....","...wwwoowwww....","...wwwwwwww.....","..wwwwwwwwww....","..wwwwwwwwww....","...wddwwddw.....","................","................",
 ];
 const GUARDIAN_PAL: Palette = { o: "#3a2f1f", w: "#f0e6cf", k: "#1a1510", d: "#b9824a" };
 
+const RIVAL: string[] = [
+  "................","................","......gggg......","....gggggggg....","...gggggggggg...","..gwgggggwwgg...","..gwgwwgwwgg....","..ggggkkgggg....","...gggnnnggg....","...gggggggg.....","....gggggg......",".gg gggggg gg..",".gg.g....g.gg...",".gg........gg...","................","................",
+];
+const RIVAL_PAL: Palette = { g: "#7fae5a", w: "#ffffff", k: "#10240f", n: "#3a2358" };
+
 const BOSS: string[] = [
-  "................",
-  "................",
-  ".....pppppp.....",
-  "...pppppppppp...",
-  "..pppppppppppp..",
-  ".pppppppppppppp.",
-  ".ppkkppppppkkpp.",
-  ".ppkpwppppwkpkp.",
-  ".pppppppppppppp.",
-  ".pppppmmmmppppp.",
-  "..pppppppppppp..",
-  "...pppppppppp...",
-  "....pppppppp....",
-  "................",
-  "................",
-  "................",
+  "................","................",".....pppppp.....","...pppppppppp...","..pppppppppppp..",".pppppppppppppp.",".ppkkppppppkkpp.",".ppkpwppppwkpkp.",".pppppppppppppp.",".pppppmmmmppppp.","..pppppppppppp..","...pppppppppp...","....pppppppp....","................","................","................",
 ];
 const BOSS_PAL: Palette = { p: "#7a5ea8", k: "#140b1f", w: "#ffffff", m: "#3a2358" };
 
+const SPRITES: Record<Sprite, { grid: string[]; pal: Palette }> = {
+  guardian: { grid: GUARDIAN, pal: GUARDIAN_PAL },
+  rival: { grid: RIVAL, pal: RIVAL_PAL },
+  boss: { grid: BOSS, pal: BOSS_PAL },
+};
+const HP_COLORS = ["#6fbf73", "#e0b341", "#c0504d"];
+
+interface Fighter {
+  id: string;
+  name: string;
+  kind: SlotKind;
+  sprite: Sprite;
+  hp: number;
+  alive: boolean;
+}
+
+// ── Online helpers ─────────────────────────────────────────────────
+function myUid(): string {
+  try {
+    let u = localStorage.getItem("kora_uid");
+    if (!u) {
+      u = "u_" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem("kora_uid", u);
+    }
+    return u;
+  } catch {
+    return "u_" + Math.random().toString(36).slice(2, 10);
+  }
+}
+function genCode(): string {
+  const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const b = crypto.getRandomValues(new Uint32Array(6));
+  return Array.from(b, (x) => a[x % a.length]).join("");
+}
+
 export default function LinguistGuardian({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [arsenal, setArsenal] = useState<ArsenalWord[]>([]);
   const [phase, setPhase] = useState<Phase>("menu");
+  const [matchType, setMatchType] = useState<MatchType>("solo");
   const [mode, setMode] = useState<Mode>("definer");
-  const [bossHp, setBossHp] = useState(100);
-  const [playerHp, setPlayerHp] = useState(100);
+  const [size, setSize] = useState<2 | 3>(2);
+  const [cpuCount, setCpuCount] = useState(1);
+  const [fighters, setFighters] = useState<Fighter[]>([]);
+  const [turnIdx, setTurnIdx] = useState(0);
+  const [qIndex, setQIndex] = useState(0);
   const [question, setQuestion] = useState<Q | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [typed, setTyped] = useState("");
-  const [anim, setAnim] = useState<Anim>("idle");
+  const [flash, setFlash] = useState<{ idx: number; kind: "hit" | "strike" } | null>(null);
+  const [seed, setSeed] = useState(0);
   const [shared, setShared] = useState(false);
   const [shareCode, setShareCode] = useState("");
   const [copied, setCopied] = useState(false);
-  const rngRef = useRef<() => number>(Math.random);
-  const animTimer = useRef<number | undefined>(undefined);
+  const [roomCode, setRoomCode] = useState("");
+  const [roomStatus, setRoomStatus] = useState<"lobby" | "playing" | "done">("lobby");
+  const [roomMsg, setRoomMsg] = useState("");
+  const queueRef = useRef<Q[]>([]);
+  const flashTimer = useRef<number | undefined>(undefined);
+  const cpuTimer = useRef<number | undefined>(undefined);
+  const unsubRef = useRef<(() => void) | null>(null);
 
   const logMsg = (m: string) => setLog((l) => [`> ${m}`, ...l].slice(0, 40));
-  const flash = (a: Anim) => {
-    setAnim(a);
-    window.clearTimeout(animTimer.current);
-    animTimer.current = window.setTimeout(() => setAnim("idle"), 520);
+  const doFlash = (idx: number, kind: "hit" | "strike") => {
+    setFlash({ idx, kind });
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash(null), 520);
   };
 
-  const nextQuestion = (m: Mode, pool: ArsenalWord[]) => {
-    const rnd = rngRef.current;
-    const usable = pool.filter((w) => w.word && w.definition);
-    if (usable.length < 2) {
-      setQuestion({
-        prompt: "Your Arsenal is too small. Highlight more words in the Kora Reader to forge spells.",
-        answer: "",
-        options: [],
-        type: "choice",
-      });
-      return;
-    }
-    const target = usable[Math.floor(rnd() * usable.length)];
-    if (m === "definer") {
-      const others = shuffle(usable.filter((w) => w.word !== target.word), rnd).slice(0, 3);
-      const opts = shuffle([...others.map((w) => w.word), target.word], rnd);
-      setQuestion({ prompt: `DEFINITION — ${target.definition}`, answer: target.word, options: opts, type: "choice" });
-    } else if (m === "cloze") {
-      setQuestion({
-        prompt: `CLOZE — ${blankWord(target.example, target.word) || "No sentence saved. Definition: " + target.definition}`,
-        answer: target.word,
-        options: [],
-        type: "type",
-      });
-    } else {
-      const others = shuffle(usable.filter((w) => w.word !== target.word), rnd).slice(0, 2);
-      const opts = shuffle([...others.map((w) => w.word), target.word], rnd);
-      const mood =
-        target.word === "somber"
-          ? "The mood is somber but hopeful — which word fits the nuance?"
-          : `A passage calls for a ${target.word} tone. Which Arsenal word lands the nuance?`;
-      setQuestion({ prompt: `SAGE — ${mood}`, answer: target.word, options: opts, type: "choice" });
-    }
-  };
+  const aliveCount = fighters.filter((f) => f.alive).length;
+  const active = fighters[turnIdx];
+  const isMyTurn =
+    !!active &&
+    phase === "play" &&
+    active.alive &&
+    (matchType === "online"
+      ? active.id === (auth?.currentUser?.uid || myUid())
+      : matchType === "local"
+      ? active.kind !== "cpu"
+      : active.kind === "you");
 
-  const startBattle = (m: Mode, useSharedPool = false, seed?: number) => {
-    const pool = useSharedPool ? SHARED_POOL : buildArsenal();
-    if (useSharedPool && seed != null) rngRef.current = mulberry32(seed);
-    else rngRef.current = Math.random;
-    setShared(useSharedPool);
-    setArsenal(pool);
-    setMode(m);
-    setPhase("play");
-    setBossHp(100);
-    setPlayerHp(100);
+  // ── Begin a battle ──
+  const beginBattle = (cfg: {
+    match: MatchType;
+    m: Mode;
+    pool: ArsenalWord[];
+    fighters: Fighter[];
+    sd: number;
+    sharedMode?: boolean;
+  }) => {
+    const q = buildQueue(cfg.m, cfg.pool, cfg.sd);
+    queueRef.current = q;
+    setSeed(cfg.sd);
+    setShared(!!cfg.sharedMode);
+    setFighters(cfg.fighters);
+    setTurnIdx(0);
+    setQIndex(0);
+    setQuestion(q[0]);
     setLog([]);
     setTyped("");
-    setAnim("idle");
-    logMsg(`Battle begun · ${MODES.find((x) => x.id === m)?.label}${useSharedPool ? " · SHARED" : ""}`);
-    nextQuestion(m, pool);
+    setPhase("play");
+    const names = cfg.fighters.map((f) => f.name).join(" vs ");
+    logMsg(`Battle begun · ${MODES.find((x) => x.id === cfg.m)?.label} · ${names}`);
+  };
+
+  const startSolo = (m: Mode, withSeed?: number) => {
+    setMatchType("solo");
+    const sd = withSeed ?? Math.floor(Math.random() * 0xffffff);
+    const you: Fighter = { id: "you", name: "Linguist", kind: "you", sprite: "guardian", hp: 100, alive: true };
+    const boss: Fighter = { id: "boss", name: "The Forgetting", kind: "cpu", sprite: "boss", hp: 100, alive: true };
+    beginBattle({ match: "solo", m, pool: withSeed ? SHARED_POOL : buildArsenal(), fighters: [you, boss], sd });
+  };
+
+  const startLocal = (m: Mode) => {
+    setMatchType("local");
+    const sd = Math.floor(Math.random() * 0xffffff);
+    const fighters: Fighter[] = [
+      { id: "you", name: "You", kind: "you", sprite: "guardian", hp: 100, alive: true },
+    ];
+    const kinds: { sprite: Sprite; name: string }[] = [
+      { sprite: "rival", name: "Rival" },
+      { sprite: "boss", name: "The Forgetting" },
+    ];
+    let cpuLeft = cpuCount;
+    let humanLeft = size - 1 - cpuCount;
+    for (let i = 0; i < size - 1; i++) {
+      const k = kinds[i];
+      if (humanLeft > 0) {
+        fighters.push({ id: `p${i + 1}`, name: `Player ${i + 1}`, kind: "you", sprite: k.sprite, hp: 100, alive: true });
+        humanLeft--;
+      } else if (cpuLeft > 0) {
+        fighters.push({ id: `cpu${i}`, name: `CPU ${k.name}`, kind: "cpu", sprite: k.sprite, hp: 100, alive: true });
+        cpuLeft--;
+      } else {
+        // extra human seat if neither cpu nor human budget consumed it
+        fighters.push({ id: `p${i + 1}`, name: `Player ${i + 1}`, kind: "you", sprite: k.sprite, hp: 100, alive: true });
+      }
+    }
+    beginBattle({ match: "local", m, pool: SHARED_POOL, fighters, sd });
+  };
+
+  // ── Resolve a move (offline local/solo) ──
+  const resolveOffline = (guess: string) => {
+    if (!question || !active) return;
+    const correct = guess.trim().toLowerCase() === question.answer.toLowerCase();
+    setFighters((prev) => {
+      const fs = prev.map((f) => ({ ...f }));
+      const ai = fs.findIndex((f) => f.id === active.id);
+      if (correct) {
+        const dmg = 18 + Math.floor(Math.random() * 10);
+        fs.forEach((f, i) => {
+          if (i !== ai && f.alive) {
+            f.hp = Math.max(0, f.hp - dmg);
+            if (f.hp <= 0) f.alive = false;
+          }
+        });
+        logMsg(`✦ ${active.name} splashes ${dmg} to all foes`);
+        doFlash(ai, "strike");
+        awardMastery(question.answer);
+      } else {
+        const back = 12 + Math.floor(Math.random() * 8);
+        fs[ai].hp = Math.max(0, fs[ai].hp - back);
+        if (fs[ai].hp <= 0) fs[ai].alive = false;
+        logMsg(`✗ ${active.name} misses — takes ${back}`);
+        doFlash(ai, "hit");
+      }
+      const alive = fs.filter((f) => f.alive);
+      setTyped("");
+      if (alive.length <= 1) {
+        const winner = alive[0];
+        if (winner?.id === "you") {
+          setPhase("win");
+          logMsg(`VICTORY — ${winner.name}`);
+        } else {
+          setPhase("lose");
+          logMsg(`DEFEAT — ${winner ? winner.name + " wins" : "nobody stands"}`);
+        }
+        return fs;
+      }
+      // advance turn
+      let ni = ai;
+      for (let s = 0; s < fs.length; s++) {
+        ni = (ni + 1) % fs.length;
+        if (fs[ni].alive) break;
+      }
+      setTurnIdx(ni);
+      setQIndex((q) => {
+        const next = q + 1;
+        setQuestion(queueRef.current[next % queueRef.current.length]);
+        return next;
+      });
+      return fs;
+    });
   };
 
   const awardMastery = (word: string) => {
@@ -243,71 +352,190 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
     const key = word.toLowerCase();
     mastery[key] = (mastery[key] || 0) + 1;
     saveMastery(mastery);
-    setArsenal((a) => a.map((w) => (w.word.toLowerCase() === key ? { ...w, mastery: mastery[key] } : w)));
-    if (mastery[key] === PRESTIGE_AT) logMsg(`★ ${word} PRESTIGED — passive buff unlocked`);
   };
 
-  const resolve = (guess: string) => {
-    if (!question) return;
+  // CPU auto-play
+  useEffect(() => {
+    window.clearTimeout(cpuTimer.current);
+    if (phase !== "play" || matchType === "online") return;
+    if (active && active.kind === "cpu" && active.alive) {
+      cpuTimer.current = window.setTimeout(() => {
+        const q = queueRef.current[qIndex % queueRef.current.length];
+        const acc = 0.72;
+        const correct = Math.random() < acc;
+        const guess = correct ? q.answer : q.options.find((o) => o !== q.answer) || q.answer;
+        if (matchType === "local") resolveOffline(guess);
+      }, 950);
+    }
+    return () => window.clearTimeout(cpuTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, phase, matchType, qIndex]);
+
+  // ── Online FFA ──
+  const roomRef = (code: string) => doc(db, "battleRooms", code.toUpperCase());
+  const startOnline = async (m: Mode, create: boolean, code?: string) => {
+    if (!isRealFirebase || !db) {
+      setRoomMsg("Online needs Firebase (publish battleRooms rules).");
+      return;
+    }
+    const uid = auth?.currentUser?.uid || myUid();
+    const sd = Math.floor(Math.random() * 0xffffff);
+    const code_ = code || genCode();
+    setRoomCode(code_);
+    setMatchType("online");
+    setMode(m);
+    try {
+      if (create) {
+        await setDoc(roomRef(code_), {
+          mode: m,
+          seed: sd,
+          status: "lobby",
+          turnIdx: 0,
+          qIndex: 0,
+          createdAt: Date.now(),
+          players: [{ id: uid, name: "You", kind: "you", sprite: "guardian", hp: 100, alive: true }],
+          log: [`Room ${code_} created`],
+          winner: null,
+        });
+      } else {
+        const snap = await getDoc(roomRef(code_));
+        if (!snap.exists()) {
+          setRoomMsg("Room not found.");
+          return;
+        }
+        const data = snap.data() as any;
+        if (data.players.length >= 3) {
+          setRoomMsg("Room full.");
+          return;
+        }
+        const sprite: Sprite = data.players.length === 1 ? "rival" : "boss";
+        await updateDoc(roomRef(code_), {
+          players: [...data.players, { id: uid, name: "You", kind: "you", sprite, hp: 100, alive: true }],
+        });
+      }
+      setPhase("play");
+      setRoomStatus("lobby");
+      watchRoom(code_);
+    } catch (e) {
+      setRoomMsg("Online error: " + (e as Error).message);
+    }
+  };
+
+  const watchRoom = (code: string) => {
+    if (!db) return;
+    unsubRef.current?.();
+    unsubRef.current = onSnapshot(roomRef(code), (snap) => {
+      const data = snap.data() as any;
+      if (!data) return;
+      const fs: Fighter[] = data.players;
+      setFighters(fs);
+      setTurnIdx(data.turnIdx ?? 0);
+      setQIndex(data.qIndex ?? 0);
+      setLog(data.log ?? []);
+      setRoomStatus(data.status);
+      const q = buildQueue(data.mode, SHARED_POOL, data.seed)[(data.qIndex ?? 0) % 80];
+      setQuestion(q);
+      if (data.status === "done") {
+        const winner = fs.find((f: Fighter) => f.id === data.winner);
+        if (winner?.id === (auth?.currentUser?.uid || myUid())) setPhase("win");
+        else setPhase("lose");
+      }
+    });
+  };
+
+  const submitOnlineMove = (guess: string) => {
+    if (!db || !question || !active) return;
+    const uid = auth?.currentUser?.uid || myUid();
+    if (active.id !== uid) return;
     const correct = guess.trim().toLowerCase() === question.answer.toLowerCase();
+    const fs = fighters.map((f) => ({ ...f }));
+    const ai = fs.findIndex((f) => f.id === uid);
     if (correct) {
       const dmg = 18 + Math.floor(Math.random() * 10);
-      setBossHp((h) => Math.max(0, h - dmg));
-      logMsg(`✦ ${question.answer} strikes! -${dmg} boss HP`);
-      flash("bossHit");
+      fs.forEach((f, i) => {
+        if (i !== ai && f.alive) {
+          f.hp = Math.max(0, f.hp - dmg);
+          if (f.hp <= 0) f.alive = false;
+        }
+      });
+      logMsg(`✦ You splash ${dmg} to all foes`);
       awardMastery(question.answer);
-      if (bossHp - dmg <= 0) {
-        setPhase("win");
-        logMsg("ARCHIVE DEFENDED — boss vanquished");
-        return;
-      }
-      nextQuestion(mode, arsenal);
     } else {
       const back = 12 + Math.floor(Math.random() * 8);
-      setPlayerHp((h) => Math.max(0, h - back));
-      logMsg(`✗ "${guess}" misses — boss strikes -${back} HP`);
-      flash("playerHit");
-      if (playerHp - back <= 0) {
-        setPhase("lose");
-        logMsg("The Archive falls…");
-        return;
-      }
+      fs[ai].hp = Math.max(0, fs[ai].hp - back);
+      if (fs[ai].hp <= 0) fs[ai].alive = false;
+      logMsg(`✗ You miss — take ${back}`);
     }
+    const alive = fs.filter((f) => f.alive);
+    let ni = ai;
+    for (let s = 0; s < fs.length; s++) {
+      ni = (ni + 1) % fs.length;
+      if (fs[ni].alive) break;
+    }
+    const done = alive.length <= 1;
+    const line = correct ? `✦ You splashed ${18 + Math.floor(Math.random() * 10)} to all foes` : `✗ You miss — took ${12 + Math.floor(Math.random() * 8)}`;
+    updateDoc(roomRef(roomCode), {
+      players: fs,
+      turnIdx: ni,
+      qIndex: qIndex + 1,
+      log: [line, ...log].slice(0, 40),
+      status: done ? "done" : "playing",
+      winner: done ? alive[0]?.id ?? null : null,
+    }).catch((e) => setRoomMsg("Sync error: " + (e as Error).message));
     setTyped("");
   };
 
-  // Open shared battle from ?guardian=CODE in the URL.
+  const forfeit = () => {
+    if (matchType === "online") {
+      const uid = auth?.currentUser?.uid || myUid();
+      const fs = fighters.map((f) => (f.id === uid ? { ...f, hp: 0, alive: false } : f));
+      const alive = fs.filter((f) => f.alive);
+      let ni = fs.findIndex((f) => f.id === uid);
+      for (let s = 0; s < fs.length; s++) {
+        ni = (ni + 1) % fs.length;
+        if (fs[ni].alive) break;
+      }
+      if (db) updateDoc(roomRef(roomCode), { players: fs, turnIdx: ni, status: alive.length <= 1 ? "done" : "playing", winner: alive.length <= 1 ? alive[0]?.id ?? null : null });
+    } else {
+      setFighters((prev) => {
+        const fs = prev.map((f) => (f.id === "you" ? { ...f, hp: 0, alive: false } : f));
+        const alive = fs.filter((f) => f.alive);
+        setPhase("lose");
+        logMsg("You forfeited");
+        return fs;
+      });
+    }
+  };
+
+  // cleanup
   useEffect(() => {
-    if (!open) return;
-    const code = new URLSearchParams(location.search).get("guardian");
-    if (!code || code.length < 2) return;
-    const map: Record<string, Mode> = { d: "definer", c: "cloze", s: "sage" };
-    const m = map[code[0]];
-    const seed = parseInt(code.slice(1), 36);
-    if (m && !isNaN(seed)) {
-      setShareCode(code.toUpperCase());
-      startBattle(m, true, seed);
+    return () => {
+      window.clearTimeout(flashTimer.current);
+      window.clearTimeout(cpuTimer.current);
+      unsubRef.current?.();
+    };
+  }, []);
+
+  // reset on open
+  useEffect(() => {
+    if (open) {
+      setPhase("menu");
+      setFighters([]);
+      setQuestion(null);
+      setLog([]);
+      setRoomMsg("");
+      setShareCode("");
+      unsubRef.current?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    if (phase === "menu") {
-      setArsenal(buildArsenal());
-      setLog([]);
-      setQuestion(null);
-      setShared(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, phase]);
-
-  useEffect(() => () => window.clearTimeout(animTimer.current), []);
-
+  // Share link (solo)
   const mintShare = () => {
-    const seed = Math.floor(Math.random() * 0xffffff);
-    const code = `${mode[0]}${seed.toString(36)}`.toUpperCase();
+    const sd = Math.floor(Math.random() * 0xffffff);
+    const code = `${mode[0]}${sd.toString(36)}`.toUpperCase();
     setShareCode(code);
+    startSolo(mode, sd);
     const url = `${location.origin}${location.pathname}?guardian=${code}`;
     navigator.clipboard?.writeText(url).then(
       () => {
@@ -316,21 +544,27 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
       },
       () => {}
     );
-    logMsg(`Battle code minted: ${code} (link copied)`);
   };
+
+  // open shared solo battle
+  useEffect(() => {
+    if (!open) return;
+    const code = new URLSearchParams(location.search).get("guardian");
+    if (!code || code.length < 2) return;
+    const map: Record<string, Mode> = { d: "definer", c: "cloze", s: "sage" };
+    const m = map[code[0]];
+    const sd = parseInt(code.slice(1), 36);
+    if (m && !isNaN(sd)) {
+      setShareCode(code.toUpperCase());
+      startSolo(m, sd);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
 
-  const playerLevel = Math.max(1, arsenal.reduce((s, w) => s + MASTERY_TO_LEVEL(w.mastery), 0));
-
   const popup = (
-    <motion.div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
-    >
+    <motion.div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
       <motion.div
         className="relative w-full max-w-2xl max-h-[94vh] bg-[#0f0d09] text-[#e9e2d0] rounded-3xl overflow-hidden flex flex-col shadow-2xl border-2 border-[#3a3527]"
         initial={{ scale: 0.96, opacity: 0 }}
@@ -348,7 +582,7 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
             </div>
             <div>
               <h2 className="font-serif text-base font-bold tracking-tight leading-none">Linguist Guardian</h2>
-              <p className="text-[9px] uppercase tracking-widest opacity-50">Defend the Kora Archives</p>
+              <p className="text-[9px] uppercase tracking-widest opacity-50">{matchType === "solo" ? "Practice" : matchType === "local" ? "Local Free-For-All" : "Online Free-For-All"}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-full border border-white/10 hover:bg-white/5" aria-label="Close">
@@ -359,14 +593,24 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {phase === "menu" && (
             <div className="space-y-4">
-              <p className="text-xs opacity-70 text-center">Choose your trial. Every word you master in the Reader is already in your Arsenal.</p>
+              {/* Match type */}
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { id: "solo", label: "Practice", icon: Swords },
+                  { id: "local", label: "Local FFA", icon: Users },
+                  { id: "online", label: "Online FFA", icon: Wifi },
+                ] as const).map((t) => (
+                  <button key={t.id} onClick={() => setMatchType(t.id)} className={`rounded-2xl border-2 p-3 flex flex-col items-center gap-1 transition ${matchType === t.id ? "border-[#d4a574]/60 bg-[#1d1a13]" : "border-[#3a3527] bg-[#16140f]"}`}>
+                    <t.icon className="w-5 h-5 text-[#d4a574]" />
+                    <span className="text-[11px] font-bold">{t.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Mode */}
               <div className="grid gap-2">
                 {MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => startBattle(m.id)}
-                    className="rounded-2xl border-2 border-[#3a3527] bg-[#1d1a13] hover:border-[#d4a574]/50 p-3 text-left transition flex items-center gap-3"
-                  >
+                  <button key={m.id} onClick={() => setMode(m.id)} className={`rounded-2xl border-2 p-3 text-left transition flex items-center gap-3 ${mode === m.id ? "border-[#d4a574]/60 bg-[#1d1a13]" : "border-[#3a3527] bg-[#16140f]"}`}>
                     <m.icon className="w-5 h-5 text-[#d4a574]" />
                     <div>
                       <p className="font-serif font-bold">{m.label}</p>
@@ -376,161 +620,148 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
                 ))}
               </div>
 
-              {/* Share Battle */}
-              <div className="rounded-2xl border-2 border-dashed border-[#3a3527] p-3 space-y-2">
-                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-[#d4a574]">
-                  <Share2 className="w-3.5 h-3.5" /> Share Battle (link)
+              {/* Local config */}
+              {matchType === "local" && (
+                <div className="rounded-2xl border-2 border-[#3a3527] p-3 space-y-3">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold uppercase tracking-widest text-[#d4a574]">Players</span>
+                    <div className="flex gap-1">
+                      {([2, 3] as const).map((n) => (
+                        <button key={n} onClick={() => { setSize(n); setCpuCount(Math.min(cpuCount, n - 1)); }} className={`px-3 py-1 rounded-lg border ${size === n ? "border-[#d4a574]/60 bg-[#1d1a13]" : "border-[#3a3527]"}`}>{n}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold uppercase tracking-widest text-[#d4a574] flex items-center gap-1"><Cpu className="w-3.5 h-3.5" /> CPU seats</span>
+                    <div className="flex gap-1">
+                      {Array.from({ length: size }, (_, i) => (
+                        <button key={i} onClick={() => setCpuCount(i)} className={`px-3 py-1 rounded-lg border ${cpuCount === i ? "border-[#d4a574]/60 bg-[#1d1a13]" : "border-[#3a3527]"}`}>{i}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[10px] opacity-50">You + {size - 1 - cpuCount} human seat(s) + {cpuCount} CPU. Hot-seat: pass the device each turn.</p>
                 </div>
-                <p className="text-[10px] opacity-55 leading-relaxed">
-                  Mint a code + link. Whoever opens it fights the <b>same</b> battle from a fixed word pool — works fully offline. Live 1v1 sync needs Firestore rules.
-                </p>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    onClick={mintShare}
-                    className="px-3 py-2 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
-                  >
-                    <Share2 className="w-3.5 h-3.5" /> Mint &amp; Copy Link
-                  </button>
-                  {shareCode && (
-                    <span className="self-center font-mono text-sm text-[#d4a574] tracking-widest">{shareCode}</span>
-                  )}
-                  {shareCode && (
-                    <button
-                      onClick={() => {
-                        const url = `${location.origin}${location.pathname}?guardian=${shareCode}`;
-                        navigator.clipboard?.writeText(url);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 1600);
-                      }}
-                      className="self-center px-2.5 py-2 rounded-xl border border-[#3a3527] hover:border-[#d4a574]/50 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
-                    >
-                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      {copied ? "Copied" : "Copy Link"}
-                    </button>
-                  )}
+              )}
+
+              {/* Online config */}
+              {matchType === "online" && (
+                <div className="rounded-2xl border-2 border-dashed border-[#3a3527] p-3 space-y-2">
+                  <p className="text-[10px] opacity-60 leading-relaxed">
+                    Create a room (get a code) or join with a friend's code. Up to 3 fighters, synced over Firebase. Publish <code>battleRooms</code> rules in the Firebase Console to enable.
+                  </p>
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => startOnline(mode, true)} className="px-3 py-2 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider">Create Room</button>
+                    <input value={roomCode} onChange={(e) => setRoomCode(e.target.value.toUpperCase())} placeholder="CODE" className="w-28 bg-[#16140f] border-2 border-[#3a3527] rounded-xl px-2 py-2 text-sm outline-none focus:border-[#d4a574]/60 uppercase font-mono" />
+                    <button onClick={() => startOnline(mode, false, roomCode)} className="px-3 py-2 rounded-xl border-2 border-[#3a3527] hover:border-[#d4a574]/50 text-[10px] font-bold uppercase tracking-wider">Join</button>
+                  </div>
+                  {roomMsg && <p className="text-[10px] text-[#c0504d]">{roomMsg}</p>}
                 </div>
-              </div>
+              )}
+
+              {/* Start / share */}
+              <button
+                onClick={() => (matchType === "solo" ? startSolo(mode) : matchType === "local" ? startLocal(mode) : startOnline(mode, true))}
+                className="w-full px-4 py-3 rounded-2xl bg-[#d4a574] text-[#1a1510] text-xs font-bold uppercase tracking-wider active:scale-95"
+              >
+                {matchType === "solo" ? "Start Practice" : matchType === "local" ? `Start Local FFA (${size}P)` : "Create Online Room"}
+              </button>
+
+              {matchType === "solo" && (
+                <button onClick={mintShare} className="w-full px-4 py-2.5 rounded-2xl border-2 border-[#3a3527] hover:border-[#d4a574]/50 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5" /> Share Battle Link
+                </button>
+              )}
             </div>
           )}
 
           {phase === "play" && question && (
             <div className="space-y-3">
-              {/* ── Battle stage ── */}
-              <div className="relative rounded-2xl border-2 border-[#3a3527] overflow-hidden bg-gradient-to-b from-[#2a3a2e] via-[#243024] to-[#1a241b]">
-                {/* ground */}
+              {/* Stage */}
+              <div className="relative rounded-2xl border-2 border-[#3a3527] overflow-hidden bg-gradient-to-b from-[#2a3a2e] via-[#243024] to-[#1a241b] p-4">
                 <div className="absolute bottom-0 inset-x-0 h-1/3 bg-[#1c241a]" />
-                <div className="relative h-56 flex items-end justify-between px-6 py-4">
-                  {/* Enemy top-right */}
-                  <div className="flex-1" />
-                  <div className="flex flex-col items-center gap-1">
-                    <HpTag name="The Forgetting" level={40} hp={bossHp} align="right" />
-                    <motion.div
-                      animate={
-                        anim === "bossHit"
-                          ? { x: [0, -10, 10, -6, 6, 0], filter: ["brightness(1)", "brightness(2.2)", "brightness(1)"] }
-                          : anim === "bossStrike"
-                          ? { y: [0, 8, 0] }
-                          : { y: [0, -5, 0] }
-                      }
-                      transition={{ duration: anim === "idle" ? 2.2 : 0.5, repeat: anim === "idle" ? Infinity : 0, ease: "easeInOut" }}
-                      className="drop-shadow-[0_8px_10px_rgba(0,0,0,0.45)]"
-                    >
-                      <PixelSprite grid={BOSS} palette={BOSS_PAL} scale={7} />
-                    </motion.div>
-                  </div>
-                </div>
-
-                {/* Player bottom-left */}
-                <div className="relative px-6 pb-5 flex items-end">
-                  <div className="flex flex-col items-center gap-1">
-                    <motion.div
-                      animate={
-                        anim === "playerStrike"
-                          ? { x: [0, 22, 0], y: [0, -4, 0] }
-                          : anim === "playerHit"
-                          ? { x: [0, 8, -8, 6, -6, 0], filter: ["brightness(1)", "brightness(2.4)", "brightness(1)"] }
-                          : { y: [0, -4, 0] }
-                      }
-                      transition={{ duration: anim === "idle" ? 2.4 : 0.5, repeat: anim === "idle" ? Infinity : 0, ease: "easeInOut" }}
-                      className="drop-shadow-[0_8px_10px_rgba(0,0,0,0.45)]"
-                    >
-                      <PixelSprite grid={GUARDIAN} palette={GUARDIAN_PAL} scale={7} />
-                    </motion.div>
-                    <HpTag name="Linguist" level={playerLevel} hp={playerHp} align="left" />
-                  </div>
-                  <div className="flex-1" />
+                <div className="relative flex items-end justify-center gap-6 flex-wrap">
+                  {fighters.map((f, i) => {
+                    const sp = SPRITES[f.sprite];
+                    const isActive = i === turnIdx && f.alive;
+                    return (
+                      <div key={f.id} className={`flex flex-col items-center gap-1 ${!f.alive ? "opacity-30 grayscale" : ""}`}>
+                        <div className="text-[9px] font-bold uppercase tracking-wide opacity-70">{f.name}{f.kind === "cpu" ? " · CPU" : ""}</div>
+                        <motion.div
+                          animate={
+                            flash?.idx === i && flash.kind === "hit"
+                              ? { x: [0, 8, -8, 6, -6, 0], filter: ["brightness(1)", "brightness(2.4)", "brightness(1)"] }
+                              : flash?.idx === i && flash.kind === "strike"
+                              ? { x: [0, (i < turnIdx ? 14 : -14), 0] }
+                              : isActive
+                              ? { y: [0, -6, 0] }
+                              : { y: 0 }
+                          }
+                          transition={{ duration: flash ? 0.5 : isActive ? 1.8 : 0.2, repeat: flash || !isActive ? 0 : Infinity, ease: "easeInOut" }}
+                          className="drop-shadow-[0_8px_10px_rgba(0,0,0,0.45)]"
+                        >
+                          <PixelSprite grid={sp.grid} palette={sp.pal} scale={6} />
+                        </motion.div>
+                        <div className="w-24">
+                          <div className="h-2 rounded-full bg-[#0f0d09] overflow-hidden border border-[#3a3527]">
+                            <motion.div className="h-full rounded-full" style={{ background: HP_COLORS[f.hp > 50 ? 0 : f.hp > 20 ? 1 : 2] }} animate={{ width: `${f.hp}%` }} transition={{ duration: 0.4 }} />
+                          </div>
+                          <div className="text-[8px] text-center opacity-60 mt-0.5">{f.hp}%</div>
+                        </div>
+                        {isActive && <div className="text-[8px] text-[#d4a574] font-bold animate-pulse">▶ TURN</div>}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Message box (prompt) */}
-              <div className="rounded-2xl border-2 border-[#3a3527] bg-[#16140f] p-3 min-h-[64px] flex items-center">
+              {/* Turn banner */}
+              <div className="text-center text-[11px] font-bold uppercase tracking-widest">
+                {matchType === "online" && roomStatus === "lobby" ? (
+                  <span className="text-[#d4a574]">Lobby · {fighters.length}/3 joined — waiting for host to start</span>
+                ) : active ? (
+                  isMyTurn ? (
+                    <span className="text-[#6fbf73]">Your turn</span>
+                  ) : (
+                    <span className="opacity-70">{active.name}'s turn…</span>
+                  )
+                ) : null}
+              </div>
+
+              {/* Prompt */}
+              <div className="rounded-2xl border-2 border-[#3a3527] bg-[#16140f] p-3 min-h-[60px] flex items-center">
                 <p className="text-sm font-mono leading-relaxed">{question.prompt}</p>
               </div>
 
-              {/* Action menu */}
-              {question.type === "choice" ? (
-                <div className="grid grid-cols-2 gap-2">
-                  {question.options.map((o) => (
-                    <button
-                      key={o}
-                      onClick={() => resolve(o)}
-                      className="rounded-xl border-2 border-[#3a3527] hover:border-[#d4a574]/60 bg-[#1d1a13] px-3 py-2.5 text-left text-sm transition capitalize active:scale-95"
-                    >
-                      {o}
-                    </button>
-                  ))}
-                </div>
+              {/* Input */}
+              {isMyTurn ? (
+                question.type === "choice" ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    {question.options.map((o) => (
+                      <button key={o} onClick={() => (matchType === "online" ? submitOnlineMove(o) : resolveOffline(o))} className="rounded-xl border-2 border-[#3a3527] hover:border-[#d4a574]/60 bg-[#1d1a13] px-3 py-2.5 text-left text-sm transition capitalize active:scale-95">
+                        {o}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (matchType === "online" ? submitOnlineMove(typed) : resolveOffline(typed))} placeholder="type the missing word…" className="flex-1 bg-[#16140f] border-2 border-[#3a3527] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#d4a574]/60" />
+                    <button onClick={() => (matchType === "online" ? submitOnlineMove(typed) : resolveOffline(typed))} className="px-4 py-2.5 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider active:scale-95">Strike</button>
+                  </div>
+                )
               ) : (
-                <div className="flex gap-2">
-                  <input
-                    autoFocus
-                    value={typed}
-                    onChange={(e) => setTyped(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && resolve(typed)}
-                    placeholder="type the missing word…"
-                    className="flex-1 bg-[#16140f] border-2 border-[#3a3527] rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[#d4a574]/60"
-                  />
-                  <button
-                    onClick={() => resolve(typed)}
-                    className="px-4 py-2.5 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider active:scale-95"
-                  >
-                    Strike
-                  </button>
-                </div>
+                <div className="text-center text-[11px] opacity-50 py-2">Waiting for {active?.name}…</div>
               )}
 
-              {/* Arsenal snapshot */}
-              <div>
-                <p className="text-[10px] uppercase tracking-widest opacity-50 mb-1">Arsenal (top mastery)</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {[...arsenal].sort((a, b) => b.mastery - a.mastery).slice(0, 8).map((w) => (
-                    <span key={w.word} className="text-[10px] px-2 py-1 rounded-lg bg-[#1d1a13] border border-[#3a3527] capitalize">
-                      {w.word} <span className="text-[#d4a574]">Lv{MASTERY_TO_LEVEL(w.mastery)}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <button onClick={forfeit} className="w-full px-3 py-2 rounded-xl border-2 border-[#3a3527] text-[10px] font-bold uppercase tracking-wider opacity-60 hover:opacity-100">Forfeit</button>
             </div>
           )}
 
           {(phase === "win" || phase === "lose") && (
             <div className="text-center space-y-3 py-4">
               <Crown className="w-10 h-10 text-[#d4a574] mx-auto" />
-              <h3 className="font-serif text-2xl font-bold">{phase === "win" ? "Archive Defended" : "The Archive Falls"}</h3>
-              <p className="text-[11px] opacity-60">
-                {phase === "win" ? "The Forgetting retreats into the margins." : "Sharpen your Arsenal and try again."}
-              </p>
-              <div className="flex items-center justify-center gap-2">
-                <button onClick={() => setPhase("menu")} className="px-4 py-2 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider">
-                  Return to Trials
-                </button>
-                <button
-                  onClick={mintShare}
-                  className="px-4 py-2 rounded-xl border-2 border-[#3a3527] hover:border-[#d4a574]/50 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
-                >
-                  <Share2 className="w-3.5 h-3.5" /> Share
-                </button>
-              </div>
+              <h3 className="font-serif text-2xl font-bold">{phase === "win" ? "Victory" : "Defeated"}</h3>
+              <p className="text-[11px] opacity-60">{phase === "win" ? "Last word standing." : "The archive is lost — sharpen your Arsenal."}</p>
+              <button onClick={() => setPhase("menu")} className="px-4 py-2 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider">Return to Menu</button>
             </div>
           )}
 
@@ -547,23 +778,4 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
   );
 
   return <AnimatePresence>{open && popup}</AnimatePresence>;
-}
-
-function HpTag({ name, level, hp, align }: { name: string; level: number; hp: number; align: "left" | "right" }) {
-  return (
-    <div className={`w-40 ${align === "right" ? "text-right" : "text-left"}`}>
-      <div className="flex items-center justify-between text-[10px] font-bold tracking-wide">
-        <span>{name}</span>
-        <span className="opacity-60">Lv{level}</span>
-      </div>
-      <div className="h-2 rounded-full bg-[#0f0d09] overflow-hidden border border-[#3a3527] mt-0.5">
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: hp > 50 ? "#6fbf73" : hp > 20 ? "#e0b341" : "#c0504d" }}
-          animate={{ width: `${hp}%` }}
-          transition={{ duration: 0.4 }}
-        />
-      </div>
-    </div>
-  );
 }

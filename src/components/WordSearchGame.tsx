@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ChevronRight, Lightbulb, RefreshCw, Search, X } from "lucide-react";
+import { ChevronRight, Lightbulb, RefreshCw, Search, X, Maximize2, Minimize2, Trophy } from "lucide-react";
 import {
   cellsForWord,
   generateWordSearch,
@@ -11,6 +11,7 @@ import {
   type WordSearchDifficulty,
   type WordSearchPuzzle,
 } from "../lib/wordSearchEngine";
+import { canHover } from "../lib/canHover";
 
 const STORAGE_KEY = "kora_wordsearch_progress_v1";
 
@@ -61,11 +62,13 @@ interface WordSearchGameProps {
   open: boolean;
   onClose: () => void;
   variant?: "fullscreen" | "popup";
+  onOpenScores?: () => void;
 }
 
 type Screen = "menu" | "play";
 
-export default function WordSearchGame({ open, onClose, variant = "fullscreen" }: WordSearchGameProps) {
+export default function WordSearchGame({ open, onClose, variant = "fullscreen", onOpenScores }: WordSearchGameProps) {
+  const [v, setV] = useState<"fullscreen" | "popup">(variant);
   const [screen, setScreen] = useState<Screen>("menu");
   const [difficulty, setDifficulty] = useState<WordSearchDifficulty>("easy");
   const [level, setLevel] = useState(1);
@@ -214,7 +217,7 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen" }
 
   if (!open) return null;
 
-  if (variant === "popup") {
+  if (v === "popup") {
     return (
       <AnimatePresence>
         <motion.div
@@ -234,7 +237,7 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen" }
             aria-modal="true"
             aria-label="Kora Word Search"
           >
-            <WordSearchInner onClose={onClose} />
+            <WordSearchInner onClose={onClose} v={v} setV={setV} onOpenScores={onOpenScores} />
           </motion.div>
         </motion.div>
       </AnimatePresence>
@@ -252,13 +255,13 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen" }
         aria-modal="true"
         aria-label="Kora Word Search"
       >
-        <WordSearchInner onClose={onClose} />
+        <WordSearchInner onClose={onClose} v={v} setV={setV} onOpenScores={onOpenScores} />
       </motion.div>
     </AnimatePresence>
   );
 
 
-  function WordSearchInner({ onClose }: { onClose: () => void }) {
+  function WordSearchInner({ onClose, v, setV, onOpenScores }: { onClose: () => void; v: "fullscreen" | "popup"; setV: (x: "fullscreen" | "popup") => void; onOpenScores?: () => void }) {
     return (
       <>
           <div
@@ -286,6 +289,29 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen" }
                   </p>
                 </div>
               </div>
+              <div className="flex items-center gap-2">
+              {canHover() && onOpenScores && (
+                <button
+                  type="button"
+                  onClick={onOpenScores}
+                  className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
+                  aria-label="Open score tracker"
+                  title="Score Tracker"
+                >
+                  <Trophy className="w-5 h-5" />
+                </button>
+              )}
+              {canHover() && (
+                <button
+                  type="button"
+                  onClick={() => setV(v === "fullscreen" ? "popup" : "fullscreen")}
+                  className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
+                  aria-label={v === "fullscreen" ? "Shrink to popup" : "Expand to fullscreen"}
+                  title={v === "fullscreen" ? "Popup" : "Fullscreen"}
+                >
+                  {v === "fullscreen" ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onClose}
@@ -294,6 +320,7 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen" }
               >
                 <X className="w-5 h-5" />
               </button>
+              </div>
             </div>
           </header>
 

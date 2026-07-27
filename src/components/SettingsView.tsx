@@ -52,6 +52,7 @@ import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
 import { isNativeAndroid } from "../lib/capacitorNative";
+import { gameViewVariant } from "../lib/canHover";
 import {
   ApkReleaseInfo,
   checkForApkUpdate,
@@ -2855,8 +2856,8 @@ function SettingsView({
         )}
       </div>
 
-      <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} variant="popup" />
-      <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant="popup" />
+      <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
+      <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
       <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} />
       <ReadingInsightsTool
