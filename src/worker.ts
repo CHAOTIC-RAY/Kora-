@@ -2712,28 +2712,18 @@ export default {
         // Extract cleaned text content, rebuilding only from safe elements
         let cleanedHtml = "";
         
-        // Walk the content tree and extract all meaningful text blocks and elements
+        // Walk the content tree and extract only meaningful text blocks
         const extractCleanContent = ($container: any): string => {
           let result = "";
           
-          $container.contents().each((_: any, child: any) => {
-            if (child.nodeType === 3) {
-              const text = $(child).text().trim();
-              if (text.length > 0) {
-                result += `<p>${text}</p>\n`;
-              }
-              return;
-            }
-
-            if (child.nodeType !== 1) return;
-
+          $container.children().each((_: any, child: any) => {
             const tagName = (child.tagName || "").toLowerCase();
             const $child = $(child);
             const innerHtml = $child.html() || "";
             const textContent = $child.text().trim();
             
             // Skip empty elements
-            if (textContent.length === 0 && !["img", "br", "hr", "figure"].includes(tagName)) return;
+            if (textContent.length === 0 && !["img", "br", "hr"].includes(tagName)) return;
             
             // Skip elements that look like JavaScript or CSS remnants
             if (textContent.startsWith("var ") || textContent.startsWith("function") ||
@@ -2746,9 +2736,19 @@ export default {
               return;
             }
             
-            // Only drop strict boilerplate
-            const strictBoilerplate = /^(advertisement|send comment|load more|like us|follow us|share|tweet|subscribe|cookie notice|cookie banner)$/i;
-            if (textContent.length < 30 && strictBoilerplate.test(textContent)) {
+            // Skip short text that's likely UI labels/buttons  
+            const boilerplateTexts = [
+              "advertisement", "comment", "send comment", "load more", 
+              "like us", "follow us", "share", "tweet", "subscribe",
+              "name :", "send", "reply", "breaking news", "live",
+              "write your reply", "copyright", "all rights reserved",
+              "privacy policy", "terms and conditions", "contact us",
+              "terms of use", "code of ethics", "editorial policy",
+              "about", "close", "menu", "topics", "related stories",
+              "discuss", "sign using", "characters remaining"
+            ];
+            const lowerText = textContent.toLowerCase();
+            if (textContent.length < 40 && boilerplateTexts.some(bp => lowerText.includes(bp))) {
               return;
             }
             
@@ -2757,7 +2757,7 @@ export default {
               return;
             }
 
-            // Skip explicit footer chrome block
+            // Skip footer chrome block rather than halting extraction.
             if (
               /^(Topics?|Related stories|Related articles|Related posts|Related news|More stories|More news|You may also like|Recommended|Discuss|Discussion|Comments?|Leave a (comment|reply)|Sign Using|Sign in|Share this|Tags?|Terms of Use|Privacy Policy|Code of Ethics|Editorial Policy)$/i.test(
                 textContent.trim()
@@ -2768,33 +2768,31 @@ export default {
             }
             
             // Process allowed elements
-            if (["p", "blockquote", "pre", "address"].includes(tagName)) {
+            if (["p", "blockquote", "pre"].includes(tagName)) {
               result += `<${tagName}>${innerHtml}</${tagName}>\n`;
             } else if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName)) {
-              if (textContent.length > 0 && textContent.length < 300) {
+              // Only include headings that look like real content, not nav labels
+              if (textContent.length > 3 && textContent.length < 200) {
                 result += `<${tagName}>${textContent}</${tagName}>\n`;
               }
-            } else if (["ul", "ol", "li"].includes(tagName)) {
+            } else if (["ul", "ol"].includes(tagName)) {
               result += `<${tagName}>${innerHtml}</${tagName}>\n`;
-            } else if (tagName === "figure" || tagName === "aside") {
+            } else if (tagName === "figure") {
               result += `<figure>${innerHtml}</figure>\n`;
             } else if (tagName === "img") {
               const src = $child.attr("src") || "";
               const alt = $child.attr("alt") || "";
               if (src) result += `<img src="${src}" alt="${alt}" />\n`;
-            } else if (["table", "tr", "td", "th"].includes(tagName)) {
-              result += `<${tagName}>${innerHtml}</${tagName}>\n`;
-            } else if (["div", "section", "article", "span", "main", "header", "body", "time"].includes(tagName)) {
+            } else if (tagName === "table") {
+              result += `<table>${innerHtml}</table>\n`;
+            } else if (["div", "section", "article", "span", "main"].includes(tagName)) {
+              // Recurse into structural containers
               const nested = extractCleanContent($child);
               if (nested.trim().length > 0) {
                 result += nested;
-              } else if (textContent.length > 0 && (tagName === "span" || tagName === "time" || tagName === "p")) {
-                result += `<p>${textContent}</p>\n`;
               }
             } else if (tagName === "hr") {
               result += "<hr />\n";
-            } else if (tagName === "br") {
-              result += "<br />";
             }
           });
           

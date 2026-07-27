@@ -34,8 +34,7 @@ import {
   Sliders,
   FileText,
   Compass,
-  Palette,
-  Crown
+  Palette
 } from "lucide-react";
 import { fetchLatestApkDownloadUrl } from "../lib/apkUpdater";
 import { KoraIcon, KoraWordmark } from "./KoraLogo";
@@ -635,11 +634,12 @@ export default function InstallView() {
           {/* Game Demos Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Game 1: Score Tracker */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-kindle-accent/50 transition-all shadow-xs">
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-[#e0533c]/50 transition-all shadow-xs">
               <div className="space-y-2">
-                <div className="p-2.5 bg-kindle-accent/10 text-kindle-accent rounded-xl w-fit">
-                  <Crown className="w-5 h-5" />
+                <div className="p-2.5 bg-[#e0533c]/10 text-[#e0533c] rounded-xl w-fit">
+                  <Trophy className="w-5 h-5" />
                 </div>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-[#e0533c]">Board & Card Games</span>
                 <h4 className="text-sm font-bold text-kindle-text">Game Score Tracker</h4>
                 <p className="text-xs text-kindle-text-muted leading-relaxed">
                   Track Catan, Scrabble, & board game rounds with turn timers & crowns.
@@ -649,7 +649,7 @@ export default function InstallView() {
               <button
                 type="button"
                 onClick={() => setShowScoreTrackerDemo(true)}
-                className="w-full py-2.5 bg-kindle-accent text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-[#e0533c] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
               >
                 <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
               </button>
@@ -661,6 +661,7 @@ export default function InstallView() {
                 <div className="p-2.5 bg-kindle-accent/10 text-kindle-accent rounded-xl w-fit">
                   <Grid3X3 className="w-5 h-5" />
                 </div>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-accent">Literary Puzzles</span>
                 <h4 className="text-sm font-bold text-kindle-text">Mini Crossword Grid</h4>
                 <p className="text-xs text-kindle-text-muted leading-relaxed">
                   Literary crosswords and letter-wheel wordscapes built from classic books.
@@ -682,6 +683,7 @@ export default function InstallView() {
                 <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl w-fit">
                   <Search className="w-5 h-5" />
                 </div>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600">Vocabulary Finder</span>
                 <h4 className="text-sm font-bold text-kindle-text">Word Search Grid</h4>
                 <p className="text-xs text-kindle-text-muted leading-relaxed">
                   Multi-directional vocabulary search with hints & difficulty progression.
@@ -703,6 +705,7 @@ export default function InstallView() {
                 <div className="p-2.5 bg-amber-500/10 text-amber-600 rounded-xl w-fit">
                   <Globe className="w-5 h-5" />
                 </div>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-amber-600">Research & Ebooks</span>
                 <h4 className="text-sm font-bold text-kindle-text">Wikipedia Hub</h4>
                 <p className="text-xs text-kindle-text-muted leading-relaxed">
                   Search articles & convert topics into custom Kora Ebooks with audio TTS.

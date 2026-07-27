@@ -574,15 +574,15 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const currentLeader = rankedPlayers[0];
 
   return (
-    <div className="fixed inset-0 z-50 bg-kindle-bg sm:bg-black/75 sm:backdrop-blur-md flex flex-col sm:items-center sm:justify-center sm:p-4 overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
       {/* Canvas Confetti Layer */}
       <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />
 
       <motion.div
-        initial={{ opacity: 0, scale: 0.98, y: 10 }}
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.98, y: 10 }}
-        className="w-full h-full sm:h-[96vh] sm:max-w-7xl bg-kindle-bg border-0 sm:border sm:border-kindle-border sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+        exit={{ opacity: 0, scale: 0.96, y: 10 }}
+        className="w-full max-w-5xl bg-kindle-bg border border-kindle-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
       >
 
 

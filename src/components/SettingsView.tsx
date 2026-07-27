@@ -6,9 +6,11 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Zap, Radio
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Zap, Radio, Hammer, X,
+  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE } from "../lib/readerThemes";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import {
   loadNewsReaderPrefs,
@@ -27,6 +29,15 @@ import {
 import { BookMetadata, syncBookToCloud, getLocalLibrary } from "../lib/firebase";
 import { storeBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
+import {
+  BUILT_IN_TXT_PARSERS,
+  getCustomTxtParsers,
+  saveCustomTxtParser,
+  deleteCustomTxtParser,
+  getActiveTxtParser,
+  setActiveTxtParserId,
+  TxtParserRule
+} from "../lib/txtParserHelper";
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
@@ -35,7 +46,10 @@ import DevicesSyncPanel from "./DevicesSyncPanel";
 import P2pTransferPanel from "./P2pTransferPanel";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
+import GameScoreTracker from "./GameScoreTracker";
 import ReadingInsightsTool from "./ReadingInsightsTool";
+import FluidOverlay from "./FluidOverlay";
+import WikipediaWidget from "./WikipediaWidget";
 import { isNativeAndroid } from "../lib/capacitorNative";
 import {
   ApkReleaseInfo,
@@ -47,6 +61,16 @@ import {
   setApkAutoUpdateEnabled,
 } from "../lib/apkUpdater";
 import { requestPinAndroidWidget } from "../lib/androidWidgets";
+import {
+  loadReadingStats,
+  calculateStreak,
+  minutesThisWeek,
+  pagesToday,
+  streakCalendarDays,
+  recordReadingMinute,
+  todayKey,
+  legacyTodayKey
+} from "../lib/readingStats";
 
 interface ReaderPrefs {
   fontSize: number;
@@ -56,6 +80,8 @@ interface ReaderPrefs {
   marginSize: string;
   isContinuous: boolean;
   brightness: number;
+  autoAdjustTheme?: boolean;
+  themeManuallySet?: boolean;
 }
 
 interface SearchPrefs {
@@ -71,6 +97,10 @@ interface SettingsViewProps {
   grayscaleCovers: boolean;
   hideCovers?: boolean;
   displayTheme: string;
+  appSkin?: string;
+  onChangeAppSkin?: (skin: any) => void;
+  loungeEnabled?: boolean;
+  onChangeLoungeEnabled?: (enabled: boolean) => void;
   dailyRemindersEnabled?: boolean;
   onChangeDailyReminders?: (enabled: boolean) => void;
   dailyNewsBriefEnabled?: boolean;
@@ -92,10 +122,6 @@ interface SettingsViewProps {
   onRefreshLibrary?: (uid?: string) => void;
   onCachedIdsChanged?: () => void;
   onOpenOnboarding?: () => void;
-  appSkin?: string;
-  loungeEnabled?: boolean;
-  onChangeLoungeEnabled?: (enabled: boolean) => void;
-  onChangeAppSkin?: (skin: any) => void;
   /** When false (hidden keep-alive tab), skip heavy IDB/dir init until first activation. */
   isActive?: boolean;
 }
@@ -154,6 +180,10 @@ function SettingsView({
   grayscaleCovers,
   hideCovers = false,
   displayTheme,
+  appSkin,
+  onChangeAppSkin,
+  loungeEnabled,
+  onChangeLoungeEnabled,
   dailyRemindersEnabled = false,
   onChangeDailyReminders,
   dailyNewsBriefEnabled = false,
@@ -213,6 +243,14 @@ function SettingsView({
   }, []);
 
   const toggleCategory = (key: string) => {
+    if (key === "folder") {
+      setShowFolderWatch(true);
+      return;
+    }
+    if (key === "tts") {
+      setShowReadAloud(true);
+      return;
+    }
     setExpandedCategories(prev => ({
       ...prev,
       [key]: !prev[key]
@@ -220,6 +258,7 @@ function SettingsView({
   };
 
   const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
+  const [allEntries, setAllEntries] = useState<DictionaryEntry[]>([]);
   const [showLiveLogs, setShowLiveLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState(() => logger.getLogs());
   const [apkAutoUpdate, setApkAutoUpdate] = useState(() => isApkAutoUpdateEnabled());
@@ -253,16 +292,67 @@ function SettingsView({
   const [showCloudImport, setShowCloudImport] = useState<boolean>(false);
   const [showCrossword, setShowCrossword] = useState<boolean>(false);
   const [showWordSearch, setShowWordSearch] = useState<boolean>(false);
+  const [showScoreTracker, setShowScoreTracker] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const [showP2p, setShowP2p] = useState<boolean>(false);
+  const [showDictionary, setShowDictionary] = useState<boolean>(false);
+  const [showClipper, setShowClipper] = useState<boolean>(false);
+  const [showFolderWatch, setShowFolderWatch] = useState<boolean>(false);
+  const [showReadAloud, setShowReadAloud] = useState<boolean>(false);
+  const [showWikipedia, setShowWikipedia] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const [readingStreak, setReadingStreak] = useState<number>(0);
+  const [weeklyMinutes, setWeeklyMinutes] = useState<number>(0);
+  const [todayMinutes, setTodayMinutes] = useState<number>(0);
+  const [dailyGoal, setDailyGoal] = useState<number>(() => {
+    try {
+      const g = localStorage.getItem("kora_daily_reading_goal");
+      return g ? parseInt(g, 10) : 15;
+    } catch {
+      return 15;
+    }
+  });
+
+  const refreshReadingStats = () => {
+    const stats = loadReadingStats();
+    setReadingStreak(calculateStreak(stats));
+    setWeeklyMinutes(minutesThisWeek(stats));
+    const today = stats[todayKey()]?.minutes || stats[legacyTodayKey()]?.minutes || 0;
+    setTodayMinutes(today);
+  };
+
+  useEffect(() => {
+    refreshReadingStats();
+  }, [view]);
+
+  const handleUpdateDailyGoal = (newGoal: number) => {
+    const val = Math.max(1, Math.min(240, newGoal));
+    setDailyGoal(val);
+    try {
+      localStorage.setItem("kora_daily_reading_goal", String(val));
+    } catch (e) {
+      // ignore
+    }
+    toast.success(`Daily reading goal updated to ${val} minutes`);
+  };
+
+  const handleQuickLogMinutes = (mins: number) => {
+    for (let i = 0; i < mins; i++) {
+      recordReadingMinute();
+    }
+    refreshReadingStats();
+    toast.success(`Logged ${mins} minutes to your reading history!`);
+  };
 
   useEffect(() => {
     const onOpenTool = (e: Event) => {
       const tool = (e as CustomEvent<{ tool?: string }>).detail?.tool;
       if (tool === "crossword") setShowCrossword(true);
       else if (tool === "wordsearch") setShowWordSearch(true);
+      else if (tool === "score-tracker" || tool === "scoretracker") setShowScoreTracker(true);
       else if (tool === "p2p") setShowP2p(true);
+      else if (tool === "wikipedia" || tool === "wiki") setShowWikipedia(true);
     };
     window.addEventListener("kora-open-tool", onOpenTool as EventListener);
     return () => window.removeEventListener("kora-open-tool", onOpenTool as EventListener);
@@ -370,6 +460,58 @@ function SettingsView({
   const [performanceMode, setPerformanceMode] = useState<boolean>(
     () => localStorage.getItem("kora_performance_mode") === "true"
   );
+
+  // TXT Chapter Parser Settings State
+  const [activeTxtParserId, setActiveTxtParserIdState] = useState<string>(() => getActiveTxtParser().id);
+  const [customParsers, setCustomParsers] = useState<TxtParserRule[]>(() => getCustomTxtParsers());
+  const [showAddTxtParser, setShowAddTxtParser] = useState(false);
+  const [newParserName, setNewParserName] = useState("");
+  const [newParserPattern, setNewParserPattern] = useState("");
+  const [newParserDesc, setNewParserDesc] = useState("");
+
+  const handleSelectTxtParser = (id: string) => {
+    setActiveTxtParserId(id);
+    setActiveTxtParserIdState(id);
+    toast.success("TXT chapter detection rule updated!");
+  };
+
+  const handleSaveCustomParser = () => {
+    if (!newParserName.trim() || !newParserPattern.trim()) {
+      toast.error("Please fill in both the rule name and regex pattern.");
+      return;
+    }
+    try {
+      new RegExp(newParserPattern, "i");
+    } catch (e) {
+      toast.error("Invalid regular expression pattern.");
+      return;
+    }
+
+    const rule: TxtParserRule = {
+      id: "custom_" + Date.now(),
+      name: newParserName.trim(),
+      pattern: newParserPattern.trim(),
+      description: newParserDesc.trim() || "Custom user regex pattern"
+    };
+
+    saveCustomTxtParser(rule);
+    setCustomParsers(getCustomTxtParsers());
+    setActiveTxtParserId(rule.id);
+    setActiveTxtParserIdState(rule.id);
+    setShowAddTxtParser(false);
+    setNewParserName("");
+    setNewParserPattern("");
+    setNewParserDesc("");
+    toast.success(`Custom rule "${rule.name}" activated!`);
+  };
+
+  const handleDeleteCustomParser = (id: string) => {
+    deleteCustomTxtParser(id);
+    setCustomParsers(getCustomTxtParsers());
+    const currentActive = getActiveTxtParser().id;
+    setActiveTxtParserIdState(currentActive);
+    toast.success("Custom parser rule removed.");
+  };
   useEffect(() => {
     try {
       localStorage.setItem("kora_performance_mode", performanceMode ? "true" : "false");
@@ -387,21 +529,24 @@ function SettingsView({
   const [newVirtualExt, setNewVirtualExt] = useState<"epub" | "pdf">("epub");
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive && !showDictionary) return;
     async function loadDict() {
       const entries = await getAllDictionaryEntries();
+      setAllEntries(entries);
       // Only show custom entries in settings, not the external dictionary
       setDictEntries(entries.filter(e => e.isCustom));
     }
     void loadDict();
     
     async function initDir() {
-      const handle = await getSavedDirectoryHandle();
-      setRealDirHandle(handle);
-      setVirtualFiles(getVirtualDirectoryFiles());
+      if (isActive) {
+        const handle = await getSavedDirectoryHandle();
+        setRealDirHandle(handle);
+        setVirtualFiles(getVirtualDirectoryFiles());
+      }
     }
     void initDir();
-  }, [isActive]);
+  }, [isActive, showDictionary]);
 
   const handleSelectRealDir = async () => {
     try {
@@ -495,6 +640,7 @@ function SettingsView({
       isCustom: true
     });
     const entries = await getAllDictionaryEntries();
+    setAllEntries(entries);
     setDictEntries(entries.filter(e => e.isCustom));
     setNewWord("");
     setNewDef("");
@@ -503,9 +649,21 @@ function SettingsView({
     setShowAddWordForm(false);
   };
 
+  const handleSaveWordToPersonal = async (entry: DictionaryEntry) => {
+    addDictionaryEntry({
+      ...entry,
+      isCustom: true
+    });
+    const entries = await getAllDictionaryEntries();
+    setAllEntries(entries);
+    setDictEntries(entries.filter(e => e.isCustom));
+    toast.success(`"${entry.word}" saved to personal dictionary`);
+  };
+
   const handleDeleteWord = async (word: string) => {
     deleteDictionaryEntry(word);
     const entries = await getAllDictionaryEntries();
+    setAllEntries(entries);
     setDictEntries(entries.filter(e => e.isCustom));
   };
 
@@ -533,6 +691,383 @@ function SettingsView({
     { id: "max-w-2xl px-6", label: "Medium" },
     { id: "max-w-4xl px-8", label: "Wide" }
   ];
+  const renderPersonalDictionaryContent = () => (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between border-b border-kindle-border pb-3">
+        <div className="flex items-center gap-3">
+          <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+            <BookMarked className="w-4 h-4 text-kindle-text" />
+          </div>
+          <div>
+            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Personal Dictionary</h3>
+            <p className="text-[10px] text-kindle-text-muted">Definitions used inside book readers</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddWordForm(!showAddWordForm)}
+          className="flex items-center gap-1 px-2.5 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-xl text-[9px] font-bold uppercase tracking-widest transition"
+        >
+          <Plus className="w-3 h-3" /> {showAddWordForm ? "Cancel" : "Add Word"}
+        </button>
+      </div>
+
+      {showAddWordForm && (
+        <form onSubmit={handleAddWord} className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3.5 animate-in slide-in-from-top duration-200">
+          <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Define Custom Word</h4>
+          
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Word</label>
+              <input
+                type="text"
+                required
+                value={newWord}
+                onChange={(e) => setNewWord(e.target.value)}
+                placeholder="e.g. Ephemeral"
+                className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Part of Speech</label>
+              <select
+                value={newPos}
+                onChange={(e) => setNewPos(e.target.value)}
+                className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
+              >
+                <option value="noun">Noun</option>
+                <option value="verb">Verb</option>
+                <option value="adjective">Adjective</option>
+                <option value="adverb">Adverb</option>
+                <option value="other">Other/Mix</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Definition</label>
+            <textarea
+              required
+              rows={2}
+              value={newDef}
+              onChange={(e) => setNewDef(e.target.value)}
+              placeholder="The meaning of the word..."
+              className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Example Usage (Optional)</label>
+            <input
+              type="text"
+              value={newEx}
+              onChange={(e) => setNewEx(e.target.value)}
+              placeholder="Sentence using the word..."
+              className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full py-2 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
+          >
+            Save Word Definition
+          </button>
+        </form>
+      )}
+
+      <div className="space-y-3">
+        <div className="relative">
+          <SearchIcon className="w-3.5 h-3.5 text-kindle-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search words in dictionary..."
+            value={dictSearch}
+            onChange={(e) => setDictSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs outline-none"
+          />
+        </div>
+
+        <div className="max-h-60 overflow-y-auto border border-kindle-border rounded-xl divide-y divide-kindle-border bg-kindle-bg scrollbar-hide">
+          {(() => {
+            const query = dictSearch.trim().toLowerCase();
+            let displayedEntries: DictionaryEntry[] = [];
+            
+            if (query === "") {
+              displayedEntries = dictEntries;
+            } else {
+              // Search the entire dictionary
+              const exactMatches: DictionaryEntry[] = [];
+              const startsWithMatches: DictionaryEntry[] = [];
+              const containsMatches: DictionaryEntry[] = [];
+              
+              const pool = allEntries.length > 0 ? allEntries : dictEntries;
+              
+              for (const entry of pool) {
+                const entryWord = entry.word.toLowerCase();
+                if (entryWord === query) {
+                  exactMatches.push(entry);
+                } else if (entryWord.startsWith(query)) {
+                  startsWithMatches.push(entry);
+                } else if (entryWord.includes(query)) {
+                  containsMatches.push(entry);
+                }
+              }
+              
+              displayedEntries = [...exactMatches, ...startsWithMatches, ...containsMatches].slice(0, 50);
+            }
+
+            if (displayedEntries.length === 0) {
+              return (
+                <div className="p-8 text-center text-xs text-kindle-text-muted italic flex flex-col items-center gap-2">
+                  <span>No words matching "{dictSearch}" in dictionary database.</span>
+                  {dictSearch.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewWord(dictSearch);
+                        setNewDef("");
+                        setNewEx("");
+                        setNewPos("noun");
+                        setShowAddWordForm(true);
+                      }}
+                      className="mt-1 px-3 py-1.5 bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent border border-kindle-accent/25 rounded-xl text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
+                    >
+                      Define "{dictSearch}" Custom
+                    </button>
+                  )}
+                </div>
+              );
+            }
+
+            return displayedEntries.map((entry) => (
+              <div key={entry.word} className="p-3.5 flex items-start justify-between gap-3 bg-kindle-card">
+                <div className="space-y-1 min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold font-serif text-sm text-kindle-text">{entry.word}</span>
+                    {entry.partOfSpeech && (
+                      <span className="text-[8px] uppercase tracking-wider font-mono font-bold text-kindle-text-muted/70 bg-neutral-150 px-1 py-0.5 rounded">
+                        {entry.partOfSpeech}
+                      </span>
+                    )}
+                    {entry.isCustom ? (
+                      <span className="text-[7px] uppercase tracking-widest font-bold bg-kindle-accent/15 text-kindle-accent px-1.5 py-0.5 rounded-full">
+                        Personal
+                      </span>
+                    ) : (
+                      <span className="text-[7px] uppercase tracking-widest font-bold bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full">
+                        Oxford DB
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-kindle-text leading-relaxed font-sans">{entry.definition}</p>
+                  {entry.example && (
+                    <p className="text-[10px] italic text-kindle-text-muted font-sans font-medium">"{entry.example}"</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {entry.isCustom ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteWord(entry.word)}
+                      className="p-1.5 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                      title="Delete Definition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveWordToPersonal(entry)}
+                      className="px-2 py-1 bg-kindle-bg hover:bg-kindle-accent/10 border border-kindle-border rounded-lg text-[9px] font-bold uppercase tracking-wider text-kindle-text hover:text-kindle-accent transition cursor-pointer flex items-center gap-1"
+                      title="Add to Personal Dictionary"
+                    >
+                      <Plus className="w-3 h-3 text-kindle-accent" /> Save
+                    </button>
+                  )}
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderFolderWatchContent = () => (
+    <div className="space-y-5">
+      <p className="text-[11px] text-kindle-text-muted leading-relaxed">
+        Map a localized system folder using native web-standard file APIs to automatically discover, index, and cache digital publications on your device.
+      </p>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">System Folder Integration</h5>
+            <p className="text-[9px] text-kindle-text-muted">Use native File System Access APIs</p>
+          </div>
+          {realDirHandle ? (
+            <button
+              type="button"
+              onClick={handleDisconnectRealDir}
+              className="px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/45 dark:text-red-400 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+            >
+              Disconnect
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSelectRealDir}
+              className="px-3 py-1.5 bg-kindle-bg border border-kindle-border hover:bg-neutral-100 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+            >
+              Select Folder
+            </button>
+          )}
+        </div>
+
+        {realDirHandle && (
+          <div className="p-2.5 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] font-mono truncate max-w-xs">{realDirHandle.name}</span>
+            </div>
+            <span className="text-[8px] uppercase tracking-widest font-bold font-mono text-emerald-600">Active Path</span>
+          </div>
+        )}
+
+        {/* Virtual Fallback Simulator Mode */}
+        <div className="border-t border-kindle-border/40 pt-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Virtual Folder Simulator</h5>
+              <p className="text-[9px] text-kindle-text-muted">Simulate a local downloads folder in iframe sandboxes</p>
+            </div>
+            <Toggle
+              on={useVirtualDir}
+              onClick={handleToggleVirtualDir}
+            />
+          </div>
+
+          {useVirtualDir && (
+            <div className="space-y-3 animate-in fade-in duration-300">
+              <div>
+                <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">
+                  Virtual Location Path
+                </label>
+                <input
+                  type="text"
+                  value={virtualPath}
+                  onChange={(e) => handleUpdateVirtualPath(e.target.value)}
+                  placeholder="e.g. ~/Downloads/Kora"
+                  className="w-full px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono outline-none focus:border-kindle-accent"
+                />
+              </div>
+
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3">
+                <div className="flex items-center justify-between border-b border-kindle-border pb-2">
+                  <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Simulated Directory Content</span>
+                  <span className="text-[9px] font-mono font-bold">{virtualFiles.length} files present</span>
+                </div>
+
+                {virtualFiles.length === 0 ? (
+                  <p className="text-[10px] text-kindle-text-muted italic text-center py-2">
+                    Folder is empty. Add virtual files below to simulate downloading or side-loading.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {virtualFiles.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-[11px] p-2 bg-kindle-card border border-kindle-border rounded-lg">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <BookMarked className="w-3.5 h-3.5 text-kindle-text-muted" />
+                          <div className="min-w-0">
+                            <p className="font-serif font-bold truncate">{f.name}</p>
+                            <p className="text-[8px] text-kindle-text-muted font-sans uppercase tracking-wider">{f.author} • {f.size}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[8px] font-mono bg-kindle-bg px-1.5 py-0.5 rounded border border-kindle-border uppercase font-bold text-kindle-text-muted">
+                            {f.extension}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveVirtualFile(i)}
+                            className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
+                            title="Delete from virtual folder"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add simulated book inputs */}
+                <div className="border-t border-kindle-border/60 pt-3 space-y-2">
+                  <p className="text-[8px] uppercase tracking-widest font-bold text-kindle-text-muted">
+                    Add Simulated Ebook to Folder
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      placeholder="Book Title (e.g., Moby Dick)"
+                      value={newVirtualFileName}
+                      onChange={(e) => setNewVirtualFileName(e.target.value)}
+                      className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Author"
+                      value={newVirtualAuthor}
+                      onChange={(e) => setNewVirtualAuthor(e.target.value)}
+                      className="p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <select
+                      value={newVirtualExt}
+                      onChange={(e) => setNewVirtualExt(e.target.value as any)}
+                      className="p-1.5 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none"
+                    >
+                      <option value="epub">EPUB format</option>
+                      <option value="pdf">PDF format</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddVirtualFile}
+                      className="flex-1 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[9px] font-bold uppercase tracking-widest transition flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Place in Folder
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Action Trigger Row */}
+      <div className="border-t border-kindle-border pt-4 flex flex-col gap-3">
+        <button
+          type="button"
+          onClick={handleScanNow}
+          disabled={isScanning || (!realDirHandle && !useVirtualDir)}
+          className="w-full flex items-center justify-center gap-2 py-3 bg-kindle-text text-kindle-bg hover:bg-kindle-accent disabled:opacity-40 disabled:hover:bg-kindle-text rounded-xl text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
+        >
+          <HardDrive className={`w-3.5 h-3.5 ${isScanning ? "animate-spin" : ""}`} />
+          {isScanning ? "Analyzing Directory..." : "Analyze Folder for New Books Now"}
+        </button>
+
+        {scanResultText && (
+          <p className="text-[10px] text-center font-semibold text-emerald-600 uppercase tracking-wider animate-pulse">
+            {scanResultText}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
   const sources = [
     { id: "all", label: "All Sources" },
     { id: "annas", label: "Anna's Archive" },
@@ -547,11 +1082,11 @@ function SettingsView({
       <header className="flex items-center justify-between pb-2 md:pb-4 border-b border-kindle-border font-sans">
         <div>
           <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">
-            {view === "tools" ? "Tools" : "Settings"}
+            {view === "tools" ? "Workshop" : "Settings"}
           </h2>
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">
             {view === "tools"
-              ? "Import books, cloud sync, and read-aloud utilities"
+              ? "Digital publication ingestions, utilities, and literacy widgets"
               : "Profile, preferences & cloud sync"}
           </p>
         </div>
@@ -678,233 +1213,567 @@ function SettingsView({
         )}
 
         {view === "tools" && (
-        <>
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-kindle-accent" />
-            <h2 className="text-2xl font-lexend font-bold text-kindle-text">Tools</h2>
-          </div>
-          <p className="text-[11px] text-kindle-text-muted leading-relaxed max-w-2xl">
-            Import, convert, and manage your ebooks. EPUB and PDF utilities live here.
-          </p>
-        </section>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { id: "import", icon: Upload, label: "Import", desc: "Add files" },
-            { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox" },
-            { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch" },
-            { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert" },
-            { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Classic & letter wheel" },
-            { id: "wordsearch", icon: Search, label: "Word Search", desc: "Find hidden words" },
-            { id: "insights", icon: PieChart, label: "Insights", desc: "Moods · pacing · genres" },
-            { id: "p2p", icon: Radio, label: "P2P", desc: "Peer-to-peer file transfer" },
-          ].map((tool) => (
-            <button
-              key={tool.id}
-              onClick={() => {
-                if (tool.id === "cloud") setShowCloudImport(true);
-                else if (tool.id === "folder") toggleCategory("folder");
-                else if (tool.id === "tts") toggleCategory("tts");
-                else if (tool.id === "crossword") setShowCrossword(true);
-                else if (tool.id === "wordsearch") setShowWordSearch(true);
-                else if (tool.id === "insights") setShowInsights(true);
-                else if (tool.id === "p2p") setShowP2p(true);
-                else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
-              }}
-              className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
-            >
-              <div className="p-2 rounded-xl bg-kindle-bg border border-kindle-border w-fit">
-                <tool.icon className={`w-4 h-4 ${tool.id === "crossword" || tool.id === "wordsearch" || tool.id === "insights" ? "text-[#d4a574]" : "text-kindle-accent"}`} />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
-                <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {[
-            { icon: FileText, label: "EPUB Tools", desc: "Merge, split, metadata — coming soon", soon: true },
-            { icon: Files, label: "PDF Tools", desc: "Extract, compress, rotate — coming soon", soon: true },
-          ].map((tool) => (
-            <div
-              key={tool.label}
-              className="bg-kindle-card/60 border border-kindle-border/70 rounded-2xl p-4 flex flex-col gap-2 opacity-70"
-            >
-              <div className="p-2 rounded-xl bg-kindle-bg/80 border border-kindle-border w-fit">
-                <tool.icon className="w-4 h-4 text-kindle-text-muted" />
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
-                <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
-              </div>
+        <div className="space-y-8 animate-in fade-in duration-300">
+          
+          {/* Section 1: Mind & Word Games */}
+          <section className="space-y-3">
+            <div className="flex flex-col gap-0.5 border-b border-kindle-border pb-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-kindle-accent animate-pulse" />
+                Mind & Word Games
+              </h3>
+              <p className="text-[10px] text-kindle-text-muted">
+                Strengthen vocabulary, focus, and cognitive recall with interactive puzzles.
+              </p>
             </div>
-          ))}
-        </div>
 
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() => setShowCrossword(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
-                <Grid3X3 className="w-5 h-5 text-[#d4a574]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Crossword</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Classic clues or letter-wheel mode — Easy, Medium, Hard, unlimited levels.
-                </p>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowWordSearch(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
-                <Search className="w-5 h-5 text-[#d4a574]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Word Search</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Drag straight lines to find hidden words — infinite randomized boards.
-                </p>
-              </div>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowInsights(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
-                <PieChart className="w-5 h-5 text-[#d4a574]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Reading Insights</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Vibrant interactive pies of your reading moods, pacing, and genres.
-                </p>
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowP2p(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-kindle-accent/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-kindle-bg border border-kindle-border shrink-0">
-                <Radio className="w-5 h-5 text-kindle-accent" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">P2P Transfer</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Peer-to-peer files over Wi‑Fi or internet. Encrypted relay only if direct fails — no cloud storage.
-                </p>
-              </div>
-            </div>
-          </button>
-        </div>
-
-        <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
-
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <Upload className="w-4 h-4 text-kindle-accent" />
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Import Files</h3>
-          </div>
-          <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-            Drag and drop local ebooks into your private offline library.
-          </p>
-          <div 
-            id="drag-and-drop-box"
-            onDragEnter={handleDrag}
-            onDragOver={handleDrag}
-            onDragLeave={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${
-              isDragActive 
-                ? "border-kindle-accent bg-kindle-accent/5" 
-                : "border-kindle-border hover:border-kindle-text-muted bg-kindle-bg/40"
-            }`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
-              onChange={(e) => {
-                if (e.target.files && e.target.files[0]) {
-                  handleFileUpload(e.target.files[0]);
-                }
-              }}
-              className="hidden"
-            />
-
-            {uploading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-widest animate-pulse">Syncing to storage...</p>
-              </>
-            ) : (
-              <>
-                <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text-muted">
-                  <Upload className="w-5 h-5 text-kindle-text" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Board & Card Game Score Tracker Card */}
+              <button
+                type="button"
+                onClick={() => setShowScoreTracker(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-[#e0533c]/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-24 h-24 bg-[#e0533c]/5 rounded-bl-full pointer-events-none group-hover:bg-[#e0533c]/10 transition" />
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-[#e0533c] rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Flame className="w-6 h-6 fill-[#e0533c]/20" />
                 </div>
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider">Drag & Drop or Tap to Add</p>
-                  <p className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB · PDF · HTML · TXT</p>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-[#e0533c] transition">Game Score Tracker</h4>
+                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20 shrink-0">
+                      Competition Mode 🏆
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Track scores for Catan, Ticket to Ride, Uno, Scrabble & Card games with turn clocks and brackets.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-[#e0533c] flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Launch Arena →
+                  </div>
                 </div>
-              </>
-            )}
-          </div>
+              </button>
 
-          {uploadError && (
-            <p className="text-[9px] text-red-500 font-bold uppercase tracking-wider text-center bg-red-500/5 py-2 rounded-lg border border-red-500/10">
-              {uploadError}
-            </p>
-          )}
+              {/* Crossword Card */}
+              <button
+                type="button"
+                onClick={() => setShowCrossword(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/40 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-kindle-accent rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Grid3X3 className="w-6 h-6" />
+                </div>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-kindle-accent transition">Crossword Grid</h4>
+                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-[#d4a574]/10 text-[#d4a574] border border-[#d4a574]/20 shrink-0">
+                      Vocabulary
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Solve thematic word grids created dynamically from your book vocabulary bank.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Play Crossword →
+                  </div>
+                </div>
+              </button>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-            <button 
-              onClick={() => setShowCloudImport(true)}
-              className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition w-full text-left"
-            >
-              <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg shrink-0">
-                <Cloud className="w-4 h-4" />
+              {/* Word Search Card */}
+              <button
+                type="button"
+                onClick={() => setShowWordSearch(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/40 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-kindle-accent rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Search className="w-6 h-6" />
+                </div>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-kindle-accent transition">Word Search</h4>
+                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-[#d4a574]/10 text-[#d4a574] border border-[#d4a574]/20 shrink-0">
+                      Discovery
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Scan letter matrices to find hidden terms and boost rapid recognition patterns.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Search Words →
+                  </div>
+                </div>
+              </button>
+            </div>
+          </section>
+
+          {/* Section 2: Reader Companions & Insights */}
+          <section className="space-y-3">
+            <div className="flex flex-col gap-0.5 border-b border-kindle-border pb-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-kindle-accent/70" />
+                Reader Companions & Insights
+              </h3>
+              <p className="text-[10px] text-kindle-text-muted">
+                Analyze reading trends, maintain lookup logs, or listen on the go.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Wikipedia Research Hub Card */}
+              <button
+                type="button"
+                onClick={() => setShowWikipedia(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-amber-500/50 rounded-2xl p-4 text-left transition duration-300 flex flex-col gap-3 group cursor-pointer shadow-xs relative overflow-hidden"
+              >
+                <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-xl w-fit group-hover:scale-105 transition-transform duration-300">
+                  <Globe className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between gap-1">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-amber-600 transition">Wikipedia Hub</h4>
+                    <span className="text-[7px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                      Live
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Research & Ebooks</p>
+                  <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
+                    Search millions of articles, save bookmarks, or convert topics into Kora Ebooks.
+                  </p>
+                </div>
+              </button>
+
+              {/* Reading Insights Card */}
+              <button
+                type="button"
+                onClick={() => setShowInsights(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-2xl p-4 text-left transition duration-300 flex flex-col gap-3 group cursor-pointer shadow-xs"
+              >
+                <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl w-fit group-hover:scale-105 transition-transform duration-300">
+                  <PieChart className="w-4 h-4 text-kindle-accent" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Reading Insights</h4>
+                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Pacing & Moods</p>
+                  <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
+                    Track your words-per-minute, session intervals, and reader emotion trends.
+                  </p>
+                </div>
+              </button>
+
+              {/* Personal Dictionary Card */}
+              <button
+                type="button"
+                onClick={() => setShowDictionary(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-2xl p-4 text-left transition duration-300 flex flex-col gap-3 group cursor-pointer shadow-xs"
+              >
+                <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl w-fit group-hover:scale-105 transition-transform duration-300">
+                  <BookMarked className="w-4 h-4 text-kindle-accent" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Personal Dictionary</h4>
+                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Vocabulary Bank</p>
+                  <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
+                    Browse custom definitions and lookups saved during reading sessions.
+                  </p>
+                </div>
+              </button>
+
+              {/* Web Clipper Card */}
+              <button
+                type="button"
+                onClick={() => setShowClipper(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-2xl p-4 text-left transition duration-300 flex flex-col gap-3 group cursor-pointer shadow-xs"
+              >
+                <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl w-fit group-hover:scale-105 transition-transform duration-300">
+                  <Scissors className="w-4 h-4 text-kindle-accent" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Web Clipper</h4>
+                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Article Extraction</p>
+                  <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
+                    Convert any online news article or essay into an offline-ready ebook.
+                  </p>
+                </div>
+              </button>
+
+              {/* Voice Reader Card */}
+              <button
+                type="button"
+                onClick={() => setShowReadAloud(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-2xl p-4 text-left transition duration-300 flex flex-col gap-3 group cursor-pointer shadow-xs"
+              >
+                <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl w-fit group-hover:scale-105 transition-transform duration-300">
+                  <Headphones className="w-4 h-4 text-kindle-accent" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Voice Reader</h4>
+                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">TTS Audiobooks</p>
+                  <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
+                    Generate read-aloud system audiobooks for your offline EPUB/TXT library.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </section>
+
+          {/* Section 2.5: Personal Reading Streaks & Goals */}
+          <section className="space-y-4">
+            <div className="flex flex-col gap-0.5 border-b border-kindle-border pb-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#e0533c]" />
+                Reading Streaks & Habits
+              </h3>
+              <p className="text-[10px] text-kindle-text-muted">
+                Maintain consistency, view historical tracking calendars, and log physical books.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+              {/* Left Bento Panel: Current Streak & Daily Progress (5 cols) */}
+              <div className="md:col-span-5 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-xs">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                      Your Consistency
+                    </span>
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text flex items-center gap-1.5">
+                      <Flame className="w-4 h-4 text-[#e0533c] fill-[#e0533c]/20" /> Active Streak
+                    </h4>
+                  </div>
+                  <div className="px-2.5 py-1 bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20 rounded-lg font-mono text-xs font-bold flex items-center gap-1">
+                    <Flame className="w-3.5 h-3.5 fill-[#e0533c]" />
+                    {readingStreak} Days
+                  </div>
+                </div>
+
+                {/* Progress Circle & Metrics in Middle */}
+                <div className="flex items-center gap-4 py-2">
+                  <div className="relative w-16 h-16 shrink-0 flex items-center justify-center">
+                    {/* SVG Circular Progress Bar */}
+                    <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                      <circle
+                        cx="32"
+                        cy="32"
+                        r="28"
+                        className="stroke-kindle-border"
+                        strokeWidth="5"
+                        fill="transparent"
+                      />
+                      <circle
+                        cx="32"
+                        cy="32"
+                        r="28"
+                        className="stroke-kindle-accent animate-pulse"
+                        strokeWidth="5"
+                        fill="transparent"
+                        strokeDasharray={2 * Math.PI * 28}
+                        strokeDashoffset={
+                          2 * Math.PI * 28 * (1 - Math.min(1, todayMinutes / Math.max(1, dailyGoal)))
+                        }
+                        strokeLinecap="round"
+                        style={{ transition: "stroke-dashoffset 0.5s ease" }}
+                      />
+                    </svg>
+                    <div className="text-center">
+                      <span className="text-xs font-bold font-mono text-kindle-text">
+                        {Math.round((todayMinutes / Math.max(1, dailyGoal)) * 100)}%
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-xs font-bold text-kindle-text flex items-center gap-1">
+                      <span>{todayMinutes}</span>
+                      <span className="text-[10px] text-kindle-text-muted font-normal">/ {dailyGoal} mins today</span>
+                    </div>
+                    <div className="text-[10px] text-kindle-text-muted flex items-center gap-1">
+                      <TrendingUp className="w-3 h-3 text-emerald-500" />
+                      <span>{weeklyMinutes} mins this week</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Goals Form & Quick Actions at bottom */}
+                <div className="space-y-3 pt-2 border-t border-kindle-border">
+                  {/* Daily Goal Adjuster */}
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                      Target Goal
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateDailyGoal(dailyGoal - 5)}
+                        className="w-5 h-5 bg-kindle-bg border border-kindle-border rounded flex items-center justify-center text-xs font-bold hover:bg-kindle-border transition cursor-pointer"
+                        title="Decrease Goal"
+                      >
+                        -
+                      </button>
+                      <span className="text-xs font-bold font-mono px-1.5 min-w-[32px] text-center">
+                        {dailyGoal}m
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateDailyGoal(dailyGoal + 5)}
+                        className="w-5 h-5 bg-kindle-bg border border-kindle-border rounded flex items-center justify-center text-xs font-bold hover:bg-kindle-border transition cursor-pointer"
+                        title="Increase Goal"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Quick Book Logger */}
+                  <div className="space-y-1.5">
+                    <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted block">
+                      Read physical books / other devices? Log minutes:
+                    </span>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[5, 15, 30].map((mins) => (
+                        <button
+                          key={mins}
+                          type="button"
+                          onClick={() => handleQuickLogMinutes(mins)}
+                          className="py-1 bg-kindle-bg hover:bg-kindle-accent/10 border border-kindle-border hover:border-kindle-accent/30 rounded-xl text-[9px] font-bold text-kindle-text hover:text-kindle-accent transition cursor-pointer flex items-center justify-center gap-0.5"
+                        >
+                          +{mins} Min
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text">Cloud Import</p>
-                <p className="text-[9px] text-kindle-text-muted">Google Drive or Dropbox</p>
+
+              {/* Right Bento Panel: 28-Day Streak Grid (7 cols) */}
+              <div className="md:col-span-7 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-xs">
+                <div className="flex items-start justify-between pb-1 border-b border-kindle-border">
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                      Last 4 Weeks
+                    </span>
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-kindle-accent" /> Streak Calendar
+                    </h4>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] uppercase font-mono font-bold text-kindle-text-muted flex items-center gap-1">
+                      <span className="w-2 h-2 rounded bg-kindle-border border border-kindle-border shrink-0" />
+                      Missed
+                    </span>
+                    <span className="text-[8px] uppercase font-mono font-bold text-kindle-accent flex items-center gap-1">
+                      <span className="w-2 h-2 rounded bg-kindle-accent shrink-0" />
+                      Read
+                    </span>
+                  </div>
+                </div>
+
+                {/* 28-day grid rendering */}
+                <div className="grid grid-cols-7 gap-2 py-3">
+                  {streakCalendarDays(loadReadingStats(), 28).map((day, idx) => {
+                    const parsedDate = new Date(day.key + "T12:00:00");
+                    const isToday = day.key === todayKey();
+                    const hasRead = day.minutes > 0;
+                    const weekDayLabel = parsedDate.toLocaleDateString(undefined, { weekday: "short" });
+                    const dayNumLabel = parsedDate.getDate();
+
+                    return (
+                      <div
+                        key={day.key}
+                        className="flex flex-col items-center gap-1 group relative"
+                      >
+                        {/* Interactive Tooltip on Hover */}
+                        <div className="absolute bottom-full mb-1.5 scale-0 group-hover:scale-100 transition-all duration-200 bg-kindle-text text-kindle-bg text-[9px] font-bold rounded-lg px-2 py-1 shadow-md whitespace-nowrap z-50 pointer-events-none">
+                          <div className="font-sans">{parsedDate.toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div>
+                          <div className="font-mono text-kindle-accent">{day.minutes} mins {day.pages > 0 ? `· ${day.pages} pgs` : ""}</div>
+                        </div>
+
+                        {/* Weekly Header for top row */}
+                        {idx < 7 && (
+                          <span className="text-[8px] uppercase font-mono text-kindle-text-muted mb-0.5">
+                            {weekDayLabel[0]}
+                          </span>
+                        )}
+
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300 relative ${
+                            hasRead
+                              ? "bg-kindle-accent text-black font-extrabold shadow-sm scale-100 border border-kindle-accent"
+                              : "bg-kindle-bg text-kindle-text-muted border border-kindle-border hover:border-kindle-text-muted/30"
+                          } ${isToday ? "ring-2 ring-kindle-text/40 ring-offset-2 ring-offset-kindle-card" : ""}`}
+                        >
+                          <span className="text-[10px] font-mono select-none">{dayNumLabel}</span>
+                          {hasRead && (
+                            <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-black/40" />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Milestone Support at bottom */}
+                <div className="pt-2 border-t border-kindle-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-500 shrink-0">
+                      <Trophy className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">
+                        Habit Milestone
+                      </p>
+                      <p className="text-[9px] text-kindle-text-muted truncate">
+                        {readingStreak >= 30
+                          ? "Master Reader status unlocked! 🏆"
+                          : readingStreak >= 7
+                          ? "Solid Gold Habits! Keep going! ✨"
+                          : readingStreak > 0
+                          ? "Habit is building. Finish today's session!"
+                          : "No active streak. Start reading to light the flame!"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {readingStreak > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const message = `Check it out! I am on a ${readingStreak}-day reading streak on Kora Reader! 📚🔥`;
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(message)
+                            .then(() => toast.success("Streak milestone copied to clipboard!"))
+                            .catch(() => toast.error("Failed to copy streak"));
+                        }
+                      }}
+                      className="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1.5 bg-kindle-bg hover:bg-kindle-border border border-kindle-border rounded-lg text-kindle-text transition cursor-pointer text-center shrink-0"
+                    >
+                      Share Milestone →
+                    </button>
+                  )}
+                </div>
               </div>
-            </button>
-            <button
-              onClick={() => toggleCategory("folder")}
-              className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center gap-3 hover:bg-neutral-100 dark:hover:bg-neutral-800/40 transition w-full text-left"
-            >
-              <div className="p-2 bg-emerald-500/10 text-emerald-500 rounded-lg shrink-0">
-                <FolderOpen className="w-4 h-4" />
+            </div>
+          </section>
+
+          {/* Section 3: Imports & Wireless Sync */}
+          <section className="space-y-4">
+            <div className="flex flex-col gap-0.5 border-b border-kindle-border pb-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-kindle-accent/50" />
+                Imports & Library Sync
+              </h3>
+              <p className="text-[10px] text-kindle-text-muted">
+                Bring in your publications manually, automatically, or wirelessly.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Left col: Drag and Drop box (takes up 2 cols on lg) */}
+              <div className="lg:col-span-2 bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-kindle-accent" />
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">Import Publications</h4>
+                </div>
+                <div 
+                  id="drag-and-drop-box"
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${
+                    isDragActive 
+                      ? "border-kindle-accent bg-kindle-accent/5" 
+                      : "border-kindle-border hover:border-kindle-text-muted bg-kindle-bg/40"
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileUpload(e.target.files[0]);
+                      }
+                    }}
+                    className="hidden"
+                  />
+
+                  {uploading ? (
+                    <div className="py-2 space-y-2 flex flex-col items-center justify-center">
+                      <div className="w-5 h-5 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-[9px] font-bold text-kindle-text-muted uppercase tracking-widest animate-pulse">Syncing to storage...</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text-muted">
+                        <Upload className="w-4 h-4 text-kindle-text" />
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">Drag & Drop or Tap to Add Files</p>
+                        <p className="text-[8px] text-kindle-text-muted font-mono uppercase tracking-widest">EPUB · PDF · MOBI · AZW3 · HTML · TXT</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {uploadError && (
+                  <p className="text-[9px] text-red-500 font-bold uppercase tracking-wider text-center bg-red-500/5 py-2 rounded-lg border border-red-500/10">
+                    {uploadError}
+                  </p>
+                )}
               </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text">Folder Watch</p>
-                <p className="text-[9px] text-kindle-text-muted">Auto-ingest new files</p>
+
+              {/* Right col: Other import tools (Folder Watch, Cloud Sync, P2P Beam) stacked vertically on lg */}
+              <div className="flex flex-col gap-3 justify-between">
+                {/* Folder Watch Card */}
+                <button
+                  type="button"
+                  onClick={() => setShowFolderWatch(true)}
+                  className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-xl p-3 text-left transition duration-300 flex items-center gap-3 group cursor-pointer flex-1"
+                >
+                  <div className="p-2 bg-kindle-bg border border-kindle-border text-emerald-500 rounded-lg group-hover:scale-105 transition-transform">
+                    <FolderOpen className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Folder Watch</h4>
+                    <p className="text-[8px] text-kindle-text-muted mt-0.5 uppercase tracking-widest font-semibold">Local Auto-Ingest</p>
+                  </div>
+                </button>
+
+                {/* Cloud Sync Card */}
+                <button
+                  type="button"
+                  onClick={() => setShowCloudImport(true)}
+                  className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-xl p-3 text-left transition duration-300 flex items-center gap-3 group cursor-pointer flex-1"
+                >
+                  <div className="p-2 bg-kindle-bg border border-kindle-border text-blue-500 rounded-lg group-hover:scale-105 transition-transform">
+                    <Cloud className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Cloud Sync</h4>
+                    <p className="text-[8px] text-kindle-text-muted mt-0.5 uppercase tracking-widest font-semibold">Drive & Dropbox</p>
+                  </div>
+                </button>
+
+                {/* Secure P2P Card */}
+                <button
+                  type="button"
+                  onClick={() => setShowP2p(true)}
+                  className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-xl p-3 text-left transition duration-300 flex items-center gap-3 group cursor-pointer flex-1"
+                >
+                  <div className="p-2 bg-kindle-bg border border-kindle-border text-orange-500 rounded-lg group-hover:scale-105 transition-transform">
+                    <Radio className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">P2P File Beam</h4>
+                    <p className="text-[8px] text-kindle-text-muted mt-0.5 uppercase tracking-widest font-semibold">Wireless Transfer</p>
+                  </div>
+                </button>
               </div>
-            </button>
-          </div>
-        </section>
-        </>
+            </div>
+          </section>
+
+        </div>
         )}
 
         {view === "settings" && (
@@ -962,13 +1831,95 @@ function SettingsView({
                 </div>
               </div>
 
-              <div className="space-y-2.5">
-                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Reader Theme</h4>
-                <div className="grid grid-cols-4 gap-2">
+              <div className="space-y-3.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Reader Theme</h4>
+                  {readerPrefs.autoAdjustTheme && (
+                    <span className="text-[9px] font-bold text-amber-600 flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                      <Sparkles className="w-2.5 h-2.5" /> Auto-Theme Active
+                    </span>
+                  )}
+                </div>
+
+                {/* Auto-adjust toggle card */}
+                <div className="p-3.5 bg-kindle-bg/80 border border-kindle-border rounded-2xl space-y-3">
+                  <Row 
+                    title="Auto-Adjust Theme Throughout Day" 
+                    desc="Automatically cycles through Paper, Light, Sepia, Night, and OLED presets as your local clock advances."
+                  >
+                    <Toggle 
+                      on={!!readerPrefs.autoAdjustTheme} 
+                      onClick={() => {
+                        const nextAuto = !readerPrefs.autoAdjustTheme;
+                        const nextTheme = nextAuto ? getTimeOfDayAutoTheme() : readerPrefs.theme;
+                        setRP({ autoAdjustTheme: nextAuto, theme: nextTheme, themeManuallySet: !nextAuto });
+                        if (nextAuto) {
+                          toast.success(`Auto theme enabled: Current daylight preset is ${nextTheme.toUpperCase()}`);
+                        }
+                      }} 
+                    />
+                  </Row>
+
+                  {readerPrefs.autoAdjustTheme && (
+                    <div className="pt-2 border-t border-kindle-border/40 space-y-2.5 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className="font-mono text-kindle-text-muted flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-kindle-accent" />
+                          Local Time: <strong className="text-kindle-text font-bold">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>
+                        </span>
+                        <span className="text-[9px] font-mono text-kindle-text-muted">
+                          5 Presets Schedule
+                        </span>
+                      </div>
+
+                      {/* Daylight Schedule Matrix */}
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                        {DAYLIGHT_THEME_SCHEDULE.map((slot) => {
+                          const isCurrentActive = getTimeOfDayAutoTheme() === slot.themeKey;
+                          const themeSpec = readerThemes.find(t => t.id === slot.themeKey);
+                          return (
+                            <div 
+                              key={slot.label}
+                              className={`p-2 rounded-xl border flex flex-col justify-between text-left transition ${
+                                isCurrentActive 
+                                  ? "bg-kindle-card border-kindle-accent shadow-xs ring-1 ring-kindle-accent/40" 
+                                  : "bg-kindle-card/40 border-kindle-border opacity-70"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[9px] font-bold text-kindle-text truncate">{slot.label}</span>
+                                <div className={`w-3 h-3 rounded-full ${themeSpec?.bg || "bg-white"} ring-1 ring-black/20 shrink-0`} />
+                              </div>
+                              <div className="text-[8px] font-mono text-kindle-text-muted mt-1">{slot.timeRange}</div>
+                              <div className="text-[8px] font-bold uppercase tracking-wider text-kindle-accent mt-1 truncate">
+                                {slot.themeKey} {isCurrentActive ? "• NOW" : ""}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Manual Theme Selector */}
+                <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 pt-1">
                   {readerThemes.map(t => (
-                    <button key={t.id} onClick={() => setRP({ theme: t.id })}
-                      className={`flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition ${readerPrefs.theme === t.id ? 'border-kindle-accent ring-1 ring-kindle-accent/30' : 'border-kindle-border hover:bg-kindle-bg'}`}>
-                      <div className={`w-6 h-6 rounded-md ${t.bg} ring-1 ${t.ring}`} />
+                    <button key={t.id} 
+                      onClick={() => {
+                        const wasAuto = readerPrefs.autoAdjustTheme;
+                        setRP({ theme: t.id, autoAdjustTheme: false, themeManuallySet: true });
+                        if (wasAuto) {
+                          toast("Auto theme paused for manual selection", { icon: "🎨" });
+                        }
+                      }}
+                      className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border transition ${
+                        readerPrefs.theme === t.id && !readerPrefs.autoAdjustTheme 
+                          ? 'border-kindle-accent ring-1 ring-kindle-accent/30 bg-kindle-card' 
+                          : 'border-kindle-border hover:bg-kindle-bg'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-md ${t.bg} ring-1 ${t.ring}`} />
                       <span className="text-[8px] font-bold uppercase tracking-widest">{t.label}</span>
                     </button>
                   ))}
@@ -1001,6 +1952,119 @@ function SettingsView({
                   onChange={(e) => setRP({ brightness: Number(e.target.value) })}
                   className="w-full accent-kindle-accent cursor-pointer"
                 />
+              </div>
+
+              {/* TXT Chapter Parser Rule Selector */}
+              <div className="space-y-3 pt-4 border-t border-kindle-border/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-kindle-text">TXT Chapter Parser</h4>
+                    <p className="text-[10px] text-kindle-text-muted">Rule used when splitting raw .txt files into chapters</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddTxtParser(!showAddTxtParser)}
+                    className="px-2.5 py-1 bg-kindle-bg border border-kindle-border hover:bg-kindle-card rounded-lg text-[9px] font-bold uppercase tracking-wider text-kindle-text transition cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3 text-kindle-accent" />
+                    Custom Rule
+                  </button>
+                </div>
+
+                {/* Built-in and Custom Rule Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[...BUILT_IN_TXT_PARSERS, ...customParsers].map((parser) => {
+                    const isSelected = activeTxtParserId === parser.id;
+                    const isCustom = parser.id.startsWith("custom_");
+                    return (
+                      <div
+                        key={parser.id}
+                        onClick={() => handleSelectTxtParser(parser.id)}
+                        className={`p-3 rounded-xl border text-left cursor-pointer transition relative group ${
+                          isSelected
+                            ? "bg-kindle-accent/5 border-kindle-accent ring-1 ring-kindle-accent/30"
+                            : "bg-kindle-bg border-kindle-border hover:border-kindle-accent/50"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-bold text-kindle-text truncate">{parser.name}</span>
+                              {isSelected && (
+                                <span className="text-[8px] bg-kindle-accent text-white px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
+                                  Active
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[9px] text-kindle-text-muted mt-0.5 leading-tight">{parser.description}</p>
+                            <p className="text-[8px] font-mono text-kindle-text-muted/80 mt-1 truncate bg-kindle-card px-1.5 py-0.5 rounded border border-kindle-border/40">
+                              {parser.pattern}
+                            </p>
+                          </div>
+                          {isCustom && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCustomParser(parser.id);
+                              }}
+                              className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition cursor-pointer shrink-0"
+                              title="Delete custom rule"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Add Custom TXT Parser Form */}
+                {showAddTxtParser && (
+                  <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-3 animate-in fade-in duration-200">
+                    <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Create Custom TXT Rule</h5>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="Rule Name (e.g. Volume Parser)"
+                        value={newParserName}
+                        onChange={(e) => setNewParserName(e.target.value)}
+                        className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none focus:border-kindle-accent"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Regex Pattern (e.g. ^\\s*Volume\\s+\\d+)"
+                        value={newParserPattern}
+                        onChange={(e) => setNewParserPattern(e.target.value)}
+                        className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs font-mono outline-none focus:border-kindle-accent"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Short Description (optional)"
+                        value={newParserDesc}
+                        onChange={(e) => setNewParserDesc(e.target.value)}
+                        className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs outline-none focus:border-kindle-accent"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveCustomParser}
+                        className="flex-1 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+                      >
+                        Save & Activate
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddTxtParser(false)}
+                        className="px-3 py-1.5 border border-kindle-border hover:bg-kindle-card rounded-lg text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1240,147 +2304,11 @@ function SettingsView({
         </>
         )}
 
-        {(view === "settings" || view === "tools") && (
+        {view === "settings" && (
         <>
         {/* Personal Dictionary Section */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-5">
-          <div className="flex items-center justify-between border-b border-kindle-border pb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-                <BookMarked className="w-4 h-4 text-kindle-text" />
-              </div>
-              <div>
-                <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Personal Dictionary</h3>
-                <p className="text-[10px] text-kindle-text-muted">Definitions used inside book readers</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowAddWordForm(!showAddWordForm)}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-xl text-[9px] font-bold uppercase tracking-widest transition"
-            >
-              <Plus className="w-3 h-3" /> {showAddWordForm ? "Cancel" : "Add Word"}
-            </button>
-          </div>
-
-          {showAddWordForm && (
-            <form onSubmit={handleAddWord} className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3.5 animate-in slide-in-from-top duration-200">
-              <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Define Custom Word</h4>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Word</label>
-                  <input
-                    type="text"
-                    required
-                    value={newWord}
-                    onChange={(e) => setNewWord(e.target.value)}
-                    placeholder="e.g. Ephemeral"
-                    className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Part of Speech</label>
-                  <select
-                    value={newPos}
-                    onChange={(e) => setNewPos(e.target.value)}
-                    className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none"
-                  >
-                    <option value="noun">Noun</option>
-                    <option value="verb">Verb</option>
-                    <option value="adjective">Adjective</option>
-                    <option value="adverb">Adverb</option>
-                    <option value="other">Other/Mix</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Definition</label>
-                <textarea
-                  required
-                  rows={2}
-                  value={newDef}
-                  onChange={(e) => setNewDef(e.target.value)}
-                  placeholder="The meaning of the word..."
-                  className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Example Usage (Optional)</label>
-                <input
-                  type="text"
-                  value={newEx}
-                  onChange={(e) => setNewEx(e.target.value)}
-                  placeholder="Sentence using the word..."
-                  className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-2 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[10px] font-bold uppercase tracking-widest transition"
-              >
-                Save Word Definition
-              </button>
-            </form>
-          )}
-
-          <div className="space-y-3">
-            <div className="relative">
-              <SearchIcon className="w-3.5 h-3.5 text-kindle-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Search words in dictionary..."
-                value={dictSearch}
-                onChange={(e) => setDictSearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs outline-none"
-              />
-            </div>
-
-            <div className="max-h-60 overflow-y-auto border border-kindle-border rounded-xl divide-y divide-kindle-border bg-kindle-bg scrollbar-hide">
-              {dictEntries
-                .filter(entry => entry.word.toLowerCase().includes(dictSearch.toLowerCase()))
-                .map((entry) => (
-                  <div key={entry.word} className="p-3.5 flex items-start justify-between gap-3 bg-kindle-card">
-                    <div className="space-y-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold font-serif text-sm">{entry.word}</span>
-                        {entry.partOfSpeech && (
-                          <span className="text-[8px] uppercase tracking-wider font-mono font-bold text-kindle-text-muted/70 bg-neutral-150 px-1 py-0.5 rounded">
-                            {entry.partOfSpeech}
-                          </span>
-                        )}
-                        {entry.isCustom && (
-                          <span className="text-[7px] uppercase tracking-widest font-bold bg-kindle-accent/15 text-kindle-accent px-1.5 py-0.5 rounded-full">
-                            Personal
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-kindle-text leading-relaxed font-sans">{entry.definition}</p>
-                      {entry.example && (
-                        <p className="text-[10px] italic text-kindle-text-muted font-sans font-medium">"{entry.example}"</p>
-                      )}
-                    </div>
-                    {entry.isCustom && (
-                      <button
-                        onClick={() => handleDeleteWord(entry.word)}
-                        className="p-1.5 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                        title="Delete Definition"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-
-              {dictEntries.filter(entry => entry.word.toLowerCase().includes(dictSearch.toLowerCase())).length === 0 && (
-                <div className="p-8 text-center text-xs text-kindle-text-muted italic">
-                  No words matching your search
-                </div>
-              )}
-            </div>
-          </div>
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs">
+          {renderPersonalDictionaryContent()}
         </section>
         </>
         )}
@@ -1919,12 +2847,117 @@ function SettingsView({
 
       <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} />
       <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} />
+      <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
       <ReadingInsightsTool
         open={showInsights}
         onClose={() => setShowInsights(false)}
         books={(books as BookMetadata[]) || getLocalLibrary()}
       />
       <P2pTransferPanel open={showP2p} onClose={() => setShowP2p(false)} />
+
+      <FluidOverlay open={showDictionary} onClose={() => setShowDictionary(false)} variant="sheet" panelClassName="max-w-xl p-6">
+        <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
+          <div className="flex items-center gap-3">
+            <BookMarked className="w-5 h-5 text-kindle-text" />
+            <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Personal Dictionary</h3>
+          </div>
+          <button onClick={() => setShowDictionary(false)} className="p-1.5 hover:bg-neutral-100 rounded-lg">
+            <X className="w-5 h-5 text-kindle-text" />
+          </button>
+        </div>
+        <div className="max-h-[75vh] overflow-y-auto pr-1">
+          {renderPersonalDictionaryContent()}
+        </div>
+      </FluidOverlay>
+
+      <FluidOverlay open={showClipper} onClose={() => setShowClipper(false)} variant="sheet" panelClassName="max-w-xl p-6">
+        <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
+          <div className="flex items-center gap-3">
+            <Scissors className="w-5 h-5 text-kindle-text" />
+            <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Web Clipper</h3>
+          </div>
+          <button onClick={() => setShowClipper(false)} className="p-1.5 hover:bg-neutral-100 rounded-lg">
+            <X className="w-5 h-5 text-kindle-text" />
+          </button>
+        </div>
+        <div className="max-h-[75vh] overflow-y-auto pr-1">
+          <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
+        </div>
+      </FluidOverlay>
+
+      <FluidOverlay open={showFolderWatch} onClose={() => setShowFolderWatch(false)} variant="sheet" panelClassName="max-w-xl p-6">
+        <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
+          <div className="flex items-center gap-3">
+            <FolderOpen className="w-5 h-5 text-emerald-500" />
+            <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Folder Watch</h3>
+          </div>
+          <button onClick={() => setShowFolderWatch(false)} className="p-1.5 hover:bg-neutral-100 rounded-lg">
+            <X className="w-5 h-5 text-kindle-text" />
+          </button>
+        </div>
+        <div className="max-h-[75vh] overflow-y-auto pr-1">
+          {renderFolderWatchContent()}
+        </div>
+      </FluidOverlay>
+
+      <FluidOverlay open={showReadAloud} onClose={() => setShowReadAloud(false)} variant="sheet" panelClassName="max-w-2xl p-6">
+        <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
+          <div className="flex items-center gap-3">
+            <Headphones className="w-5 h-5 text-kindle-text" />
+            <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Voice Reader</h3>
+          </div>
+          <button onClick={() => setShowReadAloud(false)} className="p-1.5 hover:bg-neutral-100 rounded-lg">
+            <X className="w-5 h-5 text-kindle-text" />
+          </button>
+        </div>
+        <div className="max-h-[75vh] overflow-y-auto pr-1">
+          <BuiltInAudiobookConverter
+            books={(books as BookMetadata[]) || []}
+            userId={userId}
+            onRefreshLibrary={onRefreshLibrary}
+          />
+        </div>
+      </FluidOverlay>
+
+      <FluidOverlay open={showCloudImport} onClose={() => setShowCloudImport(false)} variant="dialog" panelClassName="max-w-sm p-8 text-center bg-kindle-card">
+        <div className="w-16 h-16 bg-blue-500/10 text-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <Cloud className="w-8 h-8" />
+        </div>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-2">Cloud Connectivity</h3>
+        <p className="text-[10px] text-kindle-text-muted mb-8 leading-relaxed">
+          Connect your Google Drive or Dropbox to instantly sync your entire ebook collection. 
+          Secure OAuth integration ensures your data stays private.
+        </p>
+        <div className="space-y-3">
+          <button 
+            type="button"
+            className="w-full py-3 bg-[#4285F4] hover:bg-[#4285F4]/90 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest shadow-sm transition cursor-pointer"
+            onClick={() => toast("Cloud Sync Integration: Please set up Google OAuth in AI Studio settings to enable this feature.")}
+          >
+            Connect Google Drive
+          </button>
+          <button 
+            type="button"
+            className="w-full py-3 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-kindle-card transition cursor-pointer"
+            onClick={() => setShowCloudImport(false)}
+          >
+            Maybe Later
+          </button>
+        </div>
+      </FluidOverlay>
+
+      <FluidOverlay
+        open={showWikipedia}
+        onClose={() => setShowWikipedia(false)}
+        variant="dialog"
+        panelClassName="max-w-5xl w-full p-0 bg-transparent border-0 shadow-none"
+      >
+        <WikipediaWidget
+          onClose={() => setShowWikipedia(false)}
+          userId={userId}
+          onRefreshLibrary={onRefreshLibrary}
+        />
+      </FluidOverlay>
     </div>
   );
 }
