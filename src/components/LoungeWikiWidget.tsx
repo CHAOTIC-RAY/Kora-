@@ -65,7 +65,8 @@ export default function LoungeWikiWidget({
       const url =
         `https://${selectedLang}.wikipedia.org/w/api.php` +
         `?action=query&generator=random&grnnamespace=0&grnlimit=1` +
-        `&prop=extracts|pageprops&exintro=1&explaintext=1&exchars=1200` +
+        `&prop=extracts|pageimages|pageprops&exintro=1&explaintext=1&exchars=1200` +
+        `&piprop=thumbnail&pithumbsize=240` +
         `&redirects=1&format=json&origin=*`;
       const res = await fetch(url);
       if (!res.ok) throw new Error("API returned non-200");
