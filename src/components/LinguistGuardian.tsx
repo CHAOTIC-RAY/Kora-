@@ -414,7 +414,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
         const acc = 0.72;
         const correct = Math.random() < acc;
         const guess = correct ? q.answer : q.options.find((o) => o !== q.answer) || q.answer;
-        if (matchType === "local") resolveOffline(guess);
+        resolveOffline(guess);
       }, 950);
     }
     return () => window.clearTimeout(cpuTimer.current);
