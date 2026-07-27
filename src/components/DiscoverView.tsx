@@ -3436,17 +3436,6 @@ function DiscoverView({
                 All Feeds
               </button>
               <button
-                onClick={() => setFeedFilter("goodreads")}
-                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "goodreads"
-                    ? "border-kindle-text text-kindle-text"
-                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
-                }`}
-              >
-                <GoodreadsIcon className="w-3.5 h-3.5 text-[#553B08] dark:text-[#D9C5A0]" />
-                Goodreads Favorites
-              </button>
-              <button
                 onClick={() => setFeedFilter("nyt")}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   feedFilter === "nyt"
@@ -3456,6 +3445,31 @@ function DiscoverView({
               >
                 <NytIcon className="w-3.5 h-3.5 text-kindle-text" />
                 NYT Best Sellers
+              </button>
+              <button
+                onClick={() => {
+                  if (audiobookLibraryMode) closeAudiobookLibrary();
+                  setFeedFilter("netgalley");
+                }}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  feedFilter === "netgalley"
+                    ? "border-kindle-text text-kindle-text"
+                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                <NetgalleyIcon className="w-3.5 h-3.5 text-kindle-accent" />
+                NetGalley Catalog
+              </button>
+              <button
+                onClick={() => setFeedFilter("goodreads")}
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  feedFilter === "goodreads"
+                    ? "border-kindle-text text-kindle-text"
+                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
+                }`}
+              >
+                <GoodreadsIcon className="w-3.5 h-3.5 text-[#553B08] dark:text-[#D9C5A0]" />
+                Goodreads Favorites
               </button>
               <button
                 onClick={() => {
@@ -3473,20 +3487,6 @@ function DiscoverView({
               >
                 <Headphones className="w-3.5 h-3.5 text-kindle-text" />
                 Audiobooks
-              </button>
-              <button
-                onClick={() => {
-                  if (audiobookLibraryMode) closeAudiobookLibrary();
-                  setFeedFilter("netgalley");
-                }}
-                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "netgalley"
-                    ? "border-kindle-text text-kindle-text"
-                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
-                }`}
-              >
-                <NetgalleyIcon className="w-3.5 h-3.5 text-kindle-accent" />
-                NetGalley Catalog
               </button>
             </div>
             <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
