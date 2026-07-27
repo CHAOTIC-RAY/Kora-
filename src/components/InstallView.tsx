@@ -266,11 +266,7 @@ export default function InstallView() {
     },
     {
       q: "Which install should I pick — Web, APK, or self-host?",
-      a: "Web App (PWA) is the easiest and works on every platform including iPhone — just open the site and 'Add to Home Screen'. The Android APK unlocks system-level background voice playback and offline P2P transfer. Self-hosting gives you a private deployment on your own domain with full data ownership.",
-    },
-    {
-      q: "Why can't I install a native iPhone app from an .ipa?",
-      a: "Apple requires a paid Developer account ($99/yr) to sign apps for device install, and each phone's UDID must be registered. To keep Kora free and open, we ship the iOS experience as a Web App (PWA) — it installs to your home screen and runs full-screen with offline support, no Apple account needed.",
+      a: "Web App (PWA) is the fastest path and runs on everything, including iPhone — open the site and tap 'Add to Home Screen'. The Android APK adds system background voice playback, notification controls, and offline P2P transfer. Self-hosting puts Kora on your own domain with full data ownership. Not sure? Start with the Web App.",
     },
     {
       q: "How does the Voice Narrator / audiobook feature work?",
@@ -1044,41 +1040,6 @@ export default function InstallView() {
           </div>
         </motion.div>
 
-        {/* GitHub banner — Kora wordmark ink animation + source CTA */}
-        <div className="max-w-3xl mx-auto pt-10">
-          <div className="bg-kindle-card border border-kindle-border rounded-3xl px-6 sm:px-10 py-10 text-center space-y-6">
-            <KoraWordmarkReveal>
-              <div className="space-y-3">
-                <p className="text-xs font-bold uppercase tracking-[0.25em] text-kindle-accent">
-                  Open Source · MIT
-                </p>
-                <p className="text-sm text-kindle-text-muted leading-relaxed max-w-md mx-auto">
-                  Kora is built in the open. Read the full codebase, file issues, or
-                  contribute — every line is on GitHub.
-                </p>
-              </div>
-            </KoraWordmarkReveal>
-
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-              <a
-                href="https://github.com/CHAOTIC-RAY/Kora-"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider hover:opacity-90 transition shadow-lg"
-              >
-                <Github className="w-4 h-4" /> View Source on GitHub
-              </a>
-              <a
-                href="https://github.com/CHAOTIC-RAY/Kora-/stargazers"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-kindle-border bg-kindle-bg text-[11px] font-bold uppercase tracking-wider text-kindle-text hover:border-kindle-accent transition"
-              >
-                <Star className="w-4 h-4" /> Star the Repo
-              </a>
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* Closing Notebook — full-bleed, smooth fill-the-screen reveal on last scroll */}
