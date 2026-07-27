@@ -460,14 +460,6 @@ export default function InstallView() {
         {/* Section 2: Reading Themes & Typography */}
         <Reveal>
           <div id="themes" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-            <div className="text-center max-w-2xl mx-auto space-y-3">
-              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
-                Practical Reading Themes & Typography
-              </h2>
-              <p className="text-xs text-kindle-text-muted leading-relaxed">
-                Switch between handcrafted reading themes and tune line height, margins, and font families for comfortable, distraction-free focus.
-              </p>
-            </div>
             <ThemeShowcase />
           </div>
         </Reveal>
@@ -684,7 +676,7 @@ export default function InstallView() {
           </div>
 
           {/* Game Demos Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 auto-rows-fr gap-4">
             {/* Game 1: Score Tracker */}
             <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-[#e0533c]/50 transition-all shadow-xs">
               <div className="space-y-2">
