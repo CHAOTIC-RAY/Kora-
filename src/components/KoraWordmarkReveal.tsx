@@ -40,12 +40,13 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     const start = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Size the canvas to its displayed box (CSS px * dpr).
-      const cssW = wrap.clientWidth || Math.min(window.innerWidth * 0.8, 420);
+      // Size the canvas to its displayed box (capped so the wordmark stays sane).
+      const DISPLAY_W = Math.min(wrap.clientWidth || 420, 420);
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.round(cssW * dpr);
-      canvas.height = Math.round((cssW * (VIEW_H / VIEW_W)) * dpr);
-      canvas.style.height = `${(cssW * (VIEW_H / VIEW_W))}px`;
+      canvas.width = Math.round(DISPLAY_W * dpr);
+      canvas.height = Math.round(DISPLAY_W * (VIEW_H / VIEW_W) * dpr);
+      canvas.style.width = `${DISPLAY_W}px`;
+      canvas.style.height = `${(DISPLAY_W * (VIEW_H / VIEW_W)).toFixed(1)}px`;
 
       const scale = (canvas.width / VIEW_W) * 0.92;
       const offsetX = (canvas.width - VIEW_W * scale) / 2;
@@ -185,7 +186,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
         className="kora-ink-wrapper w-full flex justify-center"
         style={{ filter: "url(#kora-realistic-ink)" }}
       >
-        <canvas ref={canvasRef} className="block" style={{ width: "min(80vw,420px)" }} />
+        <canvas ref={canvasRef} className="block" style={{ width: "min(86vw, 420px)", height: "auto" }} />
       </div>
 
       <div
