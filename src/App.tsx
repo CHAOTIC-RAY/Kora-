@@ -355,6 +355,14 @@ export default function App() {
   const [deviceDownloadBooks, setDeviceDownloadBooks] = useState<BookMetadata[] | null>(null);
   const [showAnnotationsHub, setShowAnnotationsHub] = useState(false);
   const [showWikipediaModal, setShowWikipediaModal] = useState(false);
+  const [pendingWikiArticle, setPendingWikiArticle] = useState<{
+    title: string;
+    description?: string;
+    extract: string;
+    thumbnail?: { source: string; width: number; height: number };
+    content_urls?: { desktop: { page: string }; mobile: { page: string } };
+    lang?: string;
+  } | null>(null);
   const [proximitySyncBook, setProximitySyncBook] = useState<BookMetadata | null>(null);
   const [userNickname, setUserNickname] = useState<string>(() => {
     return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
@@ -2554,7 +2562,14 @@ export default function App() {
                 window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
               }}
               onOpenAnnotations={() => setShowAnnotationsHub(true)}
-              onOpenWikipedia={() => setShowWikipediaModal(true)}
+              onOpenWikipedia={() => {
+                setPendingWikiArticle(null);
+                setShowWikipediaModal(true);
+              }}
+              onOpenArticle={(article) => {
+                setPendingWikiArticle(article);
+                setShowWikipediaModal(true);
+              }}
               onRefreshLibrary={refreshLibrary}
               onToggleAudiobookPlay={() => {
                 window.dispatchEvent(new CustomEvent("kora-audiobook:toggle-play"));
@@ -3337,11 +3352,15 @@ export default function App() {
       )}
 
       {showWikipediaModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-kindle-bg flex flex-col">
           <WikipediaWidget
-            onClose={() => setShowWikipediaModal(false)}
+            onClose={() => {
+              setPendingWikiArticle(null);
+              setShowWikipediaModal(false);
+            }}
             userId={user?.uid}
             onRefreshLibrary={refreshLibrary}
+            initialArticle={pendingWikiArticle}
           />
         </div>
       )}

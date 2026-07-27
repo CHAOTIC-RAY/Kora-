@@ -60,19 +60,8 @@ interface WikipediaWidgetProps {
   onClose?: () => void;
   userId?: string;
   onRefreshLibrary?: () => void;
+  initialArticle?: WikiArticleSummary | null;
 }
-
-const SUPPORTED_LANGUAGES = [
-  { code: "en", name: "English" },
-  { code: "es", name: "Español" },
-  { code: "fr", name: "Français" },
-  { code: "de", name: "Deutsch" },
-  { code: "ja", name: "日本語" },
-  { code: "zh", name: "中文" },
-  { code: "it", name: "Italiano" },
-  { code: "pt", name: "Português" },
-  { code: "ru", name: "Русский" },
-];
 
 const POPULAR_TOPICS = [
   { label: "Quantum Mechanics", query: "Quantum mechanics" },
@@ -84,7 +73,7 @@ const POPULAR_TOPICS = [
   { label: "Stoicism", query: "Stoicism" },
 ];
 
-export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: WikipediaWidgetProps) {
+export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, initialArticle }: WikipediaWidgetProps) {
   const [lang, setLang] = useState("en");
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -124,9 +113,15 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: W
     }
   }, [savedArticles]);
 
-  // Load Random / Featured article on mount
+  // Load article on mount — either the one passed in (from the Lounge widget)
+  // or a fresh random article.
   useEffect(() => {
-    fetchRandomArticle();
+    if (initialArticle?.title) {
+      handleSelectArticle(initialArticle.title);
+    } else {
+      fetchRandomArticle();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang]);
 
   // Speech Synthesis Stop on unmount
@@ -316,7 +311,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: W
   const isCurrentArticleSaved = activeArticle ? savedArticles.some((a) => a.title === activeArticle.title) : false;
 
   return (
-    <div className="bg-kindle-bg text-kindle-text border border-kindle-border rounded-3xl overflow-hidden shadow-2xl flex flex-col h-[700px] max-w-5xl mx-auto w-full transition-all">
+    <div className="bg-kindle-bg text-kindle-text border-0 rounded-none overflow-hidden shadow-none flex flex-col h-full w-full max-w-none transition-all">
 
 
       {/* Top Header Bar */}
@@ -338,19 +333,6 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: W
 
         {/* Right Header Actions */}
         <div className="flex items-center gap-2">
-          {/* Language Selector */}
-          <select
-            value={lang}
-            onChange={(e) => setLang(e.target.value)}
-            className="bg-kindle-bg border border-kindle-border text-kindle-text text-xs rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-kindle-accent cursor-pointer font-medium"
-          >
-            {SUPPORTED_LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.name} ({l.code})
-              </option>
-            ))}
-          </select>
-
           {onClose && (
             <button
               type="button"
@@ -365,9 +347,11 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: W
       </div>
 
       {/* Main Content Layout: Left Sidebar + Right Article Reader */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left Control Column */}
-        <div className="w-full md:w-80 border-r border-kindle-border/80 flex flex-col bg-kindle-card/50 shrink-0 overflow-y-auto">
+        <div className={`w-full md:w-80 border-r border-kindle-border/80 flex flex-col bg-kindle-card/50 shrink-0 overflow-y-auto ${
+          activeArticle ? "hidden md:flex" : "flex"
+        }`}>
           {/* Search Form */}
           <div className="p-4 border-b border-kindle-border/60 space-y-3">
             <form onSubmit={handleSearch} className="relative">
@@ -585,7 +569,9 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: W
         </div>
 
         {/* Right Article Reader Area */}
-        <div className="flex-1 flex flex-col bg-kindle-bg overflow-hidden relative">
+        <div className={`flex-1 flex flex-col bg-kindle-bg overflow-hidden relative ${
+          activeArticle ? "flex" : "hidden md:flex"
+        }`}>
           {isLoadingArticle ? (
             <div className="flex-1 flex flex-col items-center justify-center space-y-3 p-8">
               <div className="w-8 h-8 border-3 border-kindle-accent border-t-transparent rounded-full animate-spin" />
@@ -598,6 +584,14 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: W
               {/* Article Reader Action Bar */}
               <div className="p-3.5 px-6 bg-kindle-card/80 border-b border-kindle-border flex items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveArticle(null)}
+                    className="md:hidden p-1.5 rounded-lg border border-kindle-border text-kindle-text hover:bg-kindle-card transition cursor-pointer"
+                    title="Back to browse"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
                   <span className="text-[10px] font-mono uppercase tracking-wider font-bold text-kindle-accent">
                     Wikipedia Reader
                   </span>

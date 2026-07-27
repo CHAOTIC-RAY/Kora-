@@ -42,6 +42,14 @@ interface LoungeViewProps {
   onStartGuide?: (id: GuideId) => void;
   onOpenAnnotations?: () => void;
   onOpenWikipedia?: () => void;
+  onOpenArticle?: (article: {
+    title: string;
+    description?: string;
+    extract: string;
+    thumbnail?: { source: string; width: number; height: number };
+    content_urls?: { desktop: { page: string }; mobile: { page: string } };
+    lang?: string;
+  }) => void;
   onRefreshLibrary?: () => void;
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;
@@ -294,6 +302,7 @@ export default function LoungeView({
   onStartGuide,
   onOpenAnnotations,
   onOpenWikipedia,
+  onOpenArticle,
   onRefreshLibrary,
   onToggleAudiobookPlay,
   onExpandAudiobook,
@@ -811,6 +820,7 @@ export default function LoungeView({
           <TileShell delay={0.09} className="bg-kindle-card/60 p-3.5 md:p-4 order-6 md:order-none">
             <LoungeWikiWidget
               onOpenWikipedia={onOpenWikipedia}
+              onOpenArticle={onOpenArticle}
               userId={userId}
               onRefreshLibrary={onRefreshLibrary}
               grayscaleCovers={grayscaleCovers}

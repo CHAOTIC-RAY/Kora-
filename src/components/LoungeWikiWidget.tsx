@@ -7,7 +7,6 @@ import {
   VolumeX,
   BookOpen,
   Sparkles,
-  ExternalLink,
   Download,
   Bookmark
 } from "lucide-react";
@@ -33,26 +32,25 @@ export interface WikiRandomArticle {
 }
 
 interface LoungeWikiWidgetProps {
-  onOpenWikipedia?: () => void;
+  onOpenArticle?: (article: WikiRandomArticle) => void;
   userId?: string;
   onRefreshLibrary?: () => void;
   grayscaleCovers?: boolean;
 }
 
 export default function LoungeWikiWidget({
-  onOpenWikipedia,
+  onOpenArticle,
   userId,
   onRefreshLibrary,
   grayscaleCovers = false,
 }: LoungeWikiWidgetProps) {
   const [article, setArticle] = useState<WikiRandomArticle | null>(null);
   const [loading, setLoading] = useState(true);
-  const [lang, setLang] = useState("en");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Fetch a random Wikipedia article
-  const fetchRandom = async (selectedLang = lang) => {
+  const fetchRandom = async (selectedLang = "en") => {
     setLoading(true);
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -77,13 +75,13 @@ export default function LoungeWikiWidget({
   };
 
   useEffect(() => {
-    fetchRandom(lang);
+    fetchRandom("en");
     return () => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [lang]);
+  }, []);
 
   // Read Aloud / Speech Synthesis
   const handleToggleSpeech = (e: React.MouseEvent) => {
@@ -103,7 +101,7 @@ export default function LoungeWikiWidget({
 
     const textToRead = `${article.title}. ${article.description || ''}. ${article.extract}`;
     const utterance = new SpeechSynthesisUtterance(textToRead.slice(0, 1200));
-    utterance.lang = lang;
+    utterance.lang = "en";
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
 
@@ -202,21 +200,6 @@ export default function LoungeWikiWidget({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/* Language Selector */}
-          <select
-            value={lang}
-            onChange={(e) => setLang(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            className="text-[9px] font-mono bg-kindle-bg border border-kindle-border text-kindle-text rounded-md px-1.5 py-0.5 focus:outline-none focus:border-kindle-accent cursor-pointer"
-            aria-label="Wikipedia Language"
-          >
-            <option value="en">EN</option>
-            <option value="es">ES</option>
-            <option value="fr">FR</option>
-            <option value="de">DE</option>
-            <option value="ja">JA</option>
-          </select>
-
           {/* Shuffle / Next Article */}
           <button
             type="button"
@@ -260,7 +243,10 @@ export default function LoungeWikiWidget({
             transition={{ duration: 0.25 }}
             className="flex flex-col gap-2.5"
           >
-            <div className="flex gap-3 items-start">
+            <div
+              onClick={() => onOpenArticle?.(article)}
+              className="flex gap-3 items-start cursor-pointer"
+            >
               {/* Optional Thumbnail */}
               {article.thumbnail?.source && (
                 <div className="shrink-0 w-14 h-18 rounded-xl overflow-hidden border border-kindle-border bg-black/10 shadow-xs relative">
@@ -319,31 +305,18 @@ export default function LoungeWikiWidget({
                 </button>
               </div>
 
-              {/* Full Article Modal or External Link */}
-              {onOpenWikipedia ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenWikipedia();
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-kindle-accent/15 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-white transition cursor-pointer text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
-                >
-                  <BookOpen className="w-3 h-3" />
-                  <span>Wikipedia Hub</span>
-                </button>
-              ) : article.content_urls?.desktop?.page ? (
-                <a
-                  href={article.content_urls.desktop.page}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="px-2.5 py-1 rounded-lg bg-kindle-accent/15 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-white transition cursor-pointer text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  <span>Full Article</span>
-                </a>
-              ) : null}
+              {/* Open full article inside Wikipedia Hub */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenArticle?.(article);
+                }}
+                className="px-2.5 py-1 rounded-lg bg-kindle-accent/15 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-white transition cursor-pointer text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+              >
+                <BookOpen className="w-3 h-3" />
+                <span>Read in Hub</span>
+              </button>
             </div>
           </motion.div>
         ) : (
