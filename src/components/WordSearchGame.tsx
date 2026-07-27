@@ -60,11 +60,12 @@ function cellKey(r: number, c: number) {
 interface WordSearchGameProps {
   open: boolean;
   onClose: () => void;
+  variant?: "fullscreen" | "popup";
 }
 
 type Screen = "menu" | "play";
 
-export default function WordSearchGame({ open, onClose }: WordSearchGameProps) {
+export default function WordSearchGame({ open, onClose, variant = "fullscreen" }: WordSearchGameProps) {
   const [screen, setScreen] = useState<Screen>("menu");
   const [difficulty, setDifficulty] = useState<WordSearchDifficulty>("easy");
   const [level, setLevel] = useState(1);
@@ -213,6 +214,33 @@ export default function WordSearchGame({ open, onClose }: WordSearchGameProps) {
 
   if (!open) return null;
 
+  if (variant === "popup") {
+    return (
+      <AnimatePresence>
+        <motion.div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+        >
+          <motion.div
+            className="relative w-full max-w-2xl max-h-[92vh] bg-[#141210] text-[#f5f0e8] rounded-3xl overflow-hidden flex flex-col shadow-2xl"
+            initial={{ scale: 0.96, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.96, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Kora Word Search"
+          >
+            <WordSearchInner onClose={onClose} />
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   return (
     <AnimatePresence>
       <motion.div
@@ -224,6 +252,15 @@ export default function WordSearchGame({ open, onClose }: WordSearchGameProps) {
         aria-modal="true"
         aria-label="Kora Word Search"
       >
+        <WordSearchInner onClose={onClose} />
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function WordSearchInner({ onClose }: { onClose: () => void }) {
+  return (
+    <>
         <div
           className="absolute inset-0 pointer-events-none opacity-40"
           style={{
@@ -514,7 +551,6 @@ export default function WordSearchGame({ open, onClose }: WordSearchGameProps) {
             </motion.div>
           ) : null}
         </AnimatePresence>
-      </motion.div>
-    </AnimatePresence>
+      </>
   );
 }

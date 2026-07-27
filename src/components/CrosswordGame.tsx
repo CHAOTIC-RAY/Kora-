@@ -76,6 +76,7 @@ function saveProgress(p: SavedProgress) {
 interface CrosswordGameProps {
   open: boolean;
   onClose: () => void;
+  variant?: "fullscreen" | "popup";
 }
 
 type Screen = "menu" | "play";
@@ -226,7 +227,7 @@ function LetterWheel({
   );
 }
 
-export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
+export default function CrosswordGame({ open, onClose, variant = "fullscreen" }: CrosswordGameProps) {
   const [screen, setScreen] = useState<Screen>("menu");
   const [mode, setMode] = useState<PlayMode>("classic");
   const [difficulty, setDifficulty] = useState<CrosswordDifficulty>("easy");
@@ -534,6 +535,33 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
 
   if (!open) return null;
 
+  if (variant === "popup") {
+    return (
+      <AnimatePresence>
+        <motion.div
+          className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+        >
+          <motion.div
+            className="relative w-full max-w-2xl max-h-[92vh] bg-[#141210] text-[#f5f0e8] rounded-3xl overflow-hidden flex flex-col shadow-2xl"
+            initial={{ scale: 0.96, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.96, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Kora Crossword"
+          >
+            <CrosswordInner onClose={onClose} />
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   return (
     <AnimatePresence>
       <motion.div
@@ -545,6 +573,15 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
         aria-modal="true"
         aria-label="Kora Crossword"
       >
+        <CrosswordInner onClose={onClose} />
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function CrosswordInner({ onClose }: { onClose: () => void }) {
+  return (
+    <>
         <div
           className="absolute inset-0 pointer-events-none opacity-40"
           style={{
@@ -969,7 +1006,6 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
           }
           .kora-xw-pop { animation: kora-xw-pop 0.28s ease-out; }
         `}</style>
-      </motion.div>
-    </AnimatePresence>
+      </>
   );
 }

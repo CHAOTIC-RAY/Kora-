@@ -1232,23 +1232,20 @@ function SettingsView({
               <button
                 type="button"
                 onClick={() => setShowScoreTracker(true)}
-                className="bg-kindle-card border border-kindle-border hover:border-[#e0533c]/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md relative overflow-hidden"
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md relative overflow-hidden"
               >
-                <div className="absolute top-0 right-0 w-24 h-24 bg-[#e0533c]/5 rounded-bl-full pointer-events-none group-hover:bg-[#e0533c]/10 transition" />
-                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-[#e0533c] rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
-                  <Flame className="w-6 h-6 fill-[#e0533c]/20" />
+                <div className="absolute top-0 right-0 w-24 h-24 bg-kindle-accent/5 rounded-bl-full pointer-events-none group-hover:bg-kindle-accent/10 transition" />
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-kindle-accent rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Trophy className="w-6 h-6" />
                 </div>
                 <div className="space-y-2 min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-[#e0533c] transition">Game Score Tracker</h4>
-                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20 shrink-0">
-                      Competition Mode 🏆
-                    </span>
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-kindle-accent transition">Game Score Tracker</h4>
                   </div>
                   <p className="text-[10px] text-kindle-text-muted leading-relaxed">
                     Track scores for Catan, Ticket to Ride, Uno, Scrabble & Card games with turn clocks and brackets.
                   </p>
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-[#e0533c] flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
                     Launch Arena →
                   </div>
                 </div>
@@ -1266,9 +1263,6 @@ function SettingsView({
                 <div className="space-y-2 min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-kindle-accent transition">Crossword Grid</h4>
-                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-[#d4a574]/10 text-[#d4a574] border border-[#d4a574]/20 shrink-0">
-                      Vocabulary
-                    </span>
                   </div>
                   <p className="text-[10px] text-kindle-text-muted leading-relaxed">
                     Solve thematic word grids created dynamically from your book vocabulary bank.
@@ -1291,9 +1285,6 @@ function SettingsView({
                 <div className="space-y-2 min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-kindle-accent transition">Word Search</h4>
-                    <span className="text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-[#d4a574]/10 text-[#d4a574] border border-[#d4a574]/20 shrink-0">
-                      Discovery
-                    </span>
                   </div>
                   <p className="text-[10px] text-kindle-text-muted leading-relaxed">
                     Scan letter matrices to find hidden terms and boost rapid recognition patterns.
@@ -1329,13 +1320,7 @@ function SettingsView({
                   <Globe className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="flex items-center justify-between gap-1">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-amber-600 transition">Wikipedia Hub</h4>
-                    <span className="text-[7px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
-                      Live
-                    </span>
-                  </div>
-                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Research & Ebooks</p>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-amber-600 transition">Wikipedia Hub</h4>
                   <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
                     Search millions of articles, save bookmarks, or convert topics into Kora Ebooks.
                   </p>
@@ -2845,8 +2830,8 @@ function SettingsView({
         )}
       </div>
 
-      <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} />
-      <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} />
+      <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} variant="popup" />
+      <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant="popup" />
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
       <ReadingInsightsTool
         open={showInsights}
