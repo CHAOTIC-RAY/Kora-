@@ -683,144 +683,189 @@ function SettingsView({
 
         {view === "tools" && (
         <>
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <Wrench className="w-5 h-5 text-kindle-accent" />
-            <h2 className="text-2xl font-lexend font-bold text-kindle-text">Tools</h2>
+        <section className="space-y-3 pb-2">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-xl bg-kindle-accent/10 border border-kindle-accent/20">
+              <Wrench className="w-5 h-5 text-kindle-accent" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-lexend font-bold text-kindle-text">Reader Utilities & Playground</h2>
+              <p className="text-[10px] text-kindle-text-muted uppercase tracking-widest font-mono font-bold mt-0.5">Games, Sync, and EPUB Workflows</p>
+            </div>
           </div>
-          <p className="text-[11px] text-kindle-text-muted leading-relaxed max-w-2xl">
-            Import, convert, and manage your ebooks. EPUB and PDF utilities live here.
-          </p>
         </section>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            { id: "import", icon: Upload, label: "Import", desc: "Add files" },
-            { id: "cloud", icon: Cloud, label: "Cloud", desc: "Drive & Dropbox" },
-            { id: "folder", icon: FolderOpen, label: "Folder", desc: "Auto-watch" },
-            { id: "tts", icon: Headphones, label: "Read Aloud", desc: "TTS convert" },
-            { id: "crossword", icon: Grid3X3, label: "Crossword", desc: "Classic & letter wheel" },
-            { id: "wordsearch", icon: Search, label: "Word Search", desc: "Find hidden words" },
-            { id: "insights", icon: PieChart, label: "Insights", desc: "Moods · pacing · genres" },
-            { id: "p2p", icon: Radio, label: "P2P", desc: "Peer-to-peer file transfer" },
-          ].map((tool) => (
-            <button
-              key={tool.id}
-              onClick={() => {
-                if (tool.id === "cloud") setShowCloudImport(true);
-                else if (tool.id === "folder") toggleCategory("folder");
-                else if (tool.id === "tts") toggleCategory("tts");
-                else if (tool.id === "crossword") setShowCrossword(true);
-                else if (tool.id === "wordsearch") setShowWordSearch(true);
-                else if (tool.id === "insights") setShowInsights(true);
-                else if (tool.id === "p2p") setShowP2p(true);
-                else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
-              }}
-              className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-text/20 transition flex flex-col gap-2"
-            >
-              <div className="p-2 rounded-xl bg-kindle-bg border border-kindle-border w-fit">
-                <tool.icon className={`w-4 h-4 ${tool.id === "crossword" || tool.id === "wordsearch" || tool.id === "insights" ? "text-[#d4a574]" : "text-kindle-accent"}`} />
+        {/* SECTION 1: LITERACY PLAYGROUND & COGNITIVE GAMES (TOP PRIORITY) */}
+        <section className="bg-kindle-bg border-2 border-[#d4a574]/30 rounded-3xl p-6 space-y-5 shadow-xs relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-[#d4a574]/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-[#d4a574]/20 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full bg-[#d4a574]/15 border border-[#d4a574]/35 text-[#d4a574] font-bold text-[8px] uppercase tracking-widest">Active Learning</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#d4a574] animate-ping" />
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
-                <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
-              </div>
-            </button>
-          ))}
-        </div>
+              <h3 className="font-lexend font-bold text-lg text-kindle-text mt-1">Literacy & Vocabulary Playground</h3>
+              <p className="text-[11px] text-kindle-text-muted mt-0.5">
+                Build vocabulary, test pattern recall, and keep your mind active with integrated word games.
+              </p>
+            </div>
+          </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {[
-            { icon: FileText, label: "EPUB Tools", desc: "Merge, split, metadata — coming soon", soon: true },
-            { icon: Files, label: "PDF Tools", desc: "Extract, compress, rotate — coming soon", soon: true },
-          ].map((tool) => (
-            <div
-              key={tool.label}
-              className="bg-kindle-card/60 border border-kindle-border/70 rounded-2xl p-4 flex flex-col gap-2 opacity-70"
-            >
-              <div className="p-2 rounded-xl bg-kindle-bg/80 border border-kindle-border w-fit">
-                <tool.icon className="w-4 h-4 text-kindle-text-muted" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* CROSSWORD CARD */}
+            <div className="bg-kindle-card border border-kindle-border hover:border-[#d4a574]/45 rounded-2xl p-5 flex flex-col justify-between transition duration-300 shadow-2xs group relative">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-xl bg-[#d4a574]/10 border border-[#d4a574]/20 text-[#d4a574] group-hover:scale-105 transition-transform duration-300">
+                    <Grid3X3 className="w-6 h-6" />
+                  </div>
+                  <span className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[8px] font-bold uppercase tracking-wider text-kindle-text">
+                    Easy, Med, Hard
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-kindle-text flex items-center gap-1.5">
+                    Crossword Grid
+                  </h4>
+                  <p className="text-[11px] text-kindle-text-muted mt-1 leading-relaxed">
+                    Test your lateral thinking with classic newspaper style crossword grids or the interactive letter wheel mode.
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
-                <p className="text-[9px] text-kindle-text-muted">{tool.desc}</p>
+              <div className="mt-5 pt-4 border-t border-kindle-border/40">
+                <button
+                  type="button"
+                  onClick={() => setShowCrossword(true)}
+                  className="w-full py-2.5 px-4 bg-kindle-text text-kindle-bg hover:bg-[#d4a574] hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition duration-200 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  Launch Crossword
+                </button>
               </div>
             </div>
-          ))}
-        </div>
 
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() => setShowCrossword(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
-                <Grid3X3 className="w-5 h-5 text-[#d4a574]" />
+            {/* WORD SEARCH CARD */}
+            <div className="bg-kindle-card border border-kindle-border hover:border-[#d4a574]/45 rounded-2xl p-5 flex flex-col justify-between transition duration-300 shadow-2xs group relative">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="p-3 rounded-xl bg-[#d4a574]/10 border border-[#d4a574]/20 text-[#d4a574] group-hover:scale-105 transition-transform duration-300">
+                    <Search className="w-6 h-6" />
+                  </div>
+                  <span className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[8px] font-bold uppercase tracking-wider text-kindle-text">
+                    Infinite Boards
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-kindle-text flex items-center gap-1.5">
+                    Word Search
+                  </h4>
+                  <p className="text-[11px] text-kindle-text-muted mt-1 leading-relaxed">
+                    Swipe or drag straight lines to discover hidden vocabulary words in dynamic, randomized letter grids.
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Crossword</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Classic clues or letter-wheel mode — Easy, Medium, Hard, unlimited levels.
-                </p>
+              <div className="mt-5 pt-4 border-t border-kindle-border/40">
+                <button
+                  type="button"
+                  onClick={() => setShowWordSearch(true)}
+                  className="w-full py-2.5 px-4 bg-kindle-text text-kindle-bg hover:bg-[#d4a574] hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-widest transition duration-200 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  Launch Word Search
+                </button>
               </div>
             </div>
-          </button>
+          </div>
+        </section>
 
-          <button
-            type="button"
-            onClick={() => setShowWordSearch(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
-                <Search className="w-5 h-5 text-[#d4a574]" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Word Search</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Drag straight lines to find hidden words — infinite randomized boards.
-                </p>
-              </div>
-            </div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowInsights(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-[#d4a574]/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-[#d4a574]/12 border border-[#d4a574]/25 shrink-0">
+        {/* SECTION 2: SYSTEM INGESTION & PIPELINES */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-kindle-border pb-2">
+            <Upload className="w-4 h-4 text-kindle-accent" />
+            <h3 className="font-lexend font-bold text-sm text-kindle-text uppercase tracking-wider">File Ingestion & Sync</h3>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { id: "import", icon: Upload, label: "Local Files", desc: "Drag books here" },
+              { id: "cloud", icon: Cloud, label: "Cloud Drive", desc: "Drive & Dropbox" },
+              { id: "folder", icon: FolderOpen, label: "Live Folder", desc: "Local folder watch" },
+              { id: "tts", icon: Headphones, label: "Voice Reader", desc: "TTS Audiobook converter" },
+            ].map((tool) => (
+              <button
+                key={tool.id}
+                onClick={() => {
+                  if (tool.id === "cloud") setShowCloudImport(true);
+                  else if (tool.id === "folder") toggleCategory("folder");
+                  else if (tool.id === "tts") toggleCategory("tts");
+                  else document.getElementById("drag-and-drop-box")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+                className="bg-kindle-card border border-kindle-border rounded-2xl p-4 text-left hover:border-kindle-accent/35 transition flex flex-col gap-2.5 group cursor-pointer"
+              >
+                <div className="p-2 rounded-xl bg-kindle-bg border border-kindle-border w-fit group-hover:bg-kindle-accent/10 group-hover:border-kindle-accent/20 transition-colors">
+                  <tool.icon className="w-4 h-4 text-kindle-accent" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">{tool.label}</p>
+                  <p className="text-[9px] text-kindle-text-muted mt-0.5">{tool.desc}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* SECTION 3: ADVANCED DIAGNOSTICS & HARDWARE TRANSFER */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-2 border-b border-kindle-border pb-2">
+            <PieChart className="w-4 h-4 text-kindle-accent" />
+            <h3 className="font-lexend font-bold text-sm text-kindle-text uppercase tracking-wider">Diagnostics & Direct Sharing</h3>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* INSIGHTS */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 flex items-start gap-4 hover:border-kindle-accent/35 transition duration-300">
+              <div className="p-3 rounded-xl bg-kindle-bg border border-kindle-border shrink-0">
                 <PieChart className="w-5 h-5 text-[#d4a574]" />
               </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Reading Insights</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Vibrant interactive pies of your reading moods, pacing, and genres.
-                </p>
+              <div className="space-y-3 flex-1">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">Reading Insights & Mood Analysis</h4>
+                  <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
+                    View interactive breakdowns of your read times, active pacing, emotional moods, and overall genres.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowInsights(true)}
+                  className="px-3 py-1.5 bg-kindle-bg border border-kindle-border hover:bg-neutral-100 rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+                >
+                  Open Insights
+                </button>
               </div>
             </div>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setShowP2p(true)}
-            className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-5 hover:border-kindle-accent/40 transition group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-kindle-bg border border-kindle-border shrink-0">
+            {/* P2P */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 flex items-start gap-4 hover:border-kindle-accent/35 transition duration-300">
+              <div className="p-3 rounded-xl bg-kindle-bg border border-kindle-border shrink-0">
                 <Radio className="w-5 h-5 text-kindle-accent" />
               </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">P2P Transfer</h3>
-                <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
-                  Peer-to-peer files over Wi‑Fi or internet. Encrypted relay only if direct fails — no cloud storage.
-                </p>
+              <div className="space-y-3 flex-1">
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">Secure P2P File Transfer</h4>
+                  <p className="text-[10px] text-kindle-text-muted mt-1 leading-relaxed">
+                    Beam digital publications straight across phones, laptops, or tablets over local Wi-Fi or WebRTC secure relays.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowP2p(true)}
+                  className="px-3 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent hover:text-white rounded-lg text-[9px] font-bold uppercase tracking-widest transition cursor-pointer"
+                >
+                  Transfer Files
+                </button>
               </div>
             </div>
-          </button>
-        </div>
+          </div>
+        </section>
 
         <WebClipperPanel userId={userId} onRefreshLibrary={onRefreshLibrary} />
 
