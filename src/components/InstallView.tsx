@@ -322,7 +322,7 @@ export default function InstallView() {
           <KoraIcon className="w-10 h-10 text-kindle-text" />
         </motion.div>
 
-        <div className="space-y-5 max-w-3xl mx-auto">
+        <div className="space-y-5 max-w-4xl mx-auto">
           <motion.h1
             initial="hidden"
             animate="show"
@@ -330,32 +330,59 @@ export default function InstallView() {
               hidden: {},
               show: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
             }}
-            className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold text-kindle-text leading-[1.08] tracking-tight max-w-3xl mx-auto"
+            className="text-5xl sm:text-6xl md:text-7xl font-serif font-bold text-kindle-text leading-[1.04] tracking-tight max-w-4xl mx-auto"
           >
             {[
               { t: "Your bookshelf,", em: false },
-              { t: "your narrator,", em: true },
-              { t: "and your morning paper.", em: false },
+              { t: "your narrator", em: true },
+              { amp: true },
+              { t: "your morning paper.", em: false },
               { t: "Unified.", em: true },
-            ].map((line, i) => (
-              <span key={i} className="block overflow-hidden py-0.5">
-                <motion.span
-                  variants={{
-                    hidden: { y: "120%", opacity: 0 },
-                    show: { y: "0%", opacity: 1, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
-                  }}
-                  className={`block ${line.em ? "text-kindle-accent" : ""}`}
-                >
-                  {line.t}
-                </motion.span>
-              </span>
-            ))}
+            ].map((line, i) =>
+              "amp" in line ? (
+                <span key={i} className="block overflow-hidden py-1">
+                  <motion.span
+                    variants={{
+                      hidden: { scale: 0, rotate: -45, opacity: 0 },
+                      show: {
+                        scale: 1,
+                        rotate: 0,
+                        opacity: 1,
+                        transition: { type: "spring", stiffness: 260, damping: 16, delay: 0.1 },
+                      },
+                    }}
+                    animate={{ scale: [1, 1.12, 1], rotate: [0, 3, 0] }}
+                    transition={{
+                      delay: 0.9,
+                      duration: 2.4,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                    className="inline-block bg-gradient-to-br from-kindle-accent via-kindle-accent to-[#c98f4e] bg-clip-text text-transparent text-6xl sm:text-7xl md:text-8xl leading-none drop-shadow-[0_2px_10px_rgba(180,120,60,0.25)]"
+                  >
+                    &amp;
+                  </motion.span>
+                </span>
+              ) : (
+                <span key={i} className="block overflow-hidden py-0.5">
+                  <motion.span
+                    variants={{
+                      hidden: { y: "120%", opacity: 0 },
+                      show: { y: "0%", opacity: 1, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
+                    }}
+                    className={`block ${line.em ? "text-kindle-accent" : ""}`}
+                  >
+                    {line.t}
+                  </motion.span>
+                </span>
+              )
+            )}
           </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.55 }}
+            transition={{ delay: 0.6 }}
             className="text-base sm:text-lg text-kindle-text-muted leading-relaxed max-w-2xl mx-auto font-medium"
           >
             The open E-Ink digital reader with integrated text-to-speech voice narration, federated open-book discovery, and a lounge games suite.
