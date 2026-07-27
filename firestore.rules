@@ -23,6 +23,16 @@ service cloud.firestore {
       }
     }
 
+    // Linguist Guardian P2P Clash — ephemeral battle rooms (co-op boss / 1v1).
+    match /battleRooms/{roomId} {
+      allow read, create, update, delete: if roomId.size() == 6
+        && roomId.matches('[0-9]+');
+      match /{sub}/{subId} {
+        allow read, create, update, delete: if roomId.size() == 6
+          && roomId.matches('[0-9]+');
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

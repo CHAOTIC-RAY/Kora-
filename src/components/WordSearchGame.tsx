@@ -225,7 +225,7 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen" }
           onClick={onClose}
         >
           <motion.div
-            className="relative w-full max-w-2xl max-h-[92vh] bg-[#141210] text-[#f5f0e8] rounded-3xl overflow-hidden flex flex-col shadow-2xl"
+            className="relative w-full max-w-2xl h-[90vh] max-h-[92vh] bg-[#141210] text-[#f5f0e8] rounded-3xl overflow-hidden flex flex-col shadow-2xl"
             initial={{ scale: 0.96, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.96, opacity: 0 }}
