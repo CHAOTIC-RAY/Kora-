@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useScroll, useTransform } from "motion/react";
 import {
   Download,
   Smartphone,
@@ -75,6 +75,14 @@ export default function InstallView() {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // Fade the FAQ area out as the closing notebook rises into view.
+  const faqRef = useRef<HTMLElement | null>(null);
+  const { scrollYProgress: faqScroll } = useScroll({
+    target: faqRef,
+    offset: ["start end", "end end"],
+  });
+  const faqOpacity = useTransform(faqScroll, [0.55, 1], [1, 0.15]);
 
   // Unified Experience Section Pillar State
   const [experiencePillar, setExperiencePillar] = useState<"library" | "themes" | "cloud" | "voice" | "catalog" | "workshop">("library");
@@ -815,7 +823,12 @@ export default function InstallView() {
         </div>
 
         {/* Section 7: FAQ Accordion */}
-        <div id="faq" className="space-y-6 max-w-3xl mx-auto pt-8 border-t border-kindle-border/60 scroll-mt-20">
+        <motion.div
+          ref={faqRef}
+          id="faq"
+          style={{ opacity: faqOpacity }}
+          className="space-y-6 max-w-3xl mx-auto pt-8 border-t border-kindle-border/60 scroll-mt-20"
+        >
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-serif font-bold text-kindle-text">
               Frequently Asked Questions
@@ -851,16 +864,16 @@ export default function InstallView() {
               );
             })}
           </div>
-        </div>
+        </motion.div>
       </section>
 
       {/* Closing Notebook — full-bleed, smooth fill-the-screen reveal on last scroll */}
       <section ref={notebookRef} className="relative">
         <motion.div
-          initial={{ opacity: 0, y: 80, scale: 0.98 }}
+          initial={{ opacity: 0, y: 80, scale: 0.9 }}
           whileInView={{ opacity: 1, y: 0, scale: 1 }}
           viewport={{ once: false, amount: 0.25 }}
-          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1] }}
           className="relative w-full min-h-screen flex flex-col justify-center bg-gradient-to-br from-kindle-card via-kindle-card to-kindle-bg overflow-hidden px-6 sm:px-12 py-20 text-center space-y-8"
         >
           {/* notebook ruled page lines */}
