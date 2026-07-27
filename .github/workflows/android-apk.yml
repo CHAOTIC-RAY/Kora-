@@ -201,14 +201,40 @@ jobs:
             LOG_RANGE="--max-count=20 HEAD"
           fi
 
-          # Group commits into Added / Changed / Fixed from conventional-ish prefixes.
-          CHANGE=$(git log --no-merges --pretty=format:'%s' $LOG_RANGE | awk '
-            /^[aA]dd|^feat|new|implement/i { sub(/^[^:]*:[ ]*/,""); print "- ✨ " $0; next }
-            /^[fF]ix|bug|patch/i            { sub(/^[^:]*:[ ]*/,""); print "- 🐛 " $0; next }
-            /^[cC]hange|^refactor|^update|tweak/i { sub(/^[^:]*:[ ]*/,""); print "- 🔧 " $0; next }
-            { sub(/^[^:]*:[ ]*/,""); print "- " $0 }
-          ')
-          [ -z "$CHANGE" ] && CHANGE="- (no conventional commits in range)"
+          # Concise, summarised changelog for future builds:
+          # drop CI/chore noise, group by Added/Changed/Fixed/Other, dedupe, cap length.
+          RAW=$(git log --no-merges --pretty=format:'%s' $LOG_RANGE 2>/dev/null || true)
+          if [ -z "$RAW" ]; then
+            CHANGE="- (no commits in range)"
+          else
+            MAP=$(printf '%s\n' "$RAW" \
+              | grep -viE '^(chore|ci|merge|bump|wip|deps|revert)[ :]' \
+              | awk '
+                /^[aA]dd|^feat|new|implement/i { sub(/^[^:!]*[:!][ ]*/,""); gsub(/^[ \t]+/,""); print "ADD::" $0; next }
+                /^[fF]ix|bug|patch/i            { sub(/^[^:!]*[:!][ ]*/,""); gsub(/^[ \t]+/,""); print "FIX::" $0; next }
+                /^[cC]hange|refactor|update|tweak/i { sub(/^[^:!]*[:!][ ]*/,""); gsub(/^[ \t]+/,""); print "CHG::" $0; next }
+                { sub(/^[^:!]*[:!][ ]*/,""); gsub(/^[ \t]+/,""); print "OTH::" $0 }
+              ' \
+              | awk '!seen[$0]++' \
+              | head -40)
+            NA=$(printf '%s\n' "$MAP" | grep -c '^ADD::' || true)
+            NC=$(printf '%s\n' "$MAP" | grep -c '^CHG::' || true)
+            NF=$(printf '%s\n' "$MAP" | grep -c '^FIX::' || true)
+            NT=$(printf '%s\n' "$MAP" | grep -c '.' || true)
+            SUMMARY="📦 ${NT} notable commits — ✨ ${NA} added · 🔧 ${NC} changed · 🐛 ${NF} fixed"
+            BODY=$(printf '%s\n' "$MAP" | awk -F'::' '
+                $1=="ADD"{add=add"\n- ✨ "$2}
+                $1=="CHG"{chg=chg"\n- 🔧 "$2}
+                $1=="FIX"{fix=fix"\n- 🐛 "$2}
+                $1=="OTH"{oth=oth"\n- "$2}
+                END{
+                  if(add!=""){print "**Added**"; print substr(add,2)}
+                  if(chg!=""){print "**Changed**"; print substr(chg,2)}
+                  if(fix!=""){print "**Fixed**"; print substr(fix,2)}
+                  if(oth!=""){print "**Other**"; print substr(oth,2)}
+                }')
+            CHANGE=$(printf '%s\n\n%s\n' "$SUMMARY" "$BODY")
+          fi
 
           # Feature highlights — the pillars shipped with every Kora build.
           FEATURES=$(cat <<'EOF'
