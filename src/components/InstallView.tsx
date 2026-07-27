@@ -1026,14 +1026,7 @@ export default function InstallView() {
               <span key={i} className="w-3 h-3 rounded-full border-2 border-kindle-border bg-kindle-bg" />
             ))}
           </div>
-
           <KoraWordmarkReveal>
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-20 h-20 rounded-3xl bg-kindle-card border-2 border-kindle-border/80 flex items-center justify-center shadow-xl">
-                <KoraIcon className="w-10 h-10 text-kindle-text" />
-              </div>
-            </div>
-
             <div className="relative space-y-3 max-w-lg mx-auto">
               <p className="text-base font-bold uppercase tracking-[0.25em] text-kindle-accent">
                 A Chaos Studio Project

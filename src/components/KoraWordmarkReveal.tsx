@@ -36,6 +36,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
 
     let raf = 0;
     let cancelled = false;
+    let started = false;
 
     const start = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -144,8 +145,6 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       raf = requestAnimationFrame(loop);
     };
 
-    start();
-
     let t: number | undefined;
     const onResize = () => {
       clearTimeout(t);
@@ -155,10 +154,25 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     };
     window.addEventListener("resize", onResize);
 
+    // Start the animation only when the About section scrolls into view.
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting && !started) {
+            started = true;
+            start();
+          }
+        });
+      },
+      { threshold: 0.3 }
+    );
+    io.observe(wrap);
+
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       clearTimeout(t);
+      io.disconnect();
       window.removeEventListener("resize", onResize);
     };
   }, []);
