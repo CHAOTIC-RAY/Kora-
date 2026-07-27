@@ -23,7 +23,6 @@ import {
   type PlacedWord,
   type WordscapePuzzle,
 } from "../lib/crosswordEngine";
-import { canHover } from "../lib/canHover";
 
 const STORAGE_KEY = "kora_crossword_progress_v2";
 
@@ -616,7 +615,7 @@ export default function CrosswordGame({ open, onClose, variant = "fullscreen", o
                 </div>
               </div>
               <div className="flex items-center gap-2">
-              {canHover() && onOpenScores && (
+              {onOpenScores && (
                 <button
                   type="button"
                   onClick={onOpenScores}
@@ -627,7 +626,7 @@ export default function CrosswordGame({ open, onClose, variant = "fullscreen", o
                   <Trophy className="w-5 h-5" />
                 </button>
               )}
-              {canHover() && (
+              {(
                 <button
                   type="button"
                   onClick={() => setV(v === "fullscreen" ? "popup" : "fullscreen")}

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Swords, BookOpen, ScrollText, Brain, Crown, X, Share2, Copy, Check, Wifi, Cpu, Users } from "lucide-react";
+import { Swords, BookOpen, ScrollText, Brain, Crown, X, Share2, Copy, Check, Wifi, Cpu, Users, Maximize2, Minimize2, Trophy } from "lucide-react";
 import { getCustomDictionary, DictionaryEntry } from "../lib/dictionary";
 import { db, auth, isRealFirebase } from "../lib/firebase";
+import { gameViewVariant } from "../lib/canHover";
 import {
   doc,
   onSnapshot,
@@ -120,45 +121,92 @@ function buildQueue(m: Mode, pool: ArsenalWord[], seed: number, count = 80): Q[]
   return Array.from({ length: count }, () => buildQuestion(m, pool, rnd));
 }
 
-// ── Pixel sprites ──────────────────────────────────────────────────
-type Palette = Record<string, string>;
-function PixelSprite({ grid, palette, scale = 6 }: { grid: string[]; palette: Palette; scale?: number }) {
-  const w = grid[0].length;
-  const h = grid.length;
-  const rects: React.ReactNode[] = [];
-  grid.forEach((row, y) =>
-    row.split("").forEach((ch, x) => {
-      const c = palette[ch];
-      if (c) rects.push(<rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={c} />);
-    })
-  );
+// ── Detailed 2D monster sprites (cel-shaded, openmon/Tuxemon spirit) ──
+type SpriteKind = "guardian" | "rival" | "boss";
+
+function MonSprite({ kind, scale = 1 }: { kind: SpriteKind; scale?: number }) {
+  const S = (n: number) => n * scale;
+  if (kind === "guardian") {
+    // owl-scholar defender — soft feathers, big eyes, book-ish brow
+    return (
+      <svg width={S(120)} height={S(120)} viewBox="0 0 120 120" style={{ display: "block" }} aria-hidden>
+        <defs>
+          <radialGradient id="gw" cx="42%" cy="38%" r="70%">
+            <stop offset="0%" stopColor="#fff7e6" />
+            <stop offset="100%" stopColor="#e4d4b2" />
+          </radialGradient>
+          <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#c98f4e" />
+            <stop offset="100%" stopColor="#9c6a34" />
+          </linearGradient>
+        </defs>
+        <ellipse cx="60" cy="112" rx="34" ry="6" fill="#000" opacity="0.18" />
+        <path d="M28 56c0-22 14-40 32-40s32 18 32 40c0 26-16 46-32 46S28 82 28 56z" fill="url(#gw)" stroke="#2a2113" strokeWidth="3" />
+        <path d="M40 40c8-10 32-10 40 0 4-12-6-22-20-22S36 28 40 40z" fill="url(#gb)" stroke="#2a2113" strokeWidth="2.5" />
+        <path d="M52 36c-7-2-12 4-12 4M68 36c7-2 12 4 12 4" stroke="#2a2113" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+        <circle cx="46" cy="58" r="15" fill="#fdfcf7" stroke="#2a2113" strokeWidth="2.5" />
+        <circle cx="74" cy="58" r="15" fill="#fdfcf7" stroke="#2a2113" strokeWidth="2.5" />
+        <circle cx="48" cy="60" r="6.5" fill="#1a1510" />
+        <circle cx="72" cy="60" r="6.5" fill="#1a1510" />
+        <circle cx="50.5" cy="57.5" r="2" fill="#fff" />
+        <circle cx="74.5" cy="57.5" r="2" fill="#fff" />
+        <path d="M60 66l-7 9h14z" fill="url(#gb)" stroke="#2a2113" strokeWidth="2" />
+        <path d="M60 75v5" stroke="#2a2113" strokeWidth="2" />
+        <path d="M44 78c-6 6-12 6-16 2 4 8 14 10 20 4M76 78c6 6 12 6 16 2-4 8-14 10-20 4" fill="#e4d4b2" stroke="#2a2113" strokeWidth="2.2" strokeLinejoin="round" />
+        <path d="M34 70c-8 2-12 10-10 16 2-8 8-12 14-12M86 70c8 2 12 10 10 16-2-8-8-12-14-12" fill="#cdb892" stroke="#2a2113" strokeWidth="2" />
+      </svg>
+    );
+  }
+  if (kind === "rival") {
+    // green fox-ish trickster
+    return (
+      <svg width={S(120)} height={S(120)} viewBox="0 0 120 120" style={{ display: "block" }} aria-hidden>
+        <defs>
+          <radialGradient id="rw" cx="42%" cy="36%" r="72%">
+            <stop offset="0%" stopColor="#a6e07a" />
+            <stop offset="100%" stopColor="#5f9e44" />
+          </radialGradient>
+        </defs>
+        <ellipse cx="60" cy="112" rx="32" ry="6" fill="#000" opacity="0.18" />
+        <path d="M30 44c0-18 12-30 30-30s30 12 30 30c0 14-6 26-14 34 8 4 14 10 14 18 0 12-12 18-30 18s-30-8-30-20c0-8 6-14 14-18-10-8-14-20-14-32z" fill="url(#rw)" stroke="#16331a" strokeWidth="3" />
+        <path d="M34 26l8 20 14-12zM86 26l-8 20-14-12z" fill="#7fae5a" stroke="#16331a" strokeWidth="2.5" strokeLinejoin="round" />
+        <circle cx="48" cy="54" r="12" fill="#fdfcf7" stroke="#16331a" strokeWidth="2.5" />
+        <circle cx="72" cy="54" r="12" fill="#fdfcf7" stroke="#16331a" strokeWidth="2.5" />
+        <circle cx="49" cy="55" r="5.5" fill="#16331a" />
+        <circle cx="73" cy="55" r="5.5" fill="#16331a" />
+        <circle cx="51" cy="53" r="1.8" fill="#fff" />
+        <circle cx="75" cy="53" r="1.8" fill="#fff" />
+        <path d="M56 66q4 4 8 0" stroke="#16331a" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+        <path d="M60 66l-5 7h10z" fill="#234d2a" stroke="#16331a" strokeWidth="2" />
+        <path d="M40 78c-8 4-14 12-12 20 6-6 12-8 18-8M80 78c8 4 14 12 12 20-6-6-12-8-18-8" fill="#7fae5a" stroke="#16331a" strokeWidth="2.2" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  // boss — amethyst ink-blob with eyes and drips
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} width={w * scale} height={h * scale} shapeRendering="crispEdges" style={{ imageRendering: "pixelated", display: "block" }} aria-hidden>
-      {rects}
+    <svg width={S(120)} height={S(120)} viewBox="0 0 120 120" style={{ display: "block" }} aria-hidden>
+      <defs>
+        <radialGradient id="bw" cx="44%" cy="34%" r="74%">
+          <stop offset="0%" stopColor="#a07fd0" />
+          <stop offset="100%" stopColor="#5b3a8e" />
+        </radialGradient>
+      </defs>
+      <ellipse cx="60" cy="112" rx="36" ry="6" fill="#000" opacity="0.2" />
+      <path d="M24 60c0-22 16-38 36-38s36 16 36 38c0 20-10 34-20 40 6 6 6 14-2 18-4-10-12-12-18-10-4-8-12-10-16-2-10-4-16-16-16-34z" fill="url(#bw)" stroke="#1c0f2e" strokeWidth="3" />
+      <path d="M30 48c-6-4-14-2-16 4 8 0 12 2 16 6M90 48c6-4 14-2 16 4-8 0-12 2-16 6" fill="#5b3a8e" stroke="#1c0f2e" strokeWidth="2" strokeLinejoin="round" />
+      <circle cx="48" cy="56" r="14" fill="#fdfcf7" stroke="#1c0f2e" strokeWidth="2.5" />
+      <circle cx="72" cy="56" r="14" fill="#fdfcf7" stroke="#1c0f2e" strokeWidth="2.5" />
+      <circle cx="50" cy="58" r="6" fill="#1c0f2e" />
+      <circle cx="70" cy="58" r="6" fill="#1c0f2e" />
+      <circle cx="52.5" cy="55.5" r="2" fill="#fff" />
+      <circle cx="72.5" cy="55.5" r="2" fill="#fff" />
+      <path d="M60 64c-5 5-11 5-16 2M60 64c5 5 11 5 16 2" stroke="#1c0f2e" strokeWidth="2" fill="none" strokeLinecap="round" />
+      <path d="M52 76q8 8 16 0" stroke="#1c0f2e" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+      <path d="M40 86c-3 8-3 14 2 18-2-8 0-14 2-18M80 86c3 8 3 14-2 18 2-8 0-14-2-18" fill="#5b3a8e" stroke="#1c0f2e" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   );
 }
 
-const GUARDIAN: string[] = [
-  "................","................",".....oooo.......","....oooooo......","...wwwwwwww.....","..wwwwwwwwww....","..wwkwwwwkww....","..wwkwkkwkkw....","..wwwwwwwwww....","...wwwoowwww....","...wwwwwwww.....","..wwwwwwwwww....","..wwwwwwwwww....","...wddwwddw.....","................","................",
-];
-const GUARDIAN_PAL: Palette = { o: "#3a2f1f", w: "#f0e6cf", k: "#1a1510", d: "#b9824a" };
-
-const RIVAL: string[] = [
-  "................","................","......gggg......","....gggggggg....","...gggggggggg...","..gwgggggwwgg...","..gwgwwgwwgg....","..ggggkkgggg....","...gggnnnggg....","...gggggggg.....","....gggggg......",".gg gggggg gg..",".gg.g....g.gg...",".gg........gg...","................","................",
-];
-const RIVAL_PAL: Palette = { g: "#7fae5a", w: "#ffffff", k: "#10240f", n: "#3a2358" };
-
-const BOSS: string[] = [
-  "................","................",".....pppppp.....","...pppppppppp...","..pppppppppppp..",".pppppppppppppp.",".ppkkppppppkkpp.",".ppkpwppppwkpkp.",".pppppppppppppp.",".pppppmmmmppppp.","..pppppppppppp..","...pppppppppp...","....pppppppp....","................","................","................",
-];
-const BOSS_PAL: Palette = { p: "#7a5ea8", k: "#140b1f", w: "#ffffff", m: "#3a2358" };
-
-const SPRITES: Record<Sprite, { grid: string[]; pal: Palette }> = {
-  guardian: { grid: GUARDIAN, pal: GUARDIAN_PAL },
-  rival: { grid: RIVAL, pal: RIVAL_PAL },
-  boss: { grid: BOSS, pal: BOSS_PAL },
-};
 const HP_COLORS = ["#6fbf73", "#e0b341", "#c0504d"];
 
 interface Fighter {
@@ -189,7 +237,7 @@ function genCode(): string {
   return Array.from(b, (x) => a[x % a.length]).join("");
 }
 
-export default function LinguistGuardian({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function LinguistGuardian({ open, onClose, onOpenScores }: { open: boolean; onClose: () => void; onOpenScores?: () => void }) {
   const [phase, setPhase] = useState<Phase>("menu");
   const [matchType, setMatchType] = useState<MatchType>("solo");
   const [mode, setMode] = useState<Mode>("definer");
@@ -209,6 +257,7 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
   const [roomCode, setRoomCode] = useState("");
   const [roomStatus, setRoomStatus] = useState<"lobby" | "playing" | "done">("lobby");
   const [roomMsg, setRoomMsg] = useState("");
+  const [v, setV] = useState<"fullscreen" | "popup">(gameViewVariant());
   const queueRef = useRef<Q[]>([]);
   const flashTimer = useRef<number | undefined>(undefined);
   const cpuTimer = useRef<number | undefined>(undefined);
@@ -564,12 +613,26 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
   if (!open) return null;
 
   const popup = (
-    <motion.div className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+    <motion.div
+      className={
+        v === "fullscreen"
+          ? "fixed inset-0 z-[80] flex flex-col bg-[#0f0d09] text-[#e9e2d0]"
+          : "fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md"
+      }
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
       <motion.div
-        className="relative w-full max-w-2xl max-h-[94vh] bg-[#0f0d09] text-[#e9e2d0] rounded-3xl overflow-hidden flex flex-col shadow-2xl border-2 border-[#3a3527]"
-        initial={{ scale: 0.96, opacity: 0 }}
+        className={
+          v === "fullscreen"
+            ? "relative w-full h-full flex flex-col shadow-2xl border-2 border-[#3a3527]"
+            : "relative w-full max-w-2xl max-h-[94vh] bg-[#0f0d09] text-[#e9e2d0] rounded-3xl overflow-hidden flex flex-col shadow-2xl border-2 border-[#3a3527]"
+        }
+        initial={{ scale: v === "fullscreen" ? 1 : 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
+        exit={{ scale: v === "fullscreen" ? 1 : 0.96, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -585,9 +648,19 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
               <p className="text-[9px] uppercase tracking-widest opacity-50">{matchType === "solo" ? "Practice" : matchType === "local" ? "Local Free-For-All" : "Online Free-For-All"}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-full border border-white/10 hover:bg-white/5" aria-label="Close">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onOpenScores && (
+              <button onClick={onOpenScores} className="p-1.5 rounded-full border border-white/10 hover:bg-white/5" aria-label="Open score tracker" title="Score Tracker">
+                <Trophy className="w-4 h-4 text-[#d4a574]" />
+              </button>
+            )}
+            <button onClick={() => setV(v === "fullscreen" ? "popup" : "fullscreen")} className="p-1.5 rounded-full border border-white/10 hover:bg-white/5" aria-label={v === "fullscreen" ? "Shrink to popup" : "Expand to fullscreen"} title={v === "fullscreen" ? "Popup" : "Fullscreen"}>
+              {v === "fullscreen" ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-full border border-white/10 hover:bg-white/5" aria-label="Close">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -681,7 +754,6 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
                 <div className="absolute bottom-0 inset-x-0 h-1/3 bg-[#1c241a]" />
                 <div className="relative flex items-end justify-center gap-6 flex-wrap">
                   {fighters.map((f, i) => {
-                    const sp = SPRITES[f.sprite];
                     const isActive = i === turnIdx && f.alive;
                     return (
                       <div key={f.id} className={`flex flex-col items-center gap-1 ${!f.alive ? "opacity-30 grayscale" : ""}`}>
@@ -699,7 +771,7 @@ export default function LinguistGuardian({ open, onClose }: { open: boolean; onC
                           transition={{ duration: flash ? 0.5 : isActive ? 1.8 : 0.2, repeat: flash || !isActive ? 0 : Infinity, ease: "easeInOut" }}
                           className="drop-shadow-[0_8px_10px_rgba(0,0,0,0.45)]"
                         >
-                          <PixelSprite grid={sp.grid} palette={sp.pal} scale={6} />
+                          <MonSprite kind={f.sprite} scale={1.1} />
                         </motion.div>
                         <div className="w-24">
                           <div className="h-2 rounded-full bg-[#0f0d09] overflow-hidden border border-[#3a3527]">

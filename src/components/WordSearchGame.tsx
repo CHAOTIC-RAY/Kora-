@@ -11,7 +11,6 @@ import {
   type WordSearchDifficulty,
   type WordSearchPuzzle,
 } from "../lib/wordSearchEngine";
-import { canHover } from "../lib/canHover";
 
 const STORAGE_KEY = "kora_wordsearch_progress_v1";
 
@@ -290,7 +289,7 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen", 
                 </div>
               </div>
               <div className="flex items-center gap-2">
-              {canHover() && onOpenScores && (
+              {onOpenScores && (
                 <button
                   type="button"
                   onClick={onOpenScores}
@@ -301,7 +300,7 @@ export default function WordSearchGame({ open, onClose, variant = "fullscreen", 
                   <Trophy className="w-5 h-5" />
                 </button>
               )}
-              {canHover() && (
+              {(
                 <button
                   type="button"
                   onClick={() => setV(v === "fullscreen" ? "popup" : "fullscreen")}

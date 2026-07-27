@@ -2859,7 +2859,7 @@ function SettingsView({
       <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
-      <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} />
+      <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} onOpenScores={() => setShowScoreTracker(true)} />
       <ReadingInsightsTool
         open={showInsights}
         onClose={() => setShowInsights(false)}
