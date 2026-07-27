@@ -5,6 +5,7 @@ import { resolveCachedCoverSrc, warmCoverCache } from "../lib/coverCache";
 interface CachedCoverImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   coverUrl?: string | null;
   bookTitle?: string;
+  fallback?: string;
 }
 
 /** Cover <img> that serves from offline IDB cache when available. */

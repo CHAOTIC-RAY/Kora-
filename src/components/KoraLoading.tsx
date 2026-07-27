@@ -2,7 +2,14 @@ import React from "react";
 import { motion } from "motion/react";
 import { KoraWordmark } from "./KoraLogo";
 
-export default function KoraLoading() {
+interface KoraLoadingProps {
+  context?: string;
+  query?: string;
+  compact?: boolean;
+  categorySource?: any;
+}
+
+export default function KoraLoading({ context, query, compact, categorySource }: KoraLoadingProps = {}) {
   return (
     <div className="flex flex-col items-center justify-center space-y-6">
       <motion.div

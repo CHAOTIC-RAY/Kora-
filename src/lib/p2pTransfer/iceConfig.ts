@@ -12,10 +12,7 @@ export const P2P_ICE_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
-    // Cloudflare public TURN (anonymous, no credentials) — primary relay.
-    { urls: "turn:relay1.express.turn.dev:3478" },
-    { urls: "turn:relay1.express.turn.dev:3478?transport=tcp" },
-    // Open Relay Project — backup relay when direct ICE fails.
+    // Open Relay Project — public relay when direct ICE fails.
     { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
     { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
     { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },

@@ -7,18 +7,18 @@ service cloud.firestore {
 
     // Ephemeral Blip signaling only (SDP / ICE). Never store file bytes here.
     match /blipRooms/{roomId} {
-      allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12;
+      allow read, create, update, delete: if roomId.size() >= 4 && roomId.size() <= 16;
       match /{iceCol}/{iceId} {
-        allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12
+        allow read, create, update, delete: if roomId.size() >= 4 && roomId.size() <= 16
           && (iceCol == 'hostIce' || iceCol == 'guestIce');
       }
     }
 
     // Ephemeral P2P signaling (renamed from Blip). Same shape.
     match /p2pRooms/{roomId} {
-      allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12;
+      allow read, create, update, delete: if roomId.size() >= 4 && roomId.size() <= 16;
       match /{iceCol}/{iceId} {
-        allow read, create, update, delete: if roomId.size() >= 6 && roomId.size() <= 12
+        allow read, create, update, delete: if roomId.size() >= 4 && roomId.size() <= 16
           && (iceCol == 'hostIce' || iceCol == 'guestIce');
       }
     }

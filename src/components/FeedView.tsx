@@ -51,6 +51,8 @@ interface FeedViewProps {
   initialUrl?: string | null;
   onClearInitialUrl?: () => void;
   grayscaleCovers?: boolean;
+  initialFilter?: string | null;
+  onClearInitialFilter?: () => void;
 }
 
 type FeedFilter = "all" | "unread" | "saved" | "briefs";
@@ -357,6 +359,8 @@ function FeedView({
   initialUrl,
   onClearInitialUrl,
   grayscaleCovers = false,
+  initialFilter,
+  onClearInitialFilter,
 }: FeedViewProps) {
   const [subscriptions, setSubscriptions] = useState<FeedSubscription[]>([]);
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -451,6 +455,15 @@ function FeedView({
     };
     setReadingArticle(syntheticItem);
   }, [initialUrl, onClearInitialUrl]);
+
+  useEffect(() => {
+    if (initialFilter) {
+      if (initialFilter === "briefs" || initialFilter === "saved" || initialFilter === "unread" || initialFilter === "all") {
+        setFilter(initialFilter);
+      }
+      onClearInitialFilter?.();
+    }
+  }, [initialFilter, onClearInitialFilter]);
 
   const enabledSubscriptions = useMemo(
     () => subscriptions.filter(isFeedSubscriptionEnabled),

@@ -71,6 +71,10 @@ interface SettingsViewProps {
   grayscaleCovers: boolean;
   hideCovers?: boolean;
   displayTheme: string;
+  appSkin?: string;
+  onChangeAppSkin?: (skin: any) => void;
+  loungeEnabled?: boolean;
+  onChangeLoungeEnabled?: (enabled: boolean) => void;
   dailyRemindersEnabled?: boolean;
   onChangeDailyReminders?: (enabled: boolean) => void;
   dailyNewsBriefEnabled?: boolean;
@@ -150,6 +154,10 @@ function SettingsView({
   grayscaleCovers,
   hideCovers = false,
   displayTheme,
+  appSkin,
+  onChangeAppSkin,
+  loungeEnabled,
+  onChangeLoungeEnabled,
   dailyRemindersEnabled = false,
   onChangeDailyReminders,
   dailyNewsBriefEnabled = false,

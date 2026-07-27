@@ -88,6 +88,7 @@ interface AudiobookPlayerProps {
   onMinimize?: () => void;
   onExpand?: () => void;
   onProgressUpdate?: (book: BookMetadata) => void;
+  onPlayingChange?: (playing: boolean) => void;
 }
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -165,6 +166,7 @@ export default function AudiobookPlayer({
   onMinimize,
   onExpand,
   onProgressUpdate,
+  onPlayingChange,
 }: AudiobookPlayerProps) {
   const tracks = book.audiobookTracks || [];
   const isTtsBook = book.source === "browser-tts" || tracks.some((track) => isBrowserTtsTrack(track.src));
@@ -183,6 +185,10 @@ export default function AudiobookPlayer({
   );
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(() => getInitialAudiobookTime(book));
+
+  useEffect(() => {
+    onPlayingChange?.(isPlaying);
+  }, [isPlaying, onPlayingChange]);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [downloading, setDownloading] = useState(false);
