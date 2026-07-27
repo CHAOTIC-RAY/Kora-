@@ -1,0 +1,94 @@
+name: iOS Build (Ad Hoc)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Build number'
+        required: true
+        default: '1'
+        type: string
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  build-adhoc:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap copy ios
+
+      - name: Decode signing assets
+        run: |
+          echo "${{ secrets.IOS_CERTIFICATE }}" | base64 --decode > cert.p12
+          echo "${{ secrets.IOS_PROVISIONING_PROFILE }}" | base64 --decode > profile.mobileprovision
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Export IPA (Ad Hoc)
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CERT_PASSWORD: ${{ secrets.IOS_CERT_PASSWORD }}
+        run: |
+          ARCHIVE_PATH="${{ github.workspace }}/build/Kora.xcarchive"
+          EXPORT_PATH="${{ github.workspace }}/build/ipa"
+          mkdir -p "$EXPORT_PATH"
+
+          # Build archive
+          xcodebuild -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination generic/platform=iOS \
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=manual \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            archive
+
+          # Export options plist
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <dict>
+            <key>method</key><string>ad-hoc</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>compileBitcode</key><false/>
+          </dict>
+          EOF
+
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist ExportOptions.plist
+
+          # Rename to Kora.ipa
+          mv "$EXPORT_PATH/App.ipa" "$EXPORT_PATH/Kora.ipa"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kora-AdHoc-IPA
+          path: build/ipa/Kora.ipa
+
+      - name: Summary
+        run: |
+          echo "## iOS Ad Hoc Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Number:** ${{ github.event.inputs.build_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **IPA:** \`build/ipa/Kora.ipa\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Required Secrets" >> $GITHUB_STEP_SUMMARY
+          echo "- \`APPLE_TEAM_ID\` — Your 10-char Team ID" >> $GITHUB_STEP_SUMMARY
+          echo "- \`IOS_CERTIFICATE\` — Base64-encoded .p12 cert" >> $GITHUB_STEP_SUMMARY
+          echo "- \`IOS_CERT_PASSWORD\` — Cert password (if any)" >> $GITHUB_STEP_SUMMARY
+          echo "- \`IOS_PROVISIONING_PROFILE\` — Base64-encoded .mobileprovision" >> $GITHUB_STEP_SUMMARY
