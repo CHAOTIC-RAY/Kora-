@@ -44,6 +44,7 @@ import {
 import { fetchLatestApkDownloadUrl } from "../lib/apkUpdater";
 import { KoraIcon, KoraWordmark } from "./KoraLogo";
 import KoraWordmarkReveal from "./KoraWordmarkReveal";
+import InkText from "./InkText";
 import GameScoreTracker from "./GameScoreTracker";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
@@ -341,15 +342,13 @@ export default function InstallView() {
             </button>
           </motion.div>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="text-4xl sm:text-5xl font-serif font-bold text-kindle-text tracking-tight leading-[1.1]"
-          >
-            Read Without Boundaries. <br className="hidden sm:inline" />
-            Listen Anywhere.
-          </motion.h1>
+          <InkText
+            text="Your bookshelf, your narrator, and your morning paper. Unified."
+            className="w-full max-w-3xl mx-auto"
+            fontFamily='Lora, Georgia, ui-serif, serif'
+            fontWeight={800}
+            fillBatch={260}
+          />
 
           <motion.p
             initial={{ opacity: 0, y: 15 }}
