@@ -1781,6 +1781,23 @@ function DiscoverView({
     setViewingCategory(null);
     setCategoryBooks([]);
 
+    // Parallel audiobook search so both book + audiobook results show together.
+    if (!isAudiobookSearch) {
+      setAudiobookLoading(true);
+      const aSignal = createSearchSignal();
+      streamAudiobookSearch(
+        term.trim(),
+        (_src, batch) => {
+          setAudiobookResults((prev) => {
+            const seen = new Set(prev.map((r) => r.link));
+            return [...prev, ...batch.filter((r) => !seen.has(r.link))];
+          });
+          setAudiobookLoading(false);
+        },
+        aSignal
+      ).then((res) => setAudiobookResults(res)).catch(() => {});
+    }
+
     if (typeof e === "string") setQuery(e);
 
     try {
@@ -2842,7 +2859,7 @@ function DiscoverView({
                   className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     audiobookLibraryMode
                       ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text"
+                      : "bg-kindle-accent/10 border-kindle-accent/40 text-kindle-accent hover:bg-kindle-accent/20"
                   }`}
                 >
                   <Headphones className="w-3 h-3" />
@@ -2948,12 +2965,12 @@ function DiscoverView({
         </header>
 
       {/* Audiobook Search Results */}
-      {searchMode && isAudiobookSearch && (
+      {searchMode && (isAudiobookSearch || audiobookResults.length > 0 || audiobookLoading) && (
         <section className="space-y-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-lexend font-bold flex items-center gap-2">
-              <Headphones className="w-5 h-5 text-kindle-text" />
-              {audiobookLoading ? "Searching audiobook sites…" : `Audiobooks for "${query}"`}
+            <h3 className="text-lg font-lexend font-bold flex items-center gap-2 text-kindle-accent">
+              <Headphones className="w-5 h-5 text-kindle-accent" />
+              {audiobookLoading ? "Searching free audiobook archives…" : `Audiobooks for "${query}"`}
             </h3>
             <button
               onClick={() => { setIsAudiobookSearch(false); setAudiobookResults([]); setSearchMode(false); }}

@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "motion/react";
+import { useScrollLock } from "../hooks/useScrollLock";
+import DictionaryWidget from "./DictionaryWidget";
 import {
   Download,
   Smartphone,
@@ -9,6 +11,7 @@ import {
   HelpCircle,
   Info,
   BookOpen,
+  BookA,
   Headphones,
   Radio,
   Gamepad2,
@@ -75,6 +78,7 @@ export default function InstallView() {
   const [showCrosswordDemo, setShowCrosswordDemo] = useState(false);
   const [showWordSearchDemo, setShowWordSearchDemo] = useState(false);
   const [showWikipediaDemo, setShowWikipediaDemo] = useState(false);
+  const [showDictionaryDemo, setShowDictionaryDemo] = useState(false);
 
   // Hide the sticky top nav once the closing notebook fills the screen.
   const [navHidden, setNavHidden] = useState(false);
@@ -98,6 +102,15 @@ export default function InstallView() {
     offset: ["start end", "end end"],
   });
   const faqOpacity = useTransform(faqScroll, [0.55, 1], [1, 0.15]);
+
+  // Lock background scroll whenever any fullscreen demo/popup is open.
+  useScrollLock(
+    showScoreTrackerDemo ||
+      showCrosswordDemo ||
+      showWordSearchDemo ||
+      showWikipediaDemo ||
+      showDictionaryDemo
+  );
 
   // Unified Experience Section Pillar State
   const [experiencePillar, setExperiencePillar] = useState<"library" | "themes" | "cloud" | "voice" | "catalog" | "workshop">("library");
@@ -735,6 +748,28 @@ export default function InstallView() {
                 <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
               </button>
             </div>
+
+            {/* Workshop Tool 5: Searchable Dictionary */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-sky-500/50 transition-all shadow-xs">
+              <div className="space-y-2">
+                <div className="p-2.5 bg-sky-500/10 text-sky-600 rounded-xl w-fit">
+                  <BookA className="w-5 h-5" />
+                </div>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-sky-600">Reference & Words</span>
+                <h4 className="text-sm font-bold text-kindle-text">Searchable Dictionary</h4>
+                <p className="text-xs text-kindle-text-muted leading-relaxed">
+                  Look up any word instantly from Kora's offline dictionary with definitions & examples.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowDictionaryDemo(true)}
+                className="w-full py-2.5 bg-sky-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1109,6 +1144,21 @@ export default function InstallView() {
               className="w-full max-w-5xl"
             >
               <WikipediaWidget onClose={() => setShowWikipediaDemo(false)} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showDictionaryDemo && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-2xl h-[80vh] bg-kindle-bg border border-kindle-border rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <DictionaryWidget onClose={() => setShowDictionaryDemo(false)} />
             </motion.div>
           </div>
         )}
