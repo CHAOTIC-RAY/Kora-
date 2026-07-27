@@ -274,7 +274,7 @@ export default function InstallView() {
     },
     {
       q: "How does Kora's P2P sharing work?",
-      a: "On Android, the APK unlocks local P2P transfer — you can beam books and files directly between devices over the same Wi-Fi, with no cloud, server, or account in the middle. It's device-to-device: your file goes from one Kora to another and nowhere else. Great for sharing a library with a friend or moving books from your computer to your phone without uploading anything.",
+      a: "Kora's P2P sharing lets you beam books and files directly between devices over the same Wi-Fi — on both the web app and the Android APK, with no cloud, server, or account in the middle. It's device-to-device: your file goes from one Kora to another and nowhere else. Great for sharing a library with a friend or moving books from your computer to your phone without uploading anything.",
     },
     {
       q: "Is my reading data private?",
@@ -987,7 +987,7 @@ export default function InstallView() {
               {steps.map((st, idx) => (
                 <div
                   key={`${installTab}-${idx}`}
-                  className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-3 flex flex-col justify-between"
+                  className="bg-kindle-card border border-kindle-border rounded-2xl p-6 sm:p-8 space-y-3 flex flex-col justify-between"
                 >
                   <div className="space-y-2">
                     <span className="block font-mono text-3xl font-bold text-kindle-accent/30">{st.number}</span>

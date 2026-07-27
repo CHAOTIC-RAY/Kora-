@@ -28,6 +28,7 @@ import LoungeNotesWidget from "./LoungeNotesWidget";
 import LoungeWikiWidget from "./LoungeWikiWidget";
 import type { WikiRandomArticle } from "./LoungeWikiWidget";
 import LoungeGamesWidget from "./LoungeGamesWidget";
+import { isNativeApp } from "../lib/capacitorNative";
 import type { GuideId } from "../lib/guides";
 import { pickLoungeGuideWidgets } from "../lib/guides";
 import {
@@ -1119,7 +1120,9 @@ export default function LoungeView({
         </div>
       </div>
 
-      {/* Dynamic Android APK Companion Widget */}
+      {/* Dynamic Android APK Companion Widget — only on web (the APK app
+          doesn't need to advertise installing itself). */}
+      {!isNativeApp() && (
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1157,6 +1160,7 @@ export default function LoungeView({
           </a>
         </div>
       </motion.div>
+      )}
     </div>
   );
 }
