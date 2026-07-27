@@ -287,37 +287,37 @@ export default function FeedTikTokScroll({
                   isExpanded
                     ? isDarkMode
                       ? "bg-black/80"
-                      : "bg-gradient-to-t from-white via-white/95 to-white/45"
-                    : "bg-gradient-to-t from-black/95 via-black/55 to-black/10"
+                      : "bg-gradient-to-t from-[#ECE8D4] via-[#ECE8D4]/95 to-[#ECE8D4]/40"
+                    : isDarkMode
+                      ? "bg-gradient-to-t from-black/95 via-black/55 to-black/10"
+                      : "bg-gradient-to-t from-[#ECE8D4] via-[#ECE8D4]/85 to-[#ECE8D4]/10"
                 }`}
               />
 
               <div
                 className={`relative z-10 cursor-pointer select-text pb-[7rem] md:pb-6 transition-all duration-300 ${
-                  isExpanded && !isDarkMode ? "text-neutral-900" : "text-white"
+                  isDarkMode ? "text-white" : "text-neutral-900"
                 }`}
                 onClick={() => setExpandedIndex(isExpanded ? null : index)}
               >
                 <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-1 sm:mb-2 transition-colors ${
-                  isExpanded && !isDarkMode ? "text-neutral-600" : "text-white/80"
+                  isDarkMode ? "text-white/80" : "text-neutral-600"
                 }`}>
                   {source}
                   {item.read ? (
                     <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
-                      isExpanded && !isDarkMode ? "bg-neutral-200 text-neutral-800" : "bg-white/20 text-white"
+                      isDarkMode ? "bg-white/20 text-white" : "bg-neutral-200 text-neutral-800"
                     }`}>Read</span>
                   ) : (
                     <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
-                      isExpanded && !isDarkMode ? "bg-kindle-accent text-neutral-900" : "bg-kindle-accent text-black"
+                      isDarkMode ? "bg-kindle-accent text-black" : "bg-kindle-accent text-neutral-900"
                     }`}>New</span>
                   )}
                 </span>
                 <h2 className={`text-lg sm:text-xl md:text-2xl font-lexend font-bold leading-tight mb-2 sm:mb-3 transition-all ${
-                  isExpanded
-                    ? isExpanded && !isDarkMode
-                      ? "text-neutral-950"
-                      : "text-white"
-                    : "line-clamp-4 text-white"
+                  isDarkMode
+                    ? isExpanded ? "text-white" : "line-clamp-4 text-white"
+                    : isExpanded ? "text-neutral-950" : "line-clamp-4 text-neutral-900"
                 }`}>
                   {item.title}
                 </h2>

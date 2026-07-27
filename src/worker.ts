@@ -2678,9 +2678,9 @@ export default {
         
         // Sort by score, pick the best candidate
         candidates.sort((a, b) => b.score - a.score);
-        
+
         let contentElement = candidates.length > 0 ? $(candidates[0].element) : $("body");
-        
+
         // Log for debugging
         if (candidates.length > 0) {
           const best = candidates[0];
@@ -2689,15 +2689,32 @@ export default {
           console.log(`[Web Clipper] Best content container: <${best.element.tagName}> class="${bestClass}" id="${bestId}" score=${best.score}`);
         }
 
+        // Build the set of containers to merge so the lede is never dropped when a
+        // caption/figure container out-scores the body. Merge every positive-scoring
+        // candidate plus <article>/<main> and the highest-paragraph container.
+        const mergeSet = new Map<unknown, any>();
+        candidates.forEach((c) => { if (c.score > 0) mergeSet.set(c.element, c.element); });
+        const articleEl = $("article").first().get(0);
+        if (articleEl) mergeSet.set(articleEl, articleEl);
+        const mainEl = $("main").first().get(0);
+        if (mainEl) mergeSet.set(mainEl, mainEl);
+        let _maxP: any = null; let _maxPCount = -1;
+        candidates.forEach((c) => {
+          const n = $(c.element).find("p").length;
+          if (n > _maxPCount) { _maxPCount = n; _maxP = c.element; }
+        });
+        if (_maxP) mergeSet.set(_maxP, _maxP);
+        const containers = Array.from(mergeSet.values());
+
         // ===================================================================
-        // PHASE 4: Clean the winning container
+        // PHASE 4: Clean the winning container (primary pass)
         // ===================================================================
-        
+
         // Remove any remaining noise inside the content container
         contentElement.find("script, style, iframe, form, button, input, textarea, label, select, option, noscript, svg, canvas").remove();
         contentElement.find(".share, .social, .related, .tags, .comment, .comments, .ad, .ads, .advertisement, .widget, .sidebar, .footer, .header, .nav, .menu, .notification, .submenu, .infinity").remove();
         contentElement.find("[class*='comment'], [class*='share'], [class*='social'], [class*='related'], [class*='widget'], [class*='ad-'], [class*='sponsor']").remove();
-        
+
         // Make relative image sources absolute
         contentElement.find("img").each((_, elem) => {
           const $img = $(elem);
@@ -2812,12 +2829,44 @@ export default {
           return result;
         };
         
-        cleanedHtml = extractCleanContent(contentElement);
-        
-        // If the cleaned content is too short, the scoring may have picked a sub-container.
-        // Fall back to a broader search.
+        // Merge all positive containers in document order, deduping paragraphs so the
+        // lede is captured even when the caption/figure container scores higher.
+        {
+          const seen = new Set<string>();
+          let merged = "";
+          for (const el of containers) {
+            const $el = $(el);
+            $el.find("script, style, iframe, form, button, input, textarea, label, select, option, noscript, svg, canvas").remove();
+            $el.find(".share, .social, .related, .tags, .comment, .comments, .ad, .ads, .advertisement, .widget, .sidebar, .footer, .header, .nav, .menu, .notification, .submenu, .infinity").remove();
+            $el.find("[class*='comment'], [class*='share'], [class*='social'], [class*='related'], [class*='widget'], [class*='ad-'], [class*='sponsor']").remove();
+            $el.find("img").each((_: any, ielem: any) => {
+              const $img = $(ielem);
+              const isrc = $img.attr("src") || $img.attr("data-src") || $img.attr("data-original-src") || $img.attr("data-lazy-src");
+              if (isrc) {
+                try { $img.attr("src", new URL(isrc, targetUrl).href); } catch { /* keep as-is */ }
+              } else { $img.remove(); }
+            });
+            const part = extractCleanContent($el);
+            for (const raw of part.split("\n")) {
+              const block = raw.trim();
+              if (!block) continue;
+              const tag = (block.match(/^<(\w+)/) || [])[1] || "";
+              if (["img", "figure", "hr"].includes(tag)) {
+                const key = tag === "img" ? ((block.match(/src="([^"]+)"/) || [])[1] || block) : block;
+                if (!seen.has(key)) { seen.add(key); merged += block + "\n"; }
+                continue;
+              }
+              const key = block.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+              if (key.length < 20) { merged += block + "\n"; continue; }
+              if (!seen.has(key)) { seen.add(key); merged += block + "\n"; }
+            }
+          }
+          cleanedHtml = merged;
+        }
+
+        // Fall back to a broader search if the merge is still thin.
         if (cleanedHtml.replace(/<[^>]*>/g, "").trim().length < 100) {
-          console.log("[Web Clipper] Cleaned content too short, falling back to body extraction.");
+          console.log("[Web Clipper] Merged content too short, falling back to body extraction.");
           cleanedHtml = extractCleanContent($("body"));
         }
         
