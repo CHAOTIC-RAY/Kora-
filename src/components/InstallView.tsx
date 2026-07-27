@@ -51,13 +51,14 @@ import WikipediaWidget from "./WikipediaWidget";
 import ThemeShowcase from "./ThemeShowcase";
 import FeatureDemosGrid from "./FeatureDemosGrid";
 
-/** Scroll-triggered reveal wrapper — fades + lifts content into view once. */
+/** Scroll-triggered reveal wrapper — fades + lifts into view.
+ *  once:false so the animation replays each time the block scrolls back into view. */
 function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 28 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.15 }}
+      viewport={{ once: false, amount: 0.15 }}
       transition={{ duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
       className={className}
     >
@@ -117,6 +118,33 @@ export default function InstallView() {
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [installTab, setInstallTab] = useState<"web" | "apk" | "ios" | "self">("web");
 
+  // PWA install: capture the native prompt so we can trigger it from a button.
+  interface BeforeInstallPromptEvent extends Event {
+    prompt: () => Promise<void>;
+    userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+  }
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [pwaInstalled, setPwaInstalled] = useState(false);
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as unknown as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => setPwaInstalled(true);
+    window.addEventListener("beforeinstallprompt", onPrompt as EventListener);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt as EventListener);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+  const installPwa = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    setDeferredPrompt(null);
+  };
+
   useEffect(() => {
     let alive = true;
     fetchLatestApkDownloadUrl()
@@ -165,28 +193,34 @@ export default function InstallView() {
     return `${mb.toFixed(1)} MB`;
   };
 
-  const steps = [
-    {
-      number: "01",
-      title: "Get Official Package",
-      description: "Click 'Download APK' to fetch the signed Kora Android installation package directly from our release vault."
-    },
-    {
-      number: "02",
-      title: "Allow Unknown Sources",
-      description: "If prompted by Android (Chrome or Files app), tap 'Settings' and enable 'Allow from this source'."
-    },
-    {
-      number: "03",
-      title: "Run Package Installer",
-      description: "Tap the downloaded file in your browser's Downloads manager or notification drawer and press 'Install'."
-    },
-    {
-      number: "04",
-      title: "Step Into Kora Lounge",
-      description: "Launch Kora from your home screen. Enjoy full offline reading, voice narrator audiobooks, and workshop games."
-    }
-  ];
+  // Setup steps change by install type.
+  const stepsByType: Record<string, { number: string; title: string; description: string }[]> = {
+    web: [
+      { number: "01", title: "Open Kora", description: `Visit ${displayHost} in any modern browser — Chrome, Edge, Safari, or Firefox.` },
+      { number: "02", title: "Tap Install", description: "Use the address-bar install icon, or ⋮ menu → “Install” on desktop / Share → “Add to Home Screen” on mobile." },
+      { number: "03", title: "Launch Offline", description: "Open from your home screen or app launcher. Full offline storage — no app store, no sign-up." },
+      { number: "04", title: "Step Into Kora", description: "Read, listen, and play. Your library, progress, and notes stay on your device." },
+    ],
+    apk: [
+      { number: "01", title: "Get Official Package", description: "Tap ‘Download APK’ to fetch the signed Kora Android package from our release vault." },
+      { number: "02", title: "Allow Unknown Sources", description: "If Android (Chrome or Files) prompts, tap ‘Settings’ and enable ‘Allow from this source’." },
+      { number: "03", title: "Run Package Installer", description: "Open the downloaded file from your Downloads manager or notification and press ‘Install’." },
+      { number: "04", title: "Step Into Kora Lounge", description: "Launch Kora from your home screen — background voice, notification controls, and P2P transfer unlocked." },
+    ],
+    ios: [
+      { number: "01", title: "Open in Safari", description: `Open ${displayHost} in Safari (not Chrome) on your iPhone or iPad.` },
+      { number: "02", title: "Tap Share", description: "Hit the Share button (square with arrow) on the bottom toolbar." },
+      { number: "03", title: "Add to Home Screen", description: "Scroll down and tap ‘Add to Home Screen’, then tap ‘Add’ top-right." },
+      { number: "04", title: "Step Into Kora", description: "A standalone Kora icon appears — full-screen, offline, no Apple account needed." },
+    ],
+    self: [
+      { number: "01", title: "Clone the Repo", description: "Clone github.com/CHAOTIC-RAY/Kora- to your machine or server." },
+      { number: "02", title: "Install & Build", description: "Run npm install && npm run build to produce the dist/ folder." },
+      { number: "03", title: "Deploy Static", description: "Ship dist/ to Cloudflare Pages, Netlify, or any static host; point the worker at your domain." },
+      { number: "04", title: "Step Into Kora", description: "Add your Firebase config for optional sync. Your data, your domain, your rules." },
+    ],
+  };
+  const steps = stepsByType[installTab] ?? stepsByType.apk;
 
   const features = [
     {
@@ -863,6 +897,23 @@ export default function InstallView() {
                       <li>Install it: tap the address-bar install icon (or the ⋮ menu → "Install") on desktop, or Share → "Add to Home Screen" on mobile.</li>
                       <li>Launch from your home screen / app launcher with full offline storage — no app store needed.</li>
                     </ol>
+                    <div className="pt-1">
+                      {pwaInstalled ? (
+                        <span className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl bg-kindle-card border border-kindle-border text-[11px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                          <Check className="w-4 h-4 text-emerald-500" /> Installed
+                        </span>
+                      ) : deferredPrompt ? (
+                        <button
+                          type="button"
+                          onClick={installPwa}
+                          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider hover:opacity-90 transition shadow-lg cursor-pointer"
+                        >
+                          <Download className="w-4 h-4" /> Install Kora App
+                        </button>
+                      ) : (
+                        <p className="text-[10px] text-kindle-text-muted">Tip: your browser may show an install icon in the address bar.</p>
+                      )}
+                    </div>
                     <p className="text-[10px] text-kindle-text-muted">Best for: iPhone/iPad, macOS, Windows, ChromeOS, Linux. This is the recommended path for iOS since direct .ipa install requires a paid Apple Developer account.</p>
                   </>
                 )}
@@ -920,43 +971,41 @@ export default function InstallView() {
               </motion.div>
             </AnimatePresence>
           </div>
-        </div>
-        </Reveal>
 
-        {/* Section 6: Step-by-Step Installation Guide */}
-        <Reveal>
-          <div id="guide" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
-            <div className="text-center max-w-xl mx-auto space-y-2">
-              <h2 className="text-2xl font-serif font-bold text-kindle-text">
-                Step-by-Step Setup Guide
-              </h2>
-            <p className="text-xs text-kindle-text-muted leading-relaxed">
-              Installing Kora directly via APK takes less than a minute. Follow these simple steps:
-            </p>
-          </div>
+          {/* Setup steps — change with the selected install type. */}
+          <div id="guide" className="space-y-4 pt-2">
+            <div className="text-center max-w-xl mx-auto space-y-1">
+              <h3 className="text-lg font-serif font-bold text-kindle-text">
+                Step-by-Step Setup
+              </h3>
+              <p className="text-xs text-kindle-text-muted leading-relaxed">
+                Installing Kora takes less than a minute. Follow these steps for your chosen platform.
+              </p>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {steps.map((st, idx) => (
-              <div
-                key={idx}
-                className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-3 flex flex-col justify-between"
-              >
-                <div className="space-y-2">
-                  <span className="block font-mono text-3xl font-bold text-kindle-accent/30">{st.number}</span>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">{st.title}</h4>
-                  <p className="text-xs text-kindle-text-muted leading-relaxed">{st.description}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {steps.map((st, idx) => (
+                <div
+                  key={`${installTab}-${idx}`}
+                  className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-3 flex flex-col justify-between"
+                >
+                  <div className="space-y-2">
+                    <span className="block font-mono text-3xl font-bold text-kindle-accent/30">{st.number}</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">{st.title}</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">{st.description}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
         </Reveal>
 
         {/* Section 7: FAQ Accordion */}
         <motion.div
-          ref={faqRef}
-          id="faq"
-          className="space-y-6 max-w-3xl mx-auto pt-8 border-t border-kindle-border/60 scroll-mt-20"
+        ref={faqRef}
+        id="faq"
+        className="space-y-6 max-w-3xl mx-auto pt-8 border-t border-kindle-border/60 scroll-mt-20"
         >
           <div className="text-center space-y-2">
             <h2 className="text-2xl font-serif font-bold text-kindle-text">

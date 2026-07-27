@@ -2,11 +2,13 @@ package app.kora.reader.widgets;
 
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
+import android.content.ComponentName;
 import android.content.Context;
 import android.net.Uri;
 import android.view.View;
 import android.widget.RemoteViews;
 import app.kora.reader.R;
+import org.json.JSONObject;
 
 /**
  * "Wiki of the Hour" home-screen widget — mirrors the Lounge Wiki widget:

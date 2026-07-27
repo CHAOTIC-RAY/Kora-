@@ -186,6 +186,66 @@ jobs:
           if-no-files-found: error
           retention-days: 60
 
+      - name: Build release notes
+        id: notes
+        env:
+          PREV_TAG: ${{ steps.apk.outputs.name }}
+        run: |
+          set -euo pipefail
+          # Previous APK tag (for the changelog range), else fall back to last 20 commits.
+          PREV=$(git tag --list 'apk-v*' --sort=-v:refname | head -n1 || true)
+          if [ -n "$PREV" ]; then
+            RANGE="$PREV..HEAD"
+          else
+            RANGE="HEAD~20..HEAD"
+          fi
+          # Group commits into Added / Changed / Fixed from conventional-ish prefixes.
+          CHANGE=$(git log --no-merges --pretty=format:'%s' "$RANGE" | awk '
+            /^[aA]dd|^feat|new|implement/i { sub(/^[^:]*:[ ]*/,""); print "- ✨ " $0; next }
+            /^[fF]ix|bug|patch/i            { sub(/^[^:]*:[ ]*/,""); print "- 🐛 " $0; next }
+            /^[cC]hange|^refactor|^update|tweak/i { sub(/^[^:]*:[ ]*/,""); print "- 🔧 " $0; next }
+            { sub(/^[^:]*:[ ]*/,""); print "- " $0 }
+          ')
+          [ -z "$CHANGE" ] && CHANGE="- (no conventional commits in range)"
+
+          # Feature highlights — the pillars shipped with every Kora build.
+          FEATURES=$(cat <<'EOF'
+          - 📖 **Distraction-Free E-Ink Reader** — EPUB, PDF, MOBI, AZW3 with custom typography, themes & paper tints.
+          - 🎧 **Voice Narrator** — on-device neural TTS with pitch/rate control & background playback.
+          - 🌐 **Federated Discovery** — search open catalogs (Rave, LibGen, Anna's Archive) with direct mirrors.
+          - 🎮 **Workshop Lounge** — Crossword, Word Search, Linguist Guardian & board-score tracker.
+          - 🗒️ **Annotations** — highlights, notes & chapter bookmarks, synced privately.
+          - ⚡ **Offline-First** — service-worker downloads that survive app exit & resume.
+          EOF
+          )
+
+          {
+            echo "notes<<RELEASE_BODY"
+            echo "## Kora Android APK — v${KORA_VERSION_NAME}"
+            echo
+            echo "Installable release build with storage, GPU/WebView acceleration, voice narrator, offline library, and notification permissions."
+            echo
+            echo "### ✨ Feature Highlights"
+            echo "$FEATURES"
+            echo
+            echo "### 📝 Changelog (since \`${PREV:-initial}\`)"
+            echo "$CHANGE"
+            echo
+            echo "### 🔏 Certificate Fingerprints"
+            echo '```'
+            echo "SHA-1:   ${{ steps.signing.outputs.sha1 }}"
+            echo "SHA-256: ${{ steps.signing.outputs.sha256 }}"
+            echo '```'
+            echo
+            echo "### 📲 Install"
+            echo "1. Download \`Kora-${KORA_VERSION_NAME}-*.apk\`"
+            echo "2. Enable install from unknown sources (if prompted)"
+            echo "3. Open the APK on your Android device"
+            echo
+            echo "Home-screen icon uses the official Kora logo."
+            echo "RELEASE_BODY"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publish GitHub Release
         if: >
           github.event_name == 'push' ||
@@ -199,36 +259,7 @@ jobs:
             artifacts/FINGERPRINTS.txt
             artifacts/APK_SIGNATURE.txt
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          generate_release_notes: false
           draft: false
           prerelease: ${{ github.ref_name == 'beta' }}
-          body: |
-            ## Kora Android APK
-
-            Installable release build with storage, GPU/WebView acceleration, voice narrator, offline library, and notification permissions.
-
-            | | |
-            |---|---|
-            | **Version** | `v${{ env.KORA_VERSION_NAME }}` |
-            | **Commit** | `${{ github.sha }}` |
-            | **Branch** | `${{ github.ref_name }}` |
-            | **Channel** | `${{ env.VITE_APP_CHANNEL }}` |
-            | **App ID** | `app.kora.reader` |
-            | **Signing** | `${{ steps.signing.outputs.source }}` (`${{ steps.signing.outputs.alias }}`) |
-
-            ### Certificate fingerprints
-
-            ```
-            SHA-1:   ${{ steps.signing.outputs.sha1 }}
-            SHA-256: ${{ steps.signing.outputs.sha256 }}
-            ```
-
-            ### Install
-
-            1. Download `Kora-${{ env.KORA_VERSION_NAME }}-*.apk`
-            2. Enable install from unknown sources (if prompted)
-            3. Open the APK on your Android device
-
-            Home-screen icon uses the official Kora logo.
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          body: ${{ steps.notes.outputs.notes }}
