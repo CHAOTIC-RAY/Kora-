@@ -854,14 +854,14 @@ export default function InstallView() {
         </div>
       </section>
 
-      {/* Closing Notebook — smooth fill-the-screen reveal on last scroll */}
-      <section ref={notebookRef} className="px-4 pb-8 pt-4">
+      {/* Closing Notebook — full-bleed, smooth fill-the-screen reveal on last scroll */}
+      <section ref={notebookRef} className="relative">
         <motion.div
-          initial={{ opacity: 0, y: 80, scale: 0.92 }}
+          initial={{ opacity: 0, y: 80, scale: 0.98 }}
           whileInView={{ opacity: 1, y: 0, scale: 1 }}
           viewport={{ once: false, amount: 0.25 }}
           transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-          className="relative mx-auto w-full min-h-screen flex flex-col justify-center rounded-[2.5rem] border-2 border-kindle-border bg-gradient-to-br from-kindle-card via-kindle-card to-kindle-bg shadow-2xl overflow-hidden px-6 sm:px-10 py-20 text-center space-y-8"
+          className="relative w-full min-h-screen flex flex-col justify-center bg-gradient-to-br from-kindle-card via-kindle-card to-kindle-bg overflow-hidden px-6 sm:px-12 py-20 text-center space-y-8"
         >
           {/* notebook ruled page lines */}
           <div
@@ -873,7 +873,53 @@ export default function InstallView() {
               color: "var(--theme-text)",
             }}
           />
-          {/* spiral binding edge */}
+
+          {/* ink splatter bloom — blooms in as the notebook fills the screen */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+            {[
+              { top: "12%", left: "8%", size: 220, delay: 0.15, color: "var(--theme-text)" },
+              { top: "62%", left: "70%", size: 300, delay: 0.3, color: "var(--theme-accent)" },
+              { top: "78%", left: "14%", size: 160, delay: 0.45, color: "var(--theme-text)" },
+              { top: "30%", left: "82%", size: 130, delay: 0.55, color: "var(--theme-text)" },
+              { top: "44%", left: "40%", size: 90, delay: 0.6, color: "var(--theme-accent)" },
+            ].map((s, i) => (
+              <motion.span
+                key={i}
+                initial={{ scale: 0, opacity: 0 }}
+                whileInView={{ scale: 1, opacity: 0.12 }}
+                viewport={{ once: false, amount: 0.25 }}
+                transition={{ duration: 1.1, delay: s.delay, ease: "easeOut" }}
+                className="absolute rounded-full blur-2xl mix-blend-multiply"
+                style={{
+                  top: s.top,
+                  left: s.left,
+                  width: s.size,
+                  height: s.size,
+                  background: s.color,
+                  transform: "translate(-50%, -50%)",
+                }}
+              />
+            ))}
+            {/* fine ink droplets */}
+            {Array.from({ length: 12 }).map((_, i) => (
+              <motion.span
+                key={`d-${i}`}
+                initial={{ scale: 0, opacity: 0 }}
+                whileInView={{ scale: 1, opacity: 0.18 }}
+                viewport={{ once: false, amount: 0.25 }}
+                transition={{ duration: 0.8, delay: 0.5 + (i % 6) * 0.08, ease: "easeOut" }}
+                className="absolute rounded-full"
+                style={{
+                  top: `${(i * 37) % 100}%`,
+                  left: `${(i * 53) % 100}%`,
+                  width: 5 + (i % 4) * 3,
+                  height: 5 + (i % 4) * 3,
+                  background: i % 2 ? "var(--theme-text)" : "var(--theme-accent)",
+                }}
+              />
+            ))}
+          </div>
+
           <div
             aria-hidden
             className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 flex flex-col items-center justify-around py-8 opacity-40"
