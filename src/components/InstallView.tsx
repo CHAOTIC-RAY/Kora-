@@ -597,7 +597,7 @@ export default function InstallView() {
                   Rave Engine, LibGen & Anna's Archive Search
                 </h3>
                 <p className="text-xs text-kindle-text-muted max-w-xl">
-                  Search millions of open-source ebooks, public domain literature, and academic texts across public library mirrors.
+                  Search millions of open-source ebooks, public domain literature, and academic texts across public library mirrors — plus free audiobook archives for listening.
                 </p>
               </div>
             </div>
@@ -639,6 +639,29 @@ export default function InstallView() {
                   <span className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Anna's Archive</span>
                   <p className="font-bold text-kindle-text">The Time Machine</p>
                   <p className="text-[10px] text-kindle-text-muted">EPUB • 380 KB • Illustrated Edition</p>
+                </div>
+              </div>
+
+              {/* Audiobook results — highlighted feature */}
+              <div className="flex items-center gap-2 pt-1">
+                <Headphones className="w-4 h-4 text-kindle-accent" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-kindle-accent">Free Audiobook Archives</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="p-3 bg-kindle-accent/5 border border-kindle-accent/40 rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-kindle-accent uppercase tracking-wider">HDAudiobooks</span>
+                  <p className="font-bold text-kindle-text">Frankenstein (Unabridged)</p>
+                  <p className="text-[10px] text-kindle-text-muted">MP3 • 9h 14m • Narrated</p>
+                </div>
+                <div className="p-3 bg-kindle-accent/5 border border-kindle-accent/40 rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-kindle-accent uppercase tracking-wider">LibriVox</span>
+                  <p className="font-bold text-kindle-text">Pride and Prejudice</p>
+                  <p className="text-[10px] text-kindle-text-muted">MP3 • 11h 30m • Public Domain</p>
+                </div>
+                <div className="p-3 bg-kindle-accent/5 border border-kindle-accent/40 rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-kindle-accent uppercase tracking-wider">Internet Archive</span>
+                  <p className="font-bold text-kindle-text">The Time Machine</p>
+                  <p className="text-[10px] text-kindle-text-muted">MP3 • 3h 02m • Free Stream</p>
                 </div>
               </div>
             </div>
