@@ -47,6 +47,21 @@ import WikipediaWidget from "./WikipediaWidget";
 import ThemeShowcase from "./ThemeShowcase";
 import FeatureDemosGrid from "./FeatureDemosGrid";
 
+/** Scroll-triggered reveal wrapper — fades + lifts content into view once. */
+function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 export default function InstallView() {
   const [apk, setApk] = useState<{ url: string; versionName: string; size: number } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,6 +106,7 @@ export default function InstallView() {
   const [catalogQuery, setCatalogQuery] = useState("");
   
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
+  const [installTab, setInstallTab] = useState<"web" | "apk" | "ios" | "self">("web");
 
   useEffect(() => {
     let alive = true;
@@ -428,68 +444,72 @@ export default function InstallView() {
         </div>
 
         {/* Section 2: Reading Themes & Typography */}
-        <div id="themes" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-          <div className="text-center max-w-2xl mx-auto space-y-3">
-            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
-              Practical Reading Themes & Typography
-            </h2>
-            <p className="text-xs text-kindle-text-muted leading-relaxed">
-              Switch between handcrafted reading themes and tune line height, margins, and font families for comfortable, distraction-free focus.
-            </p>
+        <Reveal>
+          <div id="themes" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+            <div className="text-center max-w-2xl mx-auto space-y-3">
+              <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
+                Practical Reading Themes & Typography
+              </h2>
+              <p className="text-xs text-kindle-text-muted leading-relaxed">
+                Switch between handcrafted reading themes and tune line height, margins, and font families for comfortable, distraction-free focus.
+              </p>
+            </div>
+            <ThemeShowcase />
           </div>
-          <ThemeShowcase />
-        </div>
+        </Reveal>
 
         {/* Section 3: Multi-Destination Cloud Sync */}
-        <div id="cloud" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-          <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-kindle-border/60 pb-6">
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-500 uppercase tracking-wider">
-                  <Zap className="w-4 h-4" /> Multi-Destination Cloud Sync
+        <Reveal>
+          <div id="cloud" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-kindle-border/60 pb-6">
+                <div className="space-y-1">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-500 uppercase tracking-wider">
+                    <Zap className="w-4 h-4" /> Multi-Destination Cloud Sync
+                  </div>
+                  <h3 className="text-xl font-serif font-bold text-kindle-text">
+                    Instant Progress & Annotations Sync
+                  </h3>
+                  <p className="text-xs text-kindle-text-muted max-w-xl">
+                    Seamlessly sync bookmarks, reading progress percentages, and highlight notes across Android, Web, and desktop via Google Firestore or WebDAV.
+                  </p>
                 </div>
-                <h3 className="text-xl font-serif font-bold text-kindle-text">
-                  Instant Progress & Annotations Sync
-                </h3>
-                <p className="text-xs text-kindle-text-muted max-w-xl">
-                  Seamlessly sync bookmarks, reading progress percentages, and highlight notes across Android, Web, and desktop via Google Firestore or WebDAV.
-                </p>
               </div>
-            </div>
 
-            {/* Cloud Target Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-kindle-text">Firebase Firestore</span>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              {/* Cloud Target Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-kindle-text">Firebase Firestore</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted">Real-time sync across devices with zero setup required.</p>
                 </div>
-                <p className="text-[10px] text-kindle-text-muted">Real-time sync across devices with zero setup required.</p>
-              </div>
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-kindle-text">Google Drive Backup</span>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-kindle-text">Google Drive Backup</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted">Backup full EPUB library files to private Google Drive space.</p>
                 </div>
-                <p className="text-[10px] text-kindle-text-muted">Backup full EPUB library files to private Google Drive space.</p>
-              </div>
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-kindle-text">WebDAV / Nextcloud</span>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-kindle-text">WebDAV / Nextcloud</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted">Self-hosted WebDAV sync protocol for complete data ownership.</p>
                 </div>
-                <p className="text-[10px] text-kindle-text-muted">Self-hosted WebDAV sync protocol for complete data ownership.</p>
-              </div>
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-xs text-kindle-text">Local IndexedDB</span>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-kindle-text">Local IndexedDB</span>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted">100% offline access when no network connection is present.</p>
                 </div>
-                <p className="text-[10px] text-kindle-text-muted">100% offline access when no network connection is present.</p>
               </div>
             </div>
           </div>
-        </div>
+        </Reveal>
 
         {/* Section 4: Voice Narrator Audiobooks */}
         <div id="voice" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
@@ -718,89 +738,132 @@ export default function InstallView() {
           </div>
         </div>
 
-        {/* Section: Install & Run — own host / APK / iOS / WebApp */}
-        <div id="pwa" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
-          <div className="text-center max-w-xl mx-auto space-y-2">
-            <h2 className="text-2xl font-serif font-bold text-kindle-text">
-              Install & Run Kora
-            </h2>
+        <Reveal>
+          <div id="pwa" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
+            <div className="text-center max-w-xl mx-auto space-y-2">
+              <h2 className="text-2xl font-serif font-bold text-kindle-text">
+                Install & Run Kora
+              </h2>
             <p className="text-xs text-kindle-text-muted leading-relaxed">
               Four ways to run Kora — pick what fits your device. Everything is free, open source, and works fully offline.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Web App (PWA) */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4 text-kindle-accent" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Web / PWA</span>
-              </div>
-              <h3 className="text-sm font-bold text-kindle-text">Use it in any browser</h3>
-              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Chrome, Edge, Safari, or Firefox.</li>
-                <li>Install it: tap the address-bar install icon (or the ⋮ menu → "Install") on desktop, or Share → "Add to Home Screen" on mobile.</li>
-                <li>Launch from your home screen / app launcher with full offline storage — no app store needed.</li>
-              </ol>
-              <p className="text-[10px] text-kindle-text-muted">Best for: iPhone/iPad, macOS, Windows, ChromeOS, Linux. This is the recommended path for iOS since direct .ipa install requires a paid Apple Developer account.</p>
-            </div>
+          <div className="flex flex-wrap justify-center gap-2">
+            {[
+              { id: "web", label: "Web / PWA", icon: Globe },
+              { id: "apk", label: "Android APK", icon: Smartphone },
+              { id: "ios", label: "iPhone / iPad", icon: Smartphone },
+              { id: "self", label: "Run your own", icon: Server },
+            ].map((t) => {
+              const active = installTab === t.id;
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setInstallTab(t.id as typeof installTab)}
+                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider border transition cursor-pointer ${
+                    active
+                      ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/60"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" /> {t.label}
+                </button>
+              );
+            })}
+          </div>
 
-            {/* Android APK */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-kindle-accent" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Android APK</span>
-              </div>
-              <h3 className="text-sm font-bold text-kindle-text">Install the native Android app</h3>
-              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                <li>Download the signed <span className="font-bold text-kindle-text">Kora APK</span> from the release vault (button above).</li>
-                <li>If Android warns about unknown sources, tap <span className="font-bold text-kindle-text">Settings → Allow from this source</span>.</li>
-                <li>Open the downloaded file and tap <span className="font-bold text-kindle-text">Install</span>.</li>
-                <li>Launch from your home screen — unlocks background voice playback, notification controls, and offline P2P transfer.</li>
-              </ol>
-              <p className="text-[10px] text-kindle-text-muted">Best for: Android phones/tablets. APKs are signed, scanned, and Play Protect compliant.</p>
-            </div>
+          <div className="max-w-2xl mx-auto">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={installTab}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                className="bg-kindle-card border border-kindle-border rounded-2xl p-6 sm:p-8 space-y-5"
+              >
+                {installTab === "web" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-kindle-accent" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Web / PWA</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-kindle-text">Use it in any browser</h3>
+                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                      <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Chrome, Edge, Safari, or Firefox.</li>
+                      <li>Install it: tap the address-bar install icon (or the ⋮ menu → "Install") on desktop, or Share → "Add to Home Screen" on mobile.</li>
+                      <li>Launch from your home screen / app launcher with full offline storage — no app store needed.</li>
+                    </ol>
+                    <p className="text-[10px] text-kindle-text-muted">Best for: iPhone/iPad, macOS, Windows, ChromeOS, Linux. This is the recommended path for iOS since direct .ipa install requires a paid Apple Developer account.</p>
+                  </>
+                )}
 
-            {/* iOS */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-kindle-accent" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">iPhone / iPad</span>
-              </div>
-              <h3 className="text-sm font-bold text-kindle-text">iOS via Web App</h3>
-              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in <span className="font-bold text-kindle-text">Safari</span> (not Chrome).</li>
-                <li>Tap the <span className="font-bold text-kindle-text">Share</span> button (square with arrow) at the bottom toolbar.</li>
-                <li>Scroll down and tap <span className="font-bold text-kindle-text">"Add to Home Screen"</span>.</li>
-                <li>Tap <span className="font-bold text-kindle-text">Add</span> top-right — a standalone Kora icon appears on your home screen.</li>
-              </ol>
-              <p className="text-[10px] text-kindle-text-muted">Note: A native .ipa requires a paid Apple Developer account ($99/yr) for signing. The Web App gives the same experience without it.</p>
-            </div>
+                {installTab === "apk" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-kindle-accent" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Android APK</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-kindle-text">Install the native Android app</h3>
+                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                      <li>Download the signed <span className="font-bold text-kindle-text">Kora APK</span> from the release vault (button above).</li>
+                      <li>If Android warns about unknown sources, tap <span className="font-bold text-kindle-text">Settings → Allow from this source</span>.</li>
+                      <li>Open the downloaded file and tap <span className="font-bold text-kindle-text">Install</span>.</li>
+                      <li>Launch from your home screen — unlocks background voice playback, notification controls, and offline P2P transfer.</li>
+                    </ol>
+                    <p className="text-[10px] text-kindle-text-muted">Best for: Android phones/tablets. APKs are signed, scanned, and Play Protect compliant.</p>
+                  </>
+                )}
 
-            {/* Self-host */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
-              <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-kindle-accent" />
-                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Run your own</span>
-              </div>
-              <h3 className="text-sm font-bold text-kindle-text">Self-host Kora</h3>
-              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                <li><span className="font-bold text-kindle-text">Clone</span> the repo: <span className="font-mono text-kindle-text font-bold">github.com/CHAOTIC-RAY/Kora-</span>.</li>
-                <li><span className="font-bold text-kindle-text">Install & build</span>: <span className="font-mono text-kindle-text font-bold">npm install &amp;&amp; npm run build</span>.</li>
-                <li><span className="font-bold text-kindle-text">Deploy</span> the <span className="font-mono text-kindle-text font-bold">dist/</span> folder to Cloudflare Pages, Netlify, or any static host.</li>
-                <li>Point the worker at your host and add your Firebase config for sync (optional).</li>
-              </ol>
-              <p className="text-[10px] text-kindle-text-muted">Best for: developers who want full control, custom domains, or private deployments.</p>
-            </div>
+                {installTab === "ios" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-4 h-4 text-kindle-accent" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">iPhone / iPad</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-kindle-text">iOS via Web App</h3>
+                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                      <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in <span className="font-bold text-kindle-text">Safari</span> (not Chrome).</li>
+                      <li>Tap the <span className="font-bold text-kindle-text">Share</span> button (square with arrow) at the bottom toolbar.</li>
+                      <li>Scroll down and tap <span className="font-bold text-kindle-text">"Add to Home Screen"</span>.</li>
+                      <li>Tap <span className="font-bold text-kindle-text">Add</span> top-right — a standalone Kora icon appears on your home screen.</li>
+                    </ol>
+                    <p className="text-[10px] text-kindle-text-muted">Note: A native .ipa requires a paid Apple Developer account ($99/yr) for signing. The Web App gives the same experience without it.</p>
+                  </>
+                )}
+
+                {installTab === "self" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Server className="w-4 h-4 text-kindle-accent" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Run your own</span>
+                    </div>
+                    <h3 className="text-sm font-bold text-kindle-text">Self-host Kora</h3>
+                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                      <li><span className="font-bold text-kindle-text">Clone</span> the repo: <span className="font-mono text-kindle-text font-bold">github.com/CHAOTIC-RAY/Kora-</span>.</li>
+                      <li><span className="font-bold text-kindle-text">Install & build</span>: <span className="font-mono text-kindle-text font-bold">npm install &amp;&amp; npm run build</span>.</li>
+                      <li><span className="font-bold text-kindle-text">Deploy</span> the <span className="font-mono text-kindle-text font-bold">dist/</span> folder to Cloudflare Pages, Netlify, or any static host.</li>
+                      <li>Point the worker at your host and add your Firebase config for sync (optional).</li>
+                    </ol>
+                    <p className="text-[10px] text-kindle-text-muted">Best for: developers who want full control, custom domains, or private deployments.</p>
+                  </>
+                )}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
+        </Reveal>
 
         {/* Section 6: Step-by-Step Installation Guide */}
-        <div id="guide" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
-          <div className="text-center max-w-xl mx-auto space-y-2">
-            <h2 className="text-2xl font-serif font-bold text-kindle-text">
-              Step-by-Step Setup Guide
-            </h2>
+        <Reveal>
+          <div id="guide" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
+            <div className="text-center max-w-xl mx-auto space-y-2">
+              <h2 className="text-2xl font-serif font-bold text-kindle-text">
+                Step-by-Step Setup Guide
+              </h2>
             <p className="text-xs text-kindle-text-muted leading-relaxed">
               Installing Kora directly via APK takes less than a minute. Follow these simple steps:
             </p>
@@ -821,6 +884,7 @@ export default function InstallView() {
             ))}
           </div>
         </div>
+        </Reveal>
 
         {/* Section 7: FAQ Accordion */}
         <motion.div
