@@ -295,3 +295,21 @@ jobs:
 3. **Prefer TestFlight** (simplest, needs App Store Connect upload) over raw `.ipa` hosting?
 4. **Want the signing workflow now**, or should I wait for you to provide the Apple credentials?
 5. **Should I add the `manifest.plist` and install link to `InstallView.tsx`**, or wait for you to review the iOS card UI first?
+
+---
+
+## Next Steps
+
+1. **Add Capacitor iOS** locally: `npm install @capacitor/ios && npx cap add ios`
+2. **Run the iOS build workflow**:
+   - Go to GitHub Actions → "iOS Build (.ipa)" → "Run workflow" → "Release"
+   - Download the `Kora-iOS-IPA` artifact
+3. **For Ad Hoc distribution**:
+   - Add secrets to the repo (Settings → Secrets)
+   - Run `.github/workflows/ios-sign.yml` → download `Kora-AdHoc-IPA`
+4. **Deploy IPA to Workers**:
+   - Upload to `https://kora.chaoticstudio.workers.dev/downloads/Kora.ipa`
+   - Create `public/manifest.plist` with the install manifest
+5. **Add install UI** to `InstallView.tsx` with the `itms-services://` link
+
+> **⚠️ Note:** The `ios-sign.yml` workflow uses automatic provisioning updates (`allowProvisioningUpdates`). For strict Ad Hoc, you may want to remove that and rely purely on your stored provisioning profile.
