@@ -33,7 +33,7 @@ export interface WikiRandomArticle {
 }
 
 interface LoungeWikiWidgetProps {
-  onOpenWikipedia?: (query?: string) => void;
+  onOpenWikipedia?: () => void;
   userId?: string;
   onRefreshLibrary?: () => void;
   grayscaleCovers?: boolean;
@@ -202,6 +202,21 @@ export default function LoungeWikiWidget({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Language Selector */}
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            className="text-[9px] font-mono bg-kindle-bg border border-kindle-border text-kindle-text rounded-md px-1.5 py-0.5 focus:outline-none focus:border-kindle-accent cursor-pointer"
+            aria-label="Wikipedia Language"
+          >
+            <option value="en">EN</option>
+            <option value="es">ES</option>
+            <option value="fr">FR</option>
+            <option value="de">DE</option>
+            <option value="ja">JA</option>
+          </select>
+
           {/* Shuffle / Next Article */}
           <button
             type="button"
@@ -243,12 +258,7 @@ export default function LoungeWikiWidget({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.25 }}
-            onClick={() => {
-              if (onOpenWikipedia) {
-                onOpenWikipedia(article.title);
-              }
-            }}
-            className="flex flex-col gap-2.5 cursor-pointer hover:bg-kindle-text/5 p-2 -mx-2 rounded-xl transition"
+            className="flex flex-col gap-2.5"
           >
             <div className="flex gap-3 items-start">
               {/* Optional Thumbnail */}
@@ -310,7 +320,19 @@ export default function LoungeWikiWidget({
               </div>
 
               {/* Full Article Modal or External Link */}
-              {!onOpenWikipedia && article.content_urls?.desktop?.page ? (
+              {onOpenWikipedia ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenWikipedia();
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-kindle-accent/15 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-white transition cursor-pointer text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+                >
+                  <BookOpen className="w-3 h-3" />
+                  <span>Wikipedia Hub</span>
+                </button>
+              ) : article.content_urls?.desktop?.page ? (
                 <a
                   href={article.content_urls.desktop.page}
                   target="_blank"

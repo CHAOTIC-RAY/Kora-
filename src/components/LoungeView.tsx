@@ -41,7 +41,7 @@ interface LoungeViewProps {
   onSearchDiscover?: (query: string) => void;
   onStartGuide?: (id: GuideId) => void;
   onOpenAnnotations?: () => void;
-  onOpenWikipedia?: (query?: string) => void;
+  onOpenWikipedia?: () => void;
   onRefreshLibrary?: () => void;
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;

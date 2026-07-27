@@ -6,15 +6,23 @@ import {
   ShieldCheck,
   CheckCircle2,
   ArrowLeft,
+  HelpCircle,
+  Info,
   BookOpen,
   Headphones,
   Radio,
   Gamepad2,
   ExternalLink,
+  Flame,
+  Swords,
+  Trophy,
+  Share2,
   QrCode,
   Globe,
   ChevronDown,
+  Layers,
   Zap,
+  Sparkles,
   Copy,
   Check,
   X,
@@ -27,8 +35,7 @@ import {
   FileText,
   Compass,
   Palette,
-  Crown,
-  Cloud
+  Crown
 } from "lucide-react";
 import { fetchLatestApkDownloadUrl } from "../lib/apkUpdater";
 import { KoraIcon, KoraWordmark } from "./KoraLogo";
@@ -42,14 +49,23 @@ import FeatureDemosGrid from "./FeatureDemosGrid";
 export default function InstallView() {
   const [apk, setApk] = useState<{ url: string; versionName: string; size: number } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [activeTab, setActiveTab] = useState<"apk" | "themes" | "audio" | "workshop" | "pwa" | "guide" | "faq">("apk");
   const [showQrModal, setShowQrModal] = useState(false);
   
-  // Modals
+  // Game & Workshop Demo Modals State
   const [showScoreTrackerDemo, setShowScoreTrackerDemo] = useState(false);
   const [showCrosswordDemo, setShowCrosswordDemo] = useState(false);
   const [showWordSearchDemo, setShowWordSearchDemo] = useState(false);
   const [showWikipediaDemo, setShowWikipediaDemo] = useState(false);
+
+  // Unified Experience Section Pillar State
+  const [experiencePillar, setExperiencePillar] = useState<"library" | "themes" | "cloud" | "voice" | "catalog" | "workshop">("library");
+  const [isVoiceSpeaking, setIsVoiceSpeaking] = useState(false);
+  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
+  const [catalogQuery, setCatalogQuery] = useState("");
+  
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
 
   useEffect(() => {
@@ -57,13 +73,22 @@ export default function InstallView() {
     fetchLatestApkDownloadUrl()
       .then((info) => {
         if (!alive) return;
-        if (info) setApk(info);
+        if (info) {
+          setApk(info);
+        } else {
+          setError("Unable to retrieve latest version info directly.");
+        }
         setLoading(false);
       })
       .catch(() => {
-        if (alive) setLoading(false);
+        if (alive) {
+          setError("Failed to fetch latest APK data.");
+          setLoading(false);
+        }
       });
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const installUrl = typeof window !== "undefined"
@@ -80,7 +105,8 @@ export default function InstallView() {
         .then(() => {
           setCopiedLink(true);
           setTimeout(() => setCopiedLink(false), 2000);
-        });
+        })
+        .catch(() => {});
     }
   };
 
@@ -90,317 +116,818 @@ export default function InstallView() {
     return `${mb.toFixed(1)} MB`;
   };
 
+  const steps = [
+    {
+      number: "01",
+      title: "Get Official Package",
+      description: "Click 'Download APK' to fetch the signed Kora Android installation package directly from our release vault."
+    },
+    {
+      number: "02",
+      title: "Allow Unknown Sources",
+      description: "If prompted by Android (Chrome or Files app), tap 'Settings' and enable 'Allow from this source'."
+    },
+    {
+      number: "03",
+      title: "Run Package Installer",
+      description: "Tap the downloaded file in your browser's Downloads manager or notification drawer and press 'Install'."
+    },
+    {
+      number: "04",
+      title: "Step Into Kora Lounge",
+      description: "Launch Kora from your home screen. Enjoy full offline reading, voice narrator audiobooks, and workshop games."
+    }
+  ];
+
+  const features = [
+    {
+      icon: Volume2,
+      title: "Voice Audiobook Engine",
+      description: "Convert any EPUB, PDF, or document into a natural voice audiobook with customizable speeds, pitch controls, and background playback."
+    },
+    {
+      icon: BookOpen,
+      title: "Distraction-Free E-Ink Canvas",
+      description: "Enjoy offline reading with custom typography, line spacing, paper tinting, and dedicated amber warm backlight filters."
+    },
+    {
+      icon: Compass,
+      title: "Federated Book Discovery",
+      description: "Search open digital catalogs across Rave Engine, LibGen, and Anna's Archive with direct file mirror downloads."
+    },
+    {
+      icon: Radio,
+      title: "Wireless P2P Beam",
+      description: "Instantly beam local files from your computer or phone straight to Kora over local Wi-Fi without cloud dependencies."
+    },
+    {
+      icon: Gamepad2,
+      title: "Lounge & Workshop Suite",
+      description: "Relax between chapters with integrated mind games: Score Tracker with Competition Mode, Literary Crosswords, and Word Search Grids."
+    },
+    {
+      icon: ShieldCheck,
+      title: "100% Private & Offline First",
+      description: "Your library, reading progress, and settings stay stored locally on your device with complete offline access."
+    }
+  ];
+
+  const faqs = [
+    {
+      q: "Is Kora completely free and open source?",
+      a: "Yes! Kora is 100% free, ad-free, and open source. There are no paywalls, hidden tracking scripts, or subscriptions."
+    },
+    {
+      q: "How does the Voice Narrator / Text-to-Speech Audiobook feature work?",
+      a: "Kora parses book chapters directly on your device and uses high-fidelity neural system voices to read aloud. You can customize speech rate, pitch, background play, and follow along with synchronized sentence tracking."
+    },
+    {
+      q: "Why install the Android APK instead of using the web app?",
+      a: "The native Android APK unlocks system-level background audio playback for voice audiobooks, native notification media controls, full device file system access, and instant offline P2P beam transfer."
+    },
+    {
+      q: "Is installing an APK safe on my phone?",
+      a: "Yes. Kora APKs are signed, clean, virus-scanned, and fully Play Protect compliant. You can inspect the source code on GitHub at any time."
+    },
+    {
+      q: "What games are included in Kora's Workshop?",
+      a: "Kora includes three lounge companions: 1) Board & Card Game Score Tracker (with Competition Mode, turn clocks, & tournament brackets), 2) Literary Crossword Grid & Wordscape Wheel, and 3) Word Search Grid Finder."
+    }
+  ];
+
   const scrollToSection = (id: string) => {
     const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth" });
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
   };
 
   return (
-    <div className="min-h-screen bg-kindle-bg text-kindle-text font-sans antialiased selection:bg-kindle-accent/20 flex flex-col">
-      {/* Premium Minimal Navigation */}
-      <nav className="sticky top-0 z-40 bg-kindle-bg/90 backdrop-blur-xl border-b border-kindle-border">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-kindle-bg text-kindle-text font-sans antialiased selection:bg-kindle-accent/20">
+      {/* Top Site Navigation Header */}
+      <nav className="sticky top-0 z-40 bg-kindle-bg/95 backdrop-blur border-b border-kindle-border">
+        <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <a href="/" className="flex items-center gap-3 group">
-            <div className="w-8 h-8 rounded-lg bg-kindle-text text-kindle-bg flex items-center justify-center transition-transform group-hover:scale-105">
-              <KoraIcon className="w-4 h-4 fill-current" />
+            <div className="w-9 h-9 rounded-xl bg-kindle-card border border-kindle-border flex items-center justify-center group-hover:border-kindle-accent transition shadow-xs">
+              <KoraIcon className="w-5 h-5 text-kindle-text" />
             </div>
             <KoraWordmark className="h-4 text-kindle-text" />
           </a>
-          
-          <div className="hidden md:flex items-center gap-8 text-[11px] font-bold uppercase tracking-[0.15em] text-kindle-text-muted">
-            <button onClick={() => scrollToSection("features")} className="hover:text-kindle-text transition">Features</button>
-            <button onClick={() => scrollToSection("workshop")} className="hover:text-kindle-text transition">Workshop</button>
-            <button onClick={() => scrollToSection("faq")} className="hover:text-kindle-text transition">FAQ</button>
+
+          {/* Smooth Scroll Navigation Links */}
+          <div className="hidden lg:flex items-center gap-5 text-xs font-bold uppercase tracking-wider text-kindle-text-muted">
+            <button
+              type="button"
+              onClick={() => scrollToSection("download-card")}
+              className="hover:text-kindle-text transition cursor-pointer py-1"
+            >
+              APK Download
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("capabilities")}
+              className="hover:text-kindle-text transition cursor-pointer py-1"
+            >
+              Capabilities
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("themes")}
+              className="hover:text-kindle-text transition cursor-pointer py-1 flex items-center gap-1 text-kindle-accent font-extrabold"
+            >
+              <Palette className="w-3.5 h-3.5" /> Reading Themes
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("audio")}
+              className="hover:text-kindle-text transition cursor-pointer py-1 flex items-center gap-1"
+            >
+              <Volume2 className="w-3.5 h-3.5" /> Voice Reader
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("workshop")}
+              className="hover:text-kindle-text transition cursor-pointer py-1 flex items-center gap-1 text-[#e0533c]"
+            >
+              <Gamepad2 className="w-3.5 h-3.5" /> Workshop
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("pwa")}
+              className="hover:text-kindle-text transition cursor-pointer py-1"
+            >
+              PWA Web
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("guide")}
+              className="hover:text-kindle-text transition cursor-pointer py-1"
+            >
+              Guide
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("faq")}
+              className="hover:text-kindle-text transition cursor-pointer py-1"
+            >
+              FAQ
+            </button>
           </div>
 
-          <a
-            href="/"
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest hover:bg-opacity-90 transition shadow-sm"
-          >
-            <ArrowLeft className="w-3 h-3" /> Web Reader
-          </a>
+          <div className="flex items-center gap-2">
+            <a
+              href="/"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-kindle-card border border-kindle-border text-xs font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer shadow-xs"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Web Reader
+            </a>
+          </div>
         </div>
       </nav>
 
-      <main className="flex-1 w-full max-w-7xl mx-auto px-6 py-12 md:py-24 space-y-32">
-        {/* Huge Bold Hero Section */}
-        <header className="flex flex-col md:flex-row items-center gap-12 md:gap-24">
-          <div className="flex-1 space-y-8 text-center md:text-left">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-kindle-accent/10 text-kindle-accent border border-kindle-accent/20 text-[10px] font-bold uppercase tracking-[0.2em]"
+      {/* Hero Section */}
+      <header className="max-w-5xl mx-auto px-6 pt-10 pb-12 text-center space-y-8">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="mx-auto w-20 h-20 bg-kindle-card border-2 border-kindle-border/80 rounded-3xl flex items-center justify-center shadow-xl hover:border-kindle-accent/50 transition-colors"
+        >
+          <KoraIcon className="w-10 h-10 text-kindle-text" />
+        </motion.div>
+
+        <div className="space-y-4 max-w-3xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-kindle-accent/10 border border-kindle-accent/25 text-[10px] font-bold uppercase tracking-widest text-kindle-accent"
+          >
+            <Zap className="w-3 h-3" /> E-Ink Reader • Voice Narrator • Workshop Games
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setActiveTab("themes")}
+              className="inline-flex items-center gap-1 text-kindle-accent font-extrabold hover:underline cursor-pointer"
             >
-              <Zap className="w-3.5 h-3.5" /> Version 2.0 Now Available
-            </motion.div>
-            
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="text-5xl md:text-7xl lg:text-8xl font-serif font-bold text-kindle-text tracking-tighter leading-[0.95]"
-            >
-              Read deep. <br/> Listen far.
-            </motion.h1>
-            
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="text-base md:text-xl text-kindle-text-muted max-w-2xl font-medium leading-relaxed mx-auto md:mx-0"
-            >
-              The premium open-source E-Ink reader with native system voice narration, federated library discovery, and built-in cognitive lounge games. 100% offline.
-            </motion.p>
+              <Palette className="w-3 h-3" /> Auto Reading Themes
+            </button>
+          </motion.div>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="text-4xl sm:text-5xl font-serif font-bold text-kindle-text tracking-tight leading-[1.1]"
+          >
+            Read Without Boundaries. <br className="hidden sm:inline" />
+            Listen Anywhere.
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-base sm:text-lg text-kindle-text-muted leading-relaxed max-w-2xl mx-auto font-medium"
+          >
+            The open E-Ink digital reader with integrated text-to-speech voice narration, federated open-book discovery, and a lounge games suite.
+          </motion.p>
+        </div>
+
+        {/* Official Download Vault Card */}
+        <motion.div
+          id="download-card"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="max-w-2xl mx-auto bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden"
+        >
+          <div className="flex flex-col items-center justify-center text-center gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent flex items-center gap-1.5">
+              <Smartphone className="w-3.5 h-3.5" /> Official Android Release Vault
+            </span>
+            <h3 className="text-sm font-bold text-kindle-text">Direct Android Package (.APK)</h3>
           </div>
 
-          {/* Download Card */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.3 }}
-            className="w-full md:w-[400px] shrink-0 bg-kindle-card border border-kindle-border rounded-[2rem] p-8 shadow-2xl space-y-8"
-          >
-            <div className="space-y-2 text-center">
-              <div className="w-12 h-12 bg-kindle-text text-kindle-bg rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Smartphone className="w-6 h-6" />
+          <div className="p-1.5 border border-kindle-border rounded-2xl bg-kindle-bg/60">
+            {loading ? (
+              <div className="py-6 flex flex-col items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin" />
+                <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Fetching release info...</p>
               </div>
-              <h3 className="text-xl font-bold font-serif text-kindle-text">Kora Android App</h3>
-              <p className="text-xs text-kindle-text-muted font-mono uppercase tracking-wider">
-                {loading ? "Fetching version..." : `v${apk?.versionName || "2.4.0"} • ${formatSize(apk?.size)}`}
-              </p>
+            ) : (
+              <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-left space-y-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-kindle-text">Kora Android App</span>
+                    <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-kindle-accent/10 text-kindle-accent border border-kindle-accent/20">
+                      v{apk?.versionName || "2.4.0"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted font-mono uppercase">
+                    Size: {formatSize(apk?.size)} • Android 8.0+ Compliant
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <a
+                    href={apk?.url || "https://github.com/CHAOTIC-RAY/Kora-/releases/latest"}
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider hover:bg-opacity-90 active:scale-98 transition shadow-lg shrink-0 cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" /> Download APK
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowQrModal(true)}
+                    className="p-3.5 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text hover:border-kindle-accent transition cursor-pointer"
+                    title="Generate Mobile Scan QR Code"
+                  >
+                    <QrCode className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[10px] text-kindle-text-muted font-medium border-t border-kindle-border/60 pt-4">
+            <span className="flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Virus Total Scanned
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-kindle-accent" /> Play Protect Compliant
+            </span>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="text-kindle-accent hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              {copiedLink ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+              {copiedLink ? "Portal Link Copied!" : "Copy Link"}
+            </button>
+          </div>
+        </motion.div>
+      </header>
+
+      {/* Main Continuous Feature Sections - Scroll Site with Each Feature One by One */}
+      <section className="max-w-5xl mx-auto px-6 pb-20 space-y-16">
+
+        {/* Section 1: Ebook & Reader Engine */}
+        <div id="ebooks" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-kindle-accent/10 border border-kindle-accent/20 text-kindle-accent text-[10px] font-bold uppercase tracking-widest">
+              <BookOpen className="w-3.5 h-3.5" /> Core Ebook Engine
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
+              Distraction-Free E-Ink Reading & Library Catalog
+            </h2>
+            <p className="text-xs text-kindle-text-muted leading-relaxed">
+              Organize your collection with instant search, format tags, custom shelves, and seamless Grid or List layout toggles. Enjoy smooth EPUB and PDF pagination with zero friction.
+            </p>
+          </div>
+          <FeatureDemosGrid />
+        </div>
+
+        {/* Section 2: Reading Themes & Daylight E-Ink Canvas */}
+        <div id="themes" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+          <div className="text-center max-w-2xl mx-auto space-y-3">
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-widest">
+              <Palette className="w-3.5 h-3.5" /> Daylight & E-Ink Aesthetics
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
+              Custom Paper Tints & Typographic Pairings
+            </h2>
+            <p className="text-xs text-kindle-text-muted leading-relaxed">
+              Switch between 5 handcrafted reading themes including Sepia Warmth, E-Ink Paper, Midnight Obsidian, and Solarized Amber. Adjust line height, margins, and font families for optimal focus.
+            </p>
+          </div>
+          <ThemeShowcase />
+        </div>
+
+        {/* Section 3: Multi-Destination Cloud Sync */}
+        <div id="cloud" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+          <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-kindle-border/60 pb-6">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-500 uppercase tracking-wider">
+                  <Zap className="w-4 h-4" /> Multi-Destination Cloud Sync
+                </div>
+                <h3 className="text-xl font-serif font-bold text-kindle-text">
+                  Instant Progress & Annotations Sync
+                </h3>
+                <p className="text-xs text-kindle-text-muted max-w-xl">
+                  Seamlessly sync bookmarks, reading progress percentages, and highlight notes across Android, Web, and desktop via Google Firestore or WebDAV.
+                </p>
+              </div>
             </div>
 
-            <div className="space-y-3">
+            {/* Cloud Target Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-kindle-text">Firebase Firestore</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                </div>
+                <p className="text-[10px] text-kindle-text-muted">Real-time sync across devices with zero setup required.</p>
+              </div>
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-kindle-text">Google Drive Backup</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                </div>
+                <p className="text-[10px] text-kindle-text-muted">Backup full EPUB library files to private Google Drive space.</p>
+              </div>
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-kindle-text">WebDAV / Nextcloud</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                </div>
+                <p className="text-[10px] text-kindle-text-muted">Self-hosted WebDAV sync protocol for complete data ownership.</p>
+              </div>
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-kindle-text">Local IndexedDB</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                </div>
+                <p className="text-[10px] text-kindle-text-muted">100% offline access when no network connection is present.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 4: Voice Narrator Audiobooks */}
+        <div id="voice" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+          <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-kindle-border pb-6">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-kindle-accent/10 text-kindle-accent text-[10px] font-bold uppercase tracking-widest">
+                  <Volume2 className="w-3.5 h-3.5" /> High-Fidelity Voice Synthesis
+                </div>
+                <h3 className="text-xl sm:text-2xl font-serif font-bold text-kindle-text">
+                  Text-to-Audiobook Voice Narrator
+                </h3>
+                <p className="text-xs text-kindle-text-muted max-w-xl leading-relaxed">
+                  Convert any EPUB book or document into an immersive audio narration. Listen on the go with custom speed controls, system neural voices, and background audio playback.
+                </p>
+              </div>
+
               <a
-                href={apk?.url || "https://github.com/CHAOTIC-RAY/Kora-/releases/latest"}
-                className="w-full py-4 rounded-xl bg-kindle-text text-kindle-bg font-bold text-[11px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-opacity-90 active:scale-[0.98] transition shadow-lg"
+                href="/"
+                className="px-6 py-3.5 bg-kindle-accent text-white font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 transition shadow-lg cursor-pointer flex items-center gap-2 shrink-0"
               >
-                <Download className="w-4 h-4" /> Download APK
+                <Headphones className="w-4 h-4" /> Try Voice Reader in App
               </a>
+            </div>
+
+            {/* Audiobook Features Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <Mic className="w-5 h-5 text-kindle-accent" />
+                <h4 className="text-xs font-bold text-kindle-text">Neural Speech Engine</h4>
+                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                  Natural intonation with full support for system neural text-to-speech voices across languages.
+                </p>
+              </div>
+
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <Sliders className="w-5 h-5 text-amber-500" />
+                <h4 className="text-xs font-bold text-kindle-text">Speed & Pitch Tuning</h4>
+                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                  Adjust narration speed from 0.5x to 3.0x with pitch adjustment and sentence jump controls.
+                </p>
+              </div>
+
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <Headphones className="w-5 h-5 text-emerald-500" />
+                <h4 className="text-xs font-bold text-kindle-text">Background Audio</h4>
+                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                  Keep listening when your screen turns off or while using other applications on Android.
+                </p>
+              </div>
+
+              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
+                <FileText className="w-5 h-5 text-purple-500" />
+                <h4 className="text-xs font-bold text-kindle-text">Live Sync Highlighting</h4>
+                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                  Follow along visually as sentences highlight in real-time on your E-Ink reading canvas.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 5: Open Catalog & Mirror Discovery */}
+        <div id="catalog" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+          <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-kindle-border/60 pb-6">
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-500 uppercase tracking-wider">
+                  <Search className="w-4 h-4" /> Open Search & Mirror Discovery
+                </div>
+                <h3 className="text-xl font-serif font-bold text-kindle-text">
+                  Rave Engine, LibGen & Anna's Archive Search
+                </h3>
+                <p className="text-xs text-kindle-text-muted max-w-xl">
+                  Search millions of open-source ebooks, public domain literature, and academic texts across public library mirrors.
+                </p>
+              </div>
+            </div>
+
+            {/* Search Input Simulator */}
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-kindle-text-muted absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    value={catalogQuery}
+                    onChange={(e) => setCatalogQuery(e.target.value)}
+                    placeholder="Try searching author or title (e.g. 'Jane Austen', 'Dune', 'Sherlock')..."
+                    className="w-full bg-kindle-bg border border-kindle-border rounded-xl pl-9 pr-4 py-2.5 text-xs text-kindle-text focus:outline-none focus:border-kindle-accent"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCatalogQuery("Mary Shelley Frankenstein")}
+                  className="px-4 py-2.5 bg-kindle-accent text-white font-bold text-xs rounded-xl hover:bg-opacity-90 transition cursor-pointer"
+                >
+                  Sample Search
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-sky-500 uppercase tracking-wider">Rave Engine</span>
+                  <p className="font-bold text-kindle-text">Frankenstein (1818)</p>
+                  <p className="text-[10px] text-kindle-text-muted">EPUB • 420 KB • Clean Formatting</p>
+                </div>
+                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">LibGen Mirror</span>
+                  <p className="font-bold text-kindle-text">Pride and Prejudice</p>
+                  <p className="text-[10px] text-kindle-text-muted">PDF • 1.2 MB • Original Typeface</p>
+                </div>
+                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Anna's Archive</span>
+                  <p className="font-bold text-kindle-text">The Time Machine</p>
+                  <p className="text-[10px] text-kindle-text-muted">EPUB • 380 KB • Illustrated Edition</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 6: Workshop Lounge & Interactive Games */}
+        <div id="workshop" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+          <div className="text-center max-w-xl mx-auto space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e0533c]/10 text-[#e0533c] text-[10px] font-bold uppercase tracking-widest">
+              <Gamepad2 className="w-3.5 h-3.5" /> Kora Workshop Lounge
+            </div>
+            <h3 className="text-2xl font-serif font-bold text-kindle-text">
+              Interactive Tools & Games Suite
+            </h3>
+            <p className="text-xs text-kindle-text-muted leading-relaxed">
+              Launch interactive game demos and research tools directly in your browser!
+            </p>
+          </div>
+
+          {/* Game Demos Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Game 1: Score Tracker */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-kindle-accent/50 transition-all shadow-xs">
+              <div className="space-y-2">
+                <div className="p-2.5 bg-kindle-accent/10 text-kindle-accent rounded-xl w-fit">
+                  <Crown className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-bold text-kindle-text">Game Score Tracker</h4>
+                <p className="text-xs text-kindle-text-muted leading-relaxed">
+                  Track Catan, Scrabble, & board game rounds with turn timers & crowns.
+                </p>
+              </div>
+
               <button
-                onClick={() => setShowQrModal(true)}
-                className="w-full py-4 rounded-xl bg-transparent border-2 border-kindle-border text-kindle-text font-bold text-[11px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:border-kindle-accent hover:text-kindle-accent transition"
+                type="button"
+                onClick={() => setShowScoreTrackerDemo(true)}
+                className="w-full py-2.5 bg-kindle-accent text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
               >
-                <QrCode className="w-4 h-4" /> Show QR Code
+                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
               </button>
             </div>
 
-            <div className="pt-6 border-t border-kindle-border flex flex-col gap-3 text-[10px] font-bold text-kindle-text-muted uppercase tracking-wider text-center">
-              <div className="flex items-center justify-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Play Protect Verified
-              </div>
-              <div className="flex items-center justify-center gap-2">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> 100% Offline & Private
-              </div>
-            </div>
-          </motion.div>
-        </header>
-
-        {/* Bento Grid Layout for Features */}
-        <section id="features" className="space-y-12">
-          <div className="text-center space-y-4">
-            <h2 className="text-4xl md:text-5xl font-serif font-bold text-kindle-text tracking-tight">Core Pillars</h2>
-            <p className="text-sm text-kindle-text-muted uppercase tracking-[0.2em] font-bold">Uncompromising Utility</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-[300px]">
-            {/* E-Ink Block (Spans 2 cols) */}
-            <div className="md:col-span-2 bg-kindle-card border border-kindle-border rounded-[2rem] p-8 md:p-12 flex flex-col justify-between group overflow-hidden relative">
-              <div className="relative z-10 space-y-3 max-w-lg">
-                <div className="w-10 h-10 rounded-xl bg-kindle-text text-kindle-bg flex items-center justify-center mb-6">
-                  <Palette className="w-5 h-5" />
+            {/* Game 2: Crossword Grid */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-kindle-accent/50 transition-all shadow-xs">
+              <div className="space-y-2">
+                <div className="p-2.5 bg-kindle-accent/10 text-kindle-accent rounded-xl w-fit">
+                  <Grid3X3 className="w-5 h-5" />
                 </div>
-                <h3 className="text-2xl font-serif font-bold text-kindle-text">E-Ink Display Engine</h3>
-                <p className="text-sm text-kindle-text-muted leading-relaxed">
-                  Five meticulously crafted reading themes including Solarized Amber and Sepia Warmth. Precise typographic control for total immersion.
+                <h4 className="text-sm font-bold text-kindle-text">Mini Crossword Grid</h4>
+                <p className="text-xs text-kindle-text-muted leading-relaxed">
+                  Literary crosswords and letter-wheel wordscapes built from classic books.
                 </p>
               </div>
-              <div className="absolute right-0 bottom-0 opacity-10 group-hover:opacity-20 transition-opacity translate-x-1/4 translate-y-1/4">
-                <BookOpen className="w-64 h-64 text-kindle-text" />
-              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowCrosswordDemo(true)}
+                className="w-full py-2.5 bg-kindle-accent text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
+              </button>
             </div>
 
-            {/* Voice Reader Block */}
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded-[2rem] p-8 flex flex-col justify-between group">
-              <div className="space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500 text-black flex items-center justify-center mb-6">
-                  <Volume2 className="w-5 h-5" />
+            {/* Game 3: Word Search */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-emerald-500/50 transition-all shadow-xs">
+              <div className="space-y-2">
+                <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl w-fit">
+                  <Search className="w-5 h-5" />
                 </div>
-                <h3 className="text-2xl font-serif font-bold text-amber-600 dark:text-amber-400">Voice Narrator</h3>
-                <p className="text-sm text-kindle-text-muted leading-relaxed">
-                  System neural voices read your EPUBs aloud with live highlighting and background play.
+                <h4 className="text-sm font-bold text-kindle-text">Word Search Grid</h4>
+                <p className="text-xs text-kindle-text-muted leading-relaxed">
+                  Multi-directional vocabulary search with hints & difficulty progression.
                 </p>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setShowWordSearchDemo(true)}
+                className="w-full py-2.5 bg-emerald-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
+              </button>
             </div>
 
-            {/* Cloud Sync Block */}
-            <div className="bg-sky-500/5 border border-sky-500/20 rounded-[2rem] p-8 flex flex-col justify-between group">
-              <div className="space-y-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-500 text-white flex items-center justify-center mb-6">
-                  <Cloud className="w-5 h-5" />
+            {/* Workshop Tool 4: Wikipedia Hub */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-amber-500/50 transition-all shadow-xs">
+              <div className="space-y-2">
+                <div className="p-2.5 bg-amber-500/10 text-amber-600 rounded-xl w-fit">
+                  <Globe className="w-5 h-5" />
                 </div>
-                <h3 className="text-2xl font-serif font-bold text-sky-600 dark:text-sky-400">Cloud Sync</h3>
-                <p className="text-sm text-kindle-text-muted leading-relaxed">
-                  Sync progress and annotations across devices via Firebase, Drive, or WebDAV.
+                <h4 className="text-sm font-bold text-kindle-text">Wikipedia Hub</h4>
+                <p className="text-xs text-kindle-text-muted leading-relaxed">
+                  Search articles & convert topics into custom Kora Ebooks with audio TTS.
                 </p>
               </div>
-            </div>
 
-            {/* Federated Block (Spans 2 cols) */}
-            <div className="md:col-span-2 bg-emerald-500/5 border border-emerald-500/20 rounded-[2rem] p-8 md:p-12 flex flex-col justify-between group overflow-hidden relative">
-              <div className="relative z-10 space-y-3 max-w-lg">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center mb-6">
-                  <Compass className="w-5 h-5" />
-                </div>
-                <h3 className="text-2xl font-serif font-bold text-emerald-600 dark:text-emerald-400">Federated Discovery</h3>
-                <p className="text-sm text-kindle-text-muted leading-relaxed">
-                  Search millions of public domain texts and academic papers directly from the app using Rave Engine and Anna's Archive integration.
-                </p>
-              </div>
-              <div className="absolute right-0 bottom-0 opacity-10 group-hover:opacity-20 transition-opacity translate-x-1/4 translate-y-1/4">
-                <Globe className="w-64 h-64 text-emerald-500" />
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowWikipediaDemo(true)}
+                className="w-full py-2.5 bg-amber-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
+              </button>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* Feature Component Showcases (The actual UI widgets from the app) */}
-        <section className="space-y-12">
-           <div className="text-center space-y-4">
-            <h2 className="text-3xl md:text-4xl font-serif font-bold text-kindle-text tracking-tight">Experience Kora</h2>
-            <p className="text-sm text-kindle-text-muted uppercase tracking-[0.2em] font-bold">Live Components</p>
+        {/* Section 5: Progressive Web App (PWA) Guide */}
+        <div id="pwa" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
+          <div className="text-center max-w-xl mx-auto space-y-2">
+            <h2 className="text-2xl font-serif font-bold text-kindle-text">
+              Progressive Web App (PWA) Mode
+            </h2>
+            <p className="text-xs text-kindle-text-muted leading-relaxed">
+              Install Kora on iOS, Windows, macOS, or ChromeOS directly from your browser.
+            </p>
           </div>
-          <FeatureDemosGrid />
-          <ThemeShowcase />
-        </section>
 
-        {/* Workshop Games Section */}
-        <section id="workshop" className="space-y-12">
-          <div className="text-center space-y-4">
-            <h2 className="text-4xl md:text-5xl font-serif font-bold text-kindle-text tracking-tight">Workshop Lounge</h2>
-            <p className="text-sm text-kindle-text-muted uppercase tracking-[0.2em] font-bold">Interactive Cognitive Tools</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Chrome / Edge / Android Web</span>
+              <h3 className="text-sm font-bold text-kindle-text">Desktop & Android Web Setup</h3>
+              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Chrome or Edge.</li>
+                <li>Click the installation icon in your address bar or tap the three dots menu.</li>
+                <li>Select <span className="font-bold text-kindle-text">'Install Kora Reader'</span> or 'Add to Home Screen'.</li>
+                <li>Launch directly from your desktop or app launcher with full offline storage.</li>
+              </ol>
+            </div>
+
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">iOS Safari (iPhone / iPad)</span>
+              <h3 className="text-sm font-bold text-kindle-text">Apple iOS Setup</h3>
+              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Safari.</li>
+                <li>Tap the <span className="font-bold text-kindle-text">Share button</span> (square with arrow) at the bottom toolbar.</li>
+                <li>Scroll down and tap <span className="font-bold text-kindle-text">'Add to Home Screen'</span>.</li>
+                <li>Tap 'Add' in the top right to create a standalone full-screen web app icon.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 6: Step-by-Step Installation Guide */}
+        <div id="guide" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
+          <div className="text-center max-w-xl mx-auto space-y-2">
+            <h2 className="text-2xl font-serif font-bold text-kindle-text">
+              Step-by-Step Setup Guide
+            </h2>
+            <p className="text-xs text-kindle-text-muted leading-relaxed">
+              Installing Kora directly via APK takes less than a minute. Follow these simple steps:
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 flex flex-col justify-between h-64">
-              <div className="space-y-3">
-                <Crown className="w-6 h-6 text-kindle-text" />
-                <h4 className="font-bold text-kindle-text">Score Tracker</h4>
-                <p className="text-xs text-kindle-text-muted">Track board game scores with turn timers.</p>
-              </div>
-              <button onClick={() => setShowScoreTrackerDemo(true)} className="w-full py-3 bg-kindle-text text-kindle-bg text-xs font-bold uppercase tracking-wider rounded-xl">Play Now</button>
-            </div>
-            
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 flex flex-col justify-between h-64">
-              <div className="space-y-3">
-                <Grid3X3 className="w-6 h-6 text-kindle-text" />
-                <h4 className="font-bold text-kindle-text">Crosswords</h4>
-                <p className="text-xs text-kindle-text-muted">Literary crosswords from your books.</p>
-              </div>
-              <button onClick={() => setShowCrosswordDemo(true)} className="w-full py-3 bg-kindle-text text-kindle-bg text-xs font-bold uppercase tracking-wider rounded-xl">Play Now</button>
-            </div>
-
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 flex flex-col justify-between h-64">
-              <div className="space-y-3">
-                <Search className="w-6 h-6 text-emerald-500" />
-                <h4 className="font-bold text-kindle-text">Word Search</h4>
-                <p className="text-xs text-kindle-text-muted">Multi-directional vocabulary grids.</p>
-              </div>
-              <button onClick={() => setShowWordSearchDemo(true)} className="w-full py-3 bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl">Play Now</button>
-            </div>
-
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 flex flex-col justify-between h-64">
-              <div className="space-y-3">
-                <Globe className="w-6 h-6 text-amber-500" />
-                <h4 className="font-bold text-kindle-text">Wikipedia Hub</h4>
-                <p className="text-xs text-kindle-text-muted">Search and save articles as Ebooks.</p>
-              </div>
-              <button onClick={() => setShowWikipediaDemo(true)} className="w-full py-3 bg-amber-600 text-white text-xs font-bold uppercase tracking-wider rounded-xl">Open Hub</button>
-            </div>
-          </div>
-        </section>
-        
-        {/* PWA & FAQ */}
-        <section id="faq" className="grid grid-cols-1 lg:grid-cols-2 gap-16 pt-12 border-t border-kindle-border">
-          <div className="space-y-8">
-            <h2 className="text-3xl font-serif font-bold text-kindle-text">Web & PWA Setup</h2>
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-8 space-y-6">
-              <div className="space-y-4">
-                <h3 className="font-bold text-kindle-text uppercase tracking-widest text-[11px]">iOS Safari</h3>
-                <ol className="list-decimal list-inside text-sm text-kindle-text-muted space-y-2">
-                  <li>Open <span className="text-kindle-text">{displayHost}</span> in Safari.</li>
-                  <li>Tap the Share button (square with arrow).</li>
-                  <li>Select 'Add to Home Screen'.</li>
-                </ol>
-              </div>
-              <div className="pt-6 border-t border-kindle-border space-y-4">
-                <h3 className="font-bold text-kindle-text uppercase tracking-widest text-[11px]">Desktop & Chrome</h3>
-                <ol className="list-decimal list-inside text-sm text-kindle-text-muted space-y-2">
-                  <li>Click the install icon in the URL bar.</li>
-                  <li>Launch as a standalone desktop app.</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-8">
-            <h2 className="text-3xl font-serif font-bold text-kindle-text">FAQ</h2>
-            <div className="space-y-4">
-              {[
-                { q: "Is Kora free?", a: "Yes, 100% free and open-source." },
-                { q: "Do I need the Android APK?", a: "The APK unlocks background audio narration and native notifications. The web app provides everything else." },
-                { q: "Where is my data stored?", a: "Everything is stored locally on your device by default (Offline-First). Cloud sync is entirely optional." }
-              ].map((faq, i) => (
-                <div key={i} className="bg-kindle-card border border-kindle-border rounded-2xl p-6 cursor-pointer" onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}>
-                  <div className="flex justify-between items-center font-bold text-sm text-kindle-text">
-                    {faq.q}
-                    <ChevronDown className={`w-4 h-4 transition ${expandedFaq === i ? "rotate-180" : ""}`} />
-                  </div>
-                  {expandedFaq === i && <p className="text-sm text-kindle-text-muted mt-4">{faq.a}</p>}
+            {steps.map((st, idx) => (
+              <div
+                key={idx}
+                className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-3 flex flex-col justify-between"
+              >
+                <div className="space-y-2">
+                  <span className="block font-mono text-3xl font-bold text-kindle-accent/30">{st.number}</span>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">{st.title}</h4>
+                  <p className="text-xs text-kindle-text-muted leading-relaxed">{st.description}</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        </section>
-      </main>
+        </div>
 
-      {/* Footer */}
-      <footer className="border-t border-kindle-border py-12 text-center text-xs font-bold uppercase tracking-[0.2em] text-kindle-text-muted mt-auto">
-        Kora Reader © {new Date().getFullYear()} • Open Source E-Ink Suite
-      </footer>
+        {/* Section 7: FAQ Accordion */}
+        <div id="faq" className="space-y-6 max-w-3xl mx-auto pt-8 border-t border-kindle-border/60 scroll-mt-20">
+          <div className="text-center space-y-2">
+            <h2 className="text-2xl font-serif font-bold text-kindle-text">
+              Frequently Asked Questions
+            </h2>
+            <p className="text-xs text-kindle-text-muted">
+              Got questions about installation, voice features, or privacy? We have answers.
+            </p>
+          </div>
 
-      {/* Modals */}
+          <div className="space-y-3">
+            {faqs.map((faq, idx) => {
+              const isOpen = expandedFaq === idx;
+              return (
+                <div
+                  key={idx}
+                  className="bg-kindle-card border border-kindle-border rounded-2xl overflow-hidden transition"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setExpandedFaq(isOpen ? null : idx)}
+                    className="w-full px-6 py-4 text-left font-bold text-xs text-kindle-text flex items-center justify-between cursor-pointer hover:bg-kindle-bg/50 transition"
+                  >
+                    <span>{faq.q}</span>
+                    <ChevronDown className={`w-4 h-4 text-kindle-text-muted transform transition ${isOpen ? "rotate-180" : "rotate-0"}`} />
+                  </button>
+
+                  {isOpen && (
+                    <div className="px-6 pb-4 text-xs text-kindle-text-muted leading-relaxed border-t border-kindle-border/40 pt-3">
+                      {faq.a}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* QR Code Scan Modal */}
       <AnimatePresence>
         {showQrModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="bg-kindle-bg border border-kindle-border rounded-[2rem] p-8 max-w-sm w-full text-center space-y-6">
-              <button onClick={() => setShowQrModal(false)} className="absolute top-6 right-6 text-kindle-text-muted hover:text-kindle-text">
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-kindle-bg border border-kindle-border rounded-3xl p-6 max-w-sm w-full text-center space-y-6 shadow-2xl relative"
+            >
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="absolute top-4 right-4 p-1 text-kindle-text-muted hover:text-kindle-text cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
-              <h3 className="font-bold text-kindle-text">Scan to Install</h3>
-              <div className="bg-white p-4 rounded-2xl mx-auto w-fit">
-                <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(installUrl)}`} alt="QR" className="w-48 h-48" />
+
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-kindle-text">Scan on Mobile Device</h3>
+                <p className="text-xs text-kindle-text-muted">Point your phone camera at this QR code to open the APK download portal on your phone.</p>
               </div>
-              <button onClick={handleCopyLink} className="w-full py-3 bg-kindle-card border border-kindle-border font-bold text-[11px] uppercase tracking-wider rounded-xl hover:border-kindle-accent">
-                {copiedLink ? "Copied!" : "Copy Link"}
+
+              {/* Dynamic QR Code Render via Public API */}
+              <div className="p-4 bg-white rounded-2xl border border-kindle-border w-fit mx-auto shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(installUrl)}`}
+                  alt="Kora Install Portal QR Code"
+                  className="w-48 h-48 mx-auto"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="w-full py-2.5 bg-kindle-card border border-kindle-border rounded-xl text-xs font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer"
+              >
+                {copiedLink ? "Link Copied!" : "Copy Portal URL"}
               </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
+      {/* Game & Workshop Interactive Demo Modals */}
       <GameScoreTracker open={showScoreTrackerDemo} onClose={() => setShowScoreTrackerDemo(false)} />
       <CrosswordGame open={showCrosswordDemo} onClose={() => setShowCrosswordDemo(false)} />
       <WordSearchGame open={showWordSearchDemo} onClose={() => setShowWordSearchDemo(false)} />
+
       <AnimatePresence>
         {showWikipediaDemo && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="w-full max-w-5xl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-5xl"
+            >
               <WikipediaWidget onClose={() => setShowWikipediaDemo(false)} />
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* Footer */}
+      <footer className="border-t border-kindle-border/40 py-12 text-center text-xs text-kindle-text-muted">
+        <div className="max-w-2xl mx-auto px-6 space-y-4">
+          <div className="flex items-center justify-center gap-2">
+            <KoraIcon className="w-5 h-5 text-kindle-text" />
+            <KoraWordmark className="h-3 text-kindle-text" />
+          </div>
+          <p>© 2026 Kora • Universal E-Ink Reader, Voice Narrator, & Workshop Suite.</p>
+          <div className="flex flex-wrap justify-center gap-4 text-[11px]">
+            <a href="/" className="hover:text-kindle-text hover:underline transition">Open Web Reader</a>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => { scrollToSection("workshop"); setShowScoreTrackerDemo(true); }}
+              className="hover:text-kindle-text hover:underline transition cursor-pointer text-[#e0533c] font-bold"
+            >
+              Score Tracker Demo
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => { scrollToSection("workshop"); setShowCrosswordDemo(true); }}
+              className="hover:text-kindle-text hover:underline transition cursor-pointer text-kindle-accent font-bold"
+            >
+              Crossword Demo
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => { scrollToSection("workshop"); setShowWordSearchDemo(true); }}
+              className="hover:text-kindle-text hover:underline transition cursor-pointer text-emerald-600 font-bold"
+            >
+              Word Search Demo
+            </button>
+            <span>•</span>
+            <a href="https://github.com/CHAOTIC-RAY/Kora-" target="_blank" rel="noopener noreferrer" className="hover:text-kindle-text hover:underline inline-flex items-center gap-0.5 transition">
+              GitHub Repository <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

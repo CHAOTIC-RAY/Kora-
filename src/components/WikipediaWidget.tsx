@@ -60,7 +60,6 @@ interface WikipediaWidgetProps {
   onClose?: () => void;
   userId?: string;
   onRefreshLibrary?: () => void;
-  initialQuery?: string;
 }
 
 const SUPPORTED_LANGUAGES = [
@@ -85,9 +84,9 @@ const POPULAR_TOPICS = [
   { label: "Stoicism", query: "Stoicism" },
 ];
 
-export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, initialQuery }: WikipediaWidgetProps) {
+export default function WikipediaWidget({ onClose, userId, onRefreshLibrary }: WikipediaWidgetProps) {
   const [lang, setLang] = useState("en");
-  const [query, setQuery] = useState(initialQuery || "");
+  const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeArticle, setActiveArticle] = useState<WikiArticleSummary | null>(null);
@@ -176,16 +175,10 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
     } catch (err) {
       toast.error("Failed to search Wikipedia. Check network connection.");
       console.error(err);
-    } finally {
+    } fonting: {
       setIsSearching(false);
     }
   };
-
-  useEffect(() => {
-    if (initialQuery) {
-      handleSelectArticle(initialQuery);
-    }
-  }, [initialQuery]);
 
   // Load Full Summary & HTML for selected article
   const handleSelectArticle = async (title: string) => {

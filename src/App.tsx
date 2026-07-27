@@ -355,7 +355,6 @@ export default function App() {
   const [deviceDownloadBooks, setDeviceDownloadBooks] = useState<BookMetadata[] | null>(null);
   const [showAnnotationsHub, setShowAnnotationsHub] = useState(false);
   const [showWikipediaModal, setShowWikipediaModal] = useState(false);
-  const [wikipediaInitialQuery, setWikipediaInitialQuery] = useState<string>("");
   const [proximitySyncBook, setProximitySyncBook] = useState<BookMetadata | null>(null);
   const [userNickname, setUserNickname] = useState<string>(() => {
     return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
@@ -2555,10 +2554,7 @@ export default function App() {
                 window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
               }}
               onOpenAnnotations={() => setShowAnnotationsHub(true)}
-              onOpenWikipedia={(query) => {
-                setWikipediaInitialQuery(query || "");
-                setShowWikipediaModal(true);
-              }}
+              onOpenWikipedia={() => setShowWikipediaModal(true)}
               onRefreshLibrary={refreshLibrary}
               onToggleAudiobookPlay={() => {
                 window.dispatchEvent(new CustomEvent("kora-audiobook:toggle-play"));
@@ -3343,13 +3339,9 @@ export default function App() {
       {showWikipediaModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <WikipediaWidget
-            onClose={() => {
-              setShowWikipediaModal(false);
-              setWikipediaInitialQuery("");
-            }}
+            onClose={() => setShowWikipediaModal(false)}
             userId={user?.uid}
             onRefreshLibrary={refreshLibrary}
-            initialQuery={wikipediaInitialQuery}
           />
         </div>
       )}
