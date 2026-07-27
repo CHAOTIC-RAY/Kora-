@@ -86,6 +86,85 @@ public class KoraWidgetsPlugin extends Plugin {
         }
       }
 
+      if (call.getData().has("wiki")) {
+        JSObject wiki = call.getObject("wiki", null);
+        if (wiki == null || wiki.length() == 0) {
+          WidgetDataStore.saveWiki(getContext(), null);
+        } else {
+          JSONObject payload = new JSONObject();
+          payload.put("title", wiki.optString("title", ""));
+          payload.put("description", wiki.optString("description", ""));
+          payload.put("extract", wiki.optString("extract", ""));
+          payload.put("thumbnailUrl", wiki.optString("thumbnailUrl", ""));
+          String thumbKey = wiki.optString("thumbnailKey", "");
+          if (thumbKey.isEmpty()) {
+            String u = wiki.optString("thumbnailUrl", "");
+            if (!u.isEmpty()) thumbKey = Integer.toHexString(u.hashCode());
+          }
+          if (!thumbKey.isEmpty()) payload.put("thumbnailKey", thumbKey);
+          WidgetDataStore.saveWiki(getContext(), payload);
+        }
+      }
+
+      if (call.getData().has("guides")) {
+        JSObject guides = call.getObject("guides", null);
+        if (guides == null || guides.length() == 0) {
+          WidgetDataStore.saveGuides(getContext(), null);
+        } else {
+          JSONArray arr = new JSONArray();
+          try {
+            JSONArray src = guides.optJSONArray("guides");
+            if (src != null) {
+              for (int i = 0; i < src.length() && i < 3; i++) {
+                JSONObject g = src.optJSONObject(i);
+                if (g == null) continue;
+                JSONObject row = new JSONObject();
+                row.put("id", g.optString("id", ""));
+                row.put("title", g.optString("title", ""));
+                arr.put(row);
+              }
+            }
+          } catch (Exception ignored) {
+            /* optional */
+          }
+          JSONObject payload = new JSONObject();
+          payload.put("guides", arr);
+          WidgetDataStore.saveGuides(getContext(), payload);
+        }
+      }
+
+      if (call.getData().has("notes")) {
+        JSObject notes = call.getObject("notes", null);
+        if (notes == null || notes.length() == 0) {
+          WidgetDataStore.saveNotes(getContext(), null);
+        } else {
+          int highlights = notes.optInt("highlights", 0);
+          int noteCount = notes.optInt("notes", 0);
+          JSONArray arr = new JSONArray();
+          try {
+            JSONArray src = notes.optJSONArray("items");
+            if (src != null) {
+              for (int i = 0; i < src.length() && i < 3; i++) {
+                JSONObject it = src.optJSONObject(i);
+                if (it == null) continue;
+                JSONObject row = new JSONObject();
+                row.put("kind", it.optString("kind", "highlight"));
+                row.put("text", it.optString("text", ""));
+                row.put("color", it.optString("color", "yellow"));
+                arr.put(row);
+              }
+            }
+          } catch (Exception ignored) {
+            /* optional */
+          }
+          JSONObject payload = new JSONObject();
+          payload.put("highlights", highlights);
+          payload.put("notes", noteCount);
+          payload.put("items", arr);
+          WidgetDataStore.saveNotes(getContext(), payload);
+        }
+      }
+
       WidgetIntents.refreshAll(getContext());
       JSObject ret = new JSObject();
       ret.put("ok", true);

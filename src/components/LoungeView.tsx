@@ -26,8 +26,20 @@ import CachedCoverImage from "./CachedCoverImage";
 import LoungeGuidesWidget from "./LoungeGuidesWidget";
 import LoungeNotesWidget from "./LoungeNotesWidget";
 import LoungeWikiWidget from "./LoungeWikiWidget";
+import type { WikiRandomArticle } from "./LoungeWikiWidget";
 import LoungeGamesWidget from "./LoungeGamesWidget";
 import type { GuideId } from "../lib/guides";
+import { pickLoungeGuideWidgets } from "../lib/guides";
+import {
+  loadBookHighlights,
+  loadChapterNotes,
+} from "../lib/firebase";
+import {
+  syncAndroidHomeWidgets,
+  type WidgetWikiPayload,
+  type WidgetGuidesPayload,
+  type WidgetNotesPayload,
+} from "../lib/androidWidgets";
 
 interface LoungeViewProps {
   books: BookMetadata[];
@@ -315,6 +327,7 @@ export default function LoungeView({
     // Continue always opens on Book, then auto-loops to Listen.
     continue: "book",
   }));
+  const [wikiArticle, setWikiArticle] = useState<WikiRandomArticle | null>(null);
   const [featured, setFeatured] = useState<FeaturedBook[]>([]);
   const [featuredAudio, setFeaturedAudio] = useState<FeaturedBook[]>([]);
   const [feedTick, setFeedTick] = useState(0);
@@ -346,6 +359,70 @@ export default function LoungeView({
       window.clearInterval(greetId);
     };
   }, []);
+
+  // Push Lounge widget data into native Android home-screen widgets (wiki / guides / notes).
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      // Wiki of the Hour
+      const wiki: WidgetWikiPayload | null = wikiArticle
+        ? {
+            title: wikiArticle.title,
+            description: wikiArticle.description,
+            extract: wikiArticle.extract,
+            thumbnailUrl: wikiArticle.thumbnail?.source,
+            thumbnailKey: wikiArticle.pageid
+              ? String(wikiArticle.pageid)
+              : wikiArticle.thumbnail?.source,
+          }
+        : null;
+
+      // Guides list
+      const guidesDefs = pickLoungeGuideWidgets(3);
+      const guides: WidgetGuidesPayload = {
+        guides: guidesDefs.map((g) => ({ id: g.id, title: g.title })),
+      };
+
+      // Annotations (highlights + notes)
+      const readable = (books || [])
+        .filter((b) => b.extension?.toLowerCase() !== "audiobook")
+        .slice(0, 12);
+      let highlights = 0;
+      let notes = 0;
+      const items: WidgetNotesPayload["items"] = [];
+      for (const book of readable) {
+        try {
+          const [hs, nsRecord] = await Promise.all([
+            loadBookHighlights(userId, book.id),
+            loadChapterNotes(userId, book.id),
+          ]);
+          for (const h of hs || []) {
+            if (!h.text?.trim()) continue;
+            highlights += 1;
+            if (items.length < 3)
+              items.push({ kind: "highlight", text: h.text.trim(), color: h.color });
+          }
+          for (const n of Object.values(nsRecord || {})) {
+            if (!n.noteText?.trim()) continue;
+            notes += 1;
+            if (items.length < 3) items.push({ kind: "note", text: n.noteText.trim() });
+          }
+        } catch {
+          /* skip */
+        }
+      }
+      if (cancelled) return;
+      await syncAndroidHomeWidgets({
+        wiki,
+        guides,
+        notes: { highlights, notes, items },
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wikiArticle, books, userId]);
 
   const setMode = (id: LoungeWidgetId, mode: string, fromUser = false) => {
     if (fromUser) {
@@ -822,8 +899,8 @@ export default function LoungeView({
 
           <TileShell delay={0.09} className="bg-kindle-card/60 p-3.5 md:p-4 order-6 md:order-none">
             <LoungeWikiWidget
-              onOpenWikipedia={onOpenWikipedia}
               onOpenArticle={onOpenArticle}
+              onArticleLoaded={setWikiArticle}
               userId={userId}
               onRefreshLibrary={onRefreshLibrary}
               grayscaleCovers={grayscaleCovers}

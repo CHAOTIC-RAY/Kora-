@@ -220,5 +220,44 @@
                 <action android:name="app.kora.reader.widgets.MINIGAME_BACKSPACE" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name="app.kora.reader.widgets.WikiWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/widget_wiki_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_wiki_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.kora.reader.widgets.GuidesWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/widget_guides_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_guides_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.kora.reader.widgets.NotesWidgetProvider"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/widget_notes_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_notes_info" />
+        </receiver>
     </application>
 </manifest>

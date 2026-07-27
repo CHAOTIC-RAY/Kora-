@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_notes_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:contentDescription="@string/widget_notes_description">
+
+    <TextView
+        android:id="@+id/widget_notes_eyebrow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="ANNOTATE & NOTES"
+        android:textAllCaps="true"
+        android:textColor="#C4A574"
+        android:textSize="10sp"
+        android:letterSpacing="0.10"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_notes_sub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#A8A29E"
+        android:textSize="10sp" />
+
+    <LinearLayout
+        android:id="@+id/widget_notes_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:id="@+id/widget_notes_row0"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp">
+
+            <View
+                android:id="@+id/widget_notes_dot0"
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:layout_marginEnd="8dp"
+                android:background="#FACC15" />
+
+            <TextView
+                android:id="@+id/widget_notes_text0"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#F7F3E3"
+                android:textSize="11sp"
+                android:lineSpacingExtra="1dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_notes_row1"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp">
+
+            <View
+                android:id="@+id/widget_notes_dot1"
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:layout_marginEnd="8dp"
+                android:background="#FACC15" />
+
+            <TextView
+                android:id="@+id/widget_notes_text1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#F7F3E3"
+                android:textSize="11sp"
+                android:lineSpacingExtra="1dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_notes_row2"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp">
+
+            <View
+                android:id="@+id/widget_notes_dot2"
+                android:layout_width="6dp"
+                android:layout_height="6dp"
+                android:layout_marginEnd="8dp"
+                android:background="#FACC15" />
+
+            <TextView
+                android:id="@+id/widget_notes_text2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#F7F3E3"
+                android:textSize="11sp"
+                android:lineSpacingExtra="1dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_notes_empty"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:text="Select text to highlight, or add a chapter note"
+        android:textColor="#A8A29E"
+        android:textSize="12sp"
+        android:visibility="gone" />
+</LinearLayout>

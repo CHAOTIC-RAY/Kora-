@@ -34,6 +34,9 @@ public final class WidgetIntents {
     refreshProvider(context, manager, BookContinueWidgetProvider.class);
     refreshProvider(context, manager, AudioPlayerWidgetProvider.class);
     refreshProvider(context, manager, MiniGameWidgetProvider.class);
+    refreshProvider(context, manager, WikiWidgetProvider.class);
+    refreshProvider(context, manager, GuidesWidgetProvider.class);
+    refreshProvider(context, manager, NotesWidgetProvider.class);
   }
 
   private static void refreshProvider(
@@ -51,6 +54,12 @@ public final class WidgetIntents {
         AudioPlayerWidgetProvider.updateAll(context, manager, ids);
       } else if (providerClass == MiniGameWidgetProvider.class) {
         MiniGameWidgetProvider.updateAll(context, manager, ids);
+      } else if (providerClass == WikiWidgetProvider.class) {
+        WikiWidgetProvider.updateAll(context, manager, ids);
+      } else if (providerClass == GuidesWidgetProvider.class) {
+        GuidesWidgetProvider.updateAll(context, manager, ids);
+      } else if (providerClass == NotesWidgetProvider.class) {
+        NotesWidgetProvider.updateAll(context, manager, ids);
       }
     } catch (Exception ignored) {
       /* provider may not be registered yet during upgrade */
@@ -75,6 +84,12 @@ public final class WidgetIntents {
       provider = AudioPlayerWidgetProvider.class;
     } else if ("game".equalsIgnoreCase(which) || "minigame".equalsIgnoreCase(which)) {
       provider = MiniGameWidgetProvider.class;
+    } else if ("wiki".equalsIgnoreCase(which) || "wiki-of-the-hour".equalsIgnoreCase(which)) {
+      provider = WikiWidgetProvider.class;
+    } else if ("guides".equalsIgnoreCase(which)) {
+      provider = GuidesWidgetProvider.class;
+    } else if ("notes".equalsIgnoreCase(which) || "annotations".equalsIgnoreCase(which)) {
+      provider = NotesWidgetProvider.class;
     }
     ComponentName name = new ComponentName(context, provider);
     return manager.requestPinAppWidget(name, null, null);

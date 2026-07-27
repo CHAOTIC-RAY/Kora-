@@ -30,7 +30,29 @@ export type WidgetMiniGamePayload = {
   clue: string;
 };
 
-type WidgetPinWhich = "continue" | "brief" | "book" | "audio" | "game";
+export type WidgetWikiPayload = {
+  title: string;
+  description?: string;
+  extract?: string;
+  thumbnailUrl?: string;
+  thumbnailKey?: string;
+};
+
+export type WidgetGuideItem = { id: string; title: string };
+export type WidgetGuidesPayload = { guides: WidgetGuideItem[] };
+
+export type WidgetNoteItem = {
+  kind: "highlight" | "note";
+  text: string;
+  color?: string;
+};
+export type WidgetNotesPayload = {
+  highlights: number;
+  notes: number;
+  items: WidgetNoteItem[];
+};
+
+type WidgetPinWhich = "continue" | "brief" | "book" | "audio" | "game" | "wiki" | "guides" | "notes";
 
 type KoraWidgetsPlugin = {
   sync(options: {
@@ -39,6 +61,9 @@ type KoraWidgetsPlugin = {
     continueAudio?: WidgetContinuePayload | null;
     brief?: WidgetBriefPayload | null;
     miniGame?: WidgetMiniGamePayload | null;
+    wiki?: WidgetWikiPayload | null;
+    guides?: WidgetGuidesPayload | null;
+    notes?: WidgetNotesPayload | null;
   }): Promise<{ ok?: boolean }>;
   refresh(): Promise<void>;
   requestPin(options: { which: WidgetPinWhich }): Promise<{
@@ -162,6 +187,9 @@ export async function syncAndroidHomeWidgets(options?: {
   continueAudio?: WidgetContinuePayload | null;
   brief?: WidgetBriefPayload | null;
   miniGame?: WidgetMiniGamePayload | null;
+  wiki?: WidgetWikiPayload | null;
+  guides?: WidgetGuidesPayload | null;
+  notes?: WidgetNotesPayload | null;
   /** When true, rebuild brief from local feed storage if not provided. */
   includeBrief?: boolean;
   includeMiniGame?: boolean;
@@ -174,6 +202,9 @@ export async function syncAndroidHomeWidgets(options?: {
     continueAudio?: WidgetContinuePayload | null;
     brief?: WidgetBriefPayload | null;
     miniGame?: WidgetMiniGamePayload | null;
+    wiki?: WidgetWikiPayload | null;
+    guides?: WidgetGuidesPayload | null;
+    notes?: WidgetNotesPayload | null;
   } = {};
 
   if (options && "continue" in (options || {})) {
@@ -194,6 +225,15 @@ export async function syncAndroidHomeWidgets(options?: {
     payload.miniGame = options?.miniGame ?? null;
   } else if (options?.includeMiniGame !== false) {
     payload.miniGame = miniGamePayloadForToday();
+  }
+  if (options && "wiki" in (options || {})) {
+    payload.wiki = options?.wiki ?? null;
+  }
+  if (options && "guides" in (options || {})) {
+    payload.guides = options?.guides ?? null;
+  }
+  if (options && "notes" in (options || {})) {
+    payload.notes = options?.notes ?? null;
   }
 
   try {

@@ -31,8 +31,9 @@ export interface WikiRandomArticle {
   lang?: string;
 }
 
-interface LoungeWikiWidgetProps {
+export interface LoungeWikiWidgetProps {
   onOpenArticle?: (article: WikiRandomArticle) => void;
+  onArticleLoaded?: (article: WikiRandomArticle | null) => void;
   userId?: string;
   onRefreshLibrary?: () => void;
   grayscaleCovers?: boolean;
@@ -40,6 +41,7 @@ interface LoungeWikiWidgetProps {
 
 export default function LoungeWikiWidget({
   onOpenArticle,
+  onArticleLoaded,
   userId,
   onRefreshLibrary,
   grayscaleCovers = false,
@@ -64,6 +66,7 @@ export default function LoungeWikiWidget({
       if (res.ok) {
         const data = await res.json();
         setArticle(data);
+        onArticleLoaded?.(data);
       } else {
         throw new Error("API returned non-200");
       }
@@ -192,11 +195,8 @@ export default function LoungeWikiWidget({
             <Globe className="w-3.5 h-3.5" />
           </div>
           <h3 className="text-[10px] font-bold uppercase tracking-[0.22em] text-kindle-text truncate">
-            Random Article
+            Wiki of the Hour
           </h3>
-          <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-            Wikipedia
-          </span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -321,7 +321,7 @@ export default function LoungeWikiWidget({
           </motion.div>
         ) : (
           <div className="py-4 text-center text-xs text-kindle-text-muted space-y-2">
-            <p>Could not load random article.</p>
+            <p>Could not load an article right now.</p>
             <button
               type="button"
               onClick={() => fetchRandom()}

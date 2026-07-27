@@ -19,6 +19,13 @@
     <string name="widget_game_label">Kora · Mini Crossword</string>
     <string name="widget_game_description">Play a daily crossword clue on your home screen</string>
 
+    <string name="widget_wiki_label">Kora · Wiki of the Hour</string>
+    <string name="widget_wiki_description">The lead Wikipedia article from your Kora Lounge — read it in-app</string>
+    <string name="widget_guides_label">Kora · Guides</string>
+    <string name="widget_guides_description">Start a hands-on Kora tab tour from your home screen</string>
+    <string name="widget_notes_label">Kora · Annotate &amp; Notes</string>
+    <string name="widget_notes_description">Your latest highlights and chapter notes from Kora</string>
+
     <string name="shortcut_continue_short">Continue</string>
     <string name="shortcut_continue_long">Continue reading</string>
     <string name="shortcut_news_short">News</string>

@@ -17,6 +17,9 @@ public final class WidgetDataStore {
   public static final String KEY_CONTINUE_AUDIO_JSON = "continue_audio_json";
   public static final String KEY_BRIEF_JSON = "brief_json";
   public static final String KEY_MINIGAME_JSON = "minigame_json";
+  public static final String KEY_WIKI_JSON = "wiki_json";
+  public static final String KEY_GUIDES_JSON = "guides_json";
+  public static final String KEY_NOTES_JSON = "notes_json";
   public static final String KEY_UPDATED_AT = "updated_at";
 
   private WidgetDataStore() {}
@@ -43,6 +46,18 @@ public final class WidgetDataStore {
 
   public static void saveMiniGame(Context context, JSONObject payloadOrNull) {
     writeJson(context, KEY_MINIGAME_JSON, payloadOrNull);
+  }
+
+  public static void saveWiki(Context context, JSONObject payloadOrNull) {
+    writeJson(context, KEY_WIKI_JSON, payloadOrNull);
+  }
+
+  public static void saveGuides(Context context, JSONObject payloadOrNull) {
+    writeJson(context, KEY_GUIDES_JSON, payloadOrNull);
+  }
+
+  public static void saveNotes(Context context, JSONObject payloadOrNull) {
+    writeJson(context, KEY_NOTES_JSON, payloadOrNull);
   }
 
   private static void writeJson(Context context, String key, JSONObject payloadOrNull) {
@@ -82,6 +97,18 @@ public final class WidgetDataStore {
 
   public static JSONObject getMiniGame(Context context) {
     return readObject(prefs(context).getString(KEY_MINIGAME_JSON, null));
+  }
+
+  public static JSONObject getWiki(Context context) {
+    return readObject(prefs(context).getString(KEY_WIKI_JSON, null));
+  }
+
+  public static JSONObject getGuides(Context context) {
+    return readObject(prefs(context).getString(KEY_GUIDES_JSON, null));
+  }
+
+  public static JSONObject getNotes(Context context) {
+    return readObject(prefs(context).getString(KEY_NOTES_JSON, null));
   }
 
   public static String continueTitle(Context context) {
