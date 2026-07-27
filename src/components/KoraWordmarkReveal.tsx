@@ -13,9 +13,9 @@ const KORA_PATHS = [
 type Phase = "idle" | "outline" | "fill";
 
 /**
- * Animated "kora" wordmark: the glyphs are hand-outlined with a stroke,
- * then the whole mark zooms out as it fills in. Once the wordmark is
- * complete, the children (subtitle copy) fade up beneath it.
+ * Animated "kora" wordmark: glyphs hand-outline via pathLength, then the
+ * whole mark zooms out as it fills in. Once complete, children (subtitle)
+ * fade up beneath it. Triggered once when scrolled into view.
  */
 export default function KoraWordmarkReveal({
   children,
@@ -30,21 +30,21 @@ export default function KoraWordmarkReveal({
   const inView = useInView(ref, { amount: 0.4, once: true });
   const [phase, setPhase] = useState<Phase>("idle");
   const [done, setDone] = useState(false);
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (!inView || phase !== "idle") return;
+    if (!inView || startedRef.current) return;
+    startedRef.current = true;
     setPhase("outline");
-    // Outline draws (~2.2s), then zoom + fill begins.
     const t1 = setTimeout(() => setPhase("fill"), 2200);
-    // Fill completes, reveal subtitle.
-    const t2 = setTimeout(() => setDone(true), 3200);
+    const t2 = setTimeout(() => setDone(true), 3300);
+    // timeouts intentionally not cleared on phase change — the timeline runs once.
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [inView, phase]);
+  }, [inView]);
 
-  const drawing = phase === "outline";
   const filling = phase === "fill" || done;
 
   return (
@@ -69,14 +69,13 @@ export default function KoraWordmarkReveal({
               strokeWidth={1.4}
               strokeLinejoin="round"
               strokeLinecap="round"
-              pathLength={1}
-              initial={{ strokeDashoffset: 1, fillOpacity: 0 }}
+              initial={{ pathLength: 0, fillOpacity: 0 }}
               animate={{
-                strokeDashoffset: drawing || filling ? 0 : 1,
+                pathLength: phase === "idle" ? 0 : 1,
                 fillOpacity: filling ? 1 : 0,
               }}
               transition={{
-                strokeDashoffset: {
+                pathLength: {
                   duration: 2.2,
                   ease: "easeInOut",
                   delay: i * 0.25,
