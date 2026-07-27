@@ -273,6 +273,10 @@ export default function InstallView() {
       a: "Kora parses book chapters directly on your device and uses high-fidelity neural system voices to read aloud. You control speech rate, pitch, and background playback, and can follow along with synchronized sentence highlighting. On Android the APK keeps narration playing while the screen is off.",
     },
     {
+      q: "How does Kora's P2P sharing work?",
+      a: "On Android, the APK unlocks local P2P transfer — you can beam books and files directly between devices over the same Wi-Fi, with no cloud, server, or account in the middle. It's device-to-device: your file goes from one Kora to another and nowhere else. Great for sharing a library with a friend or moving books from your computer to your phone without uploading anything.",
+    },
+    {
       q: "Is my reading data private?",
       a: "Your library, progress, and annotations are stored locally on your device by default. Sync is end-to-end optional: use Google Firebase, your own WebDAV/Nextcloud server, or stay fully offline. We never sell or share your data.",
     },
