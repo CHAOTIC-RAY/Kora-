@@ -188,19 +188,21 @@ jobs:
 
       - name: Build release notes
         id: notes
-        env:
-          PREV_TAG: ${{ steps.apk.outputs.name }}
         run: |
-          set -euo pipefail
-          # Previous APK tag (for the changelog range), else fall back to last 20 commits.
+          # No 'set -e' — a shallow checkout or empty range must not kill the job.
+          # Best-effort: deepen history + grab all tags so ranges resolve on CI.
+          git fetch --unshallow --tags 2>/dev/null || git fetch --tags 2>/dev/null || true
+
+          # Previous APK tag (for the changelog range); fall back to last 20 commits.
           PREV=$(git tag --list 'apk-v*' --sort=-v:refname | head -n1 || true)
           if [ -n "$PREV" ]; then
-            RANGE="$PREV..HEAD"
+            LOG_RANGE="$PREV..HEAD"
           else
-            RANGE="HEAD~20..HEAD"
+            LOG_RANGE="--max-count=20 HEAD"
           fi
+
           # Group commits into Added / Changed / Fixed from conventional-ish prefixes.
-          CHANGE=$(git log --no-merges --pretty=format:'%s' "$RANGE" | awk '
+          CHANGE=$(git log --no-merges --pretty=format:'%s' $LOG_RANGE | awk '
             /^[aA]dd|^feat|new|implement/i { sub(/^[^:]*:[ ]*/,""); print "- ✨ " $0; next }
             /^[fF]ix|bug|patch/i            { sub(/^[^:]*:[ ]*/,""); print "- 🐛 " $0; next }
             /^[cC]hange|^refactor|^update|tweak/i { sub(/^[^:]*:[ ]*/,""); print "- 🔧 " $0; next }
@@ -212,7 +214,7 @@ jobs:
           FEATURES=$(cat <<'EOF'
           - 📖 **Distraction-Free E-Ink Reader** — EPUB, PDF, MOBI, AZW3 with custom typography, themes & paper tints.
           - 🎧 **Voice Narrator** — on-device neural TTS with pitch/rate control & background playback.
-          - 🌐 **Federated Discovery** — search open catalogs (Rave, LibGen, Anna's Archive) with direct mirrors.
+          - 🌐 **Federated Discovery** — search open catalogs (Rave, a search engine over free & public-domain sources; LibGen; Anna's Archive) with direct mirrors.
           - 🎮 **Workshop Lounge** — Crossword, Word Search, Linguist Guardian & board-score tracker.
           - 🗒️ **Annotations** — highlights, notes & chapter bookmarks, synced privately.
           - ⚡ **Offline-First** — service-worker downloads that survive app exit & resume.

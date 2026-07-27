@@ -265,8 +265,8 @@ export default function InstallView() {
       a: "No. You can open any book, article, or feed and read completely offline with zero sign-up. An account is only optional — it enables cloud sync of bookmarks, highlights, and reading progress across your devices via Firebase or your own WebDAV server.",
     },
     {
-      q: "Which install should I pick — Web, APK, or self-host?",
-      a: "Web App (PWA) is the fastest path and runs on everything, including iPhone — open the site and tap 'Add to Home Screen'. The Android APK adds system background voice playback, notification controls, and offline P2P transfer. Self-hosting puts Kora on your own domain with full data ownership. Not sure? Start with the Web App.",
+      q: "Is Kora for piracy, or can I read copyrighted books?",
+      a: "Kora is a reader, not a file host. Its discovery tools can query catalogs including LibGen, Anna's Archive, Rave, and Z-Library, some of which host copyrighted material. You decide what to open, and you're responsible for doing so legally in your jurisdiction. Kora itself stores nothing — it just loads whatever link or file you point it at (EPUB, PDF, MOBI, AZW3) and reads it.",
     },
     {
       q: "How does the Voice Narrator / audiobook feature work?",
