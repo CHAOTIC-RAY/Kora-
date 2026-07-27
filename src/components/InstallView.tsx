@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Download,
@@ -60,6 +60,21 @@ export default function InstallView() {
   const [showCrosswordDemo, setShowCrosswordDemo] = useState(false);
   const [showWordSearchDemo, setShowWordSearchDemo] = useState(false);
   const [showWikipediaDemo, setShowWikipediaDemo] = useState(false);
+
+  // Hide the sticky top nav once the closing notebook fills the screen.
+  const [navHidden, setNavHidden] = useState(false);
+  const notebookRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const el = notebookRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setNavHidden(entry.isIntersecting && entry.intersectionRatio > 0.35),
+      { threshold: [0, 0.35, 0.6] }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Unified Experience Section Pillar State
   const [experiencePillar, setExperiencePillar] = useState<"library" | "themes" | "cloud" | "voice" | "catalog" | "workshop">("library");
@@ -214,7 +229,7 @@ export default function InstallView() {
   return (
     <div className="min-h-screen bg-kindle-bg text-kindle-text font-sans antialiased selection:bg-kindle-accent/20">
       {/* Top Site Navigation Header */}
-      <nav className="sticky top-0 z-40 bg-kindle-bg/95 backdrop-blur border-b border-kindle-border">
+      <nav className={`sticky top-0 z-40 bg-kindle-bg/95 backdrop-blur border-b border-kindle-border transition-transform duration-300 ${navHidden ? "-translate-y-full" : "translate-y-0"}`}>
         <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between">
           <a href="/" className="flex items-center gap-3 group">
             <div className="w-9 h-9 rounded-xl bg-kindle-card border border-kindle-border flex items-center justify-center group-hover:border-kindle-accent transition shadow-xs">
@@ -840,7 +855,7 @@ export default function InstallView() {
       </section>
 
       {/* Closing Notebook — smooth fill-the-screen reveal on last scroll */}
-      <section className="px-4 pb-8 pt-4">
+      <section ref={notebookRef} className="px-4 pb-8 pt-4">
         <motion.div
           initial={{ opacity: 0, y: 80, scale: 0.92 }}
           whileInView={{ opacity: 1, y: 0, scale: 1 }}
@@ -975,48 +990,6 @@ export default function InstallView() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Footer */}
-      <footer className="border-t border-kindle-border/40 py-12 text-center text-xs text-kindle-text-muted">
-        <div className="max-w-2xl mx-auto px-6 space-y-4">
-          <div className="flex items-center justify-center gap-2">
-            <KoraIcon className="w-5 h-5 text-kindle-text" />
-            <KoraWordmark className="h-3 text-kindle-text" />
-          </div>
-          <p>© 2026 Kora • Universal E-Ink Reader, Voice Narrator, & Workshop Suite.</p>
-          <div className="flex flex-wrap justify-center gap-4 text-[11px]">
-            <a href="/" className="hover:text-kindle-text hover:underline transition">Open Web Reader</a>
-            <span>•</span>
-            <button
-              type="button"
-              onClick={() => { scrollToSection("workshop"); setShowScoreTrackerDemo(true); }}
-              className="hover:text-kindle-text hover:underline transition cursor-pointer text-[#e0533c] font-bold"
-            >
-              Score Tracker Demo
-            </button>
-            <span>•</span>
-            <button
-              type="button"
-              onClick={() => { scrollToSection("workshop"); setShowCrosswordDemo(true); }}
-              className="hover:text-kindle-text hover:underline transition cursor-pointer text-kindle-accent font-bold"
-            >
-              Crossword Demo
-            </button>
-            <span>•</span>
-            <button
-              type="button"
-              onClick={() => { scrollToSection("workshop"); setShowWordSearchDemo(true); }}
-              className="hover:text-kindle-text hover:underline transition cursor-pointer text-emerald-600 font-bold"
-            >
-              Word Search Demo
-            </button>
-            <span>•</span>
-            <a href="https://github.com/CHAOTIC-RAY/Kora-" target="_blank" rel="noopener noreferrer" className="hover:text-kindle-text hover:underline inline-flex items-center gap-0.5 transition">
-              GitHub Repository <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
