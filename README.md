@@ -1,6 +1,6 @@
 <div align="center">
   <p>
-    <img src="./public/kora_banner.gif" alt="Kora - Your bookshelf, narrator, and morning paper" width="100%" />
+    <img src="./public/kora-wordmark.gif" alt="Kora - Your bookshelf, narrator, and morning paper" width="100%" />
   </p>
 
   # 📖 Kora
