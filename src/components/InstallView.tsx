@@ -979,7 +979,7 @@ export default function InstallView() {
             <h2 className="text-2xl font-serif font-bold text-kindle-text">
               Frequently Asked Questions
             </h2>
-            <p className="text-xs text-kindle-text-muted">
+            <p className="text-sm text-kindle-text/75">
               Got questions about installation, voice features, or privacy? We have answers.
             </p>
           </div>
@@ -995,14 +995,14 @@ export default function InstallView() {
                   <button
                     type="button"
                     onClick={() => setExpandedFaq(isOpen ? null : idx)}
-                    className="w-full px-6 py-4 text-left font-bold text-xs text-kindle-text flex items-center justify-between cursor-pointer hover:bg-kindle-bg/50 transition"
+                    className="w-full px-6 py-4 text-left font-bold text-sm text-kindle-text flex items-center justify-between cursor-pointer hover:bg-kindle-bg/50 transition"
                   >
                     <span>{faq.q}</span>
                     <ChevronDown className={`w-4 h-4 text-kindle-text-muted transform transition ${isOpen ? "rotate-180" : "rotate-0"}`} />
                   </button>
 
                   {isOpen && (
-                    <div className="px-6 pb-4 text-xs text-kindle-text-muted leading-relaxed border-t border-kindle-border/40 pt-3">
+                    <div className="px-6 pb-4 text-sm text-kindle-text/80 leading-relaxed border-t border-kindle-border/40 pt-3">
                       {faq.a}
                     </div>
                   )}

@@ -1,0 +1,24 @@
+[
+  {
+    "login": "CHAOTIC-RAY",
+    "id": 66687692,
+    "node_id": "MDQ6VXNlcjY2Njg3Njky",
+    "avatar_url": "https://avatars.githubusercontent.com/u/66687692?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/CHAOTIC-RAY",
+    "html_url": "https://github.com/CHAOTIC-RAY",
+    "followers_url": "https://api.github.com/users/CHAOTIC-RAY/followers",
+    "following_url": "https://api.github.com/users/CHAOTIC-RAY/following{/other_user}",
+    "gists_url": "https://api.github.com/users/CHAOTIC-RAY/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/CHAOTIC-RAY/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/CHAOTIC-RAY/subscriptions",
+    "organizations_url": "https://api.github.com/users/CHAOTIC-RAY/orgs",
+    "repos_url": "https://api.github.com/users/CHAOTIC-RAY/repos",
+    "events_url": "https://api.github.com/users/CHAOTIC-RAY/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/CHAOTIC-RAY/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false,
+    "contributions": 425
+  }
+]
