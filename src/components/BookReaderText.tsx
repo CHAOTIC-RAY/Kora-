@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
-import { ArrowLeft, RefreshCw, Database, FileText, Trash2, Settings, Type, Copy, Check, Globe, ChevronDown } from "lucide-react";
+import { ArrowLeft, RefreshCw, Database, FileText, Trash2, Settings, Type, Copy, Check, Globe, ChevronDown, Sparkles, Clock } from "lucide-react";
 import { getBookFile, deleteBookFile } from "../db/indexedDB";
+import { getTimeOfDayAutoTheme } from "../lib/readerThemes";
 
 interface BookReaderTextProps {
   book: any;
@@ -185,7 +186,18 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
   // Reading mode state variables
   const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18);
   const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-lexica");
-  const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light");
+  const [autoAdjustTheme, setAutoAdjustTheme] = useState<boolean>((readerPrefs as any)?.autoAdjustTheme ?? false);
+  const [theme, setTheme] = useState<string>(() => {
+    if ((readerPrefs as any)?.autoAdjustTheme) return getTimeOfDayAutoTheme();
+    return readerPrefs?.theme ?? "light";
+  });
+
+  useEffect(() => {
+    if (autoAdjustTheme) {
+      setTheme(getTimeOfDayAutoTheme());
+    }
+  }, [autoAdjustTheme]);
+
   const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
   const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
   const [brightness, setBrightness] = useState<number>(readerPrefs?.brightness ?? 100);
@@ -233,6 +245,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
         fontSize,
         fontFamily,
         theme,
+        autoAdjustTheme,
         marginSize,
         lineSpacing,
         brightness,
@@ -240,7 +253,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
         hideImages
       });
     }
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, brightness, letterSpacing, hideImages, onReaderPrefsChange]);
+  }, [fontSize, fontFamily, theme, autoAdjustTheme, marginSize, lineSpacing, brightness, letterSpacing, hideImages, onReaderPrefsChange]);
 
   const activeTheme = themes[theme] || themes.sepia;
 
@@ -298,17 +311,51 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
             </div>
 
             {/* Reading Themes */}
-            <div className="mb-4">
-              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Reading Theme</label>
+            <div className="mb-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs opacity-75 font-sans font-semibold">Reading Theme</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextAuto = !autoAdjustTheme;
+                    setAutoAdjustTheme(nextAuto);
+                    if (nextAuto) {
+                      setTheme(getTimeOfDayAutoTheme());
+                    }
+                  }}
+                  className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1 border ${
+                    autoAdjustTheme
+                      ? "bg-amber-500/20 text-amber-600 border-amber-500/40"
+                      : "bg-neutral-500/10 text-neutral-500 border-neutral-500/20 hover:bg-neutral-500/20"
+                  }`}
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Auto-Adjust {autoAdjustTheme ? "ON" : "OFF"}
+                </button>
+              </div>
+
+              {autoAdjustTheme && (
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-700 dark:text-amber-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Clock className="w-3 h-3 text-amber-500" />
+                    Daylight Theme:
+                  </span>
+                  <span className="font-bold uppercase tracking-wider">{theme}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-4 gap-1.5">
                 {Object.keys(themes).map((tKey) => {
                   const th = themes[tKey];
                   return (
                     <button
                       key={tKey}
-                      onClick={() => setTheme(tKey)}
+                      onClick={() => {
+                        setAutoAdjustTheme(false);
+                        setTheme(tKey);
+                      }}
                       className={`h-10 rounded-lg border flex items-center justify-center text-xs font-semibold capitalize ${th.bg} ${th.text} ${
-                        theme === tKey ? "ring-2 ring-[#5c5346] border-transparent" : "border-neutral-500/20"
+                        theme === tKey && !autoAdjustTheme ? "ring-2 ring-[#5c5346] border-transparent" : "border-neutral-500/20"
                       }`}
                     >
                       {tKey}

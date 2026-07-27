@@ -23,12 +23,10 @@ export default function ApkFooterLink() {
 
   return (
     <a
-      href={apk?.url || "https://github.com/CHAOTIC-RAY/Kora-/releases/latest"}
-      target="_blank"
-      rel="noopener noreferrer"
+      href="/install"
       className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-accent transition-colors"
     >
-      <Smartphone className="w-3.5 h-3.5" />
+      <Smartphone className="w-3.5 h-3.5 text-kindle-accent" />
       <Download className="w-3 h-3" />
       {apk ? `Get Android App (v${apk.versionName})` : "Get Android App"}
     </a>

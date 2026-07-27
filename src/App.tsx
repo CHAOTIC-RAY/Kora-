@@ -24,6 +24,7 @@ import DiscoverView from "./components/DiscoverView";
 import SettingsView from "./components/SettingsView";
 import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
 import LoungeView from "./components/LoungeView";
+import WikipediaWidget from "./components/WikipediaWidget";
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
 import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
@@ -56,6 +57,7 @@ import {
   syncServiceWorkerPrefs,
 } from "./lib/swBridge";
 import { applySelectedFeedSources, DEFAULT_FEED_SUBSCRIPTIONS } from "./lib/feedStorage";
+import { getTimeOfDayAutoTheme } from "./lib/readerThemes";
 import Quote from "./components/Quote";
 import FeedView from "./components/FeedView";
 import DownloadBookBtn from "./components/DownloadBookBtn";
@@ -66,6 +68,7 @@ import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import ApkUpdateBanner from "./components/ApkUpdateBanner";
 import ApkFooterLink from "./components/ApkFooterLink";
+import InstallView from "./components/InstallView";
 import AnnotationsHub from "./components/AnnotationsHub";
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
@@ -76,7 +79,7 @@ import {
   CloudLightning, Key, Smartphone, LogIn, Mail,
   Settings as SettingsIcon, Moon, Sun, Monitor, Clock, Bookmark,
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle, Rss,
-  RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench, Sofa
+  RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench, Sofa, Hammer
 } from "lucide-react";
 import JSZip from "jszip";
 import { LayoutGroup, motion } from "motion/react";
@@ -109,7 +112,7 @@ const BASE_MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
   { id: "discover" as const, label: "Discover", Icon: Compass },
   { id: "feed" as const, label: "Read", Icon: Rss },
-  { id: "tools" as const, label: "Tools", Icon: Wrench },
+  { id: "tools" as const, label: "Workshop", Icon: Hammer },
 ];
 
 type AppTab = "lounge" | "library" | "discover" | "feed" | "tools" | "settings";
@@ -351,6 +354,8 @@ export default function App() {
   });
   const [deviceDownloadBooks, setDeviceDownloadBooks] = useState<BookMetadata[] | null>(null);
   const [showAnnotationsHub, setShowAnnotationsHub] = useState(false);
+  const [showWikipediaModal, setShowWikipediaModal] = useState(false);
+  const [wikipediaInitialQuery, setWikipediaInitialQuery] = useState<string>("");
   const [proximitySyncBook, setProximitySyncBook] = useState<BookMetadata | null>(null);
   const [userNickname, setUserNickname] = useState<string>(() => {
     return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
@@ -507,28 +512,57 @@ export default function App() {
   const [readerPrefs, setReaderPrefs] = useState(() => {
     const saved = localStorage.getItem("kora_reader_prefs");
     const initialDisplayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
-    return saved ? JSON.parse(saved) : {
+    const parsed = saved ? JSON.parse(saved) : {};
+    const autoAdjustTheme = parsed.autoAdjustTheme ?? false;
+    const initialTheme = autoAdjustTheme 
+      ? getTimeOfDayAutoTheme() 
+      : (parsed.theme || (initialDisplayTheme.includes("dark") ? "dark" : "light"));
+
+    return {
       fontSize: 18,
       lineSpacing: 1.6,
       fontFamily: "font-lexica",
-      theme: initialDisplayTheme.includes("dark") ? "dark" : "light",
-      themeManuallySet: false,
       marginSize: "max-w-2xl px-6",
       isContinuous: false,
       brightness: 100,
       grayscaleImages: false,
+      themeManuallySet: false,
+      ...parsed,
+      theme: initialTheme,
+      autoAdjustTheme,
     };
   });
 
-  // Automatically update reader theme if not manually set by user
+  // Automatically update reader theme based on time of day (or app display theme)
   useEffect(() => {
-    if (!readerPrefs.themeManuallySet) {
+    if (readerPrefs.autoAdjustTheme) {
+      const autoTheme = getTimeOfDayAutoTheme();
+      if (readerPrefs.theme !== autoTheme) {
+        setReaderPrefs((prev: any) => ({
+          ...prev,
+          theme: autoTheme
+        }));
+      }
+
+      // Check time-of-day theme shift every minute
+      const interval = setInterval(() => {
+        const nextAuto = getTimeOfDayAutoTheme();
+        setReaderPrefs((prev: any) => {
+          if (prev.autoAdjustTheme && prev.theme !== nextAuto) {
+            return { ...prev, theme: nextAuto };
+          }
+          return prev;
+        });
+      }, 60000);
+
+      return () => clearInterval(interval);
+    } else if (!readerPrefs.themeManuallySet) {
       setReaderPrefs((prev: any) => ({
         ...prev,
         theme: displayTheme.includes("dark") ? "dark" : "light"
       }));
     }
-  }, [displayTheme]);
+  }, [displayTheme, readerPrefs.autoAdjustTheme]);
 
   // Search / discovery preferences
   const [searchPrefs, setSearchPrefs] = useState(() => {
@@ -2338,6 +2372,10 @@ export default function App() {
     }
   }
 
+  if (window.location.pathname === "/install" || window.location.pathname === "/install/") {
+    return <InstallView />;
+  }
+
   if (loadingAuth) {
     return (
       <div className="min-h-screen bg-kindle-bg flex items-center justify-center">
@@ -2455,8 +2493,8 @@ export default function App() {
                   : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
-              <Wrench className="w-3.5 h-3.5" />
-              <span>Tools</span>
+              <Hammer className="w-3.5 h-3.5" />
+              <span>Workshop</span>
             </button>
           </nav>
 
@@ -2517,6 +2555,11 @@ export default function App() {
                 window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
               }}
               onOpenAnnotations={() => setShowAnnotationsHub(true)}
+              onOpenWikipedia={(query) => {
+                setWikipediaInitialQuery(query || "");
+                setShowWikipediaModal(true);
+              }}
+              onRefreshLibrary={refreshLibrary}
               onToggleAudiobookPlay={() => {
                 window.dispatchEvent(new CustomEvent("kora-audiobook:toggle-play"));
               }}
@@ -2971,7 +3014,7 @@ export default function App() {
                         <li>Go to your <strong>Firebase Console</strong>.</li>
                         <li>Select <strong>Authentication</strong> &gt; <strong>Settings</strong> &gt; <strong>Authorized domains</strong>.</li>
                         <li>Click <strong>Add domain</strong>.</li>
-                        <li>Enter <code className="bg-white/80 px-1 py-0.5 rounded border border-amber-200 font-mono">kora.chaoticstudio.workers.dev</code> (or your current active domain).</li>
+                        <li>Enter <code className="bg-white/80 px-1 py-0.5 rounded border border-amber-200 font-mono">{typeof window !== "undefined" ? window.location.host : "kora.chaoticstudio.workers.dev"}</code> (or your current active domain).</li>
                         <li>Click <strong>Add</strong> and try logging in again!</li>
                       </ol>
                     </div>
@@ -3295,6 +3338,20 @@ export default function App() {
             handleOpenBook(book);
           }}
         />
+      )}
+
+      {showWikipediaModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <WikipediaWidget
+            onClose={() => {
+              setShowWikipediaModal(false);
+              setWikipediaInitialQuery("");
+            }}
+            userId={user?.uid}
+            onRefreshLibrary={refreshLibrary}
+            initialQuery={wikipediaInitialQuery}
+          />
+        </div>
       )}
 
       {proximitySyncBook && (

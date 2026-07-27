@@ -553,30 +553,34 @@ export default function CrosswordGame({ open, onClose }: CrosswordGameProps) {
           }}
         />
 
-        <header className="relative z-10 flex items-center justify-between gap-3 px-4 pt-[max(0.75rem,var(--kora-safe-top))] pb-3 border-b border-white/10">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="p-2 rounded-xl bg-[#d4a574]/15 border border-[#d4a574]/25">
-              <Grid3X3 className="w-4 h-4 text-[#d4a574]" />
+        <header className="relative z-10 flex flex-col border-b border-white/10 bg-black/40">
+
+
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-2 rounded-xl bg-[#d4a574]/15 border border-[#d4a574]/25">
+                <Grid3X3 className="w-4 h-4 text-[#d4a574]" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-serif text-lg font-bold tracking-tight truncate">
+                  {isWheel && screen === "play" ? "Letter Wheel" : "Crossword"}
+                </h2>
+                <p className="text-[10px] uppercase tracking-widest opacity-50 font-mono">
+                  {screen === "play"
+                    ? `${DIFFICULTY_LABELS[difficulty].title} · Level ${level}`
+                    : "Unlimited levels"}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="font-serif text-lg font-bold tracking-tight truncate">
-                {isWheel && screen === "play" ? "Letter Wheel" : "Crossword"}
-              </h2>
-              <p className="text-[10px] uppercase tracking-widest opacity-50 font-mono">
-                {screen === "play"
-                  ? `${DIFFICULTY_LABELS[difficulty].title} · Level ${level}`
-                  : "Unlimited levels"}
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
+              aria-label="Close crossword"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
-            aria-label="Close crossword"
-          >
-            <X className="w-5 h-5" />
-          </button>
         </header>
 
         <div className="relative z-10 flex-1 overflow-y-auto overscroll-contain">

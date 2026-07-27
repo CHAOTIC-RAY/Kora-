@@ -101,8 +101,14 @@ export default function FluidOverlay({
             aria-labelledby={labelledBy}
             className={`relative w-full ${
               variant === "sheet"
-                ? "sm:max-w-sm max-h-[90vh] rounded-t-3xl sm:rounded-2xl"
-                : "max-w-sm rounded-2xl"
+                ? "rounded-t-3xl sm:rounded-2xl"
+                : "rounded-2xl"
+            } ${
+              panelClassName.includes("max-w-")
+                ? ""
+                : variant === "sheet"
+                ? "sm:max-w-sm"
+                : "max-w-sm"
             } bg-kindle-card border border-kindle-border shadow-2xl text-kindle-text overflow-hidden ${panelClassName}`}
             initial={variant === "sheet" ? sheetInitial : dialogInitial}
             animate={variant === "sheet" ? sheetAnimate : dialogAnimate}

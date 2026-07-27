@@ -2647,7 +2647,7 @@ export default {
           if (POSITIVE_PATTERNS.test(identifier)) score += 30;
           
           // Negative class/id penalty
-          if (NEGATIVE_PATTERNS.test(identifier)) score -= 40;
+          if (NEGATIVE_PATTERNS.test(identifier)) score -= 300;
           
           // Penalty for too many child divs (likely a broad layout container)
           if (childDivs > 8) score -= childDivs * 3;
@@ -2712,18 +2712,28 @@ export default {
         // Extract cleaned text content, rebuilding only from safe elements
         let cleanedHtml = "";
         
-        // Walk the content tree and extract only meaningful text blocks
+        // Walk the content tree and extract all meaningful text blocks and elements
         const extractCleanContent = ($container: any): string => {
           let result = "";
           
-          $container.children().each((_: any, child: any) => {
+          $container.contents().each((_: any, child: any) => {
+            if (child.nodeType === 3) {
+              const text = $(child).text().trim();
+              if (text.length > 0) {
+                result += `<p>${text}</p>\n`;
+              }
+              return;
+            }
+
+            if (child.nodeType !== 1) return;
+
             const tagName = (child.tagName || "").toLowerCase();
             const $child = $(child);
             const innerHtml = $child.html() || "";
             const textContent = $child.text().trim();
             
             // Skip empty elements
-            if (textContent.length === 0 && !["img", "br", "hr"].includes(tagName)) return;
+            if (textContent.length === 0 && !["img", "br", "hr", "figure"].includes(tagName)) return;
             
             // Skip elements that look like JavaScript or CSS remnants
             if (textContent.startsWith("var ") || textContent.startsWith("function") ||
@@ -2736,19 +2746,9 @@ export default {
               return;
             }
             
-            // Skip short text that's likely UI labels/buttons  
-            const boilerplateTexts = [
-              "advertisement", "comment", "send comment", "load more", 
-              "like us", "follow us", "share", "tweet", "subscribe",
-              "name :", "send", "reply", "breaking news", "live",
-              "write your reply", "copyright", "all rights reserved",
-              "privacy policy", "terms and conditions", "contact us",
-              "terms of use", "code of ethics", "editorial policy",
-              "about", "close", "menu", "topics", "related stories",
-              "discuss", "sign using", "characters remaining"
-            ];
-            const lowerText = textContent.toLowerCase();
-            if (textContent.length < 40 && boilerplateTexts.some(bp => lowerText.includes(bp))) {
+            // Only drop strict boilerplate
+            const strictBoilerplate = /^(advertisement|send comment|load more|like us|follow us|share|tweet|subscribe|cookie notice|cookie banner)$/i;
+            if (textContent.length < 30 && strictBoilerplate.test(textContent)) {
               return;
             }
             
@@ -2757,42 +2757,44 @@ export default {
               return;
             }
 
-            // Stop once site footer chrome begins (Topics / Related / Discuss / legal).
+            // Skip explicit footer chrome block
             if (
               /^(Topics?|Related stories|Related articles|Related posts|Related news|More stories|More news|You may also like|Recommended|Discuss|Discussion|Comments?|Leave a (comment|reply)|Sign Using|Sign in|Share this|Tags?|Terms of Use|Privacy Policy|Code of Ethics|Editorial Policy)$/i.test(
                 textContent.trim()
               ) ||
               /^\d+\s+characters?\s+remaining$/i.test(textContent.trim())
             ) {
-              return false;
+              return;
             }
             
             // Process allowed elements
-            if (["p", "blockquote", "pre"].includes(tagName)) {
+            if (["p", "blockquote", "pre", "address"].includes(tagName)) {
               result += `<${tagName}>${innerHtml}</${tagName}>\n`;
             } else if (["h1", "h2", "h3", "h4", "h5", "h6"].includes(tagName)) {
-              // Only include headings that look like real content, not nav labels
-              if (textContent.length > 3 && textContent.length < 200) {
+              if (textContent.length > 0 && textContent.length < 300) {
                 result += `<${tagName}>${textContent}</${tagName}>\n`;
               }
-            } else if (["ul", "ol"].includes(tagName)) {
+            } else if (["ul", "ol", "li"].includes(tagName)) {
               result += `<${tagName}>${innerHtml}</${tagName}>\n`;
-            } else if (tagName === "figure") {
+            } else if (tagName === "figure" || tagName === "aside") {
               result += `<figure>${innerHtml}</figure>\n`;
             } else if (tagName === "img") {
               const src = $child.attr("src") || "";
               const alt = $child.attr("alt") || "";
               if (src) result += `<img src="${src}" alt="${alt}" />\n`;
-            } else if (tagName === "table") {
-              result += `<table>${innerHtml}</table>\n`;
-            } else if (["div", "section", "article", "span", "main"].includes(tagName)) {
-              // Recurse into structural containers
+            } else if (["table", "tr", "td", "th"].includes(tagName)) {
+              result += `<${tagName}>${innerHtml}</${tagName}>\n`;
+            } else if (["div", "section", "article", "span", "main", "header", "body", "time"].includes(tagName)) {
               const nested = extractCleanContent($child);
               if (nested.trim().length > 0) {
                 result += nested;
+              } else if (textContent.length > 0 && (tagName === "span" || tagName === "time" || tagName === "p")) {
+                result += `<p>${textContent}</p>\n`;
               }
             } else if (tagName === "hr") {
               result += "<hr />\n";
+            } else if (tagName === "br") {
+              result += "<br />";
             }
           });
           

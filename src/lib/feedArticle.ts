@@ -61,20 +61,20 @@ export function isArticleFooterMarker(text: string): boolean {
 export function truncateHtmlAtFooterMarkers(html: string): string {
   if (!html.trim()) return html;
 
-  const headingCut = html.search(
+  const headingMatch = html.search(
     /<(h[1-6])(?:\s[^>]*)?>\s*(?:Topics?|Related stories|Related articles|Related posts|Related news|More stories|More news|You may also like|Recommended|Discuss|Discussion|Comments?|Leave a (?:comment|reply)|Sign Using|Sign in|Share this|Tags?)\s*<\/\1>/i
   );
-  if (headingCut >= 0) return html.slice(0, headingCut).trim();
+  if (headingMatch >= 0 && headingMatch > html.length * 0.75) return html.slice(0, headingMatch).trim();
 
-  const charCut = html.search(
+  const charMatch = html.search(
     /<(?:p|div|span|label)(?:\s[^>]*)?>\s*\d+\s+characters?\s+remaining\s*<\/(?:p|div|span|label)>/i
   );
-  if (charCut >= 0) return html.slice(0, charCut).trim();
+  if (charMatch >= 0 && charMatch > html.length * 0.75) return html.slice(0, charMatch).trim();
 
-  const legalCut = html.search(
+  const legalMatch = html.search(
     /<(?:p|div|li|a)(?:\s[^>]*)?>\s*(?:Terms of Use|Privacy Policy|Code of Ethics|Editorial Policy)\s*<\/(?:p|div|li|a)>/i
   );
-  if (legalCut >= 0) return html.slice(0, legalCut).trim();
+  if (legalMatch >= 0 && legalMatch > html.length * 0.75) return html.slice(0, legalMatch).trim();
 
   return html;
 }

@@ -101,20 +101,20 @@ export default function TtsVoiceSettings({
   };
 
   return (
-    <div className={`space-y-3 ${compact ? "" : "rounded-xl border border-kindle-border bg-kindle-bg/60 p-3"}`}>
-      <div className="space-y-1.5">
-        <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1">
-          <Volume2 className="w-3 h-3" />
+    <div className={`space-y-4 ${compact ? "" : "rounded-xl border border-kindle-border bg-kindle-bg/60 p-4"}`}>
+      <div className="space-y-2">
+        <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-1">
+          <Volume2 className="w-3.5 h-3.5" />
           Narrator Voice
         </label>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-[8px] font-bold uppercase tracking-wider text-kindle-text-muted/80">Language</label>
             <select
               value={settings.voiceLang}
               onChange={(e) => handleLanguageChange(e.target.value)}
-              className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
+              className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2 text-kindle-text focus:outline-none focus:border-kindle-accent"
             >
               {languageOptions.map((option) => (
                 <option key={option.code} value={option.code}>
@@ -135,7 +135,7 @@ export default function TtsVoiceSettings({
                   voiceLang: selected?.lang || settings.voiceLang,
                 });
               }}
-              className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
+              className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2 text-kindle-text focus:outline-none focus:border-kindle-accent"
             >
               {voicesForLanguage.length === 0 ? (
                 <option value="">
@@ -156,7 +156,7 @@ export default function TtsVoiceSettings({
           </div>
         </div>
         {engineHint || (usesNativeTts() && voices.length === 0) ? (
-          <div className="space-y-1">
+          <div className="space-y-1 mt-1">
             {engineHint ? (
               <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-snug">{engineHint}</p>
             ) : null}
@@ -173,9 +173,9 @@ export default function TtsVoiceSettings({
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">Rate</label>
+      <div className="grid grid-cols-2 gap-3 pt-1">
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">Rate ({settings.rate.toFixed(2)}x)</label>
           <input
             type="range"
             min={0.75}
@@ -183,11 +183,11 @@ export default function TtsVoiceSettings({
             step={0.05}
             value={settings.rate}
             onChange={(e) => update({ rate: parseFloat(e.target.value) })}
-            className="w-full"
+            className="w-full accent-kindle-accent cursor-pointer"
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">Pitch</label>
+        <div className="space-y-1.5">
+          <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">Pitch ({settings.pitch.toFixed(2)})</label>
           <input
             type="range"
             min={0.8}
@@ -195,21 +195,21 @@ export default function TtsVoiceSettings({
             step={0.05}
             value={settings.pitch}
             onChange={(e) => update({ pitch: parseFloat(e.target.value) })}
-            className="w-full"
+            className="w-full accent-kindle-accent cursor-pointer"
           />
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 pt-1">
         {(["narrator", "speed"] as TtsPlaybackMode[]).map((mode) => (
           <button
             key={mode}
             type="button"
             onClick={() => update({ playbackMode: mode })}
-            className={`flex-1 text-[9px] font-bold uppercase tracking-wider py-2 rounded-lg border transition ${
+            className={`flex-1 text-[9px] font-bold uppercase tracking-wider py-2 rounded-lg border transition cursor-pointer ${
               settings.playbackMode === mode
-                ? "bg-white text-black border-white"
-                : "border-kindle-border text-kindle-text-muted hover:text-kindle-text"
+                ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                : "border-kindle-border text-kindle-text-muted hover:text-kindle-text bg-kindle-card/40"
             }`}
           >
             {mode === "narrator" ? "Narrator" : "Speed"}
@@ -218,14 +218,14 @@ export default function TtsVoiceSettings({
       </div>
 
       {showQualityPresets && (
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 pt-1">
           <label className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
             Quality Preset
           </label>
           <select
             value={settings.qualityPreset}
             onChange={(e) => update({ qualityPreset: e.target.value as TtsQualityPreset })}
-            className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2"
+            className="w-full text-[11px] bg-kindle-card border border-kindle-border rounded-lg px-3 py-2 text-kindle-text focus:outline-none focus:border-kindle-accent"
           >
             {(["instant", "balanced", "studio"] as TtsQualityPreset[]).map((preset) => (
               <option key={preset} value={preset}>
@@ -237,16 +237,16 @@ export default function TtsVoiceSettings({
       )}
 
       {showGenerationMode && (
-        <div className="flex gap-2">
+        <div className="flex gap-2 pt-1">
           {(["live", "pregenerate"] as TtsGenerationMode[]).map((mode) => (
             <button
               key={mode}
               type="button"
               onClick={() => update({ generationMode: mode })}
-              className={`flex-1 text-[9px] font-bold uppercase tracking-wider py-2 rounded-lg border transition ${
+              className={`flex-1 text-[9px] font-bold uppercase tracking-wider py-2 rounded-lg border transition cursor-pointer ${
                 settings.generationMode === mode
-                  ? "bg-kindle-accent text-white border-kindle-accent"
-                  : "border-kindle-border text-kindle-text-muted hover:text-kindle-text"
+                  ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                  : "border-kindle-border text-kindle-text-muted hover:text-kindle-text bg-kindle-card/40"
               }`}
             >
               {mode === "live" ? "Speak Live" : "Generate Now"}
@@ -260,13 +260,13 @@ export default function TtsVoiceSettings({
           type="button"
           onClick={handleTest}
           disabled={testing}
-          className="w-full text-[9px] font-bold uppercase tracking-wider py-2 rounded-lg border border-kindle-border hover:bg-kindle-card transition disabled:opacity-50"
+          className="w-full text-[9px] font-bold uppercase tracking-wider py-2.5 rounded-lg border border-kindle-border bg-kindle-card/50 hover:bg-kindle-card transition disabled:opacity-50 text-kindle-text cursor-pointer mt-1"
         >
           {testing ? "Testing voice…" : "Test Voice"}
         </button>
       )}
 
-      {testError && <p className="text-[9px] text-red-500">{testError}</p>}
+      {testError && <p className="text-[9px] text-red-500 font-medium">{testError}</p>}
     </div>
   );
 }

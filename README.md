@@ -62,6 +62,15 @@ Everything you own, in one place — elegant typography, reliable offline storag
 * **Federated search** — Public open-source titles via mirror intelligence.
 * **Background downloads** — Multi-mirror progress tracking with manual retry.
 
+> [!TIP]
+> ### 🔍 Federated Search & Content Sources
+> 
+> Kora's **Discover** tab leverages a state-of-the-art federated search architecture to dynamically index, fetch, and resolve digital media from across the open web:
+> 
+> * **⚡ Rave Book Search Engine**: Our custom `Rave Engine` indexes hundreds of thousands of public-domain and open-source documents. When official curation APIs (like NYT Best Sellers) are down, Kora seamlessly falls back to the Rave Engine to deliver highly accurate popular title lists, query matching, and direct downloading methods.
+> * **📚 LibGen & Anna's Archive**: Integrates native mirror scraping for **Library Genesis** (`libgen.li`, `libgen.be`, `libgen.lc`, etc.) and **Anna's Archive**. Kora automatically handles complex URL rewrites, resolves CDN redirections, bypasses server timeouts, and pre-fetches the direct, signed download links for a frictionless one-click ebook addition.
+> * **🎧 Audiobook Sources**: Combines audio catalogs from premier public sources including **hdaudiobooks.com**, **fulllengthaudiobooks.com**, and robust **ipaudio** streaming backends, wrapping them in an elegant cassette player UI with precise chapter parsing and background caching.
+
 ### Offline-first
 * **PWA** — Install on iOS/Android with offline reading from IndexedDB.
 * **Cover designer** — Procedural typographic covers when metadata is missing.

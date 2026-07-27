@@ -9,6 +9,8 @@ import {
   Pause,
   ArrowRight,
   Shuffle,
+  Smartphone,
+  Download,
 } from "lucide-react";
 import { BookMetadata } from "../lib/firebase";
 import { getFeedItems } from "../lib/feedStorage";
@@ -23,6 +25,7 @@ import { buildLoungeGreeting } from "../lib/loungeGreeting";
 import CachedCoverImage from "./CachedCoverImage";
 import LoungeGuidesWidget from "./LoungeGuidesWidget";
 import LoungeNotesWidget from "./LoungeNotesWidget";
+import LoungeWikiWidget from "./LoungeWikiWidget";
 import type { GuideId } from "../lib/guides";
 
 interface LoungeViewProps {
@@ -38,6 +41,8 @@ interface LoungeViewProps {
   onSearchDiscover?: (query: string) => void;
   onStartGuide?: (id: GuideId) => void;
   onOpenAnnotations?: () => void;
+  onOpenWikipedia?: (query?: string) => void;
+  onRefreshLibrary?: () => void;
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;
 }
@@ -288,6 +293,8 @@ export default function LoungeView({
   onSearchDiscover,
   onStartGuide,
   onOpenAnnotations,
+  onOpenWikipedia,
+  onRefreshLibrary,
   onToggleAudiobookPlay,
   onExpandAudiobook,
 }: LoungeViewProps) {
@@ -800,6 +807,15 @@ export default function LoungeView({
               onOpenAnnotations={onOpenAnnotations}
             />
           </TileShell>
+
+          <TileShell delay={0.09} className="bg-kindle-card/60 p-3.5 md:p-4 order-6 md:order-none">
+            <LoungeWikiWidget
+              onOpenWikipedia={onOpenWikipedia}
+              userId={userId}
+              onRefreshLibrary={onRefreshLibrary}
+              grayscaleCovers={grayscaleCovers}
+            />
+          </TileShell>
         </div>
 
         {/* Right column — Paper, Discover, Guides */}
@@ -1008,6 +1024,45 @@ export default function LoungeView({
           </TileShell>
         </div>
       </div>
+
+      {/* Dynamic Android APK Companion Widget */}
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.16, duration: 0.5 }}
+        className="bg-kindle-card border border-kindle-border rounded-2xl p-5 md:p-6 shadow-md relative overflow-hidden"
+      >
+        <div 
+          className="absolute inset-0 opacity-[0.03] pointer-events-none" 
+          style={{
+            backgroundImage: "radial-gradient(circle at 80% 50%, var(--kindle-accent) 0%, transparent 60%)"
+          }}
+        />
+        <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+          <div className="flex gap-4 items-start min-w-0">
+            <div className="p-3 bg-kindle-bg border border-kindle-border text-kindle-accent rounded-xl shrink-0">
+              <Smartphone className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-sm font-bold uppercase tracking-wider text-kindle-text">Get Kora on Android</h4>
+                <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-kindle-accent/10 text-kindle-accent border border-kindle-accent/20">
+                  Companion App
+                </span>
+              </div>
+              <p className="text-xs text-kindle-text-muted leading-relaxed max-w-2xl">
+                Experience ultra-smooth gesture navigation, secure offline storage, dynamic mind & word puzzles, and automated system narration. Install the native APK.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/install"
+            className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-kindle-text text-kindle-bg text-xs font-bold uppercase tracking-wider hover:bg-opacity-90 transition shadow-md shrink-0 cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" /> Install App
+          </a>
+        </div>
+      </motion.div>
     </div>
   );
 }

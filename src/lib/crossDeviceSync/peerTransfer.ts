@@ -1,6 +1,7 @@
 /**
  * WebRTC data-channel file transfer between a user's devices.
- * Signaling goes through Firestore — no Firebase Storage for the file bytes.
+ * Uses the secure, chunked, encrypted P2P transfer system.
+ * Signaling goes through Firestore.
  */
 
 import {
@@ -15,6 +16,7 @@ import {
 import { db, isRealFirebase } from "../firebase";
 import { getBookFile, storeBookFile } from "../../db/indexedDB";
 import { getDeviceId } from "./deviceRegistry";
+import { P2pSession } from "../p2pTransfer/transfer";
 
 export type PeerSessionStatus =
   | "requested"
@@ -33,6 +35,7 @@ export interface PeerSession {
   fileName: string;
   requesterId: string;
   providerId: string;
+  roomCode?: string;
   status: PeerSessionStatus;
   offer?: string;
   answer?: string;
@@ -41,135 +44,8 @@ export interface PeerSession {
   updatedAt: number;
 }
 
-const ICE: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-  ],
-};
-
 function sessionRef(userId: string, sessionId: string) {
   return doc(db, "users", userId, "peerSessions", sessionId);
-}
-
-function candidatesCol(userId: string, sessionId: string, role: "offerer" | "answerer") {
-  return collection(db, "users", userId, "peerSessions", sessionId, `${role}Candidates`);
-}
-
-async function writeIce(
-  userId: string,
-  sessionId: string,
-  role: "offerer" | "answerer",
-  candidate: RTCIceCandidate
-) {
-  const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  await setDoc(doc(candidatesCol(userId, sessionId, role), id), {
-    candidate: candidate.toJSON(),
-    createdAt: Date.now(),
-  });
-}
-
-function listenIce(
-  userId: string,
-  sessionId: string,
-  role: "offerer" | "answerer",
-  pc: RTCPeerConnection
-): Unsubscribe {
-  return onSnapshot(candidatesCol(userId, sessionId, role), (snap) => {
-    snap.docChanges().forEach((change) => {
-      if (change.type !== "added") return;
-      const data = change.doc.data();
-      if (!data?.candidate) return;
-      void pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => undefined);
-    });
-  });
-}
-
-async function sendBlobOverChannel(channel: RTCDataChannel, blob: Blob, meta: Record<string, unknown>) {
-  channel.send(JSON.stringify({ type: "meta", ...meta, size: blob.size }));
-  const buf = await blob.arrayBuffer();
-  const chunkSize = 16 * 1024;
-  for (let offset = 0; offset < buf.byteLength; offset += chunkSize) {
-    const slice = buf.slice(offset, offset + chunkSize);
-    // Backpressure
-    if (channel.bufferedAmount > 256 * 1024) {
-      await new Promise<void>((resolve) => {
-        const check = () => {
-          if (channel.bufferedAmount <= 64 * 1024) {
-            channel.removeEventListener("bufferedamountlow", check);
-            resolve();
-          }
-        };
-        channel.bufferedAmountLowThreshold = 64 * 1024;
-        channel.addEventListener("bufferedamountlow", check);
-      });
-    }
-    channel.send(slice);
-  }
-  channel.send(JSON.stringify({ type: "done" }));
-}
-
-function receiveBlobFromChannel(channel: RTCDataChannel): Promise<{
-  blob: Blob;
-  meta: { bookId: string; fileName: string; extension: string };
-}> {
-  return new Promise((resolve, reject) => {
-    const chunks: ArrayBuffer[] = [];
-    let meta: { bookId: string; fileName: string; extension: string; size?: number } | null = null;
-    let total = 0;
-
-    const timeout = window.setTimeout(() => reject(new Error("Peer transfer timed out")), 120_000);
-
-    channel.onmessage = (ev) => {
-      if (typeof ev.data === "string") {
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.type === "meta") {
-            meta = msg;
-            return;
-          }
-          if (msg.type === "done") {
-            window.clearTimeout(timeout);
-            if (!meta) {
-              reject(new Error("Missing file metadata"));
-              return;
-            }
-            resolve({
-              blob: new Blob(chunks),
-              meta: {
-                bookId: meta.bookId,
-                fileName: meta.fileName,
-                extension: meta.extension,
-              },
-            });
-          }
-          if (msg.type === "error") {
-            window.clearTimeout(timeout);
-            reject(new Error(msg.error || "Peer error"));
-          }
-        } catch (err) {
-          window.clearTimeout(timeout);
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-        return;
-      }
-      const ab = ev.data instanceof ArrayBuffer ? ev.data : (ev.data as Blob);
-      if (ab instanceof Blob) {
-        void ab.arrayBuffer().then((buf) => {
-          chunks.push(buf);
-          total += buf.byteLength;
-        });
-      } else {
-        chunks.push(ab);
-        total += ab.byteLength;
-      }
-    };
-
-    channel.onerror = () => {
-      window.clearTimeout(timeout);
-      reject(new Error("Data channel error"));
-    };
-  });
 }
 
 /** Requester: ask provider device for a book file. */
@@ -179,10 +55,16 @@ export async function requestBookFromPeer(
   book: { id: string; title: string; extension: string; filename?: string }
 ): Promise<void> {
   if (!isRealFirebase || !db) throw new Error("Sign in required for device transfer");
-  const sessionId = `ps_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  
   const me = getDeviceId();
+  const sessionId = `ps_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const fileName = book.filename || `${book.title}.${book.extension || "epub"}`;
 
+  // 1. Create the new P2pSession as host
+  const p2p = new P2pSession();
+  const code = await p2p.createRoom();
+
+  // 2. Set up the PeerSession document with the automatic room code
   const session: PeerSession = {
     id: sessionId,
     bookId: book.id,
@@ -191,64 +73,88 @@ export async function requestBookFromPeer(
     fileName,
     requesterId: me,
     providerId,
+    roomCode: code,
     status: "requested",
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
   await setDoc(sessionRef(userId, sessionId), session);
 
-  const pc = new RTCPeerConnection(ICE);
-  const unsubAnswerIce = listenIce(userId, sessionId, "answerer", pc);
+  // 3. Create a Promise that resolves when the file is fully received and saved
+  return new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(async () => {
+      unsubP2p();
+      unsubDoc();
+      await p2p.close(true);
+      try {
+        await deleteDoc(sessionRef(userId, sessionId));
+      } catch { /* ignore */ }
+      reject(new Error("Peer transfer timed out after 2 minutes"));
+    }, 120_000);
 
-  pc.onicecandidate = (ev) => {
-    if (ev.candidate) void writeIce(userId, sessionId, "offerer", ev.candidate);
-  };
+    // Watch for P2P connection failures
+    const unsubP2p = p2p.subscribe(async (state) => {
+      if (state.phase === "error") {
+        window.clearTimeout(timeout);
+        unsubP2p();
+        unsubDoc();
+        await p2p.close(true);
+        try {
+          await deleteDoc(sessionRef(userId, sessionId));
+        } catch { /* ignore */ }
+        reject(new Error(state.error || "P2P connection error"));
+      }
+    });
 
-  const channel = pc.createDataChannel("kora-file", { ordered: true });
-  channel.binaryType = "arraybuffer";
+    // Handle file received
+    p2p.onReceive(async (file) => {
+      window.clearTimeout(timeout);
+      unsubP2p();
+      unsubDoc();
+      try {
+        // Store the file to IndexedDB
+        await storeBookFile(book.id, file, fileName, book.extension || "epub");
+        
+        // Update document status to done
+        await updateDoc(sessionRef(userId, sessionId), {
+          status: "done",
+          updatedAt: Date.now(),
+        });
+        
+        // Let things settle, then clean up
+        setTimeout(async () => {
+          await p2p.close(true); // Close and delete signaling room code
+          try {
+            await deleteDoc(sessionRef(userId, sessionId));
+          } catch { /* ignore */ }
+        }, 1000);
 
-  const received = receiveBlobFromChannel(channel);
+        resolve();
+      } catch (err) {
+        await p2p.close(true);
+        try {
+          await deleteDoc(sessionRef(userId, sessionId));
+        } catch { /* ignore */ }
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await updateDoc(sessionRef(userId, sessionId), {
-    status: "offering",
-    offer: JSON.stringify(pc.localDescription),
-    updatedAt: Date.now(),
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    const unsub = onSnapshot(sessionRef(userId, sessionId), async (snap) => {
+    // Also watch for manual cancellation/error from provider on Firestore document
+    const unsubDoc = onSnapshot(sessionRef(userId, sessionId), async (snap) => {
       const data = snap.data() as PeerSession | undefined;
       if (!data) return;
       if (data.status === "error" || data.status === "cancelled") {
-        unsub();
-        reject(new Error(data.error || "Transfer cancelled"));
-        return;
-      }
-      if (data.answer && pc.signalingState !== "stable") {
+        window.clearTimeout(timeout);
+        unsubP2p();
+        unsubDoc();
+        await p2p.close(true);
         try {
-          await pc.setRemoteDescription(JSON.parse(data.answer));
-          resolve();
-          unsub();
-        } catch (err) {
-          unsub();
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
+          await deleteDoc(sessionRef(userId, sessionId));
+        } catch { /* ignore */ }
+        reject(new Error(data.error || "Transfer cancelled by provider"));
       }
     });
   });
-
-  const { blob, meta } = await received;
-  await storeBookFile(meta.bookId, blob, meta.fileName, meta.extension);
-  await updateDoc(sessionRef(userId, sessionId), { status: "done", updatedAt: Date.now() });
-  unsubAnswerIce();
-  pc.close();
-  try {
-    await deleteDoc(sessionRef(userId, sessionId));
-  } catch {
-    /* ignore */
-  }
 }
 
 /**
@@ -269,13 +175,16 @@ export function listenAndServePeerRequests(
       if (change.type === "removed") return;
       const session = change.doc.data() as PeerSession;
       if (session.providerId !== me) return;
-      if (session.status !== "offering" && session.status !== "requested") return;
-      if (!session.offer) return;
+      if (session.status !== "requested") return;
+      if (!session.roomCode) return;
       if (active.has(session.id)) return;
       active.add(session.id);
+
       void (async () => {
+        const p2p = new P2pSession();
         try {
           onStatus?.(`Sending “${session.bookTitle}” to another device…`);
+          
           const cached = await getBookFile(session.bookId);
           if (!cached?.blob) {
             await updateDoc(sessionRef(userId, session.id), {
@@ -283,47 +192,34 @@ export function listenAndServePeerRequests(
               error: "File not cached on this device",
               updatedAt: Date.now(),
             });
+            await p2p.close(false);
             return;
           }
 
-          const pc = new RTCPeerConnection(ICE);
-          const unsubOfferIce = listenIce(userId, session.id, "offerer", pc);
-          pc.onicecandidate = (ev) => {
-            if (ev.candidate) void writeIce(userId, session.id, "answerer", ev.candidate);
-          };
+          // 1. Join the P2P room automatically using synced room code
+          await p2p.joinRoom(session.roomCode);
 
-          const channelReady = new Promise<RTCDataChannel>((resolve, reject) => {
-            const t = window.setTimeout(() => reject(new Error("Data channel timeout")), 60_000);
-            pc.ondatachannel = (ev) => {
-              window.clearTimeout(t);
-              ev.channel.binaryType = "arraybuffer";
-              if (ev.channel.readyState === "open") resolve(ev.channel);
-              else ev.channel.onopen = () => resolve(ev.channel);
-            };
-          });
-
-          await pc.setRemoteDescription(JSON.parse(session.offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          await updateDoc(sessionRef(userId, session.id), {
-            status: "answering",
-            answer: JSON.stringify(pc.localDescription),
-            updatedAt: Date.now(),
+          // 2. Wait until connected (ready phase)
+          await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error("Join timeout")), 45_000);
+            const unsub = p2p.subscribe((state) => {
+              if (state.phase === "ready") {
+                clearTimeout(timeout);
+                unsub();
+                resolve();
+              } else if (state.phase === "error") {
+                clearTimeout(timeout);
+                unsub();
+                reject(new Error(state.error || "P2P error during join"));
+              }
+            });
           });
 
-          const channel = await channelReady;
-          await sendBlobOverChannel(channel, cached.blob, {
-            bookId: session.bookId,
-            fileName: session.fileName,
-            extension: session.extension,
-          });
-          await updateDoc(sessionRef(userId, session.id), {
-            status: "done",
-            updatedAt: Date.now(),
-          });
+          // 3. Send the file using the new encrypted chunked system
+          const file = new File([cached.blob], session.fileName, { type: "application/octet-stream" });
+          await p2p.sendFiles([file]);
+
           onStatus?.(`Sent “${session.bookTitle}”`);
-          unsubOfferIce();
-          pc.close();
         } catch (err) {
           console.warn("Peer serve failed:", err);
           try {
@@ -332,11 +228,16 @@ export function listenAndServePeerRequests(
               error: err instanceof Error ? err.message : String(err),
               updatedAt: Date.now(),
             });
-          } catch {
-            /* ignore */
-          }
+          } catch { /* ignore */ }
         } finally {
-          active.delete(session.id);
+          // Keep active registry until document is deleted or closed
+          const unsubDoc = onSnapshot(sessionRef(userId, session.id), async (docSnap) => {
+            if (!docSnap.exists() || docSnap.data()?.status === "done" || docSnap.data()?.status === "error") {
+              unsubDoc();
+              await p2p.close(false);
+              active.delete(session.id);
+            }
+          });
         }
       })();
     });

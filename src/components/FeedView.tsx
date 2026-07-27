@@ -382,6 +382,11 @@ function FeedView({
   };
   const performanceMode = localStorage.getItem("kora_performance_mode") === "1";
 
+  const headerRef = useRef<HTMLElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
+  const sourcesRef = useRef<HTMLDivElement>(null);
+  const [scrollContainerHeight, setScrollContainerHeight] = useState<number | null>(null);
+
   const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
   const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
 
@@ -498,6 +503,68 @@ function FeedView({
       .sort((a, b) => b.publishedAt - a.publishedAt);
   }, [retainedItems, filter, selectedSubscriptionId]);
 
+  useEffect(() => {
+    if (feedLayout !== "scroll") {
+      setScrollContainerHeight(null);
+      return;
+    }
+
+    const updateHeight = () => {
+      const appHeader = document.querySelector(".kora-app-header");
+      const appHeaderHeight = appHeader ? appHeader.getBoundingClientRect().height : 64;
+
+      const feedHeaderHeight = headerRef.current ? headerRef.current.getBoundingClientRect().height : 56;
+      const filterHeight = filterRef.current ? filterRef.current.getBoundingClientRect().height : 36;
+      const sourcesHeight = sourcesRef.current ? sourcesRef.current.getBoundingClientRect().height : 40;
+
+      const isMobile = window.innerWidth < 768;
+      let bottomOffset = 0;
+      if (isMobile) {
+        const footer = document.querySelector(".kora-mobile-footer");
+        bottomOffset = footer ? footer.getBoundingClientRect().height + 24 : 80;
+      } else {
+        bottomOffset = 32;
+      }
+
+      const mainPaddingTop = isMobile ? 16 : 32;
+
+      const mediaDock = document.querySelector(".kora-mobile-media-dock");
+      const mediaDockHeight = mediaDock ? mediaDock.getBoundingClientRect().height : 0;
+
+      const totalUsed = appHeaderHeight + feedHeaderHeight + filterHeight + sourcesHeight + bottomOffset + mainPaddingTop + mediaDockHeight + 16;
+      const calculated = window.innerHeight - totalUsed;
+
+      setScrollContainerHeight(Math.max(calculated, 280));
+    };
+
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    
+    const timer1 = setTimeout(updateHeight, 50);
+    const timer2 = setTimeout(updateHeight, 300);
+
+    return () => {
+      window.removeEventListener("resize", updateHeight);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+    };
+  }, [feedLayout, filter, selectedSubscriptionId, visibleItems.length]);
+
+  useEffect(() => {
+    if (feedLayout === "scroll") {
+      const originalOverflow = document.body.style.overflow;
+      const originalHeight = document.body.style.height;
+      
+      document.body.style.overflow = "hidden";
+      document.body.style.height = "100%";
+      
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.height = originalHeight;
+      };
+    }
+  }, [feedLayout]);
+
   const maldivesSources = useMemo(
     () => subscriptions.filter((sub) => isDefaultFeedUrl(sub.feedUrl)),
     [subscriptions]
@@ -584,13 +651,12 @@ function FeedView({
 
   return (
     <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
-      <header className="flex items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Rss className="w-5 h-5 text-kindle-accent shrink-0" />
-            <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Feed</h1>
+      <header ref={headerRef} className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
+        <div className="flex items-center justify-between w-full sm:w-auto">
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-lexend font-bold tracking-tight text-kindle-text truncate">Feed</h1>
             {unreadCount > 0 && (
-              <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-kindle-text/10 text-kindle-text border border-kindle-border">
+              <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-kindle-text/10 text-kindle-text border border-kindle-border shrink-0">
                 {unreadCount} unread
               </span>
             )}
@@ -599,30 +665,30 @@ function FeedView({
             Maldives news and more — tap to read fullscreen.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-between sm:justify-end">
           <button
             onClick={() => setShowManageFeeds(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition"
+            className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition shrink-0"
           >
             <Settings2 className="w-3.5 h-3.5" />
-            Manage
+            <span>Manage</span>
           </button>
           <button
             onClick={() => void refreshFeeds()}
             disabled={refreshing}
-            className="p-2 rounded-xl border border-kindle-border bg-kindle-card hover:bg-kindle-bg transition disabled:opacity-50 text-kindle-text"
+            className="p-1.5 sm:p-2 rounded-xl border border-kindle-border bg-kindle-card hover:bg-kindle-bg transition disabled:opacity-50 text-kindle-text shrink-0"
             title="Refresh feeds"
           >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
-          <div className="flex items-center gap-0.5 rounded-xl border border-kindle-border bg-kindle-card p-0.5">
+          <div className="flex items-center gap-0.5 rounded-xl border border-kindle-border bg-kindle-card p-0.5 shrink-0">
             {(["grid", "scroll"] as FeedLayout[]).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => persistFeedLayout(mode)}
                 aria-pressed={feedLayout === mode}
-                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition ${
+                className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition ${
                   feedLayout === mode
                     ? "bg-kindle-text text-kindle-bg"
                     : "text-kindle-text-muted hover:text-kindle-text"
@@ -635,7 +701,7 @@ function FeedView({
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2">
+      <div ref={filterRef} className="flex flex-wrap gap-2">
         {[
           { id: "all", label: "All" },
           { id: "briefs", label: "Briefs" },
@@ -656,7 +722,7 @@ function FeedView({
         ))}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+      <div ref={sourcesRef} className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
         <button
           onClick={() => setSelectedSubscriptionId(null)}
           className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition ${
@@ -709,6 +775,10 @@ function FeedView({
           perfMode={performanceMode}
           onRead={(item) => void handleReadArticle(item)}
           onSave={(item) => void handleSaveLater(item)}
+          onExit={() => persistFeedLayout("grid")}
+          onRefresh={() => void refreshFeeds()}
+          refreshing={refreshing}
+          height={scrollContainerHeight}
         />
       ) : (
         <div className="space-y-4">

@@ -119,6 +119,29 @@ export const LINE_HEIGHT_PRESETS = [
   { label: "Wide", val: 2.0 },
 ] as const;
 
+export function getTimeOfDayAutoTheme(currentHour: number = new Date().getHours()): ReaderThemeKey {
+  if (currentHour >= 6 && currentHour < 10) return "paper";       // Morning Paper
+  if (currentHour >= 10 && currentHour < 17) return "light";      // Daytime Light
+  if (currentHour >= 17 && currentHour < 20) return "sepia";      // Sunset Sepia
+  if (currentHour >= 20 && currentHour < 23) return "night";      // Evening Night
+  return "oled";                                                  // Pitch Late Night OLED
+}
+
+export interface DaylightScheduleSlot {
+  label: string;
+  timeRange: string;
+  themeKey: ReaderThemeKey;
+  description: string;
+}
+
+export const DAYLIGHT_THEME_SCHEDULE: DaylightScheduleSlot[] = [
+  { label: "Morning", timeRange: "06:00 - 10:00", themeKey: "paper", description: "Soft, warm paper texture for morning focus" },
+  { label: "Daytime", timeRange: "10:00 - 17:00", themeKey: "light", description: "Crisp, high-contrast clarity for daylight" },
+  { label: "Sunset / Dusk", timeRange: "17:00 - 20:00", themeKey: "sepia", description: "Gentle golden sepia to reduce blue light" },
+  { label: "Evening", timeRange: "20:00 - 23:00", themeKey: "night", description: "Cool charcoal dark mode for dusk reading" },
+  { label: "Late Night", timeRange: "23:00 - 06:00", themeKey: "oled", description: "Pitch black OLED for total eye comfort" },
+];
+
 export function resolveReaderTheme(key?: string | null): ReaderThemeSpec {
   if (key && READER_THEMES[key]) return READER_THEMES[key];
   // Migrate legacy "dark" preference toward night for KOReader parity when unset naming

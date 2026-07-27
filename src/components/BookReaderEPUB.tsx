@@ -39,6 +39,7 @@ import {
   LINE_HEIGHT_PRESETS,
   MARGIN_PRESETS,
   resolveReaderTheme,
+  getTimeOfDayAutoTheme,
 } from "../lib/readerThemes";
 import { downloadMarkdown, highlightsToMarkdown } from "../lib/annotationsExport";
 import {
@@ -47,7 +48,7 @@ import {
   recordPagesRead,
   recordReadingMinute,
 } from "../lib/readingStats";
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download, Sun, SunDim, Moon, ScanText } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download, Sun, SunDim, Moon, ScanText, Sparkles, Clock } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "../lib/epubToc";
 import {
@@ -402,6 +403,7 @@ interface BookReaderEPUBProps {
     lineSpacing: number;
     fontFamily: string;
     theme: string;
+    autoAdjustTheme?: boolean;
     marginSize: string;
     isContinuous: boolean;
     brightness: number;
@@ -446,8 +448,19 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
   // Customization states (seeded from persisted settings, fallback to defaults)
   const [fontSize, setFontSize] = useState<number>(readerPrefs?.fontSize ?? 18); // px
   const [fontFamily, setFontFamily] = useState<string>(readerPrefs?.fontFamily ?? "font-lexica");
-  const [theme, setTheme] = useState<string>(readerPrefs?.theme ?? "light"); // light, dark, sepia, green
+  const [autoAdjustTheme, setAutoAdjustTheme] = useState<boolean>(readerPrefs?.autoAdjustTheme ?? false);
+  const [theme, setTheme] = useState<string>(() => {
+    if (readerPrefs?.autoAdjustTheme) return getTimeOfDayAutoTheme();
+    return readerPrefs?.theme ?? "light";
+  });
   const [themeManuallySet, setThemeManuallySet] = useState<boolean>(readerPrefs?.themeManuallySet ?? false);
+
+  // Sync auto theme when enabled
+  useEffect(() => {
+    if (autoAdjustTheme) {
+      setTheme(getTimeOfDayAutoTheme());
+    }
+  }, [autoAdjustTheme]);
   const [marginSize, setMarginSize] = useState<string>(readerPrefs?.marginSize ?? "max-w-2xl");
   const [lineSpacing, setLineSpacing] = useState<number>(readerPrefs?.lineSpacing ?? 1.6);
   const [isContinuous, setIsContinuous] = useState<boolean>(readerPrefs?.isContinuous ?? false);
@@ -621,6 +634,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         fontSize,
         fontFamily,
         theme,
+        autoAdjustTheme,
         marginSize,
         lineSpacing,
         isContinuous,
@@ -641,7 +655,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
         petId,
       });
     }
-  }, [fontSize, fontFamily, theme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection, petEnabled, petId, onReaderPrefsChange]);
+  }, [fontSize, fontFamily, theme, autoAdjustTheme, marginSize, lineSpacing, isContinuous, brightness, doubleColumns, pageOverlap, letterSpacing, hyphenation, pageTurnMode, pageTransitionEffect, themeManuallySet, grayscaleImages, hideImages, disableMouseScroll, swipeToTurn, swipeDirection, petEnabled, petId, onReaderPrefsChange]);
   
   // Layout states
   const [showToc, setShowToc] = useState<boolean>(false);
@@ -3160,8 +3174,40 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
             {/* PRIMARY SETTINGS (Always Visible) */}
             {/* Reading Modes (Themes) */}
-            <div className="mb-4">
-              <label className="text-xs opacity-75 font-sans block mb-2 font-semibold">Reading Theme</label>
+            <div className="mb-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs opacity-75 font-sans font-semibold">Reading Theme</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextAuto = !autoAdjustTheme;
+                    setAutoAdjustTheme(nextAuto);
+                    if (nextAuto) {
+                      setTheme(getTimeOfDayAutoTheme());
+                      setThemeManuallySet(false);
+                    }
+                  }}
+                  className={`px-2 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1 border ${
+                    autoAdjustTheme
+                      ? "bg-amber-500/20 text-amber-600 border-amber-500/40"
+                      : "bg-neutral-500/10 text-neutral-500 border-neutral-500/20 hover:bg-neutral-500/20"
+                  }`}
+                >
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Auto-Adjust {autoAdjustTheme ? "ON" : "OFF"}
+                </button>
+              </div>
+
+              {autoAdjustTheme && (
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-700 dark:text-amber-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium">
+                    <Clock className="w-3 h-3 text-amber-500" />
+                    Daylight Auto-Theme:
+                  </span>
+                  <span className="font-bold uppercase tracking-wider">{theme}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-4 gap-1.5">
                 {PRIMARY_READER_THEME_KEYS.map((tKey) => {
                   const th = resolveReaderTheme(tKey);
@@ -3170,14 +3216,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       key={tKey}
                       type="button"
                       onClick={() => {
+                        setAutoAdjustTheme(false);
                         setTheme(tKey);
                         setThemeManuallySet(true);
                         window.dispatchEvent(new CustomEvent("kora-guide:reader-setting-changed"));
                       }}
                       aria-label={`${th.label} theme`}
-                      aria-pressed={theme === tKey}
+                      aria-pressed={theme === tKey && !autoAdjustTheme}
                       className={`h-10 rounded-lg border flex items-center justify-center text-[10px] font-semibold ${
-                        theme === tKey ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
+                        theme === tKey && !autoAdjustTheme ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
                       }`}
                       style={{ background: th.previewBg, color: th.previewText }}
                       title={th.label}
@@ -3195,14 +3242,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       key={tKey}
                       type="button"
                       onClick={() => {
+                        setAutoAdjustTheme(false);
                         setTheme(tKey);
                         setThemeManuallySet(true);
                         window.dispatchEvent(new CustomEvent("kora-guide:reader-setting-changed"));
                       }}
                       aria-label={`${th.label} theme`}
-                      aria-pressed={theme === tKey}
+                      aria-pressed={theme === tKey && !autoAdjustTheme}
                       className={`h-8 rounded-lg border flex items-center justify-center text-[9px] font-semibold ${
-                        theme === tKey ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
+                        theme === tKey && !autoAdjustTheme ? "ring-2 ring-kindle-accent border-transparent" : "border-neutral-500/20"
                       }`}
                       style={{ background: th.previewBg, color: th.previewText }}
                     >
