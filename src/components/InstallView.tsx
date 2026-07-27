@@ -24,6 +24,7 @@ import {
   Globe,
   Server,
   Github,
+  Star,
   ChevronDown,
   Layers,
   Zap,
@@ -95,13 +96,8 @@ export default function InstallView() {
     return () => observer.disconnect();
   }, []);
 
-  // Fade the FAQ area out as the closing notebook rises into view.
-  const faqRef = useRef<HTMLElement | null>(null);
-  const { scrollYProgress: faqScroll } = useScroll({
-    target: faqRef,
-    offset: ["start end", "end end"],
-  });
-  const faqOpacity = useTransform(faqScroll, [0.55, 1], [1, 0.15]);
+  // FAQ stays fully visible — no scroll fade.
+  const faqRef = useRef<HTMLDivElement | null>(null);
 
   // Lock background scroll whenever any fullscreen demo/popup is open.
   useScrollLock(
@@ -473,17 +469,6 @@ export default function InstallView() {
 
         {/* Section 1: Ebook & Reader Engine */}
         <div id="ebooks" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-          <div className="text-center max-w-2xl mx-auto space-y-3">
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-kindle-accent/10 border border-kindle-accent/20 text-kindle-accent text-[10px] font-bold uppercase tracking-widest">
-              <BookOpen className="w-3.5 h-3.5" /> Core Ebook Engine
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
-              Distraction-Free E-Ink Reading & Library Catalog
-            </h2>
-            <p className="text-xs text-kindle-text-muted leading-relaxed">
-              Organize your collection with instant search, format tags, custom shelves, and seamless Grid or List layout toggles. Enjoy smooth EPUB and PDF pagination with zero friction.
-            </p>
-          </div>
           <FeatureDemosGrid />
         </div>
 
@@ -971,7 +956,6 @@ export default function InstallView() {
         <motion.div
           ref={faqRef}
           id="faq"
-          style={{ opacity: faqOpacity }}
           className="space-y-6 max-w-3xl mx-auto pt-8 border-t border-kindle-border/60 scroll-mt-20"
         >
           <div className="text-center space-y-2">
@@ -1001,7 +985,7 @@ export default function InstallView() {
                   </button>
 
                   {isOpen && (
-                    <div className="px-6 pb-4 text-sm text-kindle-text/80 leading-relaxed border-t border-kindle-border/40 pt-3">
+                    <div className="px-6 pb-4 text-sm text-kindle-text leading-relaxed border-t border-kindle-border/40 pt-3">
                       {faq.a}
                     </div>
                   )}
@@ -1010,6 +994,42 @@ export default function InstallView() {
             })}
           </div>
         </motion.div>
+
+        {/* GitHub banner — Kora wordmark ink animation + source CTA */}
+        <div className="max-w-3xl mx-auto pt-10">
+          <div className="bg-kindle-card border border-kindle-border rounded-3xl px-6 sm:px-10 py-10 text-center space-y-6">
+            <KoraWordmarkReveal>
+              <div className="space-y-3">
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-kindle-accent">
+                  Open Source · MIT
+                </p>
+                <p className="text-sm text-kindle-text-muted leading-relaxed max-w-md mx-auto">
+                  Kora is built in the open. Read the full codebase, file issues, or
+                  contribute — every line is on GitHub.
+                </p>
+              </div>
+            </KoraWordmarkReveal>
+
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <a
+                href="https://github.com/CHAOTIC-RAY/Kora-"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider hover:opacity-90 transition shadow-lg"
+              >
+                <Github className="w-4 h-4" /> View Source on GitHub
+              </a>
+              <a
+                href="https://github.com/CHAOTIC-RAY/Kora-/stargazers"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-kindle-border bg-kindle-bg text-[11px] font-bold uppercase tracking-wider text-kindle-text hover:border-kindle-accent transition"
+              >
+                <Star className="w-4 h-4" /> Star the Repo
+              </a>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Closing Notebook — full-bleed, smooth fill-the-screen reveal on last scroll */}
