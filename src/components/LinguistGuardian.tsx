@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { Swords, BookOpen, ScrollText, Brain, Zap, Crown, X } from "lucide-react";
 import { getCustomDictionary, DictionaryEntry } from "../lib/dictionary";
 
