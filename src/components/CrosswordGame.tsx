@@ -577,435 +577,438 @@ export default function CrosswordGame({ open, onClose, variant = "fullscreen" }:
       </motion.div>
     </AnimatePresence>
   );
-}
-
-function CrosswordInner({ onClose }: { onClose: () => void }) {
-  return (
-    <>
-        <div
-          className="absolute inset-0 pointer-events-none opacity-40"
-          style={{
-            background:
-              "radial-gradient(ellipse at 20% 0%, rgba(212,165,116,0.18), transparent 50%), radial-gradient(ellipse at 90% 100%, rgba(120,90,60,0.2), transparent 45%)",
-          }}
-        />
-
-        <header className="relative z-10 flex flex-col border-b border-white/10 bg-black/40">
 
 
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="p-2 rounded-xl bg-[#d4a574]/15 border border-[#d4a574]/25">
-                <Grid3X3 className="w-4 h-4 text-[#d4a574]" />
+  function CrosswordInner({ onClose }: { onClose: () => void }) {
+    return (
+      <>
+          <div
+            className="absolute inset-0 pointer-events-none opacity-40"
+            style={{
+              background:
+                "radial-gradient(ellipse at 20% 0%, rgba(212,165,116,0.18), transparent 50%), radial-gradient(ellipse at 90% 100%, rgba(120,90,60,0.2), transparent 45%)",
+            }}
+          />
+
+          <header className="relative z-10 flex flex-col border-b border-white/10 bg-black/40">
+
+
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-[#d4a574]/15 border border-[#d4a574]/25">
+                  <Grid3X3 className="w-4 h-4 text-[#d4a574]" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="font-serif text-lg font-bold tracking-tight truncate">
+                    {isWheel && screen === "play" ? "Letter Wheel" : "Crossword"}
+                  </h2>
+                  <p className="text-[10px] uppercase tracking-widest opacity-50 font-mono">
+                    {screen === "play"
+                      ? `${DIFFICULTY_LABELS[difficulty].title} · Level ${level}`
+                      : "Unlimited levels"}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h2 className="font-serif text-lg font-bold tracking-tight truncate">
-                  {isWheel && screen === "play" ? "Letter Wheel" : "Crossword"}
-                </h2>
-                <p className="text-[10px] uppercase tracking-widest opacity-50 font-mono">
-                  {screen === "play"
-                    ? `${DIFFICULTY_LABELS[difficulty].title} · Level ${level}`
-                    : "Unlimited levels"}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
-              aria-label="Close crossword"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </header>
-
-        <div className="relative z-10 flex-1 overflow-y-auto overscroll-contain">
-          {screen === "menu" ? (
-            <motion.div
-              className="max-w-lg mx-auto px-4 py-8 space-y-6"
-              initial={{ y: 16, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 260, damping: 24 }}
-            >
-              <div className="text-center space-y-2">
-                <p className="text-sm text-neutral-400 leading-relaxed">
-                  Choose a mode, then a difficulty. Every level reshuffles forever.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    { id: "classic" as const, title: "Classic", blurb: "Clues & typing" },
-                    { id: "wheel" as const, title: "Letter Wheel", blurb: "Swipe letters like Wordscapes" },
-                  ] as const
-                ).map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => setMode(m.id)}
-                    className={`rounded-2xl border p-3 text-left transition ${
-                      mode === m.id
-                        ? "border-[#d4a574]/50 bg-[#d4a574]/10"
-                        : "border-white/10 bg-white/[0.03]"
-                    }`}
-                  >
-                    <p className="font-serif font-bold">{m.title}</p>
-                    <p className="text-[10px] opacity-55 mt-0.5 leading-snug">{m.blurb}</p>
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-3">
-                {(Object.keys(DIFFICULTY_LABELS) as CrosswordDifficulty[]).map((diff, i) => (
-                  <motion.button
-                    key={diff}
-                    type="button"
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.05 * i }}
-                    onClick={() => startLevel(mode, diff, bestLevel[mode][diff] || 1)}
-                    className={`w-full text-left rounded-2xl border p-4 transition flex items-center justify-between gap-3 ${
-                      difficulty === diff
-                        ? "border-[#d4a574]/50 bg-[#d4a574]/10"
-                        : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
-                    }`}
-                  >
-                    <div>
-                      <p className="font-serif text-xl font-bold">{DIFFICULTY_LABELS[diff].title}</p>
-                      <p className="text-[11px] opacity-55 mt-0.5">{DIFFICULTY_LABELS[diff].blurb}</p>
-                      <p className="text-[10px] font-mono opacity-40 mt-1.5">
-                        Continue at level {bestLevel[mode][diff] || 1}
-                      </p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 opacity-40" />
-                  </motion.button>
-                ))}
-              </div>
-
               <button
                 type="button"
-                onClick={() => startLevel(mode, difficulty, 1)}
-                className="w-full py-3 rounded-xl border border-white/10 text-[11px] font-bold uppercase tracking-widest opacity-70 hover:opacity-100 transition"
+                onClick={onClose}
+                className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
+                aria-label="Close crossword"
               >
-                Start {DIFFICULTY_LABELS[difficulty].title} from level 1
+                <X className="w-5 h-5" />
               </button>
-            </motion.div>
-          ) : puzzle ? (
-            <div className={`max-w-3xl mx-auto px-3 py-4 space-y-4 ${isWheel ? "pb-8" : "pb-28"}`}>
-              <div className="flex flex-wrap items-center gap-2 justify-between">
-                <div className="flex items-center gap-2 text-[10px] font-mono opacity-60">
-                  <span>
-                    {isWheel
-                      ? `${foundWords.size}/${puzzle.words.length} words`
-                      : `${stats.correct}/${stats.total}`}
-                  </span>
-                </div>
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setScreen("menu")}
-                    className="px-2.5 py-1.5 rounded-lg border border-white/10 text-[9px] font-bold uppercase tracking-wider opacity-70 hover:opacity-100"
-                  >
-                    Menu
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startLevel(mode, difficulty, level)}
-                    className="p-1.5 rounded-lg border border-white/10 opacity-70 hover:opacity-100"
-                    title="Regenerate this level"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <motion.div
-                className="mx-auto w-fit max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-[#1a1814]/80 p-2 shadow-2xl"
-                initial={{ scale: 0.96, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 280, damping: 22 }}
-              >
-                <div
-                  className="grid gap-[2px]"
-                  style={{
-                    gridTemplateColumns: `repeat(${puzzle.size}, minmax(0, 1fr))`,
-                    width: `min(92vw, ${Math.min(36, 520 / puzzle.size) * puzzle.size}px)`,
-                  }}
-                >
-                  {grid.map((row, r) =>
-                    row.map((cell, c) => {
-                      if (cell === null) {
-                        return (
-                          <div
-                            key={`${r}-${c}`}
-                            className="aspect-square rounded-[3px] bg-[#0c0b0a]"
-                          />
-                        );
-                      }
-                      const selected = !isWheel && active?.row === r && active?.col === c;
-                      const inWord = isInActiveWord(r, c);
-                      const num = clueNumberAt(r, c);
-                      const flashing = flashCells.has(`${r}:${c}`);
-                      const filled = !!cell;
-                      const wrong =
-                        !isWheel &&
-                        cell &&
-                        solution[r]?.[c] &&
-                        cell.toUpperCase() !== solution[r]![c] &&
-                        statusMsg !== null;
-
-                      return (
-                        <button
-                          key={`${r}-${c}`}
-                          type="button"
-                          onClick={() => selectCell(r, c)}
-                          disabled={isWheel}
-                          className={`relative aspect-square rounded-[3px] border text-center font-serif font-bold uppercase leading-none transition-transform ${
-                            selected
-                              ? "bg-[#d4a574] text-[#1a1510] border-[#e8c49a] scale-105 z-10"
-                              : inWord
-                                ? "bg-[#d4a574]/25 text-[#f5f0e8] border-[#d4a574]/35"
-                                : filled && isWheel
-                                  ? "bg-[#d4a574]/85 text-[#1a1510] border-[#e8c49a]/50"
-                                  : "bg-[#2a261f] text-[#f5f0e8] border-white/5"
-                          } ${flashing ? "kora-xw-pop" : ""} ${wrong ? "ring-1 ring-red-400/70" : ""}`}
-                          style={{ fontSize: `clamp(10px, ${Math.floor(280 / puzzle.size)}px, 18px)` }}
-                        >
-                          {num != null ? (
-                            <span className="absolute top-0 left-0.5 text-[7px] font-mono opacity-70 leading-none">
-                              {num}
-                            </span>
-                          ) : null}
-                          <span className="block pt-0.5">{cell}</span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </motion.div>
-
-              {isWheel && scape ? (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap gap-1.5 justify-center min-h-[1.5rem]">
-                    {scape.words.map((w) => (
-                      <span
-                        key={w.id}
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-mono tracking-wider ${
-                          foundWords.has(w.word)
-                            ? "bg-[#d4a574]/25 text-[#d4a574]"
-                            : "bg-white/5 opacity-40"
-                        }`}
-                      >
-                        {foundWords.has(w.word) ? w.word : "·".repeat(w.word.length)}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-center gap-4">
-                    <button
-                      type="button"
-                      onClick={shuffleWheel}
-                      className="p-3 rounded-full border border-white/10 hover:bg-white/5"
-                      aria-label="Shuffle letters"
-                    >
-                      <Shuffle className="w-4 h-4 opacity-70" />
-                    </button>
-                    <LetterWheel
-                      letters={wheelLetters}
-                      onSubmit={submitWheelWord}
-                    />
-                    <button
-                      type="button"
-                      onClick={revealCell}
-                      className={`p-3 rounded-full border border-white/10 hover:bg-white/5 ${hintPulse ? "kora-xw-pop" : ""}`}
-                      aria-label="Hint"
-                    >
-                      <Lightbulb className="w-4 h-4 opacity-70" />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <AnimatePresence mode="wait">
-                    {activeWord ? (
-                      <motion.div
-                        key={activeWord.id}
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        className="rounded-2xl border border-[#d4a574]/25 bg-[#d4a574]/10 px-4 py-3"
-                      >
-                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#d4a574] mb-1">
-                          {activeWord.number} {activeWord.dir}
-                        </p>
-                        <p className="text-sm leading-snug">{activeWord.clue}</p>
-                      </motion.div>
-                    ) : (
-                      <p className="text-center text-[11px] opacity-45">Tap a square to begin</p>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {(["across", "down"] as const).map((dir) => (
-                      <div
-                        key={dir}
-                        className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 max-h-48 overflow-y-auto"
-                      >
-                        <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-2">
-                          {dir}
-                        </h3>
-                        <ul className="space-y-1.5">
-                          {puzzle.words
-                            .filter((w) => w.dir === dir)
-                            .map((w) => (
-                              <li key={w.id}>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setDirection(dir);
-                                    setActiveWord(w);
-                                    setActive({ row: w.row, col: w.col });
-                                    window.setTimeout(() => inputRef.current?.focus(), 10);
-                                  }}
-                                  className={`w-full text-left text-[11px] leading-snug rounded-lg px-2 py-1.5 transition ${
-                                    activeWord?.id === w.id
-                                      ? "bg-[#d4a574]/20 text-[#f5f0e8]"
-                                      : "opacity-70 hover:opacity-100 hover:bg-white/5"
-                                  }`}
-                                >
-                                  <span className="font-mono font-bold mr-1.5 opacity-60">{w.number}.</span>
-                                  {w.clue}
-                                </button>
-                              </li>
-                            ))}
-                        </ul>
-                      </div>
-                    ))}
-                  </div>
-
-                  <input
-                    ref={inputRef}
-                    className="sr-only"
-                    autoCapitalize="characters"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    value=""
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v) typeLetter(v.slice(-1));
-                      e.target.value = "";
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Backspace") {
-                        e.preventDefault();
-                        deleteLetter();
-                      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
-                        e.preventDefault();
-                        if (active) moveWithinWord(active.row, active.col, -1);
-                      } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
-                        e.preventDefault();
-                        if (active) moveWithinWord(active.row, active.col, 1);
-                      } else if (e.key.length === 1) {
-                        typeLetter(e.key);
-                        e.preventDefault();
-                      }
-                    }}
-                  />
-                </>
-              )}
             </div>
-          ) : null}
-        </div>
+          </header>
 
-        {screen === "play" && puzzle ? (
-          <footer className="relative z-10 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,var(--kora-safe-bottom))] bg-[#141210]/90 backdrop-blur-md">
-            <AnimatePresence>
-              {statusMsg ? (
-                <motion.p
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  className="text-center text-[11px] font-mono text-[#d4a574] mb-2"
-                >
-                  {statusMsg}
-                </motion.p>
-              ) : null}
-            </AnimatePresence>
-            <div className="flex gap-2 max-w-lg mx-auto">
-              {!isWheel ? (
+          <div className="relative z-10 flex-1 overflow-y-auto overscroll-contain">
+            {screen === "menu" ? (
+              <motion.div
+                className="max-w-lg mx-auto px-4 py-8 space-y-6"
+                initial={{ y: 16, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 24 }}
+              >
+                <div className="text-center space-y-2">
+                  <p className="text-sm text-neutral-400 leading-relaxed">
+                    Choose a mode, then a difficulty. Every level reshuffles forever.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      { id: "classic" as const, title: "Classic", blurb: "Clues & typing" },
+                      { id: "wheel" as const, title: "Letter Wheel", blurb: "Swipe letters like Wordscapes" },
+                    ] as const
+                  ).map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setMode(m.id)}
+                      className={`rounded-2xl border p-3 text-left transition ${
+                        mode === m.id
+                          ? "border-[#d4a574]/50 bg-[#d4a574]/10"
+                          : "border-white/10 bg-white/[0.03]"
+                      }`}
+                    >
+                      <p className="font-serif font-bold">{m.title}</p>
+                      <p className="text-[10px] opacity-55 mt-0.5 leading-snug">{m.blurb}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-3">
+                  {(Object.keys(DIFFICULTY_LABELS) as CrosswordDifficulty[]).map((diff, i) => (
+                    <motion.button
+                      key={diff}
+                      type="button"
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.05 * i }}
+                      onClick={() => startLevel(mode, diff, bestLevel[mode][diff] || 1)}
+                      className={`w-full text-left rounded-2xl border p-4 transition flex items-center justify-between gap-3 ${
+                        difficulty === diff
+                          ? "border-[#d4a574]/50 bg-[#d4a574]/10"
+                          : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      <div>
+                        <p className="font-serif text-xl font-bold">{DIFFICULTY_LABELS[diff].title}</p>
+                        <p className="text-[11px] opacity-55 mt-0.5">{DIFFICULTY_LABELS[diff].blurb}</p>
+                        <p className="text-[10px] font-mono opacity-40 mt-1.5">
+                          Continue at level {bestLevel[mode][diff] || 1}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-5 h-5 opacity-40" />
+                    </motion.button>
+                  ))}
+                </div>
+
                 <button
                   type="button"
-                  onClick={revealCell}
-                  className={`flex-1 py-2.5 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-white/5 transition ${
-                    hintPulse ? "kora-xw-pop" : ""
-                  }`}
+                  onClick={() => startLevel(mode, difficulty, 1)}
+                  className="w-full py-3 rounded-xl border border-white/10 text-[11px] font-bold uppercase tracking-widest opacity-70 hover:opacity-100 transition"
                 >
-                  <Lightbulb className="w-3.5 h-3.5" /> Hint
+                  Start {DIFFICULTY_LABELS[difficulty].title} from level 1
                 </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={goNext}
-                className="flex-[1.4] py-2.5 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 hover:brightness-110 transition"
-              >
-                Next <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </footer>
-        ) : null}
-
-        <AnimatePresence>
-          {celebrating ? (
-            <motion.div
-              className="absolute inset-0 z-20 flex items-center justify-center bg-black/55 backdrop-blur-sm px-6"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <motion.div
-                initial={{ scale: 0.85, y: 20, opacity: 0 }}
-                animate={{ scale: 1, y: 0, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                className="w-full max-w-sm rounded-3xl border border-[#d4a574]/40 bg-[#1c1915] p-6 text-center shadow-2xl"
-              >
-                <Grid3X3 className="w-7 h-7 text-neutral-400 mx-auto mb-3" />
-                <h3 className="font-serif text-2xl font-bold mb-1">Level clear</h3>
-                <p className="text-[12px] opacity-60 mb-5">
-                  {DIFFICULTY_LABELS[difficulty].title} level {level} solved.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCelebrating(false);
-                      setScreen("menu");
-                    }}
-                    className="flex-1 py-2.5 rounded-xl border border-white/15 text-[10px] font-bold uppercase tracking-wider"
-                  >
-                    Menu
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startLevel(mode, difficulty, level + 1)}
-                    className="flex-1 py-2.5 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider"
-                  >
-                    Level {level + 1}
-                  </button>
-                </div>
               </motion.div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+            ) : puzzle ? (
+              <div className={`max-w-3xl mx-auto px-3 py-4 space-y-4 ${isWheel ? "pb-8" : "pb-28"}`}>
+                <div className="flex flex-wrap items-center gap-2 justify-between">
+                  <div className="flex items-center gap-2 text-[10px] font-mono opacity-60">
+                    <span>
+                      {isWheel
+                        ? `${foundWords.size}/${puzzle.words.length} words`
+                        : `${stats.correct}/${stats.total}`}
+                    </span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setScreen("menu")}
+                      className="px-2.5 py-1.5 rounded-lg border border-white/10 text-[9px] font-bold uppercase tracking-wider opacity-70 hover:opacity-100"
+                    >
+                      Menu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startLevel(mode, difficulty, level)}
+                      className="p-1.5 rounded-lg border border-white/10 opacity-70 hover:opacity-100"
+                      title="Regenerate this level"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
 
-        <style>{`
-          @keyframes kora-xw-pop {
-            0% { transform: scale(1); }
-            40% { transform: scale(1.12); }
-            100% { transform: scale(1); }
-          }
-          .kora-xw-pop { animation: kora-xw-pop 0.28s ease-out; }
-        `}</style>
-      </>
-  );
+                <motion.div
+                  className="mx-auto w-fit max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-[#1a1814]/80 p-2 shadow-2xl"
+                  initial={{ scale: 0.96, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 280, damping: 22 }}
+                >
+                  <div
+                    className="grid gap-[2px]"
+                    style={{
+                      gridTemplateColumns: `repeat(${puzzle.size}, minmax(0, 1fr))`,
+                      width: `min(92vw, ${Math.min(36, 520 / puzzle.size) * puzzle.size}px)`,
+                    }}
+                  >
+                    {grid.map((row, r) =>
+                      row.map((cell, c) => {
+                        if (cell === null) {
+                          return (
+                            <div
+                              key={`${r}-${c}`}
+                              className="aspect-square rounded-[3px] bg-[#0c0b0a]"
+                            />
+                          );
+                        }
+                        const selected = !isWheel && active?.row === r && active?.col === c;
+                        const inWord = isInActiveWord(r, c);
+                        const num = clueNumberAt(r, c);
+                        const flashing = flashCells.has(`${r}:${c}`);
+                        const filled = !!cell;
+                        const wrong =
+                          !isWheel &&
+                          cell &&
+                          solution[r]?.[c] &&
+                          cell.toUpperCase() !== solution[r]![c] &&
+                          statusMsg !== null;
+
+                        return (
+                          <button
+                            key={`${r}-${c}`}
+                            type="button"
+                            onClick={() => selectCell(r, c)}
+                            disabled={isWheel}
+                            className={`relative aspect-square rounded-[3px] border text-center font-serif font-bold uppercase leading-none transition-transform ${
+                              selected
+                                ? "bg-[#d4a574] text-[#1a1510] border-[#e8c49a] scale-105 z-10"
+                                : inWord
+                                  ? "bg-[#d4a574]/25 text-[#f5f0e8] border-[#d4a574]/35"
+                                  : filled && isWheel
+                                    ? "bg-[#d4a574]/85 text-[#1a1510] border-[#e8c49a]/50"
+                                    : "bg-[#2a261f] text-[#f5f0e8] border-white/5"
+                            } ${flashing ? "kora-xw-pop" : ""} ${wrong ? "ring-1 ring-red-400/70" : ""}`}
+                            style={{ fontSize: `clamp(10px, ${Math.floor(280 / puzzle.size)}px, 18px)` }}
+                          >
+                            {num != null ? (
+                              <span className="absolute top-0 left-0.5 text-[7px] font-mono opacity-70 leading-none">
+                                {num}
+                              </span>
+                            ) : null}
+                            <span className="block pt-0.5">{cell}</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </motion.div>
+
+                {isWheel && scape ? (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap gap-1.5 justify-center min-h-[1.5rem]">
+                      {scape.words.map((w) => (
+                        <span
+                          key={w.id}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-mono tracking-wider ${
+                            foundWords.has(w.word)
+                              ? "bg-[#d4a574]/25 text-[#d4a574]"
+                              : "bg-white/5 opacity-40"
+                          }`}
+                        >
+                          {foundWords.has(w.word) ? w.word : "·".repeat(w.word.length)}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex items-center justify-center gap-4">
+                      <button
+                        type="button"
+                        onClick={shuffleWheel}
+                        className="p-3 rounded-full border border-white/10 hover:bg-white/5"
+                        aria-label="Shuffle letters"
+                      >
+                        <Shuffle className="w-4 h-4 opacity-70" />
+                      </button>
+                      <LetterWheel
+                        letters={wheelLetters}
+                        onSubmit={submitWheelWord}
+                      />
+                      <button
+                        type="button"
+                        onClick={revealCell}
+                        className={`p-3 rounded-full border border-white/10 hover:bg-white/5 ${hintPulse ? "kora-xw-pop" : ""}`}
+                        aria-label="Hint"
+                      >
+                        <Lightbulb className="w-4 h-4 opacity-70" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <AnimatePresence mode="wait">
+                      {activeWord ? (
+                        <motion.div
+                          key={activeWord.id}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          className="rounded-2xl border border-[#d4a574]/25 bg-[#d4a574]/10 px-4 py-3"
+                        >
+                          <p className="text-[9px] font-bold uppercase tracking-widest text-[#d4a574] mb-1">
+                            {activeWord.number} {activeWord.dir}
+                          </p>
+                          <p className="text-sm leading-snug">{activeWord.clue}</p>
+                        </motion.div>
+                      ) : (
+                        <p className="text-center text-[11px] opacity-45">Tap a square to begin</p>
+                      )}
+                    </AnimatePresence>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {(["across", "down"] as const).map((dir) => (
+                        <div
+                          key={dir}
+                          className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 max-h-48 overflow-y-auto"
+                        >
+                          <h3 className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-2">
+                            {dir}
+                          </h3>
+                          <ul className="space-y-1.5">
+                            {puzzle.words
+                              .filter((w) => w.dir === dir)
+                              .map((w) => (
+                                <li key={w.id}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setDirection(dir);
+                                      setActiveWord(w);
+                                      setActive({ row: w.row, col: w.col });
+                                      window.setTimeout(() => inputRef.current?.focus(), 10);
+                                    }}
+                                    className={`w-full text-left text-[11px] leading-snug rounded-lg px-2 py-1.5 transition ${
+                                      activeWord?.id === w.id
+                                        ? "bg-[#d4a574]/20 text-[#f5f0e8]"
+                                        : "opacity-70 hover:opacity-100 hover:bg-white/5"
+                                    }`}
+                                  >
+                                    <span className="font-mono font-bold mr-1.5 opacity-60">{w.number}.</span>
+                                    {w.clue}
+                                  </button>
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+
+                    <input
+                      ref={inputRef}
+                      className="sr-only"
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v) typeLetter(v.slice(-1));
+                        e.target.value = "";
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Backspace") {
+                          e.preventDefault();
+                          deleteLetter();
+                        } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+                          e.preventDefault();
+                          if (active) moveWithinWord(active.row, active.col, -1);
+                        } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+                          e.preventDefault();
+                          if (active) moveWithinWord(active.row, active.col, 1);
+                        } else if (e.key.length === 1) {
+                          typeLetter(e.key);
+                          e.preventDefault();
+                        }
+                      }}
+                    />
+                  </>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {screen === "play" && puzzle ? (
+            <footer className="relative z-10 border-t border-white/10 px-4 py-3 pb-[max(0.75rem,var(--kora-safe-bottom))] bg-[#141210]/90 backdrop-blur-md">
+              <AnimatePresence>
+                {statusMsg ? (
+                  <motion.p
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="text-center text-[11px] font-mono text-[#d4a574] mb-2"
+                  >
+                    {statusMsg}
+                  </motion.p>
+                ) : null}
+              </AnimatePresence>
+              <div className="flex gap-2 max-w-lg mx-auto">
+                {!isWheel ? (
+                  <button
+                    type="button"
+                    onClick={revealCell}
+                    className={`flex-1 py-2.5 rounded-xl border border-white/10 text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-white/5 transition ${
+                      hintPulse ? "kora-xw-pop" : ""
+                    }`}
+                  >
+                    <Lightbulb className="w-3.5 h-3.5" /> Hint
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="flex-[1.4] py-2.5 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 hover:brightness-110 transition"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </footer>
+          ) : null}
+
+          <AnimatePresence>
+            {celebrating ? (
+              <motion.div
+                className="absolute inset-0 z-20 flex items-center justify-center bg-black/55 backdrop-blur-sm px-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <motion.div
+                  initial={{ scale: 0.85, y: 20, opacity: 0 }}
+                  animate={{ scale: 1, y: 0, opacity: 1 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                  className="w-full max-w-sm rounded-3xl border border-[#d4a574]/40 bg-[#1c1915] p-6 text-center shadow-2xl"
+                >
+                  <Grid3X3 className="w-7 h-7 text-neutral-400 mx-auto mb-3" />
+                  <h3 className="font-serif text-2xl font-bold mb-1">Level clear</h3>
+                  <p className="text-[12px] opacity-60 mb-5">
+                    {DIFFICULTY_LABELS[difficulty].title} level {level} solved.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCelebrating(false);
+                        setScreen("menu");
+                      }}
+                      className="flex-1 py-2.5 rounded-xl border border-white/15 text-[10px] font-bold uppercase tracking-wider"
+                    >
+                      Menu
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startLevel(mode, difficulty, level + 1)}
+                      className="flex-1 py-2.5 rounded-xl bg-[#d4a574] text-[#1a1510] text-[10px] font-bold uppercase tracking-wider"
+                    >
+                      Level {level + 1}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <style>{`
+            @keyframes kora-xw-pop {
+              0% { transform: scale(1); }
+              40% { transform: scale(1.12); }
+              100% { transform: scale(1); }
+            }
+            .kora-xw-pop { animation: kora-xw-pop 0.28s ease-out; }
+          `}</style>
+        </>
+    );
+  }
 }
+
+
