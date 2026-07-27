@@ -360,7 +360,7 @@ export default function InstallView() {
               hidden: {},
               show: { transition: { staggerChildren: 0.06, delayChildren: 0.15 } },
             }}
-            className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold text-kindle-text leading-[1.1] tracking-tight text-balance"
+            className="text-4xl sm:text-5xl md:text-6xl font-[family-name:var(--font-serif)] font-bold text-kindle-text leading-[1.1] tracking-tight text-balance"
           >
             <span className="contents">
               {[
