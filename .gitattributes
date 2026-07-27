@@ -1,0 +1,12 @@
+# Ensure binary gradle wrapper jar is never line-ending transformed (prevents
+# "Invalid or corrupt jarfile" on CI Linux runners).
+*.jar binary
+*.png binary
+*.jpg binary
+*.jks binary
+*.keystore binary
+
+# Shell scripts must be LF on checkout so they run on Linux/macOS CI.
+*.sh text eol=lf
+gradlew text eol=lf
+gradlew.bat text eol=crlf
