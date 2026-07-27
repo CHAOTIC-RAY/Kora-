@@ -334,11 +334,9 @@ export default function InstallView() {
           >
             <span className="contents">
               {[
-                { t: "Your bookshelf,", em: false },
-                { t: "your narrator", em: true },
+                { t: "Your library", em: false },
                 { amp: true },
-                { t: "your morning paper.", em: false },
-                { t: "Unified.", em: true },
+                { t: "your narrator", em: true },
               ].map((tok, i) =>
                 "amp" in tok ? (
                   <span key={i} className="inline-block align-baseline overflow-hidden px-1">
@@ -374,7 +372,7 @@ export default function InstallView() {
                       className={`inline-block ${tok.em ? "text-kindle-accent" : ""}`}
                     >
                       {tok.t}
-                      {i < 4 ? " " : ""}
+                      {i < 2 ? " " : ""}
                     </motion.span>
                   </span>
                 )
