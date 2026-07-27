@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
-"""Generate public/kora_banner.gif — an animated ink-draw reveal of the Kora wordmark.
+"""Generate public/kora_banner.gif — animated ink reveal of the Kora wordmark.
 
 Glyph paths are the same source used by KoraWordmarkReveal.tsx (KoraLogo.KoraWordmark).
-We use the `svg.path` library to parse each path (arcs, smooth curves, etc. all handled)
-and reveal them stroke-by-stroke across frames on a transparent background, so the GIF
-reads on both GitHub light and dark modes. Loops forever.
+Sequence per loop:
+  1. outline draws on stroke-by-stroke (ink pen),
+  2. the glyphs fill solid (crossfade to a filled silhouette),
+  3. holds solid and idle for a few seconds,
+then loops back to the outline.
+
+Centered, slightly smaller than the full viewBox, on a warm paper background.
 """
 import os
 from svg.path import parse_path
 from PIL import Image, ImageDraw
+import io
 
 VIEW_W, VIEW_H = 287.6, 112.78
 SCALE = 3
 PAD = 18
-W = int(VIEW_W * SCALE) + PAD * 2
-H = int(VIEW_H * SCALE) + PAD * 2
 INK = (24, 24, 27, 255)  # kindle-text #18181B
 
 KORA_PATHS = [
@@ -25,7 +28,50 @@ KORA_PATHS = [
     "M151.77,74.1h0a45.46,45.46,0,0,0-3.51-17.51,33.2,33.2,0,0,0-4.87-8.34l-.23-.28c-.23-.29-.47-.58-.71-.86a29.45,29.45,0,0,0-5.49-5,37.39,37.39,0,0,0-43.9,0,29.71,29.71,0,0,0-5.48,5c-.25.28-.48.57-.72.86l-.22.28a33.2,33.2,0,0,0-4.87,8.34,45.27,45.27,0,0,0-3.51,17.51h0A42.74,42.74,0,0,0,82.47,93a32.76,32.76,0,0,0,15.32,15.69,37.5,37.5,0,0,0,15.86,4.09h.07l1.29,0,1.3,0h.07a37.5,37.5,0,0,0,15.86-4.09A32.73,32.73,0,0,0,147.55,93,42.61,42.61,0,0,0,151.77,74.1ZM133,90.13A66.71,66.71,0,0,1,129.34,99a15.55,15.55,0,0,1-14.18,9h-.29a15.56,15.56,0,0,1-14.19-9A66.63,66.63,0,0,1,97,90.13c-.9-3.49-1.64-7-2.42-10.56a51.39,51.39,0,0,1-.4-8.67c1.25-8.9,3.25-16.72,6.32-21.79,3.52-5.81,9-8.92,14.48-9.21,5.47.29,11,3.4,14.49,9.21,3.07,5.07,5.06,12.89,6.31,21.79a51.39,51.39,0,0,1-.4,8.67C134.63,83.1,133.89,86.64,133,90.13Z",
 ]
 
-# Parse + measure each path; collect (path, length).
+# --- filled silhouette via matplotlib (Agg, no cairo) in the SAME canvas space
+#     as the outline strokes, so the two composite pixel-aligned. ---
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.path import Path as MPath
+from matplotlib.patches import PathPatch
+
+def build_filled_silhouette(scale, pad):
+    W = int(VIEW_W * scale) + pad * 2
+    H = int(VIEW_H * scale) + pad * 2
+    dpi = 200
+    fig = plt.figure(figsize=(W / dpi, H / dpi), dpi=dpi)
+    fig.patch.set_alpha(0.0)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, W)
+    ax.set_ylim(H, 0)
+    ax.axis("off")
+    ax.patch.set_alpha(0.0)
+    # One PathPatch per glyph string so each letter's own counters (holes)
+    # are filled correctly via even-odd; concatenating all glyphs into a
+    # single path makes matplotlib bridge contours with diagonal slices.
+    for d in KORA_PATHS:
+        p = parse_path(d)
+        verts = []
+        for seg in p:
+            n = max(8, int(abs(seg.length()) / 4) + 2)
+            # include k=0 so each segment chains from the previous one's end
+            for k in range(0, n + 1):
+                pt = seg.point(k / n)
+                verts.append(complex(pt.real, pt.imag))
+        sv = [(pad + pt.real * scale, pad + pt.imag * scale) for pt in verts]
+        codes = [MPath.MOVETO] + [MPath.LINETO] * (len(sv) - 2) + [MPath.CLOSEPOLY]
+        mp = MPath(sv, codes)
+        patch = PathPatch(mp, facecolor="#18181B", edgecolor="none",
+                          fill=True, antialiased=True)
+        ax.add_patch(patch)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=dpi, transparent=True)
+    plt.close(fig)
+    img = Image.open(buf).convert("RGBA")
+    return img
+
+# --- outline draw frames (transparent) ---
 parsed = []
 for d in KORA_PATHS:
     p = parse_path(d)
@@ -34,93 +80,93 @@ for d in KORA_PATHS:
     except Exception:
         L = 1000.0
     parsed.append((p, L))
-
 total_len = sum(L for _, L in parsed)
 
-# Reveal plan: progress 0..1 across DRAW_FRAMES, drawing paths sequentially.
-DRAW_FRAMES = 40
-HOLD_FRAMES = 16
-SAMPLES = 60  # points sampled per path per frame for smooth stroke
-
+# Slightly smaller + centered: scale the stroke render down a touch and center it.
+DRAW_SCALE = 2.6          # a bit smaller than full 3x
+FILL_SCALE = SCALE
+SAMPLES = 60
 
 def point_at(p, frac):
-    """Return (x,y) in SVG coords for fraction 0..1 along path p."""
     try:
         pt = p.point(frac)
     except Exception:
         pt = p.point(0)
     return pt.real, pt.imag
 
-
-def draw_progress(img, progress):
+def draw_outline(progress):
+    W = int(VIEW_W * DRAW_SCALE) + PAD * 2
+    H = int(VIEW_H * DRAW_SCALE) + PAD * 2
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     target = total_len * progress
-    # fully draw completed paths
     acc = 0.0
     for (p, L) in parsed:
         if target >= acc + L:
-            # whole path
             prev = point_at(p, 0)
             for s in range(1, SAMPLES + 1):
                 cur = point_at(p, s / SAMPLES)
-                d.line(
-                    [PAD + prev[0] * SCALE, PAD + prev[1] * SCALE,
-                     PAD + cur[0] * SCALE, PAD + cur[1] * SCALE],
-                    fill=INK, width=3, joint="curve")
+                d.line([PAD + prev[0]*DRAW_SCALE, PAD + prev[1]*DRAW_SCALE,
+                        PAD + cur[0]*DRAW_SCALE, PAD + cur[1]*DRAW_SCALE],
+                       fill=INK, width=3, joint="curve")
                 prev = cur
             acc += L
         elif target > acc:
-            # partial
             local = (target - acc) / L
             prev = point_at(p, 0)
             steps = max(1, int(SAMPLES * local))
             for s in range(1, steps + 1):
                 cur = point_at(p, (s / SAMPLES) * local)
-                d.line(
-                    [PAD + prev[0] * SCALE, PAD + prev[1] * SCALE,
-                     PAD + cur[0] * SCALE, PAD + cur[1] * SCALE],
-                    fill=INK, width=3, joint="curve")
+                d.line([PAD + prev[0]*DRAW_SCALE, PAD + prev[1]*DRAW_SCALE,
+                        PAD + cur[0]*DRAW_SCALE, PAD + cur[1]*DRAW_SCALE],
+                       fill=INK, width=3, joint="curve")
                 prev = cur
             acc += L
         else:
             acc += L
+    return img
 
+filled = build_filled_silhouette(DRAW_SCALE, PAD)
+
+# Build frames
+DRAW_FRAMES = 36
+FILL_FRAMES = 16
+HOLD_FRAMES = 70   # ~3.1s idle on the solid wordmark before looping
+
+W = int(VIEW_W * DRAW_SCALE) + PAD * 2
+H = int(VIEW_H * DRAW_SCALE) + PAD * 2
 
 frames = []
+# 1) outline draws
 for f in range(DRAW_FRAMES):
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    draw_progress(img, (f + 1) / DRAW_FRAMES)
-    frames.append(img)
-
-# Final solid frame, slightly thicker.
-final = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-dd = ImageDraw.Draw(final)
-for (p, L) in parsed:
-    prev = point_at(p, 0)
-    for s in range(1, SAMPLES + 1):
-        cur = point_at(p, s / SAMPLES)
-        dd.line(
-            [PAD + prev[0] * SCALE, PAD + prev[1] * SCALE,
-             PAD + cur[0] * SCALE, PAD + cur[1] * SCALE],
-            fill=INK, width=4, joint="curve")
-        prev = cur
+    frames.append(draw_outline((f + 1) / DRAW_FRAMES))
+# 2) fill crossfade (outline stays, solid fades in on top)
+outline_full = frames[-1]
+for f in range(FILL_FRAMES):
+    alpha = (f + 1) / FILL_FRAMES
+    solid = filled.copy()
+    solid.putalpha(int(255 * alpha))
+    base = outline_full.copy()
+    base.alpha_composite(solid)
+    frames.append(base)
+# 3) solid hold (idle)
+solid_final = outline_full.copy()
+solid_final.alpha_composite(filled)
 for _ in range(HOLD_FRAMES):
-    frames.append(final)
+    frames.append(solid_final)
 
-out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "public", "kora_banner.gif"))
-os.makedirs(os.path.dirname(out), exist_ok=True)
-
-# Composite each frame onto a solid background (RGB) and write with imageio,
-# which preserves every frame (PIL's GIF writer silently collapsed near-identical frames).
+# Composite onto warm paper bg and write with imageio (keeps every frame)
 import numpy as np
 import imageio.v2 as imageio
 
-BG = np.array([245, 242, 236], dtype=np.uint8)  # warm paper tint
+BG = np.array([245, 242, 236], dtype=np.uint8)
 rgb_frames = []
-for f in frames:
-    bg = Image.new("RGBA", f.size, (245, 242, 236, 255))
-    rgb = Image.alpha_composite(bg, f.convert("RGBA")).convert("RGB")
+for fr in frames:
+    bg = Image.new("RGBA", fr.size, (245, 242, 236, 255))
+    rgb = Image.alpha_composite(bg, fr.convert("RGBA")).convert("RGB")
     rgb_frames.append(np.array(rgb))
 
+out = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "public", "kora_banner.gif"))
+os.makedirs(os.path.dirname(out), exist_ok=True)
 imageio.mimsave(out, rgb_frames, duration=0.045, loop=0)
-print("wrote", out, os.path.getsize(out), "bytes;", len(rgb_frames), "frames; total_len=", round(total_len, 1))
+print("wrote", out, os.path.getsize(out), "bytes;", len(rgb_frames), "frames")
