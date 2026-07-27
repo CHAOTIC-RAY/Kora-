@@ -257,6 +257,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
   const [roomCode, setRoomCode] = useState("");
   const [roomStatus, setRoomStatus] = useState<"lobby" | "playing" | "done">("lobby");
   const [roomMsg, setRoomMsg] = useState("");
+  const [roomBlocked, setRoomBlocked] = useState(false);
   const [v, setV] = useState<"fullscreen" | "popup">(gameViewVariant());
   const queueRef = useRef<Q[]>([]);
   const flashTimer = useRef<number | undefined>(undefined);
@@ -431,6 +432,8 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
     const sd = Math.floor(Math.random() * 0xffffff);
     const code_ = code || genCode();
     setRoomCode(code_);
+    setRoomBlocked(false);
+    setRoomMsg("");
     setMatchType("online");
     setMode(m);
     try {
@@ -473,23 +476,39 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
   const watchRoom = (code: string) => {
     if (!db) return;
     unsubRef.current?.();
-    unsubRef.current = onSnapshot(roomRef(code), (snap) => {
-      const data = snap.data() as any;
-      if (!data) return;
-      const fs: Fighter[] = data.players;
-      setFighters(fs);
-      setTurnIdx(data.turnIdx ?? 0);
-      setQIndex(data.qIndex ?? 0);
-      setLog(data.log ?? []);
-      setRoomStatus(data.status);
-      const q = buildQueue(data.mode, SHARED_POOL, data.seed)[(data.qIndex ?? 0) % 80];
-      setQuestion(q);
-      if (data.status === "done") {
-        const winner = fs.find((f: Fighter) => f.id === data.winner);
-        if (winner?.id === (auth?.currentUser?.uid || myUid())) setPhase("win");
-        else setPhase("lose");
+    setRoomBlocked(false);
+    unsubRef.current = onSnapshot(
+      roomRef(code),
+      (snap) => {
+        const data = snap.data() as any;
+        if (!data) return;
+        const fs: Fighter[] = data.players;
+        setFighters(fs);
+        setTurnIdx(data.turnIdx ?? 0);
+        setQIndex(data.qIndex ?? 0);
+        setLog(data.log ?? []);
+        setRoomStatus(data.status);
+        const q = buildQueue(data.mode, SHARED_POOL, data.seed)[(data.qIndex ?? 0) % 80];
+        setQuestion(q);
+        if (data.status === "done") {
+          const winner = fs.find((f: Fighter) => f.id === data.winner);
+          if (winner?.id === (auth?.currentUser?.uid || myUid())) setPhase("win");
+          else setPhase("lose");
+        }
+      },
+      (err: any) => {
+        const msg = String(err?.message || err || "");
+        // Firestore long-poll blocked by an ad-blocker / privacy extension / network policy.
+        if (/blocked|net::|channel|permission|interrupted/i.test(msg)) {
+          setRoomBlocked(true);
+          setRoomMsg(
+            "Can't reach Firebase — the Firestore connection was blocked (ad-blocker, privacy extension, or network policy). Disable it for this site, or play Local / Solo instead."
+          );
+        } else {
+          setRoomMsg("Sync error: " + msg);
+        }
       }
-    });
+    );
   };
 
   const submitOnlineMove = (guess: string) => {
@@ -499,8 +518,10 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
     const correct = guess.trim().toLowerCase() === question.answer.toLowerCase();
     const fs = fighters.map((f) => ({ ...f }));
     const ai = fs.findIndex((f) => f.id === uid);
+    let dmg = 0;
+    let back = 0;
     if (correct) {
-      const dmg = 18 + Math.floor(Math.random() * 10);
+      dmg = 18 + Math.floor(Math.random() * 10);
       fs.forEach((f, i) => {
         if (i !== ai && f.alive) {
           f.hp = Math.max(0, f.hp - dmg);
@@ -510,7 +531,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
       logMsg(`✦ You splash ${dmg} to all foes`);
       awardMastery(question.answer);
     } else {
-      const back = 12 + Math.floor(Math.random() * 8);
+      back = 12 + Math.floor(Math.random() * 8);
       fs[ai].hp = Math.max(0, fs[ai].hp - back);
       if (fs[ai].hp <= 0) fs[ai].alive = false;
       logMsg(`✗ You miss — take ${back}`);
@@ -522,7 +543,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
       if (fs[ni].alive) break;
     }
     const done = alive.length <= 1;
-    const line = correct ? `✦ You splashed ${18 + Math.floor(Math.random() * 10)} to all foes` : `✗ You miss — took ${12 + Math.floor(Math.random() * 8)}`;
+    const line = correct ? `✦ You splashed ${dmg} to all foes` : `✗ You miss — took ${back}`;
     updateDoc(roomRef(roomCode), {
       players: fs,
       turnIdx: ni,
@@ -573,6 +594,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
       setQuestion(null);
       setLog([]);
       setRoomMsg("");
+      setRoomBlocked(false);
       setShareCode("");
       unsubRef.current?.();
     }
@@ -749,6 +771,11 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
 
           {phase === "play" && question && (
             <div className="space-y-3">
+              {roomMsg && (
+                <div className={`rounded-xl border px-3 py-2 text-[11px] leading-snug ${roomBlocked ? "border-[#d4a574]/40 bg-[#d4a574]/10 text-[#e6c79a]" : "border-[#c0504d]/40 bg-[#c0504d]/10 text-[#e89b99]"}`}>
+                  {roomMsg}
+                </div>
+              )}
               {/* Stage */}
               <div className="relative rounded-2xl border-2 border-[#3a3527] overflow-hidden bg-gradient-to-b from-[#2a3a2e] via-[#243024] to-[#1a241b] p-4">
                 <div className="absolute bottom-0 inset-x-0 h-1/3 bg-[#1c241a]" />
