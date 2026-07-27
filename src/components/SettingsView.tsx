@@ -47,6 +47,7 @@ import P2pTransferPanel from "./P2pTransferPanel";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
 import GameScoreTracker from "./GameScoreTracker";
+import LinguistGuardian from "./LinguistGuardian";
 import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
@@ -293,6 +294,7 @@ function SettingsView({
   const [showCrossword, setShowCrossword] = useState<boolean>(false);
   const [showWordSearch, setShowWordSearch] = useState<boolean>(false);
   const [showScoreTracker, setShowScoreTracker] = useState<boolean>(false);
+  const [showGuardian, setShowGuardian] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const [showP2p, setShowP2p] = useState<boolean>(false);
   const [showDictionary, setShowDictionary] = useState<boolean>(false);
@@ -351,6 +353,7 @@ function SettingsView({
       if (tool === "crossword") setShowCrossword(true);
       else if (tool === "wordsearch") setShowWordSearch(true);
       else if (tool === "score-tracker" || tool === "scoretracker") setShowScoreTracker(true);
+      else if (tool === "guardian" || tool === "linguist-guardian") setShowGuardian(true);
       else if (tool === "p2p") setShowP2p(true);
       else if (tool === "wikipedia" || tool === "wiki") setShowWikipedia(true);
     };
@@ -1227,7 +1230,7 @@ function SettingsView({
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Board & Card Game Score Tracker Card */}
               <button
                 type="button"
@@ -1291,6 +1294,28 @@ function SettingsView({
                   </p>
                   <div className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
                     Search Words →
+                  </div>
+                </div>
+              </button>
+
+              {/* Linguist Guardian Card */}
+              <button
+                type="button"
+                onClick={() => setShowGuardian(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-[#d4a574]/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-[#d4a574] rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Swords className="w-6 h-6" />
+                </div>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-[#d4a574] transition">Linguist Guardian</h4>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Defend the Kora Archives — turn your highlighted words into spells against the Boss of Forgetting.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-[#d4a574] flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Enter Battle →
                   </div>
                 </div>
               </button>
@@ -2833,6 +2858,7 @@ function SettingsView({
       <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} variant="popup" />
       <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant="popup" />
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
+      <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} />
       <ReadingInsightsTool
         open={showInsights}
         onClose={() => setShowInsights(false)}
