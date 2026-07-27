@@ -128,4 +128,5 @@
             android:progressDrawable="@drawable/widget_progress"
             android:background="@android:color/transparent" />
     </LinearLayout>
+</LinearLayout>
 

@@ -14,7 +14,7 @@
         android:layout_height="wrap_content"
         android:ellipsize="end"
         android:maxLines="1"
-        android:text="ANNOTATE & NOTES"
+        android:text="ANNOTATE &amp; NOTES"
         android:textAllCaps="true"
         android:textColor="#C4A574"
         android:textSize="10sp"
