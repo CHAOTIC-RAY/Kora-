@@ -26,6 +26,7 @@ import CachedCoverImage from "./CachedCoverImage";
 import LoungeGuidesWidget from "./LoungeGuidesWidget";
 import LoungeNotesWidget from "./LoungeNotesWidget";
 import LoungeWikiWidget from "./LoungeWikiWidget";
+import LoungeGamesWidget from "./LoungeGamesWidget";
 import type { GuideId } from "../lib/guides";
 
 interface LoungeViewProps {
@@ -50,6 +51,7 @@ interface LoungeViewProps {
     content_urls?: { desktop: { page: string }; mobile: { page: string } };
     lang?: string;
   }) => void;
+  onPlayGame?: (game: "crossword" | "wordsearch" | "guardian") => void;
   onRefreshLibrary?: () => void;
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;
@@ -303,6 +305,7 @@ export default function LoungeView({
   onOpenAnnotations,
   onOpenWikipedia,
   onOpenArticle,
+  onPlayGame,
   onRefreshLibrary,
   onToggleAudiobookPlay,
   onExpandAudiobook,
@@ -825,6 +828,10 @@ export default function LoungeView({
               onRefreshLibrary={onRefreshLibrary}
               grayscaleCovers={grayscaleCovers}
             />
+          </TileShell>
+
+          <TileShell delay={0.1} className="bg-kindle-card/60 p-3.5 md:p-4 order-7 md:order-none">
+            <LoungeGamesWidget onPlayGame={onPlayGame} />
           </TileShell>
         </div>
 

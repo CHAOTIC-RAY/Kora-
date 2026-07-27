@@ -2570,6 +2570,9 @@ export default function App() {
                 setPendingWikiArticle(article);
                 setShowWikipediaModal(true);
               }}
+              onPlayGame={(game) => {
+                window.dispatchEvent(new CustomEvent("kora-open-tool", { detail: { tool: game } }));
+              }}
               onRefreshLibrary={refreshLibrary}
               onToggleAudiobookPlay={() => {
                 window.dispatchEvent(new CustomEvent("kora-audiobook:toggle-play"));
