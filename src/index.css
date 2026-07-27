@@ -530,6 +530,9 @@ mark.kora-hl-pink {
   --kora-safe-bottom: env(safe-area-inset-bottom, 0px);
   --kora-safe-left: env(safe-area-inset-left, 0px);
   --kora-safe-right: env(safe-area-inset-right, 0px);
+  /* Android status bar clearance (real px — env() reports 0 when the WebView
+     is not overlaid, so we can't rely on the safe-area inset alone). */
+  --kora-status-bar-h: 1.75rem;
   /* Floating nav: 1.25rem from bottom + h-14 (3.5rem) + safe padding */
   --kora-mobile-footer-stack: calc(
     1.25rem + 3.5rem + max(var(--kora-safe-bottom), 0.5rem) + var(--kora-safe-bottom)
@@ -552,6 +555,14 @@ html.kora-gesture-nav body {
 html.kora-android,
 html.kora-android body {
   background-color: var(--theme-bg);
+}
+
+/* On Android the WebView isn't overlaid, so env(safe-area-inset-top) is 0 and
+   content would sit under the system notification bar. Force a real top inset
+   equal to the status-bar height so the sticky header clears it. iOS keeps its
+   own (real) inset; web is unaffected (no .kora-android class). */
+html.kora-android {
+  --kora-safe-top: max(env(safe-area-inset-top, 0px), var(--kora-status-bar-h));
 }
 
 html.kora-android body {

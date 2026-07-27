@@ -574,7 +574,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const currentLeader = rankedPlayers[0];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-0 sm:p-3 md:p-6 overflow-y-auto">
       {/* Canvas Confetti Layer */}
       <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />
 
@@ -582,12 +582,12 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
-        className="w-full max-w-5xl bg-kindle-bg border border-kindle-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className="w-full h-full sm:h-auto max-w-5xl bg-kindle-bg border-0 sm:border sm:border-kindle-border rounded-none sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-screen sm:max-h-[92vh]"
       >
 
 
         {/* Header Bar */}
-        <div className="px-6 py-3.5 border-b border-kindle-border bg-kindle-card/80 backdrop-blur flex items-center justify-between shrink-0">
+        <div className="px-6 py-3.5 border-b border-kindle-border bg-kindle-card/80 backdrop-blur flex items-center justify-between shrink-0 kora-safe-top">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-kindle-accent/10 border border-kindle-accent/25 flex items-center justify-center text-xl shrink-0">
               {selectedPreset.iconName}

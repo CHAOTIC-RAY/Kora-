@@ -597,7 +597,7 @@ export default function LoungeView({
 
   return (
     <div className="pb-6 md:pb-10 space-y-4 md:space-y-5">
-      <header className="relative overflow-hidden pb-1">
+      <header className="relative overflow-hidden pb-1 kora-safe-top">
         <div className="flex items-center gap-2.5">
           <span
             className="block h-px w-5 bg-kindle-accent/70"
