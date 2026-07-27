@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { fetchLatestApkDownloadUrl } from "../lib/apkUpdater";
 import { KoraIcon, KoraWordmark } from "./KoraLogo";
+import KoraWordmarkReveal from "./KoraWordmarkReveal";
 import GameScoreTracker from "./GameScoreTracker";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
@@ -1009,52 +1010,6 @@ export default function InstallView() {
             }}
           />
 
-          {/* ink splatter bloom — blooms in as the notebook fills the screen */}
-          <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-            {[
-              { top: "12%", left: "8%", size: 220, delay: 0.15, color: "var(--theme-text)" },
-              { top: "62%", left: "70%", size: 300, delay: 0.3, color: "var(--theme-accent)" },
-              { top: "78%", left: "14%", size: 160, delay: 0.45, color: "var(--theme-text)" },
-              { top: "30%", left: "82%", size: 130, delay: 0.55, color: "var(--theme-text)" },
-              { top: "44%", left: "40%", size: 90, delay: 0.6, color: "var(--theme-accent)" },
-            ].map((s, i) => (
-              <motion.span
-                key={i}
-                initial={{ scale: 0, opacity: 0 }}
-                whileInView={{ scale: 1, opacity: 0.12 }}
-                viewport={{ once: false, amount: 0.25 }}
-                transition={{ duration: 1.1, delay: s.delay, ease: "easeOut" }}
-                className="absolute rounded-full blur-2xl mix-blend-multiply"
-                style={{
-                  top: s.top,
-                  left: s.left,
-                  width: s.size,
-                  height: s.size,
-                  background: s.color,
-                  transform: "translate(-50%, -50%)",
-                }}
-              />
-            ))}
-            {/* fine ink droplets */}
-            {Array.from({ length: 12 }).map((_, i) => (
-              <motion.span
-                key={`d-${i}`}
-                initial={{ scale: 0, opacity: 0 }}
-                whileInView={{ scale: 1, opacity: 0.18 }}
-                viewport={{ once: false, amount: 0.25 }}
-                transition={{ duration: 0.8, delay: 0.5 + (i % 6) * 0.08, ease: "easeOut" }}
-                className="absolute rounded-full"
-                style={{
-                  top: `${(i * 37) % 100}%`,
-                  left: `${(i * 53) % 100}%`,
-                  width: 5 + (i % 4) * 3,
-                  height: 5 + (i % 4) * 3,
-                  background: i % 2 ? "var(--theme-text)" : "var(--theme-accent)",
-                }}
-              />
-            ))}
-          </div>
-
           <div
             aria-hidden
             className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 flex flex-col items-center justify-around py-8 opacity-40"
@@ -1064,30 +1019,31 @@ export default function InstallView() {
             ))}
           </div>
 
-          <div className="relative flex flex-col items-center gap-4">
-            <div className="w-20 h-20 rounded-3xl bg-kindle-card border-2 border-kindle-border/80 flex items-center justify-center shadow-xl">
-              <KoraIcon className="w-10 h-10 text-kindle-text" />
+          <KoraWordmarkReveal>
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-20 h-20 rounded-3xl bg-kindle-card border-2 border-kindle-border/80 flex items-center justify-center shadow-xl">
+                <KoraIcon className="w-10 h-10 text-kindle-text" />
+              </div>
             </div>
-            <KoraWordmark className="h-8 text-kindle-text" />
-          </div>
 
-          <div className="relative space-y-3 max-w-lg mx-auto">
-            <p className="text-base font-bold uppercase tracking-[0.25em] text-kindle-accent">
-              A Chaos Studio Project
-            </p>
-            <p className="text-sm text-kindle-text-muted leading-relaxed">
-              Kora is built by <span className="font-bold text-kindle-text">Chaos Studio</span> — a free,
-              open, offline-first reading companion for books, news, and knowledge.
-              No ads. No trackers. Your library stays yours.
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] text-kindle-text-muted">
-              <span>Universal E-Ink Reader</span><span className="text-kindle-border">•</span>
-              <span>Voice Narrator</span><span className="text-kindle-border">•</span>
-              <span>Workshop Suite</span><span className="text-kindle-border">•</span>
-              <span>Wikipedia Hub</span><span className="text-kindle-border">•</span>
-              <span>P2P Library Share</span>
+            <div className="relative space-y-3 max-w-lg mx-auto">
+              <p className="text-base font-bold uppercase tracking-[0.25em] text-kindle-accent">
+                A Chaos Studio Project
+              </p>
+              <p className="text-sm text-kindle-text-muted leading-relaxed">
+                Kora is built by <span className="font-bold text-kindle-text">Chaos Studio</span> — a free,
+                open, offline-first reading companion for books, news, and knowledge.
+                No ads. No trackers. Your library stays yours.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] text-kindle-text-muted">
+                <span>Universal E-Ink Reader</span><span className="text-kindle-border">•</span>
+                <span>Voice Narrator</span><span className="text-kindle-border">•</span>
+                <span>Workshop Suite</span><span className="text-kindle-border">•</span>
+                <span>Wikipedia Hub</span><span className="text-kindle-border">•</span>
+                <span>P2P Library Share</span>
+              </div>
             </div>
-          </div>
+          </KoraWordmarkReveal>
 
           <div className="relative flex items-center justify-center gap-3 pt-2">
             <a
