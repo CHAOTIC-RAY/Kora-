@@ -33,7 +33,14 @@ export async function signInWithGoogle(auth: Auth): Promise<UserCredential> {
 
   const idToken = result.credential?.idToken;
   if (!idToken) {
-    throw new Error("Google Sign-In did not return an ID token.");
+    // "no credential available" surfaces here when Android's Credential Manager
+    // can't return a Google account/token — almost always because (a) no Google
+    // account is signed in on the device, or (b) the APK's signing-cert SHA-1
+    // isn't registered for this OAuth client in the Firebase console. Register
+    // the release keystore SHA-1 there to fix it.
+    throw new Error(
+      "Google Sign-In returned no credential. Add a Google account on this device, and ensure the APK signing certificate's SHA-1 is registered for the OAuth client in the Firebase console."
+    );
   }
 
   const credential = GoogleAuthProvider.credential(idToken, result.credential?.accessToken);

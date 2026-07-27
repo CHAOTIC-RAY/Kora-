@@ -182,7 +182,7 @@ class DiagnosticLogger {
     };
   }
 
-  public downloadLogsAsFile() {
+  public async downloadLogsAsFile() {
     const logsText = this.logs
       .map(l => `[${l.timestamp}] [${l.type.toUpperCase()}] ${l.message}${l.detail ? `\nDetail: ${l.detail}` : ""}`)
       .join("\n\n");
@@ -206,11 +206,41 @@ class DiagnosticLogger {
       // ignore malformed download log
     }
 
-    const blob = new Blob([logsText + downloadLogSection], { type: "text/plain;charset=utf-8" });
+    const content = logsText + downloadLogSection;
+    const fileName = `kora-diagnostic-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+
+    // Native (Capacitor Android/iOS): the blob-anchor trick silently fails in
+    // the WebView, so write the file to storage and surface it via the share
+    // sheet (which lets the user save / open it). Falls back to web download.
+    const isNative = typeof (window as any).Capacitor !== "undefined" &&
+      (window as any).Capacitor.isNativePlatform?.();
+
+    if (isNative) {
+      try {
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        const { Share } = await import("@capacitor/share");
+        await Filesystem.writeFile({
+          path: fileName,
+          data: content,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+        try {
+          await Share.share({ title: "Kora Diagnostic Logs", text: content, dialogTitle: "Save Kora logs" });
+        } catch {
+          // Share cancelled — file is already in Downloads, that's fine.
+        }
+        return;
+      } catch (err) {
+        console.warn("[Kora/Logs] Native export failed, falling back:", err);
+      }
+    }
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `kora-diagnostic-logs-${new Date().toISOString().slice(0,10)}.txt`;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
