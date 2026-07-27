@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Swords, BookOpen, ScrollText, Brain, Crown, X, Share2, Copy, Check, Wifi, Cpu, Users, Maximize2, Minimize2, Trophy } from "lucide-react";
-import { getCustomDictionary, DictionaryEntry } from "../lib/dictionary";
+import { DictionaryEntry } from "../lib/dictionary";
 import { db, auth, isRealFirebase } from "../lib/firebase";
 import { gameViewVariant } from "../lib/canHover";
 import {
@@ -69,10 +69,11 @@ function saveMastery(m: Record<string, number>) {
   localStorage.setItem(KEY, JSON.stringify(m));
 }
 function buildArsenal(): ArsenalWord[] {
-  const custom = getCustomDictionary();
-  const base: ArsenalWord[] = custom.length > 0 ? custom.map((e) => ({ ...e, mastery: 0 })) : SHARED_POOL;
+  // Gameplay always draws from the curated, verified SHARED_POOL so that every
+  // definition is guaranteed to pair with its own word. Custom dictionaries are
+  // used by the lookup feature, not the battle quiz, to avoid misaligned pairs.
   const mastery = loadMastery();
-  return base.map((e) => ({ ...e, mastery: mastery[e.word.toLowerCase()] || 0 }));
+  return SHARED_POOL.map((e) => ({ ...e, mastery: mastery[e.word.toLowerCase()] || 0 }));
 }
 function blankWord(sentence?: string, word?: string): string {
   if (!sentence || !word) return "";
