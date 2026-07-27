@@ -23,6 +23,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [done, setDone] = useState(false);
+  const doneRef = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -31,14 +32,23 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const svg = document.getElementById("kora-ink-source") as SVGSVGElement | null;
+    const svg = document.getElementById("kora-ink-source") as unknown as SVGSVGElement | null;
     const paths = svg ? Array.from(svg.querySelectorAll("path")) : [];
 
     let raf = 0;
     let cancelled = false;
     let started = false;
+    let revealArmed = { current: false };
+    let revealTimer: number | undefined;
+
+    const markDone = () => {
+      if (doneRef.current) return;
+      doneRef.current = true;
+      setDone(true);
+    };
 
     const start = () => {
+      if (doneRef.current) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Size the canvas to its displayed box (capped so the wordmark stays sane).
@@ -110,7 +120,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       const drawFill = () => {
         if (fillCount >= FILL_THRESHOLD) {
           state = STATE_FINISHED;
-          setDone(true);
+          markDone();
           return;
         }
         for (let i = 0; i < 45; i++) {
@@ -142,6 +152,12 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
         else if (state === STATE_FILL) drawFill();
         if (state !== STATE_FINISHED) raf = requestAnimationFrame(loop);
       };
+      // Fallback: reveal the text after a grace period even if the canvas fill
+      // loop keeps getting reset by mobile scroll-resize events. Armed once.
+      if (!revealArmed.current) {
+        revealArmed.current = true;
+        revealTimer = window.setTimeout(markDone, 3500);
+      }
       raf = requestAnimationFrame(loop);
     };
 
@@ -172,6 +188,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       cancelled = true;
       cancelAnimationFrame(raf);
       clearTimeout(t);
+      clearTimeout(revealTimer);
       io.disconnect();
       window.removeEventListener("resize", onResize);
     };
