@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2 } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2, Settings2 } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { getItemThumbnail } from "../lib/feedPreview";
 import { resolveFeedArticle, prepareFeedArticleHtml } from "../lib/feedArticle";

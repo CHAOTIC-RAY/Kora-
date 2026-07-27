@@ -39,7 +39,6 @@ import {
   Sliders,
   FileText,
   Compass,
-  Palette
 } from "lucide-react";
 import { fetchLatestApkDownloadUrl } from "../lib/apkUpdater";
 import { KoraIcon, KoraWordmark } from "./KoraLogo";
@@ -323,54 +322,40 @@ export default function InstallView() {
           <KoraIcon className="w-10 h-10 text-kindle-text" />
         </motion.div>
 
-        <div className="space-y-4 max-w-3xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-kindle-accent/10 border border-kindle-accent/25 text-[10px] font-bold uppercase tracking-widest text-kindle-accent"
-          >
-            <Zap className="w-3 h-3" /> E-Ink Reader • Voice Narrator • Workshop Games
-            <span>•</span>
-            <button
-              type="button"
-              onClick={() => setActiveTab("themes")}
-              className="inline-flex items-center gap-1 text-kindle-accent font-extrabold hover:underline cursor-pointer"
-            >
-              <Palette className="w-3 h-3" /> Auto Reading Themes
-            </button>
-          </motion.div>
-
+        <div className="space-y-5 max-w-3xl mx-auto">
           <motion.h1
             initial="hidden"
             animate="show"
             variants={{
               hidden: {},
-              show: { transition: { staggerChildren: 0.05, delayChildren: 0.15 } },
+              show: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
             }}
-            className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-kindle-text leading-[1.15] max-w-3xl mx-auto"
+            className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold text-kindle-text leading-[1.08] tracking-tight max-w-3xl mx-auto"
           >
-            {["Your bookshelf, your narrator,", "and your morning paper.", "Unified."].map(
-              (line, i) => (
-                <span key={i} className="block overflow-hidden">
-                  <motion.span
-                    variants={{
-                      hidden: { y: "110%" },
-                      show: { y: "0%", transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
-                    }}
-                    className="block"
-                  >
-                    {line}
-                  </motion.span>
-                </span>
-              )
-            )}
+            {[
+              { t: "Your bookshelf,", em: false },
+              { t: "your narrator,", em: true },
+              { t: "and your morning paper.", em: false },
+              { t: "Unified.", em: true },
+            ].map((line, i) => (
+              <span key={i} className="block overflow-hidden py-0.5">
+                <motion.span
+                  variants={{
+                    hidden: { y: "120%", opacity: 0 },
+                    show: { y: "0%", opacity: 1, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
+                  }}
+                  className={`block ${line.em ? "text-kindle-accent" : ""}`}
+                >
+                  {line.t}
+                </motion.span>
+              </span>
+            ))}
           </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.55 }}
             className="text-base sm:text-lg text-kindle-text-muted leading-relaxed max-w-2xl mx-auto font-medium"
           >
             The open E-Ink digital reader with integrated text-to-speech voice narration, federated open-book discovery, and a lounge games suite.
