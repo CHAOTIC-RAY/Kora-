@@ -2387,7 +2387,9 @@ export default {
         }
         const domain = parsedUrl.hostname;
 
-        // Fetch the raw page content using standard fetch with timeout
+        // Fetch the raw page content. Try a direct fetch first, then fall back
+        // through public CORS proxies (many news sites block the Worker's
+        // direct fetch via bot protection), and finally Puppeteer if bound.
         let rawHtml = "";
         const pageHeaders = {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -2404,6 +2406,7 @@ export default {
           // ignore invalid URL
         }
 
+        // Try 1: direct fetch
         let fetchErr: unknown = null;
         for (const fetchUrl of fetchTargets) {
           try {
@@ -2423,8 +2426,18 @@ export default {
           }
         }
 
+        // Try 2: public CORS proxies (bot-protected sites often block direct fetch)
         if (!rawHtml || rawHtml.trim().length < 100) {
-          console.warn(`[Web Clipper] Standard fetch failed, trying Puppeteer:`, fetchErr);
+          console.warn(`[Web Clipper] Direct fetch failed, trying public proxies:`, fetchErr);
+          try {
+            rawHtml = await fetchPageHtmlWithProxies(fetchTargets[0]);
+          } catch (proxyErr) {
+            console.warn(`[Web Clipper] Proxy fetch failed:`, proxyErr);
+          }
+        }
+
+        if (!rawHtml || rawHtml.trim().length < 100) {
+          console.warn(`[Web Clipper] Standard + proxy fetch failed, trying Puppeteer:`, fetchErr);
           if (env && env.BROWSER) {
             try {
               const browser = await env.BROWSER.connect();
@@ -2438,7 +2451,7 @@ export default {
               }
             } catch (puppeteerErr) {
               console.error("[Web Clipper] Puppeteer failed:", puppeteerErr);
-              throw new Error("Failed to fetch content with both standard fetch and Puppeteer");
+              throw new Error("Failed to fetch content with direct fetch, proxies, and Puppeteer");
             }
           } else {
             throw fetchErr instanceof Error ? fetchErr : new Error("Failed to fetch content and no Puppeteer available");
