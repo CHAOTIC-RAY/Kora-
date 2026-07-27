@@ -19,6 +19,8 @@ import {
   Share2,
   QrCode,
   Globe,
+  Server,
+  Github,
   ChevronDown,
   Layers,
   Zap,
@@ -173,25 +175,33 @@ export default function InstallView() {
 
   const faqs = [
     {
-      q: "Is Kora completely free and open source?",
-      a: "Yes! Kora is 100% free, ad-free, and open source. There are no paywalls, hidden tracking scripts, or subscriptions."
+      q: "Is Kora really free and open source?",
+      a: "Yes. Kora is 100% free, ad-free, and open source under a permissive license. There are no paywalls, no accounts forced on you, no trackers, and no subscriptions. You can read the entire codebase on GitHub.",
     },
     {
-      q: "How does the Voice Narrator / Text-to-Speech Audiobook feature work?",
-      a: "Kora parses book chapters directly on your device and uses high-fidelity neural system voices to read aloud. You can customize speech rate, pitch, background play, and follow along with synchronized sentence tracking."
+      q: "Do I need an account to read?",
+      a: "No. You can open any book, article, or feed and read completely offline with zero sign-up. An account is only optional — it enables cloud sync of bookmarks, highlights, and reading progress across your devices via Firebase or your own WebDAV server.",
     },
     {
-      q: "Why install the Android APK instead of using the web app?",
-      a: "The native Android APK unlocks system-level background audio playback for voice audiobooks, native notification media controls, full device file system access, and instant offline P2P beam transfer."
+      q: "Which install should I pick — Web, APK, or self-host?",
+      a: "Web App (PWA) is the easiest and works on every platform including iPhone — just open the site and 'Add to Home Screen'. The Android APK unlocks system-level background voice playback and offline P2P transfer. Self-hosting gives you a private deployment on your own domain with full data ownership.",
     },
     {
-      q: "Is installing an APK safe on my phone?",
-      a: "Yes. Kora APKs are signed, clean, virus-scanned, and fully Play Protect compliant. You can inspect the source code on GitHub at any time."
+      q: "Why can't I install a native iPhone app from an .ipa?",
+      a: "Apple requires a paid Developer account ($99/yr) to sign apps for device install, and each phone's UDID must be registered. To keep Kora free and open, we ship the iOS experience as a Web App (PWA) — it installs to your home screen and runs full-screen with offline support, no Apple account needed.",
     },
     {
-      q: "What games are included in Kora's Workshop?",
-      a: "Kora includes three lounge companions: 1) Board & Card Game Score Tracker (with Competition Mode, turn clocks, & tournament brackets), 2) Literary Crossword Grid & Wordscape Wheel, and 3) Word Search Grid Finder."
-    }
+      q: "How does the Voice Narrator / audiobook feature work?",
+      a: "Kora parses book chapters directly on your device and uses high-fidelity neural system voices to read aloud. You control speech rate, pitch, and background playback, and can follow along with synchronized sentence highlighting. On Android the APK keeps narration playing while the screen is off.",
+    },
+    {
+      q: "Is my reading data private?",
+      a: "Your library, progress, and annotations are stored locally on your device by default. Sync is end-to-end optional: use Google Firebase, your own WebDAV/Nextcloud server, or stay fully offline. We never sell or share your data.",
+    },
+    {
+      q: "What is the Workshop / Lounge?",
+      a: "A reading companion suite with three games: a Board & Card Score Tracker (competition mode, turn clocks, brackets), a Literary Crossword & Wordscape wheel, and a Word Search grid finder — all built to make reading breaks fun without leaving Kora.",
+    },
   ];
 
   const scrollToSection = (id: string) => {
@@ -221,41 +231,6 @@ export default function InstallView() {
               className="hover:text-kindle-text transition cursor-pointer py-1"
             >
               APK Download
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection("capabilities")}
-              className="hover:text-kindle-text transition cursor-pointer py-1"
-            >
-              Capabilities
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection("themes")}
-              className="hover:text-kindle-text transition cursor-pointer py-1 flex items-center gap-1 text-kindle-accent font-extrabold"
-            >
-              <Palette className="w-3.5 h-3.5" /> Reading Themes
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection("audio")}
-              className="hover:text-kindle-text transition cursor-pointer py-1 flex items-center gap-1"
-            >
-              <Volume2 className="w-3.5 h-3.5" /> Voice Reader
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection("workshop")}
-              className="hover:text-kindle-text transition cursor-pointer py-1 flex items-center gap-1 text-[#e0533c]"
-            >
-              <Gamepad2 className="w-3.5 h-3.5" /> Workshop
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection("pwa")}
-              className="hover:text-kindle-text transition cursor-pointer py-1"
-            >
-              PWA Web
             </button>
             <button
               type="button"
@@ -429,17 +404,14 @@ export default function InstallView() {
           <FeatureDemosGrid />
         </div>
 
-        {/* Section 2: Reading Themes & Daylight E-Ink Canvas */}
+        {/* Section 2: Reading Themes & Typography */}
         <div id="themes" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
           <div className="text-center max-w-2xl mx-auto space-y-3">
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] font-bold uppercase tracking-widest">
-              <Palette className="w-3.5 h-3.5" /> Daylight & E-Ink Aesthetics
-            </div>
             <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
-              Custom Paper Tints & Typographic Pairings
+              Practical Reading Themes & Typography
             </h2>
             <p className="text-xs text-kindle-text-muted leading-relaxed">
-              Switch between 5 handcrafted reading themes including Sepia Warmth, E-Ink Paper, Midnight Obsidian, and Solarized Amber. Adjust line height, margins, and font families for optimal focus.
+              Switch between handcrafted reading themes and tune line height, margins, and font families for comfortable, distraction-free focus.
             </p>
           </div>
           <ThemeShowcase />
@@ -723,38 +695,79 @@ export default function InstallView() {
           </div>
         </div>
 
-        {/* Section 5: Progressive Web App (PWA) Guide */}
+        {/* Section: Install & Run — own host / APK / iOS / WebApp */}
         <div id="pwa" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
           <div className="text-center max-w-xl mx-auto space-y-2">
             <h2 className="text-2xl font-serif font-bold text-kindle-text">
-              Progressive Web App (PWA) Mode
+              Install & Run Kora
             </h2>
             <p className="text-xs text-kindle-text-muted leading-relaxed">
-              Install Kora on iOS, Windows, macOS, or ChromeOS directly from your browser.
+              Four ways to run Kora — pick what fits your device. Everything is free, open source, and works fully offline.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Web App (PWA) */}
             <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Chrome / Edge / Android Web</span>
-              <h3 className="text-sm font-bold text-kindle-text">Desktop & Android Web Setup</h3>
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-kindle-accent" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Web / PWA</span>
+              </div>
+              <h3 className="text-sm font-bold text-kindle-text">Use it in any browser</h3>
               <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Chrome or Edge.</li>
-                <li>Click the installation icon in your address bar or tap the three dots menu.</li>
-                <li>Select <span className="font-bold text-kindle-text">'Install Kora Reader'</span> or 'Add to Home Screen'.</li>
-                <li>Launch directly from your desktop or app launcher with full offline storage.</li>
+                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Chrome, Edge, Safari, or Firefox.</li>
+                <li>Install it: tap the address-bar install icon (or the ⋮ menu → "Install") on desktop, or Share → "Add to Home Screen" on mobile.</li>
+                <li>Launch from your home screen / app launcher with full offline storage — no app store needed.</li>
               </ol>
+              <p className="text-[10px] text-kindle-text-muted">Best for: iPhone/iPad, macOS, Windows, ChromeOS, Linux. This is the recommended path for iOS since direct .ipa install requires a paid Apple Developer account.</p>
             </div>
 
+            {/* Android APK */}
             <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">iOS Safari (iPhone / iPad)</span>
-              <h3 className="text-sm font-bold text-kindle-text">Apple iOS Setup</h3>
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-kindle-accent" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Android APK</span>
+              </div>
+              <h3 className="text-sm font-bold text-kindle-text">Install the native Android app</h3>
               <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Safari.</li>
-                <li>Tap the <span className="font-bold text-kindle-text">Share button</span> (square with arrow) at the bottom toolbar.</li>
-                <li>Scroll down and tap <span className="font-bold text-kindle-text">'Add to Home Screen'</span>.</li>
-                <li>Tap 'Add' in the top right to create a standalone full-screen web app icon.</li>
+                <li>Download the signed <span className="font-bold text-kindle-text">Kora APK</span> from the release vault (button above).</li>
+                <li>If Android warns about unknown sources, tap <span className="font-bold text-kindle-text">Settings → Allow from this source</span>.</li>
+                <li>Open the downloaded file and tap <span className="font-bold text-kindle-text">Install</span>.</li>
+                <li>Launch from your home screen — unlocks background voice playback, notification controls, and offline P2P transfer.</li>
               </ol>
+              <p className="text-[10px] text-kindle-text-muted">Best for: Android phones/tablets. APKs are signed, scanned, and Play Protect compliant.</p>
+            </div>
+
+            {/* iOS */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-kindle-accent" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">iPhone / iPad</span>
+              </div>
+              <h3 className="text-sm font-bold text-kindle-text">iOS via Web App</h3>
+              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in <span className="font-bold text-kindle-text">Safari</span> (not Chrome).</li>
+                <li>Tap the <span className="font-bold text-kindle-text">Share</span> button (square with arrow) at the bottom toolbar.</li>
+                <li>Scroll down and tap <span className="font-bold text-kindle-text">"Add to Home Screen"</span>.</li>
+                <li>Tap <span className="font-bold text-kindle-text">Add</span> top-right — a standalone Kora icon appears on your home screen.</li>
+              </ol>
+              <p className="text-[10px] text-kindle-text-muted">Note: A native .ipa requires a paid Apple Developer account ($99/yr) for signing. The Web App gives the same experience without it.</p>
+            </div>
+
+            {/* Self-host */}
+            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <Server className="w-4 h-4 text-kindle-accent" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Run your own</span>
+              </div>
+              <h3 className="text-sm font-bold text-kindle-text">Self-host Kora</h3>
+              <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
+                <li><span className="font-bold text-kindle-text">Clone</span> the repo: <span className="font-mono text-kindle-text font-bold">github.com/CHAOTIC-RAY/Kora-</span>.</li>
+                <li><span className="font-bold text-kindle-text">Install & build</span>: <span className="font-mono text-kindle-text font-bold">npm install &amp;&amp; npm run build</span>.</li>
+                <li><span className="font-bold text-kindle-text">Deploy</span> the <span className="font-mono text-kindle-text font-bold">dist/</span> folder to Cloudflare Pages, Netlify, or any static host.</li>
+                <li>Point the worker at your host and add your Firebase config for sync (optional).</li>
+              </ol>
+              <p className="text-[10px] text-kindle-text-muted">Best for: developers who want full control, custom domains, or private deployments.</p>
             </div>
           </div>
         </div>
@@ -824,6 +837,79 @@ export default function InstallView() {
             })}
           </div>
         </div>
+      </section>
+
+      {/* Closing Notebook — smooth fill-the-screen reveal on last scroll */}
+      <section className="px-4 pb-8 pt-4">
+        <motion.div
+          initial={{ opacity: 0, y: 80, scale: 0.92 }}
+          whileInView={{ opacity: 1, y: 0, scale: 1 }}
+          viewport={{ once: false, amount: 0.25 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="relative mx-auto w-full min-h-screen flex flex-col justify-center rounded-[2.5rem] border-2 border-kindle-border bg-gradient-to-br from-kindle-card via-kindle-card to-kindle-bg shadow-2xl overflow-hidden px-6 sm:px-10 py-20 text-center space-y-8"
+        >
+          {/* notebook ruled page lines */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-[0.08]"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(180deg, transparent, transparent 2.2rem, currentColor 2.2rem, currentColor calc(2.2rem + 1px))",
+              color: "var(--theme-text)",
+            }}
+          />
+          {/* spiral binding edge */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-0 bottom-0 w-6 flex flex-col items-center justify-around py-8 opacity-40"
+          >
+            {Array.from({ length: 14 }).map((_, i) => (
+              <span key={i} className="w-3 h-3 rounded-full border-2 border-kindle-border bg-kindle-bg" />
+            ))}
+          </div>
+
+          <div className="relative flex flex-col items-center gap-4">
+            <div className="w-20 h-20 rounded-3xl bg-kindle-card border-2 border-kindle-border/80 flex items-center justify-center shadow-xl">
+              <KoraIcon className="w-10 h-10 text-kindle-text" />
+            </div>
+            <KoraWordmark className="h-8 text-kindle-text" />
+          </div>
+
+          <div className="relative space-y-3 max-w-lg mx-auto">
+            <p className="text-base font-bold uppercase tracking-[0.25em] text-kindle-accent">
+              A Chaos Studio Project
+            </p>
+            <p className="text-sm text-kindle-text-muted leading-relaxed">
+              Kora is built by <span className="font-bold text-kindle-text">Chaos Studio</span> — a free,
+              open, offline-first reading companion for books, news, and knowledge.
+              No ads. No trackers. Your library stays yours.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] text-kindle-text-muted">
+              <span>Universal E-Ink Reader</span><span className="text-kindle-border">•</span>
+              <span>Voice Narrator</span><span className="text-kindle-border">•</span>
+              <span>Workshop Suite</span><span className="text-kindle-border">•</span>
+              <span>Wikipedia Hub</span><span className="text-kindle-border">•</span>
+              <span>P2P Library Share</span>
+            </div>
+          </div>
+
+          <div className="relative flex items-center justify-center gap-3 pt-2">
+            <a
+              href="/"
+              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider hover:opacity-90 transition"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Reader
+            </a>
+            <a
+              href="https://github.com/CHAOTIC-RAY/Kora-"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl border border-kindle-border bg-kindle-card text-[11px] font-bold uppercase tracking-wider text-kindle-text hover:border-kindle-accent transition"
+            >
+              <Github className="w-3.5 h-3.5" /> Source
+            </a>
+          </div>
+        </motion.div>
       </section>
 
       {/* QR Code Scan Modal */}

@@ -372,15 +372,31 @@ function FeedView({
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
   const [addingFeed, setAddingFeed] = useState(false);
   const [readingArticle, setReadingArticle] = useState<FeedItem | null>(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const [feedLayout, setFeedLayout] = useState<FeedLayout>(() => {
     const v = localStorage.getItem("kora_feed_layout");
-    return v === "scroll" || v === "grid" ? v : "grid";
+    if (v === "scroll" || v === "grid") return v;
+    return isMobile ? "scroll" : "grid";
   });
+
   const persistFeedLayout = (next: FeedLayout) => {
     setFeedLayout(next);
     localStorage.setItem("kora_feed_layout", next);
   };
+
   const performanceMode = localStorage.getItem("kora_performance_mode") === "1";
+
+  // Desktop always uses the grid; mobile honors the persisted layout (default scroll).
+  const effectiveLayout: FeedLayout = isMobile ? feedLayout : "grid";
+
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
 
   const headerRef = useRef<HTMLElement>(null);
   const filterRef = useRef<HTMLDivElement>(null);
@@ -681,7 +697,8 @@ function FeedView({
           >
             <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
-          <div className="flex items-center gap-0.5 rounded-xl border border-kindle-border bg-kindle-card p-0.5 shrink-0">
+          {/* Layout toggle — mobile only (desktop stays in grid) */}
+          <div className="flex items-center gap-0.5 rounded-xl border border-kindle-border bg-kindle-card p-0.5 shrink-0 md:hidden">
             {(["grid", "scroll"] as FeedLayout[]).map((mode) => (
               <button
                 key={mode}
@@ -768,7 +785,7 @@ function FeedView({
             Add a feed source with Manage above, or share an article link to Kora from your browser.
           </p>
         </div>
-      ) : feedLayout === "scroll" ? (
+      ) : effectiveLayout === "scroll" ? (
         <FeedTikTokScroll
           items={visibleItems}
           grayscaleCovers={grayscaleCovers}
@@ -777,6 +794,8 @@ function FeedView({
           onSave={(item) => void handleSaveLater(item)}
           onExit={() => persistFeedLayout("grid")}
           onRefresh={() => void refreshFeeds()}
+          onManage={() => setShowManageFeeds(true)}
+          onFilter={() => setShowFilterSheet(true)}
           refreshing={refreshing}
           height={scrollContainerHeight}
         />
@@ -911,6 +930,76 @@ function FeedView({
                   Add Source
                 </button>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter & Sources sheet (opened from the scroll-view Filter button) */}
+      {showFilterSheet && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="w-full sm:max-w-lg bg-kindle-card border border-kindle-border rounded-t-2xl sm:rounded-2xl p-5 space-y-5 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-lexend font-bold text-kindle-text">Filter & Sources</h3>
+                <p className="text-[10px] text-kindle-text-muted mt-0.5">
+                  Narrow the feed by status or source.
+                </p>
+              </div>
+              <button onClick={() => setShowFilterSheet(false)} className="p-1.5 rounded-lg hover:bg-kindle-bg text-kindle-text">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: "all", label: "All" },
+                { id: "briefs", label: "Briefs" },
+                { id: "unread", label: "Unread" },
+                { id: "saved", label: "Saved" },
+              ].map((chip) => (
+                <button
+                  key={chip.id}
+                  onClick={() => { setFilter(chip.id as FeedFilter); setShowFilterSheet(false); }}
+                  className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider border transition ${
+                    filter === chip.id
+                      ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-sm"
+                      : "bg-kindle-bg text-kindle-text border-kindle-border hover:bg-kindle-card"
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">Sources</h4>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => { setSelectedSubscriptionId(null); setShowFilterSheet(false); }}
+                  className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition ${
+                    !selectedSubscriptionId
+                      ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-sm"
+                      : "bg-kindle-bg text-kindle-text border-kindle-border hover:bg-kindle-card"
+                  }`}
+                >
+                  All Sources
+                </button>
+                {enabledSubscriptions.map((sub) => (
+                  <button
+                    key={sub.id}
+                    onClick={() => { setSelectedSubscriptionId(sub.id); setShowFilterSheet(false); }}
+                    className={`shrink-0 px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition max-w-[12rem] truncate ${
+                      selectedSubscriptionId === sub.id
+                        ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-sm"
+                        : "bg-kindle-bg text-kindle-text border-kindle-border hover:bg-kindle-card"
+                    }`}
+                    title={sub.title}
+                  >
+                    {sub.title}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>

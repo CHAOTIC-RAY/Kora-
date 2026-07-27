@@ -121,8 +121,9 @@ jobs:
 
           KEYTOOL_OUT=$(keytool -list -v \
             -keystore "android/app/$STORE_FILE" \
+            -storetype PKCS12 \
             -alias "$KEY_ALIAS" \
-            -storepass "$STORE_PASS" 2>/dev/null)
+            -storepass "$STORE_PASS" 2>/dev/null) || KEYTOOL_OUT=""
 
           SHA1=$(echo "$KEYTOOL_OUT" | sed -n 's/.*SHA1: //p' | head -n1 | tr -d '[:space:]')
           SHA256=$(echo "$KEYTOOL_OUT" | sed -n 's/.*SHA256: //p' | head -n1 | tr -d '[:space:]')

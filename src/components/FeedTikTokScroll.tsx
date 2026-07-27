@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bookmark, ChevronDown, ChevronUp, Grid, Loader2, RefreshCw, Share2 } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2 } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { getItemThumbnail } from "../lib/feedPreview";
 import { resolveFeedArticle, prepareFeedArticleHtml } from "../lib/feedArticle";
@@ -13,6 +13,8 @@ interface FeedTikTokScrollProps {
   onSave: (item: FeedItem) => void;
   onExit?: () => void;
   onRefresh?: () => void;
+  onManage?: () => void;
+  onFilter?: () => void;
   refreshing?: boolean;
   height?: number | null;
 }
@@ -35,6 +37,8 @@ export default function FeedTikTokScroll({
   onSave,
   onExit,
   onRefresh,
+  onManage,
+  onFilter,
   refreshing,
   height,
 }: FeedTikTokScrollProps) {
@@ -141,35 +145,62 @@ export default function FeedTikTokScroll({
       style={wrapperStyle}
       className={
         isMobile
-          ? "fixed inset-0 h-[100dvh] w-full bg-neutral-950 z-[110] flex flex-col overflow-hidden"
+          ? "fixed inset-x-0 top-0 bottom-14 w-full bg-neutral-950 z-[110] flex flex-col overflow-hidden"
           : "relative w-full rounded-2xl overflow-hidden border border-kindle-border bg-kindle-card shadow-xs"
       }
     >
       {/* 1. Immersive Floating Header for Mobile */}
       {isMobile && (
-        <div className="absolute top-6 left-4 right-4 z-30 flex items-center justify-between pointer-events-none">
-          {onExit && (
-            <button
-              type="button"
-              onClick={onExit}
-              className="pointer-events-auto flex items-center gap-1.5 px-3 py-2 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-white active:scale-95 transition"
-            >
-              <Grid className="w-3.5 h-3.5" />
-              Grid View
-            </button>
-          )}
+        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            {onManage && (
+              <button
+                type="button"
+                onClick={onManage}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-white active:scale-95 transition"
+                title="Manage feeds"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Manage</span>
+              </button>
+            )}
+            {onFilter && (
+              <button
+                type="button"
+                onClick={onFilter}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-white active:scale-95 transition"
+                title="Filter & sources"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Filter</span>
+              </button>
+            )}
+          </div>
 
-          {onRefresh && (
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={refreshing}
-              className="pointer-events-auto p-2 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition disabled:opacity-50"
-              title="Refresh feeds"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
-            </button>
-          )}
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            {onExit && (
+              <button
+                type="button"
+                onClick={onExit}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-white active:scale-95 transition"
+              >
+                <Grid className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Grid</span>
+              </button>
+            )}
+
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshing}
+                className="p-2 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition disabled:opacity-50"
+                title="Refresh feeds"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -250,16 +281,18 @@ export default function FeedTikTokScroll({
                 />
               )}
               <div
-                className={`absolute inset-0 transition-all duration-300 ${
-                  isMobile ? "" : "rounded-2xl"
-                } ${
-                  isExpanded
-                    ? isDarkMode
-                      ? "bg-black/80"
-                      : "bg-gradient-to-t from-white via-white/95 to-white/45"
-                    : "bg-gradient-to-t from-black/95 via-black/40 to-transparent"
-                }`}
-              />
+                              className={`absolute inset-0 transition-all duration-300 ${
+                                isMobile ? "" : "rounded-2xl"
+                              } ${
+                                isExpanded
+                                  ? isDarkMode
+                                    ? "bg-black/80"
+                                    : "bg-gradient-to-t from-white via-white/95 to-white/45"
+                                  : isDarkMode
+                                    ? "bg-gradient-to-t from-black/95 via-black/40 to-transparent"
+                                    : "bg-gradient-to-t from-white/95 via-white/40 to-transparent"
+                              }`}
+                            />
 
               <div
                 className={`relative z-10 cursor-pointer select-text pb-10 md:pb-6 transition-all duration-300 ${

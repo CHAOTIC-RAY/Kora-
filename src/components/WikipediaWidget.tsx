@@ -321,14 +321,11 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
             <Globe className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-sm sm:text-base font-serif font-bold text-kindle-text flex items-center gap-2">
-              Wikipedia Research Hub
-              <span className="text-[9px] font-mono bg-kindle-bg px-2 py-0.5 rounded border border-kindle-border font-bold uppercase text-kindle-accent">
-                Wikimedia API
-              </span>
-            </h2>
-            <p className="text-[10px] text-kindle-text-muted">Explore, read, and save knowledge from the free encyclopedia</p>
-          </div>
+                      <h2 className="text-sm sm:text-base font-serif font-bold text-kindle-text">
+                        Wikipedia Research Hub
+                      </h2>
+                      <p className="text-[10px] text-kindle-text-muted">Explore, read, and save knowledge from the free encyclopedia</p>
+                    </div>
         </div>
 
         {/* Right Header Actions */}
