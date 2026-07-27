@@ -14,8 +14,33 @@ on:
         type: boolean
   push:
     branches: [main, beta]
+    # Only rebuild the APK when a change can actually affect it.
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - 'public/**'
+      - 'assets/**'
+      - 'index.html'
+      - 'capacitor.config.ts'
+      - 'vite.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'bun.lock'
+      - '.github/workflows/android-apk.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'android/**'
+      - 'src/**'
+      - 'public/**'
+      - 'assets/**'
+      - 'index.html'
+      - 'capacitor.config.ts'
+      - 'vite.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'bun.lock'
+      - '.github/workflows/android-apk.yml'
 
 concurrency:
   group: android-apk-${{ github.workflow }}-${{ github.ref }}

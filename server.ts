@@ -2684,10 +2684,22 @@ app.get("/api/download-options", async (req, res) => {
 });
 
 // 4. API: Send book via Email (Kindle integration)
-app.post("/api/send-email", async (req, res) => {
+app.post("/api/send-email", express.json({ limit: "1mb" }), async (req, res) => {
+  const clientIp = (req.ip || req.socket?.remoteAddress || "unknown") as string;
+  if (rateLimited(`send-email:${clientIp}`, 8, 60_000)) {
+    return res.status(429).json({ error: "Too many emails, slow down." });
+  }
+
   const { to, subject, attachmentUrl, attachmentName } = req.body;
   if (!to || !attachmentUrl) {
     return res.status(400).json({ error: "Missing required fields: to, attachmentUrl" });
+  }
+
+  // SSRF guard: the attachment is fetched server-side, so block internal hosts.
+  try {
+    assertSafeProxyUrl(attachmentUrl);
+  } catch (e: any) {
+    return res.status(403).json({ error: "Attachment URL blocked: " + (e.message || "invalid URL") });
   }
 
   try {
@@ -2882,6 +2894,11 @@ app.put("/api/webdav-proxy", handleWebDavProxy);
 
 // 3. API: Proxy Download to bypass CORS & SSL blocks
 app.get("/api/proxy-file", async (req, res) => {
+  const clientIp = (req.ip || req.socket?.remoteAddress || "unknown") as string;
+  if (rateLimited(`proxy-file:${clientIp}`, 60, 60_000)) {
+    return res.status(429).json({ error: "Too many requests, slow down." });
+  }
+
   const fileUrl = req.query.url as string;
   if (!fileUrl) {
     return res.status(400).json({ error: "Mirror file 'url' is required." });
