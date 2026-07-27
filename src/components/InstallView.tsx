@@ -322,61 +322,64 @@ export default function InstallView() {
           <KoraIcon className="w-10 h-10 text-kindle-text" />
         </motion.div>
 
-        <div className="space-y-5 max-w-4xl mx-auto">
+        <div className="space-y-5 max-w-3xl mx-auto">
           <motion.h1
             initial="hidden"
             animate="show"
             variants={{
               hidden: {},
-              show: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
+              show: { transition: { staggerChildren: 0.06, delayChildren: 0.15 } },
             }}
-            className="text-5xl sm:text-6xl md:text-7xl font-serif font-bold text-kindle-text leading-[1.04] tracking-tight max-w-4xl mx-auto"
+            className="text-4xl sm:text-5xl md:text-6xl font-serif font-bold text-kindle-text leading-[1.1] tracking-tight text-balance"
           >
-            {[
-              { t: "Your bookshelf,", em: false },
-              { t: "your narrator", em: true },
-              { amp: true },
-              { t: "your morning paper.", em: false },
-              { t: "Unified.", em: true },
-            ].map((line, i) =>
-              "amp" in line ? (
-                <span key={i} className="block overflow-hidden py-1">
-                  <motion.span
-                    variants={{
-                      hidden: { scale: 0, rotate: -45, opacity: 0 },
-                      show: {
-                        scale: 1,
-                        rotate: 0,
-                        opacity: 1,
-                        transition: { type: "spring", stiffness: 260, damping: 16, delay: 0.1 },
-                      },
-                    }}
-                    animate={{ scale: [1, 1.12, 1], rotate: [0, 3, 0] }}
-                    transition={{
-                      delay: 0.9,
-                      duration: 2.4,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                    }}
-                    className="inline-block bg-gradient-to-br from-kindle-accent via-kindle-accent to-[#c98f4e] bg-clip-text text-transparent text-6xl sm:text-7xl md:text-8xl leading-none drop-shadow-[0_2px_10px_rgba(180,120,60,0.25)]"
-                  >
-                    &amp;
-                  </motion.span>
-                </span>
-              ) : (
-                <span key={i} className="block overflow-hidden py-0.5">
-                  <motion.span
-                    variants={{
-                      hidden: { y: "120%", opacity: 0 },
-                      show: { y: "0%", opacity: 1, transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] } },
-                    }}
-                    className={`block ${line.em ? "text-kindle-accent" : ""}`}
-                  >
-                    {line.t}
-                  </motion.span>
-                </span>
-              )
-            )}
+            <span className="contents">
+              {[
+                { t: "Your bookshelf,", em: false },
+                { t: "your narrator", em: true },
+                { amp: true },
+                { t: "your morning paper.", em: false },
+                { t: "Unified.", em: true },
+              ].map((tok, i) =>
+                "amp" in tok ? (
+                  <span key={i} className="inline-block align-baseline overflow-hidden px-1">
+                    <motion.span
+                      variants={{
+                        hidden: { scale: 0, rotate: -45, opacity: 0 },
+                        show: {
+                          scale: 1,
+                          rotate: 0,
+                          opacity: 1,
+                          transition: { type: "spring", stiffness: 260, damping: 16, delay: 0.1 },
+                        },
+                      }}
+                      animate={{ scale: [1, 1.12, 1], rotate: [0, 3, 0] }}
+                      transition={{
+                        delay: 0.9,
+                        duration: 2.4,
+                        repeat: Infinity,
+                        ease: "easeInOut",
+                      }}
+                      className="inline-block bg-gradient-to-br from-kindle-accent via-kindle-accent to-[#c98f4e] bg-clip-text text-transparent text-5xl sm:text-6xl md:text-7xl leading-none drop-shadow-[0_2px_10px_rgba(180,120,60,0.25)]"
+                    >
+                      &amp;
+                    </motion.span>
+                  </span>
+                ) : (
+                  <span key={i} className="inline-block overflow-hidden">
+                    <motion.span
+                      variants={{
+                        hidden: { y: "120%", opacity: 0 },
+                        show: { y: "0%", opacity: 1, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
+                      }}
+                      className={`inline-block ${tok.em ? "text-kindle-accent" : ""}`}
+                    >
+                      {tok.t}
+                      {i < 4 ? " " : ""}
+                    </motion.span>
+                  </span>
+                )
+              )}
+            </span>
           </motion.h1>
 
           <motion.p
