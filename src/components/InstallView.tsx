@@ -334,12 +334,14 @@ export default function InstallView() {
           >
             <span className="contents">
               {[
-                { t: "Your library", em: false },
-                { amp: true },
-                { t: "your narrator", em: true },
+                { t: "Read.", em: false },
+                { sep: true },
+                { t: "Listen.", em: true },
+                { sep: true },
+                { t: "Discover.", em: false },
               ].map((tok, i) =>
-                "amp" in tok ? (
-                  <span key={i} className="inline-block align-baseline overflow-hidden px-1">
+                "sep" in tok ? (
+                  <span key={i} className="inline-block align-baseline overflow-hidden px-1.5">
                     <motion.span
                       variants={{
                         hidden: { scale: 0, rotate: -45, opacity: 0 },
@@ -372,7 +374,7 @@ export default function InstallView() {
                       className={`inline-block ${tok.em ? "text-kindle-accent" : ""}`}
                     >
                       {tok.t}
-                      {i < 2 ? " " : ""}
+                      {i < 4 ? " " : ""}
                     </motion.span>
                   </span>
                 )
