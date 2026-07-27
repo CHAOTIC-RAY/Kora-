@@ -194,6 +194,9 @@ export async function initCapacitorShell(): Promise<void> {
 
   try {
     const { StatusBar, Style } = await import("@capacitor/status-bar");
+    // Keep the WebView below the system status bar (don't draw behind it),
+    // so the notification/clock strip never overlaps app content.
+    await StatusBar.setOverlaysWebView({ overlay: false });
     await StatusBar.setStyle({ style: Style.Dark });
     await StatusBar.setBackgroundColor({ color: "#18181B" });
   } catch {

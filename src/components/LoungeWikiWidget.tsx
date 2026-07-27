@@ -51,7 +51,9 @@ export default function LoungeWikiWidget({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch a random Wikipedia article
+  // Fetch a random Wikipedia article.
+  // Use the action API with origin=* for CORS-safe cross-origin fetches
+  // (the rest_v1 endpoint fails inside the Android WebView/from file:// origins).
   const fetchRandom = async (selectedLang = "en") => {
     setLoading(true);
     if ('speechSynthesis' in window) {
@@ -60,16 +62,29 @@ export default function LoungeWikiWidget({
     }
 
     try {
-      const res = await fetch(
-        `https://${selectedLang}.wikipedia.org/api/rest_v1/page/random/summary`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setArticle(data);
-        onArticleLoaded?.(data);
-      } else {
-        throw new Error("API returned non-200");
-      }
+      const url =
+        `https://${selectedLang}.wikipedia.org/w/api.php` +
+        `?action=query&generator=random&grnnamespace=0&grnlimit=1` +
+        `&prop=extracts|pageprops&exintro=1&explaintext=1&exchars=1200` +
+        `&redirects=1&format=json&origin=*`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("API returned non-200");
+      const json = await res.json();
+      const pages = json?.query?.pages;
+      const page = pages ? Object.values(pages)[0] as
+        | { title?: string; extract?: string; description?: string; thumbnail?: { source?: string }; pageid?: number }
+        | undefined : undefined;
+      if (!page || !page.title) throw new Error("No article in response");
+      const article = {
+        title: page.title,
+        description: page.description || "",
+        extract: page.extract || "",
+        thumbnail: page.thumbnail?.source
+          ? { source: page.thumbnail.source, width: 0, height: 0 }
+          : undefined,
+      };
+      setArticle(article);
+      onArticleLoaded?.(article);
     } catch (err) {
       console.error("Failed to fetch random Wikipedia article", err);
     } finally {
