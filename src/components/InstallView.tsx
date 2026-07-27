@@ -44,7 +44,6 @@ import {
 import { fetchLatestApkDownloadUrl } from "../lib/apkUpdater";
 import { KoraIcon, KoraWordmark } from "./KoraLogo";
 import KoraWordmarkReveal from "./KoraWordmarkReveal";
-import InkText from "./InkText";
 import GameScoreTracker from "./GameScoreTracker";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
@@ -342,13 +341,31 @@ export default function InstallView() {
             </button>
           </motion.div>
 
-          <InkText
-            text="Your bookshelf, your narrator, and your morning paper. Unified."
-            className="w-full max-w-3xl mx-auto"
-            fontFamily='Lora, Georgia, ui-serif, serif'
-            fontWeight={800}
-            fillBatch={260}
-          />
+          <motion.h1
+            initial="hidden"
+            animate="show"
+            variants={{
+              hidden: {},
+              show: { transition: { staggerChildren: 0.05, delayChildren: 0.15 } },
+            }}
+            className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-kindle-text leading-[1.15] max-w-3xl mx-auto"
+          >
+            {["Your bookshelf, your narrator,", "and your morning paper.", "Unified."].map(
+              (line, i) => (
+                <span key={i} className="block overflow-hidden">
+                  <motion.span
+                    variants={{
+                      hidden: { y: "110%" },
+                      show: { y: "0%", transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
+                    }}
+                    className="block"
+                  >
+                    {line}
+                  </motion.span>
+                </span>
+              )
+            )}
+          </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 15 }}

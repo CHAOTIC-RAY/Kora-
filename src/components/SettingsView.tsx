@@ -7,7 +7,7 @@ import {
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
   FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Zap, Radio, Hammer, X,
-  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp
+  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE } from "../lib/readerThemes";
