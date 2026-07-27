@@ -138,14 +138,14 @@ export default function FeedTikTokScroll({
 
   // Layout styles
   const wrapperStyle = !isMobile && height ? { height: `${height}px` } : undefined;
-  const sectionStyle = !isMobile && height ? { height: `${height}px`, contentVisibility: "auto" as const } : { contentVisibility: "auto" as const };
+  const sectionStyle = !isMobile && height ? { height: `${height}px` } : undefined;
 
   return (
     <div
       style={wrapperStyle}
       className={
         isMobile
-          ? "fixed inset-x-0 top-0 bottom-14 w-full bg-neutral-950 z-[110] flex flex-col overflow-hidden"
+          ? "fixed inset-x-0 top-0 bottom-0 w-full bg-neutral-950 z-[45] flex flex-col overflow-hidden"
           : "relative w-full rounded-2xl overflow-hidden border border-kindle-border bg-kindle-card shadow-xs"
       }
     >
@@ -281,21 +281,19 @@ export default function FeedTikTokScroll({
                 />
               )}
               <div
-                              className={`absolute inset-0 transition-all duration-300 ${
-                                isMobile ? "" : "rounded-2xl"
-                              } ${
-                                isExpanded
-                                  ? isDarkMode
-                                    ? "bg-black/80"
-                                    : "bg-gradient-to-t from-white via-white/95 to-white/45"
-                                  : isDarkMode
-                                    ? "bg-gradient-to-t from-black/95 via-black/40 to-transparent"
-                                    : "bg-gradient-to-t from-white/95 via-white/40 to-transparent"
-                              }`}
-                            />
+                className={`absolute inset-0 transition-all duration-300 ${
+                  isMobile ? "" : "rounded-2xl"
+                } ${
+                  isExpanded
+                    ? isDarkMode
+                      ? "bg-black/80"
+                      : "bg-gradient-to-t from-white via-white/95 to-white/45"
+                    : "bg-gradient-to-t from-black/95 via-black/55 to-black/10"
+                }`}
+              />
 
               <div
-                className={`relative z-10 cursor-pointer select-text pb-10 md:pb-6 transition-all duration-300 ${
+                className={`relative z-10 cursor-pointer select-text pb-[7rem] md:pb-6 transition-all duration-300 ${
                   isExpanded && !isDarkMode ? "text-neutral-900" : "text-white"
                 }`}
                 onClick={() => setExpandedIndex(isExpanded ? null : index)}
