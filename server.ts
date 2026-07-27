@@ -141,6 +141,13 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     }
     const domain = parsedUrl.hostname;
 
+    // SSRF guard: block private/internal hosts (e.g. 169.254.169.254 metadata).
+    try {
+      assertSafeProxyUrl(targetUrl);
+    } catch (e: any) {
+      return res.status(403).json({ error: "Proxy blocked: " + (e.message || "invalid URL") });
+    }
+
     // Fetch the raw page content using standard fetch with timeout
     let rawHtml = "";
     const pageHeaders = {
@@ -2478,6 +2485,13 @@ app.get("/api/proxy-image", async (req, res) => {
       imageUrl = "https:" + imageUrl;
     }
 
+    // SSRF guard: block private/internal hosts and non-http(s) schemes.
+    try {
+      assertSafeProxyUrl(imageUrl);
+    } catch (e: any) {
+      return res.status(403).send("Image proxy blocked: " + (e.message || "invalid URL"));
+    }
+
     console.log(`[Proxy Image] Fetching image: ${imageUrl}`);
     const imgRes = await fetch(imageUrl, {
       headers: {
@@ -2708,24 +2722,107 @@ app.post("/api/send-email", async (req, res) => {
   }
 });
 
-// WebDAV proxy — lets the browser talk to a user's own WebDAV host without CORS issues.
-async function handleWebDavProxy(req: any, res: any) {
-  const method = String(req.query.method || req.body?.method || "GET").toUpperCase();
-  const targetUrl = String(req.query.url || req.body?.url || "");
-  const username = String(req.query.username || req.body?.username || "");
-  const password = String(req.query.password || req.body?.password || "");
+// ---------------------------------------------------------------------------
+// Shared SSRF / proxy-URL guard
+// Rejects URLs that could let a caller pivot to internal services or metadata
+// endpoints (SSRF). Used by every proxy route that fetches an arbitrary URL.
+// ---------------------------------------------------------------------------
+function isPrivateOrUnsafeHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  // Any IPv6 literal (contains a colon, no dots) is blocked by default — these
+  // proxy endpoints are hostname-based, so raw IPv6 is never expected/needed.
+  if (h.includes(":") && !h.includes(".")) return true;
+  const blocked = [
+    /^localhost$/,
+    /^127\./,
+    /^0\.0\.0\.0$/,
+    /^10\./,
+    /^172\.(1[6-9]|2\d|3[01])\./,
+    /^192\.168\./,
+    /^169\.254\./,            // link-local / cloud metadata (169.254.169.254)
+    /^::1$/,                  // IPv6 loopback
+    /^fc[0-9a-f]{2}:/i,       // IPv6 unique-local
+    /^fd[0-9a-f]{2}:/i,       // IPv6 unique-local
+    /^fe80:/i,                // IPv6 link-local
+    /^[0-9a-f:]+:.+:.*:/i,    // heuristic: raw IPv6 literal other than above
+  ];
+  if (blocked.some((re) => re.test(h))) return true;
+  return false;
+}
 
-  if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
-    return res.status(400).json({ error: "Valid https WebDAV url is required." });
+/** Throw if `url` is not a fetchable, non-internal https? URL. Returns the parsed URL. */
+function assertSafeProxyUrl(url: string, requireHttps = false): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("Invalid URL");
   }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Only http(s) URLs are allowed");
+  }
+  if (requireHttps && parsed.protocol !== "https:") {
+    throw new Error("HTTPS is required for this endpoint");
+  }
+  if (isPrivateOrUnsafeHost(parsed.hostname)) {
+    throw new Error("Access to private/internal IP ranges is prohibited");
+  }
+  return parsed;
+}
+
+// Minimal in-memory per-IP rate limiter (single-process server).
+const _rateBuckets = new Map<string, { count: number; resetAt: number }>();
+function rateLimited(key: string, max = 30, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const b = _rateBuckets.get(key);
+  if (!b || now > b.resetAt) {
+    _rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  b.count += 1;
+  return b.count > max;
+}
+
+// WebDAV proxy — lets the browser talk to a user's own WebDAV host without CORS issues.
+// SECURITY: credentials are only accepted via POST body (never query string, which
+// would land in access logs / browser history). Private/internal hosts are blocked
+// (SSRF). A basic per-IP rate limit protects the auth path.
+async function handleWebDavProxy(req: any, res: any) {
+  // Credentials must travel in the POST body, not the URL.
+  if (req.method !== "POST" && req.method !== "PUT") {
+    return res.status(405).json({ error: "WebDAV proxy requires POST or PUT method" });
+  }
+
+  const clientIp = (req.ip || req.socket?.remoteAddress || "unknown") as string;
+  if (rateLimited(`webdav:${clientIp}`, 30, 60_000)) {
+    return res.status(429).json({ error: "Too many requests, slow down." });
+  }
+
+  const method = String(req.body?.method || (req.method === "PUT" ? "PUT" : "GET")).toUpperCase();
+  let targetUrl = String(req.body?.url || "");
+  const username = String(req.body?.username || "");
+  const password = String(req.body?.password || "");
+
+  if (!targetUrl) {
+    return res.status(400).json({ error: "A WebDAV 'url' is required in the request body." });
+  }
+  if (!username || !password) {
+    return res.status(400).json({ error: "WebDAV credentials are required in the request body." });
+  }
+
+  let parsed: URL;
+  try {
+    parsed = assertSafeProxyUrl(targetUrl, true);
+  } catch (e: any) {
+    return res.status(403).json({ error: e.message || "Invalid WebDAV URL" });
+  }
+  targetUrl = parsed.href;
 
   try {
     const headers: Record<string, string> = {
       "User-Agent": "Kora-WebDAV/1.0",
     };
-    if (username || password) {
-      headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
-    }
+    headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 
     let body: Buffer | string | undefined;
     if (method === "PUT" && req.method === "PUT") {
@@ -2794,6 +2891,13 @@ app.get("/api/proxy-file", async (req, res) => {
     let targetUrl = fileUrl;
     const { normalizeMediaUrl, refererForMediaUrl } = await import("./src/lib/mediaUrl");
     targetUrl = normalizeMediaUrl(targetUrl);
+
+    // SSRF guard: block private/internal hosts and non-http(s) schemes.
+    try {
+      assertSafeProxyUrl(targetUrl);
+    } catch (e: any) {
+      return res.status(403).json({ error: "Proxy blocked: " + (e.message || "invalid URL") });
+    }
 
     const isAudioRequest =
       req.query.audio === "1" ||
