@@ -76,7 +76,7 @@ public class KoraStoragePlugin extends Plugin {
       call.reject("Folder pick cancelled");
       return;
     }
-    Uri treeUri = result.getData().getData();
+    Uri treeUri = result.getData();
     if (treeUri == null) {
       call.reject("No folder returned");
       return;
