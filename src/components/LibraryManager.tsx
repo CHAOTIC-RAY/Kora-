@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2 } from "lucide-react";
 import {
   WALKTHROUGH_BOOK_ID,
   hideWalkthroughBookFromLibrary,
@@ -19,6 +19,53 @@ import AudiobookCassetteCard from "./AudiobookCassetteCard";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
+
+/** Build the app's own shareable book link (deep link into the reader). */
+function buildBookShareLink(book: BookMetadata): string {
+  try {
+    const id = book.id || book.md5 || book.downloadId || "";
+    const q = encodeURIComponent(`${book.title} ${book.author || ""}`.trim());
+    return `app.kora.reader://book?id=${encodeURIComponent(id)}&q=${q}`;
+  } catch {
+    return "app.kora.reader://book";
+  }
+}
+
+/** Share a book using the device share sheet, falling back to copy-link. */
+async function shareBook(book: BookMetadata): Promise<void> {
+  const link = buildBookShareLink(book);
+  const text = `“${book.title}”${book.author ? ` by ${book.author}` : ""} — via Kora`;
+  try {
+    const { Share } = await import("@capacitor/share");
+    const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    const cover = book.coverUrl ? resolveCoverImageSrc(book.coverUrl) : null;
+    let files: string[] = [];
+    if (cover) {
+      try {
+        const res = await fetch(cover);
+        const blob = await res.blob();
+        const dataUrl = await new Promise<string>((resolve) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result as string);
+          r.readAsDataURL(blob);
+        });
+        const fileName = "kora-book-cover.png";
+        await Filesystem.writeFile({ path: fileName, data: dataUrl, directory: Directory.Cache });
+        const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+        files = [uri.uri];
+      } catch { /* cover optional */ }
+    }
+    await Share.share({ title: book.title, text: `${text}\n${link}`, files, dialogTitle: "Share book" });
+    return;
+  } catch {
+    // Web / no native share — copy link.
+    try {
+      await navigator.clipboard.writeText(link);
+      alert("Book link copied to clipboard");
+    } catch { /* ignore */ }
+  }
+}
+
 import { hydrateBookFile, canHydrateBook, loadSyncPrefs } from "../lib/crossDeviceSync";
 import FluidOverlay from "./FluidOverlay";
 import { useGuidesOptional } from "./GuideProvider";
@@ -1234,6 +1281,16 @@ function LibraryManager({
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          void shareBook(book);
+                        }}
+                        className="p-2 bg-kindle-card border border-kindle-border text-kindle-text rounded-full shadow-lg hover:bg-kindle-bg transition"
+                        title="Share book link"
+                      >
+                        <Share2 className="w-3 h-3" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setEditingMetadataBook(book);
                         }}
                         className="p-2 bg-kindle-card border border-kindle-border text-kindle-text rounded-full shadow-lg hover:bg-kindle-bg transition"
@@ -1798,6 +1855,18 @@ function LibraryManager({
                   >
                     <BookOpen className="w-4 h-4 text-kindle-text-muted" />
                     Open & Read Book
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const book = longPressedBook;
+                      setLongPressedBook(null);
+                      void shareBook(book);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                  >
+                    <Share2 className="w-4 h-4 text-kindle-text-muted" />
+                    Share Book Link
                   </button>
 
                   {!(isWalkthroughBook(longPressedBook) && !walkthroughAdvancedMenu) && (

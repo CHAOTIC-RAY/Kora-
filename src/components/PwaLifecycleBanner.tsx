@@ -63,9 +63,16 @@ export default function PwaLifecycleBanner() {
     let cancelled = false;
     let pollInterval = 0;
     let updateInterval = 0;
+    // Latest remote version seen this session — used to suppress false
+    // "update available" prompts when the installed app is already current.
+    let remoteRef: RemoteVersion | null = null;
 
     const markUpdate = (worker: ServiceWorker | null, reason: string) => {
       if (cancelled) return;
+      // Only surface a prompt when the deployed build is genuinely newer.
+      // Without this guard a stale waiting service worker (or an identical
+      // re-deploy) kept nagging users who were already on the latest version.
+      if (!isNewerBuild(remoteRef)) return;
       const snoozeUntil = Number(localStorage.getItem(UPDATE_DISMISS_KEY) || 0);
       if (Date.now() < snoozeUntil) return;
       setWaitingWorker(worker);
@@ -83,6 +90,7 @@ export default function PwaLifecycleBanner() {
 
     const checkRemoteVersion = async () => {
       const remote = await fetchRemoteVersion();
+      remoteRef = remote;
       if (cancelled || !isNewerBuild(remote)) return;
       markUpdate(
         (await navigator.serviceWorker.getRegistration())?.waiting || null,

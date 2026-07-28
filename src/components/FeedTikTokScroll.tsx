@@ -388,28 +388,26 @@ export default function FeedTikTokScroll({
     >
       {/* 1. Immersive Floating Header for Mobile */}
       {isMobile && (
-        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between gap-2 pointer-events-none">
+        <div className="absolute left-0 right-0 z-30 flex items-center justify-between gap-2 pointer-events-none pt-[max(env(safe-area-inset-top),0.75rem)] px-3">
           <div className="flex items-center gap-1.5 pointer-events-auto">
             {onManage && (
               <button
                 type="button"
                 onClick={onManage}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-white active:scale-95 transition"
+                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
                 title="Manage feeds"
               >
-                <Settings2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Manage</span>
+                <Settings2 className="w-4 h-4" />
               </button>
             )}
             {onFilter && (
               <button
                 type="button"
                 onClick={onFilter}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-white active:scale-95 transition"
+                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
                 title="Filter & sources"
               >
-                <Filter className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Filter</span>
+                <Filter className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -419,10 +417,10 @@ export default function FeedTikTokScroll({
               <button
                 type="button"
                 onClick={onExit}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-[10px] font-bold uppercase tracking-wider text-white active:scale-95 transition"
+                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
+                title="Close"
               >
-                <Grid className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Grid</span>
+                <Grid className="w-4 h-4" />
               </button>
             )}
 
@@ -431,16 +429,15 @@ export default function FeedTikTokScroll({
                 type="button"
                 onClick={onRefresh}
                 disabled={refreshing}
-                className="p-2 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition disabled:opacity-50"
+                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition disabled:opacity-50"
                 title="Refresh feeds"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+                <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
               </button>
             )}
           </div>
         </div>
       )}
-
       {/* 2. Top Progress Indicators - Extracted out of flow to prevent offset clipping */}
       <div className={`absolute left-4 right-4 z-20 flex gap-1 pointer-events-none ${isMobile ? "top-20" : "top-3"}`}>
         {items.map((_, i) => (
