@@ -574,7 +574,9 @@ html.kora-android body {
 }
 
 .kora-safe-top {
-  padding-top: var(--kora-safe-top);
+  /* Always leave at least 0.75rem so popup headers never sit flush against
+     the top edge on web/desktop; on Android the status-bar height wins. */
+  padding-top: max(var(--kora-safe-top), 0.75rem);
 }
 
 .kora-safe-bottom {

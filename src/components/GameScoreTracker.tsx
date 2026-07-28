@@ -29,7 +29,9 @@ import {
   X,
   PlusCircle,
   HelpCircle,
-  AlertTriangle
+  AlertTriangle,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -207,6 +209,9 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
   // Navigation Tabs inside Tracker
   const [activeTab, setActiveTab] = useState<"game" | "history" | "tournament">("game");
+
+  // View: popup (centered, less overwhelming) or fullscreen takeover
+  const [view, setView] = useState<"popup" | "fullscreen">("popup");
 
   // History Log
   const [matchHistory, setMatchHistory] = useState<MatchHistoryEntry[]>(() => {
@@ -574,7 +579,9 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const currentLeader = rankedPlayers[0];
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-0 sm:p-3 md:p-6 overflow-y-auto">
+    <div className={view === "fullscreen"
+      ? "fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center overflow-y-auto"
+      : "fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto"}>
       {/* Canvas Confetti Layer */}
       <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />
 
@@ -582,7 +589,9 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 10 }}
-        className="w-full h-full sm:h-auto max-w-5xl bg-kindle-bg border-0 sm:border sm:border-kindle-border rounded-none sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-screen sm:max-h-[92vh]"
+        className={view === "fullscreen"
+          ? "w-full h-full sm:h-auto bg-kindle-bg border-0 sm:border sm:border-kindle-border rounded-none sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-screen sm:max-h-[92vh]"
+          : "w-full max-w-5xl bg-kindle-bg border border-kindle-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]"}
       >
 
 
@@ -611,6 +620,14 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
           {/* Header Controls */}
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setView(view === "fullscreen" ? "popup" : "fullscreen")}
+              className="p-2 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text hover:border-kindle-accent transition cursor-pointer"
+              title={view === "fullscreen" ? "Shrink to popup" : "Expand to fullscreen"}
+            >
+              {view === "fullscreen" ? <Minimize2 className="w-4 h-4 text-kindle-accent" /> : <Maximize2 className="w-4 h-4 text-kindle-accent" />}
+            </button>
             <button
               type="button"
               onClick={() => setSoundEnabled(!soundEnabled)}
@@ -806,7 +823,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                       </p>
                     </div>
 
-                    {/* Category Scoring Toggle */}
+                    {/* Category Scoring Toggle (compact when off) */}
                     <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">
@@ -827,7 +844,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         </button>
                       </div>
 
-                      {enableCategories ? (
+                      {enableCategories && (
                         <div className="space-y-2">
                           <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
                             {categories.map((cat, idx) => (
@@ -868,10 +885,6 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                             </button>
                           </div>
                         </div>
-                      ) : (
-                        <p className="text-[9px] text-kindle-text-muted">
-                          Single round score input mode enabled.
-                        </p>
                       )}
                     </div>
                   </div>

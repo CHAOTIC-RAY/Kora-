@@ -55,6 +55,20 @@ const SHARED_POOL: ArsenalWord[] = [
   { word: "nuance", definition: "A subtle difference in meaning or expression.", example: "The translator captured every nuance.", isCustom: true, mastery: 0 },
   { word: "tedious", definition: "Too long, slow, or dull; tiresome.", example: "The lecture was tedious but necessary.", isCustom: true, mastery: 0 },
   { word: "profound", definition: "Very great or intense; showing deep insight.", example: "The book offered a profound reflection on time.", isCustom: true, mastery: 0 },
+  { word: "eloquent", definition: "Fluent and persuasive in speech or writing.", example: "Her eloquent plea moved the council.", isCustom: true, mastery: 0 },
+  { word: "tenuous", definition: "Very weak or slight; barely connected.", example: "The peace held by a tenuous thread.", isCustom: true, mastery: 0 },
+  { word: "pragmatic", definition: "Dealing with things sensibly and realistically.", example: "A pragmatic fix beat a perfect theory.", isCustom: true, mastery: 0 },
+  { word: "whimsical", definition: "Playfully quaint or fanciful.", example: "The garden had a whimsical, drifting charm.", isCustom: true, mastery: 0 },
+  { word: "scrupulous", definition: "Diligent, thorough, and attentive to detail.", example: "She kept scrupulous records of every coin.", isCustom: true, mastery: 0 },
+  { word: "gregarious", definition: "Fond of company; sociable.", example: "The gregarious host knew every guest.", isCustom: true, mastery: 0 },
+  { word: "meticulous", definition: "Very careful and precise about details.", example: "His meticulous notes saved the project.", isCustom: true, mastery: 0 },
+  { word: "ambiguous", definition: "Open to more than one interpretation; unclear.", example: "The ambiguous clause sparked a dispute.", isCustom: true, mastery: 0 },
+  { word: "verbose", definition: "Using more words than needed; long-winded.", example: "The verbose memo buried the key point.", isCustom: true, mastery: 0 },
+  { word: "serene", definition: "Calm, peaceful, and untroubled.", example: "The lake was serene at dawn.", isCustom: true, mastery: 0 },
+  { word: "diligent", definition: "Having or showing care and conscientiousness.", example: "A diligent student revises nightly.", isCustom: true, mastery: 0 },
+  { word: "poignant", definition: "Evoking a keen sense of sadness or regret.", example: "The finale was poignant yet hopeful.", isCustom: true, mastery: 0 },
+  { word: "urbane", definition: "Courteous and refined in manner.", example: "His urbane wit eased the room.", isCustom: true, mastery: 0 },
+  { word: "fallible", definition: "Capable of making mistakes; not infallible.", example: "Even experts are fallible.", isCustom: true, mastery: 0 },
 ];
 
 const KEY = "kora_arsenal_mastery";
