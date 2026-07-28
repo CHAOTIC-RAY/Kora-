@@ -209,16 +209,31 @@ class DiagnosticLogger {
     const content = logsText + downloadLogSection;
     const fileName = `kora-diagnostic-logs-${new Date().toISOString().slice(0, 10)}.txt`;
 
-    // Native (Capacitor Android/iOS): the blob-anchor trick silently fails in
-    // the WebView, so write the file to storage and surface it via the share
-    // sheet (which lets the user save / open it). Falls back to web download.
+    // 1) Native: if a Kora SAF folder is chosen, drop the file straight into it
+    //    so the user can find it in their system Files app.
     const isNative = typeof (window as any).Capacitor !== "undefined" &&
       (window as any).Capacitor.isNativePlatform?.();
 
     if (isNative) {
       try {
+        const { writeKoraText } = await import("./koraStorage");
+        const ok = await writeKoraText("data", fileName, content);
+        if (ok) {
+          // Surface via the share sheet too (best-effort) so the user sees it now.
+          try {
+            const { Share } = await import("@capacitor/share");
+            await Share.share({ title: "Kora Diagnostic Logs", text: content, dialogTitle: "Save Kora logs" });
+          } catch { /* share optional */ }
+          return;
+        }
+      } catch {
+        // fall through to Filesystem path
+      }
+
+      // 2) Native fallback: write to app Documents and open the share sheet with
+      //    the actual file (not just text), which Android can save/open reliably.
+      try {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
-        const { Share } = await import("@capacitor/share");
         await Filesystem.writeFile({
           path: fileName,
           data: content,
@@ -226,9 +241,15 @@ class DiagnosticLogger {
           recursive: true,
         });
         try {
-          await Share.share({ title: "Kora Diagnostic Logs", text: content, dialogTitle: "Save Kora logs" });
+          const { Share } = await import("@capacitor/share");
+          await Share.share({
+            title: "Kora Diagnostic Logs",
+            text: "Kora diagnostic logs",
+            files: [`${fileName}`],
+            dialogTitle: "Save Kora logs",
+          });
         } catch {
-          // Share cancelled — file is already in Downloads, that's fine.
+          // Share cancelled — file is already written, that's fine.
         }
         return;
       } catch (err) {
@@ -236,6 +257,7 @@ class DiagnosticLogger {
       }
     }
 
+    // 3) Web fallback.
     const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

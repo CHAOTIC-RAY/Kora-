@@ -76,12 +76,21 @@ export async function hasKoraFolder(): Promise<boolean> {
 
 /**
  * Prompt the user to pick the Kora folder (SAF tree picker). Resolves true if
- * a folder was selected, false if cancelled.
+ * a folder was selected, false if cancelled. On a successful pick we soft-reload
+ * the WebView so the new tree URI is picked up cleanly — this turns Android's
+ * usual "app gets killed by the SAF picker and relaunches looking crashed"
+ * behaviour into a deliberate, graceful restart.
  */
 export async function pickKoraFolder(): Promise<boolean> {
   if (unavailable()) return false;
   try {
-    await plugin()!.pickFolder();
+    const r = await plugin()!.pickFolder();
+    try {
+      if (typeof window !== "undefined" && r && !r.partial) {
+        sessionStorage.setItem("kora_saf_picked_reload", "1");
+        window.location.reload();
+      }
+    } catch { /* ignore reload failure */ }
     return true;
   } catch (err) {
     console.warn("[Kora/Storage] pickFolder cancelled/failed", err);

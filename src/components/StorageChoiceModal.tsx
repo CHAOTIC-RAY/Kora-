@@ -42,7 +42,7 @@ export default function StorageChoiceModal({ onChoose }: StorageChoiceModalProps
               </div>
               <div>
                 <div className="flex items-center gap-1.5 text-sm font-bold text-kindle-text">
-                  New way — Device folder <Zap className="w-3.5 h-3.5 text-kindle-accent" />
+                  Device Folder <Zap className="w-3.5 h-3.5 text-kindle-accent" />
                 </div>
                 <p className="text-[11px] text-kindle-text-muted mt-1 leading-relaxed">
                   Pick a real folder on your device/storage. Files show up in your system Files app and survive reinstalls.
@@ -61,7 +61,7 @@ export default function StorageChoiceModal({ onChoose }: StorageChoiceModalProps
                 <ShieldCheck className="w-5 h-5 text-kindle-accent" />
               </div>
               <div>
-                <div className="text-sm font-bold text-kindle-text">Old way — App storage</div>
+                <div className="text-sm font-bold text-kindle-text">App Storage</div>
                 <p className="text-[11px] text-kindle-text-muted mt-1 leading-relaxed">
                   Let Kora manage its own storage. No system picker, fewer permissions — the most stable option if the folder picker crashes.
                 </p>
@@ -71,7 +71,7 @@ export default function StorageChoiceModal({ onChoose }: StorageChoiceModalProps
         </div>
 
         <div className="px-6 py-4 border-t border-kindle-border text-[10px] text-kindle-text-muted">
-          Tip: if the device-folder picker ever misbehaves on your device, switch to App storage in Settings.
+          Tip: if the device-folder picker ever misbehaves on your device, switch to App Storage in Settings.
         </div>
       </motion.div>
     </div>

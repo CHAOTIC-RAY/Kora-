@@ -274,8 +274,9 @@ export default function FeedArticleReader({
         filter: prefs.brightness < 100 ? `brightness(${prefs.brightness}%)` : undefined,
       }}
     >
+      {/* Side action rail (right edge) — keeps controls clear of the status bar */}
       <div
-        className={`absolute z-20 left-0 right-0 top-0 flex items-start justify-between gap-2 px-[max(0.75rem,var(--kora-safe-left))] pt-[max(0.75rem,calc(var(--kora-safe-top)+0.25rem))] pr-[max(0.75rem,var(--kora-safe-right))] pointer-events-none transition-opacity duration-200 ${
+        className={`absolute z-20 right-[max(0.5rem,var(--kora-safe-right))] top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 transition-opacity duration-200 ${
           chromeVisible || showSettings ? "opacity-100" : "opacity-0"
         }`}
       >
@@ -287,35 +288,33 @@ export default function FeedArticleReader({
         >
           <ChevronLeft className="w-5 h-5" />
         </button>
-        <div className="pointer-events-auto flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setShowSettings((v) => !v)}
-            className={`p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md`}
-            aria-label="News reader settings"
-            aria-pressed={showSettings}
-          >
-            <Settings2 className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving || !activeEntry?.ready || !!activeEntry?.error}
-            className={`p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md disabled:opacity-50`}
-            aria-label="Save to library"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />}
-          </button>
-          <a
-            href={activeLink}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md`}
-            aria-label="Open original"
-          >
-            <ExternalLink className="w-4 h-4" />
-          </a>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowSettings((v) => !v)}
+          className={`pointer-events-auto p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md`}
+          aria-label="News reader settings"
+          aria-pressed={showSettings}
+        >
+          <Settings2 className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saving || !activeEntry?.ready || !!activeEntry?.error}
+          className={`pointer-events-auto p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md disabled:opacity-50`}
+          aria-label="Save to library"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bookmark className="w-4 h-4" />}
+        </button>
+        <a
+          href={activeLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`pointer-events-auto p-2.5 rounded-full ${theme.header} border ${theme.border} shadow-lg backdrop-blur-md`}
+          aria-label="Open original"
+        >
+          <ExternalLink className="w-4 h-4" />
+        </a>
       </div>
 
       <div

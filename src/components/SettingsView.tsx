@@ -909,6 +909,34 @@ function SettingsView({
         Map a localized system folder using native web-standard file APIs to automatically discover, index, and cache digital publications on your device.
       </p>
 
+      {/* Storage Mode: Device Folder (SAF) vs App Storage (virtual) */}
+      <div className="border border-kindle-border rounded-2xl p-4 space-y-3 bg-kindle-card">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">Storage Mode</h5>
+            <p className="text-[9px] text-kindle-text-muted">Device Folder saves to a real folder; App Storage is fully managed by Kora.</p>
+          </div>
+          <Toggle
+            on={!useVirtualDir}
+            onClick={() => handleToggleVirtualDir()}
+          />
+        </div>
+        {!useVirtualDir && (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const { pickKoraFolder } = await import("../lib/koraStorage");
+                await pickKoraFolder();
+              } catch { /* ignore */ }
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-kindle-accent" /> Choose Device Folder
+          </button>
+        )}
+      </div>
+
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>

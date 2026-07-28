@@ -667,7 +667,7 @@ function FeedView({
 
   return (
     <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
-      <header ref={headerRef} className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3 kora-safe-top">
+      <header ref={headerRef} className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3 kora-safe-top pt-[max(0.5rem,calc(var(--kora-safe-top)+0.25rem))]">
         <div className="flex items-center justify-between w-full sm:w-auto">
           <div className="flex items-center gap-2 min-w-0">
             <h1 className="text-2xl sm:text-3xl font-lexend font-bold tracking-tight text-kindle-text truncate">Feed</h1>
