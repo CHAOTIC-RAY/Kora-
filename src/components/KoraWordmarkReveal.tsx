@@ -13,6 +13,17 @@ const VIEW_W = 287.6;
 const VIEW_H = 112.78;
 const FILL_THRESHOLD = 14000;
 
+// Returns true for colors too dark to read against the (dark) theme background,
+// so callers can fall back to a near-white ink instead of a near-black one.
+function isColorTooDark(color: string): boolean {
+  const m = color.match(/(\d+\.?\d*)/g);
+  if (!m || m.length < 3) return false; // unparseable → assume fine
+  const [r, g, b] = m.slice(0, 3).map(Number);
+  // Relative luminance (sRGB approximation)
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return lum < 0.35;
+}
+
 /**
  * Realistic-ink "kora" wordmark, ported 1:1 from the reference HTML:
  * a canvas sized to its own box hand-draws the glyph outline, then fills it
@@ -74,11 +85,15 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
           outlinePoints.push({ x: pt.x * scale + offsetX, y: pt.y * scale + offsetY });
         }
       });
-
+      // Ink color follows the theme's text color so the wordmark is visible on
+      // both light and dark backgrounds. If the resolved color is too dark (e.g.
+      // dark theme), fall back to a near-white so it never disappears.
+      const themeColor = getComputedStyle(wrap).color || "#0a1221";
+      const ink = isColorTooDark(themeColor) ? "#f3f1ea" : themeColor;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      ctx.strokeStyle = "#0a1221";
-      ctx.fillStyle = "#0a1221";
+      ctx.strokeStyle = ink;
+      ctx.fillStyle = ink;
 
       const STATE_OUTLINE = 0,
         STATE_ZOOM = 1,

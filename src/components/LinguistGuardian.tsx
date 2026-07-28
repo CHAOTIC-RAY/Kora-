@@ -113,8 +113,8 @@ function buildQuestion(m: Mode, pool: ArsenalWord[], rnd: () => number): Q {
   const others = shuffle(usable.filter((w) => w.word !== target.word), rnd).slice(0, 2);
   const mood =
     target.word === "somber"
-      ? "The mood is somber but hopeful — which word fits the nuance?"
-      : `A passage calls for a ${target.word} tone. Which Arsenal word lands the nuance?`;
+      ? "The mood is heavy and downbeat but not without hope — which Arsenal word fits the nuance?"
+      : `Two fighters trade blows; the passage needs a word for the ${target.definition.includes("power") || target.definition.includes("authority") ? "governing force" : "prevailing tone"}. Which Arsenal word lands it?`;
   return { prompt: `SAGE — ${mood}`, answer: target.word, options: shuffle([...others.map((w) => w.word), target.word], rnd), type: "choice" };
 }
 function buildQueue(m: Mode, pool: ArsenalWord[], seed: number, count = 80): Q[] {
@@ -264,6 +264,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
   const flashTimer = useRef<number | undefined>(undefined);
   const cpuTimer = useRef<number | undefined>(undefined);
   const unsubRef = useRef<(() => void) | null>(null);
+  const bossLevelRef = useRef(1); // boss gets HARDER as it wins, easier after it misses
 
   const logMsg = (m: string) => setLog((l) => [`> ${m}`, ...l].slice(0, 40));
   const doFlash = (idx: number, kind: "hit" | "strike") => {
@@ -303,6 +304,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
     setQuestion(q[0]);
     setLog([]);
     setTyped("");
+    bossLevelRef.current = 1;
     setPhase("play");
     const names = cfg.fighters.map((f) => f.name).join(" vs ");
     logMsg(`Battle begun · ${MODES.find((x) => x.id === cfg.m)?.label} · ${names}`);
@@ -405,15 +407,23 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
     saveMastery(mastery);
   };
 
-  // CPU auto-play
+  // CPU auto-play — boss accuracy scales with its level so it's beatable:
+  // higher level = more likely to miss; occasional jitter keeps it from feeling
+  // robotic. Level rises when it answers right, drops after a miss.
   useEffect(() => {
     window.clearTimeout(cpuTimer.current);
     if (phase !== "play" || matchType === "online") return;
     if (active && active.kind === "cpu" && active.alive) {
       cpuTimer.current = window.setTimeout(() => {
         const q = queueRef.current[qIndex % queueRef.current.length];
-        const acc = 0.72;
+        const lvl = bossLevelRef.current;
+        // base 0.90 at level 1, -0.05 per level, clamped to a floor of 0.45,
+        // plus a little per-turn jitter so it isn't a perfect machine.
+        let acc = 0.9 - (lvl - 1) * 0.05 + (Math.random() - 0.5) * 0.12;
+        acc = Math.max(0.45, Math.min(0.92, acc));
         const correct = Math.random() < acc;
+        if (correct) bossLevelRef.current = Math.min(12, lvl + 1);
+        else bossLevelRef.current = Math.max(1, lvl - 2);
         const guess = correct ? q.answer : q.options.find((o) => o !== q.answer) || q.answer;
         resolveOffline(guess);
       }, 950);
