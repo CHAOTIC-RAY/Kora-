@@ -65,8 +65,9 @@ public class KoraStoragePlugin extends Plugin {
     Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
     intent.addFlags(
         Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-    // Hint the initial name where supported.
-    intent.putExtra(DocumentsContract.EXTRA_SHOW_ADVANCED, true);
+    // Hint the advanced view where supported (hidden/undocumented extra; use
+    // the literal string since EXTRA_SHOW_ADVANCED isn't in the public SDK).
+    intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
     try {
       startActivityForResult(call, intent, "pickFolderResult");
     } catch (Exception e) {
