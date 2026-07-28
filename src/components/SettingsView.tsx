@@ -6,7 +6,7 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Zap, Radio, Hammer, X,
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
   Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords
 } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -2734,10 +2734,6 @@ function SettingsView({
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">Version</span>
               <span className="font-mono font-bold">{isAndroidApk ? apkLabel : "Kora 1.2.0"}</span>
-            </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-kindle-text-muted">Powered by</span>
-              <span className="font-bold flex items-center gap-1 text-kindle-text"><Zap className="w-3 h-3 text-kindle-text-muted" /> Rave Engine</span>
             </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">GitHub</span>

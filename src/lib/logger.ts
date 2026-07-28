@@ -230,22 +230,23 @@ class DiagnosticLogger {
         // fall through to Filesystem path
       }
 
-      // 2) Native fallback: write to app Documents and open the share sheet with
-      //    the actual file (not just text), which Android can save/open reliably.
+      // 2) Native fallback: write the file to app Documents and open the share
+      //    sheet with the actual file (not just text). Write flat to the
+      //    Documents root — Capacitor's writeFile rejects `recursive:true`
+      //    together with `directory`, so we drop both and use an absolute path.
       try {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
         await Filesystem.writeFile({
           path: fileName,
           data: content,
           directory: Directory.Documents,
-          recursive: true,
         });
         try {
           const { Share } = await import("@capacitor/share");
           await Share.share({
             title: "Kora Diagnostic Logs",
             text: "Kora diagnostic logs",
-            files: [`${fileName}`],
+            files: [`file://${fileName}`],
             dialogTitle: "Save Kora logs",
           });
         } catch {

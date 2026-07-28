@@ -301,6 +301,40 @@ export default function App() {
     });
   }, [scrollActiveTabToTop]);
 
+  // Android hardware back / gesture:
+  //  - from any non-home tab → go to home (Lounge if enabled, else Library)
+  //  - on home → first press shows "press back again to exit"; second press
+  //    within 2s exits the app. No on-screen button, pure gesture/back-button.
+  const backExitArmed = useRef(false);
+  const backExitTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    const HOME: AppTab = loungeEnabled ? "lounge" : "library";
+    const onBack = () => {
+      if (activeTab !== HOME) {
+        switchTab(HOME);
+        return;
+      }
+      if (backExitArmed.current) {
+        if (backExitTimer.current) window.clearTimeout(backExitTimer.current);
+        backExitArmed.current = false;
+        try {
+          import("@capacitor/app").then(({ App }) => App.exitApp()).catch(() => {});
+        } catch { /* ignore */ }
+        return;
+      }
+      backExitArmed.current = true;
+      toast("Press back again to exit", { id: "kora-exit-hint", duration: 2000 });
+      if (backExitTimer.current) window.clearTimeout(backExitTimer.current);
+      backExitTimer.current = window.setTimeout(() => {
+        backExitArmed.current = false;
+        toast.dismiss("kora-exit-hint");
+      }, 2000);
+    };
+    window.addEventListener("kora-android-back", onBack);
+    return () => window.removeEventListener("kora-android-back", onBack);
+  }, [activeTab, loungeEnabled, switchTab]);
+
   // Belts-and-suspenders: any activeTab change lands at the top.
   useEffect(() => {
     requestAnimationFrame(() => {

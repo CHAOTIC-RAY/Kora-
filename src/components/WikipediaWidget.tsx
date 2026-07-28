@@ -136,10 +136,28 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
   const fetchRandomArticle = async () => {
     setIsLoadingFeatured(true);
     try {
-      const res = await fetch(`https://${lang}.wikipedia.org/api/rest_v1/page/random/summary`);
+      // Use the action API with origin=* — the rest_v1 endpoints fail inside the
+      // Android WebView (file:// / capacitor:// origins), this one is CORS-safe.
+      const url =
+        `https://${lang}.wikipedia.org/w/api.php` +
+        `?action=query&generator=random&grnnamespace=0&grnlimit=1` +
+        `&prop=extracts|pageimages|pageprops&exintro=1&explaintext=1&exchars=1200` +
+        `&piprop=thumbnail&pithumbsize=600&redirects=1&format=json&origin=*`;
+      const res = await fetch(url);
       if (res.ok) {
-        const data = await res.json();
-        setFeaturedArticle(data);
+        const json = await res.json();
+        const pages = json?.query?.pages;
+        const page = pages ? Object.values(pages)[0] as any : undefined;
+        if (page?.title) {
+          setFeaturedArticle({
+            pageid: page.pageid,
+            title: page.title,
+            extract: page.extract || "",
+            description: page.description || "",
+            thumbnail: page.thumbnail ? { source: page.thumbnail.source, width: page.thumbnail.width || 0, height: page.thumbnail.height || 0 } : undefined,
+            lang,
+          });
+        }
       }
     } catch (err) {
       console.error("Failed to fetch random Wikipedia article", err);
@@ -180,13 +198,27 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
     setIsLoadingArticle(true);
     setArticleContentHtml(null);
     try {
-      // 1. Fetch Summary
-      const summaryUrl = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+      // 1. Fetch Summary via action API (rest_v1 fails in the Android WebView).
+      const summaryUrl =
+        `https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts|pageprops` +
+        `&exintro=1&explaintext=1&exchars=1200&redirects=1&format=json&origin=*` +
+        `&titles=${encodeURIComponent(title)}`;
       const sumRes = await fetch(summaryUrl);
       let summaryData: WikiArticleSummary | null = null;
       if (sumRes.ok) {
-        summaryData = await sumRes.json();
-        setActiveArticle(summaryData);
+        const sumJson = await sumRes.json();
+        const sp = sumJson?.query?.pages ? Object.values(sumJson.query.pages)[0] as any : undefined;
+        if (sp?.title) {
+          summaryData = {
+            pageid: sp.pageid,
+            title: sp.title,
+            extract: sp.extract || "",
+            description: sp.description || "",
+            thumbnail: sp.thumbnail ? { source: sp.thumbnail.source, width: sp.thumbnail.width || 0, height: sp.thumbnail.height || 0 } : undefined,
+            lang,
+          };
+          setActiveArticle(summaryData);
+        }
       }
 
       // 2. Fetch Article HTML / Parsed sections

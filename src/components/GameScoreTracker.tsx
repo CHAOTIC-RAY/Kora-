@@ -210,8 +210,11 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   // Navigation Tabs inside Tracker
   const [activeTab, setActiveTab] = useState<"game" | "history" | "tournament">("game");
 
-  // View: popup (centered, less overwhelming) or fullscreen takeover
-  const [view, setView] = useState<"popup" | "fullscreen">("popup");
+  // View: popup (centered, less overwhelming) or fullscreen takeover.
+  // On mobile the tracker always takes the full screen (no room to float a popup).
+  const [view, setView] = useState<"popup" | "fullscreen">(
+    typeof window !== "undefined" && window.innerWidth < 768 ? "fullscreen" : "popup"
+  );
 
   // History Log
   const [matchHistory, setMatchHistory] = useState<MatchHistoryEntry[]>(() => {

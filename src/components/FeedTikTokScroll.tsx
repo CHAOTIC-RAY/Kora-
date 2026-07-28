@@ -293,48 +293,48 @@ export default function FeedTikTokScroll({
       const cover = getItemThumbnail(item);
       const dataUrl = await buildKoraShareImage(item, cover);
       const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], "kora-news.png", { type: "image/png" });
+      const fileName = "kora-news.png";
       const deepLink = buildKoraDeepLink(item);
+      const shareText = `${item.title}\n\nRead it in the Kora app: ${deepLink}`;
 
-      // Prefer sharing the image + deep link via the native share sheet.
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      // 1) Native share sheet with the image card + link (Capacitor — reliable on APK).
+      try {
+        const { Share } = await import("@capacitor/share");
+        const { Filesystem, Directory } = await import("@capacitor/filesystem");
+        await Filesystem.writeFile({ path: fileName, data: dataUrl, directory: Directory.Cache });
+        const fileUri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+        await Share.share({
+          title: item.title,
+          text: shareText,
+          files: [fileUri.uri],
+          dialogTitle: "Share article",
+        });
+        return;
+      } catch (nativeErr) {
+        console.warn("[Kora/Share] native share failed, trying web", nativeErr);
+      }
+
+      // 2) Web fallback: native share API if available, then copy link.
+      if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: "image/png" })] })) {
         try {
-          await navigator.share({
-            files: [file],
-            title: item.title,
-            text: `${item.title}\n\nRead it in the Kora app: ${deepLink}`,
-          });
+          await navigator.share({ files: [new File([blob], fileName, { type: "image/png" })], title: item.title, text: shareText });
           return;
-        } catch {
-          // user cancelled — fall through to generic share
-        }
+        } catch { /* user cancelled */ }
       }
       if (navigator.share) {
         try {
-          await navigator.share({
-            title: item.title,
-            text: `${item.title}\n\nRead it in the Kora app: ${deepLink}`,
-            url: deepLink,
-          });
+          await navigator.share({ title: item.title, text: shareText, url: deepLink });
           return;
-        } catch {
-          // user cancelled or failed, fallback
-        }
+        } catch { /* user cancelled */ }
       }
-      // No share API: download the image, copy the article link.
-      try {
-        const a = document.createElement("a");
-        a.href = dataUrl;
-        a.download = "kora-news.png";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        await navigator.clipboard.writeText(item.link);
-        toast.success("Share card saved & link copied");
-        return;
-      } catch { /* ignore */ }
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       await navigator.clipboard.writeText(item.link);
-      toast.success("Article link copied to clipboard");
+      toast.success("Share card saved & link copied");
     } catch {
       // Image generation failed — simple link fallback.
       try {
@@ -466,8 +466,8 @@ export default function FeedTikTokScroll({
             go(-1);
           }
         }}
-        className={`w-full h-full overflow-y-auto overscroll-contain scrollbar-none ${
-          perfMode ? "" : "snap-y snap-mandatory"
+        className={`w-full h-full overflow-y-auto overscroll-contain scrollbar-none touch-pan-y ${
+          perfMode ? "" : "snap-y snap-mandatory [scroll-snap-stop:always]"
         }`}
       >
         {items.map((item, index) => {
