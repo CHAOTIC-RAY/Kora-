@@ -123,6 +123,83 @@ app.get("/api/feed/image", async (req, res) => {
 });
 
 // Web Clipper / URL-to-eBook Conversion Endpoint (Non-AI using Cheerio + JSDOM)
+type CheerioStatic = ReturnType<typeof cheerio.load>;
+
+/**
+ * When a per-site extractor matches (preset/local news sources), we stash the
+ * cleaned article HTML here so PHASE 3 can use it directly instead of relying
+ * on a #kora-extrated DOM node surviving the boilerplate-removal pass.
+ */
+let perSiteBody: string | null = null;
+
+/**
+ * Per-site article extraction. Each preset/local news source has a known DOM
+ * shape; instead of relying only on generic Readability scoring (which misses
+ * paywalled / JS-rendered / oddly-structured pages), we isolate the article
+ * body into a single #kora-extracted container here. The generic pipeline
+ * below still runs and prefers #kora-extracted when present, so unrecognised
+ * sites keep working via the fallback scorer.
+ */
+function applyPerSiteExtraction($: CheerioStatic, domain: string): void {
+  perSiteBody = null;
+  const host = domain.replace(/^www\./, "").toLowerCase();
+  const pick = (...sels: string[]) => {
+    for (const s of sels) {
+      const el = $(s).first();
+      if (el.length) return el;
+    }
+    return $();
+  };
+  // Stash the article HTML (headline + body) for a matched source.
+  const capture = (bodySel: string[], headlineSel: string[] = []) => {
+    const body = pick(...bodySel);
+    if (body.length && body.text().trim().length > 80) {
+      let html = "";
+      const h = pick(...headlineSel).clone();
+      if (h.length) html += h.prop("outerHTML") || "";
+      html += body.clone().prop("outerHTML") || "";
+      perSiteBody = html;
+    }
+  };
+
+  // ── Edition.mv (Maldives local preset) ────────────────────────
+  if (host.includes("edition.mv")) {
+    capture(
+      ["#article-body", ".article-body", ".article__body", ".post-content", ".entry-content", "article .content"],
+      [".article-headline", ".article__headline", "h1"]
+    );
+  }
+
+  // ── Mihaaru.com (Maldives local preset) ─────────────────────
+  else if (host.includes("mihaaru.com")) {
+    capture(
+      [".article-content", ".article-body", ".post-content", ".entry-content", "#content article", "article .content"],
+      [".article-title", "h1"]
+    );
+  }
+
+  // ── PSMNews.mv / Dhivehi local preset ───────────────────────
+  else if (host.includes("psmnews.mv")) {
+    capture(
+      [".entry-content", ".post-content", ".article-body", "#content", "article .content"],
+      [".entry-title", "h1"]
+    );
+  }
+
+  // ── Wikipedia (Research Hub reader) ───────────────────────────
+  else if (host.includes("wikipedia.org") || host.includes("wikimedia")) {
+    capture(["#mw-content-text", ".mw-parser-output"], ["#firstHeading", "h1"]);
+  }
+
+  // ── Generic Maldives/regional news fallback ──────────────────
+  else {
+    capture(
+      ["article", ".article-body", ".post-content", ".entry-content", ".story-body", ".news-body", ".content-body", '[itemprop="articleBody"]', ".td-post-content"],
+      ["h1", ".entry-title", ".article-title"]
+    );
+  }
+}
+
 app.post("/api/convert-url", express.json(), async (req, res) => {
   const targetUrl = req.body.url || req.query.url as string;
   if (!targetUrl) {
@@ -203,6 +280,14 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
 
     // Parse with Cheerio to extract content
     const $ = cheerio.load(rawHtml);
+
+    // Per-site extraction: isolate the article body into #kora-extracted for
+    // known preset/local sources (Edition.mv, Mihaaru, PSMNews, Wikipedia).
+    try {
+      applyPerSiteExtraction($, domain);
+    } catch (err) {
+      console.warn("[Web Clipper] per-site extraction skipped:", (err as Error)?.stack || err);
+    }
 
     // ===================================================================
     // PHASE 1: Extract metadata BEFORE removing elements
@@ -413,10 +498,17 @@ app.post("/api/convert-url", express.json(), async (req, res) => {
     
     // Sort by score, pick the best candidate
     candidates.sort((a, b) => b.score - a.score);
-    
-    let contentElement = candidates.length > 0 ? $(candidates[0].element) : $("body");
-    
-    // Log for debugging
+
+    // Prefer the per-site extracted body when a preset/local source matched
+    // (precise article HTML captured in applyPerSiteExtraction).
+    const contentElement =
+      perSiteBody !== null
+        ? $(perSiteBody)
+        : candidates.length > 0
+          ? $(candidates[0].element)
+          : $("body");
+
+    // Log best candidate for debugging (only when scorer was used)
     if (candidates.length > 0) {
       const best = candidates[0];
       const bestClass = (best.element as any).attribs?.class || "";

@@ -315,7 +315,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
 
 
       {/* Top Header Bar */}
-      <div className="bg-kindle-card px-6 py-4 border-b border-kindle-border flex items-center justify-between gap-4 select-none shrink-0">
+      <div className="bg-kindle-card px-6 py-4 border-b border-kindle-border flex items-center justify-between gap-4 select-none shrink-0 kora-safe-top">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-amber-500/10 border border-amber-500/20 text-amber-600 rounded-xl">
             <Globe className="w-5 h-5" />

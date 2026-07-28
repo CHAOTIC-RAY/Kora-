@@ -661,7 +661,7 @@ export default function LinguistGuardian({ open, onClose, onOpenScores }: { open
         aria-modal="true"
         aria-label="Linguist Guardian"
       >
-        <header className="flex items-center justify-between px-4 py-2.5 border-b-2 border-[#3a3527] bg-[#1d1a13]">
+        <header className="flex items-center justify-between px-4 py-2.5 border-b-2 border-[#3a3527] bg-[#1d1a13] kora-safe-top">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-[#d4a574]/15 border border-[#d4a574]/25">
               <Swords className="w-4 h-4 text-[#d4a574]" />

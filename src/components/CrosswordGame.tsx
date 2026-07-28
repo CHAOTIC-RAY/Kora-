@@ -595,7 +595,7 @@ export default function CrosswordGame({ open, onClose, variant = "fullscreen", o
             }}
           />
 
-          <header className="relative z-10 flex flex-col border-b border-white/10 bg-black/40">
+          <header className="relative z-10 flex flex-col border-b border-white/10 bg-black/40 kora-safe-top">
 
 
             <div className="flex items-center justify-between gap-3 px-4 py-3">
