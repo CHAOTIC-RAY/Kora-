@@ -46,6 +46,7 @@
     "@cloudflare/workers-types": "^5.20260708.1",
     "@fingerprintjs/fingerprintjs": "^5.2.0",
     "@google/genai": "^2.10.0",
+    "@mozilla/readability": "^0.6.0",
     "@tailwindcss/vite": "^4.1.14",
     "@types/nodemailer": "^8.0.1",
     "@vitejs/plugin-react": "^5.0.4",

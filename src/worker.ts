@@ -1,5 +1,7 @@
 import puppeteer from "@cloudflare/puppeteer";
 import * as cheerio from "cheerio";
+import { Readability } from "@mozilla/readability";
+import { parseHTML } from "linkedom";
 import {
   POPULAR_AUDIOBOOKS,
   mapPopularAudiobooks,
@@ -465,6 +467,61 @@ async function fetchPageHtmlWithProxies(targetUrl: string, expectedMarker?: stri
   }
 
   throw new Error(`Failed to fetch page: ${targetUrl}`);
+}
+
+/**
+ * Self-hosted, no-AI, no-key fallback extraction. Two layers:
+ *  1) JSON-LD <script type="application/ld+json"> with an articleBody — many
+ *     news sites embed the FULL article text here, zero DOM parsing needed.
+ *  2) Mozilla Readability (the Firefox Reader View algorithm) over a linkedom
+ *     document — a pure rule-based heuristic, free, runs entirely in our Worker.
+ * Returns cleaned article HTML (paragraphs) or "".
+ */
+function extractJsonLdArticleBody(html: string): string {
+  try {
+    const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html))) {
+      const raw = m[1].trim();
+      if (!raw.includes("articleBody")) continue;
+      const data = JSON.parse(raw);
+      const nodes = Array.isArray(data) ? data : [data];
+      for (const node of nodes) {
+        const graph = node["@graph"];
+        const candidates = graph && Array.isArray(graph) ? graph : [node];
+        for (const c of candidates) {
+          const body =
+            c?.articleBody ||
+            c?.["@graph"]?.[0]?.articleBody ||
+            (typeof c?.article === "string" ? c.article : null);
+          if (body && typeof body === "string" && body.trim().length > 200) {
+            return body
+              .split(/\n{2,}/)
+              .map((b) => b.trim())
+              .filter(Boolean)
+              .map((b) => `<p>${b.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+              .join("\n");
+          }
+        }
+      }
+    }
+  } catch {
+    /* ignore malformed JSON-LD */
+  }
+  return "";
+}
+
+function extractReadability(html: string, url: string): string {
+  try {
+    const { document } = parseHTML(html);
+    const article = new Readability(document as any).parse();
+    if (article?.content && article.content.replace(/<[^>]*>/g, "").trim().length > 200) {
+      return article.content;
+    }
+  } catch {
+    /* ignore Readability failures */
+  }
+  return "";
 }
 
 async function fetchGoodreadsHtml(listQuery: string): Promise<string> {
@@ -2436,27 +2493,34 @@ export default {
           }
         }
 
-        // Try 2b: Jina AI reader — returns the FULL article as clean extracted
-        // text/markdown even for JS-rendered or bot-protected pages. This is the
-        // most reliable path to complete article bodies, so we also accept it
-        // when the proxy returned a thin/blocked page.
-        let jinaText = "";
+        // Try 2b: self-hosted full-text extraction (no AI, no API key, no
+        // per-user rate limit — runs entirely in our Worker).
+        //   1) JSON-LD articleBody (most Maldives/news sites embed full text here)
+        //   2) Mozilla Readability over a linkedom parse (rule-based heuristic)
+        let fallbackHtml = "";
         if (!rawHtml || rawHtml.trim().length < 600) {
+          // only bother when the Cheerio pipeline would otherwise get little
+        }
+        if (rawHtml && rawHtml.length >= 100) {
           try {
-            console.warn(`[Web Clipper] Trying Jina AI reader for full article.`);
-            const jinaRes = await fetch(`https://r.jina.ai/${fetchTargets[0]}`, {
-              headers: { "User-Agent": "KoraReader/1.0", "Accept": "text/plain" },
-              signal: AbortSignal.timeout(15000),
-            });
-            if (jinaRes.ok) {
-              const txt = await jinaRes.text();
-              if (txt && txt.trim().length > 200) {
-                jinaText = txt.trim();
-                console.log(`[Web Clipper] Jina returned ${jinaText.length} chars.`);
-              }
+            const jsonLd = extractJsonLdArticleBody(rawHtml);
+            if (jsonLd) {
+              fallbackHtml = jsonLd;
+              console.log(`[Web Clipper] JSON-LD articleBody extracted (${jsonLd.length} chars).`);
             }
-          } catch (jinaErr) {
-            console.warn(`[Web Clipper] Jina failed:`, jinaErr);
+          } catch (e) {
+            console.warn(`[Web Clipper] JSON-LD extract failed:`, e);
+          }
+          if (!fallbackHtml) {
+            try {
+              const rd = extractReadability(rawHtml, fetchTargets[0]);
+              if (rd) {
+                fallbackHtml = rd;
+                console.log(`[Web Clipper] Readability extracted (${rd.length} chars).`);
+              }
+            } catch (e) {
+              console.warn(`[Web Clipper] Readability failed:`, e);
+            }
           }
         }
 
@@ -2894,17 +2958,11 @@ export default {
           cleanedHtml = extractCleanContent($("body"));
         }
 
-        // Jina fallback: if the Cheerio pipeline produced a thin body but Jina
-        // returned the full article text, prefer Jina (it reads JS-rendered +
-        // bot-protected pages that the raw HTML fetch missed).
-        if (jinaText && jinaText.length > cleanedHtml.replace(/<[^>]*>/g, "").trim().length + 200) {
-          console.log(`[Web Clipper] Using Jina full-text (${jinaText.length} chars) over thin merge.`);
-          cleanedHtml = jinaText
-            .split(/\n{2,}/)
-            .map((block) => block.trim())
-            .filter((block) => block.length > 0)
-            .map((block) => `<p>${block.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
-            .join("\n");
+        // Self-hosted fallback: if the Cheerio pipeline produced a thin body but
+        // our own JSON-LD/Readability extraction got the full article, prefer it.
+        if (fallbackHtml && fallbackHtml.replace(/<[^>]*>/g, "").trim().length > cleanedHtml.replace(/<[^>]*>/g, "").trim().length + 200) {
+          console.log(`[Web Clipper] Using self-hosted full-text (${fallbackHtml.length} chars) over thin merge.`);
+          cleanedHtml = fallbackHtml;
         }
 
         // Final cleanup: remove duplicate whitespace and empty tags
