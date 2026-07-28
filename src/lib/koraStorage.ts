@@ -10,9 +10,39 @@ export type KoraSubfolder = "audiobooks" | "books" | "news" | "data";
 
 interface KoraStoragePlugin {
   hasFolder(): Promise<{ hasFolder: boolean }>;
-  pickFolder(): Promise<{ uri: string }>;
+  pickFolder(): Promise<{ uri: string; partial?: boolean }>;
   listSubfolders(): Promise<{ folders: string[] }>;
   writeText(opts: { subfolder: KoraSubfolder; fileName: string; text: string }): Promise<{ ok: boolean }>;
+  setStorageMode(opts: { mode: "saf" | "virtual" }): Promise<{ mode: string }>;
+  getStorageMode(): Promise<{ mode: string }>;
+}
+
+export type KoraStorageMode = "saf" | "virtual";
+
+/** The persisted storage mode (new SAF folder vs old virtual directory). */
+export async function getKoraStorageMode(): Promise<KoraStorageMode> {
+  if (unavailable()) return "virtual";
+  try {
+    const r = await plugin()!.getStorageMode();
+    return r.mode === "virtual" ? "virtual" : "saf";
+  } catch {
+    return "saf";
+  }
+}
+
+/** Persist the chosen storage mode. Selecting "virtual" clears the SAF folder. */
+export async function setKoraStorageMode(mode: KoraStorageMode): Promise<void> {
+  if (unavailable()) {
+    // Web / non-native: mirror the flag the rest of the app reads.
+    localStorage.setItem("kora_use_virtual_dir", String(mode === "virtual"));
+    return;
+  }
+  try {
+    await plugin()!.setStorageMode({ mode });
+    localStorage.setItem("kora_use_virtual_dir", String(mode === "virtual"));
+  } catch (err) {
+    console.warn("[Kora/Storage] setStorageMode failed", err);
+  }
 }
 
 function plugin(): KoraStoragePlugin | null {

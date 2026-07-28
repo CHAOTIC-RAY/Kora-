@@ -110,24 +110,27 @@ export async function requestKoraNativePermissions(): Promise<void> {
   } catch {
     /* ignore */
   }
+}
 
-  // Storage: ask the user to pick the Kora folder (SAF) so we can write to
-  // Kora/{audiobooks,books,news,data} on their device storage.
+/**
+ * Provision Kora storage according to the user's chosen mode:
+ *  - "virtual" (old way): nothing to pick; the app uses its internal virtual
+ *    directory. No SAF picker, so no SAF-related crash surface.
+ *  - "saf" (new way): open the folder picker only if no folder is stored yet.
+ * Callers (App.tsx) must resolve the first-run choice before calling this.
+ */
+export async function provisionKoraStorage(): Promise<void> {
+  if (!isNativeAndroid()) return;
   try {
-    const { hasKoraFolder, pickKoraFolder } = await import("./koraStorage");
-    if (!(await hasKoraFolder())) {
+    const { getKoraStorageMode, hasKoraFolder, pickKoraFolder, requestBatteryExemption } =
+      await import("./koraStorage");
+    const mode = await getKoraStorageMode();
+    if (mode !== "virtual" && !(await hasKoraFolder())) {
       await pickKoraFolder();
     }
-  } catch (err) {
-    console.warn("[Kora/Capacitor] storage folder pick", err);
-  }
-
-  // Battery optimization exemption (optional, keeps background news sync alive).
-  try {
-    const { requestBatteryExemption } = await import("./koraStorage");
     await requestBatteryExemption();
   } catch (err) {
-    console.warn("[Kora/Capacitor] battery exemption", err);
+    console.warn("[Kora/Capacitor] storage provisioning", err);
   }
 }
 

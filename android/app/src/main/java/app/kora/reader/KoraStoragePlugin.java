@@ -66,41 +66,60 @@ public class KoraStoragePlugin extends Plugin {
     intent.addFlags(
         Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
     // Hint the initial name where supported.
-    intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
-    startActivityForResult(call, intent, "pickFolderResult");
+    intent.putExtra(DocumentsContract.EXTRA_SHOW_ADVANCED, true);
+    try {
+      startActivityForResult(call, intent, "pickFolderResult");
+    } catch (Exception e) {
+      call.reject("Unable to open folder picker: " + e.getMessage(), e);
+    }
   }
 
   @ActivityCallback
   private void pickFolderResult(PluginCall call, android.content.Intent result) {
-    if (result == null || result.getData() == null) {
-      call.reject("Folder pick cancelled");
-      return;
+    try {
+      if (result == null || result.getData() == null) {
+        call.reject("Folder pick cancelled");
+        return;
+      }
+      Uri treeUri = result.getData();
+      if (treeUri == null) {
+        call.reject("No folder returned");
+        return;
+      }
+      // Persist first so a later write can still retry even if sub-folder
+      // creation below fails on this provider.
+      persistTreeUri(treeUri);
+      ensureSubfolders(treeUri);
+      JSObject ret = new JSObject();
+      ret.put("uri", treeUri.toString());
+      call.resolve(ret);
+    } catch (Exception e) {
+      // Never let an unchecked SAF failure crash the WebView.
+      JSObject ret = new JSObject();
+      ret.put("uri", getPersistedTreeUri() != null ? getPersistedTreeUri().toString() : "");
+      ret.put("partial", true);
+      call.resolve(ret);
     }
-    Uri treeUri = result.getData();
-    if (treeUri == null) {
-      call.reject("No folder returned");
-      return;
-    }
-    persistTreeUri(treeUri);
-    ensureSubfolders(treeUri);
-    JSObject ret = new JSObject();
-    ret.put("uri", treeUri.toString());
-    call.resolve(ret);
   }
 
   /** Ensure the four sub-folders exist; returns their document URIs. */
   @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
   private void ensureSubfolders(Uri treeUri) {
-    android.content.ContentResolver cr = getContext().getContentResolver();
-    Uri treeRoot = DocumentsContract.buildDocumentUriUsingTree(
-        treeUri, DocumentsContract.getTreeDocumentId(treeUri));
-    for (String name : SUBFOLDERS) {
-      try {
-        DocumentsContract.createDocument(
-            cr, treeRoot, DocumentsContract.Document.MIME_TYPE_DIR, name);
-      } catch (Exception ignored) {
-        // Already exists or not creatable — ignore.
+    try {
+      android.content.ContentResolver cr = getContext().getContentResolver();
+      Uri treeRoot = DocumentsContract.buildDocumentUriUsingTree(
+          treeUri, DocumentsContract.getTreeDocumentId(treeUri));
+      for (String name : SUBFOLDERS) {
+        try {
+          DocumentsContract.createDocument(
+              cr, treeRoot, DocumentsContract.Document.MIME_TYPE_DIR, name);
+        } catch (Exception ignored) {
+          // Already exists or not creatable — ignore.
+        }
       }
+    } catch (Exception ignored) {
+      // Provider rejected the tree document id (e.g. some USB/SD roots).
+      // The tree URI is still persisted; writes will create folders lazily.
     }
   }
 
@@ -230,6 +249,59 @@ public class KoraStoragePlugin extends Plugin {
       }
     } catch (Exception e) {
       call.reject("Unable to open battery settings: " + e.getMessage(), e);
+    }
+  }
+
+  private static final String KEY_STORAGE_MODE = "storage_mode";
+
+  /**
+   * Persist the user's chosen storage mode. mode is "saf" (new SAF folder) or
+   * "virtual" (old internal storage). Selecting "virtual" clears any persisted
+   * SAF tree URI so the app falls back to its virtual directory.
+   */
+  @PluginMethod
+  public void setStorageMode(PluginCall call) {
+    String mode = call.getString("mode", "saf");
+    if (!"saf".equals(mode) && !"virtual".equals(mode)) {
+      mode = "saf";
+    }
+    try {
+      SharedPreferences prefs = getContext().getSharedPreferences(PREFS, 0);
+      prefs.edit().putString(KEY_STORAGE_MODE, mode).apply();
+      if ("virtual".equals(mode)) {
+        // Drop the SAF tree so writes go to the virtual directory.
+        String old = prefs.getString(KEY_TREE_URI, null);
+        if (old != null) {
+          try {
+            Uri oldUri = Uri.parse(old);
+            getContext().getContentResolver()
+                .releasePersistableUriPermission(oldUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+          } catch (Exception ignored) {
+          }
+          prefs.edit().remove(KEY_TREE_URI).apply();
+        }
+      }
+      JSObject ret = new JSObject();
+      ret.put("mode", mode);
+      call.resolve(ret);
+    } catch (Exception e) {
+      call.reject("Failed to set storage mode: " + e.getMessage(), e);
+    }
+  }
+
+  /** Read the previously chosen storage mode (defaults to "saf"). */
+  @PluginMethod
+  public void getStorageMode(PluginCall call) {
+    try {
+      SharedPreferences prefs = getContext().getSharedPreferences(PREFS, 0);
+      String mode = prefs.getString(KEY_STORAGE_MODE, "saf");
+      JSObject ret = new JSObject();
+      ret.put("mode", mode);
+      call.resolve(ret);
+    } catch (Exception e) {
+      call.reject("Failed to read storage mode: " + e.getMessage(), e);
     }
   }
 }

@@ -107,6 +107,9 @@ import {
   syncAndroidHomeWidgets,
 } from "./lib/androidWidgets";
 import { isNativeAndroid } from "./lib/capacitorNative";
+import { provisionKoraStorage } from "./lib/capacitorNative";
+import { setKoraStorageMode, KoraStorageMode } from "./lib/koraStorage";
+import StorageChoiceModal from "./components/StorageChoiceModal";
 
 const BASE_MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
@@ -232,6 +235,31 @@ export default function App() {
   const [mountedTabs, setMountedTabs] = useState<Set<AppTab>>(
     () => new Set<AppTab>([isLoungeEnabled() ? "lounge" : "library"])
   );
+
+  // First-run storage choice (APK only): ask new SAF folder vs old app storage.
+  const [storageChoiceOpen, setStorageChoiceOpen] = useState<boolean>(false);
+  useEffect(() => {
+    if (!isNativeAndroid()) return;
+    // Only prompt once per install: a stored mode means the user already chose.
+    const chosen = (() => {
+      try {
+        return !!localStorage.getItem("kora_storage_mode_chosen");
+      } catch {
+        return false;
+      }
+    })();
+    if (!chosen) setStorageChoiceOpen(true);
+  }, []);
+
+  const handleStorageChoice = async (mode: KoraStorageMode) => {
+    try {
+      localStorage.setItem("kora_storage_mode_chosen", "true");
+      await setKoraStorageMode(mode);
+    } finally {
+      setStorageChoiceOpen(false);
+      void provisionKoraStorage();
+    }
+  };
 
   const scrollActiveTabToTop = useCallback(() => {
     try {
@@ -2401,6 +2429,10 @@ export default function App() {
       data-skin={appSkin}
       className="min-h-screen min-h-[100dvh] flex flex-col font-sans selection:bg-kindle-accent/20 selection:text-kindle-text transition-colors duration-300"
     >
+      {storageChoiceOpen && (
+        <StorageChoiceModal onChoose={handleStorageChoice} />
+      )}
+
       {/* 1. Global Navigation Header - Kora Style */}
       <header className="kora-app-header border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">

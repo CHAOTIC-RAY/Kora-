@@ -577,6 +577,11 @@ function SettingsView({
     const newValue = !useVirtualDir;
     setUseVirtualDir(newValue);
     localStorage.setItem("kora_use_virtual_dir", String(newValue));
+    // Keep the native plugin + first-run flag in sync.
+    localStorage.setItem("kora_storage_mode_chosen", "true");
+    import("../lib/koraStorage").then(({ setKoraStorageMode }) =>
+      setKoraStorageMode(newValue ? "virtual" : "saf").catch(() => {})
+    );
   };
 
   const handleUpdateVirtualPath = (path: string) => {
