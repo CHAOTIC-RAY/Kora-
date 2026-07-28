@@ -111,13 +111,23 @@ export async function requestKoraNativePermissions(): Promise<void> {
     /* ignore */
   }
 
-  // Microphone for future voice features / Web Speech (narrator is TTS-out, but keep access ready)
+  // Storage: ask the user to pick the Kora folder (SAF) so we can write to
+  // Kora/{audiobooks,books,news,data} on their device storage.
   try {
-    if (navigator.mediaDevices?.getUserMedia) {
-      // Soft-probe: don't actually open mic on launch — only ensure permission entry exists via Settings
+    const { hasKoraFolder, pickKoraFolder } = await import("./koraStorage");
+    if (!(await hasKoraFolder())) {
+      await pickKoraFolder();
     }
-  } catch {
-    /* ignore */
+  } catch (err) {
+    console.warn("[Kora/Capacitor] storage folder pick", err);
+  }
+
+  // Battery optimization exemption (optional, keeps background news sync alive).
+  try {
+    const { requestBatteryExemption } = await import("./koraStorage");
+    await requestBatteryExemption();
+  } catch (err) {
+    console.warn("[Kora/Capacitor] battery exemption", err);
   }
 }
 
@@ -249,13 +259,20 @@ export async function initCapacitorShell(): Promise<void> {
 
   try {
     const { App } = await import("@capacitor/app");
-    App.addListener("backButton", ({ canGoBack }) => {
-      if (canGoBack) {
-        window.history.back();
-      } else {
-        // Let Android gesture nav / existing back-layer stack handle exit
-        window.dispatchEvent(new CustomEvent("kora-android-back"));
-      }
+    const { popTopAndroidBackLayer, getAndroidBackStackDepth } = await import("./androidGestures");
+    App.addListener("backButton", () => {
+      // Drive the in-app back stack first (closes the top modal/sheet).
+      if (popTopAndroidBackLayer()) return;
+      // Nothing stacked: ask the app shell whether it can go back (e.g. switch
+      // tab / close reader). If not, exit the app gracefully.
+      const evt = new CustomEvent("kora-android-back");
+      window.dispatchEvent(evt);
+      // As a final fallback, let Android handle exit if nothing consumed it.
+      window.setTimeout(() => {
+        if (getAndroidBackStackDepth() === 0) {
+          try { App.exitApp(); } catch { /* ignore */ }
+        }
+      }, 0);
     });
   } catch {
     /* ignore */

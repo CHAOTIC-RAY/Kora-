@@ -72,6 +72,22 @@ export function dismissAndroidBackLayer(id: string): void {
   removeAndroidBackLayer(id, { navigateBack: true });
 }
 
+/**
+ * Pop and run the top-most back layer (e.g. close the active modal/sheet).
+ * Returns true if a layer was dismissed, false if the stack is empty.
+ */
+export function popTopAndroidBackLayer(): boolean {
+  const top = backStack[backStack.length - 1];
+  if (!top) return false;
+  backStack.pop();
+  try {
+    top.handler();
+  } catch (err) {
+    console.warn("[Kora/Gestures] back handler error", err);
+  }
+  return true;
+}
+
 export function getAndroidBackStackDepth(): number {
   return backStack.length;
 }

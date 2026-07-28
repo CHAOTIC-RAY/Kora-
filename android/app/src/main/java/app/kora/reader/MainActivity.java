@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(KoraWidgetsPlugin.class);
     registerPlugin(ApkInstallPlugin.class);
     registerPlugin(KoraTtsPlugin.class);
+    registerPlugin(KoraStoragePlugin.class);
     super.onCreate(savedInstanceState);
     applyDarkSystemBars();
     enableHomeScreenWidgets();
