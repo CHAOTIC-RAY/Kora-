@@ -2436,6 +2436,30 @@ export default {
           }
         }
 
+        // Try 2b: Jina AI reader — returns the FULL article as clean extracted
+        // text/markdown even for JS-rendered or bot-protected pages. This is the
+        // most reliable path to complete article bodies, so we also accept it
+        // when the proxy returned a thin/blocked page.
+        let jinaText = "";
+        if (!rawHtml || rawHtml.trim().length < 600) {
+          try {
+            console.warn(`[Web Clipper] Trying Jina AI reader for full article.`);
+            const jinaRes = await fetch(`https://r.jina.ai/${fetchTargets[0]}`, {
+              headers: { "User-Agent": "KoraReader/1.0", "Accept": "text/plain" },
+              signal: AbortSignal.timeout(15000),
+            });
+            if (jinaRes.ok) {
+              const txt = await jinaRes.text();
+              if (txt && txt.trim().length > 200) {
+                jinaText = txt.trim();
+                console.log(`[Web Clipper] Jina returned ${jinaText.length} chars.`);
+              }
+            }
+          } catch (jinaErr) {
+            console.warn(`[Web Clipper] Jina failed:`, jinaErr);
+          }
+        }
+
         if (!rawHtml || rawHtml.trim().length < 100) {
           console.warn(`[Web Clipper] Standard + proxy fetch failed, trying Puppeteer:`, fetchErr);
           if (env && env.BROWSER) {
@@ -2869,7 +2893,20 @@ export default {
           console.log("[Web Clipper] Merged content too short, falling back to body extraction.");
           cleanedHtml = extractCleanContent($("body"));
         }
-        
+
+        // Jina fallback: if the Cheerio pipeline produced a thin body but Jina
+        // returned the full article text, prefer Jina (it reads JS-rendered +
+        // bot-protected pages that the raw HTML fetch missed).
+        if (jinaText && jinaText.length > cleanedHtml.replace(/<[^>]*>/g, "").trim().length + 200) {
+          console.log(`[Web Clipper] Using Jina full-text (${jinaText.length} chars) over thin merge.`);
+          cleanedHtml = jinaText
+            .split(/\n{2,}/)
+            .map((block) => block.trim())
+            .filter((block) => block.length > 0)
+            .map((block) => `<p>${block.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+            .join("\n");
+        }
+
         // Final cleanup: remove duplicate whitespace and empty tags
         cleanedHtml = cleanedHtml
           .replace(/<p>\s*<\/p>/g, "")

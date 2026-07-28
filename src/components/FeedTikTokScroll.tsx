@@ -5,6 +5,178 @@ import { getItemThumbnail } from "../lib/feedPreview";
 import { resolveFeedArticle, prepareFeedArticleHtml } from "../lib/feedArticle";
 import { toast } from "react-hot-toast";
 
+// Ken Burns loop: alternate slow zoom-in / zoom-out / pan so the cover is
+// always in motion, but never scales below 1 so blank edges never show.
+// Direction is chosen per-slide from the image size (wide → pan sideways,
+// tall → zoom) so it doesn't over-zoom a small image into nothing.
+const KEN_BURNS = `
+@keyframes koraKBzoomIn { from { transform: scale(1.08); } to { transform: scale(1.18); } }
+@keyframes koraKBzoomOut { from { transform: scale(1.18); } to { transform: scale(1.08); } }
+@keyframes koraKBpanX { from { transform: scale(1.12) translateX(-3%); } to { transform: scale(1.12) translateX(3%); } }
+@keyframes koraKBpanY { from { transform: scale(1.12) translateY(-3%); } to { transform: scale(1.12) translateY(3%); } }
+.kora-kb { animation-duration: 18s; animation-iteration-count: infinite; animation-direction: alternate; animation-timing-function: ease-in-out; will-change: transform; }
+.kora-kb-zi { animation-name: koraKBzoomIn; }
+.kora-kb-zo { animation-name: koraKBzoomOut; }
+.kora-kb-px { animation-name: koraKBpanX; }
+.kora-kb-py { animation-name: koraKBpanY; }
+@media (prefers-reduced-motion: reduce) {
+  .kora-kb { animation: none !important; transform: scale(1.08) !important; }
+}
+`;
+
+/**
+ * Build a Kora-styled shareable card image: headline + short description +
+ * cover photo + a deep link that opens the article directly in the Kora app.
+ * Returns a data URL. Pure canvas — no external deps.
+ */
+async function buildKoraShareImage(item: FeedItem, cover?: string): Promise<string> {
+  const W = 1080;
+  const H = 1350;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas unsupported");
+
+  const INK = "#1a1a18";
+  const PAPER = "#ECE8D4";
+  const ACCENT = "#7c9a5a";
+  const MUTED = "#6b6357";
+
+  // Paper background
+  ctx.fillStyle = PAPER;
+  ctx.fillRect(0, 0, W, H);
+
+  // Cover image area (top 720px), with accent frame
+  const imgY = 0;
+  const imgH = 760;
+  if (cover) {
+    try {
+      const img = await new Promise<HTMLImageElement>((res, rej) => {
+        const im = new Image();
+        im.crossOrigin = "anonymous";
+        im.onload = () => res(im);
+        im.onerror = rej;
+        im.src = cover;
+      });
+      // cover-fit
+      const ratio = Math.min(W / img.width, imgH / img.height);
+      const dw = img.width * ratio;
+      const dh = img.height * ratio;
+      ctx.drawImage(img, (W - dw) / 2, imgY + (imgH - dh) / 2, dw, dh);
+    } catch {
+      // draw accent block fallback
+      ctx.fillStyle = ACCENT;
+      ctx.fillRect(0, imgY, W, imgH);
+    }
+  } else {
+    ctx.fillStyle = ACCENT;
+    ctx.fillRect(0, imgY, W, imgH);
+  }
+  // subtle dark gradient at image bottom for legibility
+  const grad = ctx.createLinearGradient(0, imgH - 220, 0, imgH);
+  grad.addColorStop(0, "rgba(0,0,0,0)");
+  grad.addColorStop(1, "rgba(0,0,0,0.55)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, imgH - 220, W, 220);
+
+  // Kora wordmark (ink, near-white safe)
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "700 46px Lexend, Georgia, serif";
+  ctx.textBaseline = "top";
+  ctx.fillText("KORA", 64, 56);
+
+  let y = imgH + 70;
+
+  // Source + "READ IN KORA" eyebrow
+  const source = (() => {
+    try {
+      return new URL(item.link).hostname.replace(/^www\./, "");
+    } catch {
+      return item.subscriptionTitle || "kora";
+    }
+  })();
+  ctx.fillStyle = ACCENT;
+  ctx.font = "700 30px Arial, sans-serif";
+  ctx.fillText(source.toUpperCase(), 64, y);
+  y += 50;
+
+  // Headline (wrap)
+  ctx.fillStyle = INK;
+  ctx.font = "700 58px Lexend, Georgia, serif";
+  const head = item.title || "Kora news";
+  y = wrapText(ctx, head, 64, y, W - 128, 68, 4);
+
+  // Short description (wrap, muted) — clamp to keep the footer visible
+  const desc = (item.summary || "").replace(/\s+/g, " ").trim();
+  if (desc) {
+    y += 28;
+    ctx.fillStyle = MUTED;
+    ctx.font = "400 34px Georgia, serif";
+    y = wrapText(ctx, desc, 64, y, W - 128, 46, 3);
+  }
+
+  // Footer: deep link + tagline
+  ctx.fillStyle = INK;
+  ctx.font = "700 32px Arial, sans-serif";
+  ctx.fillText("Read this in the Kora app →", 64, H - 150);
+  ctx.fillStyle = MUTED;
+  ctx.font = "400 28px Arial, sans-serif";
+  const link = buildKoraDeepLink(item);
+  ctx.fillText(truncate(link, 56), 64, H - 100);
+
+  return canvas.toDataURL("image/png");
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxW: number,
+  lineH: number,
+  maxLines: number
+): number {
+  const words = text.split(/\s+/);
+  let line = "";
+  let lines = 0;
+  for (let i = 0; i < words.length; i++) {
+    const test = line ? line + " " + words[i] : words[i];
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line, x, y);
+      y += lineH;
+      line = words[i];
+      lines++;
+      if (lines >= maxLines - 1) break;
+    } else {
+      line = test;
+    }
+  }
+  // last (possibly truncated) line
+  const remaining = words.slice(words.indexOf(line) + (line ? 1 : 0)).join(" ");
+  const last = line + (remaining && lines < maxLines - 1 ? " " + remaining : "");
+  if (lines < maxLines) {
+    let l = last;
+    while (ctx.measureText(l + "…").width > maxW && l.length > 1) l = l.slice(0, -1);
+    ctx.fillText(l + (l.length < last.length ? "…" : ""), x, y);
+    y += lineH;
+  }
+  return y;
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+/** Deep link that opens the article directly in the Kora app (APK + web). */
+function buildKoraDeepLink(item: FeedItem): string {
+  try {
+    return `app.kora.reader://news?url=${encodeURIComponent(item.link)}`;
+  } catch {
+    return "kora.app";
+  }
+}
+
 interface FeedTikTokScrollProps {
   items: FeedItem[];
   grayscaleCovers?: boolean;
@@ -48,6 +220,34 @@ export default function FeedTikTokScroll({
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [articleHtmlMap, setArticleHtmlMap] = useState<Record<string, { html: string; loading: boolean }>>({});
 
+  // Inject Ken Burns keyframes once.
+  useEffect(() => {
+    if (document.getElementById("kora-kb-style")) return;
+    const style = document.createElement("style");
+    style.id = "kora-kb-style";
+    style.textContent = KEN_BURNS;
+    document.head.appendChild(style);
+  }, []);
+
+  // Pick a Ken Burns variant from the cover's natural dimensions so we never
+  // over-zoom a tiny image or pan a portrait photo off-screen.
+  const kbClassFor = (item: FeedItem, idx: number): string => {
+    const cover = getItemThumbnail(item);
+    if (!cover) return "";
+    const key = `kora-kb-dims:${cover}`;
+    let dims = (window as any).__koraKbDims?.[key] as { w: number; h: number } | undefined;
+    const variants = ["kora-kb-zi", "kora-kb-zo", "kora-kb-px", "kora-kb-py"];
+    if (!dims) {
+      // No dimensions yet — pick a stable pseudo-random variant from the index.
+      return `kora-kb ${variants[idx % variants.length]}`;
+    }
+    const ratio = dims.w / dims.h;
+    if (ratio > 1.4) return "kora-kb kora-kb-px";
+    if (ratio < 0.8) return "kora-kb kora-kb-py";
+    return `kora-kb ${variants[idx % 2 === 0 ? 0 : 1]}`;
+  };
+
+
   useEffect(() => {
     if (expandedIndex === null) return;
     const item = items[expandedIndex];
@@ -89,23 +289,60 @@ export default function FeedTikTokScroll({
   }, [active]);
 
   const handleShare = async (item: FeedItem) => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: item.title,
-          text: item.summary || item.title,
-          url: item.link,
-        });
-        return;
-      } catch (err) {
-        // user cancelled or failed, fallback
-      }
-    }
     try {
+      const cover = getItemThumbnail(item);
+      const dataUrl = await buildKoraShareImage(item, cover);
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], "kora-news.png", { type: "image/png" });
+      const deepLink = buildKoraDeepLink(item);
+
+      // Prefer sharing the image + deep link via the native share sheet.
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: item.title,
+            text: `${item.title}\n\nRead it in the Kora app: ${deepLink}`,
+          });
+          return;
+        } catch {
+          // user cancelled — fall through to generic share
+        }
+      }
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: item.title,
+            text: `${item.title}\n\nRead it in the Kora app: ${deepLink}`,
+            url: deepLink,
+          });
+          return;
+        } catch {
+          // user cancelled or failed, fallback
+        }
+      }
+      // No share API: download the image, copy the article link.
+      try {
+        const a = document.createElement("a");
+        a.href = dataUrl;
+        a.download = "kora-news.png";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        await navigator.clipboard.writeText(item.link);
+        toast.success("Share card saved & link copied");
+        return;
+      } catch { /* ignore */ }
       await navigator.clipboard.writeText(item.link);
       toast.success("Article link copied to clipboard");
     } catch {
-      toast.error("Failed to copy link");
+      // Image generation failed — simple link fallback.
+      try {
+        await navigator.clipboard.writeText(item.link);
+        toast.success("Article link copied to clipboard");
+      } catch {
+        toast.error("Failed to share");
+      }
     }
   };
 
@@ -237,6 +474,18 @@ export default function FeedTikTokScroll({
           const cover = getItemThumbnail(item);
           const isExpanded = expandedIndex === index;
           const isDarkMode = document.body.classList.contains("dark") || document.body.className.includes("dark");
+          const kbCls = !perfMode ? kbClassFor(item, index) : "";
+
+          const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+            try {
+              const el = e.currentTarget;
+              const w = el.naturalWidth, h = el.naturalHeight;
+              if (w && h) {
+                const store = ((window as any).__koraKbDims ||= {});
+                store[`kora-kb-dims:${cover}`] = { w, h };
+              }
+            } catch { /* ignore */ }
+          };
 
           const source = (() => {
             try {
@@ -257,13 +506,14 @@ export default function FeedTikTokScroll({
                   alt=""
                   referrerPolicy="no-referrer"
                   loading="lazy"
+                  onLoad={onImgLoad}
                   className={
                     isMobile
-                      ? `absolute inset-0 w-full h-full object-cover transition-all duration-300 ${
-                          isExpanded ? "blur-sm scale-105" : ""
+                      ? `absolute inset-0 w-full h-full object-cover ${kbCls} ${
+                          isExpanded ? "blur-sm" : ""
                         } ${grayscaleCovers ? "grayscale" : ""}`
-                      : `absolute inset-0 w-full h-full object-cover rounded-2xl transition-all duration-300 ${
-                          isExpanded ? "blur-sm scale-105" : ""
+                      : `absolute inset-0 w-full h-full object-cover rounded-2xl ${kbCls} ${
+                          isExpanded ? "blur-sm" : ""
                         } ${grayscaleCovers ? "grayscale" : ""}`
                   }
                 />
@@ -271,11 +521,11 @@ export default function FeedTikTokScroll({
                 <div
                   className={
                     isMobile
-                      ? `absolute inset-0 bg-gradient-to-br from-kindle-accent/30 to-black/60 transition-all duration-300 ${
-                          isExpanded ? "blur-xs scale-105" : ""
+                      ? `absolute inset-0 bg-gradient-to-br from-kindle-accent/30 to-black/60 ${kbCls} ${
+                          isExpanded ? "blur-xs" : ""
                         }`
-                      : `absolute inset-0 bg-gradient-to-br from-kindle-accent/30 to-black/60 rounded-2xl transition-all duration-300 ${
-                          isExpanded ? "blur-xs scale-105" : ""
+                      : `absolute inset-0 bg-gradient-to-br from-kindle-accent/30 to-black/60 rounded-2xl ${kbCls} ${
+                          isExpanded ? "blur-xs" : ""
                         }`
                   }
                 />

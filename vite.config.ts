@@ -2,16 +2,25 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
-import {defineConfig} from 'vite';
+import { defineConfig } from 'vite';
 
 const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const builtAt = new Date().toISOString();
 const appChannel = process.env.VITE_APP_CHANNEL === 'beta' ? 'beta' : 'production';
 
+// Pull the real semver from package.json so the update banner compares versions,
+// not the random per-build buildId (which previously caused constant false prompts).
+let pkgVersion = '0.0.0';
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'));
+  if (pkg?.version) pkgVersion = String(pkg.version);
+} catch { /* keep default */ }
+
 export default defineConfig(() => {
   return {
     define: {
       __KORA_BUILD_ID__: JSON.stringify(buildId),
+      __KORA_VERSION__: JSON.stringify(pkgVersion),
     },
     envPrefix: ['VITE_'],
     plugins: [
@@ -24,7 +33,7 @@ export default defineConfig(() => {
           fs.mkdirSync(outDir, { recursive: true });
           fs.writeFileSync(
             path.join(outDir, 'version.json'),
-            JSON.stringify({ buildId, builtAt, channel: appChannel }, null, 2)
+            JSON.stringify({ buildId, version: pkgVersion, builtAt, channel: appChannel }, null, 2)
           );
           // Also stamp sw.js so browsers always see a byte change after redeploy
           // (even when download logic is unchanged) and pick up the new worker.

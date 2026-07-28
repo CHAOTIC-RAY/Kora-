@@ -1950,6 +1950,12 @@ export default function App() {
       const briefs = params.get("briefs") === "1";
       const kind = (params.get("kind") || "").toLowerCase();
       const action = (params.get("action") || "").toLowerCase();
+      const newsUrl = params.get("url");
+      if (newsUrl) {
+        switchTab("feed");
+        setFeedInitialUrl(newsUrl);
+        return true;
+      }
       if (!go && !briefs) return false;
 
       if (go === "continue") {
