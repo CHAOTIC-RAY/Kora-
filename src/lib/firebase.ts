@@ -179,6 +179,7 @@ export interface BookMetadata {
   audiobookDownloaded?: boolean;
   audiobookCurrentTrack?: number;
   audiobookCurrentTime?: number;
+  downloadId?: string;
 }
 
 // LocalStorage helpers

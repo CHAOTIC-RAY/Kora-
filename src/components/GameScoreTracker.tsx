@@ -765,7 +765,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           onClick={() => setWinCondition("highest")}
                           className={`py-1.5 text-xs font-bold rounded-xl border transition ${
                             winCondition === "highest"
-                              ? "bg-kindle-accent text-black border-kindle-accent"
+                              ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
                               : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
                           }`}
                         >
@@ -776,7 +776,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           onClick={() => setWinCondition("lowest")}
                           className={`py-1.5 text-xs font-bold rounded-xl border transition ${
                             winCondition === "lowest"
-                              ? "bg-kindle-accent text-black border-kindle-accent"
+                              ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
                               : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
                           }`}
                         >
@@ -1238,7 +1238,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         <button
                           type="button"
                           onClick={handleSubmitRound}
-                          className="px-6 py-2.5 bg-kindle-accent text-black font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center gap-1.5"
+                          className="px-6 py-2.5 bg-kindle-accent text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center gap-1.5"
                         >
                           <CheckCircle2 className="w-4 h-4" /> Submit Round {rounds.length + 1}
                         </button>

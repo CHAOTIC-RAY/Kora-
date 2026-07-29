@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "motion/react";
-import { KoraWordmark } from "./KoraLogo";
+import KoraWordmarkReveal from "./KoraWordmarkReveal";
 
 interface KoraLoadingProps {
   context?: string;
@@ -9,37 +9,19 @@ interface KoraLoadingProps {
   categorySource?: any;
 }
 
-export default function KoraLoading({ context, query, compact, categorySource }: KoraLoadingProps = {}) {
+export default function KoraLoading({ context, query, compact }: KoraLoadingProps = {}) {
   return (
-    <div className="flex flex-col items-center justify-center space-y-6">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ 
-          opacity: [0.4, 1, 0.4],
-          scale: [0.98, 1, 0.98]
-        }}
-        transition={{ 
-          duration: 2,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-        className="flex flex-col items-center"
+    <div className={`flex flex-col items-center justify-center ${compact ? "py-3 space-y-2" : "py-6 space-y-4"}`}>
+      <div className={compact ? "w-40 sm:w-48" : "w-52 sm:w-64 max-w-full"}>
+        <KoraWordmarkReveal />
+      </div>
+      <motion.p 
+        animate={{ opacity: [0.5, 1, 0.5] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+        className="text-[10px] font-bold uppercase tracking-[0.3em] text-kindle-text-muted"
       >
-        <KoraWordmark className="h-12 text-kindle-text" />
-        <motion.div 
-          className="h-0.5 bg-kindle-accent mt-4 rounded-full"
-          initial={{ width: 0 }}
-          animate={{ width: "100%" }}
-          transition={{ 
-            duration: 1.5,
-            repeat: Infinity,
-            ease: "easeInOut"
-          }}
-        />
-      </motion.div>
-      <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-kindle-text-muted animate-pulse">
-        Synchronizing...
-      </p>
+        {query ? `Searching "${query}"...` : context ? `Loading ${context}...` : "Synchronizing..."}
+      </motion.p>
     </div>
   );
 }

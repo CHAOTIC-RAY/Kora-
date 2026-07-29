@@ -11,7 +11,7 @@ const KORA_PATHS = [
 
 const VIEW_W = 287.6;
 const VIEW_H = 112.78;
-const FILL_THRESHOLD = 14000;
+const FILL_THRESHOLD = 8000;
 
 // Returns true for colors too dark to read against the (dark) theme background,
 // so callers can fall back to a near-white ink instead of a near-black one.
@@ -58,6 +58,11 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       setDone(true);
     };
 
+    // Detect mobile for dynamic animation scale down
+    const isMobileDevice = typeof window !== "undefined" && window.innerWidth < 768;
+    const activeFillThreshold = isMobileDevice ? 3200 : 7500;
+    const activeFillIterations = isMobileDevice ? 100 : 250;
+
     const start = () => {
       if (doneRef.current) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -85,11 +90,18 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
           outlinePoints.push({ x: pt.x * scale + offsetX, y: pt.y * scale + offsetY });
         }
       });
-      // Ink color follows the theme's text color so the wordmark is visible on
-      // both light and dark backgrounds. If the resolved color is too dark (e.g.
-      // dark theme), fall back to a near-white so it never disappears.
-      const themeColor = getComputedStyle(wrap).color || "#0a1221";
-      const ink = isColorTooDark(themeColor) ? "#f3f1ea" : themeColor;
+      // Ink color follows the theme mode explicitly so it is always bold and high-contrast.
+      // We check document classes, custom inline CSS variables, computed backgrounds, and media preferences.
+      const bodyBg = getComputedStyle(document.body).backgroundColor;
+      const textCol = (getComputedStyle(document.body).getPropertyValue("--theme-text") || 
+                       getComputedStyle(document.body).getPropertyValue("--color-kindle-text")).trim();
+      const isDark =
+        document.documentElement.classList.contains("dark") ||
+        document.body.classList.contains("dark") ||
+        isColorTooDark(bodyBg) ||
+        (textCol && !isColorTooDark(textCol)) ||
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const ink = isDark ? "#f3f1ea" : "#111116";
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.strokeStyle = ink;
@@ -106,13 +118,14 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       let lastY: number | null = null;
 
       const drawOutline = () => {
-        for (let i = 0; i < 4; i++) {
+        const step = isMobileDevice ? 15 : 20;
+        for (let i = 0; i < step; i++) {
           if (outlineIdx >= outlinePoints.length) {
             state = STATE_ZOOM;
             wrap.classList.add("kora-ink-zoomed");
             setTimeout(() => {
               if (!cancelled) state = STATE_FILL;
-            }, 1500);
+            }, 180); // Quicker zoom transition on mobile
             return;
           }
           const pt = outlinePoints[outlineIdx++];
@@ -133,12 +146,12 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       };
 
       const drawFill = () => {
-        if (fillCount >= FILL_THRESHOLD) {
+        if (fillCount >= activeFillThreshold) {
           state = STATE_FINISHED;
           markDone();
           return;
         }
-        for (let i = 0; i < 45; i++) {
+        for (let i = 0; i < activeFillIterations; i++) {
           const rx = Math.random() * VIEW_W;
           const ry = Math.random() * VIEW_H;
           if (path2D.some((p) => ctx.isPointInPath(p, rx, ry))) {
@@ -171,13 +184,20 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       // loop keeps getting reset by mobile scroll-resize events. Armed once.
       if (!revealArmed.current) {
         revealArmed.current = true;
-        revealTimer = window.setTimeout(markDone, 3500);
+        revealTimer = window.setTimeout(markDone, 1200);
       }
       raf = requestAnimationFrame(loop);
     };
 
     let t: number | undefined;
+    let lastWidth = wrap.clientWidth;
+
     const onResize = () => {
+      const currentWidth = wrap.clientWidth;
+      // Critical optimization: ignore resizes where width did not change (e.g. mobile virtual keyboard or browser address bar toggling)
+      if (currentWidth === lastWidth && lastWidth > 0) return;
+      lastWidth = currentWidth;
+
       clearTimeout(t);
       t = window.setTimeout(() => {
         if (!cancelled) start();
@@ -185,7 +205,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     };
     window.addEventListener("resize", onResize);
 
-    // Start the animation only when the About section scrolls into view.
+    // Start the animation only when the wrapper enters the screen (reduced threshold to 0.05 for mobile instant start)
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
@@ -195,9 +215,28 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
           }
         });
       },
-      { threshold: 0.3 }
+      { threshold: 0.05 }
     );
     io.observe(wrap);
+
+    // Track theme explicitly to prevent redundant restarts from other inline style attribute changes on mobile
+    const getThemeKey = () => {
+      const isDark = document.documentElement.classList.contains("dark") || document.body.classList.contains("dark");
+      return isDark ? "dark" : "light";
+    };
+    let lastTheme = getThemeKey();
+
+    const observer = new MutationObserver(() => {
+      if (!cancelled && started) {
+        const currentTheme = getThemeKey();
+        if (currentTheme !== lastTheme) {
+          lastTheme = currentTheme;
+          start();
+        }
+      }
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
     return () => {
       cancelled = true;
@@ -205,6 +244,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       clearTimeout(t);
       clearTimeout(revealTimer);
       io.disconnect();
+      observer.disconnect();
       window.removeEventListener("resize", onResize);
     };
   }, []);
@@ -217,13 +257,10 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
         ))}
       </svg>
 
-      <svg style={{ display: "none" }} aria-hidden>
+      <svg style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }} aria-hidden="true">
         <filter id="kora-realistic-ink">
-          <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves={3} result="noise" />
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale={3} xChannelSelector="R" result="distorted" />
-          <feGaussianBlur in="distorted" stdDeviation="1.2" result="blur" />
-          <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 18 -8" result="goo" />
-          <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+          <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves={2} result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale={2.5} xChannelSelector="R" yChannelSelector="G" />
         </filter>
       </svg>
 
@@ -232,7 +269,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
         className="kora-ink-wrapper w-full flex justify-center"
         style={{ filter: "url(#kora-realistic-ink)" }}
       >
-        <canvas ref={canvasRef} className="block" style={{ width: "min(86vw, 420px)", height: "auto" }} />
+        <canvas ref={canvasRef} className="block" style={{ width: "min(86vw, 420px)", height: "auto", aspectRatio: "287.6 / 112.78" }} />
       </div>
 
       <div

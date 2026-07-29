@@ -2035,7 +2035,7 @@ function SettingsView({
                             <div className="flex items-center gap-1.5">
                               <span className="text-[11px] font-bold text-kindle-text truncate">{parser.name}</span>
                               {isSelected && (
-                                <span className="text-[8px] bg-kindle-accent text-white px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
+                                <span className="text-[8px] bg-kindle-accent text-kindle-bg px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
                                   Active
                                 </span>
                               )}

@@ -4586,7 +4586,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
-                          className="rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider text-white bg-kindle-accent"
+                          className="rounded-full px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider text-kindle-bg bg-kindle-accent"
                           onClick={() => {
                             completeGuide("walkthrough-book");
                             emitWalkthroughBookCta("first-book");

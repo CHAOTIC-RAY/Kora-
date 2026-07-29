@@ -134,12 +134,12 @@
 }
 
 @theme {
-  /* Use Lora as the primary body font — matching the Kora wordmark's serif personality */
-  --font-sans: "Lora", "Inter", ui-serif, Georgia, serif;
+  /* The Kora Unified Brand Typography Combo */
+  --font-sans: "Lexend", "Nata Sans", "Inter", sans-serif;
   --font-serif: "Lora", ui-serif, Georgia, serif;
-  --font-display: "Nata Sans", "Rakuten Sans", "Inter", sans-serif;
+  --font-display: "Lora", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-lexend: "Nata Sans", "Rakuten Sans", "Inter", sans-serif;
+  --font-lexend: "Lexend", "Nata Sans", "Inter", sans-serif;
   --font-thaana: "Faruma", "Noto Sans Thaana", "MV Waheed", sans-serif;
   --font-opendyslexic: "OpenDyslexic", "Lexend", sans-serif;
   --font-bookerly: "Bookerly", serif;
@@ -914,6 +914,20 @@ h1, h2, h3, h4 {
   display: none;
   width: 0;
   height: 0;
+}
+
+/* Clean badge styling without text-shadow distortion */
+@utility chromatic-cyan {
+  text-shadow: none;
+}
+@utility chromatic-amber {
+  text-shadow: none;
+}
+@utility chromatic-sky {
+  text-shadow: none;
+}
+@utility chromatic-red {
+  text-shadow: none;
 }
 
 /* Precise focus-mode styles targeting library header */

@@ -10,17 +10,36 @@ import { toast } from "react-hot-toast";
 // Direction is chosen per-slide from the image size (wide → pan sideways,
 // tall → zoom) so it doesn't over-zoom a small image into nothing.
 const KEN_BURNS = `
-@keyframes koraKBzoomIn { from { transform: scale(1.08); } to { transform: scale(1.18); } }
-@keyframes koraKBzoomOut { from { transform: scale(1.18); } to { transform: scale(1.08); } }
-@keyframes koraKBpanX { from { transform: scale(1.12) translateX(-3%); } to { transform: scale(1.12) translateX(3%); } }
-@keyframes koraKBpanY { from { transform: scale(1.12) translateY(-3%); } to { transform: scale(1.12) translateY(3%); } }
-.kora-kb { animation-duration: 18s; animation-iteration-count: infinite; animation-direction: alternate; animation-timing-function: ease-in-out; will-change: transform; }
+@keyframes koraKBzoomIn {
+  0% { transform: scale(1.04); }
+  100% { transform: scale(1.16); }
+}
+@keyframes koraKBzoomOut {
+  0% { transform: scale(1.16); }
+  100% { transform: scale(1.04); }
+}
+@keyframes koraKBpanX {
+  0% { transform: scale(1.12) translateX(-3.5%); }
+  100% { transform: scale(1.12) translateX(3.5%); }
+}
+@keyframes koraKBpanY {
+  0% { transform: scale(1.12) translateY(-3.5%); }
+  100% { transform: scale(1.12) translateY(3.5%); }
+}
+.kora-kb {
+  animation-duration: 22s;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  animation-timing-function: ease-in-out;
+  will-change: transform;
+  transform-origin: center center;
+}
 .kora-kb-zi { animation-name: koraKBzoomIn; }
 .kora-kb-zo { animation-name: koraKBzoomOut; }
 .kora-kb-px { animation-name: koraKBpanX; }
 .kora-kb-py { animation-name: koraKBpanY; }
 @media (prefers-reduced-motion: reduce) {
-  .kora-kb { animation: none !important; transform: scale(1.08) !important; }
+  .kora-kb { animation: none !important; transform: scale(1.05) !important; }
 }
 `;
 
@@ -219,6 +238,24 @@ export default function FeedTikTokScroll({
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [articleHtmlMap, setArticleHtmlMap] = useState<Record<string, { html: string; loading: boolean }>>({});
+  const [autoScroll, setAutoScroll] = useState(false);
+  const [loadedDims, setLoadedDims] = useState<Record<string, { w: number; h: number }>>({});
+
+
+  // Auto scroll effect for news feed
+  useEffect(() => {
+    if (!autoScroll || expandedIndex !== null || !items.length) return;
+    const interval = setInterval(() => {
+      const el = ref.current;
+      if (!el) return;
+      setActive((prev) => {
+        const next = (prev + 1) % items.length;
+        el.children[next]?.scrollIntoView({ behavior: perfMode ? "auto" : "smooth" });
+        return next;
+      });
+    }, 4800);
+    return () => clearInterval(interval);
+  }, [autoScroll, expandedIndex, items.length, perfMode]);
 
   // Inject Ken Burns keyframes once.
   useEffect(() => {
@@ -235,16 +272,16 @@ export default function FeedTikTokScroll({
     const cover = getItemThumbnail(item);
     if (!cover) return "";
     const key = `kora-kb-dims:${cover}`;
-    let dims = (window as any).__koraKbDims?.[key] as { w: number; h: number } | undefined;
+    const dims = loadedDims[cover] || (window as any).__koraKbDims?.[key];
     const variants = ["kora-kb-zi", "kora-kb-zo", "kora-kb-px", "kora-kb-py"];
     if (!dims) {
       // No dimensions yet — pick a stable pseudo-random variant from the index.
       return `kora-kb ${variants[idx % variants.length]}`;
     }
     const ratio = dims.w / dims.h;
-    if (ratio > 1.4) return "kora-kb kora-kb-px";
+    if (ratio > 1.35) return "kora-kb kora-kb-px";
     if (ratio < 0.8) return "kora-kb kora-kb-py";
-    return `kora-kb ${variants[idx % 2 === 0 ? 0 : 1]}`;
+    return `kora-kb ${idx % 2 === 0 ? "kora-kb-zi" : "kora-kb-zo"}`;
   };
 
 
@@ -400,16 +437,6 @@ export default function FeedTikTokScroll({
                 <Settings2 className="w-4 h-4" />
               </button>
             )}
-            {onFilter && (
-              <button
-                type="button"
-                onClick={onFilter}
-                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
-                title="Filter & sources"
-              >
-                <Filter className="w-4 h-4" />
-              </button>
-            )}
           </div>
 
           <div className="flex items-center gap-1.5 pointer-events-auto">
@@ -464,7 +491,11 @@ export default function FeedTikTokScroll({
           }
         }}
         className={`w-full h-full overflow-y-auto overscroll-contain scrollbar-none touch-pan-y ${
-          perfMode ? "" : "snap-y snap-mandatory [scroll-snap-stop:always]"
+          perfMode
+            ? ""
+            : expandedIndex === null
+              ? "snap-y snap-mandatory [scroll-snap-stop:always]"
+              : ""
         }`}
       >
         {items.map((item, index) => {
@@ -477,9 +508,13 @@ export default function FeedTikTokScroll({
             try {
               const el = e.currentTarget;
               const w = el.naturalWidth, h = el.naturalHeight;
-              if (w && h) {
+              if (w && h && cover) {
                 const store = ((window as any).__koraKbDims ||= {});
                 store[`kora-kb-dims:${cover}`] = { w, h };
+                setLoadedDims((prev) => ({
+                  ...prev,
+                  [cover]: { w, h },
+                }));
               }
             } catch { /* ignore */ }
           };
@@ -495,7 +530,7 @@ export default function FeedTikTokScroll({
             <section
               key={item.id}
               style={sectionStyle}
-              className="relative snap-start flex flex-col justify-end p-4 md:p-6 h-full w-full shrink-0 overflow-hidden"
+              className="relative snap-start snap-always [scroll-snap-stop:always] flex flex-col justify-end p-4 md:p-6 h-full w-full shrink-0 overflow-hidden"
             >
               {cover ? (
                 <img
@@ -541,122 +576,131 @@ export default function FeedTikTokScroll({
                 }`}
               />
 
-              <div
-                className={`relative z-10 cursor-pointer select-text pb-[7rem] md:pb-6 transition-all duration-300 ${
-                  isDarkMode ? "text-white" : "text-neutral-900"
-                }`}
-                onClick={() => setExpandedIndex(isExpanded ? null : index)}
-              >
-                <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-1 sm:mb-2 transition-colors ${
-                  isDarkMode ? "text-white/80" : "text-neutral-600"
-                }`}>
-                  {source}
-                  {item.read ? (
-                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
-                      isDarkMode ? "bg-white/20 text-white" : "bg-neutral-200 text-neutral-800"
-                    }`}>Read</span>
-                  ) : (
-                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
-                      isDarkMode ? "bg-kindle-accent text-black" : "bg-kindle-accent text-neutral-900"
-                    }`}>New</span>
-                  )}
-                </span>
-                <h2 className={`text-lg sm:text-xl md:text-2xl font-lexend font-bold leading-tight mb-2 sm:mb-3 transition-all ${
-                  isDarkMode
-                    ? isExpanded ? "text-white" : "line-clamp-4 text-white"
-                    : isExpanded ? "text-neutral-950" : "line-clamp-4 text-neutral-900"
-                }`}>
-                  {item.title}
-                </h2>
-
-                {/* Expanded Details Section */}
-                {isExpanded && (
-                  <div
-                    className={`mt-4 overflow-y-auto max-h-[45vh] pr-2 space-y-4 border-t pt-4 transition-colors ${
-                      isDarkMode
-                        ? "border-white/10 text-neutral-200"
-                        : "border-neutral-200 text-neutral-800"
-                    } scrollbar-thin select-text`}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {articleHtmlMap[item.id]?.loading ? (
-                      <div className="flex items-center gap-2 py-4">
-                        <Loader2 className="w-4 h-4 animate-spin text-kindle-accent shrink-0" />
-                        <p className="text-xs font-sans">Extracting full article…</p>
-                      </div>
-                    ) : articleHtmlMap[item.id]?.html ? (
-                      <div
-                        dir="auto"
-                        className={`feed-article-content max-w-none text-xs sm:text-sm font-serif leading-relaxed [&_*]:[unicode-bidi:plaintext] ${
-                          isDarkMode ? "text-neutral-200" : "text-neutral-900"
-                        }`}
-                        dangerouslySetInnerHTML={{ __html: articleHtmlMap[item.id].html }}
-                      />
-                    ) : item.summary ? (
-                      <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-serif">
-                        {item.summary}
-                      </p>
-                    ) : (
-                      <p className="text-xs sm:text-sm italic opacity-70">
-                        No content available for this article.
-                      </p>
-                    )}
-
-                    <div className="pt-2">
-                      <a
-                        href={item.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider hover:underline ${
-                          isDarkMode ? "text-kindle-accent" : "text-neutral-900 underline decoration-kindle-accent decoration-2"
-                        }`}
-                      >
-                        Read Full Original Article →
-                      </a>
-                    </div>
-                  </div>
-                )}
-
-                {/* Save and Share Buttons Row */}
+                {/* Floating Side Action Buttons (TikTok style) */}
                 <div
-                  className="flex items-center gap-2 mt-4"
+                  className="absolute right-4 bottom-[8.5rem] z-30 flex flex-col items-center gap-4"
                   onClick={(e) => e.stopPropagation()}
                 >
+                  {/* Filter Button */}
+                  {onFilter && (
+                    <button
+                      type="button"
+                      onClick={onFilter}
+                      className="active:scale-95 transition text-white group"
+                    >
+                      <div className="w-11 h-11 rounded-full border border-white/20 bg-black/60 backdrop-blur-md flex items-center justify-center hover:bg-black/80 shadow-lg transition-all duration-200">
+                        <Filter className="w-4.5 h-4.5 text-white" />
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Save Button */}
                   <button
                     type="button"
                     onClick={() => onSave(item)}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-all duration-200 shadow-xs active:scale-95 border ${
-                      isExpanded && !isDarkMode
-                        ? item.saved
-                          ? "bg-kindle-accent/25 text-kindle-accent border-kindle-accent/30 font-extrabold"
-                          : "bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border-neutral-200 font-bold"
-                        : item.saved
-                          ? "bg-kindle-accent/30 text-kindle-accent border-kindle-accent/40 font-extrabold"
-                          : "bg-white/15 hover:bg-white/25 text-white border-white/10 font-bold"
-                    }`}
+                    className="active:scale-95 transition text-white group"
                   >
-                    <Bookmark className={`w-3.5 h-3.5 ${item.saved ? "fill-current" : ""}`} />
-                    <span>{item.saved ? "Saved" : "Save"}</span>
+                    <div className={`w-11 h-11 rounded-full border flex items-center justify-center hover:bg-black/80 shadow-lg transition-all duration-200 ${
+                      item.saved
+                        ? "bg-kindle-accent border-kindle-accent text-neutral-950 scale-105"
+                        : "bg-black/60 border-white/20 text-white"
+                    }`}>
+                      <Bookmark className={`w-4.5 h-4.5 ${item.saved ? "fill-current" : ""}`} />
+                    </div>
                   </button>
 
+                  {/* Share Button */}
                   <button
                     type="button"
                     onClick={() => void handleShare(item)}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-all duration-200 shadow-xs active:scale-95 border ${
-                      isExpanded && !isDarkMode
-                        ? "bg-neutral-100 hover:bg-neutral-200 text-neutral-800 border-neutral-200 font-bold"
-                        : "bg-white/15 hover:bg-white/25 text-white border-white/10 font-bold"
-                    }`}
+                    className="active:scale-95 transition text-white group"
                   >
-                    <Share2 className="w-3.5 h-3.5" />
-                    <span>Share</span>
+                    <div className="w-11 h-11 rounded-full border border-white/20 bg-black/60 backdrop-blur-md flex items-center justify-center hover:bg-black/80 shadow-lg transition-all duration-200">
+                      <Share2 className="w-4.5 h-4.5 text-white" />
+                    </div>
                   </button>
                 </div>
 
-                {/* Navigation and State Indicator */}
-                <div className={`flex items-center gap-2 mt-3.5 text-[10px] sm:text-[11px] transition-colors ${
-                  isExpanded && !isDarkMode ? "text-neutral-600" : "text-white/70"
-                }`}>
+                <div
+                  className={`relative z-10 cursor-pointer select-text pb-[7rem] md:pb-6 transition-all duration-300 pr-18 md:pr-24 ${
+                    isDarkMode ? "text-white" : "text-neutral-900"
+                  }`}
+                  onClick={() => setExpandedIndex(isExpanded ? null : index)}
+                >
+                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-1 sm:mb-2 transition-colors ${
+                    isDarkMode ? "text-white/80" : "text-neutral-600"
+                  }`}>
+                    {source}
+                    {item.read ? (
+                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
+                        isDarkMode ? "bg-white/20 text-white" : "bg-neutral-200 text-neutral-800"
+                      }`}>Read</span>
+                    ) : (
+                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
+                        isDarkMode ? "bg-kindle-accent text-black" : "bg-kindle-accent text-neutral-900"
+                      }`}>New</span>
+                    )}
+                  </span>
+                  <h2 className={`text-lg sm:text-xl md:text-2xl font-lexend font-bold leading-tight mb-2 sm:mb-3 transition-all ${
+                    isDarkMode
+                      ? isExpanded ? "text-white" : "line-clamp-4 text-white"
+                      : isExpanded ? "text-neutral-950" : "line-clamp-4 text-neutral-900"
+                  }`}>
+                    {item.title}
+                  </h2>
+
+                  {/* Expanded Details Section */}
+                  {isExpanded && (
+                    <div
+                      className={`mt-4 overflow-y-auto max-h-[45vh] pr-2 space-y-4 border-t pt-4 transition-colors ${
+                        isDarkMode
+                          ? "border-white/10 text-neutral-200"
+                          : "border-neutral-200 text-neutral-800"
+                      } scrollbar-thin select-text`}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {articleHtmlMap[item.id]?.loading ? (
+                        <div className="flex items-center gap-2 py-4">
+                          <Loader2 className="w-4 h-4 animate-spin text-kindle-accent shrink-0" />
+                          <p className="text-xs font-sans">Extracting full article…</p>
+                        </div>
+                      ) : articleHtmlMap[item.id]?.html ? (
+                        <div
+                          dir="auto"
+                          className={`feed-article-content max-w-none text-xs sm:text-sm font-serif leading-relaxed [&_*]:[unicode-bidi:plaintext] ${
+                            isDarkMode ? "text-neutral-200" : "text-neutral-900"
+                          }`}
+                          dangerouslySetInnerHTML={{ __html: articleHtmlMap[item.id].html }}
+                        />
+                      ) : item.summary ? (
+                        <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-serif">
+                          {item.summary}
+                        </p>
+                      ) : (
+                        <p className="text-xs sm:text-sm italic opacity-70">
+                          No content available for this article.
+                        </p>
+                      )}
+
+                      <div className="pt-2">
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider hover:underline ${
+                            isDarkMode ? "text-kindle-accent" : "text-neutral-900 underline decoration-kindle-accent decoration-2"
+                          }`}
+                        >
+                          Read Full Original Article →
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Navigation and State Indicator */}
+                  <div className={`flex items-center gap-2 mt-3.5 text-[10px] sm:text-[11px] transition-colors ${
+                    isExpanded && !isDarkMode ? "text-neutral-600" : "text-white/70"
+                  }`}>
                   {isExpanded ? (
                     <>
                       <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

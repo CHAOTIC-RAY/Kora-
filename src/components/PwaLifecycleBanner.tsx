@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Download, RefreshCw, X } from "lucide-react";
-import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "../lib/appVersion";
+import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild, RemoteVersion } from "../lib/appVersion";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -242,7 +242,7 @@ export default function PwaLifecycleBanner() {
               <button
                 type="button"
                 onClick={() => applyUpdate(false)}
-                className="px-3 py-1.5 rounded-lg bg-kindle-accent text-white text-[11px] font-bold uppercase tracking-wider"
+                className="px-3 py-1.5 rounded-lg bg-kindle-accent text-kindle-bg text-[11px] font-bold uppercase tracking-wider"
               >
                 Update now
               </button>
@@ -277,7 +277,7 @@ export default function PwaLifecycleBanner() {
               <button
                 type="button"
                 onClick={handleInstall}
-                className="px-3 py-1.5 rounded-lg bg-kindle-accent text-white text-[11px] font-bold uppercase tracking-wider"
+                className="px-3 py-1.5 rounded-lg bg-kindle-accent text-kindle-bg text-[11px] font-bold uppercase tracking-wider"
               >
                 Install
               </button>

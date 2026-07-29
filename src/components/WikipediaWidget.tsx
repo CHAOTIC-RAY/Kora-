@@ -673,7 +673,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
                   <button
                     type="button"
                     onClick={() => handleExportToKoraLibrary(activeArticle)}
-                    className="p-2 px-3 rounded-xl bg-kindle-accent text-white font-bold text-xs hover:bg-kindle-accent/90 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                    className="p-2 px-3 rounded-xl bg-kindle-accent text-kindle-bg font-bold text-xs hover:bg-kindle-accent/90 transition cursor-pointer flex items-center gap-1.5 shadow-xs"
                     title="Save as Ebook in Kora Library"
                   >
                     <BookMarked className="w-3.5 h-3.5" />
@@ -696,7 +696,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
               </div>
 
               {/* Scrollable Reader Body */}
-              <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-6 max-w-3xl mx-auto w-full">
+              <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-6 w-full">
                 {/* Cover & Title Header */}
                 <div className="space-y-3 pb-6 border-b border-kindle-border">
                   {activeArticle.thumbnail && (

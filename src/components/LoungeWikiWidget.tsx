@@ -328,7 +328,7 @@ export default function LoungeWikiWidget({
                   e.stopPropagation();
                   onOpenArticle?.(article);
                 }}
-                className="px-2.5 py-1 rounded-lg bg-kindle-accent/15 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-white transition cursor-pointer text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+                className="px-2.5 py-1 rounded-lg bg-kindle-accent/15 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-kindle-bg transition cursor-pointer text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
               >
                 <BookOpen className="w-3 h-3" />
                 <span>Read in Hub</span>

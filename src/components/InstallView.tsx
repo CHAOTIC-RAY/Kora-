@@ -1,7 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "motion/react";
+import toast from "react-hot-toast";
 import { useScrollLock } from "../hooks/useScrollLock";
 import DictionaryWidget from "./DictionaryWidget";
+import LinguistGuardian from "./LinguistGuardian";
+import {
+  LinguistGuardianDemo,
+  GameScoreTrackerDemo,
+  CrosswordSolvingDemo,
+  WikipediaHubDemo,
+  SearchableDictionaryDemo,
+  WordSearchGridDemo
+} from "./WorkshopInlineDemos";
 import {
   Download,
   Smartphone,
@@ -25,6 +35,8 @@ import {
   Server,
   Github,
   Star,
+  Type,
+  Settings,
   ChevronDown,
   Layers,
   Zap,
@@ -33,23 +45,43 @@ import {
   Check,
   X,
   Play,
+  Pause,
   Volume2,
+  VolumeX,
   Grid3X3,
   Search,
   Mic,
   Sliders,
   FileText,
+  RefreshCw,
   Compass,
+  Heart,
+  MessageCircle,
+  Bookmark,
+  Sun,
+  Menu,
+  PenTool,
+  RotateCcw,
+  Filter,
+  LayoutGrid,
+  Sofa,
+  Wrench,
+  Library,
+  Tag,
+  Cloud,
+  Laptop,
 } from "lucide-react";
 import { fetchLatestApkDownloadUrl } from "../lib/apkUpdater";
 import { KoraIcon, KoraWordmark } from "./KoraLogo";
 import KoraWordmarkReveal from "./KoraWordmarkReveal";
+import KoraIconInkDraw from "./KoraIconInkDraw";
 import GameScoreTracker from "./GameScoreTracker";
 import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
 import WikipediaWidget from "./WikipediaWidget";
 import ThemeShowcase from "./ThemeShowcase";
 import FeatureDemosGrid from "./FeatureDemosGrid";
+import CassetteVisualizer from "./CassetteVisualizer";
 
 /** Scroll-triggered reveal wrapper — fades + lifts into view.
  *  once:false so the animation replays each time the block scrolls back into view. */
@@ -67,7 +99,646 @@ function Reveal({ children, className = "", delay = 0 }: { children: React.React
   );
 }
 
+const MAGNIFIER_TEXTS = [
+  {
+    title: "Frankenstein",
+    author: "Mary Shelley",
+    text: "I am by birth a Genevese, and my family is one of the most distinguished of that republic. My ancestors had been for many years counsellors and syndics; and my father had filled several public situations with honour and reputation. He was respected by all who knew him for his integrity and indefatigable attention to public business. He passed his younger days perpetually occupied by the affairs of his country; a variety of circumstances had prevented his marrying early..."
+  },
+  {
+    title: "The Time Machine",
+    author: "H.G. Wells",
+    text: "The Time Traveller (for so it will be convenient to speak of him) was expounding a recondite matter to us. His grey eyes shone and twinkled, and his usually pale face was flushed and animated. The fire burned brightly, and the soft radiance of the incandescent lights in the lilies of silver caught the bubbles that flashed and passed in our glasses. Our chairs, being his patents, embraced and caressed us rather than submitted to be sat upon..."
+  }
+];
+
+function EInkMagnifier() {
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const [isHovering, setIsHovering] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const activeTextObj = MAGNIFIER_TEXTS[selectedIdx];
+  const zoomFactor = 2.4; // Zoom scale factor
+  const lensSize = 160;   // Magnifying glass lens size
+  const lensRadius = lensSize / 2;
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setCoords({ x, y });
+  };
+
+  const containerWidth = containerRef.current?.clientWidth || 500;
+  const containerHeight = containerRef.current?.clientHeight || 200;
+
+  return (
+    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-lg flex flex-col justify-between h-[300px] relative overflow-hidden select-none group w-full">
+      {/* Banner / Title */}
+      <div className="flex items-center justify-between border-b border-kindle-border/40 pb-2 z-10">
+        <div className="space-y-0.5">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent font-sans">
+            E-INK CLARITY LAB
+          </span>
+          <h4 className="text-xs font-bold text-kindle-text">
+            {activeTextObj.title} — {activeTextObj.author}
+          </h4>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSelectedIdx((prev) => (prev + 1) % MAGNIFIER_TEXTS.length)}
+          className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-kindle-bg border border-kindle-border hover:border-kindle-accent text-kindle-text transition cursor-pointer"
+        >
+          Next Excerpt
+        </button>
+      </div>
+
+      {/* Main interactive area */}
+      <div
+        ref={containerRef}
+        onMouseMove={handleMouseMove}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
+        className="relative flex-1 overflow-hidden mt-3 p-4 rounded-xl bg-kindle-bg border border-kindle-border/40 cursor-none flex items-center justify-center text-left"
+        style={{
+          backgroundImage: "radial-gradient(rgba(0,0,0,0.03) 1px, transparent 1px)",
+          backgroundSize: "16px 16px"
+        }}
+      >
+        {/* Base Layer (Normal text size) */}
+        <div className="w-full text-xs font-serif leading-relaxed text-kindle-text opacity-95 pointer-events-none select-none">
+          {activeTextObj.text}
+        </div>
+
+        {/* Dynamic Precision Optical Lens */}
+        {isHovering && (
+          <div
+            className="absolute pointer-events-none z-30"
+            style={{
+              width: `${lensSize}px`,
+              height: `${lensSize}px`,
+              left: `${coords.x - lensRadius}px`,
+              top: `${coords.y - lensRadius}px`,
+            }}
+          >
+            {/* Outer Ergonomic Lens Handle */}
+            <div 
+              className="absolute w-12 h-3.5 bg-gradient-to-r from-neutral-800 via-neutral-600 to-neutral-900 rounded-full shadow-lg border border-neutral-500/60 pointer-events-none"
+              style={{
+                right: "-20px",
+                bottom: "-16px",
+                transform: "rotate(45deg)",
+                transformOrigin: "left center",
+              }}
+            />
+
+            {/* Lens Rim Container */}
+            <div className="w-full h-full rounded-full border-[3.5px] border-amber-600/90 dark:border-amber-400/90 bg-kindle-bg shadow-[0_15px_35px_rgba(0,0,0,0.35),_inset_0_2px_10px_rgba(255,255,255,0.7),_inset_0_-4px_12px_rgba(0,0,0,0.3)] ring-2 ring-amber-500/30 overflow-hidden relative">
+              
+              {/* Scaled Exact Replica Layer */}
+              <div
+                className="absolute p-4 pointer-events-none select-none flex items-center justify-center text-left"
+                style={{
+                  width: `${containerWidth}px`,
+                  height: `${containerHeight}px`,
+                  transformOrigin: "0 0",
+                  transform: `scale(${zoomFactor})`,
+                  left: `${lensRadius - coords.x * zoomFactor}px`,
+                  top: `${lensRadius - coords.y * zoomFactor}px`,
+                }}
+              >
+                <div className="w-full text-xs font-serif leading-relaxed text-kindle-text font-medium">
+                  {activeTextObj.text}
+                </div>
+              </div>
+
+              {/* Optical Center Crosshair Target */}
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                <div className="w-full h-[0.5px] bg-amber-500/25" />
+                <div className="h-full w-[0.5px] bg-amber-500/25 absolute" />
+                <div className="w-1.5 h-1.5 rounded-full bg-amber-500/80 shadow-xs absolute ring-2 ring-black/40" />
+              </div>
+
+              {/* Glass Glare Reflection */}
+              <div 
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background: "radial-gradient(circle at 32% 28%, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.08) 40%, rgba(0,0,0,0.15) 100%)"
+                }}
+              />
+
+              {/* E-Ink Subpixel Matrix Grid Texture */}
+              <div 
+                className="absolute inset-0 pointer-events-none mix-blend-multiply opacity-[0.06] dark:opacity-[0.1]"
+                style={{
+                  backgroundImage: "linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)",
+                  backgroundSize: "3px 3px"
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between pt-2 border-t border-kindle-border/40 mt-2 z-10">
+        <span className="text-[9px] text-kindle-text-muted">
+          Hover above to activate E-Ink subpixel magnifier
+        </span>
+        <span className="text-[9px] font-mono font-bold text-kindle-accent animate-pulse">
+          2.4X OPTICAL ZOOM
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const HERO_NEWS_ITEMS = [
+  {
+    source: "KORA CHRONICLE • KORA.NEWS",
+    badge: "NEW",
+    title: "Federated P2P library sync & high-fidelity voice narration arrive on E-Ink readers",
+    cover: "https://images.unsplash.com/photo-1506880018603-83d5b814b5a6?q=80&w=800&auto=format&fit=crop",
+    itemNum: 1,
+  },
+  {
+    source: "LITERARY HUB • LITHUB.COM",
+    badge: "TRENDING",
+    title: "The rise of distraction-free open reading hardware and open-source EPUB engines",
+    cover: "https://images.unsplash.com/photo-1457369804613-52c61a468e7d?q=80&w=800&auto=format&fit=crop",
+    itemNum: 2,
+  },
+  {
+    source: "TECHCRUNCH • TECH.CO",
+    badge: "FEATURED",
+    title: "Kora 2.4 releases offline TTS audiobooks, WebDAV sync and cross-device bookmarking",
+    cover: "https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=800&auto=format&fit=crop",
+    itemNum: 3,
+  },
+  {
+    source: "BOOKWIRE DAILY • BOOKWIRE.ORG",
+    badge: "LIVE",
+    title: "Over 10,000 public domain classics now available through integrated federated mirrors",
+    cover: "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?q=80&w=800&auto=format&fit=crop",
+    itemNum: 4,
+  },
+  {
+    source: "THE VERGE • THEVERGE.COM",
+    badge: "REVIEW",
+    title: "Why E-Ink power users are switching to Kora for zero-lag page flips and custom fonts",
+    cover: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=800&auto=format&fit=crop",
+    itemNum: 5,
+  },
+];
+
+function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onTextMouseLeave }: {
+  apk: { url: string; versionName: string; size: number } | null;
+  handleCopyLink: () => void;
+  copiedLink: boolean;
+  onTextMouseMove?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onTextMouseLeave?: () => void;
+}) {
+  const [newsIdx, setNewsIdx] = useState(0);
+  const [focusedDevice, setFocusedDevice] = useState<"tablet" | "phone" | null>(null);
+
+  // Auto-scroll news feed every 3.2 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNewsIdx((prev) => (prev + 1) % HERO_NEWS_ITEMS.length);
+    }, 3200);
+    return () => clearInterval(timer);
+  }, []);
+
+  const activeNews = HERO_NEWS_ITEMS[newsIdx];
+
+  return (
+    <div className="max-w-7xl mx-auto px-6 w-full z-10 relative">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
+        {/* Left: Headline & Streamlined Quick Download Actions */}
+        <div 
+          onMouseMove={onTextMouseMove}
+          onMouseLeave={onTextMouseLeave}
+          className="lg:col-span-5 space-y-8 text-left cursor-crosshair"
+        >
+          <div className="space-y-4">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-kindle-border/40 bg-kindle-card/50 text-[10px] font-sans font-semibold uppercase tracking-[0.2em] text-kindle-accent/80 shadow-sm chromatic-amber">
+              <Sparkles className="w-3.5 h-3.5 text-kindle-accent animate-pulse" />
+              The E-Ink Reading Sanctuary
+            </div>
+
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif font-extrabold text-kindle-text leading-[1.05] tracking-tight">
+              Read, Listen <span className="font-light italic text-kindle-accent font-serif">&amp;</span> Discover
+            </h1>
+
+            <p className="text-base sm:text-lg text-kindle-text-muted leading-relaxed font-medium">
+              The open E-Ink digital reader with integrated high-fidelity voice narration, federated mirror discovery, and a beautiful mind games lounge.
+            </p>
+          </div>
+
+          {/* High-fidelity Streamlined Action Card */}
+          <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-lg space-y-5 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-kindle-accent/5 rounded-full blur-xl pointer-events-none" />
+            
+            <div className="flex flex-col sm:flex-row gap-3">
+              {/* Android Native Download Button */}
+              <div className="flex-1 space-y-2">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent block">
+                  Native App (Android)
+                </span>
+                <a
+                  href={apk?.url || "https://github.com/CHAOTIC-RAY/Kora-/releases/latest"}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-xl hover:opacity-90 active:scale-[0.98] transition cursor-pointer shadow-md"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Download APK</span>
+                </a>
+              </div>
+
+              {/* Web Companion Button */}
+              <div className="flex-1 space-y-2">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted block">
+                  Instant Web App
+                </span>
+                <a
+                  href="/"
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 border border-kindle-border bg-kindle-bg text-kindle-text font-bold text-xs uppercase tracking-wider rounded-xl hover:border-kindle-accent transition shadow-sm cursor-pointer"
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Launch Web App</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Badges and details */}
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[10px] text-kindle-text-muted font-medium pt-2 border-t border-kindle-border/40">
+              <span className="flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Safe APK v{apk?.versionName || "2.4.0"}</span>
+              </span>
+              <span className="text-kindle-border">•</span>
+              <span className="flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-kindle-accent" />
+                <span>Play Protect Approved</span>
+              </span>
+              <span className="text-kindle-border">•</span>
+              <button
+                type="button"
+                onClick={handleCopyLink}
+                className="text-kindle-accent hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                {copiedLink ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedLink ? "Copied!" : "Share Link"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Double Device Showcase (Tablet + Phone) */}
+        <div className="lg:col-span-7 w-full flex items-center justify-center lg:justify-end">
+          <div className="relative w-full max-w-[580px] h-[460px] sm:h-[510px] flex items-center justify-center select-none">
+            
+            {/* 1. Tablet Mockup */}
+            <div 
+              onMouseEnter={() => setFocusedDevice("tablet")}
+              onMouseLeave={() => setFocusedDevice(null)}
+              className={`absolute left-0 sm:left-2 top-4 sm:top-6 w-[360px] sm:w-[440px] h-[300px] sm:h-[340px] rounded-[22px] border-[10px] border-neutral-900 bg-black overflow-hidden flex flex-col transition-all duration-300 cursor-pointer ${
+                focusedDevice === "tablet"
+                  ? "z-30 scale-105 shadow-[0_35px_70px_rgba(0,0,0,0.85)] ring-2 ring-sky-500/50"
+                  : focusedDevice === "phone"
+                  ? "z-10 opacity-80 scale-[0.97] shadow-md"
+                  : "z-10 shadow-[0_25px_50px_rgba(0,0,0,0.6)]"
+              }`}
+            >
+              <div className="w-full h-8 bg-[#0d0d0d] border-b border-neutral-800 px-3 flex items-center justify-between text-[9px] font-sans font-bold text-neutral-400">
+                <div className="flex items-center gap-2">
+                  <ArrowLeft className="w-3 h-3 text-neutral-300 cursor-pointer" />
+                  <RotateCcw className="w-3 h-3 text-neutral-400 cursor-pointer" />
+                  <span className="font-sans font-bold text-neutral-200 text-[9px] tracking-widest uppercase ml-1">GETTING STARTED WITH KORA</span>
+                </div>
+                <div className="flex items-center gap-2.5 text-neutral-300">
+                  <Sun className="w-3 h-3 hover:text-white transition cursor-pointer" />
+                  <Menu className="w-3 h-3 hover:text-white transition cursor-pointer" />
+                  <Settings className="w-3 h-3 hover:text-white transition cursor-pointer" />
+                  <Headphones className="w-3 h-3 hover:text-white transition cursor-pointer" />
+                  <PenTool className="w-3 h-3 hover:text-white transition cursor-pointer" />
+                </div>
+              </div>
+
+              <div className="flex-1 p-4 sm:p-5 bg-black text-left relative overflow-hidden flex flex-col justify-between select-none">
+                <div className="space-y-2 text-white">
+                  <div className="text-[8px] font-mono tracking-widest text-neutral-400 uppercase font-bold">CHAPTER 3 OF 6</div>
+                  <h3 className="text-base font-serif font-bold text-white mb-2 leading-snug">P2P sync &amp; devices</h3>
+                  
+                  <div className="space-y-1.5 text-[9px] font-sans text-neutral-300 leading-relaxed max-h-[160px] overflow-hidden">
+                    <p className="font-bold text-white text-[10px]">P2P sync &amp; devices</p>
+                    <p className="font-bold text-white text-[9.5px]">How sync works in Kora</p>
+                    <p className="text-neutral-300">
+                      Kora keeps book files on your device. Sign-in syncs shelf metadata, reading progress, highlights, and notes — not the raw EPUB bytes.
+                    </p>
+
+                    <p className="font-bold text-white text-[9.5px] pt-1">Peer-to-peer (P2P) transfer</p>
+                    <p className="text-neutral-300">
+                      When a title shows a P2P badge, another nearby device running Kora may share the file directly — no cloud upload of the book itself.
+                    </p>
+
+                    <p className="font-bold text-white text-[9.5px] pt-1">Open Tools → Devices &amp; Sync</p>
+                    <p className="text-neutral-300 pl-1 border-l border-amber-500/50">Enable sharing on both devices on the same network</p>
+                    <p className="text-neutral-300 pl-1 border-l border-amber-500/50">Tap a cloud-only book — proximity transfer can fill the local copy</p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-neutral-800/80 space-y-1">
+                  <div className="flex items-center justify-between text-[8px] font-mono text-neutral-400">
+                    <span>End of P2P sync &amp; devices</span>
+                    <span>50% read</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <div className="flex-1 relative flex items-center h-2">
+                      <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-white rounded-full" style={{ width: "50%" }} />
+                      </div>
+                      <div className="absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-black shadow-md" />
+                    </div>
+                    <span className="text-[7.5px] font-mono text-neutral-400 whitespace-nowrap">chapter 3 of 6 • 50% • ~3 min left</span>
+                    <div className="px-2 py-0.5 rounded bg-black border border-neutral-700 text-white text-[7.5px] font-bold tracking-wider flex items-center gap-1">
+                      <LayoutGrid className="w-2.5 h-2.5" /> 2-PAGE
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Mobile Phone Mockup */}
+            <div 
+              onMouseEnter={() => setFocusedDevice("phone")}
+              onMouseLeave={() => setFocusedDevice(null)}
+              className={`absolute right-0 sm:right-2 bottom-2 w-[220px] sm:w-[245px] h-[410px] sm:h-[460px] rounded-[38px] border-[8px] border-neutral-900 bg-neutral-950 overflow-hidden flex flex-col transition-all duration-300 cursor-pointer ${
+                focusedDevice === "phone"
+                  ? "z-30 scale-105 shadow-[0_35px_70px_rgba(0,0,0,0.85)] ring-2 ring-emerald-500/50"
+                  : focusedDevice === "tablet"
+                  ? "z-10 opacity-80 scale-[0.97] shadow-md"
+                  : "z-20 shadow-[0_25px_60px_rgba(0,0,0,0.7)]"
+              }`}
+            >
+              <div className="w-full h-9 bg-black/60 backdrop-blur-xs px-3 pt-2.5 flex items-center justify-between text-neutral-300 z-30">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-neutral-900/90 border border-neutral-800 flex items-center justify-center">
+                    <Sliders className="w-3 h-3 text-neutral-300" />
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-neutral-900/90 border border-neutral-800 flex items-center justify-center">
+                    <Filter className="w-3 h-3 text-neutral-300" />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-neutral-900/90 border border-neutral-800 flex items-center justify-center">
+                    <LayoutGrid className="w-3 h-3 text-neutral-300" />
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-neutral-900/90 border border-neutral-800 flex items-center justify-center">
+                    <RotateCcw className="w-3 h-3 text-neutral-300" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 relative overflow-hidden flex flex-col justify-end p-3.5 select-none bg-neutral-900">
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    key={newsIdx}
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -15 }}
+                    transition={{ duration: 0.4 }}
+                    className="absolute inset-0 w-full h-full"
+                  >
+                    <img
+                      src={activeNews.cover}
+                      alt="Article Cover"
+                      className="w-full h-full object-cover opacity-60"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+                  </motion.div>
+                </AnimatePresence>
+
+                <div className="relative z-10 space-y-2 mb-12 text-left">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={newsIdx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.35 }}
+                      className="space-y-2"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="px-2 py-0.5 rounded-full bg-neutral-900/90 border border-neutral-700 text-[7.5px] font-bold text-white uppercase tracking-wider truncate">
+                          {activeNews.source}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded-full bg-white text-[7.5px] font-black text-black uppercase shrink-0">
+                          {activeNews.badge}
+                        </span>
+                      </div>
+
+                      <h4 className="text-xs sm:text-sm font-serif font-bold text-white leading-tight drop-shadow-md min-h-[2.5rem]">
+                        {activeNews.title}
+                      </h4>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button 
+                          type="button"
+                          className="flex items-center gap-1 px-3 py-1 rounded-full bg-neutral-800/90 border border-neutral-700 text-[8px] font-bold text-white shadow-xs hover:bg-neutral-700 transition cursor-pointer"
+                        >
+                          <Bookmark className="w-2.5 h-2.5 fill-white" />
+                          <span>SAVE</span>
+                        </button>
+                        <button 
+                          type="button"
+                          className="flex items-center gap-1 px-3 py-1 rounded-full bg-neutral-800/60 border border-neutral-700/60 text-[8px] font-bold text-white shadow-xs hover:bg-neutral-700 transition cursor-pointer"
+                        >
+                          <Share2 className="w-2.5 h-2.5" />
+                          <span>SHARE</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[7.5px] font-mono text-neutral-300 pt-1">
+                        <span className="flex items-center gap-0.5 text-neutral-300">
+                          <ChevronDown className="w-3 h-3 text-neutral-400" /> Tap to read
+                        </span>
+                        <span>{activeNews.itemNum}/5</span>
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+
+                <div className="absolute bottom-2 left-2 right-2 z-30">
+                  <div className="bg-neutral-900/95 border border-neutral-800/90 backdrop-blur-md rounded-2xl px-1.5 py-1 flex items-center justify-between text-[6.5px] font-bold text-neutral-400">
+                    <div className="flex flex-col items-center gap-0.5 px-1">
+                      <Sofa className="w-3 h-3 text-neutral-400" />
+                      <span>LOUNGE</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 px-1">
+                      <Library className="w-3 h-3 text-neutral-400" />
+                      <span>LIBRARY</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 px-1">
+                      <Compass className="w-3 h-3 text-neutral-400" />
+                      <span>DISCOVER</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-xl bg-neutral-800 border border-neutral-700 text-amber-400 shadow-xs">
+                      <Radio className="w-3 h-3 text-amber-400" />
+                      <span className="text-white font-extrabold">READ</span>
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 px-1">
+                      <Wrench className="w-3 h-3 text-neutral-400" />
+                      <span>WORKSHOP</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MagnifyingTiltCard({ children, className = "", id = "" }: { children: React.ReactNode; className?: string; id?: string }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [rotate, setRotate] = useState({ x: 0, y: 0 });
+  const [isHovered, setIsHovered] = useState(false);
+  const [glarePos, setGlarePos] = useState({ x: 0, y: 0 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = cardRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    // Calculate rotation: ranges from -6 to 6 degrees
+    const rotateX = -((y / rect.height) - 0.5) * 8;
+    const rotateY = ((x / rect.width) - 0.5) * 8;
+    
+    setRotate({ x: rotateX, y: rotateY });
+    setGlarePos({ x, y });
+  };
+
+  const handleMouseEnter = () => {
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    setIsHovered(false);
+    setRotate({ x: 0, y: 0 });
+  };
+
+  return (
+    <div
+      ref={cardRef}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      id={id}
+      className={`relative transition-all duration-300 ease-out ${className}`}
+      style={{
+        transform: isHovered 
+          ? `perspective(1000px) rotateX(${rotate.x}deg) rotateY(${rotate.y}deg) scale3d(1.02, 1.02, 1.02)` 
+          : "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)",
+        transformStyle: "preserve-3d",
+        boxShadow: isHovered 
+          ? "0 25px 50px -12px rgba(0, 0, 0, 0.25)" 
+          : "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+      }}
+    >
+      <div style={{ transform: "translateZ(20px)" }} className="h-full w-full">
+        {children}
+      </div>
+
+      {/* Radiant Cursor Glare Spotlight */}
+      <div
+        className="absolute inset-0 pointer-events-none rounded-[inherit] transition-opacity duration-300"
+        style={{
+          opacity: isHovered ? 1 : 0,
+          background: `radial-gradient(circle 240px at ${glarePos.x}px ${glarePos.y}px, rgba(217, 119, 6, 0.08), transparent 80%)`,
+        }}
+      />
+    </div>
+  );
+}
+
+function MockBookCover({ title, author, className = "" }: { title: string; author: string; className?: string }) {
+  const designs = [
+    { bg: "bg-[#1e2d3b]", text: "text-[#f3ebd5]", accent: "border-[#e0533c]/60", font: "font-serif" },
+    { bg: "bg-[#2d201c]", text: "text-[#f5ebd6]", accent: "border-amber-600/60", font: "font-serif" },
+    { bg: "bg-[#14291f]", text: "text-[#e8f5ed]", accent: "border-emerald-500/60", font: "font-sans" },
+    { bg: "bg-[#331c29]", text: "text-[#fcf0f5]", accent: "border-pink-500/60", font: "font-serif" },
+    { bg: "bg-[#271d3a]", text: "text-[#f3ebf5]", accent: "border-purple-500/60", font: "font-serif" },
+    { bg: "bg-[#423521]", text: "text-[#fcfaf4]", accent: "border-amber-500/60", font: "font-serif" },
+    { bg: "bg-[#1a1a1e]", text: "text-neutral-200", accent: "border-neutral-500/60", font: "font-mono" },
+  ];
+  
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const design = designs[Math.abs(hash) % designs.length] || designs[0];
+
+  return (
+    <div className={`w-full h-full ${design.bg} ${className} flex flex-col justify-between p-2.5 sm:p-3 border border-white/10 relative overflow-hidden select-none`}>
+      <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/30 pointer-events-none" />
+      <div className="absolute top-0 left-0 bottom-0 w-1 bg-black/30 blur-[0.5px] pointer-events-none" />
+      <div className="absolute top-0 left-1 bottom-0 w-[0.5px] bg-white/10 pointer-events-none" />
+
+      <div className={`text-[7px] sm:text-[8px] tracking-widest ${design.text} opacity-50 font-mono text-center uppercase`}>
+        Kora Classic
+      </div>
+
+      <div className="flex flex-col items-center justify-center text-center flex-1 py-1.5">
+        <h4 className={`text-[10px] sm:text-xs font-bold ${design.text} leading-tight ${design.font} line-clamp-3 px-1`}>
+          {title}
+        </h4>
+        <div className={`w-4 h-[1px] my-1 bg-current opacity-30 ${design.text}`} />
+        <p className="text-[8px] sm:text-[9px] text-neutral-300 font-sans line-clamp-1 italic">
+          {author}
+        </p>
+      </div>
+
+      <div className="border-t border-white/10 pt-1 flex items-center justify-between text-[6px] sm:text-[7px] font-mono opacity-40">
+        <span className="uppercase tracking-wider">E-INK</span>
+        <span>KORA</span>
+      </div>
+    </div>
+  );
+}
+
+function BookCoverImage({ book, className = "" }: { book: any; className?: string }) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError || !book.cover) {
+    return <MockBookCover title={book.title} author={book.author} className={className} />;
+  }
+
+  return (
+    <img
+      src={book.cover}
+      alt={book.title}
+      className={`w-full h-full object-cover ${className}`}
+      loading="lazy"
+      onError={() => setHasError(true)}
+    />
+  );
+}
+
 export default function InstallView() {
+  const [headerMouse, setHeaderMouse] = useState({ x: 0, y: 0 });
+  const handleHeaderMouseMove = (e: React.MouseEvent) => {
+    const x = (e.clientX / (window.innerWidth || 1) - 0.5) * 20;
+    const y = (e.clientY / (window.innerHeight || 1) - 0.5) * 20;
+    setHeaderMouse({ x, y });
+  };
+
   const [apk, setApk] = useState<{ url: string; versionName: string; size: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,10 +752,40 @@ export default function InstallView() {
   const [showWordSearchDemo, setShowWordSearchDemo] = useState(false);
   const [showWikipediaDemo, setShowWikipediaDemo] = useState(false);
   const [showDictionaryDemo, setShowDictionaryDemo] = useState(false);
+  const [showLinguistGuardianDemo, setShowLinguistGuardianDemo] = useState(false);
 
   // Hide the sticky top nav once the closing notebook fills the screen.
   const [navHidden, setNavHidden] = useState(false);
   const notebookRef = useRef<HTMLElement | null>(null);
+  const heroSectionRef = useRef<HTMLElement | null>(null);
+
+  // Hero Section Image Magnifier Glass state (Restricted strictly to Hero Section Text area)
+  const [magnifier, setMagnifier] = useState<{
+    x: number;
+    y: number;
+    visible: boolean;
+    heroWidth: number;
+    heroHeight: number;
+  } | null>(null);
+
+  const handleTextMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!heroSectionRef.current) return;
+    const rect = heroSectionRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setMagnifier({
+      x,
+      y,
+      visible: true,
+      heroWidth: rect.width,
+      heroHeight: rect.height,
+    });
+  };
+
+  const handleTextMouseLeave = () => {
+    setMagnifier((prev) => (prev ? { ...prev, visible: false } : null));
+  };
 
   useEffect(() => {
     const el = notebookRef.current;
@@ -100,20 +801,114 @@ export default function InstallView() {
   // FAQ stays fully visible — no scroll fade.
   const faqRef = useRef<HTMLDivElement | null>(null);
 
+  // Interactive Download Mirror Hub Popup State & Saved Bookmarks
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set(["frankenstein"]));
+
+  const toggleBookmark = (id: string) => {
+    setBookmarkedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        toast("Removed from Saved Favorites", { icon: "🤍" });
+      } else {
+        next.add(id);
+        toast("Added to Saved Favorites!", { icon: "❤️" });
+      }
+      return next;
+    });
+  };
+
   // Lock background scroll whenever any fullscreen demo/popup is open.
   useScrollLock(
     showScoreTrackerDemo ||
       showCrosswordDemo ||
       showWordSearchDemo ||
       showWikipediaDemo ||
-      showDictionaryDemo
+      showDictionaryDemo ||
+      showLinguistGuardianDemo ||
+      isDownloadModalOpen
   );
 
   // Unified Experience Section Pillar State
   const [experiencePillar, setExperiencePillar] = useState<"library" | "themes" | "cloud" | "voice" | "catalog" | "workshop">("library");
-  const [isVoiceSpeaking, setIsVoiceSpeaking] = useState(false);
+  const [isVoiceSpeaking, setIsVoiceSpeaking] = useState(true); // Autoplay by default
+  const [isVoiceMuted, setIsVoiceMuted] = useState(true); // Muted by default
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
   const [catalogQuery, setCatalogQuery] = useState("");
+  const [selectedBookId, setSelectedBookId] = useState<string>("frankenstein");
+  const [activeDownload, setActiveDownload] = useState<{
+    name: string;
+    format: string;
+    source: string;
+    progress: number;
+    completed: boolean;
+  } | null>(null);
+
+  const startSimulatedDownload = (sourceName: string, format: string, bookTitle: string) => {
+    setActiveDownload({
+      name: `${bookTitle} (${format})`,
+      format,
+      source: sourceName,
+      progress: 12,
+      completed: false,
+    });
+
+    let current = 12;
+    const interval = setInterval(() => {
+      current += Math.floor(Math.random() * 22) + 14;
+      if (current >= 100) {
+        current = 100;
+        clearInterval(interval);
+        setActiveDownload({
+          name: `${bookTitle} (${format})`,
+          format,
+          source: sourceName,
+          progress: 100,
+          completed: true,
+        });
+        setTimeout(() => {
+          setActiveDownload(null);
+        }, 4500);
+      } else {
+        setActiveDownload((prev) => (prev ? { ...prev, progress: current } : null));
+      }
+    }, 320);
+  };
+
+  // Speech synthesis autoplay / playback loop with volume control
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    if (isVoiceSpeaking) {
+      window.speechSynthesis.cancel();
+      const text = "I am by birth a Genevese, and my family is one of the most distinguished of that republic. My ancestors had been for many years counsellors and syndics; and my father had filled several public situations with honour and reputation. He was respected by all who knew him for his integrity and indefatigable attention to public business.";
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = voiceSpeed;
+      utterance.volume = isVoiceMuted ? 0 : 1;
+      
+      utterance.onend = () => {
+        // Loop speech if still speaking
+        if (isVoiceSpeaking) {
+          const repeatUtterance = new SpeechSynthesisUtterance(text);
+          repeatUtterance.rate = voiceSpeed;
+          repeatUtterance.volume = isVoiceMuted ? 0 : 1;
+          repeatUtterance.onend = utterance.onend;
+          window.speechSynthesis.speak(repeatUtterance);
+        }
+      };
+
+      window.speechSynthesis.speak(utterance);
+    } else {
+      window.speechSynthesis.cancel();
+    }
+
+    return () => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [isVoiceSpeaking, isVoiceMuted, voiceSpeed]);
   
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [installTab, setInstallTab] = useState<"web" | "apk" | "ios" | "self">("web");
@@ -293,6 +1088,359 @@ export default function InstallView() {
     }
   };
 
+  const sampleBooks = [
+    {
+      id: "intimate-deception",
+      category: "Popular Audiobooks",
+      title: "Intimate Deception",
+      author: "Dr. Sheri Keffer",
+      cover: "https://covers.openlibrary.org/b/isbn/9780800729110-L.jpg",
+      rating: "4.9",
+      source: "Libgen Mirror",
+      info: "EPUB • 1.4 MB • Clean Formatting",
+      color: "text-sky-500",
+      editions: ["EPUB", "EN", "Unknown", "ANNA'S"],
+      mirrors: [
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "online" },
+        { name: "Anna's Archive", url: "https://annas-archive.org/md5/8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "fast" },
+        { name: "Anna's Archive (Slow/Manual)", url: "https://annas-archive.gl/slow_download/8391ab7228dbf0be62701dd7c639107a", format: "PDF", size: "3.2 MB", status: "slow" },
+      ],
+      audioTracks: [
+        "Dr. Sheri Keffer – Intimate Deception Audiobook (Recovering the Injuries of Sexual Betrayal - Ch 1)",
+        "Dr. Sheri Keffer – Intimate Deception Audiobook (Recovering the Injuries of Sexual Betrayal - Ch 2)",
+        "Dr. Sheri Keffer – Intimate Deception Audiobook (Recovering the Injuries of Sexual Betrayal - Ch 3)",
+        "Dr. Sheri Keffer – Intimate Deception Audiobook (Recovering the Injuries of Sexual Betrayal - Ch 4)",
+        "Dr. Sheri Keffer – Intimate Deception Audiobook (Recovering the Injuries of Sexual Betrayal - Ch 5)",
+        "Dr. Sheri Keffer – Intimate Deception Audiobook (Recovering the Injuries of Sexual Betrayal - Ch 6)",
+      ]
+    },
+    {
+      id: "hunger-makes-me",
+      category: "Popular Audiobooks",
+      title: "Hunger Makes Me a Modern Girl",
+      author: "Carrie Brownstein",
+      cover: "https://covers.openlibrary.org/b/isbn/9780385680783-L.jpg",
+      rating: "4.7",
+      source: "Anna's Archive",
+      info: "EPUB • 890 KB • Memoir",
+      color: "text-amber-500",
+      editions: ["EPUB", "EN", "Penguin", "FAST CDN"],
+      mirrors: [
+        { name: "Anna's Archive Node 1", url: "https://annas-archive.org/md5/71829bc81726a7182736152", format: "EPUB", size: "890 KB", status: "fast" },
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=71829bc81726a7182736152", format: "PDF", size: "2.1 MB", status: "online" },
+      ],
+      audioTracks: [
+        "Carrie Brownstein – Hunger Makes Me a Modern Girl Audiobook (Track 1)",
+        "Carrie Brownstein – Hunger Makes Me a Modern Girl Audiobook (Track 2)",
+        "Carrie Brownstein – Hunger Makes Me a Modern Girl Audiobook (Track 3)",
+      ]
+    },
+    {
+      id: "son-of-neptune",
+      category: "Popular Audiobooks",
+      title: "The Son of Neptune",
+      author: "Rick Riordan",
+      cover: "https://covers.openlibrary.org/b/isbn/9781423140597-L.jpg",
+      rating: "4.9",
+      source: "Rave Engine",
+      info: "EPUB • 1.1 MB • Fantasy",
+      color: "text-purple-500",
+      editions: ["EPUB", "EN", "Disney-Hyperion", "PRIMARY"],
+      mirrors: [
+        { name: "RAVE Engine High Speed Node", url: "https://rave.engine/dl/son-of-neptune.epub", format: "EPUB", size: "1.1 MB", status: "fast" },
+        { name: "Libgen Mirror (libgen.rs)", url: "https://libgen.rs/book/index.php?md5=918237192837192", format: "PDF", size: "3.4 MB", status: "online" },
+      ],
+      audioTracks: [
+        "Rick Riordan – The Son of Neptune Audiobook (Narrated by Joshua Swanson - Part 1)",
+        "Rick Riordan – The Son of Neptune Audiobook (Narrated by Joshua Swanson - Part 2)",
+        "Rick Riordan – The Son of Neptune Audiobook (Narrated by Joshua Swanson - Part 3)",
+      ]
+    },
+    {
+      id: "against-the-wall",
+      category: "Popular Audiobooks",
+      title: "Against The Wall",
+      author: "Rebecca Zanetti",
+      cover: "https://covers.openlibrary.org/b/isbn/9781420131451-L.jpg",
+      rating: "4.6",
+      source: "Libgen Mirror",
+      info: "EPUB • 520 KB • Romance/Thriller",
+      color: "text-emerald-500",
+      editions: ["EPUB", "EN", "Kensington"],
+      mirrors: [
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=129837192837192", format: "EPUB", size: "520 KB", status: "online" },
+      ],
+      audioTracks: [
+        "Rebecca Zanetti – Against The Wall Audiobook (Full Narration)",
+      ]
+    },
+    {
+      id: "shatter-me",
+      category: "Popular Audiobooks",
+      title: "Shatter Me",
+      author: "Tahereh Mafi",
+      cover: "https://covers.openlibrary.org/b/isbn/9780062085504-L.jpg",
+      rating: "4.8",
+      source: "Anna's Archive",
+      info: "EPUB • 780 KB • YA Dystopian",
+      color: "text-rose-500",
+      editions: ["EPUB", "EN", "HarperCollins"],
+      mirrors: [
+        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.org/md5/98127391283719", format: "EPUB", size: "780 KB", status: "fast" },
+      ],
+      audioTracks: [
+        "Tahereh Mafi – Shatter Me Audiobook (Part 1)",
+        "Tahereh Mafi – Shatter Me Audiobook (Part 2)",
+      ]
+    },
+    {
+      id: "wicked-king",
+      category: "Popular Audiobooks",
+      title: "The Wicked King",
+      author: "Holly Black",
+      cover: "https://covers.openlibrary.org/b/isbn/9780316310352-L.jpg",
+      rating: "4.8",
+      source: "Libgen Mirror",
+      info: "EPUB • 1.2 MB • Fantasy",
+      color: "text-sky-500",
+      editions: ["EPUB", "EN", "Little Brown"],
+      mirrors: [
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=928137192837192", format: "EPUB", size: "1.2 MB", status: "online" },
+      ],
+      audioTracks: [
+        "Holly Black – The Wicked King Audiobook (Full Track)",
+      ]
+    },
+    {
+      id: "what-if-its-us",
+      category: "Popular Audiobooks",
+      title: "What If It's Us",
+      author: "Becky Albertalli, Adam Silvera",
+      cover: "https://covers.openlibrary.org/b/isbn/9780062795250-L.jpg",
+      rating: "4.7",
+      source: "Anna's Archive",
+      info: "EPUB • 950 KB • Contemporary",
+      color: "text-teal-500",
+      editions: ["EPUB", "EN", "HarperTeen"],
+      mirrors: [
+        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.org/md5/812739128371", format: "EPUB", size: "950 KB", status: "fast" },
+      ],
+      audioTracks: [
+        "Becky Albertalli & Adam Silvera – What If It's Us Audiobook (Track 1)",
+        "Becky Albertalli & Adam Silvera – What If It's Us Audiobook (Track 2)",
+      ]
+    },
+    {
+      id: "creative-act",
+      category: "NYT: Business",
+      title: "The Creative Act",
+      author: "Rick Rubin",
+      cover: "https://covers.openlibrary.org/b/isbn/9780593652886-L.jpg",
+      rating: "4.9",
+      source: "NYT Best Seller",
+      info: "EPUB • 2.1 MB • Creativity & Way of Being",
+      color: "text-amber-500",
+      editions: ["EPUB", "EN", "Penguin Press", "BEST SELLER"],
+      mirrors: [
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=38192739128371", format: "EPUB", size: "2.1 MB", status: "online" },
+        { name: "Anna's Archive", url: "https://annas-archive.org/md5/38192739128371", format: "EPUB", size: "2.1 MB", status: "fast" },
+      ],
+      audioTracks: [
+        "Rick Rubin – The Creative Act: A Way of Being Audiobook (Narrated by Rick Rubin - Part 1)",
+        "Rick Rubin – The Creative Act: A Way of Being Audiobook (Narrated by Rick Rubin - Part 2)",
+      ]
+    },
+    {
+      id: "let-them-theory",
+      category: "NYT: Business",
+      title: "The Let Them Theory",
+      author: "Mel Robbins",
+      cover: "https://covers.openlibrary.org/b/isbn/9781401971489-L.jpg",
+      rating: "4.8",
+      source: "NYT Best Seller",
+      info: "EPUB • 1.6 MB • Self-Improvement",
+      color: "text-emerald-500",
+      editions: ["EPUB", "EN", "Hay House"],
+      mirrors: [
+        { name: "Anna's Archive Fast Node", url: "https://annas-archive.org/md5/19283719283719", format: "EPUB", size: "1.6 MB", status: "fast" },
+      ],
+      audioTracks: [
+        "Mel Robbins – The Let Them Theory Audiobook (Full Stream)",
+      ]
+    },
+    {
+      id: "never-split-difference",
+      category: "NYT: Business",
+      title: "Never Split The Difference",
+      author: "Chris Voss",
+      cover: "https://covers.openlibrary.org/b/isbn/9780062407801-L.jpg",
+      rating: "4.9",
+      source: "NYT Best Seller",
+      info: "EPUB • 1.2 MB • Negotiation",
+      color: "text-rose-500",
+      editions: ["EPUB", "EN", "HarperBusiness"],
+      mirrors: [
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=91823719283712", format: "EPUB", size: "1.2 MB", status: "online" },
+      ],
+      audioTracks: [
+        "Chris Voss – Never Split The Difference Audiobook (Track 1)",
+        "Chris Voss – Never Split The Difference Audiobook (Track 2)",
+      ]
+    },
+    {
+      id: "1929",
+      category: "NYT: Business",
+      title: "1929: The Great Crash",
+      author: "Andrew Ross Sorkin",
+      cover: "https://covers.openlibrary.org/b/isbn/9780593833150-L.jpg",
+      rating: "4.8",
+      source: "NYT Best Seller",
+      info: "EPUB • 2.8 MB • History / Finance",
+      color: "text-red-500",
+      editions: ["EPUB", "EN", "Viking"],
+      mirrors: [
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=812739182739", format: "EPUB", size: "2.8 MB", status: "online" },
+      ],
+      audioTracks: [
+        "Andrew Ross Sorkin – 1929 Audiobook (Part 1)",
+      ]
+    },
+    {
+      id: "i-will-teach-you",
+      category: "NYT: Business",
+      title: "I Will Teach You To Be Rich",
+      author: "Ramit Sethi",
+      cover: "https://covers.openlibrary.org/b/isbn/9781523505746-L.jpg",
+      rating: "4.8",
+      source: "NYT Best Seller",
+      info: "EPUB • 1.5 MB • Personal Finance",
+      color: "text-amber-500",
+      editions: ["EPUB", "EN", "Workman"],
+      mirrors: [
+        { name: "Anna's Archive Fast Node", url: "https://annas-archive.org/md5/912837192837", format: "EPUB", size: "1.5 MB", status: "fast" },
+      ],
+      audioTracks: [
+        "Ramit Sethi – I Will Teach You To Be Rich Audiobook (Full Narration)",
+      ]
+    },
+    {
+      id: "atomic-habits",
+      category: "NYT: Business",
+      title: "Atomic Habits",
+      author: "James Clear",
+      cover: "https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg",
+      rating: "5.0",
+      source: "NYT Best Seller",
+      info: "EPUB • 1.8 MB • Habits & Productivity",
+      color: "text-amber-500",
+      editions: ["EPUB", "EN", "Avery", "BEST SELLER"],
+      mirrors: [
+        { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=712839182739182", format: "EPUB", size: "1.8 MB", status: "online" },
+        { name: "Anna's Archive", url: "https://annas-archive.org/md5/712839182739182", format: "EPUB", size: "1.8 MB", status: "fast" },
+      ],
+      audioTracks: [
+        "James Clear – Atomic Habits Audiobook (Narrated by James Clear)",
+      ]
+    }
+  ];
+
+  const DISCOVER_FEED_CATEGORIES = [
+    {
+      id: "nyt",
+      title: "NYT: Hardcover Fiction",
+      icon: BookOpen,
+      iconColor: "text-neutral-300",
+      books: [
+        { id: "whistler", title: "Whistler", author: "Ann Patchett", rating: "4.8", cover: "https://covers.openlibrary.org/b/isbn/9780062491107-L.jpg", info: "EPUB • 1.1 MB • Fiction" },
+        { id: "love-you-more", title: "Love You More", author: "Emily Giffin", rating: "4.7", cover: "https://covers.openlibrary.org/b/isbn/9780312548087-L.jpg", info: "EPUB • 980 KB • Contemporary" },
+        { id: "ransom", title: "Ransom", author: "Daniel Silva", rating: "4.9", cover: "https://covers.openlibrary.org/b/isbn/9780062834829-L.jpg", info: "EPUB • 1.4 MB • Thriller" },
+        { id: "calamity-club", title: "The Calamity Club", author: "Kathryn Stockett", rating: "4.8", cover: "https://covers.openlibrary.org/b/isbn/9780399155345-L.jpg", info: "EPUB • 1.6 MB • Historical" },
+        { id: "dungeon-cookbook", title: "The Dungeon Anarchist's Cookbook", author: "Matt Dinniman", rating: "4.9", cover: "https://covers.openlibrary.org/b/isbn/9781702816922-L.jpg", info: "EPUB • 2.2 MB • LitRPG / Fantasy" },
+        { id: "yesteryear", title: "Yesteryear", author: "Caro Claire Burke", rating: "4.6", cover: "https://covers.openlibrary.org/b/isbn/9780593448380-L.jpg", info: "EPUB • 1.2 MB • Fiction" },
+        { id: "feral-gods", title: "The Gate of the Feral Gods", author: "Matt Dinniman", rating: "4.9", cover: "https://covers.openlibrary.org/b/isbn/9781087950853-L.jpg", info: "EPUB • 2.4 MB • LitRPG / Sci-Fi" },
+      ]
+    },
+    {
+      id: "goodreads-best",
+      title: "Goodreads: Best Ever",
+      icon: Globe,
+      iconColor: "text-amber-400",
+      books: [
+        { id: "outlander", title: "Outlander (Outlander, #1)", author: "Diana Gabaldon", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9780440212560-L.jpg", info: "EPUB • 2.5 MB • Historical Romance" },
+        { id: "hitchhiker", title: "The Hitchhiker's Guide to the Galaxy", author: "Douglas Adams", rating: "4.2", cover: "https://covers.openlibrary.org/b/isbn/9780345391803-L.jpg", info: "EPUB • 820 KB • Sci-Fi / Comedy" },
+        { id: "narnia", title: "The Chronicles of Narnia", author: "C.S. Lewis", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9780064471190-L.jpg", info: "EPUB • 3.1 MB • Fantasy Classic" },
+        { id: "giving-tree", title: "The Giving Tree", author: "Shel Silverstein", rating: "4.4", cover: "https://covers.openlibrary.org/b/isbn/9780060256654-L.jpg", info: "EPUB • 450 KB • Illustrated" },
+        { id: "princess-bride", title: "The Princess Bride", author: "William Goldman", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9780156027014-L.jpg", info: "EPUB • 1.3 MB • Adventure / Fantasy" },
+        { id: "hunger-games", title: "The Hunger Games", author: "Suzanne Collins", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9780439023481-L.jpg", info: "EPUB • 1.1 MB • YA Dystopian" },
+        { id: "little-prince", title: "The Little Prince", author: "Antoine de Saint-Exupéry", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9780156012195-L.jpg", info: "EPUB • 680 KB • Classic Philosophy" },
+      ]
+    },
+    {
+      id: "goodreads-21st",
+      title: "Goodreads: 21st Century",
+      icon: Globe,
+      iconColor: "text-amber-400",
+      books: [
+        { id: "book-thief", title: "The Book Thief", author: "Markus Zusak", rating: "4.0", cover: "https://covers.openlibrary.org/b/isbn/9780375842207-L.jpg", info: "EPUB • 1.7 MB • Historical Fiction" },
+        { id: "kite-runner", title: "The Kite Runner", author: "Khaled Hosseini", rating: "3.9", cover: "https://covers.openlibrary.org/b/isbn/9781594631931-L.jpg", info: "EPUB • 1.4 MB • Drama" },
+        { id: "life-of-pi", title: "Life of Pi", author: "Yann Martel", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9780156027328-L.jpg", info: "EPUB • 1.2 MB • Adventure" },
+        { id: "splendid-suns", title: "A Thousand Splendid Suns", author: "Khaled Hosseini", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9781594489501-L.jpg", info: "EPUB • 1.5 MB • Drama" },
+        { id: "fault-in-our-stars", title: "The Fault in Our Stars", author: "John Green", rating: "4.2", cover: "https://covers.openlibrary.org/b/isbn/9780525478812-L.jpg", info: "EPUB • 920 KB • YA Fiction" },
+        { id: "gone-girl", title: "Gone Girl", author: "Gillian Flynn", rating: "4.3", cover: "https://covers.openlibrary.org/b/isbn/9780307588371-L.jpg", info: "EPUB • 1.8 MB • Psychological Thriller" },
+        { id: "atomic-habits", title: "Atomic Habits", author: "James Clear", rating: "5.0", cover: "https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg", info: "EPUB • 1.8 MB • Productivity" },
+      ]
+    },
+    {
+      id: "audiobooks-feed",
+      title: "Popular Audiobooks",
+      icon: Headphones,
+      iconColor: "text-sky-400",
+      books: [
+        { id: "intimate-deception", title: "Intimate Deception", author: "Dr. Sheri Keffer", rating: "4.9", cover: "https://covers.openlibrary.org/b/isbn/9780800729110-L.jpg", info: "AUDIO • 1.4 MB • Clean Formatting" },
+        { id: "hunger-makes-me", title: "Hunger Makes Me a Modern Girl", author: "Carrie Brownstein", rating: "4.7", cover: "https://covers.openlibrary.org/b/isbn/9780385680783-L.jpg", info: "AUDIO • 890 KB • Memoir" },
+        { id: "son-of-neptune", title: "The Son of Neptune", author: "Rick Riordan", rating: "4.9", cover: "https://covers.openlibrary.org/b/isbn/9781423140597-L.jpg", info: "AUDIO • 1.1 MB • Fantasy" },
+        { id: "against-the-wall", title: "Against The Wall", author: "Rebecca Zanetti", rating: "4.6", cover: "https://covers.openlibrary.org/b/isbn/9781420131451-L.jpg", info: "AUDIO • 520 KB • Romance/Thriller" },
+        { id: "shatter-me", title: "Shatter Me", author: "Tahereh Mafi", rating: "4.8", cover: "https://covers.openlibrary.org/b/isbn/9780062085504-L.jpg", info: "AUDIO • 780 KB • YA Dystopian" },
+        { id: "wicked-king", title: "The Wicked King", author: "Holly Black", rating: "4.8", cover: "https://covers.openlibrary.org/b/isbn/9780316310352-L.jpg", info: "AUDIO • 1.2 MB • Fantasy" },
+        { id: "what-if-its-us", title: "What If It's Us", author: "Becky Albertalli, Adam Silvera", rating: "4.7", cover: "https://covers.openlibrary.org/b/isbn/9780062795250-L.jpg", info: "AUDIO • 950 KB • Contemporary" },
+      ]
+    }
+  ];
+
+  const allBooksList = [
+    ...sampleBooks,
+    ...DISCOVER_FEED_CATEGORIES.flatMap((c) =>
+      c.books.map((b) => ({
+        id: b.id,
+        category: c.title,
+        title: b.title,
+        author: b.author,
+        cover: b.cover,
+        rating: b.rating,
+        source: "Open Archive Mirror",
+        info: b.info || "EPUB • 1.2 MB • E-Ink Optimized",
+        color: "text-amber-500",
+        editions: ["EPUB", "EN", "Primary Mirror"],
+        mirrors: [
+          { name: "Libgen Fast Mirror (libgen.li)", url: `https://libgen.li/get.php?md5=${b.id}`, format: "EPUB", size: "1.2 MB", status: "online" as const },
+          { name: "Anna's Archive Node 1", url: `https://annas-archive.org/md5/${b.id}`, format: "EPUB", size: "1.2 MB", status: "fast" as const },
+        ],
+        audioTracks: [
+          `${b.author} – ${b.title} Audiobook (Part 1)`,
+          `${b.author} – ${b.title} Audiobook (Part 2)`,
+        ],
+      }))
+    ),
+  ];
+
+  const selectedBook = allBooksList.find((b) => b.id === selectedBookId) || sampleBooks[0];
+
+  const filteredBooks = sampleBooks.filter((b) => {
+    if (!catalogQuery) return true;
+    const q = catalogQuery.toLowerCase();
+    return b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q) || b.category.toLowerCase().includes(q);
+  });
+
   return (
     <div className="min-h-screen bg-kindle-bg text-kindle-text font-sans antialiased selection:bg-kindle-accent/20">
       {/* Top Site Navigation Header */}
@@ -342,699 +1490,1110 @@ export default function InstallView() {
       </nav>
 
       {/* Hero Section */}
-      <header className="max-w-5xl mx-auto px-6 pt-10 pb-12 text-center space-y-8">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.4 }}
-          className="mx-auto w-20 h-20 bg-kindle-card border-2 border-kindle-border/80 rounded-3xl flex items-center justify-center shadow-xl hover:border-kindle-accent/50 transition-colors"
-        >
-          <KoraIcon className="w-10 h-10 text-kindle-text" />
-        </motion.div>
-
-        <div className="space-y-5 max-w-3xl mx-auto">
-          <motion.h1
-            initial="hidden"
-            animate="show"
-            variants={{
-              hidden: {},
-              show: { transition: { staggerChildren: 0.06, delayChildren: 0.15 } },
+      <header
+        id="hero-section"
+        ref={heroSectionRef}
+        onMouseMove={handleHeaderMouseMove}
+        className="relative w-full overflow-hidden flex flex-col justify-center min-h-[calc(100vh-68px)] lg:min-h-[90vh] py-16 md:py-24 lg:py-32 border-b border-kindle-border/60"
+      >
+        {/* Ambient Interactive Orbs */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <motion.div
+            animate={{ x: headerMouse.x * -1.5, y: headerMouse.y * -1.5 }}
+            transition={{ type: "spring", stiffness: 60, damping: 25 }}
+            className="absolute -top-24 -left-20 w-96 h-96 rounded-full bg-kindle-accent/5 blur-3xl opacity-70"
+          />
+          <motion.div
+            animate={{ x: headerMouse.x * 2, y: headerMouse.y * 2 }}
+            transition={{ type: "spring", stiffness: 60, damping: 25 }}
+            className="absolute top-1/2 -right-24 w-[400px] h-[400px] rounded-full bg-amber-500/5 blur-3xl opacity-50"
+          />
+          {/* Authentic Notebook Ruled Lines Background */}
+          <div 
+            className="absolute inset-0 opacity-[0.35] dark:opacity-[0.12] pointer-events-none"
+            style={{
+              backgroundImage: `
+                linear-gradient(to bottom, var(--theme-border) 1px, transparent 1px),
+                linear-gradient(to right, rgba(239, 68, 68, 0.4) 1px, transparent 1px)
+              `,
+              backgroundSize: "100% 28px, 100% 100%",
+              backgroundPosition: "0 0, 100px 0",
+              maskImage: "radial-gradient(circle at 50% 50%, black 85%, transparent 100%)",
+              WebkitMaskImage: "radial-gradient(circle at 50% 50%, black 85%, transparent 100%)",
             }}
-            className="text-4xl sm:text-5xl md:text-6xl font-[family-name:var(--font-serif)] font-bold text-kindle-text leading-[1.1] tracking-tight text-balance"
-          >
-            <span className="contents">
-              {[
-                { t: "Read,", em: false },
-                { t: "Listen", em: false },
-                { amp: true },
-                { t: "Discover", em: true },
-              ].map((tok, i) =>
-                "amp" in tok ? (
-                  <span key={i} className="inline-block align-baseline overflow-hidden px-1.5">
-                    <motion.span
-                      variants={{
-                        hidden: { scale: 0, rotate: -45, opacity: 0 },
-                        show: {
-                          scale: 1,
-                          rotate: 0,
-                          opacity: 1,
-                          transition: { type: "spring", stiffness: 260, damping: 16, delay: 0.1 },
-                        },
-                      }}
-                      animate={{ scale: [1, 1.12, 1], rotate: [0, 3, 0] }}
-                      transition={{
-                        delay: 0.9,
-                        duration: 2.4,
-                        repeat: Infinity,
-                        ease: "easeInOut",
-                      }}
-                      className="inline-block bg-gradient-to-br from-kindle-accent via-kindle-accent to-[#c98f4e] bg-clip-text text-transparent text-5xl sm:text-6xl md:text-7xl leading-none drop-shadow-[0_2px_10px_rgba(180,120,60,0.25)]"
-                    >
-                      &amp;
-                    </motion.span>
-                  </span>
-                ) : (
-                  <span key={i} className="inline-block overflow-hidden">
-                    <motion.span
-                      variants={{
-                        hidden: { y: "120%", opacity: 0 },
-                        show: { y: "0%", opacity: 1, transition: { duration: 0.6, ease: [0.22, 1, 0.36, 1] } },
-                      }}
-                      className={`inline-block ${tok.em ? "text-kindle-accent" : ""}`}
-                    >
-                      {tok.t}
-                      {i < 3 ? " " : ""}
-                    </motion.span>
-                  </span>
-                )
-              )}
-            </span>
-          </motion.h1>
+          />
 
-          <motion.p
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="text-base sm:text-lg text-kindle-text-muted leading-relaxed max-w-2xl mx-auto font-medium"
-          >
-            The open E-Ink digital reader with integrated text-to-speech voice narration, federated open-book discovery, and a lounge games suite.
-          </motion.p>
+          {/* Background Animated Ink Kora "K" Icon on Right Side */}
+          <div className="absolute top-1/2 -translate-y-1/2 -right-16 sm:-right-10 lg:-right-4 xl:right-4 pointer-events-none select-none z-0 opacity-65 dark:opacity-40 hidden sm:block overflow-visible">
+            <KoraIconInkDraw size={680} opacity={1} />
+          </div>
         </div>
 
-        {/* Official Download Vault Card */}
-        <motion.div
-          id="download-card"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25 }}
-          className="max-w-2xl mx-auto bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden"
-        >
-          <div className="flex flex-col items-center justify-center text-center gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent flex items-center gap-1.5">
-              <Smartphone className="w-3.5 h-3.5" /> Official Android Release Vault
-            </span>
-            <h3 className="text-sm font-bold text-kindle-text">Direct Android Package (.APK)</h3>
-          </div>
+        <HeroGridContent 
+          apk={apk} 
+          handleCopyLink={handleCopyLink} 
+          copiedLink={copiedLink} 
+          onTextMouseMove={handleTextMouseMove}
+          onTextMouseLeave={handleTextMouseLeave}
+        />
 
-          <div className="p-1.5 border border-kindle-border rounded-2xl bg-kindle-bg/60">
-            {loading ? (
-              <div className="py-6 flex flex-col items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-kindle-accent border-t-transparent rounded-full animate-spin" />
-                <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Fetching release info...</p>
-              </div>
-            ) : (
-              <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="text-left space-y-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-kindle-text">Kora Android App</span>
-                    <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-kindle-accent/10 text-kindle-accent border border-kindle-accent/20">
-                      v{apk?.versionName || "2.4.0"}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-kindle-text-muted font-mono uppercase">
-                    Size: {formatSize(apk?.size)} • Android 8.0+ Compliant
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <a
-                    href={apk?.url || "https://github.com/CHAOTIC-RAY/Kora-/releases/latest"}
-                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider hover:bg-opacity-90 active:scale-98 transition shadow-lg shrink-0 cursor-pointer"
-                  >
-                    <Download className="w-4 h-4" /> Download APK
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowQrModal(true)}
-                    className="p-3.5 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text hover:border-kindle-accent transition cursor-pointer"
-                    title="Generate Mobile Scan QR Code"
-                  >
-                    <QrCode className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[10px] text-kindle-text-muted font-medium border-t border-kindle-border/60 pt-4">
-            <span className="flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> Virus Total Scanned
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-kindle-accent" /> Play Protect Compliant
-            </span>
-            <span>•</span>
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="text-kindle-accent hover:underline flex items-center gap-1 cursor-pointer"
+        {/* Optical Image Magnifier Glass (Restricted strictly to Hero Section) */}
+        <AnimatePresence>
+          {magnifier && magnifier.visible && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.6 }}
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+              className="absolute pointer-events-none z-50 overflow-visible"
+              style={{
+                width: "120px",
+                height: "120px",
+                left: `${magnifier.x - 60}px`,
+                top: `${magnifier.y - 60}px`,
+              }}
             >
-              {copiedLink ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
-              {copiedLink ? "Portal Link Copied!" : "Copy Link"}
-            </button>
-          </div>
-        </motion.div>
+              {/* The Glass Lens Body - Pure Circle without handle */}
+              <div className="w-full h-full rounded-full border-[3px] border-neutral-800 dark:border-neutral-200 bg-kindle-bg shadow-[0_15px_35px_rgba(0,0,0,0.6),inset_0_2px_8px_rgba(255,255,255,0.7)] overflow-hidden relative">
+                
+                {/* Optical Zoom Mirror of Hero Section Content */}
+                <div
+                  className="absolute pointer-events-none select-none flex flex-col justify-center py-16 md:py-24 lg:py-32"
+                  style={{
+                    width: `${magnifier.heroWidth}px`,
+                    height: `${magnifier.heroHeight}px`,
+                    transformOrigin: "0 0",
+                    transform: "scale(2.0)",
+                    left: `${60 - magnifier.x * 2.0}px`,
+                    top: `${60 - magnifier.y * 2.0}px`,
+                  }}
+                >
+                  <HeroGridContent apk={apk} handleCopyLink={handleCopyLink} copiedLink={copiedLink} />
+                </div>
+
+                {/* Optical Center Crosshair Target */}
+                <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-20">
+                  <div className="w-full h-[0.5px] bg-amber-500/25" />
+                  <div className="h-full w-[0.5px] bg-amber-500/25 absolute" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500/80 shadow-xs absolute ring-2 ring-black/40" />
+                </div>
+
+                {/* Convex Glass Refraction Reflection & Rim Highlight */}
+                <div 
+                  className="absolute inset-0 pointer-events-none z-10"
+                  style={{
+                    background: "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.08) 50%, rgba(0,0,0,0.2) 100%)"
+                  }}
+                />
+                
+                {/* Spherical Inner Lens Edge Bulge Distortion Shadow */}
+                <div className="absolute inset-0 pointer-events-none rounded-full shadow-[inset_0_-8px_16px_rgba(0,0,0,0.25),inset_0_8px_16px_rgba(255,255,255,0.5)] border border-white/20 z-10" />
+
+                {/* Subpixel Matrix Grid Texture */}
+                <div 
+                  className="absolute inset-0 pointer-events-none mix-blend-multiply opacity-[0.05] dark:opacity-[0.10] z-10"
+                  style={{
+                    backgroundImage: "linear-gradient(to right, #000 1px, transparent 1px), linear-gradient(to bottom, #000 1px, transparent 1px)",
+                    backgroundSize: "4px 4px"
+                  }}
+                />
+                
+                {/* Subtle Backlit Warm Glass Tint */}
+                <div className="absolute inset-0 pointer-events-none bg-amber-500/5 mix-blend-overlay z-10" />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
-      {/* Main Continuous Feature Sections - Scroll Site with Each Feature One by One */}
-      <section className="max-w-5xl mx-auto px-6 pb-20 space-y-16">
+      {/* Main Continuous Feature Sections - Bento Grid Layout on Desktop */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-16 space-y-6">
 
         {/* Section 1: Ebook & Reader Engine */}
-        <div id="ebooks" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-          <FeatureDemosGrid />
-        </div>
-
-        {/* Section 2: Reading Themes & Typography */}
         <Reveal>
-          <div id="themes" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-            <ThemeShowcase />
+          <div id="ebooks" className="pt-6 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
+            <FeatureDemosGrid />
           </div>
         </Reveal>
 
-        {/* Section 3: Multi-Destination Cloud Sync */}
-        <Reveal>
-          <div id="cloud" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-kindle-border/60 pb-6">
-                <div className="space-y-1">
-                  <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-500 uppercase tracking-wider">
-                    <Zap className="w-4 h-4" /> Multi-Destination Cloud Sync
+        {/* Bento Grid layout for the key showcase sections on Desktop */}
+        <div className="pt-6 border-t border-kindle-border/60">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+
+            {/* Left Column (span 7): Themes, Discover/Catalog, and Games Grid */}
+            <div className="lg:col-span-7 flex flex-col gap-6 h-full">
+
+              {/* Section 2: Reading Themes & Typography (Bento Card 1) */}
+              <div id="themes" className="scroll-mt-20 flex flex-col">
+                <Reveal className="flex-1 flex flex-col">
+                  <div>
+                    <ThemeShowcase />
                   </div>
-                  <h3 className="text-xl font-serif font-bold text-kindle-text">
-                    Instant Progress & Annotations Sync
-                  </h3>
-                  <p className="text-xs text-kindle-text-muted max-w-xl">
-                    Seamlessly sync bookmarks, reading progress percentages, and highlight notes across Android, Web, and desktop via Google Firestore or WebDAV.
-                  </p>
-                </div>
+                </Reveal>
               </div>
 
-              {/* Cloud Target Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-kindle-text">Firebase Firestore</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <p className="text-[10px] text-kindle-text-muted">Real-time sync across devices with zero setup required.</p>
-                </div>
-                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-kindle-text">Google Drive Backup</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <p className="text-[10px] text-kindle-text-muted">Backup full EPUB library files to private Google Drive space.</p>
-                </div>
-                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-kindle-text">WebDAV / Nextcloud</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <p className="text-[10px] text-kindle-text-muted">Self-hosted WebDAV sync protocol for complete data ownership.</p>
-                </div>
-                <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-kindle-text">Local IndexedDB</span>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                  </div>
-                  <p className="text-[10px] text-kindle-text-muted">100% offline access when no network connection is present.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </Reveal>
-
-        {/* Section 4: Voice Narrator Audiobooks */}
-        <div id="voice" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-          <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-kindle-border pb-6">
-              <div className="space-y-2">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-kindle-accent/10 text-kindle-accent text-[10px] font-bold uppercase tracking-widest">
-                  <Volume2 className="w-3.5 h-3.5" /> High-Fidelity Voice Synthesis
-                </div>
-                <h3 className="text-xl sm:text-2xl font-serif font-bold text-kindle-text">
-                  Text-to-Audiobook Voice Narrator
-                </h3>
-                <p className="text-xs text-kindle-text-muted max-w-xl leading-relaxed">
-                  Convert any EPUB book or document into an immersive audio narration. Listen on the go with custom speed controls, system neural voices, and background audio playback.
-                </p>
-              </div>
-
-              <a
-                href="/"
-                className="px-6 py-3.5 bg-kindle-accent text-white font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 transition shadow-lg cursor-pointer flex items-center gap-2 shrink-0"
-              >
-                <Headphones className="w-4 h-4" /> Try Voice Reader in App
-              </a>
-            </div>
-
-            {/* Audiobook Features Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <Mic className="w-5 h-5 text-kindle-accent" />
-                <h4 className="text-xs font-bold text-kindle-text">Neural Speech Engine</h4>
-                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-                  Natural intonation with full support for system neural text-to-speech voices across languages.
-                </p>
-              </div>
-
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <Sliders className="w-5 h-5 text-amber-500" />
-                <h4 className="text-xs font-bold text-kindle-text">Speed & Pitch Tuning</h4>
-                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-                  Adjust narration speed from 0.5x to 3.0x with pitch adjustment and sentence jump controls.
-                </p>
-              </div>
-
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <Headphones className="w-5 h-5 text-emerald-500" />
-                <h4 className="text-xs font-bold text-kindle-text">Background Audio</h4>
-                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-                  Keep listening when your screen turns off or while using other applications on Android.
-                </p>
-              </div>
-
-              <div className="p-4 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2">
-                <FileText className="w-5 h-5 text-purple-500" />
-                <h4 className="text-xs font-bold text-kindle-text">Live Sync Highlighting</h4>
-                <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-                  Follow along visually as sentences highlight in real-time on your E-Ink reading canvas.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 5: Open Catalog & Mirror Discovery */}
-        <div id="catalog" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-          <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-kindle-border/60 pb-6">
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-500 uppercase tracking-wider">
-                  <Search className="w-4 h-4" /> Open Search & Mirror Discovery
-                </div>
-                <h3 className="text-xl font-serif font-bold text-kindle-text">
-                  Rave Engine, LibGen & Anna's Archive Search
-                </h3>
-                <p className="text-xs text-kindle-text-muted max-w-xl">
-                  Search millions of open-source ebooks, public domain literature, and academic texts across public library mirrors — plus free audiobook archives for listening.
-                </p>
-              </div>
-            </div>
-
-            {/* Search Input Simulator */}
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-kindle-text-muted absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    value={catalogQuery}
-                    onChange={(e) => setCatalogQuery(e.target.value)}
-                    placeholder="Try searching author or title (e.g. 'Jane Austen', 'Dune', 'Sherlock')..."
-                    className="w-full bg-kindle-bg border border-kindle-border rounded-xl pl-9 pr-4 py-2.5 text-xs text-kindle-text focus:outline-none focus:border-kindle-accent"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCatalogQuery("Mary Shelley Frankenstein")}
-                  className="px-4 py-2.5 bg-kindle-accent text-white font-bold text-xs rounded-xl hover:bg-opacity-90 transition cursor-pointer"
-                >
-                  Sample Search
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-1">
-                  <span className="text-[10px] font-bold text-sky-500 uppercase tracking-wider">Rave Engine</span>
-                  <p className="font-bold text-kindle-text">Frankenstein (1818)</p>
-                  <p className="text-[10px] text-kindle-text-muted">EPUB • 420 KB • Clean Formatting</p>
-                </div>
-                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-1">
-                  <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">LibGen Mirror</span>
-                  <p className="font-bold text-kindle-text">Pride and Prejudice</p>
-                  <p className="text-[10px] text-kindle-text-muted">PDF • 1.2 MB • Original Typeface</p>
-                </div>
-                <div className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-1">
-                  <span className="text-[10px] font-bold text-purple-500 uppercase tracking-wider">Anna's Archive</span>
-                  <p className="font-bold text-kindle-text">The Time Machine</p>
-                  <p className="text-[10px] text-kindle-text-muted">EPUB • 380 KB • Illustrated Edition</p>
-                </div>
-              </div>
-
-              {/* Audiobook results — highlighted feature */}
-              <div className="flex items-center gap-2 pt-1">
-                <Headphones className="w-4 h-4 text-kindle-accent" />
-                <span className="text-[11px] font-bold uppercase tracking-widest text-kindle-accent">Free Audiobook Archives</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div className="p-3 bg-kindle-accent/5 border border-kindle-accent/40 rounded-xl space-y-1">
-                  <span className="text-[10px] font-bold text-kindle-accent uppercase tracking-wider">HDAudiobooks</span>
-                  <p className="font-bold text-kindle-text">Frankenstein (Unabridged)</p>
-                  <p className="text-[10px] text-kindle-text-muted">MP3 • 9h 14m • Narrated</p>
-                </div>
-                <div className="p-3 bg-kindle-accent/5 border border-kindle-accent/40 rounded-xl space-y-1">
-                  <span className="text-[10px] font-bold text-kindle-accent uppercase tracking-wider">LibriVox</span>
-                  <p className="font-bold text-kindle-text">Pride and Prejudice</p>
-                  <p className="text-[10px] text-kindle-text-muted">MP3 • 11h 30m • Public Domain</p>
-                </div>
-                <div className="p-3 bg-kindle-accent/5 border border-kindle-accent/40 rounded-xl space-y-1">
-                  <span className="text-[10px] font-bold text-kindle-accent uppercase tracking-wider">Internet Archive</span>
-                  <p className="font-bold text-kindle-text">The Time Machine</p>
-                  <p className="text-[10px] text-kindle-text-muted">MP3 • 3h 02m • Free Stream</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 6: Workshop Lounge & Interactive Games */}
-        <div id="workshop" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
-          <div className="text-center max-w-xl mx-auto space-y-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#e0533c]/10 text-[#e0533c] text-[10px] font-bold uppercase tracking-widest">
-              <Gamepad2 className="w-3.5 h-3.5" /> Kora Workshop Lounge
-            </div>
-            <h3 className="text-2xl font-serif font-bold text-kindle-text">
-              Interactive Tools & Games Suite
-            </h3>
-            <p className="text-xs text-kindle-text-muted leading-relaxed">
-              Launch interactive game demos and research tools directly in your browser!
-            </p>
-          </div>
-
-          {/* Game Demos Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 auto-rows-fr gap-4">
-            {/* Game 1: Score Tracker */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-[#e0533c]/50 transition-all shadow-xs">
-              <div className="space-y-2">
-                <div className="p-2.5 bg-[#e0533c]/10 text-[#e0533c] rounded-xl w-fit">
-                  <Trophy className="w-5 h-5" />
-                </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-[#e0533c]">Board & Card Games</span>
-                <h4 className="text-sm font-bold text-kindle-text">Game Score Tracker</h4>
-                <p className="text-xs text-kindle-text-muted leading-relaxed">
-                  Track Catan, Scrabble, & board game rounds with turn timers & crowns.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowScoreTrackerDemo(true)}
-                className="w-full py-2.5 bg-[#e0533c] text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
-              </button>
-            </div>
-
-            {/* Game 2: Crossword Grid */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-kindle-accent/50 transition-all shadow-xs">
-              <div className="space-y-2">
-                <div className="p-2.5 bg-kindle-accent/10 text-kindle-accent rounded-xl w-fit">
-                  <Grid3X3 className="w-5 h-5" />
-                </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-accent">Literary Puzzles</span>
-                <h4 className="text-sm font-bold text-kindle-text">Mini Crossword Grid</h4>
-                <p className="text-xs text-kindle-text-muted leading-relaxed">
-                  Literary crosswords and letter-wheel wordscapes built from classic books.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowCrosswordDemo(true)}
-                className="w-full py-2.5 bg-kindle-accent text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
-              </button>
-            </div>
-
-            {/* Game 3: Word Search */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-emerald-500/50 transition-all shadow-xs">
-              <div className="space-y-2">
-                <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl w-fit">
-                  <Search className="w-5 h-5" />
-                </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600">Vocabulary Finder</span>
-                <h4 className="text-sm font-bold text-kindle-text">Word Search Grid</h4>
-                <p className="text-xs text-kindle-text-muted leading-relaxed">
-                  Multi-directional vocabulary search with hints & difficulty progression.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowWordSearchDemo(true)}
-                className="w-full py-2.5 bg-emerald-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
-              </button>
-            </div>
-
-            {/* Workshop Tool 4: Wikipedia Hub */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-amber-500/50 transition-all shadow-xs">
-              <div className="space-y-2">
-                <div className="p-2.5 bg-amber-500/10 text-amber-600 rounded-xl w-fit">
-                  <Globe className="w-5 h-5" />
-                </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-amber-600">Research & Ebooks</span>
-                <h4 className="text-sm font-bold text-kindle-text">Wikipedia Hub</h4>
-                <p className="text-xs text-kindle-text-muted leading-relaxed">
-                  Search articles & convert topics into custom Kora Ebooks with audio TTS.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowWikipediaDemo(true)}
-                className="w-full py-2.5 bg-amber-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
-              </button>
-            </div>
-
-            {/* Workshop Tool 5: Searchable Dictionary */}
-            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 flex flex-col justify-between hover:border-sky-500/50 transition-all shadow-xs">
-              <div className="space-y-2">
-                <div className="p-2.5 bg-sky-500/10 text-sky-600 rounded-xl w-fit">
-                  <BookA className="w-5 h-5" />
-                </div>
-                <span className="text-[9px] font-bold uppercase tracking-widest text-sky-600">Reference & Words</span>
-                <h4 className="text-sm font-bold text-kindle-text">Searchable Dictionary</h4>
-                <p className="text-xs text-kindle-text-muted leading-relaxed">
-                  Look up any word instantly from Kora's offline dictionary with definitions & examples.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowDictionaryDemo(true)}
-                className="w-full py-2.5 bg-sky-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-2"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" /> Open Tool
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <Reveal>
-          <div id="pwa" className="space-y-8 pt-8 border-t border-kindle-border/60 scroll-mt-20">
-            <div className="text-center max-w-xl mx-auto space-y-2">
-              <h2 className="text-2xl font-serif font-bold text-kindle-text">
-                Install & Run Kora
-              </h2>
-            <p className="text-xs text-kindle-text-muted leading-relaxed">
-              Four ways to run Kora — pick what fits your device. Everything is free, open source, and works fully offline.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-2">
-            {[
-              { id: "web", label: "Web / PWA", icon: Globe },
-              { id: "apk", label: "Android APK", icon: Smartphone },
-              { id: "ios", label: "iPhone / iPad", icon: Smartphone },
-              { id: "self", label: "Run your own", icon: Server },
-            ].map((t) => {
-              const active = installTab === t.id;
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setInstallTab(t.id as typeof installTab)}
-                  className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider border transition cursor-pointer ${
-                    active
-                      ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                      : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/60"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" /> {t.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="max-w-2xl mx-auto">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={installTab}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                className="bg-kindle-card border border-kindle-border rounded-2xl p-6 sm:p-8 space-y-5"
-              >
-                {installTab === "web" && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-kindle-accent" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Web / PWA</span>
+              {/* Section 5: Open Catalog & Mirror Discovery (Bento Card 4) */}
+              <div id="catalog" className="scroll-mt-20 flex flex-col flex-grow">
+                <Reveal className="flex-1 flex flex-col">
+                  {/* Single Unified Card with Flush Inner Discover Tab View */}
+                  <div className="w-full h-[520px] lg:h-full lg:min-h-[520px] flex-grow bg-[#121214] border border-kindle-border rounded-3xl shadow-2xl overflow-hidden text-left flex flex-col">
+                    {/* Card Header */}
+                    <div className="p-4 sm:p-5 space-y-1 border-b border-neutral-800 bg-kindle-card shrink-0">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-500 dark:text-sky-400 uppercase tracking-wider chromatic-sky">
+                        <Search className="w-4 h-4" /> Global Catalog &amp; Mirror Engine
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-serif font-bold text-kindle-text">
+                        Discover Tab &amp; Download Mirror Hub
+                      </h3>
+                      <p className="text-xs text-kindle-text-muted leading-relaxed max-w-3xl">
+                        Explore global archives, federated catalog feeds, and trending best sellers with live book cover art, direct mirror links, and multi-source download options.
+                      </p>
                     </div>
-                    <h3 className="text-sm font-bold text-kindle-text">Use it in any browser</h3>
-                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                      <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in Chrome, Edge, Safari, or Firefox.</li>
-                      <li>Install it: tap the address-bar install icon (or the ⋮ menu → "Install") on desktop, or Share → "Add to Home Screen" on mobile.</li>
-                      <li>Launch from your home screen / app launcher with full offline storage — no app store needed.</li>
-                    </ol>
-                    <div className="pt-1">
-                      {pwaInstalled ? (
-                        <span className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl bg-kindle-card border border-kindle-border text-[11px] font-bold uppercase tracking-wider text-kindle-text-muted">
-                          <Check className="w-4 h-4 text-emerald-500" /> Installed
-                        </span>
-                      ) : deferredPrompt ? (
+
+                    {/* Flush Inner Discover Tab View (No padding gap) */}
+                    <div className="p-3.5 sm:p-5 space-y-3.5 relative text-left flex-1 bg-[#121214] flex flex-col overflow-y-auto custom-scrollbar">
+                      {/* Discover Main Title Bar */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-neutral-800/80 pb-3">
+                        <div>
+                          <h3 className="text-xl sm:text-2xl font-serif font-extrabold text-white tracking-tight">Discover</h3>
+                          <p className="text-[9px] font-mono tracking-wider text-neutral-400 uppercase pt-0.5">
+                            EXPLORE GLOBAL ARCHIVES OR BROWSE TRENDING BEST SELLERS.
+                          </p>
+                        </div>
                         <button
                           type="button"
-                          onClick={installPwa}
-                          className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider hover:opacity-90 transition shadow-lg cursor-pointer"
+                          onClick={() => toast.success("Catalog refreshed from open archives!")}
+                          className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-mono font-bold uppercase tracking-wider rounded-lg border border-neutral-700 flex items-center gap-1.5 transition cursor-pointer shrink-0 self-start sm:self-auto"
                         >
-                          <Download className="w-4 h-4" /> Install Kora App
+                          <RefreshCw className="w-3 h-3 text-sky-400" /> REFRESH
                         </button>
-                      ) : (
-                        <p className="text-[10px] text-kindle-text-muted">Tip: your browser may show an install icon in the address bar.</p>
+                      </div>
+
+                      {/* Main Search Bar */}
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 bg-[#1c1c20] border border-neutral-700/80 rounded-xl p-1.5 focus-within:border-sky-500 transition shadow-inner">
+                          <Search className="w-3.5 h-3.5 text-neutral-400 ml-2 shrink-0" />
+                          <input
+                            type="text"
+                            value={catalogQuery}
+                            onChange={(e) => setCatalogQuery(e.target.value)}
+                            placeholder="Search millions of books, authors, ISBNs..."
+                            className="w-full bg-transparent text-xs sm:text-sm text-white placeholder-neutral-500 focus:outline-none px-2 py-0.5"
+                          />
+                          {catalogQuery && (
+                            <button
+                              type="button"
+                              onClick={() => setCatalogQuery("")}
+                              className="text-xs font-bold text-neutral-400 hover:text-white px-2"
+                            >
+                              Clear
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="bg-white text-black font-sans font-bold text-[11px] px-4 py-1.5 rounded-lg uppercase tracking-wider hover:bg-neutral-200 transition shrink-0 cursor-pointer shadow-sm"
+                          >
+                            SEARCH
+                          </button>
+                        </div>
+
+                        {/* Sub-action pills */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setCatalogQuery("Audiobook")}
+                            className="px-3 py-1 rounded-lg bg-[#1c1c20] border border-neutral-700 text-neutral-300 text-[11px] font-bold uppercase tracking-wider hover:border-sky-500 transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Headphones className="w-3 h-3 text-sky-400" /> AUDIOBOOKS
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toast("Advanced Search filters enabled", { icon: "⚙️" })}
+                            className="px-3 py-1 rounded-lg bg-[#1c1c20] border border-neutral-700 text-neutral-300 text-[11px] font-bold uppercase tracking-wider hover:border-sky-500 transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Search className="w-3 h-3 text-neutral-400" /> ADVANCED SEARCH
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Feeds Sub-navigation Bar */}
+                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2.5 pt-1 text-[11px] font-bold uppercase tracking-wider overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] shrink-0">
+                        <div className="flex items-center gap-4 sm:gap-6 text-neutral-400 whitespace-nowrap">
+                          <span
+                            onClick={() => setCatalogQuery("")}
+                            className={`pb-1.5 cursor-pointer font-extrabold flex items-center gap-1.5 transition ${!catalogQuery ? "text-white border-b-2 border-white" : "hover:text-white"}`}
+                          >
+                            ALL FEEDS <span className="text-[9px] bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-300">8</span>
+                          </span>
+                          <span
+                            onClick={() => setCatalogQuery("NYT")}
+                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("NYT") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
+                          >
+                            <BookOpen className="w-3.5 h-3.5 text-neutral-400" /> NYT BEST SELLERS
+                          </span>
+                          <span
+                            onClick={() => setCatalogQuery("NetGalley")}
+                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("NetGalley") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
+                          >
+                            <Globe className="w-3.5 h-3.5 text-emerald-400" /> NETGALLEY CATALOG
+                          </span>
+                          <span
+                            onClick={() => setCatalogQuery("Goodreads")}
+                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("Goodreads") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
+                          >
+                            <Globe className="w-3.5 h-3.5 text-amber-400" /> GOODREADS FAVORITES
+                          </span>
+                          <span
+                            onClick={() => setCatalogQuery("Audiobook")}
+                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("Audiobook") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
+                          >
+                            <Headphones className="w-3.5 h-3.5 text-sky-400" /> AUDIOBOOKS
+                          </span>
+                        </div>
+                        <span className="text-[9px] font-mono text-neutral-500 shrink-0 uppercase tracking-widest pl-4">SHOWING ALL</span>
+                      </div>
+
+                      {/* Feed Sections matching Original Tab - Compact Spacing and Heights */}
+                      <div className="space-y-4 pt-1">
+                        {DISCOVER_FEED_CATEGORIES.map((category) => {
+                          const CategoryIcon = category.icon;
+                          const matchingBooks = catalogQuery
+                            ? category.books.filter(
+                                (b) =>
+                                  b.title.toLowerCase().includes(catalogQuery.toLowerCase()) ||
+                                  b.author.toLowerCase().includes(catalogQuery.toLowerCase()) ||
+                                  category.title.toLowerCase().includes(catalogQuery.toLowerCase())
+                              )
+                            : category.books;
+
+                          if (matchingBooks.length === 0) return null;
+
+                          return (
+                            <div key={category.id} className="space-y-2 text-left">
+                              {/* Section Header */}
+                              <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <CategoryIcon className={`w-3.5 h-3.5 ${category.iconColor}`} />
+                                  <h4 className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                                    {category.title}
+                                  </h4>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setCatalogQuery(category.title)}
+                                  className="text-[10px] font-bold text-neutral-400 hover:text-white uppercase tracking-wider flex items-center gap-1 transition cursor-pointer"
+                                >
+                                  VIEW MORE &rarr;
+                                </button>
+                              </div>
+
+                              {/* 7-Book Grid Row */}
+                              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-3">
+                                {matchingBooks.map((book) => (
+                                  <div
+                                    key={book.id}
+                                    onClick={() => {
+                                      setSelectedBookId(book.id);
+                                      setIsDownloadModalOpen(true);
+                                    }}
+                                    className="group cursor-pointer space-y-1 text-left"
+                                  >
+                                    <div className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-neutral-900 shadow-sm group-hover:shadow-xl group-hover:scale-[1.03] transition duration-200 border border-neutral-800/80">
+                                      <BookCoverImage book={book} className="w-full h-full object-cover" />
+                                      {book.rating && (
+                                        <div className="absolute top-1.5 right-1.5 bg-black/80 backdrop-blur-md text-amber-400 font-extrabold text-[8px] px-1 py-0.5 rounded shadow flex items-center gap-0.5 border border-amber-500/20">
+                                          <Star className="w-2 h-2 fill-amber-400 text-amber-400" /> {book.rating}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="space-y-0.5 px-0.5">
+                                      <h5 className="font-bold text-[11px] text-white line-clamp-1 group-hover:text-sky-400 transition">
+                                        {book.title}
+                                      </h5>
+                                      <p className="text-[9px] text-neutral-400 line-clamp-1">
+                                        {book.author}
+                                      </p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Active Download Progress Bar Bar at bottom of feed if active */}
+                      {activeDownload && (
+                        <div className="p-4 bg-neutral-900 text-white rounded-2xl space-y-2 border border-emerald-500/40 shadow-xl animate-in fade-in duration-200 mt-4">
+                          <div className="flex items-center justify-between text-xs font-bold">
+                            <div className="flex items-center gap-2 truncate">
+                              <Download className="w-4 h-4 text-emerald-400 animate-bounce" />
+                              <span className="truncate">{activeDownload.name}</span>
+                            </div>
+                            <span className="font-mono text-xs text-emerald-400 shrink-0">
+                              {activeDownload.completed ? "COMPLETED" : `${activeDownload.progress}%`}
+                            </span>
+                          </div>
+                          <div className="w-full bg-neutral-800 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-gradient-to-r from-amber-400 to-emerald-400 h-full transition-all duration-300"
+                              style={{ width: `${activeDownload.progress}%` }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+                            <span>Source: {activeDownload.source}</span>
+                            <span>{activeDownload.completed ? "Saved to Kora Local Library!" : "Downloading..."}</span>
+                          </div>
+                        </div>
                       )}
                     </div>
-                    <p className="text-[10px] text-kindle-text-muted">Best for: iPhone/iPad, macOS, Windows, ChromeOS, Linux. This is the recommended path for iOS since direct .ipa install requires a paid Apple Developer account.</p>
-                  </>
-                )}
 
-                {installTab === "apk" && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-kindle-accent" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Android APK</span>
-                    </div>
-                    <h3 className="text-sm font-bold text-kindle-text">Install the native Android app</h3>
-                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                      <li>Download the signed <span className="font-bold text-kindle-text">Kora APK</span> from the release vault (button above).</li>
-                      <li>If Android warns about unknown sources, tap <span className="font-bold text-kindle-text">Settings → Allow from this source</span>.</li>
-                      <li>Open the downloaded file and tap <span className="font-bold text-kindle-text">Install</span>.</li>
-                      <li>Launch from your home screen — unlocks background voice playback, notification controls, and offline P2P transfer.</li>
-                    </ol>
-                    <p className="text-[10px] text-kindle-text-muted">Best for: Android phones/tablets. APKs are signed, scanned, and Play Protect compliant.</p>
-                  </>
-                )}
+                    {/* POPUP MODAL: Download Mirror Hub on Top of Discover Tab */}
+                    <AnimatePresence>
+                      {isDownloadModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                            transition={{ duration: 0.25, ease: "easeOut" }}
+                            className="relative w-full max-w-xl max-h-[90vh] bg-[#121214] border border-neutral-700 rounded-3xl p-6 sm:p-7 shadow-2xl overflow-y-auto space-y-5 text-left"
+                          >
+                            {/* Modal Header */}
+                            <div className="flex items-start justify-between border-b border-neutral-800 pb-4">
+                              <div className="flex items-center gap-4 min-w-0">
+                                <BookCoverImage
+                                  book={selectedBook}
+                                  className="w-16 h-22 object-cover rounded-xl shadow-md border border-neutral-700 shrink-0 bg-neutral-900 overflow-hidden"
+                                />
+                                <div className="space-y-1 min-w-0 flex-1">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                    DOWNLOAD MIRROR HUB
+                                  </span>
+                                  <h4 className="text-lg sm:text-xl font-serif font-bold text-white truncate leading-snug">
+                                    {selectedBook.title}
+                                  </h4>
+                                  <p className="text-xs text-neutral-400 truncate">by {selectedBook.author}</p>
+                                  <p className="text-[10.5px] font-mono text-neutral-500 truncate">{selectedBook.info}</p>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setIsDownloadModalOpen(false)}
+                                className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition cursor-pointer shrink-0 ml-2"
+                                title="Close"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
 
-                {installTab === "ios" && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4 text-kindle-accent" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">iPhone / iPad</span>
-                    </div>
-                    <h3 className="text-sm font-bold text-kindle-text">iOS via Web App</h3>
-                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                      <li>Open <span className="font-mono text-kindle-text font-bold">{displayHost}</span> in <span className="font-bold text-kindle-text">Safari</span> (not Chrome).</li>
-                      <li>Tap the <span className="font-bold text-kindle-text">Share</span> button (square with arrow) at the bottom toolbar.</li>
-                      <li>Scroll down and tap <span className="font-bold text-kindle-text">"Add to Home Screen"</span>.</li>
-                      <li>Tap <span className="font-bold text-kindle-text">Add</span> top-right — a standalone Kora icon appears on your home screen.</li>
-                    </ol>
-                    <p className="text-[10px] text-kindle-text-muted">Note: A native .ipa requires a paid Apple Developer account ($99/yr) for signing. The Web App gives the same experience without it.</p>
-                  </>
-                )}
+                            {/* SELECT EDITION Box */}
+                            <div className="space-y-2">
+                              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
+                                SELECT EDITION / FORMAT:
+                              </span>
+                              <div className="p-3 bg-[#18181c] border border-neutral-800 rounded-2xl flex flex-wrap gap-2 items-center">
+                                {selectedBook.editions.map((ed, i) => (
+                                  <span
+                                    key={i}
+                                    className={`px-3 py-1 rounded-xl text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition ${
+                                      i === 0
+                                        ? "bg-white text-black border-white shadow-sm"
+                                        : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-neutral-500"
+                                    }`}
+                                  >
+                                    {ed}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
 
-                {installTab === "self" && (
-                  <>
-                    <div className="flex items-center gap-2">
-                      <Server className="w-4 h-4 text-kindle-accent" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">Run your own</span>
-                    </div>
-                    <h3 className="text-sm font-bold text-kindle-text">Self-host Kora</h3>
-                    <ol className="space-y-2 text-xs text-kindle-text-muted list-decimal list-inside leading-relaxed">
-                      <li><span className="font-bold text-kindle-text">Clone</span> the repo: <span className="font-mono text-kindle-text font-bold">github.com/CHAOTIC-RAY/Kora-</span>.</li>
-                      <li><span className="font-bold text-kindle-text">Install & build</span>: <span className="font-mono text-kindle-text font-bold">npm install &amp;&amp; npm run build</span>.</li>
-                      <li><span className="font-bold text-kindle-text">Deploy</span> the <span className="font-mono text-kindle-text font-bold">dist/</span> folder to Cloudflare Pages, Netlify, or any static host.</li>
-                      <li>Point the worker at your host and add your Firebase config for sync (optional).</li>
-                    </ol>
-                    <p className="text-[10px] text-kindle-text-muted">Best for: developers who want full control, custom domains, or private deployments.</p>
-                  </>
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
+                            {/* AVAILABLE DOWNLOAD MIRRORS Box */}
+                            <div className="space-y-2.5">
+                              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
+                                AVAILABLE DOWNLOAD MIRRORS:
+                              </span>
+                              <div className="p-3 bg-[#18181c] border border-neutral-800 rounded-2xl space-y-2.5">
+                                {selectedBook.mirrors.map((mirror, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="p-3 bg-[#121214] border border-neutral-800/90 rounded-xl flex items-center justify-between gap-3 hover:border-neutral-700 transition"
+                                  >
+                                    <div className="space-y-0.5 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full ${mirror.status === "fast" || mirror.status === "online" ? "bg-emerald-400 shadow-xs shadow-emerald-400/50 animate-pulse" : "bg-amber-400"}`} />
+                                        <span className="font-bold text-xs text-white truncate">{mirror.name}</span>
+                                      </div>
+                                      <p className="text-[10px] font-mono text-neutral-500 truncate">{mirror.url}</p>
+                                    </div>
 
-          {/* Setup steps — change with the selected install type. */}
-          <div id="guide" className="space-y-4 pt-2">
-            <div className="text-center max-w-xl mx-auto space-y-1">
-              <h3 className="text-lg font-serif font-bold text-kindle-text">
-                Step-by-Step Setup
-              </h3>
-              <p className="text-xs text-kindle-text-muted leading-relaxed">
-                Installing Kora takes less than a minute. Follow these steps for your chosen platform.
-              </p>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          toast.success(`Opening mirror link: ${mirror.name}`);
+                                        }}
+                                        className="p-2.5 rounded-xl bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white hover:border-neutral-500 transition cursor-pointer"
+                                        title="Mirror Link"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          startSimulatedDownload(mirror.name, "EPUB", selectedBook.title);
+                                        }}
+                                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                      >
+                                        <Download className="w-3.5 h-3.5" /> Get File
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* AUDIOBOOK Track List (If available) */}
+                            {selectedBook.audioTracks && selectedBook.audioTracks.length > 0 && (
+                              <div className="space-y-2.5 pt-2">
+                                <div className="flex items-center gap-2">
+                                  <Headphones className="w-4 h-4 text-sky-400" />
+                                  <h5 className="text-xs font-bold text-white uppercase tracking-wider">AUDIOBOOK TRACKS</h5>
+                                </div>
+                                <div className="bg-[#18181c] border border-neutral-800 rounded-2xl overflow-hidden divide-y divide-neutral-800/80">
+                                  {selectedBook.audioTracks.map((trackTitle, tIdx) => (
+                                    <div
+                                      key={tIdx}
+                                      className="p-3 flex items-center justify-between gap-3 text-xs hover:bg-neutral-800/50 transition cursor-pointer group"
+                                      onClick={() => toast.success(`Playing preview: ${trackTitle}`)}
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <span className="text-[10px] font-mono text-neutral-500 font-bold w-4 text-right">
+                                          {tIdx + 1}
+                                        </span>
+                                        <span className="text-neutral-300 group-hover:text-white truncate text-xs">
+                                          {trackTitle}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        className="p-1.5 rounded-lg bg-neutral-800 text-neutral-300 group-hover:text-white transition shrink-0 cursor-pointer"
+                                      >
+                                        <Play className="w-3.5 h-3.5 fill-current" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Modal Footer Close */}
+                            <div className="pt-2 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => setIsDownloadModalOpen(false)}
+                                className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                              >
+                                Close Mirror Hub
+                              </button>
+                            </div>
+                          </motion.div>
+                        </div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </Reveal>
+              </div>
+
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {steps.map((st, idx) => (
+            {/* Right Column (span 5): Cloud Sync, Voice, Workshop Header, Dictionary */}
+            <div className="lg:col-span-5 flex flex-col gap-6 h-full">
+
+              {/* Section 3: Multi-Destination Cloud Sync (Bento Card 2) */}
+              <div id="cloud" className="scroll-mt-20 flex flex-col">
+                <Reveal className="flex-1 flex flex-col">
+                  <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 sm:p-6 space-y-5 flex flex-col justify-between">
+                    <div className="space-y-4">
+                      <div className="border-b border-kindle-border/60 pb-4">
+                        <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-500 uppercase tracking-wider chromatic-amber">
+                          <Zap className="w-4 h-4" /> Multi-Destination Cloud Sync
+                        </div>
+                        <h3 className="text-xl font-serif font-bold text-kindle-text mt-1">
+                          Instant Progress &amp; Annotations Sync
+                        </h3>
+                        <p className="text-xs text-kindle-text-muted mt-1 leading-relaxed">
+                          Seamlessly sync bookmarks, reading progress percentages, and highlight notes across Android, Web, and desktop via Google Firestore or WebDAV.
+                        </p>
+                      </div>
+
+                      {/* Cloud Target Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="p-3.5 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-kindle-text">Firebase Firestore</span>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          </div>
+                          <p className="text-[10px] text-kindle-text-muted leading-tight">Real-time sync across devices with zero setup required.</p>
+                        </div>
+                        <div className="p-3.5 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-kindle-text">Google Drive Backup</span>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          </div>
+                          <p className="text-[10px] text-kindle-text-muted leading-tight">Backup full EPUB library files to private Google Drive space.</p>
+                        </div>
+                        <div className="p-3.5 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-kindle-text">WebDAV / Nextcloud</span>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          </div>
+                          <p className="text-[10px] text-kindle-text-muted leading-tight">Self-hosted WebDAV sync protocol for complete data ownership.</p>
+                        </div>
+                        <div className="p-3.5 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-kindle-text">Local IndexedDB</span>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          </div>
+                          <p className="text-[10px] text-kindle-text-muted leading-tight">100% offline access when no network connection is present.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 w-full bg-[#121214] rounded-2xl border border-kindle-border/40 mt-4 mb-4 relative overflow-hidden flex flex-col items-center justify-center min-h-[160px] lg:min-h-[220px]">
+                      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.08),transparent_60%)]" />
+                      
+                      <div className="relative w-full px-6 flex items-center justify-between z-10">
+                        {/* Phone */}
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-10 h-16 border-2 border-kindle-border rounded-lg relative flex items-center justify-center bg-[#1a1a1c] shadow-lg shadow-black/50">
+                            <div className="absolute top-1 w-3 h-0.5 bg-kindle-border/60 rounded-full" />
+                            <Smartphone className="w-5 h-5 text-emerald-500" />
+                          </div>
+                        </div>
+                        
+                        {/* Data transfer lines left */}
+                        <div className="flex-1 mx-3 h-[2px] bg-kindle-border/40 relative overflow-hidden rounded-full">
+                          <div className="absolute top-0 left-0 h-full w-1/2 bg-amber-500/60 animate-[shimmer_2s_infinite]" />
+                        </div>
+
+                        {/* Cloud */}
+                        <div className="flex flex-col items-center gap-2 shrink-0 relative">
+                          <div className="w-16 h-16 border border-amber-500/30 rounded-2xl relative flex items-center justify-center bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)] overflow-hidden">
+                             <div className="absolute inset-0 bg-amber-500/5 animate-pulse" />
+                             <Cloud className="w-7 h-7 text-amber-500 relative z-10" />
+                          </div>
+                          <span className="absolute -bottom-6 text-[9px] font-bold text-amber-500/70 tracking-wider">SYNCING</span>
+                        </div>
+
+                        {/* Data transfer lines right */}
+                        <div className="flex-1 mx-3 h-[2px] bg-kindle-border/40 relative overflow-hidden rounded-full">
+                          <div className="absolute top-0 left-0 h-full w-1/2 bg-emerald-500/60 animate-[shimmer_2s_infinite_reverse]" />
+                        </div>
+
+                        {/* Web/Desktop */}
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-20 h-14 border-2 border-kindle-border rounded-lg relative flex items-center justify-center bg-[#1a1a1c] shadow-lg shadow-black/50">
+                            <div className="absolute bottom-[-4px] w-8 h-1 bg-kindle-border/60 rounded-t-sm" />
+                            <Laptop className="w-5 h-5 text-emerald-500" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Engine status banner */}
+                    <div className="pt-3 border-t border-kindle-border/40 flex items-center justify-between text-[10px] text-kindle-text-muted font-mono">
+                      <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Live Sync Active
+                      </span>
+                      <span>Encrypted • Multi-Device</span>
+                    </div>
+                  </div>
+                </Reveal>
+              </div>
+
+              {/* Section 4: Voice Narrator Audiobooks (Bento Card 3) */}
+              <div id="voice" className="scroll-mt-20 flex flex-col flex-grow">
+                <Reveal className="flex-1 flex flex-col">
+                  <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 sm:p-6 space-y-6 flex flex-col justify-between flex-grow">
+                    <div className="flex flex-col items-start justify-between gap-4 border-b border-kindle-border pb-5">
+                      <div className="space-y-2">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-kindle-accent/10 text-kindle-accent text-[10px] font-bold uppercase tracking-widest chromatic-amber">
+                          <Volume2 className="w-3.5 h-3.5 animate-bounce" /> High-Fidelity Voice Synthesis
+                        </div>
+                        <h3 className="text-xl font-serif font-bold text-kindle-text">
+                          Voice Narrator
+                        </h3>
+                        <p className="text-xs text-kindle-text-muted leading-relaxed">
+                          Convert any EPUB book or document into an immersive audio narration. Listen on the go with custom controls.
+                        </p>
+                      </div>
+
+                      <a
+                        href="/"
+                        className="w-full justify-center px-4 py-2.5 bg-kindle-accent text-kindle-bg font-bold text-[10px] uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-sm cursor-pointer flex items-center gap-2 shrink-0"
+                      >
+                        <Headphones className="w-3.5 h-3.5" /> Try Voice Reader in App
+                      </a>
+                    </div>
+
+                    {/* Interactive Audiobook Player Simulator */}
+                    <div className="flex flex-col gap-5">
+                      {/* Top: Interactive Tape Simulator */}
+                      <div className="bg-kindle-bg border border-kindle-border rounded-2xl p-4 space-y-4 shadow-sm flex flex-col justify-between">
+                        <div className="flex items-center justify-between border-b border-kindle-border/60 pb-2">
+                          <div className="space-y-0.5">
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent font-sans">AUDIO PLAYBACK SIMULATOR</span>
+                            <h4 className="text-xs font-bold text-kindle-text font-sans">Frankenstein — Ch 1</h4>
+                          </div>
+                          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded ${isVoiceSpeaking ? "bg-emerald-500/10 text-emerald-500 animate-pulse" : "bg-kindle-card text-kindle-text-muted"}`}>
+                            {isVoiceSpeaking ? "SPEAKING" : "PAUSED"}
+                          </span>
+                        </div>
+
+                        {/* Real Cassette Tape component */}
+                        <div className="flex items-center justify-center py-3 bg-kindle-card/40 rounded-xl border border-kindle-border/40 relative overflow-hidden group">
+                          <CassetteVisualizer
+                            title="Frankenstein"
+                            coverUrl="https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=120"
+                            size="player"
+                            orientation="landscape"
+                            playing={isVoiceSpeaking}
+                            voiceMode={true}
+                            className="w-full max-w-[200px]"
+                          />
+                        </div>
+
+                        <div className="space-y-3">
+                          {/* Progress bar and time */}
+                          <div className="flex items-center justify-between gap-3 text-right font-mono text-[10px] text-kindle-text-muted">
+                            <div className="flex-1 bg-kindle-border/60 rounded-full h-1 overflow-hidden relative">
+                              <div 
+                                className="bg-kindle-accent h-full transition-all duration-300" 
+                                style={{ width: isVoiceSpeaking ? "38%" : "19%" }} 
+                              />
+                            </div>
+                            <span>02:44 / 14:10</span>
+                          </div>
+
+                          {/* Controls */}
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsVoiceSpeaking(!isVoiceSpeaking)}
+                                className="p-2.5 bg-kindle-text text-kindle-bg rounded-xl hover:opacity-90 active:scale-95 transition cursor-pointer flex items-center justify-center shadow-md"
+                                title={isVoiceSpeaking ? "Pause Narration" : "Play Narration"}
+                              >
+                                {isVoiceSpeaking ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsVoiceMuted(!isVoiceMuted);
+                                  if (isVoiceMuted) {
+                                    setIsVoiceSpeaking(true);
+                                  }
+                                }}
+                                className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-center shadow-md ${
+                                  isVoiceMuted 
+                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-500 hover:bg-amber-500/20" 
+                                    : "bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/20"
+                                }`}
+                                title={isVoiceMuted ? "Unmute (Click to listen)" : "Mute audio"}
+                              >
+                                {isVoiceMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+
+                            {/* Speed selection */}
+                            <div className="flex items-center gap-0.5 border border-kindle-border rounded-lg p-0.5 bg-kindle-card">
+                              {[0.5, 1.0, 1.5, 2.0].map((speed) => (
+                                <button
+                                  key={speed}
+                                  type="button"
+                                  onClick={() => setVoiceSpeed(speed)}
+                                  className={`px-1.5 py-1 text-[9px] font-bold rounded-md transition cursor-pointer ${voiceSpeed === speed ? "bg-kindle-text text-kindle-bg" : "text-kindle-text-muted hover:text-kindle-text"}`}
+                                >
+                                  {speed.toFixed(1)}x
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bottom: Key Voice Specs (2 cols) */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="p-3 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <Mic className="w-4 h-4 text-kindle-accent" />
+                          <h4 className="text-[11px] font-sans font-bold text-kindle-text">Neural Engine</h4>
+                          <p className="text-[9px] text-kindle-text-muted leading-tight">
+                            Natural intonation across languages.
+                          </p>
+                        </div>
+
+                        <div className="p-3 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <Sliders className="w-4 h-4 text-amber-500" />
+                          <h4 className="text-[11px] font-sans font-bold text-kindle-text">Pitch Tuning</h4>
+                          <p className="text-[9px] text-kindle-text-muted leading-tight">
+                            Adjust narration speed &amp; sentence jump.
+                          </p>
+                        </div>
+
+                        <div className="p-3 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <Headphones className="w-4 h-4 text-emerald-500" />
+                          <h4 className="text-[11px] font-sans font-bold text-kindle-text">Background Play</h4>
+                          <p className="text-[9px] text-kindle-text-muted leading-tight">
+                            Keep listening when screen is off.
+                          </p>
+                        </div>
+
+                        <div className="p-3 bg-kindle-bg border border-kindle-border rounded-2xl space-y-1.5">
+                          <FileText className="w-4 h-4 text-purple-500" />
+                          <h4 className="text-[11px] font-sans font-bold text-kindle-text">Live Sync</h4>
+                          <p className="text-[9px] text-kindle-text-muted leading-tight">
+                            Sentences highlight in real-time.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Reveal>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+        {/* Kora Workshop: Interactive Tools & Games Section (Unified) */}
+        <div id="workshop" className="pt-4 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
+          <Reveal>
+            {/* Workshop Lounge Header Card */}
+            <div className="bg-[#e0533c] border border-kindle-border rounded-3xl p-6 sm:p-8 flex flex-col justify-center items-center text-center space-y-4 relative overflow-hidden group shadow-md min-h-[160px]">
+              <div className="absolute inset-0 bg-gradient-to-br from-black/20 to-transparent z-0" />
+              <div className="relative z-10 space-y-3 flex flex-col items-center">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm">
+                  <Gamepad2 className="w-3.5 h-3.5 animate-pulse" /> Kora Workshop
+                </div>
+                <h3 className="text-2xl sm:text-3xl font-serif font-bold text-white">
+                  Interactive Tools &amp; Games
+                </h3>
+                <p className="text-xs sm:text-sm text-white/90 leading-relaxed max-w-lg mx-auto">
+                  Launch mini-games and reference tools directly in your browser! Sharpen your vocabulary, track board game scores, and build custom books.
+                </p>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* Grid of all 6 tools & games */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+            {/* Game 1: Linguist Guardian */}
+            <div className="flex flex-col">
+              <Reveal className="h-full">
+                <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-amber-500/30 hover:shadow-md transition-all shadow-xs h-full group">
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-amber-500/10 text-amber-600 rounded-xl w-fit">
+                      <Swords className="w-5 h-5" />
+                    </div>
+                    <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-amber-600">Vocabulary Defense</span>
+                    <h4 className="text-sm font-sans font-bold text-kindle-text">Linguist Guardian</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      Defend the ancient archives from word corruption. Type spelling barriers to defeat approaching linguistic foes!
+                    </p>
+                  </div>
+
+                  <div className="mt-2 w-full">
+                    <LinguistGuardianDemo />
+                  </div>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* Game 2: Score Tracker */}
+            <div className="flex flex-col">
+              <Reveal className="h-full">
+                <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-[#e0533c]/30 hover:shadow-md transition-all shadow-xs h-full group">
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-[#e0533c]/10 text-[#e0533c] rounded-xl w-fit">
+                      <Trophy className="w-5 h-5" />
+                    </div>
+                    <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-[#e0533c]">Board &amp; Card Games</span>
+                    <h4 className="text-sm font-sans font-bold text-kindle-text">Game Score Tracker</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      Track Catan, Scrabble, &amp; board game rounds with turn timers &amp; crowns.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 w-full">
+                    <GameScoreTrackerDemo />
+                  </div>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* Game 3: Crossword Grid */}
+            <div className="flex flex-col">
+              <Reveal className="h-full">
+                <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-kindle-accent/30 hover:shadow-md transition-all shadow-xs h-full group">
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-kindle-accent/10 text-kindle-accent rounded-xl w-fit">
+                      <Grid3X3 className="w-5 h-5" />
+                    </div>
+                    <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-kindle-accent">Literary Puzzles</span>
+                    <h4 className="text-sm font-sans font-bold text-kindle-text">Crossword Grid</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      Literary crosswords and letter-wheel wordscapes built from classic books.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 w-full">
+                    <CrosswordSolvingDemo />
+                  </div>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* Game 4: Word Search Grid */}
+            <div className="flex flex-col">
+              <Reveal className="h-full">
+                <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-emerald-500/30 hover:shadow-md transition-all shadow-xs h-full group">
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-emerald-500/10 text-emerald-600 rounded-xl w-fit">
+                      <Search className="w-5 h-5" />
+                    </div>
+                    <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-emerald-600">Vocabulary Finder</span>
+                    <h4 className="text-sm font-sans font-bold text-kindle-text">Word Search Grid</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      Multi-directional vocabulary search with hints &amp; difficulty progression.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 w-full">
+                    <WordSearchGridDemo />
+                  </div>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* Game 5: Wikipedia Hub */}
+            <div className="flex flex-col">
+              <Reveal className="h-full">
+                <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-amber-500/30 hover:shadow-md transition-all shadow-xs h-full group">
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-amber-500/10 text-amber-600 rounded-xl w-fit">
+                      <Globe className="w-5 h-5" />
+                    </div>
+                    <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-amber-600">Research &amp; Ebooks</span>
+                    <h4 className="text-sm font-sans font-bold text-kindle-text">Wikipedia Hub</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      Search articles &amp; convert topics into custom Kora Ebooks with audio TTS.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 w-full">
+                    <WikipediaHubDemo />
+                  </div>
+                </div>
+              </Reveal>
+            </div>
+
+            {/* Game 6: Searchable Dictionary */}
+            <div className="flex flex-col">
+              <Reveal className="h-full">
+                <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 space-y-4 flex flex-col justify-between hover:border-sky-500/30 hover:shadow-md transition-all shadow-xs h-full group">
+                  <div className="space-y-2">
+                    <div className="p-2.5 bg-sky-500/10 text-sky-600 rounded-xl w-fit">
+                      <BookA className="w-5 h-5" />
+                    </div>
+                    <span className="text-[9px] font-sans font-bold uppercase tracking-widest text-sky-600">Reference &amp; Words</span>
+                    <h4 className="text-sm font-sans font-bold text-kindle-text">Searchable Dictionary</h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      Look up any word instantly from Kora's offline dictionary with definitions.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 w-full">
+                    <SearchableDictionaryDemo />
+                  </div>
+                </div>
+              </Reveal>
+            </div>
+
+          </div>
+        </div>
+
+
+        {/* Section: Tabbed Step-by-Step Install & Run Guide */}
+        <Reveal>
+          <div id="guide" className="pt-8 border-t border-kindle-border/60 scroll-mt-20 space-y-8">
+            <div className="text-center max-w-2xl mx-auto space-y-3">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-kindle-accent/10 text-kindle-accent text-[10px] font-bold uppercase tracking-widest chromatic-amber">
+                <Download className="w-3.5 h-3.5" /> Easy Setup Guide
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
+                Install &amp; Run Kora
+              </h3>
+              <p className="text-xs text-kindle-text-muted leading-relaxed">
+                Four ways to run Kora — pick what fits your device. Everything is free, open source, and works fully offline.
+              </p>
+
+              {/* Platform Tab Selector Bar */}
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                {[
+                  { id: "web", label: "WEB / PWA", icon: Globe },
+                  { id: "apk", label: "ANDROID APK", icon: Smartphone },
+                  { id: "ios", label: "IPHONE / IPAD", icon: Smartphone },
+                  { id: "self", label: "RUN YOUR OWN", icon: Server },
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = installTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setInstallTab(tab.id as any)}
+                      className={`px-4 py-2.5 rounded-xl border text-xs font-sans font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+                        isActive
+                          ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-md scale-105"
+                          : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/60 hover:text-kindle-text"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Directly Render 4 Step Cards for Selected Tab */}
+            <motion.div
+              key={installTab}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+            >
+              {steps.map((step) => (
                 <div
-                  key={`${installTab}-${idx}`}
-                  className="bg-kindle-card border border-kindle-border rounded-2xl p-6 sm:p-8 space-y-3 flex flex-col justify-between"
+                  key={step.number}
+                  className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3 flex flex-col justify-between hover:border-kindle-accent/40 transition shadow-xs group"
                 >
                   <div className="space-y-2">
-                    <span className="block font-mono text-3xl font-bold text-kindle-accent/30">{st.number}</span>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">{st.title}</h4>
-                    <p className="text-xs text-kindle-text-muted leading-relaxed">{st.description}</p>
+                    <span className="text-3xl font-serif font-extrabold text-kindle-accent/70 group-hover:text-kindle-accent transition">
+                      {step.number}
+                    </span>
+                    <h4 className="text-xs font-sans font-bold text-kindle-text uppercase tracking-wider">
+                      {step.title}
+                    </h4>
+                    <p className="text-xs text-kindle-text-muted leading-relaxed">
+                      {step.description}
+                    </p>
                   </div>
                 </div>
               ))}
+            </motion.div>
+
+            {/* Direct Action Bar below steps for the active tab */}
+            <div className="bg-kindle-card/60 border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+              <div className="flex items-center gap-2.5 text-kindle-text-muted">
+                <Info className="w-4 h-4 text-kindle-accent shrink-0" />
+                {installTab === "web" && <span>Runs in Chrome, Edge, Safari, Firefox with full local IndexedDB offline storage.</span>}
+                {installTab === "apk" && <span>Android 8.0+ required. Includes background voice narration and lock screen audio controls.</span>}
+                {installTab === "ios" && <span>Recommended path for iOS since direct .ipa requires paid Apple Developer credentials.</span>}
+                {installTab === "self" && <span>Self-host on any static provider (Cloudflare Pages, Vercel, Netlify, Nginx).</span>}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {installTab === "web" && (
+                  <a
+                    href="/"
+                    className="px-4 py-2 bg-kindle-accent text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-xl hover:opacity-90 transition shadow-xs"
+                  >
+                    Launch Web App
+                  </a>
+                )}
+                {installTab === "apk" && (
+                  <>
+                    <a
+                      href={apk?.url || "https://github.com/CHAOTIC-RAY/Kora-/releases/latest"}
+                      className="px-4 py-2 bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-xl hover:opacity-90 transition shadow-xs flex items-center gap-1.5"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download APK
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowQrModal(true)}
+                      className="px-3 py-2 border border-kindle-border bg-kindle-bg text-kindle-text font-bold text-xs uppercase tracking-wider rounded-xl hover:border-kindle-accent transition cursor-pointer"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+                {installTab === "ios" && (
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="px-4 py-2 bg-kindle-card border border-kindle-border text-kindle-text font-bold text-xs uppercase tracking-wider rounded-xl hover:border-kindle-accent transition cursor-pointer"
+                  >
+                    {copiedLink ? "Link Copied!" : "Share Link to iOS Safari"}
+                  </button>
+                )}
+                {installTab === "self" && (
+                  <a
+                    href="https://github.com/CHAOTIC-RAY/Kora-"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 border border-kindle-border bg-kindle-card text-kindle-text font-bold text-xs uppercase tracking-wider rounded-xl hover:border-kindle-accent transition flex items-center gap-1.5"
+                  >
+                    <Github className="w-3.5 h-3.5" /> GitHub Repo
+                  </a>
+                )}
+              </div>
             </div>
           </div>
-        </div>
         </Reveal>
+
+
 
         {/* Section 7: FAQ Accordion */}
         <motion.div
-        ref={faqRef}
-        id="faq"
-        className="space-y-6 max-w-3xl mx-auto pt-8 border-t border-kindle-border/60 scroll-mt-20"
+          ref={faqRef}
+          id="faq"
+          className="space-y-8 w-full max-w-5xl mx-auto pt-10 border-t border-kindle-border/60 scroll-mt-20"
         >
-          <div className="text-center space-y-2">
-            <h2 className="text-2xl font-serif font-bold text-kindle-text">
+          <div className="text-center max-w-2xl mx-auto space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
               Frequently Asked Questions
             </h2>
-            <p className="text-sm text-kindle-text/75">
+            <p className="text-xs sm:text-sm text-kindle-text-muted leading-relaxed">
               Got questions about installation, voice features, or privacy? We have answers.
             </p>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-3.5 text-left w-full">
             {faqs.map((faq, idx) => {
               const isOpen = expandedFaq === idx;
               return (
                 <div
                   key={idx}
-                  className="bg-kindle-card border border-kindle-border rounded-2xl overflow-hidden transition"
+                  className="bg-kindle-card border border-kindle-border rounded-2xl overflow-hidden transition-all duration-200 shadow-xs hover:border-kindle-accent/40"
                 >
                   <button
                     type="button"
                     onClick={() => setExpandedFaq(isOpen ? null : idx)}
-                    className="w-full px-6 py-4 text-left font-bold text-sm text-kindle-text flex items-center justify-between cursor-pointer hover:bg-kindle-bg/50 transition"
+                    className="w-full px-5 sm:px-7 py-4 sm:py-4.5 text-left font-sans font-bold text-sm sm:text-base text-kindle-text flex items-center justify-between cursor-pointer hover:bg-kindle-bg/50 transition gap-4"
                   >
-                    <span>{faq.q}</span>
-                    <ChevronDown className={`w-4 h-4 text-kindle-text-muted transform transition ${isOpen ? "rotate-180" : "rotate-0"}`} />
+                    <span className="leading-snug">{faq.q}</span>
+                    <ChevronDown className={`w-4 h-4 text-kindle-text-muted shrink-0 transform transition-transform duration-200 ${isOpen ? "rotate-180 text-kindle-accent" : "rotate-0"}`} />
                   </button>
 
                   {isOpen && (
-                    <div className="px-6 pb-4 text-sm text-kindle-text leading-relaxed border-t border-kindle-border/40 pt-3">
+                    <div className="px-5 sm:px-7 pb-5 text-xs sm:text-sm text-kindle-text-muted leading-relaxed border-t border-kindle-border/40 pt-4 bg-kindle-bg/30">
                       {faq.a}
                     </div>
                   )}
@@ -1051,7 +2610,7 @@ export default function InstallView() {
         <motion.div
           initial={{ opacity: 0, y: 80, scale: 0.9 }}
           whileInView={{ opacity: 1, y: 0, scale: 1 }}
-          viewport={{ once: false, amount: 0.25 }}
+          viewport={{ once: true, amount: 0.25 }}
           transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1] }}
           className="relative w-full min-h-screen flex flex-col justify-center bg-gradient-to-br from-kindle-card via-kindle-card to-kindle-bg overflow-hidden px-6 sm:px-12 py-20 text-center space-y-8"
         >
@@ -1076,7 +2635,7 @@ export default function InstallView() {
           </div>
           <KoraWordmarkReveal>
             <div className="relative space-y-3 max-w-lg mx-auto">
-              <p className="text-base font-bold uppercase tracking-[0.25em] text-kindle-accent">
+              <p className="text-base font-sans font-bold uppercase tracking-[0.25em] text-kindle-accent">
                 A Chaos Studio Project
               </p>
               <p className="text-sm text-kindle-text-muted leading-relaxed">
@@ -1097,7 +2656,7 @@ export default function InstallView() {
           <div className="relative flex items-center justify-center gap-3 pt-2">
             <a
               href="/"
-              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-bold uppercase tracking-wider hover:opacity-90 transition"
+              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl bg-kindle-text text-kindle-bg text-[11px] font-sans font-bold uppercase tracking-wider hover:opacity-90 transition"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Back to Reader
             </a>
@@ -1105,7 +2664,7 @@ export default function InstallView() {
               href="https://github.com/CHAOTIC-RAY/Kora-"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl border border-kindle-border bg-kindle-card text-[11px] font-bold uppercase tracking-wider text-kindle-text hover:border-kindle-accent transition"
+              className="inline-flex items-center gap-1.5 px-5 py-3 rounded-xl border border-kindle-border bg-kindle-card text-[11px] font-sans font-bold uppercase tracking-wider text-kindle-text hover:border-kindle-accent transition"
             >
               <Github className="w-3.5 h-3.5" /> Source
             </a>
@@ -1161,19 +2720,18 @@ export default function InstallView() {
       <GameScoreTracker open={showScoreTrackerDemo} onClose={() => setShowScoreTrackerDemo(false)} />
       <CrosswordGame open={showCrosswordDemo} onClose={() => setShowCrosswordDemo(false)} />
       <WordSearchGame open={showWordSearchDemo} onClose={() => setShowWordSearchDemo(false)} />
+      <LinguistGuardian open={showLinguistGuardianDemo} onClose={() => setShowLinguistGuardianDemo(false)} />
 
       <AnimatePresence>
         {showWikipediaDemo && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-5xl"
-            >
-              <WikipediaWidget onClose={() => setShowWikipediaDemo(false)} />
-            </motion.div>
-          </div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black flex flex-col w-full h-full"
+          >
+            <WikipediaWidget onClose={() => setShowWikipediaDemo(false)} />
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -1191,6 +2749,7 @@ export default function InstallView() {
           </div>
         )}
       </AnimatePresence>
+
     </div>
   );
 }

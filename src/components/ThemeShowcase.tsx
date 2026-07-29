@@ -50,7 +50,7 @@ export const READING_THEMES_SHOWCASE: ReadingThemeItem[] = [
     accent: "#8B7355",
     badgeBg: "bg-amber-100 text-amber-900",
     badgeText: "Morning Light",
-    description: "Simulates unbleached physical paper with warm organic texture and zero screen glare. Engineered for traditional paperback lovers."
+    description: "Warm unbleached paper simulation with organic matte texture. Designed for traditional paperback lovers."
   },
   {
     id: "sepia",
@@ -65,7 +65,7 @@ export const READING_THEMES_SHOWCASE: ReadingThemeItem[] = [
     accent: "#9C7A5B",
     badgeBg: "bg-amber-200/80 text-amber-950",
     badgeText: "Cozy Golden Hour",
-    description: "Cuts blue light radiation by 60% with soft amber tinting. Perfect for reading near windows or under warm incandescent lamps."
+    description: "Reduces blue light by 60% with soft amber tinting. Ideal for reading under warm bedside table lamps."
   },
   {
     id: "green",
@@ -80,7 +80,7 @@ export const READING_THEMES_SHOWCASE: ReadingThemeItem[] = [
     accent: "#4A6B32",
     badgeBg: "bg-emerald-100 text-emerald-900",
     badgeText: "Study & Eye Care",
-    description: "Gentle green color spectrum recommended by optometrists to alleviate ocular strain during long research and textbook study sessions."
+    description: "Optometrist-approved green palette to minimize ocular fatigue during long study and textbook sessions."
   },
   {
     id: "night",
@@ -95,7 +95,7 @@ export const READING_THEMES_SHOWCASE: ReadingThemeItem[] = [
     accent: "#7DD3FC",
     badgeBg: "bg-slate-800 text-slate-200",
     badgeText: "Dusk Reading",
-    description: "Subdued slate charcoal dark palette with softened contrast to prepare your mind for sleep without harsh stark white text."
+    description: "Subdued slate charcoal canvas with softened contrast to ease mind transition to natural bedtime sleep."
   },
   {
     id: "oled",
@@ -108,9 +108,9 @@ export const READING_THEMES_SHOWCASE: ReadingThemeItem[] = [
     card: "#0D0D0D",
     border: "#262626",
     accent: "#E8E8E8",
-    badgeBg: "bg-zinc-900 text-zinc-100 border border-zinc-700",
+    badgeBg: "bg-zinc-900 text-zinc-100 ring-1 ring-zinc-800/80",
     badgeText: "OLED Pitch Black",
-    description: "Turns off subpixels completely on OLED & AMOLED mobile screens. Zero backlight bleed, ultimate battery efficiency, and zero room disturbance."
+    description: "Deactivates pixels completely on OLED screens for zero backlight bleed and ultimate battery savings."
   },
   {
     id: "light",
@@ -125,7 +125,7 @@ export const READING_THEMES_SHOWCASE: ReadingThemeItem[] = [
     accent: "#18181B",
     badgeBg: "bg-zinc-100 text-zinc-900",
     badgeText: "Direct Sunlight",
-    description: "Stark high-contrast stark daylight mode designed for outdoor reading under direct sunlight or bright ambient office illumination."
+    description: "Stark high-contrast daylight mode for reading under outdoor direct sunlight or bright office lighting."
   }
 ];
 
@@ -154,47 +154,123 @@ export default function ThemeShowcase() {
   const [fontSize, setFontSize] = useState(16);
   const [lineHeight, setLineHeight] = useState(1.6);
   const [excerptIndex, setExcerptIndex] = useState(0);
+  const [isAutoSwitching, setIsAutoSwitching] = useState(true);
 
   // Auto-switching timer loop: cycles BOTH theme and font automatically!
   useEffect(() => {
+    if (!isAutoSwitching) return;
+
     const timer = setInterval(() => {
       setCurrentThemeIndex((prev) => (prev + 1) % READING_THEMES_SHOWCASE.length);
       setCurrentFontIndex((prev) => (prev + 1) % READER_FONTS.length);
     }, switchIntervalMs);
 
     return () => clearInterval(timer);
-  }, [switchIntervalMs]);
+  }, [switchIntervalMs, isAutoSwitching]);
+
+  // Clean up any body-level theme style overrides when the component unmounts
+  useEffect(() => {
+    return () => {
+      const body = document.body;
+      body.style.removeProperty("--theme-bg");
+      body.style.removeProperty("--theme-text");
+      body.style.removeProperty("--theme-card");
+      body.style.removeProperty("--theme-border");
+      body.style.removeProperty("--theme-accent");
+      body.style.removeProperty("--theme-text-muted");
+      
+      const displayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
+      if (displayTheme.includes("dark")) {
+        body.classList.add("dark");
+      } else {
+        body.classList.remove("dark");
+      }
+    };
+  }, []);
 
   const activeTheme = READING_THEMES_SHOWCASE[currentThemeIndex];
   const activeFont = READER_FONTS[currentFontIndex];
   const activeExcerpt = SAMPLE_EXCERPTS[excerptIndex];
 
-  return (
-    <div id="themes" className="space-y-8 animate-in fade-in duration-300 pt-6">
-      {/* Header Banner */}
-      <div className="text-center max-w-2xl mx-auto space-y-3">
-        <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-kindle-accent/10 border border-kindle-accent/20 text-kindle-accent text-[10px] font-bold uppercase tracking-widest">
-          <Palette className="w-3.5 h-3.5" /> Adaptive Reader Palette & Font Engine
-        </div>
-        <h2 className="text-2xl sm:text-3xl font-serif font-bold text-kindle-text">
-          Practical Reading Themes & Typography
-        </h2>
-        <p className="text-xs sm:text-sm text-kindle-text-muted leading-relaxed">
-          Kora automatically adjusts display palettes and typography pairings throughout the day to protect your eyes and optimize focus. Watch auto-switching live below!
-        </p>
-      </div>
+  const handlePresetSelect = (idx: number) => {
+    setIsAutoSwitching(false);
+    setCurrentThemeIndex(idx);
+    
+    // Apply theme to the whole landing page (document.body)
+    const t = READING_THEMES_SHOWCASE[idx];
+    const body = document.body;
+    body.style.setProperty("--theme-bg", t.bg);
+    body.style.setProperty("--theme-text", t.text);
+    body.style.setProperty("--theme-card", t.card);
+    body.style.setProperty("--theme-border", t.border);
+    body.style.setProperty("--theme-accent", t.accent);
+    
+    const isDark = t.id === "night" || t.id === "oled";
+    const textMuted = isDark ? "#A1A1AA" : "#52525B";
+    body.style.setProperty("--theme-text-muted", textMuted);
 
+    if (isDark) {
+      body.classList.add("dark");
+    } else {
+      body.classList.remove("dark");
+    }
+  };
+
+  return (
+    <div id="themes" className="animate-in fade-in duration-300">
       {/* Main Interactive Showcase Card */}
       <div className="bg-kindle-card border border-kindle-border rounded-3xl p-6 sm:p-8 shadow-xl space-y-6">
         
+        {/* Header Banner */}
+        <div className="border-b border-kindle-border/60 pb-4 space-y-2 text-left">
+          <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-500 uppercase tracking-wider chromatic-amber">
+            <Palette className="w-4 h-4" /> Adaptive Reader Palette &amp; Font Engine
+          </div>
+          <h3 className="text-xl font-serif font-bold text-kindle-text mt-1">
+            Practical Reading Themes &amp; Typography
+          </h3>
+          <p className="text-xs text-kindle-text-muted mt-1 leading-relaxed">
+            Kora automatically adjusts display palettes and typography pairings throughout the day to protect your eyes and optimize focus. Watch auto-switching live below!
+          </p>
+        </div>
+
         {/* Controls Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-kindle-border pb-5">
           {/* Live Auto-Switching Badge Indicator */}
           <div className="flex items-center gap-3">
-            <div className="px-3.5 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs font-bold text-kindle-accent flex items-center gap-2 shadow-xs">
-              <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-500" />
-              <span>Auto-Switching Active</span>
-            </div>
+            {isAutoSwitching ? (
+              <div 
+                title="Auto-switching is active. Tap a preset below to hold."
+                className="px-3.5 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs font-bold text-kindle-accent flex items-center gap-2 shadow-xs"
+              >
+                <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-500" />
+                <span>Auto-Switching Active</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAutoSwitching(true);
+                  const body = document.body;
+                  body.style.removeProperty("--theme-bg");
+                  body.style.removeProperty("--theme-text");
+                  body.style.removeProperty("--theme-card");
+                  body.style.removeProperty("--theme-border");
+                  body.style.removeProperty("--theme-accent");
+                  body.style.removeProperty("--theme-text-muted");
+                  const displayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
+                  if (displayTheme.includes("dark")) {
+                    body.classList.add("dark");
+                  } else {
+                    body.classList.remove("dark");
+                  }
+                }}
+                className="px-3.5 py-2 rounded-xl bg-kindle-accent text-kindle-bg border border-kindle-border text-xs font-bold flex items-center gap-2 shadow-sm hover:scale-[1.02] active:scale-95 transition cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>Resume Auto-Switching</span>
+              </button>
+            )}
 
             {/* Cycle Speed Selector */}
             <div className="flex items-center gap-1 bg-kindle-bg p-1 rounded-xl border border-kindle-border text-[11px] font-bold">
@@ -206,7 +282,25 @@ export default function ThemeShowcase() {
                 <button
                   key={speed.ms}
                   type="button"
-                  onClick={() => setSwitchIntervalMs(speed.ms)}
+                  onClick={() => {
+                    setSwitchIntervalMs(speed.ms);
+                    if (!isAutoSwitching) {
+                      setIsAutoSwitching(true);
+                      const body = document.body;
+                      body.style.removeProperty("--theme-bg");
+                      body.style.removeProperty("--theme-text");
+                      body.style.removeProperty("--theme-card");
+                      body.style.removeProperty("--theme-border");
+                      body.style.removeProperty("--theme-accent");
+                      body.style.removeProperty("--theme-text-muted");
+                      const displayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
+                      if (displayTheme.includes("dark")) {
+                        body.classList.add("dark");
+                      } else {
+                        body.classList.remove("dark");
+                      }
+                    }
+                  }}
                   className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
                     switchIntervalMs === speed.ms
                       ? "bg-kindle-card text-kindle-accent shadow-xs"
@@ -269,7 +363,7 @@ export default function ThemeShowcase() {
               color: activeTheme.text
             }}
             transition={{ duration: 0.5 }}
-            className="p-8 sm:p-12 min-h-[260px] flex flex-col justify-between space-y-6"
+            className="p-8 sm:p-12 min-h-[290px] flex flex-col justify-between space-y-6"
           >
             <div className="space-y-4">
               <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: activeTheme.border }}>
@@ -289,7 +383,13 @@ export default function ThemeShowcase() {
                   exit={{ opacity: 0.4, y: -4 }}
                   transition={{ duration: 0.3 }}
                   style={{
-                    fontSize: `${fontSize}px`,
+                    fontSize: `${
+                      activeFont.value === "font-mono"
+                        ? fontSize - 2
+                        : activeFont.value === "font-opendyslexic"
+                        ? fontSize - 1
+                        : fontSize
+                    }px`,
                     lineHeight: lineHeight
                   }}
                   className={`${activeFont.value} tracking-normal text-justify select-text leading-relaxed`}
@@ -310,13 +410,15 @@ export default function ThemeShowcase() {
           </motion.div>
 
           {/* Progress Bar for Auto-Switch Timer */}
-          <motion.div
-            key={`${currentThemeIndex}-${currentFontIndex}`}
-            initial={{ width: "0%" }}
-            animate={{ width: "100%" }}
-            transition={{ duration: switchIntervalMs / 1000, ease: "linear" }}
-            className="h-1 bg-kindle-accent absolute bottom-0 left-0"
-          />
+          {isAutoSwitching && (
+            <motion.div
+              key={`${currentThemeIndex}-${currentFontIndex}`}
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: switchIntervalMs / 1000, ease: "linear" }}
+              className="h-1 bg-kindle-accent absolute bottom-0 left-0"
+            />
+          )}
         </div>
 
         {/* Theme Swatch Selection Chips */}
@@ -337,7 +439,7 @@ export default function ThemeShowcase() {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setCurrentThemeIndex(idx)}
+                  onClick={() => handlePresetSelect(idx)}
                   className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2 relative overflow-hidden ${
                     isSelected
                       ? "ring-2 ring-kindle-accent scale-[1.02] shadow-md"
@@ -383,7 +485,7 @@ export default function ThemeShowcase() {
                 {activeTheme.badgeText}
               </span>
             </div>
-            <p className="text-xs text-kindle-text-muted leading-relaxed max-w-2xl">
+            <p className="text-xs text-kindle-text-muted leading-relaxed max-w-2xl min-h-[3.25rem] sm:min-h-[2.5rem]">
               {activeTheme.description}
             </p>
           </div>

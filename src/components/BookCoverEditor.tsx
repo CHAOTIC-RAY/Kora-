@@ -269,7 +269,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
                 />
                 <button 
                   onClick={handleSearch}
-                  className="px-4 py-2 bg-kindle-text text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent hover:text-white transition"
+                  className="px-4 py-2 bg-kindle-text text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent transition"
                 >
                   <Search className="w-4 h-4" />
                 </button>
@@ -311,7 +311,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
                 <h4 className="font-bold text-sm text-kindle-text">Select high-quality cover image</h4>
                 <p className="text-xs text-kindle-text-muted">Supports JPG, PNG, WEBP</p>
               </div>
-              <label className="px-6 py-3 bg-kindle-text text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent transition cursor-pointer shadow-lg inline-flex items-center gap-2 hover:text-white">
+              <label className="px-6 py-3 bg-kindle-text text-kindle-bg rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-kindle-accent transition cursor-pointer shadow-lg inline-flex items-center gap-2">
                 <ImageIcon className="w-4 h-4" />
                 Choose File
                 <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />

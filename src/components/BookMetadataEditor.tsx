@@ -425,7 +425,7 @@ export default function BookMetadataEditor({
           <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-widest hover:bg-kindle-bg transition">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving} className="px-5 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-widest bg-kindle-text text-kindle-bg hover:bg-kindle-accent hover:text-white transition flex items-center gap-2 disabled:opacity-50">
+          <button onClick={handleSave} disabled={saving} className="px-5 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-widest bg-kindle-text text-kindle-bg hover:bg-kindle-accent transition flex items-center gap-2 disabled:opacity-50">
             {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes
           </button>

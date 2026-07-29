@@ -3149,7 +3149,7 @@ function DiscoverView({
                     )}
                     {/* Exact Match Indicator */}
                     {book.exactMatch && (
-                      <div className="absolute top-2 right-2 bg-kindle-accent text-white px-2 py-0.5 rounded-full text-[7px] font-bold uppercase tracking-widest shadow-lg z-10">
+                      <div className="absolute top-2 right-2 bg-kindle-accent text-kindle-bg px-2 py-0.5 rounded-full text-[7px] font-bold uppercase tracking-widest shadow-lg z-10">
                         MATCH
                       </div>
                     )}

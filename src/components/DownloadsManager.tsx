@@ -145,7 +145,7 @@ export default function DownloadsManager({
             <button
               type="submit"
               disabled={clipStatus !== "idle" && clipStatus !== "success" && clipStatus !== "error"}
-              className="px-5 py-2.5 bg-kindle-accent hover:bg-kindle-accent-hover disabled:bg-kindle-accent/40 text-white rounded-xl text-xs font-bold font-lexend transition-all shadow-sm flex items-center gap-2"
+              className="px-5 py-2.5 bg-kindle-accent hover:bg-kindle-accent-hover disabled:bg-kindle-accent/40 text-kindle-bg rounded-xl text-xs font-bold font-lexend transition-all shadow-sm flex items-center gap-2"
             >
               {(clipStatus === "fetching" || clipStatus === "converting" || clipStatus === "saving") ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />

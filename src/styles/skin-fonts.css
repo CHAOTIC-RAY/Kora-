@@ -30,14 +30,14 @@
 
 /* Default UI stack (Kora skin) */
 body {
-  --font-ui: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
-  --font-ui-display: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui: "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui-display: "Lora", "Georgia", serif;
   transition: font-family 0.2s ease;
 }
 
 body.skin-kora {
-  --font-ui: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
-  --font-ui-display: "Amazon Ember", "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui: "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui-display: "Lora", "Georgia", serif;
 }
 
 body.skin-paper {
@@ -46,8 +46,8 @@ body.skin-paper {
 }
 
 body.skin-studio {
-  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-ui-display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-ui: "Inter", system-ui, -apple-system, sans-serif;
+  --font-ui-display: "Inter", system-ui, -apple-system, sans-serif;
 }
 
 body.skin-soft {
@@ -56,23 +56,33 @@ body.skin-soft {
 }
 
 /* App chrome typography — does not affect in-book reader faces (font-lexica, font-serif, etc.) */
-body,
-body .font-sans,
-body .font-lexend,
-body .font-display,
-body h1,
-body h2,
-body h3,
-body h4 {
+body {
   font-family: var(--font-ui);
 }
 
+/* Headings and display components use the dedicated display font */
 body h1,
 body h2,
 body h3,
 body h4,
-body .font-display,
-body .font-lexend {
+body .font-display {
   font-family: var(--font-ui-display);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
+}
+
+/* Utility font-classes should remain pure and predictable */
+body .font-sans {
+  font-family: var(--font-ui);
+}
+
+body .font-serif {
+  font-family: "Lora", Georgia, serif;
+}
+
+body .font-lexend {
+  font-family: "Lexend", "Inter", sans-serif;
+}
+
+body .font-mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
