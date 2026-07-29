@@ -4,6 +4,7 @@
   </p>
 
   # 📖 Kora
+
   ### *Your bookshelf, narrator, and morning paper. All in one place.*
 
   <p align="center">
@@ -12,12 +13,12 @@
     <img src="https://img.shields.io/badge/Vite-6-purple?style=flat-square&logo=vite&color=27272A" alt="Vite 6" />
     <img src="https://img.shields.io/badge/Tailwind-4-38BDF8?style=flat-square&logo=tailwind-css&color=27272A" alt="Tailwind 4" />
     <img src="https://img.shields.io/badge/Firebase-Auth%20%26%20Store-FFCA28?style=flat-square&logo=firebase&color=27272A" alt="Firebase Sync" />
-    <img src="https://img.shields.io/badge/AI%20TTS-OpenAI%20%2F%20ElevenLabs-412991?style=flat-square" alt="AI TTS" />
+    <img src="https://img.shields.io/badge/Neural%20TTS-On--Device-412991?style=flat-square" alt="Neural TTS" />
   </p>
 
   <p align="center">
-  <b>Open-source ebook reader + audiobook player + news aggregator with AI narration.</b><br />
-  Read EPUB/PDF/TXT · Listen with AI text-to-speech · Browse RSS feeds · Sync across devices · Works offline · PWA + Android.<br />
+  <b>Open-source ebook reader + audiobook player + news aggregator with on-device text-to-speech.</b><br />
+  Read EPUB/PDF/TXT · Listen with neural voices · Browse RSS feeds · Sync across devices · Works offline · PWA + Android.<br />
   <a href="https://kora.chaoticstudio.workers.dev">🌐 Live Demo</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/wiki">📚 Docs</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/discussions">💬 Discussions</a>
   </p>
 
@@ -39,12 +40,13 @@ Kora isn't just a reader—it's a **unified content consumption platform** built
 | Feature | Kora | Why It Matters |
 |---------|------|---|
 | **📚 EPUB + PDF + TXT** | Full-featured reader with typography controls | One app for all text formats |
-| **🎧 AI Text-to-Speech** | Convert any book to audiobook on-the-fly | Transform reading into listening |
+| **🎧 Neural Text-to-Speech** | Convert any book to audiobook with system voices | Transform reading into listening, no API calls |
 | **📰 RSS + News Feed** | Integrated news reader & morning briefing | Morning paper + library in one place |
 | **☁️ Cross-Device Sync** | Firebase Firestore + peer-to-peer transfer | Your library follows you everywhere |
 | **📡 Federated Search** | Query Rave, LibGen, Anna's Archive simultaneously | Discover & download freely-available books |
 | **🌍 Offline-First PWA** | Works completely offline with IndexedDB | Read anywhere, anytime, no connection needed |
 | **📱 Cross-Platform** | Web (PWA) + Android + iOS | One codebase, installed on your device |
+| **🎮 Workshop Lounge** | Crossword, Word Search, Linguist Guardian | Take reading breaks with word games |
 
 ---
 
@@ -61,11 +63,20 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:5000](http://localhost:5000).
 
 ### Install as App
-1. **Web:** Click "Install" in your browser (Chrome, Edge, Safari 16.4+)
-2. **Android:** Build APK with `npm run build:android` or use Play Store (coming soon)
+
+**🌐 Web (PWA):**
+- Visit [kora.chaoticstudio.workers.dev](https://kora.chaoticstudio.workers.dev)
+- Click "Install" in your browser (Chrome, Edge, Safari 16.4+)
+- App installs to your home screen — works offline
+
+**📱 Android:**
+- Download the latest APK from [Releases](https://github.com/CHAOTIC-RAY/Kora-/releases?q=apk&expanded=true)
+- Enable "Install from unknown sources" in Settings
+- Open the `.apk` file and tap **Install**
+- Full offline support, background narration, P2P file transfer
 
 ---
 
@@ -94,17 +105,22 @@ Your personal library—read offline, sync across devices.
 ---
 
 ### 2. 🎧 Narrator
-Listen to your library with AI-powered voices.
+**On-device neural text-to-speech** — no cloud APIs, no subscriptions.
+
+**How it works:**
+- **Web/PWA:** Uses native Web Speech API (OS-level voices) — free, always available
+- **Android:** Uses Android TextToSpeech engine (on-device neural voices) — no internet required
+- **Voice selection:** Switch between system voices mid-playback with 0 latency
+- **Playback controls:** 0.75x–2.0x speed, pitch adjustment, chapter navigation
+- **Background audio:** Listen while phone is locked or using other apps (Android)
 
 **Features:**
-- 🗣️ **AI Text-to-Speech** — convert any ebook to audiobook in seconds
-  - OpenAI TTS (HD voice quality)
-  - ElevenLabs (emotional intonation)
-  - Browser-native Web Speech API (free, always available)
-- ▶️ Full-screen + mini-player modes
-- 💾 Offline caching for uninterrupted listening
+- 🗣️ **On-Device Neural Synthesis** — converts any ebook to audiobook
+- ▶️ Full-screen + mini-player modes with track progress
+- 💾 Automatic caching for re-reading without regeneration
 - 📊 Session restore — continue where you left off
-- ⏩ Speed control & chapter navigation
+- ⏩ Speed control + chapter skip buttons
+- 🔊 Live sync highlighting — see text as it's spoken
 
 ---
 
@@ -118,6 +134,21 @@ RSS feeds + daily news briefing in one feed.
 - 📋 **Daily News Brief** — morning digest from your feeds
 - 🎨 Per-source styling for visual distinction
 - 📌 Pin important sources to top
+
+---
+
+### 4. 🎮 Workshop Lounge
+Interactive games & tools to take reading breaks.
+
+**Games:**
+- **Crossword** — Literary word puzzles built from your library
+- **Word Search** — Find hidden vocabulary with difficulty scaling
+- **Linguist Guardian** — Word duels with strategic gameplay
+
+**Research Tools:**
+- **Wikipedia Hub** — Search articles & convert to custom ebooks with audio
+- **Dictionary** — Searchable reference with definitions & examples
+- **Score Tracker** — Track board game rounds with turn timers
 
 ---
 
@@ -149,7 +180,7 @@ Your library follows you everywhere:
 | **Cloud Sync** | Firebase Firestore + Auth |
 | **Backend** | Express / Cloudflare Workers (API proxy) |
 | **Book Rendering** | epub.js (EPUB), PDF.js (PDF) |
-| **AI Audio** | Web Speech API, OpenAI TTS, ElevenLabs |
+| **Text-to-Speech** | Web Speech API (web), Android TextToSpeech (native) |
 | **Deployment** | Cloudflare Pages (frontend) + Workers (backend) |
 
 ---
@@ -162,14 +193,16 @@ kora/
 │   ├── components/         # React UI components
 │   ├── pages/              # Page-level views
 │   ├── hooks/              # Custom React hooks
-│   ├── services/           # Firebase, API, storage logic
-│   ├── utils/              # Helpers & utilities
+│   ├── lib/                # Core libraries (Firebase, TTS, storage)
+│   ├── db/                 # IndexedDB helpers
+│   ├── utils/              # Utility functions
 │   ├── styles/             # Tailwind config & globals
 │   └── App.tsx             # Root component
+├── android/                # Android native code (Capacitor)
 ├── backend/                # Express/Workers API proxy
 ├── public/                 # Static assets
 ├── vite.config.ts          # Vite configuration
-└── firebase.config.ts      # Firebase setup
+└── capacitor.config.ts     # Capacitor configuration
 ```
 
 ---
@@ -178,7 +211,7 @@ kora/
 
 ### Prerequisites
 - **Node.js** v18+
-- **npm** v9+ or **pnpm**
+- **npm** v9+
 
 ### Installation
 
@@ -193,7 +226,7 @@ npm install
 # Start development server
 npm run dev
 
-# Open browser to http://localhost:3000
+# Open browser to http://localhost:5000
 ```
 
 ### Build & Deploy
@@ -209,12 +242,21 @@ npm run preview
 npm run deploy
 ```
 
+### Build Android APK
+
+```bash
+# Build signed release APK
+npm run apk:release
+
+# APK output: android/app/build/outputs/apk/release/
+```
+
 ### Environment Variables (Optional — Cloud Sync)
 
 Create a `.env.local` file in the root:
 
 ```env
-# Firebase Configuration
+# Firebase Configuration (optional — enables cloud sync)
 VITE_FIREBASE_API_KEY=your_api_key
 VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your_project_id
@@ -224,11 +266,9 @@ VITE_FIREBASE_APP_ID=your_app_id
 
 # Backend API (optional)
 VITE_API_URL=http://localhost:5000
-
-# Optional: AI TTS API Keys
-VITE_OPENAI_API_KEY=your_key
-VITE_ELEVENLABS_API_KEY=your_key
 ```
+
+> **Note:** Firebase is fully optional. Without it, Kora works entirely offline with IndexedDB.
 
 ---
 
@@ -236,19 +276,19 @@ VITE_ELEVENLABS_API_KEY=your_key
 
 ### ✅ v1.0 (Current)
 - ✅ EPUB/PDF/TXT reader with full UI customization
-- ✅ Firebase Firestore sync
-- ✅ AI text-to-speech (Web Speech + OpenAI API)
+- ✅ Firebase Firestore sync (optional)
+- ✅ On-device neural text-to-speech (Web Speech API + Android TTS)
 - ✅ RSS feed reader & news aggregator
 - ✅ Offline PWA support
 - ✅ Cross-device P2P file transfer
+- ✅ Workshop Lounge (Crossword, Word Search, Linguist Guardian)
+- ✅ Wikipedia Hub & searchable dictionary
 
 ### 🔮 Planned (v1.1+)
-- 📱 Native Android app (React Native)
-- 📱 iOS app (React Native)
-- 🎮 Lounge games suite (multiplayer reading challenges)
+- 📱 Native iOS app (React Native)
 - 🔗 WebDAV sync backend
 - 📊 Reading statistics & analytics
-- 🤖 AI book recommendations
+- 📅 Reading goals & streak tracking
 - 💬 Community highlights & annotations
 - 🎤 Voice commands (read aloud)
 
@@ -286,6 +326,8 @@ You're free to use Kora in personal, commercial, or educational projects.
 - **[Rave Search](https://github.com/IdleEndeavor/rave)** — Federated search engine
 - **[Tailwind CSS](https://tailwindcss.com)** — Utility-first CSS
 - **[Firebase](https://firebase.google.com)** — Backend & sync infrastructure
+- **[Capacitor](https://capacitorjs.com)** — Cross-platform native bridge
+- **Web Speech API & Android TextToSpeech** — On-device voice synthesis
 
 ---
 
