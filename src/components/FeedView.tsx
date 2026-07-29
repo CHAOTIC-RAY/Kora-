@@ -43,7 +43,6 @@ import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
 import TodayNewsBriefCard from "./TodayNewsBriefCard";
 import FeedTikTokScroll from "./FeedTikTokScroll";
-import DailyBriefTikTokScroll from "./DailyBriefTikTokScroll";
 
 interface FeedViewProps {
   userId?: string;
@@ -801,11 +800,38 @@ function FeedView({
           height={scrollContainerHeight}
         />
       ) : (
-        <DailyBriefTikTokScroll
-          items={retainedItems}
-          onReadArticle={handleReadArticle}
-          onOpenManage={() => setShowManageFeeds(true)}
-        />
+        <div className="space-y-4">
+          <TodayNewsBriefCard items={retainedItems} onReadArticle={handleReadArticle} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {visibleItems.map((item, index) => {
+              const cover = getItemThumbnail(item);
+              const title = displayTitle(item);
+              return (
+                <FeedArticleCard
+                  key={item.id}
+                  item={item}
+                  cover={cover}
+                  busy={false}
+                  title={title}
+                  variant={getBentoVariant(index)}
+                  grayscaleCovers={grayscaleCovers}
+                  onRead={() => void handleReadArticle(item)}
+                  onToggleRead={() => {
+                    const nextRead = !item.read;
+                    markFeedItemRead(item.id, nextRead);
+                    setItems(getFeedItems());
+                    if (nextRead) {
+                      toast.success("Marked as read");
+                    } else {
+                      toast.success("Marked as unread");
+                    }
+                  }}
+                  onSaveLater={() => void handleSaveLater(item)}
+                />
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {showManageFeeds && (
