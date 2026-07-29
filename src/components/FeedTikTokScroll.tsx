@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2, Settings2 } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2, Settings2, Newspaper } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { getItemThumbnail } from "../lib/feedPreview";
 import { resolveFeedArticle, prepareFeedArticleHtml } from "../lib/feedArticle";
@@ -10,36 +10,17 @@ import { toast } from "react-hot-toast";
 // Direction is chosen per-slide from the image size (wide → pan sideways,
 // tall → zoom) so it doesn't over-zoom a small image into nothing.
 const KEN_BURNS = `
-@keyframes koraKBzoomIn {
-  0% { transform: scale(1.04); }
-  100% { transform: scale(1.16); }
-}
-@keyframes koraKBzoomOut {
-  0% { transform: scale(1.16); }
-  100% { transform: scale(1.04); }
-}
-@keyframes koraKBpanX {
-  0% { transform: scale(1.12) translateX(-3.5%); }
-  100% { transform: scale(1.12) translateX(3.5%); }
-}
-@keyframes koraKBpanY {
-  0% { transform: scale(1.12) translateY(-3.5%); }
-  100% { transform: scale(1.12) translateY(3.5%); }
-}
-.kora-kb {
-  animation-duration: 22s;
-  animation-iteration-count: infinite;
-  animation-direction: alternate;
-  animation-timing-function: ease-in-out;
-  will-change: transform;
-  transform-origin: center center;
-}
+@keyframes koraKBzoomIn { from { transform: scale(1.08); } to { transform: scale(1.22); } }
+@keyframes koraKBzoomOut { from { transform: scale(1.22); } to { transform: scale(1.08); } }
+@keyframes koraKBpanX { from { transform: scale(1.12) translateX(-6%); } to { transform: scale(1.12) translateX(6%); } }
+@keyframes koraKBpanY { from { transform: scale(1.12) translateY(-6%); } to { transform: scale(1.12) translateY(6%); } }
+.kora-kb { animation-duration: 14s; animation-iteration-count: infinite; animation-direction: alternate; animation-timing-function: ease-in-out; will-change: transform; transform-origin: center center; }
 .kora-kb-zi { animation-name: koraKBzoomIn; }
 .kora-kb-zo { animation-name: koraKBzoomOut; }
 .kora-kb-px { animation-name: koraKBpanX; }
 .kora-kb-py { animation-name: koraKBpanY; }
 @media (prefers-reduced-motion: reduce) {
-  .kora-kb { animation: none !important; transform: scale(1.05) !important; }
+  .kora-kb { animation: none !important; transform: scale(1.08) !important; }
 }
 `;
 
@@ -427,6 +408,16 @@ export default function FeedTikTokScroll({
       {isMobile && (
         <div className="absolute left-0 right-0 z-30 flex items-center justify-between gap-2 pointer-events-none pt-[max(env(safe-area-inset-top),0.75rem)] px-3">
           <div className="flex items-center gap-1.5 pointer-events-auto">
+            {onFilter && (
+              <button
+                type="button"
+                onClick={onFilter}
+                className="p-2 rounded-full border border-amber-400/30 bg-amber-500/10 backdrop-blur-md text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.25)] active:scale-95 transition"
+                title="Daily Brief"
+              >
+                <Newspaper className="w-4 h-4" />
+              </button>
+            )}
             {onManage && (
               <button
                 type="button"

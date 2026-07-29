@@ -791,16 +791,20 @@ export default function CrosswordGame({ open, onClose, variant = "fullscreen", o
                             type="button"
                             onClick={() => selectCell(r, c)}
                             disabled={isWheel}
-                            className={`relative aspect-square rounded-[3px] border text-center font-serif font-bold uppercase leading-none transition-transform ${
+                            className={`relative aspect-square rounded-[2px] border text-center font-serif font-bold uppercase leading-none transition-transform ${
                               selected
-                                ? "bg-[#d4a574] text-[#1a1510] border-[#e8c49a] scale-105 z-10"
+                                ? "bg-[#d4a574] text-[#1a1510] border-[#e8c49a] scale-105 z-10 shadow-md shadow-black/30"
                                 : inWord
-                                  ? "bg-[#d4a574]/25 text-[#f5f0e8] border-[#d4a574]/35"
+                                  ? "bg-[#d4a574]/20 text-[#f5f0e8] border-[#d4a574]/30"
                                   : filled && isWheel
-                                    ? "bg-[#d4a574]/85 text-[#1a1510] border-[#e8c49a]/50"
-                                    : "bg-[#2a261f] text-[#f5f0e8] border-white/5"
+                                    ? "bg-[#d4a574]/80 text-[#1a1510] border-[#e8c49a]/40"
+                                    : "bg-[#1e1b17] text-[#f5f0e8] border-white/8"
                             } ${flashing ? "kora-xw-pop" : ""} ${wrong ? "ring-1 ring-red-400/70" : ""}`}
-                            style={{ fontSize: `clamp(10px, ${Math.floor(280 / puzzle.size)}px, 18px)` }}
+                            style={{ 
+                              fontSize: `clamp(12px, ${Math.floor(300 / puzzle.size)}px, 20px)`, 
+                              letterSpacing: "0.05em",
+                              boxShadow: selected ? "inset 0 0 0 1px rgba(255,255,255,0.15)" : "none"
+                            }}
                           >
                             {num != null ? (
                               <span className="absolute top-0 left-0.5 text-[7px] font-mono opacity-70 leading-none">

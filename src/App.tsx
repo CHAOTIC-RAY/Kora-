@@ -3242,7 +3242,7 @@ export default function App() {
 
       {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book */}
       {!readerOpen && (
-      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden">
+      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md rounded-2xl kora-safe-bottom overflow-hidden bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
         <LayoutGroup id="kora-mobile-tabs">
           <nav className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`} aria-label="Main">
             {mobileTabs.map(({ id, label, Icon }) => {
@@ -3266,21 +3266,21 @@ export default function App() {
                   }
                   onClick={() => switchTab(id)}
                   className={`kora-tab-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${
-                    isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
+                    isActive ? "text-white is-active" : "text-white/70"
                   }`}
                   aria-current={isActive ? "page" : undefined}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="kora-tab-pill"
-                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
+                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-white/15 border border-white/20 shadow-sm backdrop-blur-sm"
                       transition={koraTabSpring}
                     />
                   )}
                   <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
                     <Icon
                       className={`w-5 h-5 shrink-0 transition-transform duration-150 ${
-                        isActive ? "scale-105" : "opacity-80"
+                        isActive ? "scale-105" : "opacity-90"
                       }`}
                       strokeWidth={isActive ? 2.25 : 2}
                     />

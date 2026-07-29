@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "motion/react";
 import toast from "react-hot-toast";
 import { useScrollLock } from "../hooks/useScrollLock";
@@ -25,6 +25,8 @@ import {
   Headphones,
   Radio,
   Gamepad2,
+  Rss,
+  Hammer,
   ExternalLink,
   Flame,
   Swords,
@@ -586,11 +588,11 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                       <span>DISCOVER</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-xl bg-neutral-800 border border-neutral-700 text-amber-400 shadow-xs">
-                      <Radio className="w-3 h-3 text-amber-400" />
+                      <Rss className="w-3 h-3 text-amber-400" />
                       <span className="text-white font-extrabold">READ</span>
                     </div>
                     <div className="flex flex-col items-center gap-0.5 px-1">
-                      <Wrench className="w-3 h-3 text-neutral-400" />
+                      <Hammer className="w-3 h-3 text-neutral-400" />
                       <span>WORKSHOP</span>
                     </div>
                   </div>
@@ -787,6 +789,12 @@ export default function InstallView() {
     setMagnifier((prev) => (prev ? { ...prev, visible: false } : null));
   };
 
+  const onScroll = useCallback(() => {
+    if (!heroSectionRef.current) return;
+    const y = window.scrollY || window.pageYOffset;
+    setNavHidden(y < 80);
+  }, []);
+
   useEffect(() => {
     const el = notebookRef.current;
     if (!el) return;
@@ -796,6 +804,28 @@ export default function InstallView() {
     );
     observer.observe(el);
     return () => observer.disconnect();
+  }, []);
+
+  // Lock scroll position when window loses focus — prevents
+  // the landing view from jumping back to top after switching apps.
+  useEffect(() => {
+    const onBlur = () => {
+      if (heroSectionRef.current) {
+        heroSectionRef.current.dataset.scrollY = String(window.scrollY || window.pageYOffset || 0);
+      }
+    };
+    const onFocus = () => {
+      const saved = Number(heroSectionRef.current?.dataset.scrollY || 0);
+      if (saved > 0 && Math.abs((window.scrollY || 0) - saved) > 10) {
+        window.scrollTo({ top: saved, behavior: "instant" });
+      }
+    };
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   // FAQ stays fully visible — no scroll fade.

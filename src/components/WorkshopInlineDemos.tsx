@@ -833,7 +833,7 @@ export function SearchableDictionaryDemo() {
       <div className="space-y-1.5 text-left border-b border-zinc-900 pb-2">
         <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">
           <BookA className="w-4 h-4 text-purple-400" />
-          <span>Interactive Dictionary</span>
+          <span>Searchable Dictionary</span>
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-zinc-500" />

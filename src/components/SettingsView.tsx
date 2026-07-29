@@ -2688,35 +2688,9 @@ function SettingsView({
         </section>
         )}
 
-        {/* Read Aloud — collapsed by default, near bottom */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
-          <div
-            onClick={() => toggleCategory("tts")}
-            className="flex items-center justify-between cursor-pointer select-none"
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-                <Headphones className="w-4 h-4 text-kindle-text" />
-              </div>
-              <div>
-                <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Read Aloud</h3>
-                <p className="text-[9px] text-kindle-text-muted mt-0.5">Built-in audiobook converter &amp; voice settings</p>
-              </div>
-            </div>
-            <ChevronDown className={`w-4 h-4 text-kindle-text-muted transition-transform duration-200 ${expandedCategories.tts ? "rotate-180" : ""}`} />
-          </div>
-
-          {expandedCategories.tts && (
-            <div className="mt-4 pt-4 border-t border-kindle-border/40 animate-in slide-in-from-top-2 duration-200">
-              <BuiltInAudiobookConverter
-                books={(books as BookMetadata[]) || []}
-                userId={userId}
-                onRefreshLibrary={onRefreshLibrary}
-              />
-            </div>
-          )}
-        </section>
+        {/* Section 3: Reading Streaks & Habits */}
         </>
+
         )}
 
         {view === "settings" && (
