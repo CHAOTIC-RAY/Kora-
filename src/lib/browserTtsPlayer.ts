@@ -85,6 +85,7 @@ export class BrowserTtsPlayer {
   private bookId: string | null = null;
   private trackIndex: number | null = null;
   private quality: TtsQualityPreset = "balanced";
+  private padAfterSpeakingEstimate = 0;
 
   constructor(callbacks?: BrowserTtsPlayerCallbacks) {
     if (callbacks) this.callbacks = callbacks;
@@ -93,14 +94,15 @@ export class BrowserTtsPlayer {
   }
 
   get duration(): number {
-    return this.chunkDurations.reduce((sum, value) => sum + value, 0);
+    return Math.max(0, this.chunkDurations.reduce((sum, value) => sum + value, 0) + this.padAfterSpeakingEstimate);
   }
 
   get currentTime(): number {
     const completed = this.chunkDurations
       .slice(0, this.chunkIndex)
       .reduce((sum, value) => sum + value, 0);
-    return completed + Math.max(this.boundaryTime, this.estimateOffsetTime());
+    const estimated = this.estimateOffsetTime();
+    return completed + Math.max(this.boundaryTime, estimated);
   }
 
   get estimatedRemaining(): number {
@@ -130,10 +132,13 @@ export class BrowserTtsPlayer {
   }
 
   setRate(rate: number) {
+    if (this.rate === rate) return;
+    const wasPlaying = this.playing && !this.paused;
+    const time = this.currentTime;
     this.rate = rate;
     this.rebuildDurations();
-    if (this.playing && !this.paused) {
-      const time = this.currentTime;
+    this.patchAfterSpeakingEstimate(wasPlaying ? time : null);
+    if (wasPlaying) {
       this.stop(false);
       this.seekToPosition({ chunkIndex: this.chunkIndex, charOffset: this.charOffset, estimatedTime: time });
       void this.play();
@@ -312,6 +317,21 @@ export class BrowserTtsPlayer {
     const duration = this.chunkDurations[this.chunkIndex] || 1;
     const ratio = Math.max(0, Math.min(1, secondsIntoChunk / duration));
     return Math.floor(text.length * ratio);
+  }
+
+  private patchAfterSpeakingEstimate(playingTime: number | null) {
+    if (!this.chunks.length) {
+      this.padAfterSpeakingEstimate = 0;
+      return;
+    }
+
+    const lastIndex = this.chunks.length - 1;
+    const lastDuration = this.chunkDurations[lastIndex] || 0;
+    const trailing = this.chunks[lastIndex]?.text?.trim().length ? 0.8 : 0;
+    const rateAdjusted = this.rate > 0 ? lastDuration / this.rate : 0;
+    const extra = rateAdjusted * 0.18 + trailing;
+    const maxExtra = lastIndex === this.chunkIndex && playingTime !== null ? Math.max(0, lastDuration - playingTime + 0.4) : lastDuration * 0.45;
+    this.padAfterSpeakingEstimate = Math.max(0, Math.min(extra, maxExtra));
   }
 
   private bindVisibilityHandler() {
