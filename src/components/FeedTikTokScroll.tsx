@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2, Settings2, Newspaper } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronUp, ChevronLeft, Filter, Grid, Loader2, RefreshCw, Share2, Settings2, Newspaper } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { getItemThumbnail } from "../lib/feedPreview";
 import { resolveFeedArticle, prepareFeedArticleHtml } from "../lib/feedArticle";
@@ -408,14 +408,14 @@ export default function FeedTikTokScroll({
       {isMobile && (
         <div className="absolute left-0 right-0 z-30 flex items-center justify-between gap-2 pointer-events-none pt-[max(env(safe-area-inset-top),0.75rem)] px-3">
           <div className="flex items-center gap-1.5 pointer-events-auto">
-            {onFilter && (
+            {onExit && (
               <button
                 type="button"
-                onClick={onFilter}
-                className="p-2 rounded-full border border-amber-400/30 bg-amber-500/10 backdrop-blur-md text-amber-300 shadow-[0_0_12px_rgba(245,158,11,0.25)] active:scale-95 transition"
-                title="Daily Brief"
+                onClick={onExit}
+                className="p-2 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
+                title="Back to grid"
               >
-                <Newspaper className="w-4 h-4" />
+                <ChevronLeft className="w-4 h-4" />
               </button>
             )}
             {onManage && (
