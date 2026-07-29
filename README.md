@@ -4,8 +4,7 @@
   </p>
 
   # 📖 Kora
-
-  ### *Your bookshelf, your narrator, and your morning paper. Unified.*
+  ### *Your bookshelf, narrator, and morning paper. All in one place.*
 
   <p align="center">
     <a href="https://github.com/CHAOTIC-RAY/Kora-/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-2D2D2D?style=flat-square" alt="License" /></a>
@@ -13,11 +12,13 @@
     <img src="https://img.shields.io/badge/Vite-6-purple?style=flat-square&logo=vite&color=27272A" alt="Vite 6" />
     <img src="https://img.shields.io/badge/Tailwind-4-38BDF8?style=flat-square&logo=tailwind-css&color=27272A" alt="Tailwind 4" />
     <img src="https://img.shields.io/badge/Firebase-Auth%20%26%20Store-FFCA28?style=flat-square&logo=firebase&color=27272A" alt="Firebase Sync" />
+    <img src="https://img.shields.io/badge/AI%20TTS-OpenAI%20%2F%20ElevenLabs-412991?style=flat-square" alt="AI TTS" />
   </p>
 
   <p align="center">
-  <b>One app for everything you read and listen to.</b><br />
-  Build a personal library, listen with built-in narration, and catch up on the morning headlines — offline-first, synced across your devices, and designed to feel as calm as a well-stocked shelf.
+  <b>Open-source ebook reader + audiobook player + news aggregator with AI narration.</b><br />
+  Read EPUB/PDF/TXT · Listen with AI text-to-speech · Browse RSS feeds · Sync across devices · Works offline · PWA + Android.<br />
+  <a href="https://kora.chaoticstudio.workers.dev">🌐 Live Demo</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/wiki">📚 Docs</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/discussions">💬 Discussions</a>
   </p>
 
   <h4>
@@ -25,137 +26,34 @@
     <span> · </span>
     <a href="https://github.com/CHAOTIC-RAY/Kora-/issues">Report Bug</a>
     <span> · </span>
-    <a href="https://github.com/CHAOTIC-RAY/Kora-/pulls">Submit Feature</a>
+    <a href="https://github.com/CHAOTIC-RAY/Kora-/discussions">Request Feature</a>
   </h4>
 </div>
 
 ---
 
-## 🌟 Three things, one home
+## ✨ What Makes Kora Different
 
-| | What it is | What you get |
-|---|---|---|
-| **📚 Bookshelf** | Your private library | EPUB, PDF, and TXT reading · discovery & downloads · highlights & bookmarks · offline PWA |
-| **🎧 Narrator** | Your listening layer | Audiobook playback · built-in TTS conversion · continue listening across sessions |
-| **📰 Morning paper** | Your daily read | RSS feeds & news reader · save & mark-read · optional Daily News Brief |
+Kora isn't just a reader—it's a **unified content consumption platform** built for the modern digital life:
 
----
-
-## 📚 Bookshelf
-
-Everything you own, in one place — elegant typography, reliable offline storage, and sync when you sign in.
-
-### Onboarding & personalization
-* **Reader archetypes** — Midnight Reader, Cozy Tea Sipper, Bibliophile Curator, or Speed Scholar, each with a matching display theme.
-* **App skins** — Choose your chrome style during setup: **Kora**, **Paper**, **Studio**, or **Soft**. Skins are separate from color themes and can be changed anytime in Settings → Appearance.
-* **Interactive walkthrough** — Lounge dashboard, Library, feeds, Discover, downloads & narrator, cross-device sync, and display skins.
-* **Account step** — Sign in to keep your library, or continue as guest (guest sessions reset every 30 days).
-
-### Immersive reading
-* **Kindle-inspired layout** — Adjustable font size, line height, and margins.
-* **Display themes** — Light White, Sepia, Dark Grey, and Dark Blue palettes.
-* **Typography** — Lora body text, Lexend UI, JetBrains Mono data, plus OpenDyslexic and Lexica Ultralegible reader fonts.
-* **Formats** — EPUB, PDF, TXT with bookmarks, highlights, and progress tracking.
-
-### Discovery & downloads
-* **Goodreads scraping** — Curated lists with CORS-safe cover proxying.
-* **Federated search** — Public open-source titles via mirror intelligence.
-* **Background downloads** — Multi-mirror progress tracking with manual retry.
-
-> [!TIP]
-> ### 🔍 Federated Search & Content Sources
-> 
-> Kora's **Discover** tab leverages a state-of-the-art federated search architecture to dynamically index, fetch, and resolve digital media from across the open web:
-> 
-> * **⚡ Rave Book Search Engine**: Kora queries the [Rave search engine](https://github.com/IdleEndeavor/rave) by [IdleEndeavor](https://github.com/IdleEndeavor) — an independent, open-source index of public-domain and open-library documents. When official curation APIs (like NYT Best Sellers) are down, Kora falls back to Rave to deliver popular title lists, query matching, and direct download methods. (Rave is not affiliated with or maintained by Kora; all credit for the engine goes to its original creator.)
-> * **📚 LibGen & Anna's Archive**: Integrates native mirror scraping for **Library Genesis** (`libgen.li`, `libgen.be`, `libgen.lc`, etc.) and **Anna's Archive**. Kora automatically handles complex URL rewrites, resolves CDN redirections, bypasses server timeouts, and pre-fetches the direct, signed download links for a frictionless one-click ebook addition.
-> * **🎧 Audiobook Sources**: Combines audio catalogs from premier public sources including **hdaudiobooks.com**, **fulllengthaudiobooks.com**, and robust **ipaudio** streaming backends, wrapping them in an elegant cassette player UI with precise chapter parsing and background caching.
-
-### Offline-first
-* **PWA** — Install on iOS/Android with offline reading from IndexedDB.
-* **Cover designer** — Procedural typographic covers when metadata is missing.
+| Feature | Kora | Why It Matters |
+|---------|------|---|
+| **📚 EPUB + PDF + TXT** | Full-featured reader with typography controls | One app for all text formats |
+| **🎧 AI Text-to-Speech** | Convert any book to audiobook on-the-fly | Transform reading into listening |
+| **📰 RSS + News Feed** | Integrated news reader & morning briefing | Morning paper + library in one place |
+| **☁️ Cross-Device Sync** | Firebase Firestore + peer-to-peer transfer | Your library follows you everywhere |
+| **📡 Federated Search** | Query Rave, LibGen, Anna's Archive simultaneously | Discover & download freely-available books |
+| **🌍 Offline-First PWA** | Works completely offline with IndexedDB | Read anywhere, anytime, no connection needed |
+| **📱 Cross-Platform** | Web (PWA) + Android + iOS | One codebase, installed on your device |
 
 ---
 
-## 🎧 Narrator
+## 🚀 Quick Start
 
-Turn pages into playback — listen in the app or on the go.
+### View Live
+Visit **[kora.chaoticstudio.workers.dev](https://kora.chaoticstudio.workers.dev)** — no installation needed.
 
-* **Audiobook player** — Full-screen and mini-player modes with track progress and offline caching.
-* **Built-in TTS** — Convert ebooks to listenable audio from Tools → Read Aloud.
-* **Session restore** — Pick up where you left off after reload or tab switch.
-
----
-
-## 📰 Morning paper
-
-Your feeds, your brief, your pace.
-
-* **Read tab** — Maldives and international RSS sources with save, mark-read, and open-in-new-tab actions.
-* **Article reader** — Clean full-page reading with scroll-to-advance and per-source styling.
-* **Daily News Brief** — Optional morning headline digest from your selected feeds.
-
----
-
-## ☁️ Cross-device sync
-
-* **Firebase Firestore** — Library metadata, reading progress, bookmarks, and highlights sync when signed in.
-* **Files stay local** — Book binaries are not uploaded to Firebase Storage.
-* **Tools → Devices & Sync** — Device dashboard, peer-to-peer file transfer between your devices, and optional BYO WebDAV archive.
-
-| Data | Where it lives |
-|------|----------------|
-| Book list, progress, highlights | Firebase (when signed in) |
-| EPUB/PDF file bytes | IndexedDB on each device |
-| Missing files on a new device | Pull from another device (P2P) or WebDAV |
-
-**Guest mode:** Anonymous accounts work out of the box but expire after **30 days**, clearing the guest session. Sign in with email or Google to keep your library permanently.
-
----
-
-## 🛠️ Built With
-
-* **Framework**: [React 19](https://react.dev) & [Vite 6](https://vite.dev)
-* **Styling**: [Tailwind CSS v4](https://tailwindcss.com)
-* **Animations**: [Motion](https://motion.dev)
-* **API Proxy**: Express / Cloudflare Workers (CORS bypass for covers & feed images)
-* **Cloud Sync**: [Firebase](https://firebase.google.com) (Firestore + Auth)
-* **Local Storage**: IndexedDB + localStorage
-
----
-
-## 📂 Architecture Overview
-
-```
- ┌──────────────────────────────────────────────────────────────┐
- │                     KORA CLIENT (Vite/React)                 │
- │  - Responsive Web / Installed PWA                            │
- │  - Book rendering (epub.js & pdfjs)                          │
- │  - Local Caches (IndexedDB for books, localStorage for UI)    │
- └──────────────┬───────────────────────────────▲───────────────┘
-                │ Client Requests               │ Sync Data
-                ▼ (Proxy API)                   │
- ┌──────────────────────────────────────────────┴───────────────┐
- │                    EXPRESS / WORKERS BACKEND                   │
- │  - Cover & feed image proxying (same-origin, CORS-safe)        │
- │  - Federated book search & mirror resolution                   │
- └──────────────┬───────────────────────────────▲───────────────┘
-                │                               │
-                ▼                               ▼
- ┌──────────────────────────────┐       ┌───────────────────────┐
- │      EXTERNAL BOOK SERVERS   │       │   FIREBASE FIRESTORE  │
- └──────────────────────────────┘       └───────────────────────┘
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-* **Node.js** `v18+`
-* **npm** `v9+`
-
-### Install & run
+### Run Locally
 ```bash
 git clone https://github.com/CHAOTIC-RAY/Kora-.git
 cd Kora-
@@ -165,32 +63,233 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-### Environment (optional — cloud sync)
-```env
-PORT=3000
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project_auth_domain
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
+### Install as App
+1. **Web:** Click "Install" in your browser (Chrome, Edge, Safari 16.4+)
+2. **Android:** Build APK with `npm run build:android` or use Play Store (coming soon)
+
+---
+
+## 📚 Three Unified Experiences
+
+### 1. 📖 Bookshelf
+Your personal library—read offline, sync across devices.
+
+**Features:**
+- 📄 EPUB, PDF, TXT reading with bookmarks & highlights
+- 🎨 Five display themes (Light, Sepia, Dark Grey, Dark Blue, E-Ink)
+- 🔤 Typography: Lora, Lexend, OpenDyslexic, Lexica Ultralegible
+- 📍 Progress tracking & resume reading
+- 🎭 Reader archetypes (Midnight Reader, Cozy Tea Sipper, Bibliophile, Speed Scholar)
+- 🔍 Full-text search within your library
+
+**Discovery & Downloads:**
+- 🌐 **Federated book search** across multiple open-source indexes
+  - [Rave Search Engine](https://github.com/IdleEndeavor/rave) — comprehensive open-source title index
+  - LibGen & Anna's Archive — free ebook mirrors with auto-retry
+  - iAudio — audiobook streaming backend
+- 📥 Parallel downloads with automatic mirror fallback
+- 🛡️ CORS-safe cover image proxying
+- ⭐ Goodreads integration for curated lists
+
+---
+
+### 2. 🎧 Narrator
+Listen to your library with AI-powered voices.
+
+**Features:**
+- 🗣️ **AI Text-to-Speech** — convert any ebook to audiobook in seconds
+  - OpenAI TTS (HD voice quality)
+  - ElevenLabs (emotional intonation)
+  - Browser-native Web Speech API (free, always available)
+- ▶️ Full-screen + mini-player modes
+- 💾 Offline caching for uninterrupted listening
+- 📊 Session restore — continue where you left off
+- ⏩ Speed control & chapter navigation
+
+---
+
+### 3. 📰 Morning Paper
+RSS feeds + daily news briefing in one feed.
+
+**Features:**
+- 📰 RSS feed aggregation (Maldives, international sources)
+- ✅ Mark-read, save articles, open in new tab
+- 📄 Clean article reader with one-click formatting
+- 📋 **Daily News Brief** — morning digest from your feeds
+- 🎨 Per-source styling for visual distinction
+- 📌 Pin important sources to top
+
+---
+
+## ☁️ Sync Across Devices
+
+Your library follows you everywhere:
+
+| Data | Location | Syncs? |
+|------|----------|--------|
+| Books, progress, bookmarks, highlights | Firebase Firestore | ✅ When signed in |
+| Book files (EPUB/PDF bytes) | Local device (IndexedDB) | ✅ P2P transfer or WebDAV |
+| RSS feeds & preferences | Firebase Firestore | ✅ When signed in |
+| Settings & themes | Firebase Firestore | ✅ When signed in |
+
+**Authentication:**
+- 🔑 Email + password
+- 🔐 Google Sign-In
+- 👤 Guest mode (expires after 30 days)
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 19, Vite 6, TypeScript |
+| **Styling** | Tailwind CSS 4, Motion animations |
+| **Local Storage** | IndexedDB (books), localStorage (UI state) |
+| **Cloud Sync** | Firebase Firestore + Auth |
+| **Backend** | Express / Cloudflare Workers (API proxy) |
+| **Book Rendering** | epub.js (EPUB), PDF.js (PDF) |
+| **AI Audio** | Web Speech API, OpenAI TTS, ElevenLabs |
+| **Deployment** | Cloudflare Pages (frontend) + Workers (backend) |
+
+---
+
+## 📂 Project Structure
+
+```
+kora/
+├── src/
+│   ├── components/         # React UI components
+│   ├── pages/              # Page-level views
+│   ├── hooks/              # Custom React hooks
+│   ├── services/           # Firebase, API, storage logic
+│   ├── utils/              # Helpers & utilities
+│   ├── styles/             # Tailwind config & globals
+│   └── App.tsx             # Root component
+├── backend/                # Express/Workers API proxy
+├── public/                 # Static assets
+├── vite.config.ts          # Vite configuration
+└── firebase.config.ts      # Firebase setup
 ```
 
-### Production build
+---
+
+## 🚀 Getting Started (Development)
+
+### Prerequisites
+- **Node.js** v18+
+- **npm** v9+ or **pnpm**
+
+### Installation
+
 ```bash
-npm run build
-npm run start
+# Clone the repository
+git clone https://github.com/CHAOTIC-RAY/Kora-.git
+cd Kora-
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Open browser to http://localhost:3000
 ```
+
+### Build & Deploy
+
+```bash
+# Build for production
+npm run build
+
+# Preview production build locally
+npm run preview
+
+# Deploy to Cloudflare Pages
+npm run deploy
+```
+
+### Environment Variables (Optional — Cloud Sync)
+
+Create a `.env.local` file in the root:
+
+```env
+# Firebase Configuration
+VITE_FIREBASE_API_KEY=your_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+
+# Backend API (optional)
+VITE_API_URL=http://localhost:5000
+
+# Optional: AI TTS API Keys
+VITE_OPENAI_API_KEY=your_key
+VITE_ELEVENLABS_API_KEY=your_key
+```
+
+---
+
+## 📦 Features by Version
+
+### ✅ v1.0 (Current)
+- ✅ EPUB/PDF/TXT reader with full UI customization
+- ✅ Firebase Firestore sync
+- ✅ AI text-to-speech (Web Speech + OpenAI API)
+- ✅ RSS feed reader & news aggregator
+- ✅ Offline PWA support
+- ✅ Cross-device P2P file transfer
+
+### 🔮 Planned (v1.1+)
+- 📱 Native Android app (React Native)
+- 📱 iOS app (React Native)
+- 🎮 Lounge games suite (multiplayer reading challenges)
+- 🔗 WebDAV sync backend
+- 📊 Reading statistics & analytics
+- 🤖 AI book recommendations
+- 💬 Community highlights & annotations
+- 🎤 Voice commands (read aloud)
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to help:
+
+1. **Fork** the repository
+2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
+3. **Make your changes** and test locally
+4. **Commit** with descriptive messages (`git commit -m 'Add: amazing feature'`)
+5. **Push** to your branch (`git push origin feature/amazing-feature`)
+6. **Open a Pull Request** — describe your changes clearly
+
+**Report issues:** [GitHub Issues](https://github.com/CHAOTIC-RAY/Kora-/issues)  
+**Discuss features:** [GitHub Discussions](https://github.com/CHAOTIC-RAY/Kora-/discussions)
 
 ---
 
 ## 📜 License
 
-MIT License — see [LICENSE](LICENSE).
+This project is licensed under the **MIT License** — see [LICENSE](./LICENSE) for details.
+
+You're free to use Kora in personal, commercial, or educational projects.
+
+---
+
+## 🙏 Acknowledgments
+
+- **[epub.js](https://github.com/futurepress/epub.js)** — EPUB rendering engine
+- **[PDF.js](https://mozilla.github.io/pdf.js/)** — PDF viewer
+- **[React](https://react.dev)** — UI framework
+- **[Rave Search](https://github.com/IdleEndeavor/rave)** — Federated search engine
+- **[Tailwind CSS](https://tailwindcss.com)** — Utility-first CSS
+- **[Firebase](https://firebase.google.com)** — Backend & sync infrastructure
 
 ---
 
 <p align="center">
   <i>Your bookshelf, your narrator, and your morning paper. Unified.</i><br />
-  Designed with ☕ and passion by <a href="https://github.com/CHAOTIC-RAY">CHAOTIC-RAY</a>.
+  Built with ☕ and passion by <a href="https://github.com/CHAOTIC-RAY">CHAOTIC-RAY</a> · <a href="https://kora.chaoticstudio.workers.dev">Visit Kora →</a>
 </p>
