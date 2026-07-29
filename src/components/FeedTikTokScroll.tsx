@@ -183,7 +183,7 @@ interface FeedTikTokScrollProps {
   perfMode?: boolean;
   onRead: (item: FeedItem) => void;
   onSave: (item: FeedItem) => void;
-  onExit?: () => void;
+  onOpenBrief?: () => void;
   onRefresh?: () => void;
   onManage?: () => void;
   onFilter?: () => void;
@@ -207,7 +207,7 @@ export default function FeedTikTokScroll({
   perfMode,
   onRead,
   onSave,
-  onExit,
+  onOpenBrief,
   onRefresh,
   onManage,
   onFilter,
@@ -408,14 +408,14 @@ export default function FeedTikTokScroll({
       {isMobile && (
         <div className="absolute left-0 right-0 z-30 flex items-center justify-between gap-2 pointer-events-none pt-[max(env(safe-area-inset-top),0.75rem)] px-3">
           <div className="flex items-center gap-1.5 pointer-events-auto">
-            {onExit && (
+            {onOpenBrief && (
               <button
                 type="button"
-                onClick={onExit}
+                onClick={onOpenBrief}
                 className="p-2 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
-                title="Back to grid"
+                title="Daily brief"
               >
-                <ChevronLeft className="w-4 h-4" />
+                <Newspaper className="w-4 h-4" />
               </button>
             )}
             {onManage && (
@@ -431,14 +431,14 @@ export default function FeedTikTokScroll({
           </div>
 
           <div className="flex items-center gap-1.5 pointer-events-auto">
-            {onExit && (
+            {onOpenBrief && (
               <button
                 type="button"
-                onClick={onExit}
+                onClick={onOpenBrief}
                 className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
-                title="Close"
+                title="Daily brief"
               >
-                <Grid className="w-4 h-4" />
+                <Newspaper className="w-4 h-4" />
               </button>
             )}
 

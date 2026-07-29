@@ -792,7 +792,7 @@ function FeedView({
           perfMode={performanceMode}
           onRead={(item) => void handleReadArticle(item)}
           onSave={(item) => void handleSaveLater(item)}
-          onExit={() => persistFeedLayout("grid")}
+          onOpenBrief={() => setFilter("briefs")}
           onRefresh={() => void refreshFeeds()}
           onManage={() => setShowManageFeeds(true)}
           onFilter={() => setShowFilterSheet(true)}
