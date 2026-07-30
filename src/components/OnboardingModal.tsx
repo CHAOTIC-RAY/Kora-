@@ -150,6 +150,7 @@ export default function OnboardingModal({
   const [dailyGoal, setDailyGoal] = useState(30);
   const [autoCache, setAutoCache] = useState(true);
   const [dailyReminders, setDailyReminders] = useState(false);
+  const [dailyBriefNotification, setDailyBriefNotification] = useState(false);
   const [agreedToLicenses, setAgreedToLicenses] = useState(false);
   const [selectedTopics, setSelectedTopics] = useState<string[]>(["local", "world"]);
 
@@ -491,6 +492,23 @@ export default function OnboardingModal({
                         </span>
                         <span className="text-[9px] text-kindle-text-muted leading-relaxed block mt-1">
                           A friendly quote when you open Kora to keep your streak going.
+                        </span>
+                      </span>
+                    </label>
+
+                    <label className="p-4 bg-kindle-card border border-kindle-border rounded-xl flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={dailyBriefNotification}
+                        onChange={(e) => setDailyBriefNotification(e.target.checked)}
+                        className="w-4 h-4 rounded border-kindle-border text-kindle-accent focus:ring-kindle-accent cursor-pointer shrink-0 mt-0.5"
+                      />
+                      <span>
+                        <span className="font-display font-bold text-xs text-kindle-text block">
+                          Daily News Brief Notification
+                        </span>
+                        <span className="text-[9px] text-kindle-text-muted leading-relaxed block mt-1">
+                          Get a concise morning brief from your selected feed topics.
                         </span>
                       </span>
                     </label>

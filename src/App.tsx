@@ -527,6 +527,7 @@ export default function App() {
     dailyGoal: number;
     autoCache: boolean;
     dailyReminders: boolean;
+    dailyBriefNotification?: boolean;
     selectedFeedUrls?: string[];
   }) => {
     localStorage.setItem("kora_onboarding_completed", "true");
@@ -554,6 +555,10 @@ export default function App() {
     };
     setSearchPrefs(updatedSearch);
     localStorage.setItem("kora_search_prefs", JSON.stringify(updatedSearch));
+
+    if (prefs.dailyBriefNotification) {
+      await handleDailyNewsBriefChange(true);
+    }
 
     applySelectedFeedSources(
       prefs.selectedFeedUrls?.length
