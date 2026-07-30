@@ -1077,8 +1077,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                         const letter = me?.tiles[idx];
                         const isEmpty = !letter;
                         const isSelected = selectedRackIdx === idx;
+                        const shake = isSelected;
 
-                        const shake = selectedShakeIdx === idx;
                         return (
                           <motion.div
                             key={`${letter}-${idx}`}

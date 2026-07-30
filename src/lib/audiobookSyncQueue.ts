@@ -161,7 +161,15 @@ export async function ingestAudiobookTrackFromSw(
   throw lastError || new Error("Audiobook pickup failed");
 }
 
-async function downloadTrack(job: AudiobookSyncJob, onProgress?: (pct: number) => void): Promise<void> {
+async function downloadTrack(
+  job: AudiobookSyncJob,
+  onProgress?: (pct: number) => void
+): Promise<void> {
+  if (typeof job.src === "string" && job.src.startsWith("browser-tts://")) {
+    // Browser TTS tracks are synthetic/local; no network download needed.
+    return;
+  }
+
   const proxyUrl = getProxiedAudioUrl(job.src, refererForMediaUrl(job.src));
   const handedOff = await handoffAudiobookTrackDownload({
     jobId: job.id,
