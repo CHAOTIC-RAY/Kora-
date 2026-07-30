@@ -407,7 +407,7 @@ export default function App() {
   });
 
   const [autoDisplayTheme, setAutoDisplayTheme] = useState<boolean>(() => {
-    return localStorage.getItem("kora_auto_display_theme") === "true";
+    return localStorage.getItem("kora_auto_display_theme") !== "false";
   });
 
   const [appSkin, setAppSkin] = useState<AppSkinId>(() => readStoredAppSkin());

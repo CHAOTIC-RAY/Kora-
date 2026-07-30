@@ -1257,7 +1257,7 @@ function SettingsView({
                 <div className="flex items-center justify-between">
                   <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
                   <div className="flex items-center gap-2">
-                    <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Auto Schedule</span>
+                    <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Auto Adjust</span>
                     <Toggle on={autoDisplayTheme} onClick={() => onChangeAutoDisplayTheme(!autoDisplayTheme)} />
                   </div>
                 </div>

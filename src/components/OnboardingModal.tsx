@@ -315,11 +315,10 @@ export default function OnboardingModal({
                     Meet Kora
                   </span>
                   <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    Your offline reading home
+                    What kind of reader are you?
                   </h2>
-                  <p className="text-xs text-kindle-text-muted font-sans max-w-lg mx-auto leading-relaxed">
-                    Kora is a private reader for books and news. Themes, fonts, and page layout live inside each book —
-                    here you only set what shapes your daily habit and your news brief.
+                  <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
+                    Pick the vibe that fits you, and Kora will tune themes, suggestions, and daily brief topics around it.
                   </p>
                 </div>
 
