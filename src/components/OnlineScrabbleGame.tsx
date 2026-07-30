@@ -992,20 +992,26 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             }`}
                           >
                             {cell ? (
-                              <div className="w-full h-full flex items-center justify-center relative">
-                                <span className="text-[10px] sm:text-xs md:text-sm font-serif font-bold leading-none">
+                              <motion.div
+                                layout
+                                className="w-full h-full flex items-center justify-center relative"
+                                initial={{ scale: 0.85, opacity: 0.4 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                transition={{ type: "spring", stiffness: 420, damping: 26, mass: 0.6 }}
+                              >
+                                <span className="text-[11px] sm:text-xs md:text-base font-serif font-bold leading-none text-kindle-text">
                                   {cell.letter}
                                 </span>
-                                <span className="absolute bottom-[0.5px] right-[1px] text-[6px] sm:text-[7px] font-mono leading-none opacity-80">
+                                <span className="absolute bottom-[1px] right-[1px] text-[7px] sm:text-[8px] font-mono font-bold leading-none opacity-90 text-kindle-accent">
                                   {cell.score}
                                 </span>
-                              </div>
+                              </motion.div>
                             ) : mult.type ? (
-                              <span className="text-[6px] sm:text-[8px] font-bold leading-none uppercase">
+                              <span className="text-[7px] sm:text-[9px] font-black leading-none uppercase tracking-tight text-kindle-text">
                                 {mult.label}
                               </span>
                             ) : r === 7 && c === 7 ? (
-                              <span className="text-xs sm:text-sm text-amber-500">★</span>
+                              <span className="text-sm sm:text-base text-amber-500">★</span>
                             ) : null}
                           </div>
                         );
@@ -1065,36 +1071,44 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                       )}
                     </div>
 
-                    <div className="flex justify-center gap-1.5 sm:gap-2">
+                    <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
                       {Array.from({ length: 7 }).map((_, idx) => {
                         const me = getMyPlayer();
                         const letter = me?.tiles[idx];
                         const isEmpty = !letter;
                         const isSelected = selectedRackIdx === idx;
 
+                        const shake = selectedShakeIdx === idx;
                         return (
-                          <div
-                            key={idx}
+                          <motion.div
+                            key={`${letter}-${idx}`}
+                            layout
                             onClick={() => selectRackTile(idx)}
-                            className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition cursor-pointer ${
+                            className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
                               isEmpty
-                                ? "bg-kindle-bg  border-dashed border-kindle-border  text-neutral-400"
+                                ? "bg-kindle-bg border-dashed border-kindle-border text-kindle-text-muted"
                                 : isSelected
                                 ? "bg-kindle-accent border-amber-300 text-kindle-bg font-bold scale-105 shadow-lg -translate-y-1"
-                                : "bg-kindle-accent border-kindle-accent text-kindle-bg font-bold hover:-translate-y-0.5 shadow-md"
+                                : "bg-kindle-card border-kindle-accent/40 text-kindle-text hover:-translate-y-0.5"
                             }`}
+                            initial={{ scale: 0.85, opacity: 0.35, rotate: -14 }}
+                            animate={shake ? { rotate: [-4, 4, -3, 3, 0], scale: [1, 1.05, 1] } : { scale: 1, opacity: 1, rotate: 0 }}
+                            transition={shake ? { type: "spring", stiffness: 340, damping: 14, mass: 0.4 } : { type: "spring", stiffness: 520, damping: 24, mass: 0.55 }}
+                            whileTap={{ scale: 0.95 }}
                           >
-                            {!isEmpty && (
+                            {!isEmpty ? (
                               <div className="w-full h-full flex items-center justify-center relative">
-                                <span className="text-lg font-serif font-extrabold leading-none">
+                                <span className="text-lg font-serif font-extrabold leading-none text-kindle-text">
                                   {letter}
                                 </span>
-                                <span className="absolute bottom-0.5 right-1 text-[8px] font-mono font-bold opacity-75">
+                                <span className="absolute bottom-0.5 right-1 text-[8px] font-mono font-bold opacity-90 text-kindle-accent">
                                   {TILE_VALUES[letter] || 1}
                                 </span>
                               </div>
+                            ) : (
+                              <div className="text-[8px] font-black tracking-tight text-kindle-text-muted/60">-</div>
                             )}
-                          </div>
+                          </motion.div>
                         );
                       })}
                     </div>
