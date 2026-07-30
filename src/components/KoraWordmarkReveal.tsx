@@ -69,6 +69,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     let started = false;
     let revealArmed = { current: false };
     let revealTimer: number | undefined;
+    const inkRef = { current: "#111116" };
 
     const markDone = () => {
       if (doneRef.current) return;
@@ -112,31 +113,23 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
           outlinePoints.push({ x: pt.x * scale + offsetX, y: pt.y * scale + offsetY });
         }
       });
-      // Ink color follows the theme mode explicitly so it is always bold and high-contrast.
-      let ink = "#111116";
+    const applyInkForCurrentColor = () => {
       try {
         const computedColor = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
         if (computedColor) {
-          ink = computedColor;
-        } else {
-          const isDark = getIsDarkMode();
-          ink = isDark ? "#f3f1ea" : "#111116";
+          inkRef.current = computedColor;
+          return;
         }
       } catch {
-        const isDark = getIsDarkMode();
-        ink = isDark ? "#f3f1ea" : "#111116";
+        // ignore
       }
-
-      // In dark mode, force vivid foreground ink so the animation stays visible
-      // even if the active theme text color resolves to a muted gray.
-      const isDark = getIsDarkMode();
-      if (isDark) {
-        ink = "#f3f1ea";
-      }
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = ink;
-      ctx.fillStyle = ink;
+      inkRef.current = getIsDarkMode() ? "#f3f1ea" : "#111116";
+    };
+    applyInkForCurrentColor();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = inkRef.current;
+    ctx.fillStyle = inkRef.current;
 
       const STATE_OUTLINE = 0,
         STATE_ZOOM = 1,
@@ -193,7 +186,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
             ctx.lineWidth = (Math.random() * 2.5 + 0.5) * dpr;
             ctx.moveTo(sx, sy);
             ctx.lineTo(sx + (Math.random() - 0.5) * 8 * dpr, sy + (Math.random() - 0.5) * 8 * dpr);
-            ctx.globalAlpha = isDark ? 0.9 : 0.7;
+            ctx.globalAlpha = getIsDarkMode() ? 0.9 : 0.7;
             ctx.stroke();
             ctx.globalAlpha = 1;
             if (Math.random() > 0.99) {
@@ -264,18 +257,37 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     );
     io.observe(wrap);
 
-    // Track theme explicitly to prevent redundant restarts from other inline style attribute changes on mobile
     const getThemeKey = () => {
-      return getIsDarkMode() ? "dark" : "light";
+      const dark = getIsDarkMode();
+      const computedColor = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
+      return dark && computedColor ? "dark" : dark ? "dark" : "light";
     };
     let lastTheme = getThemeKey();
+
+    const applyInkForTheme = (theme: string) => {
+      const isDark = theme === "dark";
+      try {
+        const computedColor = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
+        if (computedColor) {
+          inkRef.current = computedColor;
+          ctx.strokeStyle = inkRef.current;
+          ctx.fillStyle = inkRef.current;
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      inkRef.current = isDark ? "#f3f1ea" : "#111116";
+      ctx.strokeStyle = inkRef.current;
+      ctx.fillStyle = inkRef.current;
+    };
 
     const observer = new MutationObserver(() => {
       if (!cancelled && started) {
         const currentTheme = getThemeKey();
         if (currentTheme !== lastTheme) {
           lastTheme = currentTheme;
-          start();
+          applyInkForTheme(currentTheme);
         }
       }
     });
