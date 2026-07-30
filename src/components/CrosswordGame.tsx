@@ -754,10 +754,10 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  </div>
 
  <motion.div
- className="mx-auto w-fit max-w-full overflow-x-auto rounded-2xl border border-kindle-border bg-kindle-card /80 p-2 shadow-2xl"
- initial={{scale: 0.96, opacity: 0}}
- animate={{scale: 1, opacity: 1}}
- transition={{type:"spring", stiffness: 280, damping: 22}}
+ className="mx-auto w-fit max-w-full overflow-x-auto rounded-2xl border border-kindle-border bg-kindle-card/80 p-2 shadow-2xl"
+ initial={{opacity: 0}}
+ animate={{opacity: 1}}
+ transition={{duration: 0.22, ease: "easeOut"}}
  >
  <div
  className="grid gap-[2px]"
