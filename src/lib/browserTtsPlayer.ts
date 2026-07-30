@@ -132,12 +132,8 @@ export class BrowserTtsPlayer {
   setRate(rate: number) {
     this.rate = rate;
     this.rebuildDurations();
-    if (this.playing && !this.paused) {
-      const time = this.currentTime;
-      this.stop(false);
-      this.seekToPosition({ chunkIndex: this.chunkIndex, charOffset: this.charOffset, estimatedTime: time });
-      void this.play();
-    }
+    // Don’t restart playback mid-utterance; the ongoing native chunk keeps going,
+    // and the next chunk picks up the new rate/speed. This removes the audible lag.
   }
 
   async loadText(
