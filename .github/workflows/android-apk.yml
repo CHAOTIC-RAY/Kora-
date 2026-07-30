@@ -176,11 +176,16 @@ jobs:
             echo "SHA-256: $SHA256"
           } | tee artifacts/FINGERPRINTS.txt
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.14.3
+
       - name: Assemble Release APK
         working-directory: android
         run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace \
+          chmod +x gradlew || true
+          gradle assembleRelease --no-daemon --stacktrace \
             -PKORA_VERSION_CODE=$KORA_VERSION_CODE \
             -PKORA_VERSION_NAME=$KORA_VERSION_NAME \
             -PKORA_UPLOAD_STORE_FILE=$KORA_UPLOAD_STORE_FILE \
