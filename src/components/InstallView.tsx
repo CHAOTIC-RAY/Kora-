@@ -12,6 +12,7 @@ import {
   SearchableDictionaryDemo,
   WordSearchGridDemo
 } from "./WorkshopInlineDemos";
+import SyncArchitectureAnimation from "./SyncArchitectureAnimation";
 import {
   Download,
   Smartphone,
@@ -61,6 +62,7 @@ import {
   MessageCircle,
   Bookmark,
   Sun,
+  Moon,
   Menu,
   PenTool,
   RotateCcw,
@@ -84,16 +86,35 @@ import WikipediaWidget from "./WikipediaWidget";
 import ThemeShowcase from "./ThemeShowcase";
 import FeatureDemosGrid from "./FeatureDemosGrid";
 import CassetteVisualizer from "./CassetteVisualizer";
+import InkSketchScribbleBackground from "./InkSketchScribbleBackground";
 
-/** Scroll-triggered reveal wrapper — fades + lifts into view.
- *  once:false so the animation replays each time the block scrolls back into view. */
-function Reveal({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+/** Scroll-triggered reveal wrapper — fades, lifts, and scales into view with physical spring motion.
+ *  Uses once:true for maximum stability and a refined, professional bento experience. */
+function Reveal({ 
+  children, 
+  className = "", 
+  delay = 0,
+  y = 35,
+  scale = 0.98
+}: { 
+  children: React.ReactNode; 
+  className?: string; 
+  delay?: number;
+  y?: number;
+  scale?: number;
+}) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 28 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: false, amount: 0.15 }}
-      transition={{ duration: 0.55, delay, ease: [0.22, 1, 0.36, 1] }}
+      initial={{ opacity: 0, y, scale }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, margin: "-12% 0px" }}
+      transition={{ 
+        type: "spring",
+        stiffness: 65,
+        damping: 14,
+        mass: 0.8,
+        delay, 
+      }}
       className={className}
     >
       {children}
@@ -217,12 +238,7 @@ function EInkMagnifier() {
                 </div>
               </div>
 
-              {/* Optical Center Crosshair Target */}
-              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                <div className="w-full h-[0.5px] bg-amber-500/25" />
-                <div className="h-full w-[0.5px] bg-amber-500/25 absolute" />
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-500/80 shadow-xs absolute ring-2 ring-black/40" />
-              </div>
+              {/* Optical Center Crosshair Target removed as requested */}
 
               {/* Glass Glare Reflection */}
               <div 
@@ -315,16 +331,46 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
 
   const activeNews = HERO_NEWS_ITEMS[newsIdx];
 
+  // Framer Motion variants for stagger-in page load animations
+  const staggerContainer = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.08,
+        delayChildren: 0.05
+      }
+    }
+  };
+
+  const fadeInUpItem = {
+    hidden: { opacity: 0, y: 22, scale: 0.99 },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: {
+        type: "spring" as const,
+        stiffness: 90,
+        damping: 15,
+        mass: 0.8
+      }
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-6 w-full z-10 relative">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
         {/* Left: Headline & Streamlined Quick Download Actions */}
-        <div 
+        <motion.div 
+          variants={staggerContainer}
+          initial="hidden"
+          animate="visible"
           onMouseMove={onTextMouseMove}
           onMouseLeave={onTextMouseLeave}
           className="lg:col-span-5 space-y-8 text-left cursor-crosshair"
         >
-          <div className="space-y-4">
+          <motion.div variants={fadeInUpItem} className="space-y-4">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-kindle-border/40 bg-kindle-card/50 text-[10px] font-sans font-semibold uppercase tracking-[0.2em] text-kindle-accent/80 shadow-sm chromatic-amber">
               <Sparkles className="w-3.5 h-3.5 text-kindle-accent animate-pulse" />
               The E-Ink Reading Sanctuary
@@ -337,10 +383,10 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
             <p className="text-base sm:text-lg text-kindle-text-muted leading-relaxed font-medium">
               The open E-Ink digital reader with integrated high-fidelity voice narration, federated mirror discovery, and a beautiful mind games lounge.
             </p>
-          </div>
+          </motion.div>
 
           {/* High-fidelity Streamlined Action Card */}
-          <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-lg space-y-5 relative overflow-hidden">
+          <motion.div variants={fadeInUpItem} className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-lg space-y-5 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-24 h-24 bg-kindle-accent/5 rounded-full blur-xl pointer-events-none" />
             
             <div className="flex flex-col sm:flex-row gap-3">
@@ -394,23 +440,34 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                 <span>{copiedLink ? "Copied!" : "Share Link"}</span>
               </button>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
         {/* Right: Double Device Showcase (Tablet + Phone) */}
-        <div className="lg:col-span-7 w-full flex items-center justify-center lg:justify-end">
+        <motion.div 
+          initial={{ opacity: 0, x: 28, scale: 0.97 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 55, damping: 14, delay: 0.28 }}
+          className="lg:col-span-7 w-full flex items-center justify-center lg:justify-end"
+        >
           <div className="relative w-full max-w-[580px] h-[460px] sm:h-[510px] flex items-center justify-center select-none">
             
-            {/* 1. Tablet Mockup */}
-            <div 
+            {/* 1. Tablet Mockup with smooth spring physics transitions */}
+            <motion.div 
               onMouseEnter={() => setFocusedDevice("tablet")}
               onMouseLeave={() => setFocusedDevice(null)}
-              className={`absolute left-0 sm:left-2 top-4 sm:top-6 w-[360px] sm:w-[440px] h-[300px] sm:h-[340px] rounded-[22px] border-[10px] border-neutral-900 bg-black overflow-hidden flex flex-col transition-all duration-300 cursor-pointer ${
-                focusedDevice === "tablet"
-                  ? "z-30 scale-105 shadow-[0_35px_70px_rgba(0,0,0,0.85)] ring-2 ring-sky-500/50"
-                  : focusedDevice === "phone"
-                  ? "z-10 opacity-80 scale-[0.97] shadow-md"
-                  : "z-10 shadow-[0_25px_50px_rgba(0,0,0,0.6)]"
+              animate={{
+                scale: focusedDevice === "tablet" ? 1.04 : focusedDevice === "phone" ? 0.95 : 1,
+                y: focusedDevice === "tablet" ? -8 : 0,
+                opacity: focusedDevice === "phone" ? 0.72 : 1,
+                zIndex: focusedDevice === "tablet" ? 30 : 10,
+                boxShadow: focusedDevice === "tablet" 
+                  ? "0 35px 75px rgba(0,0,0,0.85)" 
+                  : "0 20px 45px rgba(0,0,0,0.55)"
+              }}
+              transition={{ type: "spring", stiffness: 110, damping: 17 }}
+              className={`absolute left-0 sm:left-2 top-4 sm:top-6 w-[360px] sm:w-[440px] h-[300px] sm:h-[340px] rounded-[22px] border-[10px] border-neutral-900 bg-black overflow-hidden flex flex-col cursor-pointer transition-shadow duration-300 ${
+                focusedDevice === "tablet" ? "ring-2 ring-sky-500/50" : ""
               }`}
             >
               <div className="w-full h-8 bg-[#0d0d0d] border-b border-neutral-800 px-3 flex items-center justify-between text-[9px] font-sans font-bold text-neutral-400">
@@ -471,18 +528,24 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
-            {/* 2. Mobile Phone Mockup */}
-            <div 
+            {/* 2. Mobile Phone Mockup with smooth spring physics transitions */}
+            <motion.div 
               onMouseEnter={() => setFocusedDevice("phone")}
               onMouseLeave={() => setFocusedDevice(null)}
-              className={`absolute right-0 sm:right-2 bottom-2 w-[220px] sm:w-[245px] h-[410px] sm:h-[460px] rounded-[38px] border-[8px] border-neutral-900 bg-neutral-950 overflow-hidden flex flex-col transition-all duration-300 cursor-pointer ${
-                focusedDevice === "phone"
-                  ? "z-30 scale-105 shadow-[0_35px_70px_rgba(0,0,0,0.85)] ring-2 ring-emerald-500/50"
-                  : focusedDevice === "tablet"
-                  ? "z-10 opacity-80 scale-[0.97] shadow-md"
-                  : "z-20 shadow-[0_25px_60px_rgba(0,0,0,0.7)]"
+              animate={{
+                scale: focusedDevice === "phone" ? 1.04 : focusedDevice === "tablet" ? 0.95 : 1,
+                y: focusedDevice === "phone" ? -8 : 0,
+                opacity: focusedDevice === "tablet" ? 0.72 : 1,
+                zIndex: focusedDevice === "phone" ? 30 : 20,
+                boxShadow: focusedDevice === "phone" 
+                  ? "0 35px 75px rgba(0,0,0,0.85)" 
+                  : "0 20px 50px rgba(0,0,0,0.6)"
+              }}
+              transition={{ type: "spring", stiffness: 110, damping: 17 }}
+              className={`absolute right-0 sm:right-2 bottom-2 w-[220px] sm:w-[245px] h-[410px] sm:h-[460px] rounded-[38px] border-[8px] border-neutral-900 bg-neutral-950 overflow-hidden flex flex-col cursor-pointer transition-shadow duration-300 ${
+                focusedDevice === "phone" ? "ring-2 ring-emerald-500/50" : ""
               }`}
             >
               <div className="w-full h-9 bg-black/60 backdrop-blur-xs px-3 pt-2.5 flex items-center justify-between text-neutral-300 z-30">
@@ -523,7 +586,34 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                   </motion.div>
                 </AnimatePresence>
 
-                <div className="relative z-10 space-y-2 mb-12 text-left">
+                {/* Right side floating buttons on phone mockup (TikTok style) */}
+                <div className="absolute right-2.5 bottom-20 z-30 flex flex-col items-center gap-3">
+                  {/* Filter Button */}
+                  <div className="w-8 h-8 rounded-full border border-white/20 bg-black/60 flex items-center justify-center shadow-md">
+                    <Filter className="w-3.5 h-3.5 text-white" />
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="w-8 h-8 rounded-full border border-white/20 bg-black/60 flex items-center justify-center shadow-md">
+                    <Bookmark className="w-3.5 h-3.5 text-white" />
+                  </div>
+
+                  {/* Share Button */}
+                  <div className="w-8 h-8 rounded-full border border-white/20 bg-black/60 flex items-center justify-center shadow-md">
+                    <Share2 className="w-3.5 h-3.5 text-white" />
+                  </div>
+
+                  {/* Daily Brief Button (Zap) */}
+                  <div className="w-8 h-8 rounded-full border border-kindle-accent/30 bg-kindle-accent flex items-center justify-center shadow-md animate-pulse relative">
+                    <Zap className="w-3.5 h-3.5 text-kindle-bg fill-current" />
+                    <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="relative z-10 space-y-2 mb-12 pr-10 text-left">
                   <AnimatePresence mode="wait">
                     <motion.div
                       key={newsIdx}
@@ -546,26 +636,9 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                         {activeNews.title}
                       </h4>
 
-                      <div className="flex items-center gap-2 pt-1">
-                        <button 
-                          type="button"
-                          className="flex items-center gap-1 px-3 py-1 rounded-full bg-neutral-800/90 border border-neutral-700 text-[8px] font-bold text-white shadow-xs hover:bg-neutral-700 transition cursor-pointer"
-                        >
-                          <Bookmark className="w-2.5 h-2.5 fill-white" />
-                          <span>SAVE</span>
-                        </button>
-                        <button 
-                          type="button"
-                          className="flex items-center gap-1 px-3 py-1 rounded-full bg-neutral-800/60 border border-neutral-700/60 text-[8px] font-bold text-white shadow-xs hover:bg-neutral-700 transition cursor-pointer"
-                        >
-                          <Share2 className="w-2.5 h-2.5" />
-                          <span>SHARE</span>
-                        </button>
-                      </div>
-
                       <div className="flex items-center justify-between text-[7.5px] font-mono text-neutral-300 pt-1">
                         <span className="flex items-center gap-0.5 text-neutral-300">
-                          <ChevronDown className="w-3 h-3 text-neutral-400" /> Tap to read
+                           <ChevronDown className="w-3 h-3 text-neutral-400" /> Tap to read
                         </span>
                         <span>{activeNews.itemNum}/5</span>
                       </div>
@@ -574,33 +647,28 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                 </div>
 
                 <div className="absolute bottom-2 left-2 right-2 z-30">
-                  <div className="bg-neutral-900/95 border border-neutral-800/90 backdrop-blur-md rounded-2xl px-1.5 py-1 flex items-center justify-between text-[6.5px] font-bold text-neutral-400">
-                    <div className="flex flex-col items-center gap-0.5 px-1">
-                      <Sofa className="w-3 h-3 text-neutral-400" />
-                      <span>LOUNGE</span>
+                  <div className="bg-neutral-900/95 border border-neutral-800/90 backdrop-blur-md rounded-2xl py-1.5 flex items-center justify-around text-neutral-400">
+                    <div className="p-1 rounded-lg text-neutral-400">
+                      <Sofa className="w-4.5 h-4.5" />
                     </div>
-                    <div className="flex flex-col items-center gap-0.5 px-1">
-                      <Library className="w-3 h-3 text-neutral-400" />
-                      <span>LIBRARY</span>
+                    <div className="p-1 rounded-lg text-neutral-400">
+                      <Library className="w-4.5 h-4.5" />
                     </div>
-                    <div className="flex flex-col items-center gap-0.5 px-1">
-                      <Compass className="w-3 h-3 text-neutral-400" />
-                      <span>DISCOVER</span>
+                    <div className="p-1 rounded-lg text-neutral-400">
+                      <Compass className="w-4.5 h-4.5" />
                     </div>
-                    <div className="flex flex-col items-center gap-0.5 px-2 py-0.5 rounded-xl bg-neutral-800 border border-neutral-700 text-amber-400 shadow-xs">
-                      <Rss className="w-3 h-3 text-amber-400" />
-                      <span className="text-white font-extrabold">READ</span>
+                    <div className="p-1.5 rounded-xl bg-neutral-800 border border-neutral-700 text-amber-400 shadow-xs">
+                      <Rss className="w-4.5 h-4.5 text-amber-400" />
                     </div>
-                    <div className="flex flex-col items-center gap-0.5 px-1">
-                      <Hammer className="w-3 h-3 text-neutral-400" />
-                      <span>WORKSHOP</span>
+                    <div className="p-1 rounded-lg text-neutral-400">
+                      <Hammer className="w-4.5 h-4.5" />
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
@@ -716,29 +784,247 @@ function MockBookCover({ title, author, className = "" }: { title: string; autho
 }
 
 function BookCoverImage({ book, className = "" }: { book: any; className?: string }) {
+  const [urlIndex, setUrlIndex] = useState(0);
   const [hasError, setHasError] = useState(false);
 
-  if (hasError || !book.cover) {
+  const sources = React.useMemo(() => {
+    const list: string[] = [];
+    
+    // Extract ISBN if possible to construct multiple sources
+    let isbn = "";
+    if (book.cover) {
+      const isbnMatch = book.cover.match(/isbn\/([0-9X]+)/i);
+      if (isbnMatch && isbnMatch[1]) {
+        isbn = isbnMatch[1];
+      } else {
+        const vidMatch = book.cover.match(/vid=ISBN:([0-9X]+)/i);
+        if (vidMatch && vidMatch[1]) {
+          isbn = vidMatch[1];
+        }
+      }
+    }
+
+    // 1. First priority: OpenLibrary URL with default=false (returns 404 if missing, triggering fallback)
+    if (isbn) {
+      list.push(`https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false`);
+    }
+
+    // 2. Second priority: Original URL
+    if (book.cover && !list.includes(book.cover)) {
+      list.push(book.cover);
+    }
+
+    // 3. Third priority: Google Books Content URL
+    if (isbn) {
+      list.push(`https://books.google.com/books/content?vid=ISBN:${isbn}&printsec=frontcover&img=1&zoom=1`);
+    }
+
+    // 4. Fourth priority: General gorgeous fallback thematic book illustrations
+    let hash = 0;
+    const titleStr = book.title || "Book Title";
+    for (let i = 0; i < titleStr.length; i++) {
+      hash = titleStr.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const fallbackImages = [
+      "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=300&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=300&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1512820790803-83ca734da794?w=300&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1476275466078-4007374efbbe?w=300&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1516979187457-637abb4f9353?w=300&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=300&auto=format&fit=crop&q=80"
+    ];
+    const pickedFallback = fallbackImages[Math.abs(hash) % fallbackImages.length];
+    list.push(pickedFallback);
+
+    return list;
+  }, [book.cover, book.title]);
+
+  const currentSrc = sources[urlIndex];
+
+  const handleNextSource = () => {
+    if (urlIndex < sources.length - 1) {
+      setUrlIndex((prev) => prev + 1);
+    } else {
+      setHasError(true);
+    }
+  };
+
+  if (hasError || !currentSrc) {
     return <MockBookCover title={book.title} author={book.author} className={className} />;
   }
 
   return (
     <img
-      src={book.cover}
+      src={currentSrc}
       alt={book.title}
       className={`w-full h-full object-cover ${className}`}
       loading="lazy"
-      onError={() => setHasError(true)}
+      onError={handleNextSource}
+      onLoad={(e) => {
+        const img = e.currentTarget;
+        if (img.naturalWidth <= 1 || img.naturalHeight <= 1) {
+          handleNextSource();
+        }
+      }}
     />
   );
 }
 
+function GlobeGalleryRow({ books, speed }: { books: any[]; speed: number }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ cardWidth: 76, cardHeight: 114 });
+
+  useEffect(() => {
+    const handleResize = () => {
+      const isMobile = window.innerWidth < 640;
+      setDimensions({
+        cardWidth: isMobile ? 56 : 76,
+        cardHeight: isMobile ? 84 : 114
+      });
+    };
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let animationFrameId: number;
+    let offset = 0;
+
+    const items = Array.from(container.children) as HTMLDivElement[];
+    const totalItems = items.length;
+    if (totalItems === 0) return;
+
+    const { cardWidth, cardHeight } = dimensions;
+    const gap = 4;
+    const itemWidth = cardWidth + gap;
+    const totalWidth = totalItems * itemWidth;
+
+    const update = () => {
+      offset += speed;
+
+      const containerWidth = container.offsetWidth || 600;
+      const halfWidth = containerWidth / 2;
+
+      items.forEach((item, idx) => {
+        // Base wrapping formula that is 100% stable with positive & negative speed
+        let x = ((idx * itemWidth + offset) % totalWidth + totalWidth) % totalWidth;
+
+        // Shift elements to negative offscreen if they are in the second half to avoid visible wrap-around jumps
+        if (x > containerWidth + itemWidth && x > totalWidth / 2) {
+          x -= totalWidth;
+        }
+
+        // 3D Globe-like Perspective calculations
+        const centerX = x + cardWidth / 2;
+        const distanceFromCenter = centerX - halfWidth;
+        const normalizedDistance = distanceFromCenter / halfWidth;
+
+        // Clamp distance to avoid extreme distortion
+        const clampedDist = Math.max(-1.5, Math.min(1.5, normalizedDistance));
+
+        // Covers get smaller towards the sides (globe view)
+        const scale = 1 - Math.pow(clampedDist, 2) * 0.20;
+
+        // Warp effect: Rotate towards center
+        const rotateY = clampedDist * -24;
+
+        // Push edges back in Z-space
+        const translateZ = -Math.pow(clampedDist, 2) * 110;
+
+        // Spherical curve: subtle vertical arching at the sides
+        const translateY = Math.pow(clampedDist, 2) * 6;
+
+        // Soft opacity transition near edges
+        const opacity = Math.max(0.15, 1 - Math.pow(clampedDist, 2) * 0.5);
+
+        item.style.transform = `translateX(${x}px) translateY(${translateY}px) scale(${scale}) rotateY(${rotateY}deg) translateZ(${translateZ}px)`;
+        item.style.opacity = `${opacity}`;
+        item.style.position = "absolute";
+        item.style.left = "0";
+        item.style.top = "0";
+        item.style.width = `${cardWidth}px`;
+        item.style.height = `${cardHeight}px`;
+      });
+
+      animationFrameId = requestAnimationFrame(update);
+    };
+
+    update();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [books, speed, dimensions]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full overflow-hidden select-none pointer-events-none"
+      style={{ 
+        height: `${dimensions.cardHeight + 14}px`, 
+        perspective: "1400px", 
+        transformStyle: "preserve-3d" 
+      }}
+    >
+      {books.map((book, idx) => (
+        <div
+          key={`${book.id}-${idx}`}
+          className="rounded-xl overflow-hidden bg-kindle-card border border-kindle-border shadow-2xl pointer-events-none select-none flex flex-col items-center justify-center"
+          style={{ willChange: "transform, opacity" }}
+        >
+          <BookCoverImage book={book} className="w-full h-full object-cover pointer-events-none select-none" />
+          {book.rating && (
+            <div className="absolute top-1.5 right-1.5 bg-black/85 backdrop-blur-md text-amber-400 font-extrabold text-[8px] px-1.5 py-0.5 rounded shadow flex items-center gap-0.5 border border-amber-500/20">
+              <Star className="w-2 h-2 fill-amber-400 text-amber-400" /> {book.rating}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function InstallView() {
+  const { scrollYProgress } = useScroll();
   const [headerMouse, setHeaderMouse] = useState({ x: 0, y: 0 });
   const handleHeaderMouseMove = (e: React.MouseEvent) => {
     const x = (e.clientX / (window.innerWidth || 1) - 0.5) * 20;
     const y = (e.clientY / (window.innerHeight || 1) - 0.5) * 20;
     setHeaderMouse({ x, y });
+  };
+
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const theme = localStorage.getItem("kora_display_theme") || "theme-light-white";
+    return theme.includes("dark") || document.body.classList.contains("dark");
+  });
+
+  const toggleTheme = () => {
+    const nextDark = !isDarkMode;
+    setIsDarkMode(nextDark);
+    const body = document.body;
+    if (nextDark) {
+      body.classList.add("dark");
+      localStorage.setItem("kora_display_theme", "theme-dark-charcoal");
+      body.style.setProperty("--theme-bg", "#121214");
+      body.style.setProperty("--theme-text", "#FAFAFA");
+      body.style.setProperty("--theme-card", "#1E1E22");
+      body.style.setProperty("--theme-border", "#2D2D30");
+      body.style.setProperty("--theme-accent", "#F59E0B");
+      body.style.setProperty("--theme-text-muted", "#A1A1AA");
+    } else {
+      body.classList.remove("dark");
+      localStorage.setItem("kora_display_theme", "theme-light-white");
+      body.style.setProperty("--theme-bg", "#FAF7F2");
+      body.style.setProperty("--theme-text", "#2C2A26");
+      body.style.setProperty("--theme-card", "#F3EEE6");
+      body.style.setProperty("--theme-border", "#E4DDD2");
+      body.style.setProperty("--theme-accent", "#8B7355");
+      body.style.setProperty("--theme-text-muted", "#6F6A5F");
+    }
   };
 
   const [apk, setApk] = useState<{ url: string; versionName: string; size: number } | null>(null);
@@ -789,11 +1075,7 @@ export default function InstallView() {
     setMagnifier((prev) => (prev ? { ...prev, visible: false } : null));
   };
 
-  const onScroll = useCallback(() => {
-    if (!heroSectionRef.current) return;
-    const y = window.scrollY || window.pageYOffset;
-    setNavHidden(y < 80);
-  }, []);
+  const onScroll = useCallback(() => {}, []);
 
   useEffect(() => {
     const el = notebookRef.current;
@@ -1473,47 +1755,83 @@ export default function InstallView() {
 
   return (
     <div className="min-h-screen bg-kindle-bg text-kindle-text font-sans antialiased selection:bg-kindle-accent/20">
+      {/* Dynamic Smooth Scroll Progress Bar */}
+      <motion.div 
+        className="fixed top-0 left-0 right-0 h-[3px] bg-kindle-accent z-50 origin-left"
+        style={{ scaleX: scrollYProgress }}
+      />
+
       {/* Top Site Navigation Header */}
-      <nav className={`sticky top-0 z-40 bg-kindle-bg/95 backdrop-blur border-b border-kindle-border transition-transform duration-300 ${navHidden ? "-translate-y-full" : "translate-y-0"}`}>
-        <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-kindle-card border border-kindle-border flex items-center justify-center group-hover:border-kindle-accent transition shadow-xs">
-              <KoraIcon className="w-5 h-5 text-kindle-text" />
+      <nav className={`sticky top-0 z-40 bg-kindle-bg/95 backdrop-blur-md border-b border-kindle-border/80 transition-all duration-300 ${navHidden ? "-translate-y-full" : "translate-y-0 shadow-sm"}`}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+          <a href="/" className="flex items-center gap-2 sm:gap-3 group shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-kindle-card border border-kindle-border flex items-center justify-center group-hover:border-kindle-accent group-hover:shadow-[0_0_12px_rgba(245,158,11,0.15)] transition-all duration-300 shadow-xs">
+              <KoraIcon className="w-5 h-5 text-kindle-text group-hover:scale-110 transition-transform duration-300" />
             </div>
-            <KoraWordmark className="h-4 text-kindle-text" />
+            <KoraWordmark className="h-5 sm:h-5.5 text-kindle-text group-hover:text-kindle-accent transition-colors duration-300" />
           </a>
 
           {/* Smooth Scroll Navigation Links */}
-          <div className="hidden lg:flex items-center gap-5 text-xs font-bold uppercase tracking-wider text-kindle-text-muted">
+          <div className="flex items-center gap-3 sm:gap-4 md:gap-5 text-[10px] sm:text-xs font-bold uppercase tracking-wider text-kindle-text-muted overflow-x-auto scrollbar-none py-1 max-w-[calc(100vw-180px)] sm:max-w-none">
+            <button
+              type="button"
+              onClick={() => scrollToSection("catalog")}
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
+            >
+              Catalog
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("cloud")}
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
+            >
+              Sync Engine
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("voice")}
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
+            >
+              Voice Reader
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("workshop")}
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
+            >
+              Tools &amp; Games
+            </button>
             <button
               type="button"
               onClick={() => scrollToSection("download-card")}
-              className="hover:text-kindle-text transition cursor-pointer py-1"
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
             >
               APK Download
             </button>
             <button
               type="button"
               onClick={() => scrollToSection("guide")}
-              className="hover:text-kindle-text transition cursor-pointer py-1"
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
             >
               Guide
             </button>
             <button
               type="button"
               onClick={() => scrollToSection("faq")}
-              className="hover:text-kindle-text transition cursor-pointer py-1"
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
             >
               FAQ
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Back to Web Reader */}
             <a
               href="/"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-kindle-card border border-kindle-border text-xs font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-kindle-card border border-kindle-border text-[10px] sm:text-xs font-bold text-kindle-text hover:border-kindle-accent hover:-translate-x-0.5 transition-all duration-200 cursor-pointer shadow-xs whitespace-nowrap"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Web Reader
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">Web Reader</span>
             </a>
           </div>
         </div>
@@ -1637,7 +1955,9 @@ export default function InstallView() {
       </header>
 
       {/* Main Continuous Feature Sections - Bento Grid Layout on Desktop */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-16 space-y-6">
+      <div className="relative overflow-hidden">
+        <InkSketchScribbleBackground />
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-16 space-y-6 relative z-10">
 
         {/* Section 1: Ebook & Reader Engine */}
         <Reveal>
@@ -1666,217 +1986,106 @@ export default function InstallView() {
               <div id="catalog" className="scroll-mt-20 flex flex-col flex-grow">
                 <Reveal className="flex-1 flex flex-col">
                   {/* Single Unified Card with Flush Inner Discover Tab View */}
-                  <div className="w-full h-[520px] lg:h-full lg:min-h-[520px] flex-grow bg-[#121214] border border-kindle-border rounded-3xl shadow-2xl overflow-hidden text-left flex flex-col">
+                  <div className="w-full min-h-[580px] sm:min-h-[640px] flex-grow bg-kindle-card border border-kindle-border rounded-3xl shadow-xl overflow-hidden text-left flex flex-col">
                     {/* Card Header */}
-                    <div className="p-4 sm:p-5 space-y-1 border-b border-neutral-800 bg-kindle-card shrink-0">
-                      <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-500 dark:text-sky-400 uppercase tracking-wider chromatic-sky">
+                    <div className="p-4 sm:p-5 space-y-1 border-b border-kindle-border bg-kindle-card shrink-0">
+                      <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-500 dark:text-sky-400 uppercase tracking-wider">
                         <Search className="w-4 h-4" /> Global Catalog &amp; Mirror Engine
                       </div>
                       <h3 className="text-lg sm:text-xl font-serif font-bold text-kindle-text">
                         Discover Tab &amp; Download Mirror Hub
                       </h3>
-                      <p className="text-xs text-kindle-text-muted leading-relaxed max-w-3xl">
+                      <p className="text-xs text-kindle-text-muted leading-relaxed">
                         Explore global archives, federated catalog feeds, and trending best sellers with live book cover art, direct mirror links, and multi-source download options.
                       </p>
                     </div>
 
-                    {/* Flush Inner Discover Tab View (No padding gap) */}
-                    <div className="p-3.5 sm:p-5 space-y-3.5 relative text-left flex-1 bg-[#121214] flex flex-col overflow-y-auto custom-scrollbar">
-                      {/* Discover Main Title Bar */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-neutral-800/80 pb-3">
-                        <div>
-                          <h3 className="text-xl sm:text-2xl font-serif font-extrabold text-white tracking-tight">Discover</h3>
-                          <p className="text-[9px] font-mono tracking-wider text-neutral-400 uppercase pt-0.5">
-                            EXPLORE GLOBAL ARCHIVES OR BROWSE TRENDING BEST SELLERS.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => toast.success("Catalog refreshed from open archives!")}
-                          className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-mono font-bold uppercase tracking-wider rounded-lg border border-neutral-700 flex items-center gap-1.5 transition cursor-pointer shrink-0 self-start sm:self-auto"
-                        >
-                          <RefreshCw className="w-3 h-3 text-sky-400" /> REFRESH
-                        </button>
-                      </div>
+                    {/* Flush Inner Multi-Row Panoramic Globe Cylinder Showcase Animation View */}
+                    <div className="p-3 sm:p-4 relative text-left flex-grow bg-kindle-bg dark:bg-[#121115] border-t border-kindle-border/40 flex flex-col overflow-hidden justify-center space-y-1.5 globe-perspective-container">
+                      {/* Globe Cylinder Side Vignette & Warp Overlays */}
+                      <div className="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-kindle-bg via-kindle-bg/60 to-transparent backdrop-blur-[2px] z-25 pointer-events-none" />
+                      <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-kindle-bg via-kindle-bg/60 to-transparent backdrop-blur-[2px] z-25 pointer-events-none" />
 
-                      {/* Main Search Bar */}
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 bg-[#1c1c20] border border-neutral-700/80 rounded-xl p-1.5 focus-within:border-sky-500 transition shadow-inner">
-                          <Search className="w-3.5 h-3.5 text-neutral-400 ml-2 shrink-0" />
-                          <input
-                            type="text"
-                            value={catalogQuery}
-                            onChange={(e) => setCatalogQuery(e.target.value)}
-                            placeholder="Search millions of books, authors, ISBNs..."
-                            className="w-full bg-transparent text-xs sm:text-sm text-white placeholder-neutral-500 focus:outline-none px-2 py-0.5"
-                          />
-                          {catalogQuery && (
-                            <button
-                              type="button"
-                              onClick={() => setCatalogQuery("")}
-                              className="text-xs font-bold text-neutral-400 hover:text-white px-2"
-                            >
-                              Clear
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="bg-white text-black font-sans font-bold text-[11px] px-4 py-1.5 rounded-lg uppercase tracking-wider hover:bg-neutral-200 transition shrink-0 cursor-pointer shadow-sm"
-                          >
-                            SEARCH
-                          </button>
-                        </div>
+                      {/* Row 1: Leftwards 3D Cylinder */}
+                      <GlobeGalleryRow 
+                        books={[
+                          ...DISCOVER_FEED_CATEGORIES[0].books,
+                          ...DISCOVER_FEED_CATEGORIES[1].books,
+                          ...DISCOVER_FEED_CATEGORIES[0].books,
+                          ...DISCOVER_FEED_CATEGORIES[1].books
+                        ]} 
+                        speed={-0.6} 
+                      />
 
-                        {/* Sub-action pills */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => setCatalogQuery("Audiobook")}
-                            className="px-3 py-1 rounded-lg bg-[#1c1c20] border border-neutral-700 text-neutral-300 text-[11px] font-bold uppercase tracking-wider hover:border-sky-500 transition flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Headphones className="w-3 h-3 text-sky-400" /> AUDIOBOOKS
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => toast("Advanced Search filters enabled", { icon: "⚙️" })}
-                            className="px-3 py-1 rounded-lg bg-[#1c1c20] border border-neutral-700 text-neutral-300 text-[11px] font-bold uppercase tracking-wider hover:border-sky-500 transition flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Search className="w-3 h-3 text-neutral-400" /> ADVANCED SEARCH
-                          </button>
-                        </div>
-                      </div>
+                      {/* Row 2: Rightwards 3D Cylinder */}
+                      <GlobeGalleryRow 
+                        books={[
+                          ...DISCOVER_FEED_CATEGORIES[2].books,
+                          ...DISCOVER_FEED_CATEGORIES[3].books,
+                          ...DISCOVER_FEED_CATEGORIES[2].books,
+                          ...DISCOVER_FEED_CATEGORIES[3].books
+                        ]} 
+                        speed={0.6} 
+                      />
 
-                      {/* Feeds Sub-navigation Bar */}
-                      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2.5 pt-1 text-[11px] font-bold uppercase tracking-wider overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] shrink-0">
-                        <div className="flex items-center gap-4 sm:gap-6 text-neutral-400 whitespace-nowrap">
-                          <span
-                            onClick={() => setCatalogQuery("")}
-                            className={`pb-1.5 cursor-pointer font-extrabold flex items-center gap-1.5 transition ${!catalogQuery ? "text-white border-b-2 border-white" : "hover:text-white"}`}
-                          >
-                            ALL FEEDS <span className="text-[9px] bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-300">8</span>
-                          </span>
-                          <span
-                            onClick={() => setCatalogQuery("NYT")}
-                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("NYT") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
-                          >
-                            <BookOpen className="w-3.5 h-3.5 text-neutral-400" /> NYT BEST SELLERS
-                          </span>
-                          <span
-                            onClick={() => setCatalogQuery("NetGalley")}
-                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("NetGalley") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
-                          >
-                            <Globe className="w-3.5 h-3.5 text-emerald-400" /> NETGALLEY CATALOG
-                          </span>
-                          <span
-                            onClick={() => setCatalogQuery("Goodreads")}
-                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("Goodreads") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
-                          >
-                            <Globe className="w-3.5 h-3.5 text-amber-400" /> GOODREADS FAVORITES
-                          </span>
-                          <span
-                            onClick={() => setCatalogQuery("Audiobook")}
-                            className={`pb-1.5 cursor-pointer transition flex items-center gap-1.5 ${catalogQuery.includes("Audiobook") ? "text-white border-b-2 border-white font-extrabold" : "hover:text-white"}`}
-                          >
-                            <Headphones className="w-3.5 h-3.5 text-sky-400" /> AUDIOBOOKS
-                          </span>
-                        </div>
-                        <span className="text-[9px] font-mono text-neutral-500 shrink-0 uppercase tracking-widest pl-4">SHOWING ALL</span>
-                      </div>
+                      {/* Row 3: Leftwards 3D Cylinder (Slower, staggered) */}
+                      <GlobeGalleryRow 
+                        books={[
+                          ...DISCOVER_FEED_CATEGORIES[1].books,
+                          ...DISCOVER_FEED_CATEGORIES[2].books,
+                          ...DISCOVER_FEED_CATEGORIES[1].books,
+                          ...DISCOVER_FEED_CATEGORIES[2].books
+                        ]} 
+                        speed={-0.45} 
+                      />
 
-                      {/* Feed Sections matching Original Tab - Compact Spacing and Heights */}
-                      <div className="space-y-4 pt-1">
-                        {DISCOVER_FEED_CATEGORIES.map((category) => {
-                          const CategoryIcon = category.icon;
-                          const matchingBooks = catalogQuery
-                            ? category.books.filter(
-                                (b) =>
-                                  b.title.toLowerCase().includes(catalogQuery.toLowerCase()) ||
-                                  b.author.toLowerCase().includes(catalogQuery.toLowerCase()) ||
-                                  category.title.toLowerCase().includes(catalogQuery.toLowerCase())
-                              )
-                            : category.books;
+                      {/* Row 4: Rightwards 3D Cylinder */}
+                      <GlobeGalleryRow 
+                        books={[
+                          ...DISCOVER_FEED_CATEGORIES[3].books,
+                          ...DISCOVER_FEED_CATEGORIES[0].books,
+                          ...DISCOVER_FEED_CATEGORIES[3].books,
+                          ...DISCOVER_FEED_CATEGORIES[0].books
+                        ]} 
+                        speed={0.5} 
+                      />
 
-                          if (matchingBooks.length === 0) return null;
+                      {/* Row 5: Leftwards 3D Cylinder (Slower bottom row) */}
+                      <GlobeGalleryRow 
+                        books={[
+                          ...DISCOVER_FEED_CATEGORIES[2].books,
+                          ...DISCOVER_FEED_CATEGORIES[1].books,
+                          ...DISCOVER_FEED_CATEGORIES[2].books,
+                          ...DISCOVER_FEED_CATEGORIES[1].books
+                        ]} 
+                        speed={-0.35} 
+                      />
 
-                          return (
-                            <div key={category.id} className="space-y-2 text-left">
-                              {/* Section Header */}
-                              <div className="flex items-center justify-between border-b border-neutral-800/60 pb-1.5">
-                                <div className="flex items-center gap-1.5">
-                                  <CategoryIcon className={`w-3.5 h-3.5 ${category.iconColor}`} />
-                                  <h4 className="text-xs sm:text-sm font-bold text-white tracking-wide">
-                                    {category.title}
-                                  </h4>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setCatalogQuery(category.title)}
-                                  className="text-[10px] font-bold text-neutral-400 hover:text-white uppercase tracking-wider flex items-center gap-1 transition cursor-pointer"
-                                >
-                                  VIEW MORE &rarr;
-                                </button>
-                              </div>
-
-                              {/* 7-Book Grid Row */}
-                              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-4 gap-2 sm:gap-3">
-                                {matchingBooks.map((book) => (
-                                  <div
-                                    key={book.id}
-                                    onClick={() => {
-                                      setSelectedBookId(book.id);
-                                      setIsDownloadModalOpen(true);
-                                    }}
-                                    className="group cursor-pointer space-y-1 text-left"
-                                  >
-                                    <div className="relative aspect-[2/3] w-full rounded-lg overflow-hidden bg-neutral-900 shadow-sm group-hover:shadow-xl group-hover:scale-[1.03] transition duration-200 border border-neutral-800/80">
-                                      <BookCoverImage book={book} className="w-full h-full object-cover" />
-                                      {book.rating && (
-                                        <div className="absolute top-1.5 right-1.5 bg-black/80 backdrop-blur-md text-amber-400 font-extrabold text-[8px] px-1 py-0.5 rounded shadow flex items-center gap-0.5 border border-amber-500/20">
-                                          <Star className="w-2 h-2 fill-amber-400 text-amber-400" /> {book.rating}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="space-y-0.5 px-0.5">
-                                      <h5 className="font-bold text-[11px] text-white line-clamp-1 group-hover:text-sky-400 transition">
-                                        {book.title}
-                                      </h5>
-                                      <p className="text-[9px] text-neutral-400 line-clamp-1">
-                                        {book.author}
-                                      </p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Active Download Progress Bar Bar at bottom of feed if active */}
-                      {activeDownload && (
-                        <div className="p-4 bg-neutral-900 text-white rounded-2xl space-y-2 border border-emerald-500/40 shadow-xl animate-in fade-in duration-200 mt-4">
-                          <div className="flex items-center justify-between text-xs font-bold">
-                            <div className="flex items-center gap-2 truncate">
-                              <Download className="w-4 h-4 text-emerald-400 animate-bounce" />
-                              <span className="truncate">{activeDownload.name}</span>
-                            </div>
-                            <span className="font-mono text-xs text-emerald-400 shrink-0">
-                              {activeDownload.completed ? "COMPLETED" : `${activeDownload.progress}%`}
-                            </span>
-                          </div>
-                          <div className="w-full bg-neutral-800 rounded-full h-2 overflow-hidden">
-                            <div
-                              className="bg-gradient-to-r from-amber-400 to-emerald-400 h-full transition-all duration-300"
-                              style={{ width: `${activeDownload.progress}%` }}
-                            />
-                          </div>
-                          <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
-                            <span>Source: {activeDownload.source}</span>
-                            <span>{activeDownload.completed ? "Saved to Kora Local Library!" : "Downloading..."}</span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                       {/* Active Download Progress Bar at bottom if active */}
+                       {activeDownload && (
+                         <div className="p-4 bg-neutral-900 text-white rounded-2xl space-y-2 border border-emerald-500/40 shadow-xl animate-in fade-in duration-200 mt-2">
+                           <div className="flex items-center justify-between text-xs font-bold">
+                             <div className="flex items-center gap-2 truncate">
+                               <Download className="w-4 h-4 text-emerald-400 animate-bounce" />
+                               <span className="truncate">{activeDownload.name}</span>
+                             </div>
+                             <span className="font-mono text-xs text-emerald-400 shrink-0">
+                               {activeDownload.completed ? "COMPLETED" : `${activeDownload.progress}%`}
+                             </span>
+                           </div>
+                           <div className="w-full bg-neutral-800 rounded-full h-2 overflow-hidden">
+                             <div
+                               className="bg-gradient-to-r from-amber-400 to-emerald-400 h-full transition-all duration-300"
+                               style={{ width: `${activeDownload.progress}%` }}
+                              />
+                           </div>
+                           <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+                             <span>Source: {activeDownload.source}</span>
+                             <span>{activeDownload.completed ? "Saved to Kora Local Library!" : "Downloading..."}</span>
+                           </div>
+                         </div>
+                       )}
+                     </div>
 
                     {/* POPUP MODAL: Download Mirror Hub on Top of Discover Tab */}
                     <AnimatePresence>
@@ -2090,53 +2299,8 @@ export default function InstallView() {
                       </div>
                     </div>
 
-                    <div className="flex-1 w-full bg-[#121214] rounded-2xl border border-kindle-border/40 mt-4 mb-4 relative overflow-hidden flex flex-col items-center justify-center min-h-[160px] lg:min-h-[220px]">
-                      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.08),transparent_60%)]" />
-                      
-                      <div className="relative w-full px-6 flex items-center justify-between z-10">
-                        {/* Phone */}
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="w-10 h-16 border-2 border-kindle-border rounded-lg relative flex items-center justify-center bg-[#1a1a1c] shadow-lg shadow-black/50">
-                            <div className="absolute top-1 w-3 h-0.5 bg-kindle-border/60 rounded-full" />
-                            <Smartphone className="w-5 h-5 text-emerald-500" />
-                          </div>
-                        </div>
-                        
-                        {/* Data transfer lines left */}
-                        <div className="flex-1 mx-3 h-[2px] bg-kindle-border/40 relative overflow-hidden rounded-full">
-                          <div className="absolute top-0 left-0 h-full w-1/2 bg-amber-500/60 animate-[shimmer_2s_infinite]" />
-                        </div>
-
-                        {/* Cloud */}
-                        <div className="flex flex-col items-center gap-2 shrink-0 relative">
-                          <div className="w-16 h-16 border border-amber-500/30 rounded-2xl relative flex items-center justify-center bg-amber-500/10 shadow-[0_0_20px_rgba(245,158,11,0.15)] overflow-hidden">
-                             <div className="absolute inset-0 bg-amber-500/5 animate-pulse" />
-                             <Cloud className="w-7 h-7 text-amber-500 relative z-10" />
-                          </div>
-                          <span className="absolute -bottom-6 text-[9px] font-bold text-amber-500/70 tracking-wider">SYNCING</span>
-                        </div>
-
-                        {/* Data transfer lines right */}
-                        <div className="flex-1 mx-3 h-[2px] bg-kindle-border/40 relative overflow-hidden rounded-full">
-                          <div className="absolute top-0 left-0 h-full w-1/2 bg-emerald-500/60 animate-[shimmer_2s_infinite_reverse]" />
-                        </div>
-
-                        {/* Web/Desktop */}
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="w-20 h-14 border-2 border-kindle-border rounded-lg relative flex items-center justify-center bg-[#1a1a1c] shadow-lg shadow-black/50">
-                            <div className="absolute bottom-[-4px] w-8 h-1 bg-kindle-border/60 rounded-t-sm" />
-                            <Laptop className="w-5 h-5 text-emerald-500" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Engine status banner */}
-                    <div className="pt-3 border-t border-kindle-border/40 flex items-center justify-between text-[10px] text-kindle-text-muted font-mono">
-                      <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> Live Sync Active
-                      </span>
-                      <span>Encrypted • Multi-Device</span>
+                    <div className="mt-4 mb-2">
+                      <SyncArchitectureAnimation />
                     </div>
                   </div>
                 </Reveal>
@@ -2145,7 +2309,7 @@ export default function InstallView() {
               {/* Section 4: Voice Narrator Audiobooks (Bento Card 3) */}
               <div id="voice" className="scroll-mt-20 flex flex-col flex-grow">
                 <Reveal className="flex-1 flex flex-col">
-                  <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 sm:p-6 space-y-6 flex flex-col justify-between flex-grow">
+                  <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 sm:p-6 space-y-4 flex flex-col justify-start flex-grow">
                     <div className="flex flex-col items-start justify-between gap-4 border-b border-kindle-border pb-5">
                       <div className="space-y-2">
                         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-kindle-accent/10 text-kindle-accent text-[10px] font-bold uppercase tracking-widest chromatic-amber">
@@ -2302,13 +2466,15 @@ export default function InstallView() {
         <div id="workshop" className="pt-4 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
           <Reveal>
             {/* Workshop Lounge Header Card */}
-            <div className="bg-[#e0533c] border border-kindle-border rounded-3xl p-6 sm:p-8 flex flex-col justify-center items-center text-center space-y-4 relative overflow-hidden group shadow-md min-h-[160px]">
-              <div className="absolute inset-0 bg-gradient-to-br from-black/20 to-transparent z-0" />
+            <div className="bg-[#e0533c]/20 backdrop-blur-2xl border border-white/20 rounded-3xl p-6 sm:p-8 flex flex-col justify-center items-center text-center space-y-4 relative overflow-hidden group shadow-2xl min-h-[160px]">
+              <div className="absolute inset-0 bg-gradient-to-tr from-[#e0533c]/30 via-black/30 to-amber-500/10 z-0" />
+              <div className="absolute -top-12 -left-12 w-48 h-48 bg-[#e0533c]/30 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
               <div className="relative z-10 space-y-3 flex flex-col items-center">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest backdrop-blur-sm">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest backdrop-blur-md border border-white/30 shadow-sm">
                   <Gamepad2 className="w-3.5 h-3.5 animate-pulse" /> Kora Workshop
                 </div>
-                <h3 className="text-2xl sm:text-3xl font-serif font-bold text-white">
+                <h3 className="text-2xl sm:text-3xl font-serif font-bold text-white tracking-tight">
                   Interactive Tools &amp; Games
                 </h3>
                 <p className="text-xs sm:text-sm text-white/90 leading-relaxed max-w-lg mx-auto">
@@ -2745,6 +2911,7 @@ export default function InstallView() {
           </div>
         )}
       </AnimatePresence>
+      </div>
 
       {/* Game & Workshop Interactive Demo Modals */}
       <GameScoreTracker open={showScoreTrackerDemo} onClose={() => setShowScoreTrackerDemo(false)} />

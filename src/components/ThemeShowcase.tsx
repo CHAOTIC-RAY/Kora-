@@ -147,6 +147,52 @@ const SAMPLE_EXCERPTS = [
   }
 ];
 
+export function applyThemeToSite(t: ReadingThemeItem) {
+  const isDark = t.id === "night" || t.id === "oled";
+  const textMuted = isDark ? "#A1A1AA" : "#52525B";
+
+  const root = document.documentElement;
+  const body = document.body;
+
+  const vars: Record<string, string> = {
+    "--theme-bg": t.bg,
+    "--theme-text": t.text,
+    "--theme-card": t.card,
+    "--theme-border": t.border,
+    "--theme-accent": t.accent,
+    "--theme-text-muted": textMuted,
+    "--color-kindle-bg": t.bg,
+    "--color-kindle-text": t.text,
+    "--color-kindle-card": t.card,
+    "--color-kindle-border": t.border,
+    "--color-kindle-accent": t.accent,
+    "--color-kindle-text-muted": textMuted,
+  };
+
+  Object.entries(vars).forEach(([k, v]) => {
+    root.style.setProperty(k, v);
+    body.style.setProperty(k, v);
+  });
+
+  if (isDark) {
+    root.classList.add("dark");
+    body.classList.add("dark");
+  } else {
+    root.classList.remove("dark");
+    body.classList.remove("dark");
+  }
+
+  let displayThemeName = "theme-light-white";
+  if (t.id === "sepia") displayThemeName = "theme-light-yellow";
+  else if (t.id === "paper" || t.id === "light") displayThemeName = "theme-light-white";
+  else if (t.id === "night") displayThemeName = "theme-dark-grey";
+  else if (t.id === "oled") displayThemeName = "theme-dark-blue";
+  else if (t.id === "green") displayThemeName = "theme-light-yellow";
+
+  localStorage.setItem("kora_display_theme", displayThemeName);
+  window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: displayThemeName }));
+}
+
 export default function ThemeShowcase() {
   const [currentThemeIndex, setCurrentThemeIndex] = useState(0);
   const [currentFontIndex, setCurrentFontIndex] = useState(0);
@@ -155,6 +201,7 @@ export default function ThemeShowcase() {
   const [lineHeight, setLineHeight] = useState(1.6);
   const [excerptIndex, setExcerptIndex] = useState(0);
   const [isAutoSwitching, setIsAutoSwitching] = useState(true);
+  const [manualThemeSelected, setManualThemeSelected] = useState(false);
 
   // Auto-switching timer loop: cycles BOTH theme and font automatically!
   useEffect(() => {
@@ -168,25 +215,33 @@ export default function ThemeShowcase() {
     return () => clearInterval(timer);
   }, [switchIntervalMs, isAutoSwitching]);
 
-  // Clean up any body-level theme style overrides when the component unmounts
+  // Clean up any body-level theme style overrides when the component unmounts unless manually selected
   useEffect(() => {
     return () => {
-      const body = document.body;
-      body.style.removeProperty("--theme-bg");
-      body.style.removeProperty("--theme-text");
-      body.style.removeProperty("--theme-card");
-      body.style.removeProperty("--theme-border");
-      body.style.removeProperty("--theme-accent");
-      body.style.removeProperty("--theme-text-muted");
-      
-      const displayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
-      if (displayTheme.includes("dark")) {
-        body.classList.add("dark");
-      } else {
-        body.classList.remove("dark");
+      if (!manualThemeSelected) {
+        const root = document.documentElement;
+        const body = document.body;
+        const properties = [
+          "--theme-bg", "--theme-text", "--theme-card", "--theme-border", "--theme-accent", "--theme-text-muted",
+          "--color-kindle-bg", "--color-kindle-text", "--color-kindle-card", "--color-kindle-border", "--color-kindle-accent", "--color-kindle-text-muted"
+        ];
+        properties.forEach((p) => {
+          body.style.removeProperty(p);
+          root.style.removeProperty(p);
+        });
+        
+        const displayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
+        const isDark = displayTheme.includes("dark") || displayTheme === "theme-night" || displayTheme === "theme-oled";
+        if (isDark) {
+          body.classList.add("dark");
+          root.classList.add("dark");
+        } else {
+          body.classList.remove("dark");
+          root.classList.remove("dark");
+        }
       }
     };
-  }, []);
+  }, [manualThemeSelected]);
 
   const activeTheme = READING_THEMES_SHOWCASE[currentThemeIndex];
   const activeFont = READER_FONTS[currentFontIndex];
@@ -195,25 +250,8 @@ export default function ThemeShowcase() {
   const handlePresetSelect = (idx: number) => {
     setIsAutoSwitching(false);
     setCurrentThemeIndex(idx);
-    
-    // Apply theme to the whole landing page (document.body)
-    const t = READING_THEMES_SHOWCASE[idx];
-    const body = document.body;
-    body.style.setProperty("--theme-bg", t.bg);
-    body.style.setProperty("--theme-text", t.text);
-    body.style.setProperty("--theme-card", t.card);
-    body.style.setProperty("--theme-border", t.border);
-    body.style.setProperty("--theme-accent", t.accent);
-    
-    const isDark = t.id === "night" || t.id === "oled";
-    const textMuted = isDark ? "#A1A1AA" : "#52525B";
-    body.style.setProperty("--theme-text-muted", textMuted);
-
-    if (isDark) {
-      body.classList.add("dark");
-    } else {
-      body.classList.remove("dark");
-    }
+    setManualThemeSelected(true);
+    applyThemeToSite(READING_THEMES_SHOWCASE[idx]);
   };
 
   return (
@@ -235,84 +273,7 @@ export default function ThemeShowcase() {
         </div>
 
         {/* Controls Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-kindle-border pb-5">
-          {/* Live Auto-Switching Badge Indicator */}
-          <div className="flex items-center gap-3">
-            {isAutoSwitching ? (
-              <div 
-                title="Auto-switching is active. Tap a preset below to hold."
-                className="px-3.5 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs font-bold text-kindle-accent flex items-center gap-2 shadow-xs"
-              >
-                <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-500" />
-                <span>Auto-Switching Active</span>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAutoSwitching(true);
-                  const body = document.body;
-                  body.style.removeProperty("--theme-bg");
-                  body.style.removeProperty("--theme-text");
-                  body.style.removeProperty("--theme-card");
-                  body.style.removeProperty("--theme-border");
-                  body.style.removeProperty("--theme-accent");
-                  body.style.removeProperty("--theme-text-muted");
-                  const displayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
-                  if (displayTheme.includes("dark")) {
-                    body.classList.add("dark");
-                  } else {
-                    body.classList.remove("dark");
-                  }
-                }}
-                className="px-3.5 py-2 rounded-xl bg-kindle-accent text-kindle-bg border border-kindle-border text-xs font-bold flex items-center gap-2 shadow-sm hover:scale-[1.02] active:scale-95 transition cursor-pointer"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Resume Auto-Switching</span>
-              </button>
-            )}
-
-            {/* Cycle Speed Selector */}
-            <div className="flex items-center gap-1 bg-kindle-bg p-1 rounded-xl border border-kindle-border text-[11px] font-bold">
-              {[
-                { label: "1.5s", ms: 1500 },
-                { label: "3.0s", ms: 3000 },
-                { label: "5.0s", ms: 5000 }
-              ].map((speed) => (
-                <button
-                  key={speed.ms}
-                  type="button"
-                  onClick={() => {
-                    setSwitchIntervalMs(speed.ms);
-                    if (!isAutoSwitching) {
-                      setIsAutoSwitching(true);
-                      const body = document.body;
-                      body.style.removeProperty("--theme-bg");
-                      body.style.removeProperty("--theme-text");
-                      body.style.removeProperty("--theme-card");
-                      body.style.removeProperty("--theme-border");
-                      body.style.removeProperty("--theme-accent");
-                      body.style.removeProperty("--theme-text-muted");
-                      const displayTheme = localStorage.getItem("kora_display_theme") || "theme-light-white";
-                      if (displayTheme.includes("dark")) {
-                        body.classList.add("dark");
-                      } else {
-                        body.classList.remove("dark");
-                      }
-                    }
-                  }}
-                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
-                    switchIntervalMs === speed.ms
-                      ? "bg-kindle-card text-kindle-accent shadow-xs"
-                      : "text-kindle-text-muted hover:text-kindle-text"
-                  }`}
-                >
-                  {speed.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
+        <div className="flex flex-wrap items-center justify-end gap-4 border-b border-kindle-border pb-5">
           {/* Quick Book Excerpt Selector */}
           <div className="flex items-center gap-2">
             <BookOpen className="w-3.5 h-3.5 text-kindle-text-muted" />

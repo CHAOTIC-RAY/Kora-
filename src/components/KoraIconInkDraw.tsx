@@ -39,8 +39,7 @@ export default function KoraIconInkDraw({
     // Resolve active ink color if not passed explicitly
     const isDark = 
       document.documentElement.classList.contains("dark") || 
-      document.body.classList.contains("dark") ||
-      Boolean(window.matchMedia?.("(prefers-color-scheme: dark)").matches);
+      document.body.classList.contains("dark");
     const activeInkColor = inkColor || (isDark ? "#f3f1ea" : "#222226");
 
     const DISPLAY_W = size;

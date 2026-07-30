@@ -2773,7 +2773,7 @@ function DiscoverView({
     <>
       <div className="space-y-6 md:space-y-10 pb-4 md:pb-10">
         {/* Header & Search */}
-        <header className="space-y-6 kora-safe-top">
+        <header className="space-y-6">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>

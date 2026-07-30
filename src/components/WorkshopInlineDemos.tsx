@@ -138,26 +138,26 @@ export function LinguistGuardianDemo() {
   }, []);
 
   return (
-    <div className="w-full flex flex-col space-y-3 bg-[#0a0a0d] border border-zinc-800 rounded-2xl p-4 text-zinc-100 font-sans overflow-hidden min-h-[250px]">
+    <div className="w-full flex flex-col space-y-3 bg-kindle-bg border border-kindle-border rounded-2xl p-4 text-kindle-text font-sans overflow-hidden min-h-[250px]">
       {/* 2D Combat Arena */}
-      <div className="relative flex-1 bg-gradient-to-b from-[#181a24] to-[#0c0d14] rounded-xl border border-zinc-900 p-3 flex flex-col justify-between overflow-hidden">
+      <div className="relative flex-1 bg-gradient-to-b from-amber-500/10 via-amber-100/30 to-kindle-card rounded-xl border border-kindle-border p-3 flex flex-col justify-between overflow-hidden">
         {/* Sky sparkles */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-blue-900/10 via-transparent to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-amber-500/10 via-transparent to-transparent pointer-events-none" />
 
         {/* Rival HUD (Top Left) */}
-        <div className="flex justify-between items-start bg-black/40 backdrop-blur-xs rounded-lg p-2 border border-zinc-800/80 w-[45%] self-start text-[10px]">
+        <div className="flex justify-between items-start bg-kindle-card/90 dark:bg-black/40 backdrop-blur-xs rounded-lg p-2 border border-kindle-border w-[45%] self-start text-[10px]">
           <div className="space-y-1 w-full">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-emerald-400">The Forgetting</span>
-              <span className="text-zinc-500 font-bold">Lv.25</span>
+              <span className="font-bold text-emerald-600 dark:text-emerald-400">The Forgetting</span>
+              <span className="text-kindle-text-muted font-bold">Lv.25</span>
             </div>
-            <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden border border-zinc-900">
+            <div className="h-1.5 w-full bg-kindle-border/60 rounded-full overflow-hidden border border-kindle-border">
               <motion.div 
                 animate={{ width: `${rivalHp}%` }}
                 className="h-full bg-emerald-500" 
               />
             </div>
-            <div className="flex justify-between text-[8px] text-zinc-400">
+            <div className="flex justify-between text-[8px] text-kindle-text-muted">
               <span>HP</span>
               <span>{rivalHp}/100</span>
             </div>
@@ -233,19 +233,19 @@ export function LinguistGuardianDemo() {
         </div>
 
         {/* Guardian HUD (Bottom Right) */}
-        <div className="flex justify-between items-start bg-black/40 backdrop-blur-xs rounded-lg p-2 border border-zinc-800/80 w-[45%] self-end text-[10px]">
+        <div className="flex justify-between items-start bg-kindle-card/90 dark:bg-black/40 backdrop-blur-xs rounded-lg p-2 border border-kindle-border w-[45%] self-end text-[10px]">
           <div className="space-y-1 w-full">
             <div className="flex justify-between items-center">
-              <span className="font-bold text-amber-400">Linguist</span>
-              <span className="text-zinc-500 font-bold">Lv.18</span>
+              <span className="font-bold text-amber-600 dark:text-amber-400">Linguist</span>
+              <span className="text-kindle-text-muted font-bold">Lv.18</span>
             </div>
-            <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden border border-zinc-900">
+            <div className="h-1.5 w-full bg-kindle-border/60 rounded-full overflow-hidden border border-kindle-border">
               <motion.div 
                 animate={{ width: `${guardianHp}%` }}
-                className="h-full bg-amber-400" 
+                className="h-full bg-amber-500 dark:bg-amber-400" 
               />
             </div>
-            <div className="flex justify-between text-[8px] text-zinc-400">
+            <div className="flex justify-between text-[8px] text-kindle-text-muted">
               <span>HP</span>
               <span>{guardianHp}/100</span>
             </div>
@@ -254,8 +254,8 @@ export function LinguistGuardianDemo() {
       </div>
 
       {/* Battle Text Log */}
-      <div className="h-10 bg-zinc-950 rounded-xl border border-zinc-800/80 flex items-center px-3.5">
-        <span className="text-[10px] font-mono text-zinc-300 animate-pulse tracking-wide truncate">
+      <div className="h-10 bg-kindle-card rounded-xl border border-kindle-border flex items-center px-3.5">
+        <span className="text-[10px] font-mono text-kindle-text animate-pulse tracking-wide truncate">
           &gt; {battleLog}
         </span>
       </div>
@@ -343,14 +343,14 @@ export function GameScoreTrackerDemo() {
   const highestScore = Math.max(...players.map(p => p.score));
 
   return (
-    <div className="w-full flex flex-col space-y-3 bg-[#0d0d10] border border-zinc-800 rounded-2xl p-4 text-zinc-100 font-sans min-h-[250px]">
+    <div className="w-full flex flex-col space-y-3 bg-kindle-bg border border-kindle-border rounded-2xl p-4 text-kindle-text font-sans min-h-[250px]">
       {/* Score Header Panel */}
-      <div className="flex justify-between items-center border-b border-zinc-800 pb-2">
+      <div className="flex justify-between items-center border-b border-kindle-border pb-2">
         <div className="flex items-center gap-1.5">
           <Trophy className="w-4 h-4 text-amber-500" />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Catan Tracker</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-kindle-text-muted">Catan Tracker</span>
         </div>
-        <div className="bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded text-[9px] font-bold text-rose-400 flex items-center gap-1">
+        <div className="bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded text-[9px] font-bold text-rose-500 dark:text-rose-400 flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
           <span>TURN: 00:{turnTimer < 10 ? `0${turnTimer}` : turnTimer}</span>
         </div>
@@ -367,13 +367,13 @@ export function GameScoreTrackerDemo() {
               key={p.name} 
               className={`flex items-center justify-between p-2 rounded-xl transition-all border ${
                 isActive 
-                  ? "bg-zinc-900 border-[#e0533c]/40 shadow-xs" 
-                  : "bg-zinc-950/40 border-zinc-900"
+                  ? "bg-amber-500/15 border-amber-500/50 shadow-xs" 
+                  : "bg-kindle-card border-kindle-border"
               }`}
             >
               <div className="flex items-center gap-2">
                 <span className="text-sm select-none">{p.avatar}</span>
-                <span className={`text-[11px] font-bold ${isActive ? "text-white" : "text-zinc-300"}`}>
+                <span className={`text-[11px] font-bold ${isActive ? "text-kindle-text font-extrabold" : "text-kindle-text-muted"}`}>
                   {p.name}
                 </span>
                 {isActive && (
@@ -390,20 +390,20 @@ export function GameScoreTrackerDemo() {
                       initial={{ opacity: 0, y: 5 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -5 }}
-                      className="text-[9px] font-black text-emerald-400 font-mono"
+                      className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 font-mono"
                     >
                       +{p.delta}
                     </motion.span>
                   )}
                 </AnimatePresence>
-                <div className="bg-zinc-900 px-2.5 py-0.5 rounded-md border border-zinc-800 text-[11px] font-black font-mono text-zinc-100 min-w-[28px] text-center flex items-center justify-center gap-1">
+                <div className="bg-kindle-card px-2.5 py-0.5 rounded-md border border-kindle-border text-[11px] font-black font-mono text-kindle-text min-w-[28px] text-center flex items-center justify-center gap-1">
                   {p.score}
                   {isLeader && (
                     <motion.span 
                       animate={{ rotate: [0, -10, 10, 0] }}
                       transition={{ duration: 1, repeat: Infinity, repeatDelay: 2 }}
                     >
-                      <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />
+                      <Crown className="w-3 h-3 text-amber-500 fill-amber-500 dark:text-amber-400 dark:fill-amber-400" />
                     </motion.span>
                   )}
                 </div>
@@ -414,7 +414,7 @@ export function GameScoreTrackerDemo() {
       </div>
 
       {/* Score Tracker Live Log */}
-      <div className="h-8 bg-zinc-950 rounded-lg border border-zinc-900 flex items-center px-3 text-[9px] text-zinc-400 italic">
+      <div className="h-8 bg-kindle-card rounded-lg border border-kindle-border flex items-center px-3 text-[9px] text-kindle-text-muted italic">
         {log}
       </div>
     </div>
@@ -425,9 +425,9 @@ export function GameScoreTrackerDemo() {
 export function CrosswordSolvingDemo() {
   const gridSolution = [
     ["K", "O", "R", "A", ""],
-    ["", "V", "", "L", ""],
+    ["", "", "", "", ""],
     ["B", "O", "O", "K", ""],
-    ["", "C", "", "", ""],
+    ["", "", "", "", ""],
     ["", "S", "H", "E", "D"]
   ];
 
@@ -447,7 +447,10 @@ export function CrosswordSolvingDemo() {
 
   const [activeCell, setActiveCell] = useState<{ r: number; c: number } | null>(null);
   const [activeClueIdx, setActiveClueIdx] = useState(0);
-  const [isDone, setIsDone] = useState(false);
+
+  const isDone = gridState.every((row, r) =>
+    row.every((cell, c) => gridSolution[r][c] === "" || cell === gridSolution[r][c])
+  );
 
   useEffect(() => {
     let timer: any;
@@ -473,7 +476,6 @@ export function CrosswordSolvingDemo() {
 
     const typeStep = () => {
       if (step >= path.length) {
-        setIsDone(true);
         setActiveCell(null);
         timer = setTimeout(() => {
           // Reset
@@ -484,7 +486,6 @@ export function CrosswordSolvingDemo() {
             ["", "", "", "", ""],
             ["", "", "", "", ""]
           ]);
-          setIsDone(false);
           step = 0;
           setActiveClueIdx(0);
           timer = setTimeout(typeStep, 1000);
@@ -511,33 +512,39 @@ export function CrosswordSolvingDemo() {
   }, []);
 
   return (
-    <div className="w-full flex flex-col space-y-3 bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-4 text-zinc-100 font-sans min-h-[250px]">
+    <div className="w-full flex flex-col space-y-3 bg-kindle-bg border border-kindle-border rounded-2xl p-4 text-kindle-text font-sans min-h-[250px]">
       {/* Board Layout */}
       <div className="flex gap-4 items-center flex-1">
         
         {/* The 5x5 Grid */}
-        <div className="grid grid-cols-5 gap-1 bg-zinc-950 p-1.5 rounded-xl border border-zinc-900 w-[140px] h-[140px] shrink-0">
+        <div className="grid grid-cols-5 gap-1 bg-kindle-card p-1.5 rounded-xl border border-kindle-border w-[140px] h-[140px] shrink-0 shadow-lg">
           {gridState.map((row, rIdx) => 
             row.map((cell, cIdx) => {
-              // Block cells are empty slots in solution that we leave black
-              const isBlock = gridSolution[rIdx][cIdx] === "" && rIdx !== 1 && rIdx !== 3;
+              const isBlock = gridSolution[rIdx][cIdx] === "";
               const isActive = activeCell?.r === rIdx && activeCell?.c === cIdx;
+
+              if (isBlock) {
+                return (
+                  <div 
+                    key={`${rIdx}-${cIdx}`}
+                    className="aspect-square rounded-[3px] bg-kindle-border/40 border border-black/10 shadow-inner"
+                  />
+                );
+              }
 
               return (
                 <div 
                   key={`${rIdx}-${cIdx}`}
-                  className={`relative flex items-center justify-center rounded text-xs font-black font-mono transition-all ${
-                    isBlock 
-                      ? "bg-zinc-900/60" 
-                      : isActive 
-                      ? "bg-amber-500/20 ring-1 ring-amber-500 text-amber-400" 
-                      : "bg-zinc-950 border border-zinc-800/80 text-zinc-200"
+                  className={`relative flex items-center justify-center rounded-[2px] text-xs font-serif font-bold uppercase transition-all ${
+                    isActive 
+                      ? "bg-[#d4a574] text-[#1a1510] border border-[#e8c49a] scale-105 z-10 shadow-md" 
+                      : "bg-kindle-card border border-kindle-border text-kindle-text"
                   }`}
                 >
                   {/* Word number label anchor */}
-                  {rIdx === 0 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] text-zinc-500 font-sans">1</span>}
-                  {rIdx === 2 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] text-zinc-500 font-sans">3</span>}
-                  {rIdx === 4 && cIdx === 1 && <span className="absolute top-[1px] left-[2px] text-[6px] text-zinc-500 font-sans">5</span>}
+                  {rIdx === 0 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono opacity-70 leading-none">1</span>}
+                  {rIdx === 2 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono opacity-70 leading-none">3</span>}
+                  {rIdx === 4 && cIdx === 1 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono opacity-70 leading-none">5</span>}
                   
                   <AnimatePresence mode="popLayout">
                     {cell && (
@@ -545,7 +552,7 @@ export function CrosswordSolvingDemo() {
                         initial={{ opacity: 0, scale: 0.6 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0 }}
-                        className={isDone ? "text-emerald-400 text-shadow-sm" : ""}
+                        className={isDone ? "text-emerald-500 font-bold" : ""}
                       >
                         {cell}
                       </motion.span>
@@ -559,7 +566,7 @@ export function CrosswordSolvingDemo() {
 
         {/* Clues Column */}
         <div className="flex-1 flex flex-col justify-center space-y-2 text-left">
-          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500 border-b border-zinc-900 pb-1 block">Active Clues</span>
+          <span className="text-[9px] font-black uppercase tracking-widest text-kindle-text-muted border-b border-kindle-border pb-1 block">Active Clues</span>
           <div className="space-y-1.5">
             {clues.map((clue, idx) => {
               const isSelected = idx === activeClueIdx && !isDone;
@@ -568,8 +575,8 @@ export function CrosswordSolvingDemo() {
                   key={clue.num} 
                   className={`p-1.5 rounded-lg border transition-all ${
                     isSelected 
-                      ? "bg-amber-500/10 border-amber-500/30 text-zinc-100" 
-                      : "bg-transparent border-transparent text-zinc-500"
+                      ? "bg-amber-500/10 border-amber-500/30 text-kindle-text font-bold" 
+                      : "bg-transparent border-transparent text-kindle-text-muted"
                   }`}
                 >
                   <p className="text-[9px] font-bold tracking-tight">
@@ -585,14 +592,14 @@ export function CrosswordSolvingDemo() {
       </div>
 
       {/* Done Celebration Overlay */}
-      <div className="h-8 bg-zinc-950 rounded-lg border border-zinc-900 flex items-center justify-between px-3 text-[10px]">
+      <div className="h-8 bg-kindle-card rounded-lg border border-kindle-border flex items-center justify-between px-3 text-[10px]">
         {isDone ? (
-          <div className="flex items-center gap-1.5 text-emerald-400 font-bold w-full justify-center">
+          <div className="flex items-center gap-1.5 text-emerald-500 font-bold w-full justify-center">
             <Sparkles className="w-3.5 h-3.5 animate-bounce" />
             <span>CROSSWORD COMPLETED! 100% CORRECT</span>
           </div>
         ) : (
-          <span className="text-zinc-500 font-mono tracking-wide">
+          <span className="text-kindle-text-muted font-mono tracking-wide">
             &gt; Solver is typing across the grid...
           </span>
         )}
@@ -658,17 +665,17 @@ export function WikipediaHubDemo() {
   const activeArt = WIKI_ARTICLES[artIdx];
 
   return (
-    <div className="w-full flex flex-col justify-between bg-[#0c0c0e] border border-zinc-800 rounded-2xl p-4 text-zinc-100 font-sans min-h-[250px]">
+    <div className="w-full flex flex-col justify-between bg-kindle-bg border border-kindle-border rounded-2xl p-4 text-kindle-text font-sans min-h-[250px]">
       {/* Top bar */}
-      <div className="flex justify-between items-center border-b border-zinc-900 pb-2.5">
+      <div className="flex justify-between items-center border-b border-kindle-border pb-2.5">
         <div className="flex items-center gap-1.5">
-          <Globe className="w-4 h-4 text-sky-400" />
-          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Wikipedia of the Hour</span>
+          <Globe className="w-4 h-4 text-sky-500 dark:text-sky-400" />
+          <span className="text-[10px] font-black uppercase tracking-widest text-kindle-text-muted">Wikipedia of the Hour</span>
         </div>
         <button 
           onClick={handleRefresh}
           disabled={isLoading}
-          className="p-1.5 hover:bg-zinc-800 rounded-lg border border-zinc-900 hover:border-zinc-800 transition text-zinc-400 hover:text-white disabled:opacity-50 cursor-pointer"
+          className="p-1.5 hover:bg-kindle-card rounded-lg border border-kindle-border transition text-kindle-text-muted hover:text-kindle-text disabled:opacity-50 cursor-pointer"
           title="Load another article"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
@@ -686,9 +693,9 @@ export function WikipediaHubDemo() {
               exit={{ opacity: 0 }}
               className="space-y-2 py-4"
             >
-              <div className="h-4 bg-zinc-900 rounded-md w-2/3 animate-pulse" />
-              <div className="h-3 bg-zinc-900 rounded-md w-full animate-pulse" />
-              <div className="h-3 bg-zinc-900 rounded-md w-5/6 animate-pulse" />
+              <div className="h-4 bg-kindle-card rounded-md w-2/3 animate-pulse" />
+              <div className="h-3 bg-kindle-card rounded-md w-full animate-pulse" />
+              <div className="h-3 bg-kindle-card rounded-md w-5/6 animate-pulse" />
             </motion.div>
           ) : (
             <motion.div
@@ -704,16 +711,16 @@ export function WikipediaHubDemo() {
                   {activeArt.icon}
                 </span>
                 <div>
-                  <span className="text-[8px] font-bold text-sky-400 uppercase tracking-widest block">
+                  <span className="text-[8px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest block">
                     {activeArt.category}
                   </span>
-                  <h4 className="text-xs font-serif font-bold text-zinc-100 leading-tight">
+                  <h4 className="text-xs font-serif font-bold text-kindle-text leading-tight">
                     {activeArt.title}
                   </h4>
                 </div>
               </div>
 
-              <p className="text-[10px] text-zinc-400 leading-relaxed font-sans line-clamp-4">
+              <p className="text-[10px] text-kindle-text-muted leading-relaxed font-sans line-clamp-4">
                 {activeArt.excerpt}
               </p>
             </motion.div>
@@ -724,10 +731,10 @@ export function WikipediaHubDemo() {
       {/* Bottom Action / Converting indicator */}
       <div 
         onClick={handleRefresh}
-        className="h-8 bg-zinc-950 hover:bg-zinc-900 rounded-lg border border-zinc-900 flex items-center justify-between px-3 text-[9px] text-zinc-500 cursor-pointer group transition-colors"
+        className="h-8 bg-kindle-card hover:bg-kindle-card/80 rounded-lg border border-kindle-border flex items-center justify-between px-3 text-[9px] text-kindle-text-muted cursor-pointer group transition-colors"
       >
         <span>Convert this article to offline Kora EPUB?</span>
-        <ChevronRight className="w-3 h-3 text-zinc-600 group-hover:text-zinc-400 transition-transform group-hover:translate-x-0.5" />
+        <ChevronRight className="w-3 h-3 text-kindle-text-muted group-hover:text-kindle-text transition-transform group-hover:translate-x-0.5" />
       </div>
     </div>
   );
@@ -827,22 +834,22 @@ export function SearchableDictionaryDemo() {
   };
 
   return (
-    <div className="w-full flex flex-col justify-between bg-[#0a0a0c] border border-zinc-800 rounded-2xl p-4 text-zinc-100 font-sans min-h-[250px]">
+    <div className="w-full flex flex-col justify-between bg-kindle-bg border border-kindle-border rounded-2xl p-4 text-kindle-text font-sans min-h-[250px]">
       
       {/* Search Bar Input */}
-      <div className="space-y-1.5 text-left border-b border-zinc-900 pb-2">
-        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1">
-          <BookA className="w-4 h-4 text-purple-400" />
+      <div className="space-y-1.5 text-left border-b border-kindle-border pb-2">
+        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-kindle-text-muted mb-1">
+          <BookA className="w-4 h-4 text-purple-600 dark:text-purple-400" />
           <span>Searchable Dictionary</span>
         </div>
         <div className="relative">
-          <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-zinc-500" />
+          <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-kindle-text-muted" />
           <input 
             type="text" 
             placeholder="Search word (e.g., ephemeral, lucid, serene...)"
             value={query}
             onChange={handleSearch}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-8.5 pr-4 py-1.5 text-[10px] text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-purple-500/50 transition-colors"
+            className="w-full bg-kindle-card border border-kindle-border rounded-lg pl-8.5 pr-4 py-1.5 text-[10px] text-kindle-text placeholder-kindle-text-muted focus:outline-none focus:border-purple-500/50 transition-colors"
           />
         </div>
       </div>
@@ -859,20 +866,20 @@ export function SearchableDictionaryDemo() {
             className="space-y-1.5"
           >
             <div className="flex items-baseline gap-2">
-              <h4 className="text-xs font-serif font-black text-zinc-100">
+              <h4 className="text-xs font-serif font-black text-kindle-text">
                 {searchResult.word}
               </h4>
-              <span className="text-[8px] font-sans italic text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded-sm uppercase tracking-wide">
+              <span className="text-[8px] font-sans italic text-purple-700 dark:text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded-sm uppercase tracking-wide">
                 {searchResult.pos}
               </span>
             </div>
 
-            <p className="text-[10px] text-zinc-300 leading-relaxed font-sans">
+            <p className="text-[10px] text-kindle-text leading-relaxed font-sans">
               {searchResult.def}
             </p>
 
             {searchResult.ex && (
-              <p className="text-[9px] text-zinc-500 italic font-sans pl-2 border-l border-zinc-800">
+              <p className="text-[9px] text-kindle-text-muted italic font-sans pl-2 border-l border-kindle-border">
                 &ldquo;{searchResult.ex}&rdquo;
               </p>
             )}
@@ -881,7 +888,7 @@ export function SearchableDictionaryDemo() {
       </div>
 
       {/* Tips panel */}
-      <div className="text-[8px] text-zinc-600 text-left pt-1 border-t border-zinc-900">
+      <div className="text-[8px] text-kindle-text-muted text-left pt-1 border-t border-kindle-border">
         💡 Local preview loaded with core vocabulary words.
       </div>
     </div>
@@ -910,27 +917,28 @@ export function WordSearchGridDemo() {
   ];
 
   const [foundWords, setFoundWords] = useState<number[]>([]);
-  const [isDone, setIsDone] = useState(false);
+  const isDone = foundWords.length === targets.length && targets.length > 0;
 
   useEffect(() => {
     let timer: any;
-    let step = 0;
 
     const findCycle = () => {
-      if (step >= targets.length) {
-        setIsDone(true);
-        timer = setTimeout(() => {
-          setFoundWords([]);
-          setIsDone(false);
-          step = 0;
-          timer = setTimeout(findCycle, 800);
-        }, 3000);
-        return;
-      }
-
-      setFoundWords(prev => [...prev, step]);
-      step++;
-      timer = setTimeout(findCycle, 1200);
+      setFoundWords(prev => {
+        if (prev.length >= targets.length) {
+          timer = setTimeout(() => {
+            setFoundWords([]);
+            timer = setTimeout(findCycle, 800);
+          }, 3000);
+          return prev;
+        }
+        const next = [...prev, prev.length];
+        if (next.length < targets.length) {
+          timer = setTimeout(findCycle, 1200);
+        } else {
+          timer = setTimeout(findCycle, 3000);
+        }
+        return next;
+      });
     };
 
     timer = setTimeout(findCycle, 1500);
@@ -955,23 +963,23 @@ export function WordSearchGridDemo() {
   };
 
   return (
-    <div className="w-full flex flex-col space-y-3 bg-[#09090c] border border-zinc-800 rounded-2xl p-4 text-zinc-100 font-sans min-h-[250px]">
+    <div className="w-full flex flex-col space-y-3 bg-kindle-bg border border-kindle-border rounded-2xl p-4 text-kindle-text font-sans min-h-[250px]">
       
       {/* Board and layout */}
       <div className="flex gap-4 items-center flex-1">
         {/* 8x8 character grid */}
-        <div className="grid grid-cols-8 gap-0.5 bg-zinc-950 p-1.5 rounded-xl border border-zinc-900 w-[140px] h-[140px] shrink-0 font-mono relative overflow-hidden select-none">
+        <div className="grid grid-cols-8 gap-0.5 bg-kindle-card p-1.5 rounded-xl border border-kindle-border w-[140px] h-[140px] shrink-0 font-mono relative overflow-hidden select-none">
           {letters.map((row, r) => 
             row.map((char, c) => {
               const hl = getCellHighlight(r, c);
               return (
                 <div 
                   key={`${r}-${c}`}
-                  className="relative flex items-center justify-center text-[10px] font-black text-zinc-400 rounded-xs transition-all duration-300"
+                  className="relative flex items-center justify-center text-[10px] font-black text-kindle-text-muted rounded-xs transition-all duration-300"
                   style={{
                     backgroundColor: hl ? hl.color : "transparent",
                     boxShadow: hl ? `0 0 0 1px ${hl.border}` : "none",
-                    color: hl ? "#fff" : undefined
+                    color: hl ? "var(--color-kindle-text, #2d2b28)" : undefined
                   }}
                 >
                   {char}
@@ -983,7 +991,7 @@ export function WordSearchGridDemo() {
 
         {/* Word checklist */}
         <div className="flex-1 flex flex-col justify-center space-y-1 text-left">
-          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500 border-b border-zinc-900 pb-1.5 block">Hidden Words</span>
+          <span className="text-[9px] font-black uppercase tracking-widest text-kindle-text-muted border-b border-kindle-border pb-1.5 block">Hidden Words</span>
           <div className="space-y-1 pt-1">
             {targets.map((t, idx) => {
               const solved = foundWords.includes(idx);
@@ -991,13 +999,13 @@ export function WordSearchGridDemo() {
                 <div key={t.word} className="flex items-center gap-1.5 py-0.5">
                   <div 
                     className="w-1.5 h-1.5 rounded-full" 
-                    style={{ backgroundColor: solved ? t.border : "#333" }} 
+                    style={{ backgroundColor: solved ? t.border : "var(--color-kindle-border, #ccc)" }} 
                   />
                   <span 
                     className={`text-[10px] font-bold font-mono tracking-wider transition-all duration-300 ${
                       solved 
-                        ? "text-zinc-600 line-through decoration-zinc-500 decoration-1.5" 
-                        : "text-zinc-300"
+                        ? "text-kindle-text-muted line-through opacity-60" 
+                        : "text-kindle-text"
                     }`}
                   >
                     {t.word}
@@ -1010,14 +1018,14 @@ export function WordSearchGridDemo() {
       </div>
 
       {/* Footer status line */}
-      <div className="h-8 bg-zinc-950 rounded-lg border border-zinc-900 flex items-center justify-center px-3 text-[10px]">
+      <div className="h-8 bg-kindle-card rounded-lg border border-kindle-border flex items-center justify-center px-3 text-[10px]">
         {isDone ? (
-          <div className="flex items-center gap-1 text-purple-400 font-bold">
+          <div className="flex items-center gap-1 text-purple-600 dark:text-purple-400 font-bold">
             <Check className="w-3.5 h-3.5" />
             <span>ALL VOCABULARY WORDS DISCOVERED!</span>
           </div>
         ) : (
-          <span className="text-zinc-500 font-mono tracking-wide">
+          <span className="text-kindle-text-muted font-mono tracking-wide">
             &gt; Searching grid character paths...
           </span>
         )}

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ExternalLink, Newspaper, Settings2 } from "lucide-react";
+import { ChevronLeft, ExternalLink, Newspaper, Settings2, Zap } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { collectTodayBriefArticles, buildTodayDailyBrief } from "../lib/dailyNewsBriefClient";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
@@ -11,9 +11,10 @@ import NewsReaderSettingsPanel from "./NewsReaderSettingsPanel";
 interface TodayNewsBriefCardProps {
   items: FeedItem[];
   onReadArticle: (item: FeedItem) => void;
+  onOpenTikTokBrief?: () => void;
 }
 
-export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBriefCardProps) {
+export default function TodayNewsBriefCard({ items, onReadArticle, onOpenTikTokBrief }: TodayNewsBriefCardProps) {
   const articles = useMemo(() => collectTodayBriefArticles(items), [items]);
   const brief = useMemo(() => buildTodayDailyBrief(articles), [articles]);
   const [open, setOpen] = useState(false);
@@ -223,13 +224,27 @@ export default function TodayNewsBriefCard({ items, onReadArticle }: TodayNewsBr
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-4 hover:border-kindle-text/35 transition"
+        className="w-full text-left bg-kindle-card border border-kindle-border rounded-2xl p-4 hover:border-kindle-text/35 transition group/card relative"
       >
-        <div className="flex items-center gap-2 mb-1">
-          <Newspaper className="w-3.5 h-3.5 text-kindle-text-muted shrink-0" />
-          <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
-            Daily News Brief
-          </p>
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-1.5">
+            <Newspaper className="w-3.5 h-3.5 text-kindle-text-muted shrink-0" />
+            <p className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+              Daily News Brief
+            </p>
+          </div>
+          {onOpenTikTokBrief && (
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenTikTokBrief();
+              }}
+              className="flex items-center gap-1 px-3 py-1 rounded-full bg-kindle-accent text-white dark:bg-amber-400 dark:text-neutral-900 text-[9px] font-bold uppercase tracking-wider shadow-sm hover:brightness-110 transition cursor-pointer"
+            >
+              <Zap className="w-2.5 h-2.5 fill-current animate-pulse text-white dark:text-neutral-900" />
+              <span>Brief View</span>
+            </div>
+          )}
         </div>
         <h3 className="text-sm font-lexend font-bold text-kindle-text mb-2">Today&apos;s News Brief</h3>
         <p className="text-xs text-kindle-text-muted leading-relaxed line-clamp-2">{brief.lead}</p>

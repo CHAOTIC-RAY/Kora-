@@ -64,7 +64,7 @@ interface LoungeViewProps {
     content_urls?: { desktop: { page: string }; mobile: { page: string } };
     lang?: string;
   }) => void;
-  onPlayGame?: (game: "crossword" | "wordsearch" | "guardian") => void;
+  onPlayGame?: (game: "crossword" | "wordsearch" | "guardian" | "scrabble") => void;
   onRefreshLibrary?: () => void;
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;
@@ -597,7 +597,7 @@ export default function LoungeView({
 
   return (
     <div className="pb-6 md:pb-10 space-y-4 md:space-y-5">
-      <header className="relative overflow-hidden pb-1 kora-safe-top">
+      <header className="relative overflow-hidden pb-1">
         <div className="flex items-center gap-2.5">
           <span
             className="block h-px w-5 bg-kindle-accent/70"

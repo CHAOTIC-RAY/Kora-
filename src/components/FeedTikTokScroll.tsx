@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bookmark, ChevronDown, ChevronUp, ChevronLeft, Filter, Grid, Loader2, RefreshCw, Share2, Settings2, Newspaper } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2, Settings2, Zap } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { getItemThumbnail } from "../lib/feedPreview";
 import { resolveFeedArticle, prepareFeedArticleHtml } from "../lib/feedArticle";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 import { toast } from "react-hot-toast";
 
 // Ken Burns loop: alternate slow zoom-in / zoom-out / pan so the cover is
@@ -10,17 +11,36 @@ import { toast } from "react-hot-toast";
 // Direction is chosen per-slide from the image size (wide → pan sideways,
 // tall → zoom) so it doesn't over-zoom a small image into nothing.
 const KEN_BURNS = `
-@keyframes koraKBzoomIn { from { transform: scale(1.08); } to { transform: scale(1.22); } }
-@keyframes koraKBzoomOut { from { transform: scale(1.22); } to { transform: scale(1.08); } }
-@keyframes koraKBpanX { from { transform: scale(1.12) translateX(-6%); } to { transform: scale(1.12) translateX(6%); } }
-@keyframes koraKBpanY { from { transform: scale(1.12) translateY(-6%); } to { transform: scale(1.12) translateY(6%); } }
-.kora-kb { animation-duration: 14s; animation-iteration-count: infinite; animation-direction: alternate; animation-timing-function: ease-in-out; will-change: transform; transform-origin: center center; }
+@keyframes koraKBzoomIn {
+  0% { transform: scale(1.04); }
+  100% { transform: scale(1.16); }
+}
+@keyframes koraKBzoomOut {
+  0% { transform: scale(1.16); }
+  100% { transform: scale(1.04); }
+}
+@keyframes koraKBpanX {
+  0% { transform: scale(1.12) translateX(-3.5%); }
+  100% { transform: scale(1.12) translateX(3.5%); }
+}
+@keyframes koraKBpanY {
+  0% { transform: scale(1.12) translateY(-3.5%); }
+  100% { transform: scale(1.12) translateY(3.5%); }
+}
+.kora-kb {
+  animation-duration: 22s;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+  animation-timing-function: ease-in-out;
+  will-change: transform;
+  transform-origin: center center;
+}
 .kora-kb-zi { animation-name: koraKBzoomIn; }
 .kora-kb-zo { animation-name: koraKBzoomOut; }
 .kora-kb-px { animation-name: koraKBpanX; }
 .kora-kb-py { animation-name: koraKBpanY; }
 @media (prefers-reduced-motion: reduce) {
-  .kora-kb { animation: none !important; transform: scale(1.08) !important; }
+  .kora-kb { animation: none !important; transform: scale(1.05) !important; }
 }
 `;
 
@@ -51,23 +71,40 @@ async function buildKoraShareImage(item: FeedItem, cover?: string): Promise<stri
   const imgY = 0;
   const imgH = 760;
   if (cover) {
+    let objectUrl: string | null = null;
     try {
+      const proxied = resolveCoverImageSrc(cover) || cover;
+      try {
+        const resp = await fetch(proxied);
+        if (resp.ok) {
+          const blob = await resp.blob();
+          objectUrl = URL.createObjectURL(blob);
+        }
+      } catch {
+        // ignore fetch error and fallback to direct URL
+      }
+
       const img = await new Promise<HTMLImageElement>((res, rej) => {
         const im = new Image();
-        im.crossOrigin = "anonymous";
+        if (!objectUrl) {
+          im.crossOrigin = "anonymous";
+        }
         im.onload = () => res(im);
         im.onerror = rej;
-        im.src = cover;
+        im.src = objectUrl || proxied;
       });
+
       // cover-fit
       const ratio = Math.min(W / img.width, imgH / img.height);
       const dw = img.width * ratio;
       const dh = img.height * ratio;
       ctx.drawImage(img, (W - dw) / 2, imgY + (imgH - dh) / 2, dw, dh);
-    } catch {
-      // draw accent block fallback
+    } catch (err) {
+      console.warn("[Kora/Share] Image loading fallback to accent block", err);
       ctx.fillStyle = ACCENT;
       ctx.fillRect(0, imgY, W, imgH);
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     }
   } else {
     ctx.fillStyle = ACCENT;
@@ -80,11 +117,33 @@ async function buildKoraShareImage(item: FeedItem, cover?: string): Promise<stri
   ctx.fillStyle = grad;
   ctx.fillRect(0, imgH - 220, W, 220);
 
-  // Kora wordmark (ink, near-white safe)
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "700 46px Lexend, Georgia, serif";
-  ctx.textBaseline = "top";
-  ctx.fillText("KORA", 64, 56);
+  // Load the beautiful Kora wordmark SVG
+  const logoImg = await new Promise<HTMLImageElement>((res) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => res(null as any); // fallback if it fails
+    im.src = "data:image/svg+xml;base64," + btoa(`
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 287.6 112.78" fill="#ffffff">
+        <path d="M287.6,104.25c-1.64,4.59-5.45,6.69-10,7.53-8.61,1.57-11.14-.13-16.94-11-4.9,6.39-10.94,10.55-19,11.62-9.95,1.31-19.48-3.36-22.59-11.64-3.59-9.57-.58-19.55,9.17-24.2,9.2-4.38,19.27-7,29.1-10,3-.9,4.36-1.9,3.94-5-.58-4.27-.66-8.66-1.78-12.78-1.63-6-6.3-9-12.29-8.95s-9.29,3-11.31,9.37c-1,3-.55,7-5,7.73-3.67.56-7.22.11-9-3.68s-.78-7.18,2.33-9.9c6.48-5.68,14.43-7.47,22.66-7.93a48.52,48.52,0,0,1,12.88,1.12c10.13,2.22,15.8,8.93,16.21,19.42.43,11,.28,22,.38,33,0,1.66,0,3.33,0,5C276.63,102.86,278.61,104.64,287.6,104.25Zm-26.6-34c-8.44,2.41-16.47,4.43-22.9,10.05-4.55,4-5.81,10.76-3.44,16.45a11.76,11.76,0,0,0,12,7c5.67-.42,13.76-5.58,14.15-10.21C261.46,86,261,78.4,261,70.24Z"/>
+        <path d="M24.18,0V6.78c0,29.14,0,58.28-.07,87.42,0,6,.3,11.44,7.51,13.29.7.19,1.09,1.61,2,3.05H.64l-.64-1c1.19-1,2.24-2.37,3.61-2.9,3.94-1.53,5.62-4.17,5.61-8.4q-.13-40,0-79.93c0-4.73-1.93-7.46-6.26-9C1.9,9,1.15,7.79.27,7,1.2,6.27,2,5.18,3.09,4.92,9.84,3.24,16.64,1.74,24.18,0Z"/>
+        <path d="M193.44,110.51H159.7l-.57-1c1.07-.9,2-2.13,3.25-2.62,4.54-1.79,6-5,5.94-9.79-.2-14-.28-28,0-42,.13-5.65-1.58-9.3-7.11-11a3.26,3.26,0,0,1-1.77-2c-.13-.38.8-1.52,1.4-1.67,7-1.75,14.08-3.37,21.77-5.18V51.06l1.11.4,2.54-4.36c3.51-6,8.15-10.58,15.32-11.7,7.35-1.15,12.17,3.38,10.85,10-1,5.16-4.11,6.91-9.13,5.17-12.43-4.32-19.44.57-19.59,13.8-.12,10.66.14,21.33-.21,32-.19,5.71,1.76,9.21,7.35,10.72,1.23.33,2.23,1.52,3.34,2.31Z"/>
+        <path d="M78.32,110.77c-7.1,0-14.2.08-21.29-.1a4.78,4.78,0,0,1-3-2Q40.66,90.3,27.46,71.89c5.26-5.49,10.61-11.09,16-16.65,2.08-2.15,4.31-4.16,6.37-6.33,3.77-4,3.34-5.72-1.66-8.06a4.92,4.92,0,0,1-2.57-3.51H73.37l.76,1.25C70.3,40.71,66.22,42.48,62.71,45a109.36,109.36,0,0,0-11.2,9.9C48.05,58.27,44.85,61.86,41,66,53.4,80.35,61.76,98.66,79,109.66Z"/>
+        <path d="M151.77,74.1h0a45.46,45.46,0,0,0-3.51-17.51,33.2,33.2,0,0,0-4.87-8.34l-.23-.28c-.23-.29-.47-.58-.71-.86a29.45,29.45,0,0,0-5.49-5,37.39,37.39,0,0,0-43.9,0,29.71,29.71,0,0,0-5.48,5c-.25.28-.48.57-.72.86l-.22.28a33.2,33.2,0,0,0-4.87,8.34,45.27,45.27,0,0,0-3.51,17.51h0A42.74,42.74,0,0,0,82.47,93a32.76,32.76,0,0,0,15.32,15.69,37.5,37.5,0,0,0,15.86,4.09h.07l1.29,0,1.3,0h.07a37.5,37.5,0,0,0,15.86-4.09A32.73,32.73,0,0,0,147.55,93,42.61,42.61,0,0,0,151.77,74.1ZM133,90.13A66.71,66.71,0,0,1,129.34,99a15.55,15.55,0,0,1-14.18,9h-.29a15.56,15.56,0,0,1-14.19-9A66.63,66.63,0,0,1,97,90.13c-.9-3.49-1.64-7-2.42-10.56a51.39,51.39,0,0,1-.4-8.67c1.25-8.9,3.25-16.72,6.32-21.79,3.52-5.81,9-8.92,14.48-9.21,5.47.29,11,3.4,14.49,9.21,3.07,5.07,5.06,12.89,6.31,21.79a51.39,51.39,0,0,1-.4,8.67C134.63,83.1,133.89,86.64,133,90.13Z"/>
+      </svg>
+    `);
+  });
+
+  if (logoImg) {
+    const logoW = 160;
+    const logoH = logoW * (112.78 / 287.6);
+    ctx.drawImage(logoImg, 64, 56, logoW, logoH);
+  } else {
+    // Kora wordmark fallback
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "700 46px Lexend, Georgia, serif";
+    ctx.textBaseline = "top";
+    ctx.fillText("KORA", 64, 56);
+  }
 
   let y = imgH + 70;
 
@@ -171,9 +230,9 @@ function truncate(s: string, n: number): string {
 /** Deep link that opens the article directly in the Kora app (APK + web). */
 function buildKoraDeepLink(item: FeedItem): string {
   try {
-    return `app.kora.reader://news?url=${encodeURIComponent(item.link)}`;
+    return `https://kora.chaoticstudio.workers.dev/news?url=${encodeURIComponent(item.link)}`;
   } catch {
-    return "kora.app";
+    return "https://kora.chaoticstudio.workers.dev";
   }
 }
 
@@ -183,10 +242,11 @@ interface FeedTikTokScrollProps {
   perfMode?: boolean;
   onRead: (item: FeedItem) => void;
   onSave: (item: FeedItem) => void;
-  onOpenBrief?: () => void;
+  onExit?: () => void;
   onRefresh?: () => void;
   onManage?: () => void;
   onFilter?: () => void;
+  onOpenDailyBrief?: () => void;
   refreshing?: boolean;
   height?: number | null;
 }
@@ -207,10 +267,11 @@ export default function FeedTikTokScroll({
   perfMode,
   onRead,
   onSave,
-  onOpenBrief,
+  onExit,
   onRefresh,
   onManage,
   onFilter,
+  onOpenDailyBrief,
   refreshing,
   height,
 }: FeedTikTokScrollProps) {
@@ -408,16 +469,6 @@ export default function FeedTikTokScroll({
       {isMobile && (
         <div className="absolute left-0 right-0 z-30 flex items-center justify-between gap-2 pointer-events-none pt-[max(env(safe-area-inset-top),0.75rem)] px-3">
           <div className="flex items-center gap-1.5 pointer-events-auto">
-            {onOpenBrief && (
-              <button
-                type="button"
-                onClick={onOpenBrief}
-                className="p-2 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
-                title="Daily brief"
-              >
-                <Newspaper className="w-4 h-4" />
-              </button>
-            )}
             {onManage && (
               <button
                 type="button"
@@ -431,14 +482,14 @@ export default function FeedTikTokScroll({
           </div>
 
           <div className="flex items-center gap-1.5 pointer-events-auto">
-            {onOpenBrief && (
+            {onExit && (
               <button
                 type="button"
-                onClick={onOpenBrief}
+                onClick={onExit}
                 className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
-                title="Daily brief"
+                title="Close"
               >
-                <Newspaper className="w-4 h-4" />
+                <Grid className="w-4 h-4" />
               </button>
             )}
 
@@ -559,11 +610,11 @@ export default function FeedTikTokScroll({
                 } ${
                   isExpanded
                     ? isDarkMode
-                      ? "bg-black/80"
-                      : "bg-gradient-to-t from-[#ECE8D4] via-[#ECE8D4]/95 to-[#ECE8D4]/40"
+                      ? "bg-black/90"
+                      : "bg-kindle-bg"
                     : isDarkMode
                       ? "bg-gradient-to-t from-black/95 via-black/55 to-black/10"
-                      : "bg-gradient-to-t from-[#ECE8D4] via-[#ECE8D4]/85 to-[#ECE8D4]/10"
+                      : "bg-gradient-to-t from-kindle-bg via-kindle-bg/95 to-kindle-bg/30"
                 }`}
               />
 
@@ -610,32 +661,50 @@ export default function FeedTikTokScroll({
                       <Share2 className="w-4.5 h-4.5 text-white" />
                     </div>
                   </button>
+
+                  {/* Daily Brief Button */}
+                  {onOpenDailyBrief && (
+                    <button
+                      type="button"
+                      onClick={onOpenDailyBrief}
+                      className="active:scale-95 transition text-white group"
+                      title="Open Daily News Brief"
+                    >
+                      <div className="w-11 h-11 rounded-full border border-kindle-accent/30 bg-kindle-accent flex items-center justify-center hover:opacity-95 shadow-lg transition-all duration-200 relative animate-pulse">
+                        <Zap className={`w-4.5 h-4.5 fill-current ${isDarkMode ? "text-neutral-950" : "text-kindle-bg"}`} />
+                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                        </span>
+                      </div>
+                    </button>
+                  )}
                 </div>
 
                 <div
                   className={`relative z-10 cursor-pointer select-text pb-[7rem] md:pb-6 transition-all duration-300 pr-18 md:pr-24 ${
-                    isDarkMode ? "text-white" : "text-neutral-900"
+                    isDarkMode ? "text-white" : "text-kindle-text"
                   }`}
                   onClick={() => setExpandedIndex(isExpanded ? null : index)}
                 >
                   <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-1 sm:mb-2 transition-colors ${
-                    isDarkMode ? "text-white/80" : "text-neutral-600"
+                    isDarkMode ? "text-white/80" : "text-kindle-text-muted"
                   }`}>
                     {source}
                     {item.read ? (
                       <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
-                        isDarkMode ? "bg-white/20 text-white" : "bg-neutral-200 text-neutral-800"
+                        isDarkMode ? "bg-white/20 text-white" : "bg-kindle-border text-kindle-text"
                       }`}>Read</span>
                     ) : (
                       <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
-                        isDarkMode ? "bg-kindle-accent text-black" : "bg-kindle-accent text-neutral-900"
+                        isDarkMode ? "bg-kindle-accent text-black" : "bg-kindle-accent text-kindle-bg"
                       }`}>New</span>
                     )}
                   </span>
                   <h2 className={`text-lg sm:text-xl md:text-2xl font-lexend font-bold leading-tight mb-2 sm:mb-3 transition-all ${
                     isDarkMode
                       ? isExpanded ? "text-white" : "line-clamp-4 text-white"
-                      : isExpanded ? "text-neutral-950" : "line-clamp-4 text-neutral-900"
+                      : isExpanded ? "text-kindle-text" : "line-clamp-4 text-kindle-text"
                   }`}>
                     {item.title}
                   </h2>
@@ -690,7 +759,7 @@ export default function FeedTikTokScroll({
 
                   {/* Navigation and State Indicator */}
                   <div className={`flex items-center gap-2 mt-3.5 text-[10px] sm:text-[11px] transition-colors ${
-                    isExpanded && !isDarkMode ? "text-neutral-600" : "text-white/70"
+                    isDarkMode ? "text-white/70" : "text-kindle-text font-medium"
                   }`}>
                   {isExpanded ? (
                     <>

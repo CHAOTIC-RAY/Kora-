@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Grid3X3, Search, Swords, Gamepad2 } from "lucide-react";
+import { Grid3X3, Search, Swords, Gamepad2, Award } from "lucide-react";
 
-type GameId = "crossword" | "wordsearch" | "guardian";
+type GameId = "crossword" | "wordsearch" | "guardian" | "scrabble";
 
 interface GameSlide {
   id: GameId;
@@ -28,6 +28,14 @@ const SLIDES: GameSlide[] = [
     blurb: "Spot hidden words pulled from your reading. Calm, focused, offline.",
     icon: <Search className="w-5 h-5" />,
     accent: "text-emerald-500",
+  },
+  {
+    id: "scrabble",
+    title: "Online Scrabble",
+    tag: "Scrabble Clash",
+    blurb: "Place tiles, trigger board multipliers, and duel online or vs AI.",
+    icon: <Award className="w-5 h-5" />,
+    accent: "text-amber-600",
   },
   {
     id: "guardian",

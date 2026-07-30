@@ -13,15 +13,33 @@ const VIEW_W = 287.6;
 const VIEW_H = 112.78;
 const FILL_THRESHOLD = 8000;
 
-// Returns true for colors too dark to read against the (dark) theme background,
-// so callers can fall back to a near-white ink instead of a near-black one.
-function isColorTooDark(color: string): boolean {
-  const m = color.match(/(\d+\.?\d*)/g);
-  if (!m || m.length < 3) return false; // unparseable → assume fine
-  const [r, g, b] = m.slice(0, 3).map(Number);
-  // Relative luminance (sRGB approximation)
-  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return lum < 0.35;
+// Helper to reliably check if dark mode is active in the document
+function getIsDarkMode(): boolean {
+  if (typeof document === "undefined") return false;
+  const rootDark = document.documentElement.classList.contains("dark");
+  const bodyDark = document.body.classList.contains("dark");
+  const dataTheme = document.documentElement.getAttribute("data-theme");
+  if (rootDark || bodyDark || dataTheme === "dark") return true;
+  if (dataTheme === "light") return false;
+
+  try {
+    const bodyBg = getComputedStyle(document.body).backgroundColor;
+    if (bodyBg && bodyBg !== "transparent" && !bodyBg.includes("rgba(0, 0, 0, 0)")) {
+      const m = bodyBg.match(/(\d+\.?\d*)/g);
+      if (m && m.length >= 3) {
+        const [r, g, b] = m.slice(0, 3).map(Number);
+        const a = m[3] !== undefined ? Number(m[3]) : 1;
+        if (a > 0.1) {
+          const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+          if (lum < 0.35) return true;
+        }
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  return false;
 }
 
 /**
@@ -64,7 +82,11 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     const activeFillIterations = isMobileDevice ? 100 : 250;
 
     const start = () => {
-      if (doneRef.current) return;
+      cancelled = false;
+      doneRef.current = false;
+      setDone(false);
+      revealArmed.current = false;
+      wrap.classList.remove("kora-ink-zoomed");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // Size the canvas to its displayed box (capped so the wordmark stays sane).
@@ -91,17 +113,19 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
         }
       });
       // Ink color follows the theme mode explicitly so it is always bold and high-contrast.
-      // We check document classes, custom inline CSS variables, computed backgrounds, and media preferences.
-      const bodyBg = getComputedStyle(document.body).backgroundColor;
-      const textCol = (getComputedStyle(document.body).getPropertyValue("--theme-text") || 
-                       getComputedStyle(document.body).getPropertyValue("--color-kindle-text")).trim();
-      const isDark =
-        document.documentElement.classList.contains("dark") ||
-        document.body.classList.contains("dark") ||
-        isColorTooDark(bodyBg) ||
-        (textCol && !isColorTooDark(textCol)) ||
-        window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const ink = isDark ? "#f3f1ea" : "#111116";
+      let ink = "#111116";
+      try {
+        const computedColor = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
+        if (computedColor) {
+          ink = computedColor;
+        } else {
+          const isDark = getIsDarkMode();
+          ink = isDark ? "#f3f1ea" : "#111116";
+        }
+      } catch {
+        const isDark = getIsDarkMode();
+        ink = isDark ? "#f3f1ea" : "#111116";
+      }
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.strokeStyle = ink;
@@ -205,13 +229,27 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     };
     window.addEventListener("resize", onResize);
 
-    // Start the animation only when the wrapper enters the screen (reduced threshold to 0.05 for mobile instant start)
+    // Start the animation when the wrapper enters the screen, and reset on scroll away so it re-triggers when scrolled back down
     const io = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
-          if (e.isIntersecting && !started) {
-            started = true;
-            start();
+          if (e.isIntersecting) {
+            if (!started) {
+              started = true;
+              start();
+            }
+          } else {
+            if (started) {
+              started = false;
+              cancelled = true;
+              cancelAnimationFrame(raf);
+              if (revealTimer) clearTimeout(revealTimer);
+              doneRef.current = false;
+              setDone(false);
+              revealArmed.current = false;
+              wrap.classList.remove("kora-ink-zoomed");
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
           }
         });
       },
@@ -221,8 +259,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
 
     // Track theme explicitly to prevent redundant restarts from other inline style attribute changes on mobile
     const getThemeKey = () => {
-      const isDark = document.documentElement.classList.contains("dark") || document.body.classList.contains("dark");
-      return isDark ? "dark" : "light";
+      return getIsDarkMode() ? "dark" : "light";
     };
     let lastTheme = getThemeKey();
 

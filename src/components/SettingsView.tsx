@@ -48,6 +48,7 @@ import CrosswordGame from "./CrosswordGame";
 import WordSearchGame from "./WordSearchGame";
 import GameScoreTracker from "./GameScoreTracker";
 import LinguistGuardian from "./LinguistGuardian";
+import OnlineScrabbleGame from "./OnlineScrabbleGame";
 import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
@@ -99,6 +100,10 @@ interface SettingsViewProps {
   grayscaleCovers: boolean;
   hideCovers?: boolean;
   displayTheme: string;
+
+  autoDisplayTheme: boolean;
+  onChangeAutoDisplayTheme: (enabled: boolean) => void;
+
   appSkin?: string;
   onChangeAppSkin?: (skin: any) => void;
   loungeEnabled?: boolean;
@@ -126,6 +131,7 @@ interface SettingsViewProps {
   onOpenOnboarding?: () => void;
   /** When false (hidden keep-alive tab), skip heavy IDB/dir init until first activation. */
   isActive?: boolean;
+  onModalToggle?: (isOpen: boolean) => void;
 }
 
 function getRemainingGuestDays(user: User | null): number {
@@ -182,6 +188,8 @@ function SettingsView({
   grayscaleCovers,
   hideCovers = false,
   displayTheme,
+  autoDisplayTheme,
+  onChangeAutoDisplayTheme,
   appSkin,
   onChangeAppSkin,
   loungeEnabled,
@@ -208,6 +216,7 @@ function SettingsView({
   onCachedIdsChanged,
   onOpenOnboarding,
   isActive = true,
+  onModalToggle,
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -296,6 +305,7 @@ function SettingsView({
   const [showWordSearch, setShowWordSearch] = useState<boolean>(false);
   const [showScoreTracker, setShowScoreTracker] = useState<boolean>(false);
   const [showGuardian, setShowGuardian] = useState<boolean>(false);
+  const [showScrabble, setShowScrabble] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const [showP2p, setShowP2p] = useState<boolean>(false);
   const [showDictionary, setShowDictionary] = useState<boolean>(false);
@@ -304,6 +314,38 @@ function SettingsView({
   const [showReadAloud, setShowReadAloud] = useState<boolean>(false);
   const [showWikipedia, setShowWikipedia] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const isAnyOpen = Boolean(
+      showCrossword ||
+      showWordSearch ||
+      showScoreTracker ||
+      showGuardian ||
+      showScrabble ||
+      showInsights ||
+      showP2p ||
+      showDictionary ||
+      showClipper ||
+      showFolderWatch ||
+      showReadAloud ||
+      showWikipedia
+    );
+    onModalToggle?.(isAnyOpen);
+  }, [
+    showCrossword,
+    showWordSearch,
+    showScoreTracker,
+    showGuardian,
+    showScrabble,
+    showInsights,
+    showP2p,
+    showDictionary,
+    showClipper,
+    showFolderWatch,
+    showReadAloud,
+    showWikipedia,
+    onModalToggle,
+  ]);
 
   const [readingStreak, setReadingStreak] = useState<number>(0);
   const [weeklyMinutes, setWeeklyMinutes] = useState<number>(0);
@@ -355,6 +397,7 @@ function SettingsView({
       else if (tool === "wordsearch") setShowWordSearch(true);
       else if (tool === "score-tracker" || tool === "scoretracker") setShowScoreTracker(true);
       else if (tool === "guardian" || tool === "linguist-guardian") setShowGuardian(true);
+      else if (tool === "scrabble") setShowScrabble(true);
       else if (tool === "p2p") setShowP2p(true);
       else if (tool === "wikipedia" || tool === "wiki") setShowWikipedia(true);
     };
@@ -1210,37 +1253,38 @@ function SettingsView({
                 <Toggle on={performanceMode} onClick={() => setPerformanceMode(!performanceMode)} />
               </Row>
 
-              <div className="space-y-2.5">
-                <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => onChangeTheme("theme-light-white")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-white' ? 'bg-kindle-card border-kindle-accent shadow-xs ring-1 ring-kindle-accent/30' : 'border-kindle-border hover:bg-kindle-card opacity-65'}`}
-                  >
-                    <Sun className="w-4 h-4" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest">White</span>
-                  </button>
-                  <button
-                    onClick={() => onChangeTheme("theme-light-yellow")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${displayTheme === 'theme-light-yellow' ? 'bg-[#f7f3e3] border-[#6b6459] shadow-xs ring-1 ring-[#6b6459]/30' : 'border-[#d6d2c3] hover:bg-[#f7f3e3] opacity-65'}`}
-                  >
-                    <Sun className="w-4 h-4 text-yellow-700" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-yellow-900">Yellow</span>
-                  </button>
-                  <button
-                    onClick={() => onChangeTheme("theme-dark-grey")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#18181b] cursor-pointer ${displayTheme === 'theme-dark-grey' ? 'border-[#f4f4f5] shadow-xs ring-1 ring-[#f4f4f5]/30' : 'border-[#3f3f46] hover:bg-[#27272a] opacity-65'}`}
-                  >
-                    <Moon className="w-4 h-4 text-[#f4f4f5]" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#f4f4f5]">Grey</span>
-                  </button>
-                  <button
-                    onClick={() => onChangeTheme("theme-dark-blue")}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition bg-[#0b1120] cursor-pointer ${displayTheme === 'theme-dark-blue' ? 'border-[#38bdf8] shadow-xs ring-1 ring-[#38bdf8]/30' : 'border-[#1e3a5f] hover:bg-[#0f1f38] opacity-65'}`}
-                  >
-                    <Moon className="w-4 h-4 text-[#38bdf8]" />
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-[#38bdf8]">Blue</span>
-                  </button>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Display Theme</h4>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Auto Schedule</span>
+                    <Toggle on={autoDisplayTheme} onClick={() => onChangeAutoDisplayTheme(!autoDisplayTheme)} />
+                  </div>
+                </div>
+                
+                <div className={`grid grid-cols-3 gap-2 ${autoDisplayTheme ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {[
+                    { id: 'theme-paper', name: 'Paper', bg: '#FAF7F2', text: '#2C2A26', border: '#E4DDD2' },
+                    { id: 'theme-sepia', name: 'Sepia', bg: '#F4ECD8', text: '#5B4636', border: '#DBCDA4' },
+                    { id: 'theme-green', name: 'Mint', bg: '#E3EDD3', text: '#2D3E1E', border: '#C5D6A8' },
+                    { id: 'theme-night', name: 'Dusk', bg: '#1C1F26', text: '#D6D8DE', border: '#3A4050' },
+                    { id: 'theme-oled', name: 'OLED', bg: '#000000', text: '#E8E8E8', border: '#262626' },
+                    { id: 'theme-light', name: 'Light', bg: '#FFFFFF', text: '#111111', border: '#E4E4E7' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => onChangeTheme(t.id)}
+                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer"
+                      style={{
+                        backgroundColor: t.bg,
+                        borderColor: displayTheme === t.id ? t.text : t.border,
+                        boxShadow: displayTheme === t.id ? `0 0 0 1px ${t.text}40` : 'none',
+                        opacity: displayTheme === t.id ? 1 : 0.65
+                      }}
+                    >
+                      <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: t.text }}>{t.name}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1350,6 +1394,28 @@ function SettingsView({
                   </p>
                   <div className="text-[9px] font-bold uppercase tracking-wider text-[#d4a574] flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
                     Enter Battle →
+                  </div>
+                </div>
+              </button>
+
+              {/* Online Scrabble Card */}
+              <button
+                type="button"
+                onClick={() => setShowScrabble(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-amber-500/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-amber-500 rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Award className="w-6 h-6" />
+                </div>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-amber-500 transition">Online Scrabble</h4>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Classic tile placement battle. Place words on multipliers, duel Kora or match online with friends.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Play Scrabble →
                   </div>
                 </div>
               </button>
@@ -1641,14 +1707,11 @@ function SettingsView({
                         <div
                           className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300 relative ${
                             hasRead
-                              ? "bg-kindle-accent text-black font-extrabold shadow-sm scale-100 border border-kindle-accent"
+                              ? "bg-kindle-accent text-white dark:bg-amber-400 dark:text-neutral-900 font-extrabold shadow-sm scale-100 border border-kindle-accent dark:border-amber-400"
                               : "bg-kindle-bg text-kindle-text-muted border border-kindle-border hover:border-kindle-text-muted/30"
                           } ${isToday ? "ring-2 ring-kindle-text/40 ring-offset-2 ring-offset-kindle-card" : ""}`}
                         >
                           <span className="text-[10px] font-mono select-none">{dayNumLabel}</span>
-                          {hasRead && (
-                            <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-black/40" />
-                          )}
                         </div>
                       </div>
                     );
@@ -2688,9 +2751,8 @@ function SettingsView({
         </section>
         )}
 
-        {/* Section 3: Reading Streaks & Habits */}
-        </>
 
+        </>
         )}
 
         {view === "settings" && (
@@ -2863,6 +2925,7 @@ function SettingsView({
       <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
       <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} onOpenScores={() => setShowScoreTracker(true)} />
+      <OnlineScrabbleGame open={showScrabble} onClose={() => setShowScrabble(false)} />
       <ReadingInsightsTool
         open={showInsights}
         onClose={() => setShowInsights(false)}
@@ -2961,18 +3024,15 @@ function SettingsView({
         </div>
       </FluidOverlay>
 
-      <FluidOverlay
-        open={showWikipedia}
-        onClose={() => setShowWikipedia(false)}
-        variant="dialog"
-        panelClassName="max-w-5xl w-full p-0 bg-transparent border-0 shadow-none"
-      >
-        <WikipediaWidget
-          onClose={() => setShowWikipedia(false)}
-          userId={userId}
-          onRefreshLibrary={onRefreshLibrary}
-        />
-      </FluidOverlay>
+      {showWikipedia && (
+        <div className="fixed inset-0 z-[80] bg-kindle-bg flex flex-col w-full h-full overflow-hidden">
+          <WikipediaWidget
+            onClose={() => setShowWikipedia(false)}
+            userId={userId}
+            onRefreshLibrary={onRefreshLibrary}
+          />
+        </div>
+      )}
     </div>
   );
 }

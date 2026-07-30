@@ -497,6 +497,115 @@ mark.kora-hl-pink {
   --color-kindle-card: #27272A;
 }
 
+
+/* ── Natural Paper ── */
+.theme-paper {
+  --theme-bg: #FAF7F2;
+  --theme-text: #2C2A26;
+  --theme-text-muted: #8B7355;
+  --theme-border: #E4DDD2;
+  --theme-accent: #8B7355;
+  --theme-card: #F3EEE6;
+  --toast-bg: rgba(250, 247, 242, 0.9);
+
+  --color-kindle-bg: #FAF7F2;
+  --color-kindle-text: #2C2A26;
+  --color-kindle-text-muted: #8B7355;
+  --color-kindle-border: #E4DDD2;
+  --color-kindle-accent: #8B7355;
+  --color-kindle-card: #F3EEE6;
+}
+
+/* ── Vintage Sepia ── */
+.theme-sepia {
+  --theme-bg: #F4ECD8;
+  --theme-text: #5B4636;
+  --theme-text-muted: #9C7A5B;
+  --theme-border: #DBCDA4;
+  --theme-accent: #9C7A5B;
+  --theme-card: #EFE3C5;
+  --toast-bg: rgba(244, 236, 216, 0.9);
+
+  --color-kindle-bg: #F4ECD8;
+  --color-kindle-text: #5B4636;
+  --color-kindle-text-muted: #9C7A5B;
+  --color-kindle-border: #DBCDA4;
+  --color-kindle-accent: #9C7A5B;
+  --color-kindle-card: #EFE3C5;
+}
+
+/* ── Botanical Mint ── */
+.theme-green {
+  --theme-bg: #E3EDD3;
+  --theme-text: #2D3E1E;
+  --theme-text-muted: #4A6B32;
+  --theme-border: #C5D6A8;
+  --theme-accent: #4A6B32;
+  --theme-card: #D9E6C3;
+  --toast-bg: rgba(227, 237, 211, 0.9);
+
+  --color-kindle-bg: #E3EDD3;
+  --color-kindle-text: #2D3E1E;
+  --color-kindle-text-muted: #4A6B32;
+  --color-kindle-border: #C5D6A8;
+  --color-kindle-accent: #4A6B32;
+  --color-kindle-card: #D9E6C3;
+}
+
+/* ── Dusk Twilight ── */
+.theme-night {
+  --theme-bg: #1C1F26;
+  --theme-text: #D6D8DE;
+  --theme-text-muted: #94A3B8;
+  --theme-border: #3A4050;
+  --theme-accent: #7DD3FC;
+  --theme-card: #252A33;
+  --toast-bg: rgba(28, 31, 38, 0.9);
+
+  --color-kindle-bg: #1C1F26;
+  --color-kindle-text: #D6D8DE;
+  --color-kindle-text-muted: #94A3B8;
+  --color-kindle-border: #3A4050;
+  --color-kindle-accent: #7DD3FC;
+  --color-kindle-card: #252A33;
+}
+
+/* ── Midnight OLED ── */
+.theme-oled {
+  --theme-bg: #000000;
+  --theme-text: #E8E8E8;
+  --theme-text-muted: #888888;
+  --theme-border: #262626;
+  --theme-accent: #E8E8E8;
+  --theme-card: #0D0D0D;
+  --toast-bg: rgba(0, 0, 0, 0.9);
+
+  --color-kindle-bg: #000000;
+  --color-kindle-text: #E8E8E8;
+  --color-kindle-text-muted: #888888;
+  --color-kindle-border: #262626;
+  --color-kindle-accent: #E8E8E8;
+  --color-kindle-card: #0D0D0D;
+}
+
+/* ── Pristine Light ── */
+.theme-light {
+  --theme-bg: #FFFFFF;
+  --theme-text: #111111;
+  --theme-text-muted: #52525B;
+  --theme-border: #E4E4E7;
+  --theme-accent: #18181B;
+  --theme-card: #F4F4F5;
+  --toast-bg: rgba(255, 255, 255, 0.9);
+
+  --color-kindle-bg: #FFFFFF;
+  --color-kindle-text: #111111;
+  --color-kindle-text-muted: #52525B;
+  --color-kindle-border: #E4E4E7;
+  --color-kindle-accent: #18181B;
+  --color-kindle-card: #F4F4F5;
+}
+
 /* ── Dark Blue — deep navy blue mode ── */
 .theme-dark-blue, .dark-blue {
   --theme-bg: #0B1120;
@@ -543,6 +652,7 @@ mark.kora-hl-pink {
 }
 
 html {
+  scrollbar-gutter: stable;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -585,13 +695,16 @@ html.kora-android body {
 
 .kora-mobile-footer {
   bottom: calc(1.25rem + var(--kora-safe-bottom));
-  left: calc(1rem + var(--kora-safe-left));
-  right: calc(1rem + var(--kora-safe-right));
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: calc(100% - 2rem - var(--kora-safe-left) - var(--kora-safe-right)) !important;
+  max-width: 28rem !important;
   /* Opaque fallback so feed/list content never shows through the tab bar */
   background: var(--theme-card, var(--color-kindle-card, #f7f3e3)) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   isolation: isolate;
+  box-sizing: border-box;
 }
 
 .kora-tab-bar {
@@ -765,7 +878,16 @@ h1, h2, h3, h4 {
   border-color: var(--color-kindle-border);
   color: var(--color-kindle-text);
   border-radius: 1rem;
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.07), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.dark .kindle-card,
+.theme-dark-grey .kindle-card,
+.theme-dark-blue .kindle-card,
+.theme-night .kindle-card,
+.theme-oled .kindle-card {
+  box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.45), 0 4px 6px -2px rgba(0, 0, 0, 0.25);
 }
 
 /* EPUB Text Reader Style Overrides to Prevent Text Clipping on Mobile */
@@ -930,7 +1052,58 @@ h1, h2, h3, h4 {
   text-shadow: none;
 }
 
-/* Precise focus-mode styles targeting library header */
-div#root:nth-of-type(1) > div#app-root-container:nth-of-type(1) > main:nth-of-type(1) > div:nth-of-type(1) > div#library-manager-section:nth-of-type(1) > header:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1) {
-  font-family: "Nata Sans", sans-serif;
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
 }
+
+@keyframes marquee-reverse {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0%); }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee 35s linear infinite;
+}
+
+.animate-marquee-fast {
+  display: flex;
+  width: max-content;
+  animation: marquee 25s linear infinite;
+}
+
+.animate-marquee-reverse {
+  display: flex;
+  width: max-content;
+  animation: marquee-reverse 28s linear infinite;
+}
+
+.animate-marquee:hover, .animate-marquee-fast:hover, .animate-marquee-reverse:hover {
+  animation-play-state: paused;
+}
+
+.globe-perspective-container {
+  perspective: 1400px;
+  transform-style: preserve-3d;
+}
+
+
+
+.dark 
+
+
+
+.dark 
+
+/* Hide scroll bar on mobile view */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    display: none !important;
+  }
+  * {
+    scrollbar-width: none !important;
+  }
+}
+

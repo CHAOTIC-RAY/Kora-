@@ -30,6 +30,8 @@ import {
   PlusCircle,
   HelpCircle,
   AlertTriangle,
+  Maximize2,
+  Minimize2
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -160,17 +162,18 @@ interface GameScoreTrackerProps {
 }
 
 const PLAYER_COLORS = [
-  "#3b82f6",
-  "#ef4444",
-  "#10b981",
-  "#f59e0b",
-  "#8b5cf6",
-  "#ec4899",
-  "#06b6d4",
-  "#f97316"
+  "#3b82f6", // Blue
+  "#ef4444", // Red
+  "#10b981", // Emerald
+  "#f59e0b", // Amber
+  "#8b5cf6", // Purple
+  "#ec4899", // Pink
+  "#06b6d4", // Cyan
+  "#f97316"  // Orange
 ];
 
 export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProps) {
+  // Game Configuration State
   const [selectedPreset, setSelectedPreset] = useState<GamePreset>(GAME_PRESETS[0]);
   const [competitionMode, setCompetitionMode] = useState<boolean>(true);
   const [winCondition, setWinCondition] = useState<"highest" | "lowest">("highest");
@@ -179,6 +182,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const [categories, setCategories] = useState<string[]>([]);
   const [customCategoryInput, setCustomCategoryInput] = useState<string>("");
 
+  // Players State
   const [players, setPlayers] = useState<Player[]>([
     { id: "p1", name: "Player 1", color: PLAYER_COLORS[0], totalTimeSeconds: 0 },
     { id: "p2", name: "Player 2", color: PLAYER_COLORS[1], totalTimeSeconds: 0 },
@@ -186,6 +190,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   ]);
   const [newPlayerName, setNewPlayerName] = useState<string>("");
 
+  // Active Match State
   const [matchActive, setMatchActive] = useState<boolean>(false);
   const [rounds, setRounds] = useState<RoundScore[]>([]);
   const [activePlayerIndex, setActivePlayerIndex] = useState<number>(0);
@@ -193,15 +198,25 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const [matchEndTime, setMatchEndTime] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
+  // Turn Clock & Timer
   const [turnTimerSeconds, setTurnTimerSeconds] = useState<number>(60);
   const [timeRemaining, setTimeRemaining] = useState<number>(60);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
 
+  // Round Input Buffer
   const [roundScoresBuffer, setRoundScoresBuffer] = useState<Record<string, number>>({});
   const [roundCategoryBuffer, setRoundCategoryBuffer] = useState<Record<string, Record<string, number>>>({});
 
+  // Navigation Tabs inside Tracker
   const [activeTab, setActiveTab] = useState<"game" | "history" | "tournament">("game");
 
+  // View: popup (centered, less overwhelming) or fullscreen takeover.
+  // On mobile the tracker always takes the full screen (no room to float a popup).
+  const [view, setView] = useState<"popup" | "fullscreen">(
+    typeof window !== "undefined" && window.innerWidth < 768 ? "fullscreen" : "popup"
+  );
+
+  // History Log
   const [matchHistory, setMatchHistory] = useState<MatchHistoryEntry[]>(() => {
     try {
       const saved = localStorage.getItem("kora_game_score_history");
@@ -211,14 +226,17 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     }
   });
 
+  // Tournament Bracket State
   const [tournamentBracket, setTournamentBracket] = useState<{
     players: string[];
     round1: { p1: string; p2: string; winner?: string }[];
     finals: { p1: string; p2: string; winner?: string };
   } | null>(null);
 
+  // Canvas Confetti Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  // Load preset specs when preset changes
   const handleSelectPreset = (preset: GamePreset) => {
     setSelectedPreset(preset);
     setWinCondition(preset.winCondition);
@@ -236,6 +254,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     }
   };
 
+  // Turn Timer Effect in Competition Mode
   useEffect(() => {
     let timer: any;
     if (matchActive && competitionMode && isTimerRunning) {
@@ -252,6 +271,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
           return prev - 1;
         });
 
+        // Add 1s to current active player's time spent
         setPlayers((prev) =>
           prev.map((p, idx) =>
             idx === activePlayerIndex ? { ...p, totalTimeSeconds: p.totalTimeSeconds + 1 } : p
@@ -262,6 +282,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     return () => clearInterval(timer);
   }, [matchActive, competitionMode, isTimerRunning, activePlayerIndex, soundEnabled]);
 
+  // Play Web Audio Synth Beep
   const playBeepSound = (freq = 440, duration = 0.1) => {
     if (!soundEnabled) return;
     try {
@@ -283,6 +304,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     }
   };
 
+  // Play Victory Sound Fanfare
   const playVictorySound = () => {
     if (!soundEnabled) return;
     try {
@@ -295,6 +317,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     }
   };
 
+  // Fire Native Canvas Confetti
   const triggerConfetti = () => {
     playVictorySound();
     const canvas = canvasRef.current;
@@ -341,7 +364,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
       particles.forEach((p) => {
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.3;
+        p.vy += 0.3; // Gravity
         p.rotation += p.vRot;
 
         ctx.save();
@@ -362,6 +385,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     render();
   };
 
+  // Start New Match
   const handleStartMatch = () => {
     if (players.length < 2) {
       toast.error("Add at least 2 players to begin!");
@@ -379,6 +403,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     toast.success(`Match Started: ${selectedPreset.name} ${competitionMode ? "🏆 Competition Mode" : "🎲 Casual"}`);
   };
 
+  // Calculate Cumulative Total Scores
   const getPlayerTotal = (playerId: string): number => {
     const player = players.find((p) => p.id === playerId);
     const handicap = player?.handicap || 0;
@@ -386,105 +411,153 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     return roundSum + handicap;
   };
 
+  // Get Sorted Rankings
   const getRankedPlayers = () => {
     return [...players].sort((a, b) => {
       const scoreA = getPlayerTotal(a.id);
       const scoreB = getPlayerTotal(b.id);
-      return scoreB - scoreA;
+      return winCondition === "highest" ? scoreB - scoreA : scoreA - scoreB;
     });
   };
 
-  const handleFinishMatch = () => {
+  // Check for Target Score Winner
+  const checkWinnerCondition = (updatedRounds: RoundScore[]) => {
+    if (!targetScore) return;
     const ranked = getRankedPlayers();
-    const winner = ranked[0];
-    const endTime = Date.now();
-    const durationMinutes = matchStartTime ? Math.max(1, Math.round((endTime - matchStartTime) / 60000)) : 1;
+    const leader = ranked[0];
+    const leaderScore = getPlayerTotal(leader.id);
 
-    const entry: MatchHistoryEntry = {
-      id: `${Date.now()}`,
+    if (winCondition === "highest" && leaderScore >= targetScore) {
+      handleFinishMatch(leader);
+    } else if (winCondition === "lowest" && leaderScore >= targetScore) {
+      // In lowest win games (e.g. Uno), game ends when someone hits target max, lowest score wins
+      const winner = ranked[ranked.length - 1];
+      handleFinishMatch(winner);
+    }
+  };
+
+  // Submit Current Round Scores
+  const handleSubmitRound = () => {
+    const roundNumber = rounds.length + 1;
+    const playerScores: Record<string, number> = {};
+
+    players.forEach((p) => {
+      if (enableCategories && categories.length > 0) {
+        const catMap = roundCategoryBuffer[p.id] || {};
+        const sum = Object.values(catMap).reduce((a, b) => a + b, 0);
+        playerScores[p.id] = sum;
+      } else {
+        playerScores[p.id] = roundScoresBuffer[p.id] || 0;
+      }
+    });
+
+    const newRound: RoundScore = {
+      roundNumber,
+      timestamp: Date.now(),
+      playerScores,
+      categoryBreakdown: enableCategories ? { ...roundCategoryBuffer } : undefined
+    };
+
+    const nextRounds = [...rounds, newRound];
+    setRounds(nextRounds);
+    setRoundScoresBuffer({});
+    setRoundCategoryBuffer({});
+    setTimeRemaining(turnTimerSeconds);
+    playBeepSound(800, 0.15);
+    toast.success(`Round ${roundNumber} Recorded!`);
+
+    checkWinnerCondition(nextRounds);
+  };
+
+  // Undo Last Round
+  const handleUndoLastRound = () => {
+    if (rounds.length === 0) return;
+    setRounds((prev) => prev.slice(0, -1));
+    toast("Undid last round", { icon: "↩️" });
+  };
+
+  // Finish & Save Match
+  const handleFinishMatch = (forcedWinner?: Player) => {
+    const ranked = getRankedPlayers();
+    const winner = forcedWinner || ranked[0];
+    const winnerScore = getPlayerTotal(winner.id);
+    const duration = matchStartTime ? Math.max(1, Math.round((Date.now() - matchStartTime) / 60000)) : 1;
+
+    const historyEntry: MatchHistoryEntry = {
+      id: "match_" + Date.now(),
       gameName: selectedPreset.name,
-      date: new Date().toLocaleDateString(),
+      date: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
       competitionMode,
       winnerName: winner.name,
-      winnerScore: getPlayerTotal(winner.id),
+      winnerScore,
       players: ranked.map((p, idx) => ({
         name: p.name,
         score: getPlayerTotal(p.id),
         rank: idx + 1
       })),
-      durationMinutes
+      durationMinutes: duration
     };
 
-    setMatchHistory((prev) => {
-      const next = [entry, ...prev].slice(0, 50);
-      localStorage.setItem("kora_game_score_history", JSON.stringify(next));
-      return next;
-    });
+    const nextHistory = [historyEntry, ...matchHistory];
+    setMatchHistory(nextHistory);
+    try {
+      localStorage.setItem("kora_game_score_history", JSON.stringify(nextHistory.slice(0, 50)));
+    } catch {
+      // storage quota
+    }
 
-    triggerConfetti();
     setMatchActive(false);
-    setMatchEndTime(endTime);
-    toast.success(`🏆 ${winner.name} wins with ${getPlayerTotal(winner.id)} pts`);
+    setIsTimerRunning(false);
+    setMatchEndTime(Date.now());
+    triggerConfetti();
   };
 
+  // Player Management
   const handleAddPlayer = () => {
-    const name = newPlayerName.trim();
-    if (!name) return;
-    const next: Player[] = [
-      ...players,
-      {
-        id: `p${Date.now()}`,
-        name,
-        color: PLAYER_COLORS[players.length % PLAYER_COLORS.length],
-        totalTimeSeconds: 0
-      }
-    ];
-    setPlayers(next);
+    if (!newPlayerName.trim()) return;
+    const color = PLAYER_COLORS[players.length % PLAYER_COLORS.length];
+    const newP: Player = {
+      id: "p_" + Date.now(),
+      name: newPlayerName.trim(),
+      color,
+      totalTimeSeconds: 0
+    };
+    setPlayers([...players, newP]);
     setNewPlayerName("");
+    toast.success(`Player added: ${newP.name}`);
   };
 
   const handleRemovePlayer = (id: string) => {
-    setPlayers((prev) => prev.filter((p) => p.id !== id));
+    if (players.length <= 2) {
+      toast.error("Game requires at least 2 players!");
+      return;
+    }
+    setPlayers(players.filter((p) => p.id !== id));
   };
 
+  // Quick Score Adjuster in buffer
   const handleAdjustBufferScore = (playerId: string, delta: number) => {
-    setRoundScoresBuffer((prev) => {
-      const current = prev[playerId] || 0;
-      return { ...prev, [playerId]: Math.max(0, current + delta) };
-    });
+    setRoundScoresBuffer((prev) => ({
+      ...prev,
+      [playerId]: (prev[playerId] || 0) + delta
+    }));
   };
 
-  const handleAdjustCategoryScore = (playerId: string, category: string, delta: number) => {
+  // Quick Category Adjuster in buffer
+  const handleAdjustCategoryScore = (playerId: string, cat: string, delta: number) => {
     setRoundCategoryBuffer((prev) => {
-      const playerMap = prev[playerId] || {};
-      const current = playerMap[category] || 0;
+      const playerCats = prev[playerId] || {};
       return {
         ...prev,
-        [playerId]: { ...playerMap, [category]: Math.max(0, current + delta) }
+        [playerId]: {
+          ...playerCats,
+          [cat]: (playerCats[cat] || 0) + delta
+        }
       };
     });
   };
 
-  const handleSubmitRound = () => {
-    const entry: RoundScore = {
-      roundNumber: rounds.length + 1,
-      timestamp: Date.now(),
-      playerScores: { ...roundScoresBuffer },
-      categoryBreakdown: enableCategories ? { ...roundCategoryBuffer } : undefined
-    };
-
-    setRounds((prev) => [...prev, entry]);
-    setRoundScoresBuffer({});
-    setRoundCategoryBuffer({});
-    setActivePlayerIndex((prev) => (prev + 1) % players.length);
-    setTimeRemaining(turnTimerSeconds);
-    toast.success(`Round ${entry.roundNumber} saved`);
-  };
-
-  const handleUndoLastRound = () => {
-    setRounds((prev) => prev.slice(0, -1));
-  };
-
+  // Setup Tournament Elimination Bracket
   const handleGenerateTournament = () => {
     const pNames = players.map((p) => p.name);
     if (pNames.length < 4) {
@@ -508,152 +581,159 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const rankedPlayers = getRankedPlayers();
   const currentLeader = rankedPlayers[0];
 
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const effectiveView = isMobile ? "fullscreen" : view;
+
   return (
-    <AnimatePresence>
+    <div className={effectiveView === "fullscreen"
+      ? "fixed inset-0 z-50 bg-kindle-bg flex flex-col overflow-hidden w-full h-full"
+      : "fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto"}>
+      {/* Canvas Confetti Layer */}
+      <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />
+
       <motion.div
-        className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex flex-col text-kindle-text"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
+        initial={{ opacity: 0, scale: 0.96, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 10 }}
+        className={effectiveView === "fullscreen"
+          ? "w-full h-full bg-kindle-bg border-0 rounded-none shadow-none overflow-hidden flex flex-col"
+          : "w-full max-w-5xl bg-kindle-bg border border-kindle-border rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]"}
       >
-        <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-50" />
 
-        <header className="relative z-10 border-b border-kindle-border bg-kindle-card/90 backdrop-blur kora-safe-top">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-kindle-accent/10 border border-kindle-accent/25 flex items-center justify-center text-xl shrink-0">
-                {selectedPreset.iconName}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-base font-bold tracking-tight truncate">
-                  Board & Card Game Score Tracker
-                </h3>
-                <p className="text-[10px] text-kindle-text-muted truncate">
-                  {selectedPreset.name} • {winCondition === "highest" ? "Highest Score Wins" : "Lowest Score Wins"}
-                </p>
-              </div>
+
+        {/* Header Bar */}
+        <div className="px-6 py-4 border-b border-kindle-border bg-kindle-card flex items-center justify-between gap-4 select-none shrink-0 kora-safe-top">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 rounded-xl flex items-center justify-center text-xl shrink-0 w-10 h-10 select-none">
+              {selectedPreset.iconName}
             </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setSoundEnabled((v) => !v)}
-                className="p-2 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text hover:border-kindle-accent transition cursor-pointer"
-                title={soundEnabled ? "Mute Game Audio" : "Enable Game Audio"}
-              >
-                {soundEnabled ? <Volume2 className="w-4 h-4 text-kindle-accent" /> : <VolumeX className="w-4 h-4 text-kindle-text-muted" />}
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="p-2 bg-kindle-bg border border-kindle-border rounded-xl text-kindle-text hover:bg-kindle-border transition cursor-pointer"
-                title="Close"
-              >
-                <X className="w-4 h-4" />
-              </button>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-bold text-kindle-text leading-tight">
+                  Game Score Tracker
+                </h2>
+              </div>
+              <p className="text-[10px] text-kindle-text-muted">
+                Preset: {selectedPreset.name} • {winCondition === "highest" ? "Highest Score Wins" : "Lowest Score Wins"}
+              </p>
             </div>
           </div>
 
-          <div className="px-4 pb-2 flex items-center gap-2">
-            <div className="flex items-center gap-1 overflow-x-auto">
+          {/* Header Controls */}
+          <div className="flex items-center gap-1">
+            {!isMobile && (
               <button
                 type="button"
-                onClick={() => setActiveTab("game")}
-                className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeTab === "game"
-                    ? "bg-kindle-text text-kindle-bg shadow-sm"
-                    : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
-                }`}
+                onClick={() => setView(view === "fullscreen" ? "popup" : "fullscreen")}
+                className="p-2 hover:bg-kindle-bg border border-transparent hover:border-kindle-border rounded-xl text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+                title={view === "fullscreen" ? "Shrink to popup" : "Expand to fullscreen"}
               >
-                <Dices className="w-3.5 h-3.5" /> Match Arena
+                {view === "fullscreen" ? <Minimize2 className="w-4.5 h-4.5" /> : <Maximize2 className="w-4.5 h-4.5" />}
               </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("history")}
-                className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeTab === "history"
-                    ? "bg-kindle-text text-kindle-bg shadow-sm"
-                    : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
-                }`}
-              >
-                <History className="w-3.5 h-3.5" /> Match History ({matchHistory.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("tournament")}
-                className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 ${
-                  activeTab === "tournament"
-                    ? "bg-kindle-text text-kindle-bg shadow-sm"
-                    : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
-                }`}
-              >
-                <Trophy className="w-3.5 h-3.5 text-yellow-500" /> Tournament Bracket
-              </button>
-            </div>
-            {matchActive && (
-              <div className="flex items-center gap-2 font-mono text-[11px] shrink-0">
-                <span className="flex items-center gap-1 font-bold text-kindle-text">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                  Live
-                </span>
-                <span className="text-kindle-text-muted">R{rounds.length + 1}</span>
-              </div>
             )}
+            <button
+              type="button"
+              onClick={() => setSoundEnabled(!soundEnabled)}
+              className="p-2 hover:bg-kindle-bg border border-transparent hover:border-kindle-border rounded-xl text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+              title={soundEnabled ? "Mute Game Audio" : "Enable Game Audio"}
+            >
+              {soundEnabled ? <Volume2 className="w-4.5 h-4.5" /> : <VolumeX className="w-4.5 h-4.5" />}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 hover:bg-kindle-bg border border-transparent hover:border-kindle-border rounded-xl text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+              title="Close Tracker"
+            >
+              <X className="w-4.5 h-4.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Switcher Bar */}
+        <div className="px-6 py-2.5 bg-kindle-bg border-b border-kindle-border flex items-center justify-between gap-2 overflow-x-auto text-xs shrink-0">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab("game")}
+              className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === "game"
+                  ? "bg-kindle-text text-kindle-bg shadow-sm"
+                  : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
+              }`}
+            >
+              <Dices className="w-3.5 h-3.5" /> Match Arena
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("history")}
+              className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === "history"
+                  ? "bg-kindle-text text-kindle-bg shadow-sm"
+                  : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
+              }`}
+            >
+              <History className="w-3.5 h-3.5" /> Match History ({matchHistory.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("tournament")}
+              className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === "tournament"
+                  ? "bg-kindle-text text-kindle-bg shadow-sm"
+                  : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
+              }`}
+            >
+              <Trophy className="w-3.5 h-3.5 text-yellow-500" /> Tournament Bracket
+            </button>
           </div>
 
-          {competitionMode && (
-            <div className="px-4 pb-2">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/25 text-[9px] font-bold uppercase tracking-widest">
-                <Swords className="w-3 h-3" /> Competition Mode
+          {matchActive && (
+            <div className="flex items-center gap-2 font-mono text-[11px]">
+              <span className="flex items-center gap-1 font-bold text-kindle-text">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                Live Match
               </span>
+              <span className="text-kindle-text-muted">• Round {rounds.length + 1}</span>
             </div>
           )}
-        </header>
+        </div>
 
-        <div className="relative z-10 flex-1 overflow-y-auto overscroll-contain">
+        {/* Modal Main Content Body */}
+        <div className="p-6 overflow-y-auto space-y-6 flex-1 pb-32 sm:pb-6">
           {activeTab === "game" && (
-            <div className="p-4 space-y-4">
+            <>
+              {/* Setup / Configuration Panel when match is NOT active */}
               {!matchActive ? (
-                <div className="space-y-4">
+                <div className="space-y-6">
+                  {/* Preset Selector */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
                         <Dices className="w-4 h-4 text-kindle-accent" /> Select Game Preset
                       </h4>
-                      <button
-                        type="button"
-                        onClick={() => setCompetitionMode(!competitionMode)}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
-                          competitionMode
-                            ? "bg-[#e0533c]/10 text-[#e0533c] border-[#e0533c]/30 shadow-xs"
-                            : "bg-kindle-card text-kindle-text-muted border-kindle-border"
-                        }`}
-                      >
-                        <Swords className="w-3.5 h-3.5" />
-                        {competitionMode ? "ON 🏆" : "OFF"}
-                      </button>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       {GAME_PRESETS.map((preset) => (
                         <button
                           key={preset.id}
                           type="button"
                           onClick={() => handleSelectPreset(preset)}
-                          className={`p-3 rounded-2xl border text-left transition duration-200 cursor-pointer flex flex-col justify-between space-y-2 ${
+                          className={`p-3.5 rounded-2xl border text-left transition duration-200 cursor-pointer flex flex-col justify-between space-y-2 ${
                             selectedPreset.id === preset.id
                               ? "bg-kindle-card border-kindle-accent ring-1 ring-kindle-accent/40 shadow-xs"
                               : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted/40"
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-xl">{preset.iconName}</span>
+                            <span className="text-2xl">{preset.iconName}</span>
                             <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-kindle-bg border border-kindle-border text-kindle-text-muted">
                               {preset.type}
                             </span>
                           </div>
                           <div>
-                            <h5 className="text-[11px] font-bold text-kindle-text truncate">{preset.name}</h5>
+                            <h5 className="text-xs font-bold text-kindle-text truncate">{preset.name}</h5>
                             <p className="text-[9px] text-kindle-text-muted line-clamp-2 mt-0.5">{preset.description}</p>
                           </div>
                         </button>
@@ -661,7 +741,50 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3">
+                  {/* Competition Mode Toggle Card - Premium, spacious, and extremely mobile-friendly */}
+                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition duration-200 hover:border-kindle-border/80">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className={`p-2.5 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
+                        competitionMode 
+                          ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" 
+                          : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
+                      }`}>
+                        <Swords className="w-5 h-5" />
+                      </div>
+                      <div className="space-y-0.5 text-left">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs sm:text-sm font-bold text-kindle-text">Competition Mode</h4>
+                          {competitionMode && (
+                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20 animate-pulse">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] sm:text-[11px] text-kindle-text-muted leading-snug">
+                          Locks round scores, enforces time limits, tracks blitz speed bonuses, and records tournament placements.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setCompetitionMode(!competitionMode)}
+                      className={`w-12 h-6 rounded-full p-0.5 transition-colors duration-200 cursor-pointer focus:outline-none flex items-center shrink-0 ${
+                        competitionMode ? "bg-[#e0533c]" : "bg-neutral-800"
+                      }`}
+                    >
+                      <motion.div
+                        layout
+                        className="w-5 h-5 rounded-full bg-white shadow-md"
+                        animate={{ x: competitionMode ? 24 : 0 }}
+                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Mode Settings & Competition Toggles */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Win Condition Box */}
                     <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block">
                         Win Condition & Target
@@ -670,7 +793,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         <button
                           type="button"
                           onClick={() => setWinCondition("highest")}
-                          className={`py-2 text-xs font-bold rounded-xl border transition ${
+                          className={`py-1.5 text-xs font-bold rounded-xl border transition ${
                             winCondition === "highest"
                               ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
                               : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
@@ -681,7 +804,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         <button
                           type="button"
                           onClick={() => setWinCondition("lowest")}
-                          className={`py-2 text-xs font-bold rounded-xl border transition ${
+                          className={`py-1.5 text-xs font-bold rounded-xl border transition ${
                             winCondition === "lowest"
                               ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
                               : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
@@ -692,17 +815,18 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                       </div>
 
                       <div className="flex items-center justify-between pt-2 border-t border-kindle-border">
-                        <span className="text-[11px] font-bold text-kindle-text">Target Points:</span>
+                        <span className="text-xs font-bold text-kindle-text">Target Points:</span>
                         <input
                           type="number"
                           value={targetScore || ""}
                           onChange={(e) => setTargetScore(e.target.value ? parseInt(e.target.value, 10) : undefined)}
                           placeholder="No Limit"
-                          className="w-24 px-2 py-1.5 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono text-center font-bold text-kindle-text focus:outline-none focus:border-kindle-accent"
+                          className="w-24 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono text-center font-bold text-kindle-text focus:outline-none focus:border-kindle-accent"
                         />
                       </div>
                     </div>
 
+                    {/* Turn Clock / Competition Settings */}
                     <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
                       <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block flex items-center justify-between">
                         <span>Turn Timer (Seconds)</span>
@@ -717,7 +841,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                               setTurnTimerSeconds(sec);
                               setTimeRemaining(sec);
                             }}
-                            className={`py-2 text-xs font-mono font-bold rounded-xl border transition ${
+                            className={`py-1.5 text-xs font-mono font-bold rounded-xl border transition ${
                               turnTimerSeconds === sec
                                 ? "bg-kindle-text text-kindle-bg border-kindle-text"
                                 : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
@@ -732,6 +856,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                       </p>
                     </div>
 
+                    {/* Category Scoring Toggle (compact when off) */}
                     <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">
@@ -777,7 +902,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                               value={customCategoryInput}
                               onChange={(e) => setCustomCategoryInput(e.target.value)}
                               placeholder="Add custom category..."
-                              className="flex-1 px-2 py-1.5 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text"
+                              className="flex-1 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text"
                             />
                             <button
                               type="button"
@@ -797,35 +922,36 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                     </div>
                   </div>
 
-                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-4">
-                    <div className="flex items-center justify-between border-b border-kindle-border pb-3">
+                  {/* Player Roster Builder */}
+                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-kindle-border pb-3 gap-3">
                       <div>
                         <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                          <Users className="w-4 h-4 text-kindle-accent" /> Competitor Roster
+                          <Users className="w-4 h-4 text-kindle-accent" /> Competitor Roster ({players.length} Players)
                         </h4>
-                        <p className="text-[10px] text-kindle-text-muted">{players.length} players</p>
+                        <p className="text-[10px] text-kindle-text-muted">Add players and optional handicap adjustments before launching match.</p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 w-full md:w-auto">
                         <input
                           type="text"
                           value={newPlayerName}
                           onChange={(e) => setNewPlayerName(e.target.value)}
                           onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
-                          placeholder="Name"
-                          className="px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs text-kindle-text focus:outline-none focus:border-kindle-accent"
+                          placeholder="New competitor name..."
+                          className="flex-1 md:flex-none px-3 py-1.5 bg-kindle-bg border border-kindle-border rounded-xl text-xs text-kindle-text focus:outline-none focus:border-kindle-accent"
                         />
                         <button
                           type="button"
                           onClick={handleAddPlayer}
-                          className="px-3 py-2 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold hover:bg-opacity-90 transition cursor-pointer flex items-center gap-1"
+                          className="px-4 py-1.5 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold hover:bg-opacity-90 transition cursor-pointer flex items-center gap-1 shrink-0"
                         >
                           <Plus className="w-3.5 h-3.5" /> Add
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {players.map((p, idx) => (
                         <div
                           key={p.id}
@@ -840,6 +966,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           </div>
 
                           <div className="flex items-center gap-2">
+                            {/* Handicap Input */}
                             <div className="flex items-center gap-1 text-[10px] text-kindle-text-muted">
                               <span>Hdcp:</span>
                               <input
@@ -867,23 +994,32 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
+                  {/* Launch Match Button */}
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="text-[10px] text-kindle-text-muted flex items-center gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-kindle-accent shrink-0" />
+                      <span>In Competition Mode, scores are locked per round and turn times are logged.</span>
+                    </div>
+
                     <button
                       type="button"
                       onClick={handleStartMatch}
-                      className="w-full px-8 py-3.5 bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 active:scale-[0.98] transition shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full sm:w-auto px-8 py-3.5 bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 active:scale-98 transition shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <Play className="w-4 h-4 fill-current" /> Launch Match
+                      <Play className="w-4 h-4 fill-current" /> Launch Arena Match
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-4 animate-in fade-in duration-300">
-                  <div className="grid grid-cols-1 gap-4">
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3 shadow-xs">
+                /* Active Match Arena */
+                <div className="space-y-6 animate-in fade-in duration-300">
+                  {/* Top Live Scoreboard Podium Banner */}
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    {/* Leaderboard Ranks (7 cols) */}
+                    <div className="md:col-span-7 bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 shadow-xs">
                       <div className="flex items-center justify-between border-b border-kindle-border pb-2">
                         <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                          <Crown className="w-4 h-4 text-yellow-500" /> Leaderboard
+                          <Crown className="w-4 h-4 text-yellow-500" /> Current Leaderboard Ranks
                         </h4>
                         <span className="text-[9px] font-mono text-kindle-text-muted">
                           Round {rounds.length + 1} • {winCondition === "highest" ? "Highest Score Wins" : "Lowest Score Wins"}
@@ -925,7 +1061,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                               <div className="flex items-center gap-3">
                                 {rankIdx > 0 && gapToLeader > 0 && (
                                   <span className="text-[9px] font-mono text-kindle-text-muted">
-                                    -{gapToLeader} pts
+                                    -{gapToLeader} pts behind
                                   </span>
                                 )}
                                 <span className="text-base font-bold font-mono text-kindle-text">
@@ -938,20 +1074,22 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                       </div>
                     </div>
 
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-4 shadow-xs">
+                    {/* Turn Clock & Match Blitz Control (5 cols) */}
+                    <div className="md:col-span-5 bg-kindle-card border border-kindle-border rounded-2xl p-5 flex flex-col justify-between space-y-4 shadow-xs">
                       <div className="flex items-center justify-between border-b border-kindle-border pb-2">
                         <span className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                          <Clock className="w-4 h-4 text-kindle-accent" /> Turn Clock
+                          <Clock className="w-4 h-4 text-kindle-accent" /> Competitor Turn Clock
                         </span>
                         <button
                           type="button"
-                          onClick={() => setIsTimerRunning((v) => !v)}
+                          onClick={() => setIsTimerRunning(!isTimerRunning)}
                           className="px-2.5 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer"
                         >
-                          {isTimerRunning ? "Pause" : "Start"}
+                          {isTimerRunning ? "Pause ⏸" : "Start ▶"}
                         </button>
                       </div>
 
+                      {/* Timer Dial Display */}
                       <div className="flex flex-col items-center justify-center py-2 space-y-2">
                         <div
                           className={`text-4xl font-mono font-extrabold tracking-tight transition ${
@@ -960,6 +1098,8 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         >
                           {timeRemaining}s
                         </div>
+
+                        {/* Active Player Turn Identifier */}
                         <div className="flex items-center gap-2 px-3 py-1 bg-kindle-bg border border-kindle-border rounded-full text-xs font-bold">
                           <span className="text-kindle-text-muted">Turn:</span>
                           <span
@@ -970,42 +1110,50 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActivePlayerIndex((prev) => (prev + 1) % players.length);
-                          setTimeRemaining(turnTimerSeconds);
-                          playBeepSound(500, 0.1);
-                        }}
-                        className="w-full py-2.5 bg-kindle-bg hover:bg-kindle-border border border-kindle-border rounded-xl text-xs font-bold text-kindle-text transition cursor-pointer flex items-center justify-center gap-1"
-                      >
-                        Next Player Turn →
-                      </button>
+                      <div className="flex items-center justify-between pt-2 border-t border-kindle-border">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActivePlayerIndex((prev) => (prev + 1) % players.length);
+                            setTimeRemaining(turnTimerSeconds);
+                            playBeepSound(500, 0.1);
+                          }}
+                          className="w-full py-2 bg-kindle-bg hover:bg-kindle-border border border-kindle-border rounded-xl text-xs font-bold text-kindle-text transition cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          Next Player Turn →
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-4 shadow-xs">
+                  {/* Round Score Entry Form */}
+                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4 shadow-xs">
                     <div className="flex items-center justify-between border-b border-kindle-border pb-3">
                       <div>
                         <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                          <PlusCircle className="w-4 h-4 text-kindle-accent" /> Log Round {rounds.length + 1}
+                          <PlusCircle className="w-4 h-4 text-kindle-accent" /> Log Round {rounds.length + 1} Scores
                         </h4>
-                        <p className="text-[10px] text-kindle-text-muted">Round scores for each competitor.</p>
+                        <p className="text-[10px] text-kindle-text-muted">Enter points scored by each player for this round.</p>
                       </div>
-                      {rounds.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleUndoLastRound}
-                          className="px-3 py-1.5 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-bold text-kindle-text-muted hover:text-kindle-text transition cursor-pointer flex items-center gap-1"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" /> Undo
-                        </button>
-                      )}
+
+                      <div className="flex items-center gap-2">
+                        {rounds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleUndoLastRound}
+                            className="px-3 py-1.5 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-bold text-kindle-text-muted hover:text-kindle-text transition cursor-pointer flex items-center gap-1"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" /> Undo Round
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
+                    {/* Matrix Scoring Inputs */}
+                    <div className="space-y-4">
                       {enableCategories && categories.length > 0 ? (
-                        <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                        /* Multi-Category Breakdown Entry */
+                        <div className="space-y-4 max-h-72 overflow-y-auto pr-1">
                           {players.map((p) => (
                             <div key={p.id} className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-2">
                               <div className="flex items-center justify-between border-b border-kindle-border/60 pb-1.5">
@@ -1048,7 +1196,8 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           ))}
                         </div>
                       ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                        /* Single Round Direct Buffer Inputs */
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                           {players.map((p) => {
                             const val = roundScoresBuffer[p.id] || 0;
                             return (
@@ -1067,14 +1216,14 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                                   <button
                                     type="button"
                                     onClick={() => handleAdjustBufferScore(p.id, -5)}
-                                    className="px-2 py-1.5 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
+                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
                                   >
                                     -5
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleAdjustBufferScore(p.id, -1)}
-                                    className="px-2 py-1.5 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
+                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
                                   >
                                     -1
                                   </button>
@@ -1083,20 +1232,20 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                                     type="number"
                                     value={val}
                                     onChange={(e) => setRoundScoresBuffer({ ...roundScoresBuffer, [p.id]: parseInt(e.target.value, 10) || 0 })}
-                                    className="w-14 text-center font-mono font-extrabold text-sm text-kindle-text bg-transparent focus:outline-none"
+                                    className="w-16 text-center font-mono font-extrabold text-sm text-kindle-text bg-transparent focus:outline-none"
                                   />
 
                                   <button
                                     type="button"
                                     onClick={() => handleAdjustBufferScore(p.id, 1)}
-                                    className="px-2 py-1.5 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
+                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
                                   >
                                     +1
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => handleAdjustBufferScore(p.id, 5)}
-                                    className="px-2 py-1.5 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
+                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
                                   >
                                     +5
                                   </button>
@@ -1107,18 +1256,19 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="pt-2 flex items-center justify-between gap-4">
                         <button
                           type="button"
-                          onClick={handleFinishMatch}
-                          className="w-full px-4 py-2.5 bg-kindle-bg hover:bg-red-500/10 border border-kindle-border hover:border-red-500/30 rounded-xl text-xs font-bold text-kindle-text-muted hover:text-red-400 transition cursor-pointer"
+                          onClick={() => handleFinishMatch()}
+                          className="px-4 py-2 bg-kindle-bg hover:bg-red-500/10 border border-kindle-border hover:border-red-500/30 rounded-xl text-xs font-bold text-kindle-text-muted hover:text-red-400 transition cursor-pointer"
                         >
-                          End Match Early
+                          End Match Early & Declare Winner
                         </button>
+
                         <button
                           type="button"
                           onClick={handleSubmitRound}
-                          className="w-full px-4 py-2.5 bg-kindle-accent text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                          className="px-6 py-2.5 bg-kindle-accent text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-md cursor-pointer flex items-center gap-1.5"
                         >
                           <CheckCircle2 className="w-4 h-4" /> Submit Round {rounds.length + 1}
                         </button>
@@ -1126,16 +1276,19 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                     </div>
                   </div>
 
+                  {/* Round History Log Table */}
                   {rounds.length > 0 && (
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3 shadow-xs">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">Round History</h4>
+                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">
+                        Round History Matrix
+                      </h4>
                       <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse text-xs">
                           <thead>
                             <tr className="border-b border-kindle-border text-kindle-text-muted text-[10px] uppercase font-mono">
-                              <th className="py-2 px-2">Round</th>
+                              <th className="py-2 px-3">Round</th>
                               {players.map((p) => (
-                                <th key={p.id} className="py-2 px-2">
+                                <th key={p.id} className="py-2 px-3">
                                   {p.name}
                                 </th>
                               ))}
@@ -1144,11 +1297,11 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           <tbody className="divide-y divide-kindle-border/60">
                             {rounds.map((r) => (
                               <tr key={r.roundNumber} className="hover:bg-kindle-bg/50">
-                                <td className="py-2 px-2 font-mono font-bold text-kindle-text-muted">
+                                <td className="py-2 px-3 font-mono font-bold text-kindle-text-muted">
                                   R{r.roundNumber}
                                 </td>
                                 {players.map((p) => (
-                                  <td key={p.id} className="py-2 px-2 font-mono font-bold text-kindle-text">
+                                  <td key={p.id} className="py-2 px-3 font-mono font-bold text-kindle-text">
                                     +{r.playerScores[p.id] || 0}
                                   </td>
                                 ))}
@@ -1161,14 +1314,15 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                   )}
                 </div>
               )}
-            </div>
+            </>
           )}
 
+          {/* Match History Tab */}
           {activeTab === "history" && (
-            <div className="p-4 space-y-4 animate-in fade-in duration-200">
+            <div className="space-y-4 animate-in fade-in duration-200">
               <div className="flex items-center justify-between border-b border-kindle-border pb-3">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                  <History className="w-4 h-4 text-kindle-accent" /> Saved Matches
+                  <History className="w-4 h-4 text-kindle-accent" /> Saved Match Archives
                 </h4>
                 {matchHistory.length > 0 && (
                   <button
@@ -1191,7 +1345,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                   <p className="text-xs">No completed matches recorded yet.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {matchHistory.map((m) => (
                     <div
                       key={m.id}
@@ -1226,87 +1380,92 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
             </div>
           )}
 
+          {/* Tournament Elimination Bracket Tab */}
           {activeTab === "tournament" && (
-            <div className="p-4 space-y-4 animate-in fade-in duration-200">
+            <div className="space-y-6 animate-in fade-in duration-200">
               <div className="flex items-center justify-between border-b border-kindle-border pb-3">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                    <Trophy className="w-4 h-4 text-yellow-500" /> Tournament Bracket
+                    <Trophy className="w-4 h-4 text-yellow-500" /> Tournament Elimination Bracket
                   </h4>
-                  <p className="text-[10px] text-kindle-text-muted">Knockout generator for 4+ players.</p>
+                  <p className="text-[10px] text-kindle-text-muted">Knockout bracket competition generator for 4+ players.</p>
                 </div>
 
                 <button
                   type="button"
                   onClick={handleGenerateTournament}
-                  className="px-3 py-2 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold cursor-pointer hover:bg-opacity-90 transition"
+                  className="px-3 py-1.5 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold cursor-pointer hover:bg-opacity-90 transition"
                 >
-                  Generate Bracket
+                  Generate 4-Player Bracket
                 </button>
               </div>
 
               {tournamentBracket ? (
-                <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-6 shadow-xs">
-                  <div className="space-y-4">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted block border-b border-kindle-border pb-1">
-                      Semi-Finals
-                    </span>
-                    {tournamentBracket.round1.map((m, idx) => (
-                      <div key={idx} className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-2">
-                        <span className="text-[9px] font-bold uppercase text-kindle-text-muted">Match #{idx + 1}</span>
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-kindle-text">{m.p1}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = { ...tournamentBracket };
-                                updated.round1[idx].winner = m.p1;
-                                if (idx === 0) updated.finals.p1 = m.p1;
-                                if (idx === 1) updated.finals.p2 = m.p1;
-                                setTournamentBracket(updated);
-                              }}
-                              className="px-2 py-0.5 rounded bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent text-[9px] font-bold"
-                            >
-                              Win
-                            </button>
-                          </div>
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-kindle-text">{m.p2}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = { ...tournamentBracket };
-                                updated.round1[idx].winner = m.p2;
-                                if (idx === 0) updated.finals.p1 = m.p2;
-                                if (idx === 1) updated.finals.p2 = m.p2;
-                                setTournamentBracket(updated);
-                              }}
-                              className="px-2 py-0.5 rounded bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent text-[9px] font-bold"
-                            >
-                              Win
-                            </button>
+                <div className="bg-kindle-card border border-kindle-border rounded-2xl p-6 space-y-8 shadow-xs">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    {/* Semi-Finals */}
+                    <div className="space-y-4">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted block border-b border-kindle-border pb-1">
+                        Semi-Final Matches
+                      </span>
+                      {tournamentBracket.round1.map((m, idx) => (
+                        <div key={idx} className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-2">
+                          <span className="text-[9px] font-bold uppercase text-kindle-text-muted">Match #{idx + 1}</span>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-kindle-text">{m.p1}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = { ...tournamentBracket };
+                                  updated.round1[idx].winner = m.p1;
+                                  if (idx === 0) updated.finals.p1 = m.p1;
+                                  if (idx === 1) updated.finals.p2 = m.p1;
+                                  setTournamentBracket(updated);
+                                }}
+                                className="px-2 py-0.5 rounded bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent text-[9px] font-bold"
+                              >
+                                Win
+                              </button>
+                            </div>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-kindle-text">{m.p2}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = { ...tournamentBracket };
+                                  updated.round1[idx].winner = m.p2;
+                                  if (idx === 0) updated.finals.p1 = m.p2;
+                                  if (idx === 1) updated.finals.p2 = m.p2;
+                                  setTournamentBracket(updated);
+                                }}
+                                className="px-2 py-0.5 rounded bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent text-[9px] font-bold"
+                              >
+                                Win
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
-                  <div className="space-y-4">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-500 block border-b border-kindle-border pb-1">
-                      Championship Finals
-                    </span>
-                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Crown className="w-5 h-5 text-yellow-500" />
-                        <span className="text-xs font-bold text-kindle-text">Grand Finalists</span>
-                      </div>
-                      <div className="space-y-2 text-xs">
-                        <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
-                          <span className="font-bold text-kindle-text">{tournamentBracket.finals.p1}</span>
+                    {/* Finals */}
+                    <div className="space-y-4">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-yellow-500 block border-b border-kindle-border pb-1">
+                        Championship Finals
+                      </span>
+                      <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Crown className="w-5 h-5 text-yellow-500" />
+                          <span className="text-xs font-bold text-kindle-text">Grand Finalists</span>
                         </div>
-                        <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
-                          <span className="font-bold text-kindle-text">{tournamentBracket.finals.p2}</span>
+                        <div className="space-y-2 text-xs">
+                          <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
+                            <span className="font-bold text-kindle-text">{tournamentBracket.finals.p1}</span>
+                          </div>
+                          <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
+                            <span className="font-bold text-kindle-text">{tournamentBracket.finals.p2}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1315,13 +1474,13 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
               ) : (
                 <div className="py-12 text-center text-kindle-text-muted space-y-2">
                   <Trophy className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
-                  <p className="text-xs">Add 4+ players and generate a bracket.</p>
+                  <p className="text-xs">Click 'Generate 4-Player Bracket' above to start a tournament!</p>
                 </div>
               )}
             </div>
           )}
         </div>
       </motion.div>
-    </AnimatePresence>
+    </div>
   );
 }

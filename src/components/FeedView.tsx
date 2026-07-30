@@ -43,6 +43,7 @@ import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
 import TodayNewsBriefCard from "./TodayNewsBriefCard";
 import FeedTikTokScroll from "./FeedTikTokScroll";
+import DailyBriefTikTokView from "./DailyBriefTikTokView";
 
 interface FeedViewProps {
   userId?: string;
@@ -393,8 +394,8 @@ function FeedView({
 
   const performanceMode = localStorage.getItem("kora_performance_mode") === "1";
 
-  // Desktop always uses the grid; mobile honors the persisted layout (default scroll).
-  const effectiveLayout: FeedLayout = isMobile ? feedLayout : "grid";
+  // Desktop always uses the grid; mobile defaults to TikTok scroll view.
+  const effectiveLayout: FeedLayout = isMobile ? "scroll" : "grid";
 
   const [showFilterSheet, setShowFilterSheet] = useState(false);
 
@@ -405,6 +406,8 @@ function FeedView({
 
   const dismissFeedArticle = useAndroidBackLayer(!!readingArticle, "feed-article", () => setReadingArticle(null));
   const dismissManageFeeds = useAndroidBackLayer(showManageFeeds, "feed-manage", () => setShowManageFeeds(false));
+  const [showDailyBriefTikTok, setShowDailyBriefTikTok] = useState(false);
+  const dismissDailyBriefTikTok = useAndroidBackLayer(showDailyBriefTikTok, "feed-daily-brief-tiktok", () => setShowDailyBriefTikTok(false));
 
   const loadLocalState = useCallback(() => {
     const subs = ensureDefaultSubscriptions();
@@ -667,10 +670,10 @@ function FeedView({
 
   return (
     <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
-      <header ref={headerRef} className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3 kora-safe-top pt-[max(0.5rem,calc(var(--kora-safe-top)+0.25rem))]">
+      <header ref={headerRef} className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
         <div className="flex items-center justify-between w-full sm:w-auto">
           <div className="flex items-center gap-2 min-w-0">
-            <h1 className="text-2xl sm:text-3xl font-lexend font-bold tracking-tight text-kindle-text truncate">Feed</h1>
+            <h1 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text truncate">Feed</h1>
             {unreadCount > 0 && (
               <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-kindle-text/10 text-kindle-text border border-kindle-border shrink-0">
                 {unreadCount} unread
@@ -697,24 +700,6 @@ function FeedView({
           >
             <RefreshCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${refreshing ? "animate-spin" : ""}`} />
           </button>
-          {/* Layout toggle — mobile only (desktop stays in grid) */}
-          <div className="flex items-center gap-0.5 rounded-xl border border-kindle-border bg-kindle-card p-0.5 shrink-0 md:hidden">
-            {(["grid", "scroll"] as FeedLayout[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => persistFeedLayout(mode)}
-                aria-pressed={feedLayout === mode}
-                className={`px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition ${
-                  feedLayout === mode
-                    ? "bg-kindle-text text-kindle-bg"
-                    : "text-kindle-text-muted hover:text-kindle-text"
-                }`}
-              >
-                {mode === "grid" ? "Grid" : "Scroll"}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 
@@ -785,51 +770,57 @@ function FeedView({
             Add a feed source with Manage above, or share an article link to Kora from your browser.
           </p>
         </div>
-  ) : effectiveLayout === "scroll" ? (
+      ) : effectiveLayout === "scroll" ? (
         <FeedTikTokScroll
           items={visibleItems}
           grayscaleCovers={grayscaleCovers}
           perfMode={performanceMode}
           onRead={(item) => void handleReadArticle(item)}
           onSave={(item) => void handleSaveLater(item)}
-          onOpenBrief={() => setFilter("briefs")}
           onRefresh={() => void refreshFeeds()}
           onManage={() => setShowManageFeeds(true)}
           onFilter={() => setShowFilterSheet(true)}
+          onOpenDailyBrief={() => setShowDailyBriefTikTok(true)}
           refreshing={refreshing}
           height={scrollContainerHeight}
         />
       ) : (
         <div className="space-y-4">
-          <TodayNewsBriefCard items={retainedItems} onReadArticle={handleReadArticle} />
+          {filter === "all" && !selectedSubscriptionId && (
+            <TodayNewsBriefCard
+              items={retainedItems}
+              onReadArticle={handleReadArticle}
+              onOpenTikTokBrief={() => setShowDailyBriefTikTok(true)}
+            />
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {visibleItems.map((item, index) => {
-              const cover = getItemThumbnail(item);
-              const title = displayTitle(item);
-              return (
-                <FeedArticleCard
-                  key={item.id}
-                  item={item}
-                  cover={cover}
-                  busy={false}
-                  title={title}
-                  variant={getBentoVariant(index)}
-                  grayscaleCovers={grayscaleCovers}
-                  onRead={() => void handleReadArticle(item)}
-                  onToggleRead={() => {
-                    const nextRead = !item.read;
-                    markFeedItemRead(item.id, nextRead);
-                    setItems(getFeedItems());
-                    if (nextRead) {
-                      toast.success("Marked as read");
-                    } else {
-                      toast.success("Marked as unread");
-                    }
-                  }}
-                  onSaveLater={() => void handleSaveLater(item)}
-                />
-              );
-            })}
+          {visibleItems.map((item, index) => {
+            const cover = getItemThumbnail(item);
+            const title = displayTitle(item);
+            return (
+              <FeedArticleCard
+                key={item.id}
+                item={item}
+                cover={cover}
+                busy={false}
+                title={title}
+                variant={getBentoVariant(index)}
+                grayscaleCovers={grayscaleCovers}
+                onRead={() => void handleReadArticle(item)}
+                onToggleRead={() => {
+                  const nextRead = !item.read;
+                  markFeedItemRead(item.id, nextRead);
+                  setItems(getFeedItems());
+                  if (nextRead) {
+                    toast.success("Marked as read");
+                  } else {
+                    toast.success("Marked as unread");
+                  }
+                }}
+                onSaveLater={() => void handleSaveLater(item)}
+              />
+            );
+          })}
           </div>
         </div>
       )}
@@ -1019,6 +1010,14 @@ function FeedView({
           }}
         />
       )}
+      <DailyBriefTikTokView
+        items={retainedItems}
+        isOpen={showDailyBriefTikTok}
+        onClose={() => dismissDailyBriefTikTok()}
+        onSave={(item) => void handleSaveLater(item)}
+        onRead={(item) => void handleReadArticle(item)}
+        grayscaleCovers={grayscaleCovers}
+      />
     </div>
   );
 }
