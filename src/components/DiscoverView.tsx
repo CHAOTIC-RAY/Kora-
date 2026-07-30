@@ -3155,7 +3155,7 @@ function DiscoverView({
                     )}
                     {/* Hover overlay */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
-                      <div className="bg-white text-kindle-text p-3.5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition duration-500">
+                      <div className="bg-kindle-bg text-kindle-text p-3.5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition duration-500">
                         <Download className="w-5 h-5" />
                       </div>
                     </div>
@@ -4453,7 +4453,7 @@ function DiscoverView({
                                       onPlayAudiobook(entry);
                                       closeBookDetail();
                                     }}
-                                    className="flex items-center justify-center gap-2.5 flex-1 px-4 py-3 bg-white/90 hover:bg-white text-black text-xs font-bold uppercase tracking-widest rounded-xl transition shadow-sm"
+                                    className="flex items-center justify-center gap-2.5 flex-1 px-4 py-3 bg-kindle-accent hover:brightness-110 text-kindle-bg text-xs font-bold uppercase tracking-widest rounded-xl transition shadow-sm"
                                   >
                                     <Headphones className="w-4 h-4" />
                                     Play in App
