@@ -405,6 +405,11 @@ export default function App() {
   const [displayTheme, setDisplayTheme] = useState<string>(() => {
     return localStorage.getItem("kora_display_theme") || "theme-light-white";
   });
+
+  const [autoDisplayTheme, setAutoDisplayTheme] = useState<boolean>(() => {
+    return localStorage.getItem("kora_auto_display_theme") === "true";
+  });
+
   const [appSkin, setAppSkin] = useState<AppSkinId>(() => readStoredAppSkin());
 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
@@ -429,6 +434,7 @@ export default function App() {
   const [userNickname, setUserNickname] = useState<string>(() => {
     return localStorage.getItem("kora_user_nickname") || "Fellow Bookworm";
   });
+  const [anyModalOpen, setAnyModalOpen] = useState(false);
   const [dailyRemindersEnabled, setDailyRemindersEnabled] = useState<boolean>(() => {
     return localStorage.getItem("kora_daily_reminders") === "true";
   });
@@ -535,7 +541,7 @@ export default function App() {
       ...readerPrefs,
       fontSize: prefs.fontSize,
       isContinuous: !!prefs.isContinuous,
-      theme: prefs.displayTheme.includes("dark") ? "dark" : "light"
+      theme: (prefs.displayTheme.includes("dark") || prefs.displayTheme === "theme-night" || prefs.displayTheme === "theme-oled") ? "dark" : "light"
     };
     setReaderPrefs(updatedPrefs);
     localStorage.setItem("kora_reader_prefs", JSON.stringify(updatedPrefs));
@@ -585,7 +591,7 @@ export default function App() {
     const autoAdjustTheme = parsed.autoAdjustTheme ?? false;
     const initialTheme = autoAdjustTheme 
       ? getTimeOfDayAutoTheme() 
-      : (parsed.theme || (initialDisplayTheme.includes("dark") ? "dark" : "light"));
+      : (parsed.theme || ((initialDisplayTheme.includes("dark") || initialDisplayTheme === "theme-night" || initialDisplayTheme === "theme-oled") ? "dark" : "light"));
 
     return {
       fontSize: 18,
@@ -601,6 +607,23 @@ export default function App() {
       autoAdjustTheme,
     };
   });
+
+  // Auto-adjust displayTheme based on time of day if autoDisplayTheme is true
+  useEffect(() => {
+    if (autoDisplayTheme) {
+      const updateTheme = () => {
+        const timeTheme = getTimeOfDayAutoTheme();
+        const uiThemeKey = `theme-${timeTheme}`;
+        if (displayTheme !== uiThemeKey) {
+          setDisplayTheme(uiThemeKey);
+          localStorage.setItem("kora_display_theme", uiThemeKey);
+        }
+      };
+      updateTheme();
+      const interval = setInterval(updateTheme, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [autoDisplayTheme, displayTheme]);
 
   // Automatically update reader theme based on time of day (or app display theme)
   useEffect(() => {
@@ -628,7 +651,7 @@ export default function App() {
     } else if (!readerPrefs.themeManuallySet) {
       setReaderPrefs((prev: any) => ({
         ...prev,
-        theme: displayTheme.includes("dark") ? "dark" : "light"
+        theme: (displayTheme.includes("dark") || displayTheme === "theme-night" || displayTheme === "theme-oled") ? "dark" : "light"
       }));
     }
   }, [displayTheme, readerPrefs.autoAdjustTheme]);
@@ -1400,10 +1423,29 @@ export default function App() {
     initFirebase();
     // Display theme = colors; app skin = chrome/materials (orthogonal).
     const classes = [displayTheme, skinBodyClass(appSkin)];
-    if (displayTheme.includes("dark")) classes.push("dark");
+    const isDark = displayTheme.includes("dark") || displayTheme === "theme-night" || displayTheme === "theme-oled";
+    if (isDark) {
+      classes.push("dark");
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
     document.body.className = classes.join(" ");
     document.documentElement.dataset.skin = appSkin;
   }, [displayTheme, appSkin]);
+
+  useEffect(() => {
+    const handleDisplayThemeChanged = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (customEvent.detail) {
+        setDisplayTheme(customEvent.detail);
+      }
+    };
+    window.addEventListener("kora:display-theme-changed", handleDisplayThemeChanged);
+    return () => {
+      window.removeEventListener("kora:display-theme-changed", handleDisplayThemeChanged);
+    };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -2474,7 +2516,7 @@ export default function App() {
       )}
 
       {/* 1. Global Navigation Header - Kora Style */}
-      <header className="kora-app-header border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 h-16 kora-safe-top">
+      <header className="kora-app-header border-b border-kindle-border bg-kindle-bg relative md:sticky top-0 z-40 min-h-16 kora-safe-top pb-3 md:pb-3.5">
         <div className="max-w-6xl mx-auto px-4 md:px-8 h-full flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
           <button 
@@ -2643,7 +2685,10 @@ export default function App() {
                 setShowWikipediaModal(true);
               }}
               onPlayGame={(game) => {
-                window.dispatchEvent(new CustomEvent("kora-open-tool", { detail: { tool: game } }));
+                switchTab("tools");
+                setTimeout(() => {
+                  window.dispatchEvent(new CustomEvent("kora-open-tool", { detail: { tool: game } }));
+                }, 50);
               }}
               onRefreshLibrary={refreshLibrary}
               onToggleAudiobookPlay={() => {
@@ -2796,6 +2841,12 @@ export default function App() {
             grayscaleCovers={grayscaleCovers}
             hideCovers={false}
             displayTheme={displayTheme}
+            autoDisplayTheme={autoDisplayTheme}
+            onChangeAutoDisplayTheme={(enabled: boolean) => {
+              setAutoDisplayTheme(enabled);
+              localStorage.setItem("kora_auto_display_theme", String(enabled));
+            }}
+
             appSkin={appSkin}
             dailyRemindersEnabled={dailyRemindersEnabled}
             onChangeDailyReminders={(enabled) => {
@@ -2826,6 +2877,7 @@ export default function App() {
             onRefreshLibrary={refreshLibrary}
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={() => setShowOnboarding(true)}
+            onModalToggle={setAnyModalOpen}
           />
                   </div>
         )}
@@ -2843,6 +2895,12 @@ export default function App() {
             grayscaleCovers={grayscaleCovers}
             onToggleGrayscale={toggleGrayscale}
             displayTheme={displayTheme}
+            autoDisplayTheme={autoDisplayTheme}
+            onChangeAutoDisplayTheme={(enabled: boolean) => {
+              setAutoDisplayTheme(enabled);
+              localStorage.setItem("kora_auto_display_theme", String(enabled));
+            }}
+
             appSkin={appSkin}
             dailyRemindersEnabled={dailyRemindersEnabled}
             onChangeDailyReminders={(enabled) => {
@@ -2869,6 +2927,7 @@ export default function App() {
             onRefreshLibrary={refreshLibrary}
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={() => setShowOnboarding(true)}
+            onModalToggle={setAnyModalOpen}
           />
                   </div>
         )}
@@ -3240,9 +3299,9 @@ export default function App() {
             </div>
       </FluidOverlay>
 
-      {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book */}
-      {!readerOpen && (
-      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md rounded-2xl kora-safe-bottom overflow-hidden bg-white/5 backdrop-blur-xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+      {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book or modal open */}
+      {!readerOpen && !anyModalOpen && (
+      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden">
         <LayoutGroup id="kora-mobile-tabs">
           <nav className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`} aria-label="Main">
             {mobileTabs.map(({ id, label, Icon }) => {
@@ -3265,28 +3324,25 @@ export default function App() {
                               : undefined
                   }
                   onClick={() => switchTab(id)}
-                  className={`kora-tab-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors ${
-                    isActive ? "text-white is-active" : "text-white/70"
+                  className={`kora-tab-item relative flex items-center justify-center rounded-xl transition-colors ${
+                    isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
                   }`}
                   aria-current={isActive ? "page" : undefined}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="kora-tab-pill"
-                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-white/15 border border-white/20 shadow-sm backdrop-blur-sm"
+                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
                       transition={koraTabSpring}
                     />
                   )}
                   <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
                     <Icon
-                      className={`w-5 h-5 shrink-0 transition-transform duration-150 ${
-                        isActive ? "scale-105" : "opacity-90"
+                      className={`w-5.5 h-5.5 shrink-0 transition-transform duration-150 ${
+                        isActive ? "scale-105" : "opacity-80"
                       }`}
                       strokeWidth={isActive ? 2.25 : 2}
                     />
-                  </span>
-                  <span className="relative z-[1] text-[8px] font-sans font-bold uppercase tracking-wider leading-none text-center">
-                    {label}
                   </span>
                 </button>
               );

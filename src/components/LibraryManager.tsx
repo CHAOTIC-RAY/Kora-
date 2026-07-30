@@ -25,9 +25,9 @@ function buildBookShareLink(book: BookMetadata): string {
   try {
     const id = book.id || book.md5 || book.downloadId || "";
     const q = encodeURIComponent(`${book.title} ${book.author || ""}`.trim());
-    return `app.kora.reader://book?id=${encodeURIComponent(id)}&q=${q}`;
+    return `https://kora.chaoticstudio.workers.dev/book?id=${encodeURIComponent(id)}&q=${q}`;
   } catch {
-    return "app.kora.reader://book";
+    return "https://kora.chaoticstudio.workers.dev/book";
   }
 }
 

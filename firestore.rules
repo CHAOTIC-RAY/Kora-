@@ -33,6 +33,16 @@ service cloud.firestore {
       }
     }
 
+    // Online Scrabble Game — ephemeral rooms
+    match /scrabbleRooms/{roomId} {
+      allow read, create, update, delete: if roomId.size() == 6
+        && roomId.matches('[0-9]+');
+      match /{sub}/{subId} {
+        allow read, create, update, delete: if roomId.size() == 6
+          && roomId.matches('[0-9]+');
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
