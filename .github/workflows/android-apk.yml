@@ -94,7 +94,8 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
 
       - name: Install npm dependencies
-        run: npm ci
+        run: |
+          npm ci --omit=optional || npm install --no-audit --no-fund --omit=optional
 
       - name: Build web assets for APK
         run: |
