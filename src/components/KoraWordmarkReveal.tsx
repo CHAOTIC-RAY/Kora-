@@ -126,6 +126,13 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
         const isDark = getIsDarkMode();
         ink = isDark ? "#f3f1ea" : "#111116";
       }
+
+      // In dark mode, force vivid foreground ink so the animation stays visible
+      // even if the active theme text color resolves to a muted gray.
+      const isDark = getIsDarkMode();
+      if (isDark) {
+        ink = "#f3f1ea";
+      }
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctx.strokeStyle = ink;
@@ -186,7 +193,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
             ctx.lineWidth = (Math.random() * 2.5 + 0.5) * dpr;
             ctx.moveTo(sx, sy);
             ctx.lineTo(sx + (Math.random() - 0.5) * 8 * dpr, sy + (Math.random() - 0.5) * 8 * dpr);
-            ctx.globalAlpha = 0.7;
+            ctx.globalAlpha = isDark ? 0.9 : 0.7;
             ctx.stroke();
             ctx.globalAlpha = 1;
             if (Math.random() > 0.99) {
