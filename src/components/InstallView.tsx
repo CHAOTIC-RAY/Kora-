@@ -2001,7 +2001,7 @@ export default function InstallView() {
                     </div>
 
                     {/* Flush Inner Multi-Row Panoramic Globe Cylinder Showcase Animation View */}
-                    <div className="p-3 sm:p-4 relative text-left flex-grow bg-kindle-bg dark:bg-[#121115] border-t border-kindle-border/40 flex flex-col overflow-hidden justify-center space-y-1.5 globe-perspective-container">
+                    <div className="p-3 sm:p-4 relative text-left flex-grow bg-kindle-bg border-t border-kindle-border/40 flex flex-col overflow-hidden justify-center space-y-1.5 globe-perspective-container">
                       {/* Globe Cylinder Side Vignette & Warp Overlays */}
                       <div className="absolute inset-y-0 left-0 w-32 bg-gradient-to-r from-kindle-bg via-kindle-bg/60 to-transparent backdrop-blur-[2px] z-25 pointer-events-none" />
                       <div className="absolute inset-y-0 right-0 w-32 bg-gradient-to-l from-kindle-bg via-kindle-bg/60 to-transparent backdrop-blur-[2px] z-25 pointer-events-none" />
