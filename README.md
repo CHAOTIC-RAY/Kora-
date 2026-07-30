@@ -95,7 +95,7 @@ Your personal library—read offline, sync across devices.
 
 **Discovery & Downloads:**
 - 🌐 **Federated book search** across multiple open-source indexes
-  - [Rave Search Engine](https://github.com/IdleEndeavor/rave) — comprehensive open-source title index
+  - [Rave Search Engine](https://ravebooksearch.com/) — comprehensive open-source title index
   - LibGen & Anna's Archive — free ebook mirrors with auto-retry
   - iAudio — audiobook streaming backend
 - 📥 Parallel downloads with automatic mirror fallback
@@ -323,7 +323,7 @@ You're free to use Kora in personal, commercial, or educational projects.
 - **[epub.js](https://github.com/futurepress/epub.js)** — EPUB rendering engine
 - **[PDF.js](https://mozilla.github.io/pdf.js/)** — PDF viewer
 - **[React](https://react.dev)** — UI framework
-- **[Rave Search](https://github.com/IdleEndeavor/rave)** — Federated search engine
+- **[Rave Search](https://ravebooksearch.com/)** — Federated search engine
 - **[Tailwind CSS](https://tailwindcss.com)** — Utility-first CSS
 - **[Firebase](https://firebase.google.com)** — Backend & sync infrastructure
 - **[Capacitor](https://capacitorjs.com)** — Cross-platform native bridge
