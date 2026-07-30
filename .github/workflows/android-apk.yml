@@ -80,6 +80,7 @@ jobs:
         run: |
           rm -rf node_modules package-lock.json
           npm install --no-audit --no-fund --omit=optional
+          npm install @rollup/rollup-linux-x64-gnu --no-save --no-audit --no-fund || true
 
       - name: Setup Java
         uses: actions/setup-java@v4
