@@ -1379,6 +1379,35 @@ function LibraryManager({
                 </div>
               );
             })}
+            {!isManageMode && (
+              <button
+                type="button"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const title = prompt("Book title?", "Untitled Book");
+                  if (!title || !title.trim()) return;
+                  const author = prompt("Author?", "") || "";
+                  onBookSelected({
+                    id: "blank_" + Date.now().toString(36),
+                    title: title.trim(),
+                    author: author.trim(),
+                    extension: "html",
+                    size: "0 B",
+                    language: "English",
+                    tags: ["blank"],
+                    status: "to-read",
+                    progress: { percent: 0, lastReadTime: Date.now() },
+                    dateAdded: Date.now(),
+                  } as BookMetadata);
+                }}
+                className="kindle-card w-full min-w-0 overflow-hidden flex flex-col items-center justify-center cursor-pointer transition duration-300 select-none relative border-2 border-dashed border-kindle-border hover:border-kindle-accent hover:bg-kindle-accent/5 group"
+              >
+                <Plus className="w-10 h-10 text-kindle-text-muted group-hover:text-kindle-accent mb-2" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted group-hover:text-kindle-accent">
+                  Add Book
+                </span>
+              </button>
+            )}
           </div>
         )}
       </section>

@@ -10,7 +10,7 @@ import {
   Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords
 } from "lucide-react";
 import { toast } from "react-hot-toast";
-import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE } from "../lib/readerThemes";
+import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE, PRIMARY_READER_THEME_KEYS, resolveReaderTheme } from "../lib/readerThemes";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import {
   loadNewsReaderPrefs,
@@ -1263,28 +1263,24 @@ function SettingsView({
                 </div>
                 
                 <div className={`grid grid-cols-3 gap-2 ${autoDisplayTheme ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {[
-                    { id: 'theme-paper', name: 'Paper', bg: '#FAF7F2', text: '#2C2A26', border: '#E4DDD2' },
-                    { id: 'theme-sepia', name: 'Sepia', bg: '#F4ECD8', text: '#5B4636', border: '#DBCDA4' },
-                    { id: 'theme-green', name: 'Mint', bg: '#E3EDD3', text: '#2D3E1E', border: '#C5D6A8' },
-                    { id: 'theme-night', name: 'Dusk', bg: '#1C1F26', text: '#D6D8DE', border: '#3A4050' },
-                    { id: 'theme-oled', name: 'OLED', bg: '#000000', text: '#E8E8E8', border: '#262626' },
-                    { id: 'theme-light', name: 'Light', bg: '#FFFFFF', text: '#111111', border: '#E4E4E7' },
-                  ].map((t) => (
-                    <button
-                      key={t.id}
-                      onClick={() => onChangeTheme(t.id)}
-                      className="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer"
-                      style={{
-                        backgroundColor: t.bg,
-                        borderColor: displayTheme === t.id ? t.text : t.border,
-                        boxShadow: displayTheme === t.id ? `0 0 0 1px ${t.text}40` : 'none',
-                        opacity: displayTheme === t.id ? 1 : 0.65
-                      }}
-                    >
-                      <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: t.text }}>{t.name}</span>
-                    </button>
-                  ))}
+                  {PRIMARY_READER_THEME_KEYS.concat(["light", "green", "dark"]).map((tKey) => {
+                    const th = resolveReaderTheme(tKey);
+                    return (
+                      <button
+                        key={tKey}
+                        onClick={() => onChangeTheme(tKey)}
+                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer"
+                        style={{
+                          backgroundColor: th.previewBg,
+                          borderColor: displayTheme === tKey ? th.previewText : th.border,
+                          boxShadow: displayTheme === tKey ? `0 0 0 1px ${th.previewText}40` : 'none',
+                          opacity: displayTheme === tKey ? 1 : 0.65
+                        }}
+                      >
+                        <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: th.previewText }}>{th.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>

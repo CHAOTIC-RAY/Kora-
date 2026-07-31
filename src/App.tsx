@@ -3444,6 +3444,8 @@ export default function App() {
         onComplete={handleOnboardingComplete}
         currentTheme={displayTheme}
         onThemeChange={(newTheme) => changeTheme(newTheme)}
+        autoDisplayTheme={autoDisplayTheme}
+        onChangeAutoDisplayTheme={(enabled) => setAutoDisplayTheme(enabled)}
         appSkin={appSkin}
         onAppSkinChange={changeAppSkin}
         onOpenAuth={() => setShowAuthModal(true)}

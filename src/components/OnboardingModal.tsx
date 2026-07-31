@@ -5,14 +5,14 @@ import {
   Check,
   ChevronRight,
   ChevronLeft,
-  Compass,
-  Gamepad2,
   Headphones,
   Heart,
-  Library,
-  Rss,
+  ShieldCheck,
+  Wifi,
   Globe,
+  Gamepad2,
   Target,
+  Rss,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -38,6 +38,8 @@ interface OnboardingModalProps {
   }) => void;
   currentTheme: string;
   onThemeChange: (theme: string) => void;
+  autoDisplayTheme?: boolean;
+  onChangeAutoDisplayTheme?: (enabled: boolean) => void;
   appSkin?: AppSkinId;
   onAppSkinChange?: (skin: AppSkinId) => void;
   onOpenAuth?: () => void;
@@ -49,7 +51,7 @@ const ARCHETYPES = [
     title: "The Midnight Reader",
     desc: "Reads until 3 AM under a warm blanket. Drinks black coffee, loves mysterious thrillers, and lives in dark mode.",
     icon: MoonIcon,
-    defaultTheme: "theme-dark-grey",
+    defaultTheme: "night",
     quote: "Just one more chapter...",
   },
   {
@@ -57,7 +59,7 @@ const ARCHETYPES = [
     title: "The Cozy Tea Sipper",
     desc: "Enjoys warm sepia lighting, a hot cup of chamomile tea, and peaceful, timeless classics.",
     icon: CoffeeIcon,
-    defaultTheme: "theme-light-yellow",
+    defaultTheme: "sepia",
     quote: "A cup of tea and a good book is bliss.",
   },
   {
@@ -65,7 +67,7 @@ const ARCHETYPES = [
     title: "The Bibliophile Curator",
     desc: "Loves cataloging, keeping shelves perfectly organized, and tracking fine literary details.",
     icon: BookmarkIcon,
-    defaultTheme: "theme-light-white",
+    defaultTheme: "light",
     quote: "My library is my sanctuary.",
   },
   {
@@ -73,26 +75,41 @@ const ARCHETYPES = [
     title: "The Speed Scholar",
     desc: "Inhales textbooks and non-fiction at light speed. Uses clean sans-serif layouts to optimize focus.",
     icon: GlassesIcon,
-    defaultTheme: "theme-dark-blue",
+    defaultTheme: "oled",
     quote: "Knowledge is the ultimate superpower.",
   },
 ];
 
 const KORA_PILLARS = [
   {
-    title: "Library",
-    desc: "Your books stay on-device for offline reading, notes, and highlights.",
-    icon: Library,
+    title: "Voice Audiobook Engine",
+    desc: "Convert any EPUB, PDF, or document into a natural voice audiobook with customizable speeds, pitch controls, and background playback.",
+    icon: Headphones,
   },
   {
-    title: "News Brief",
-    desc: "A daily digest from Maldives and world RSS sources you pick below.",
-    icon: Rss,
+    title: "E-Ink Reading Canvas",
+    desc: "Offline reading with custom typography, line spacing, paper tinting, and warm amber backlight filters.",
+    icon: BookOpen,
   },
   {
-    title: "Discover",
-    desc: "Find new titles from curated lists and open catalogs.",
-    icon: Compass,
+    title: "Federated Discovery",
+    desc: "Search open catalogs across Rave, LibGen, and Anna's Archive with direct mirror downloads.",
+    icon: Globe,
+  },
+  {
+    title: "Wireless P2P Beam",
+    desc: "Beam files between devices over local Wi-Fi — no cloud, no accounts.",
+    icon: Wifi,
+  },
+  {
+    title: "Workshop Lounge",
+    desc: "Score Tracker, Literary Crosswords, and Word Search grids for reading breaks.",
+    icon: Gamepad2,
+  },
+  {
+    title: "Private & Offline First",
+    desc: "Your library, progress, and settings stay stored locally with complete offline access.",
+    icon: ShieldCheck,
   },
 ];
 
@@ -135,6 +152,21 @@ function GlassesIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-10 h-5 rounded-full transition-colors relative cursor-pointer ${on ? "bg-kindle-accent" : "bg-kindle-accent/25"}`}
+      aria-pressed={on}
+    >
+      <div
+        className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${on ? "translate-x-5 bg-kindle-bg" : "translate-x-0 bg-kindle-text/70"}`}
+      />
+    </button>
+  );
+}
+
 const TOTAL_STEPS = 3;
 
 export default function OnboardingModal({
@@ -142,6 +174,8 @@ export default function OnboardingModal({
   onComplete,
   currentTheme,
   onThemeChange,
+  autoDisplayTheme = false,
+  onChangeAutoDisplayTheme,
   appSkin = DEFAULT_APP_SKIN,
   onOpenAuth,
 }: OnboardingModalProps) {
@@ -282,10 +316,33 @@ export default function OnboardingModal({
                     className="w-full px-4 py-3 bg-kindle-card border border-kindle-border rounded-xl text-sm font-sans focus:outline-hidden focus:ring-1 focus:ring-kindle-accent text-kindle-text"
                   />
                 </div>
+              </motion.div>
+            )}
+
+            {step === 2 && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+                key="step2"
+              >
+                <div className="text-center space-y-2">
+                  <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full inline-flex items-center gap-1.5">
+                    <Heart className="w-3.5 h-3.5 text-kindle-accent" />
+                    What kind of reader are you?
+                  </span>
+                  <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
+                    Pick your vibe, Kora tunes the rest
+                  </h2>
+                  <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
+                    Your choice shapes themes, suggestions, and daily brief topics.
+                  </p>
+                </div>
 
                 <div className="space-y-3">
                   <label className="text-[11px] uppercase tracking-wider font-bold text-kindle-text-muted block">
-                    Choose Your Reader Archetype
+                    Reader Archetype
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {ARCHETYPES.map((arc) => {
@@ -315,55 +372,19 @@ export default function OnboardingModal({
                               {isSelected && <Check className="w-3.5 h-3.5 text-emerald-500" />}
                             </h4>
                             <p className="text-[10px] text-kindle-text-muted leading-relaxed">{arc.desc}</p>
-                            <span className="text-[9px] italic text-kindle-text-muted/80 block pt-1">
-                              &ldquo;{arc.quote}&rdquo;
-                            </span>
                           </div>
                         </button>
                       );
                     })}
                   </div>
                 </div>
-              </motion.div>
-            )}
 
-            {step === 2 && (
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
-                key="step2"
-              >
-                <div className="text-center space-y-2">
-                  <span className="px-3 py-1 bg-kindle-accent/10 text-kindle-text text-[10px] uppercase font-bold tracking-widest rounded-full inline-flex items-center gap-1.5">
-                    <Heart className="w-3.5 h-3.5 text-kindle-accent" />
-                    Meet Kora
-                  </span>
-                  <h2 className="text-2xl font-display font-bold tracking-tight text-kindle-text">
-                    What kind of reader are you?
-                  </h2>
-                  <p className="text-xs text-kindle-text-muted font-sans max-w-md mx-auto">
-                    Pick the vibe that fits you, and Kora will tune themes, suggestions, and daily brief topics around it.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {KORA_PILLARS.map((pillar) => {
-                    const Icon = pillar.icon;
-                    return (
-                      <div
-                        key={pillar.title}
-                        className="p-3.5 rounded-xl border border-kindle-border bg-kindle-card/70 space-y-2"
-                      >
-                        <div className="w-8 h-8 rounded-lg bg-kindle-accent/10 text-kindle-accent flex items-center justify-center">
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <h3 className="font-display font-bold text-xs text-kindle-text">{pillar.title}</h3>
-                        <p className="text-[10px] text-kindle-text-muted leading-relaxed">{pillar.desc}</p>
-                      </div>
-                    );
-                  })}
+                <div className="flex items-center justify-between p-3 bg-kindle-bg border border-kindle-border rounded-xl">
+                  <div className="space-y-0.5 min-w-0">
+                    <label className="text-xs font-bold text-kindle-text">Auto-Adjust Reader Theme</label>
+                    <p className="text-[10px] text-kindle-text-muted">Switch themes automatically from dawn to dusk</p>
+                  </div>
+                  <Toggle on={autoDisplayTheme ?? false} onClick={() => onChangeAutoDisplayTheme?.(!autoDisplayTheme)} />
                 </div>
 
                 <div className="space-y-4 p-4 bg-kindle-card border border-kindle-border rounded-xl">
@@ -663,8 +684,8 @@ export default function OnboardingModal({
                   : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
               }`}
             >
-              <BookOpen className="w-4 h-4 text-kindle-text-muted" />
-              Get Started
+              <ChevronRight className="w-4 h-4" />
+              Enter Kora
             </button>
           )}
         </div>
