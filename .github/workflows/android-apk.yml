@@ -68,10 +68,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -132,11 +132,12 @@ jobs:
             KEY_PASS="$KORA_UPLOAD_KEY_PASSWORD"
             SIGNING_SOURCE="upload-secret"
           else
-            STORE_FILE="keystore/kora-ci.jks"
-            STORE_PASS="koraci-release"
-            KEY_ALIAS="kora"
-            KEY_PASS="koraci-release"
-            SIGNING_SOURCE="ci-keystore"
+            # No upload key secret has been configured for this repository.
+            # Fail loudly and early instead of silently falling back to the
+            # committed (intentionally invalid) android/app/keystore/kora-ci.jks.
+            echo "KORA_UPLOAD_KEYSTORE_BASE64 is not set in this repo's GitHub secrets."
+            echo "Add KORA_UPLOAD_KEYSTORE_BASE64, KORA_UPLOAD_STORE_PASSWORD, KORA_UPLOAD_KEY_ALIAS, and KORA_UPLOAD_KEY_PASSWORD to the repo secrets, then re-run."
+            exit 1
           fi
 
           {

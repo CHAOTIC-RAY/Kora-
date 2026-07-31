@@ -21,7 +21,7 @@ android {
     }
     signingConfigs {
         release {
-            // Prefer upload-key properties from CI secrets; fall back to committed CI keystore.
+            // Prefer upload-key properties from CI secrets; never fall back to a committed keystore.
             def storePath = project.hasProperty('KORA_UPLOAD_STORE_FILE')
                 ? KORA_UPLOAD_STORE_FILE
                 : 'keystore/kora-ci.jks'
@@ -35,12 +35,17 @@ android {
                 ? KORA_UPLOAD_KEY_PASSWORD
                 : 'koraci-release'
             def store = file(storePath)
-            if (store.exists()) {
-                storeFile store
-                storePassword storePass
-                keyAlias alias
-                keyPassword keyPass
+            if (!store.exists()) {
+                throw new GradleException(
+                    "No signing key found. Set KORA_UPLOAD_KEYSTORE_BASE64 (and KORA_UPLOAD_STORE_PASSWORD, " +
+                    "KORA_UPLOAD_KEY_ALIAS, KORA_UPLOAD_KEY_PASSWORD) as GitHub secrets, then re-run. " +
+                    "The committed android/app/keystore/kora-ci.jks is intentionally invalid and must not be used for releases."
+                )
             }
+            storeFile store
+            storePassword storePass
+            keyAlias alias
+            keyPassword keyPass
         }
     }
     buildTypes {
