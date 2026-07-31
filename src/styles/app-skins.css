@@ -335,3 +335,457 @@ body.skin-soft .kora-mobile-media-dock--joined {
   border-radius: 9999px !important;
   box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   IOS GLASS — liquid glass, vibrancy, frosted layers
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-ios-glass {
+  --skin-glass-tint: rgba(255, 255, 255, 0.08);
+  --skin-glass-border: rgba(255, 255, 255, 0.18);
+  --skin-glass-shadow: 0 12px 48px rgba(0, 0, 0, 0.12);
+  font-family: -apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif;
+}
+
+body.skin-ios-glass .kora-app-header {
+  background: color-mix(in srgb, var(--theme-bg) 72%, transparent) !important;
+  border-bottom: 1px solid var(--skin-glass-border) !important;
+  box-shadow: var(--skin-glass-shadow);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+}
+
+body.skin-ios-glass .kora-desktop-nav {
+  border-radius: 1.25rem !important;
+  background: color-mix(in srgb, var(--theme-card) 76%, transparent) !important;
+  border: 1px solid var(--skin-glass-border) !important;
+  box-shadow: var(--skin-glass-shadow);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+body.skin-ios-glass .kora-desktop-nav-item.is-active {
+  background: color-mix(in srgb, var(--theme-accent) 18%, transparent) !important;
+  border: 1px solid var(--skin-glass-border) !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+body.skin-ios-glass .kora-mobile-footer {
+  background: color-mix(in srgb, var(--theme-card) 82%, transparent) !important;
+  border-top: 1px solid var(--skin-glass-border) !important;
+  border-radius: 1.5rem 1.5rem 0 0 !important;
+  box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+body.skin-ios-glass .kora-tab-pill {
+  background: color-mix(in srgb, var(--theme-bg) 92%, transparent) !important;
+  border: 1px solid var(--skin-glass-border) !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+body.skin-ios-glass .kora-chrome-btn {
+  border-radius: 0.75rem !important;
+  background: color-mix(in srgb, var(--theme-card) 60%, transparent) !important;
+  border: 1px solid var(--skin-glass-border) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+body.skin-ios-glass .kindle-card,
+body.skin-ios-glass .bg-kindle-card,
+body.skin-ios-glass section.bg-kindle-card {
+  border-radius: 1.25rem !important;
+  background: color-mix(in srgb, var(--theme-card) 70%, transparent) !important;
+  border: 1px solid var(--skin-glass-border) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+body.skin-ios-glass input[type="text"],
+body.skin-ios-glass input[type="search"],
+body.skin-ios-glass textarea,
+body.skin-ios-glass select {
+  border-radius: 0.75rem !important;
+  background: color-mix(in srgb, var(--theme-bg) 68%, transparent) !important;
+  border: 1px solid var(--skin-glass-border) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MATERIAL EXPRESSIVE — tonal palettes, motion, elevated surfaces
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-material-ex {
+  --material-tonal-container: color-mix(in srgb, var(--theme-card) 92%, var(--theme-accent) 8%);
+  --material-tonal-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
+  --material-tonal-elevation-2: 0 4px 16px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.06);
+  font-family: Google Sans, Roboto, sans-serif;
+}
+
+body.skin-material-ex .kora-app-header {
+  background: var(--material-tonal-container) !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent) !important;
+  box-shadow: var(--material-tonal-elevation-1);
+}
+
+body.skin-material-ex .kora-desktop-nav {
+  border-radius: 2rem !important;
+  background: var(--material-tonal-container) !important;
+  padding: 0.5rem 0.75rem !important;
+  gap: 0.25rem !important;
+  box-shadow: var(--material-tonal-elevation-1);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent) !important;
+}
+
+body.skin-material-ex .kora-desktop-nav-item.is-active {
+  background: var(--theme-accent) !important;
+  color: var(--theme-bg) !important;
+  border-radius: 1.5rem !important;
+  box-shadow: var(--material-tonal-elevation-1);
+  font-weight: 600 !important;
+}
+
+body.skin-material-ex .kora-mobile-footer {
+  background: var(--material-tonal-container) !important;
+  border-radius: 1.75rem 1.75rem 0 0 !important;
+  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.08);
+}
+
+body.skin-material-ex .kora-tab-pill {
+  background: var(--theme-accent) !important;
+  color: var(--theme-bg) !important;
+  border-radius: 9999px !important;
+  box-shadow: var(--material-tonal-elevation-1);
+}
+
+body.skin-material-ex .kora-chrome-btn {
+  border-radius: 50% !important;
+  background: var(--material-tonal-container) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent) !important;
+  box-shadow: var(--material-tonal-elevation-1);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+body.skin-material-ex .kora-chrome-btn:hover {
+  transform: scale(1.08);
+  box-shadow: var(--material-tonal-elevation-2);
+}
+
+body.skin-material-ex .kindle-card,
+body.skin-material-ex .bg-kindle-card,
+body.skin-material-ex section.bg-kindle-card {
+  border-radius: 1.5rem !important;
+  background: var(--material-tonal-container) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent) !important;
+  box-shadow: var(--material-tonal-elevation-1);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+}
+
+body.skin-material-ex .kindle-card:hover,
+body.skin-material-ex .bg-kindle-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--material-tonal-elevation-2);
+}
+
+body.skin-material-ex input[type="text"],
+body.skin-material-ex input[type="search"],
+body.skin-material-ex textarea,
+body.skin-material-ex select {
+  border-radius: 1rem !important;
+  background: var(--material-tonal-container) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTHING OS — monochrome, NDOT matrix icons, transparent layers
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-nothing {
+  --nothing-dot: rgba(255, 255, 255, 0.12);
+  --nothing-dot-active: rgba(255, 255, 255, 0.35);
+  font-family: Noto Sans, NDOT, sans-serif;
+}
+
+body.skin-nothing .kora-app-header {
+  background: rgba(0, 0, 0, 0.65) !important;
+  border-bottom: 1px solid var(--nothing-dot) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+body.skin-nothing .kora-desktop-nav {
+  border-radius: 9999px !important;
+  background: rgba(20, 20, 20, 0.75) !important;
+  border: 1px solid var(--nothing-dot) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+body.skin-nothing .kora-desktop-nav-item.is-active {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid var(--nothing-dot-active) !important;
+  border-radius: 9999px !important;
+  color: #fff !important;
+}
+
+body.skin-nothing .kora-mobile-footer {
+  background: rgba(0, 0, 0, 0.8) !important;
+  border-top: 1px solid var(--nothing-dot) !important;
+  border-radius: 1.5rem 1.5rem 0 0 !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+body.skin-nothing .kora-tab-pill {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid var(--nothing-dot-active) !important;
+  border-radius: 9999px !important;
+}
+
+body.skin-nothing .kora-chrome-btn {
+  border-radius: 0.75rem !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--nothing-dot) !important;
+  color: #fff !important;
+}
+
+body.skin-nothing .kindle-card,
+body.skin-nothing .bg-kindle-card,
+body.skin-nothing section.bg-kindle-card {
+  border-radius: 1rem !important;
+  background: rgba(18, 18, 18, 0.8) !important;
+  border: 1px solid var(--nothing-dot) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+body.skin-nothing input[type="text"],
+body.skin-nothing input[type="search"],
+body.skin-nothing textarea,
+body.skin-nothing select {
+  border-radius: 0.75rem !important;
+  background: rgba(12, 12, 12, 0.7) !important;
+  border: 1px solid var(--nothing-dot) !important;
+  color: #fff !important;
+}
+
+body.skin-nothing .kora-app-header svg,
+body.skin-nothing .kora-desktop-nav-item svg {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.15));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CYBERPUNK — neon grids, glitch borders, dark mode only
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-cyberpunk {
+  --cyber-neon-pink: #ff007f;
+  --cyber-neon-cyan: #00fff9;
+  --cyber-neon-yellow: #faff00;
+  --cyber-grid: rgba(0, 255, 249, 0.06);
+  font-family: Orbitron, Rajdhani, sans-serif;
+}
+
+body.skin-cyberpunk {
+  background:
+    linear-gradient(var(--cyber-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cyber-grid) 1px, transparent 1px),
+    color-mix(in srgb, #050510 92%, transparent);
+  background-size: 24px 24px, 24px 24px, 100% 100%;
+}
+
+body.skin-cyberpunk .kora-app-header {
+  background: rgba(5, 5, 16, 0.85) !important;
+  border-bottom: 2px solid var(--cyber-neon-cyan) !important;
+  box-shadow:
+    0 0 20px rgba(0, 255, 249, 0.25),
+    inset 0 -1px 0 rgba(0, 255, 249, 0.15);
+}
+
+body.skin-cyberpunk .kora-desktop-nav {
+  border-radius: 0.5rem !important;
+  background: rgba(5, 5, 16, 0.85) !important;
+  border: 1px solid var(--cyber-neon-cyan) !important;
+  box-shadow: 0 0 24px rgba(0, 255, 249, 0.2), inset 0 0 12px rgba(0, 255, 249, 0.08);
+}
+
+body.skin-cyberpunk .kora-desktop-nav-item.is-active {
+  background: var(--cyber-neon-pink) !important;
+  color: #050510 !important;
+  border-radius: 0.25rem !important;
+  box-shadow: 0 0 16px rgba(255, 0, 127, 0.5);
+  text-shadow: none !important;
+}
+
+body.skin-cyberpunk .kora-mobile-footer {
+  background: rgba(5, 5, 16, 0.92) !important;
+  border-top: 2px solid var(--cyber-neon-cyan) !important;
+  border-radius: 0 !important;
+  box-shadow: 0 -4px 32px rgba(0, 255, 249, 0.2);
+}
+
+body.skin-cyberpunk .kora-tab-pill {
+  background: var(--cyber-neon-pink) !important;
+  color: #050510 !important;
+  border-radius: 0.25rem !important;
+  box-shadow: 0 0 14px rgba(255, 0, 127, 0.45);
+}
+
+body.skin-cyberpunk .kora-chrome-btn {
+  border-radius: 0.25rem !important;
+  background: rgba(5, 5, 16, 0.7) !important;
+  border: 1px solid var(--cyber-neon-cyan) !important;
+  color: var(--cyber-neon-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 255, 249, 0.2);
+  transition: all 0.2s ease;
+}
+
+body.skin-cyberpunk .kora-chrome-btn:hover {
+  box-shadow: 0 0 20px rgba(0, 255, 249, 0.45);
+  text-shadow: 0 0 8px var(--cyber-neon-cyan);
+}
+
+body.skin-cyberpunk .kindle-card,
+body.skin-cyberpunk .bg-kindle-card,
+body.skin-cyberpunk section.bg-kindle-card {
+  border-radius: 0.5rem !important;
+  background: rgba(8, 8, 22, 0.88) !important;
+  border: 1px solid color-mix(in srgb, var(--cyber-neon-cyan) 40%, transparent) !important;
+  box-shadow: 0 0 16px rgba(0, 255, 249, 0.1), inset 0 0 8px rgba(0, 255, 249, 0.04);
+}
+
+body.skin-cyberpunk input[type="text"],
+body.skin-cyberpunk input[type="search"],
+body.skin-cyberpunk textarea,
+body.skin-cyberpunk select {
+  border-radius: 0.25rem !important;
+  background: rgba(5, 5, 16, 0.75) !important;
+  border: 1px solid var(--cyber-neon-cyan) !important;
+  color: var(--cyber-neon-cyan) !important;
+}
+
+@keyframes cyberpunk-scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+body.skin-cyberpunk::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent 0%, rgba(0, 255, 249, 0.04) 50%, transparent 100%);
+  animation: cyberpunk-scanline 8s linear infinite;
+  z-index: 9999;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   LIBRARY — walnut shelves, paper textures, warm amber light
+   ═══════════════════════════════════════════════════════════════ */
+
+body.skin-library {
+  --library-wood: #7a5230;
+  --library-wood-light: #a67c52;
+  --library-amber: #d4a054;
+  --library-parchment: #f4ecd8;
+  font-family: Merriweather, Lora, serif;
+}
+
+body.skin-library .kora-app-header {
+  background:
+    linear-gradient(to bottom, color-mix(in srgb, var(--library-wood) 88%, #3b2410 12%), color-mix(in srgb, var(--library-wood) 72%, #3b2410 28%)) !important;
+  border-bottom: 3px solid var(--library-amber) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 20px rgba(60, 35, 15, 0.35);
+}
+
+body.skin-library .kora-desktop-nav {
+  border-radius: 0.5rem !important;
+  background:
+    linear-gradient(135deg, var(--library-wood) 0%, color-mix(in srgb, var(--library-wood) 75%, #3b2410 25%) 100%) !important;
+  border: 2px solid var(--library-amber) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 6px 24px rgba(60, 35, 15, 0.4);
+}
+
+body.skin-library .kora-desktop-nav-item.is-active {
+  background: var(--library-parchment) !important;
+  color: var(--library-wood) !important;
+  border-radius: 0.35rem !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 2px 8px rgba(60, 35, 15, 0.2);
+}
+
+body.skin-library .kora-mobile-footer {
+  background:
+    linear-gradient(to top, var(--library-wood), color-mix(in srgb, var(--library-wood) 85%, transparent)) !important;
+  border-top: 3px solid var(--library-amber) !important;
+  border-radius: 1rem 1rem 0 0 !important;
+  box-shadow: 0 -4px 28px rgba(60, 35, 15, 0.35);
+}
+
+body.skin-library .kora-tab-pill {
+  background: var(--library-parchment) !important;
+  color: var(--library-wood) !important;
+  border-radius: 0.5rem !important;
+  border: 1px solid var(--library-amber) !important;
+  box-shadow: 0 2px 10px rgba(60, 35, 15, 0.25);
+}
+
+body.skin-library .kora-chrome-btn {
+  border-radius: 0.5rem !important;
+  background: var(--library-parchment) !important;
+  border: 1px solid var(--library-amber) !important;
+  color: var(--library-wood) !important;
+  box-shadow: 0 2px 8px rgba(60, 35, 15, 0.2);
+}
+
+body.skin-library .kindle-card,
+body.skin-library .bg-kindle-card,
+body.skin-library section.bg-kindle-card {
+  border-radius: 0.75rem !important;
+  background:
+    linear-gradient(135deg, var(--library-parchment) 0%, color-mix(in srgb, var(--library-parchment) 90%, #d4c4a8 10%) 100%) !important;
+  border: 1px solid var(--library-amber) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 6px 20px rgba(60, 35, 15, 0.15);
+}
+
+body.skin-library input[type="text"],
+body.skin-library input[type="search"],
+body.skin-library textarea,
+body.skin-library select {
+  border-radius: 0.5rem !important;
+  background: var(--library-parchment) !important;
+  border: 1px solid var(--library-amber) !important;
+  color: var(--library-wood) !important;
+}
+
+body.skin-library .kindle-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(139, 115, 85, 0.04) 2px,
+      rgba(139, 115, 85, 0.04) 4px
+    );
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.skin-library .kora-tab-bar {
+  background: var(--library-wood) !important;
+}

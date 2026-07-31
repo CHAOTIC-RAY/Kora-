@@ -25,6 +25,36 @@ export const APP_SKINS = [
     description: "Rounded, elevated UI with gentle depth and shadows",
     uiFont: "Lexend",
   },
+  {
+    id: "ios-glass",
+    label: "iOS Glass",
+    description: "Liquid glass, vibrancy, and frosted layers",
+    uiFont: "-apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif",
+  },
+  {
+    id: "material-ex",
+    label: "Material Expressive",
+    description: "Tonal palettes, expressive motion, and elevated surfaces",
+    uiFont: "Google Sans, Roboto, sans-serif",
+  },
+  {
+    id: "nothing",
+    label: "Nothing OS",
+    description: "Monochrome, NDOT matrix icons, and transparent layers",
+    uiFont: "Noto Sans, NDOT, sans-serif",
+  },
+  {
+    id: "cyberpunk",
+    label: "Cyberpunk",
+    description: "Neon grids, glitch borders, and dark mode chrome",
+    uiFont: "Orbitron, Rajdhani, sans-serif",
+  },
+  {
+    id: "library",
+    label: "Library",
+    description: "Walnut shelves, paper textures, and warm amber light",
+    uiFont: "Merriweather, Lora, serif",
+  },
 ] as const;
 
 export type AppSkinId = (typeof APP_SKINS)[number]["id"];
