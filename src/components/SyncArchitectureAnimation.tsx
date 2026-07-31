@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Smartphone,
-  Laptop,
+  Tablet,
   Database,
   Wifi,
   Zap,
@@ -55,8 +55,8 @@ export default function SyncArchitectureAnimation() {
         ))}
       </div>
 
-      <div className="relative w-full rounded-2xl border border-kindle-border/60 bg-kindle-bg mt-4 overflow-hidden">
-        <div className="relative w-full min-h-[320px] sm:min-h-[380px] flex items-center justify-center sm:p-4">
+      <div className="relative w-full rounded-2xl border border-kindle-border/60 bg-kindle-bg mt-4">
+        <div className="relative w-full min-h-[340px] sm:min-h-[400px] flex items-center justify-center sm:p-4">
           <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 600 360">
             <defs>
               <linearGradient id="firebaseLeft" x1="0%" y1="100%" x2="50%" y2="0%">
@@ -146,24 +146,25 @@ export default function SyncArchitectureAnimation() {
               </div>
             </motion.div>
 
-            <motion.div className="absolute bottom-6 left-[8%] sm:left-[10%] flex flex-col items-center" whileHover={{ scale: 1.03 }}>
+            <motion.div className="absolute bottom-6 left-[6%] sm:left-[8%] flex flex-col items-center gap-2" whileHover={{ scale: 1.03 }}>
               <div className="relative">
                 <div className="absolute -inset-3 rounded-3xl bg-emerald-500/20 blur-md" />
-                <div className="w-20 h-32 sm:w-24 sm:h-36 rounded-2xl bg-emerald-50 dark:bg-[#151916] border-2 border-emerald-500/60 flex flex-col items-center justify-between p-3 shadow-xl shadow-emerald-900/10">
-                  <div className="w-6 h-2 rounded-full bg-emerald-500/40" />
-                  <Smartphone className="w-10 h-10 sm:w-12 text-emerald-600 dark:text-emerald-400" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                <div className="w-16 h-24 sm:w-20 sm:h-28 rounded-2xl bg-emerald-50 dark:bg-[#151916] border-2 border-emerald-500/60 flex flex-col items-center justify-center gap-2 shadow-xl shadow-emerald-900/10">
+                  <Smartphone className="w-6 h-6 sm:w-7 text-emerald-600 dark:text-emerald-400" />
+                  <Tablet className="w-6 h-6 sm:w-7 text-emerald-600 dark:text-emerald-400" />
                 </div>
               </div>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Mobile / Tablet</span>
             </motion.div>
 
-            <motion.div className="absolute bottom-6 right-[8%] sm:right-[10%] flex flex-col items-center" whileHover={{ scale: 1.03 }}>
+            <motion.div className="absolute bottom-6 right-[6%] sm:right-[8%] flex flex-col items-center gap-2" whileHover={{ scale: 1.03 }}>
               <div className="relative">
                 <div className="absolute -inset-3 rounded-3xl bg-cyan-500/20 blur-md" />
-                <div className="w-28 h-20 sm:w-32 sm:h-24 rounded-2xl bg-cyan-50 dark:bg-[#12161a] border-2 border-cyan-500/60 flex items-center justify-center shadow-xl shadow-cyan-900/10">
-                  <Laptop className="w-10 h-10 sm:w-12 text-cyan-600 dark:text-cyan-400" />
+                <div className="w-24 h-20 sm:w-28 sm:h-24 rounded-2xl bg-cyan-50 dark:bg-[#12161a] border-2 border-cyan-500/60 flex flex-col items-center justify-center shadow-xl shadow-cyan-900/10">
+                  <Database className="w-10 h-10 sm:w-12 text-cyan-600 dark:text-cyan-400" />
                 </div>
               </div>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Firebase</span>
             </motion.div>
           </svg>
         </div>
