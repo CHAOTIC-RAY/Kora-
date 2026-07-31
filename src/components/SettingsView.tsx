@@ -12,6 +12,7 @@ import {
 import { toast } from "react-hot-toast";
 import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE, PRIMARY_READER_THEME_KEYS, resolveReaderTheme } from "../lib/readerThemes";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
+import { APP_SKINS, DEFAULT_APP_SKIN } from "../lib/appSkin";
 import {
   loadNewsReaderPrefs,
   NEWS_READER_FONT_OPTIONS,
@@ -1281,6 +1282,33 @@ function SettingsView({
                       </button>
                     );
                   })}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">App Skin</h4>
+                    <span className="text-[10px] font-mono text-kindle-text-muted">{appSkin}</span>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {APP_SKINS.map((skin) => {
+                      const active = appSkin === skin.id;
+                      return (
+                        <button
+                          key={skin.id}
+                          type="button"
+                          onClick={() => onChangeAppSkin?.(skin.id)}
+                          className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border transition cursor-pointer ${
+                            active
+                              ? "border-kindle-accent ring-1 ring-kindle-accent/30 bg-kindle-card"
+                              : "border-kindle-border hover:bg-kindle-bg"
+                          }`}
+                        >
+                          <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text">{skin.label}</span>
+                          <span className="text-[8px] text-kindle-text-muted text-center leading-tight line-clamp-2">{skin.description}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>

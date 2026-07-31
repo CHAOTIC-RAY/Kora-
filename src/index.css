@@ -655,6 +655,7 @@ html {
   scrollbar-gutter: stable;
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 html.kora-gesture-nav,

@@ -46,8 +46,8 @@ interface OnboardingModalProps {
   appSkin?: AppSkinId;
   onAppSkinChange?: (skin: AppSkinId) => void;
   onOpenAuth?: () => void;
-  readerPrefs?: { theme?: string; autoAdjustTheme?: boolean };
-  onReaderPrefsChange?: (prefs: { theme?: string; autoAdjustTheme?: boolean }) => void;
+  readerPrefs?: { theme?: string; autoAdjustTheme?: boolean; themeManuallySet?: boolean };
+  onReaderPrefsChange?: (prefs: { theme?: string; autoAdjustTheme?: boolean; themeManuallySet?: boolean }) => void;
 }
 
 const READER_THEME_TO_DISPLAY: Record<string, string> = {
@@ -280,7 +280,7 @@ export default function OnboardingModal({
     setCurrentDisplayTheme(display);
     onThemeChange(display);
     if (onReaderPrefsChange) {
-      onReaderPrefsChange({ theme: arc.defaultTheme, autoAdjustTheme: Boolean((arc as any).autoTheme) });
+      onReaderPrefsChange({ theme: arc.defaultTheme, autoAdjustTheme: Boolean((arc as any).autoTheme), themeManuallySet: true });
     }
     if (arc.skin && onAppSkinChange) {
       onAppSkinChange(arc.skin as any);
