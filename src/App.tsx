@@ -2434,6 +2434,7 @@ export default function App() {
   function changeTheme(newTheme: string) {
     setDisplayTheme(newTheme);
     localStorage.setItem("kora_display_theme", newTheme);
+    window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: newTheme }));
   }
 
   function changeAppSkin(nextSkin: AppSkinId) {
@@ -3442,12 +3443,13 @@ export default function App() {
       <OnboardingModal
         isOpen={showOnboarding}
         onComplete={handleOnboardingComplete}
-        currentTheme={displayTheme}
         onThemeChange={(newTheme) => changeTheme(newTheme)}
         autoDisplayTheme={autoDisplayTheme}
         onChangeAutoDisplayTheme={(enabled) => setAutoDisplayTheme(enabled)}
         appSkin={appSkin}
         onAppSkinChange={changeAppSkin}
+        readerPrefs={readerPrefs}
+        onReaderPrefsChange={setReaderPrefs}
         onOpenAuth={() => setShowAuthModal(true)}
       />
 

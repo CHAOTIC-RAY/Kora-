@@ -13,6 +13,9 @@ import {
   Gamepad2,
   Target,
   Rss,
+  Sun,
+  Smartphone,
+  Flame,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -21,6 +24,7 @@ import {
   TOPIC_FEED_GROUPS,
 } from "../lib/feedStorage";
 import { DEFAULT_APP_SKIN, type AppSkinId } from "../lib/appSkin";
+import { getTimeOfDayAutoTheme } from "../lib/readerThemes";
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -36,14 +40,24 @@ interface OnboardingModalProps {
     dailyReminders: boolean;
     selectedFeedUrls: string[];
   }) => void;
-  currentTheme: string;
   onThemeChange: (theme: string) => void;
   autoDisplayTheme?: boolean;
   onChangeAutoDisplayTheme?: (enabled: boolean) => void;
   appSkin?: AppSkinId;
   onAppSkinChange?: (skin: AppSkinId) => void;
   onOpenAuth?: () => void;
+  readerPrefs?: { theme?: string; autoAdjustTheme?: boolean };
+  onReaderPrefsChange?: (prefs: { theme?: string; autoAdjustTheme?: boolean }) => void;
 }
+
+const READER_THEME_TO_DISPLAY: Record<string, string> = {
+  sepia: "theme-light-yellow",
+  paper: "theme-light-white",
+  light: "theme-light-white",
+  night: "theme-dark-grey",
+  oled: "theme-dark-blue",
+  green: "theme-light-yellow",
+};
 
 const ARCHETYPES = [
   {
@@ -77,6 +91,60 @@ const ARCHETYPES = [
     icon: GlassesIcon,
     defaultTheme: "oled",
     quote: "Knowledge is the ultimate superpower.",
+  },
+  {
+    id: "auto-riser",
+    title: "Auto-Riser",
+    desc: "Lets the app adapt from dawn to dusk. Reader theme shifts with the sun so morning pages stay soft and late-night chapters stay dark.",
+    icon: Sun,
+    defaultTheme: getTimeOfDayAutoTheme(),
+    autoTheme: true,
+    quote: "I let the day pick my palette.",
+  },
+  {
+    id: "glass-minimalist",
+    title: "Glass Minimalist",
+    desc: "Wants the lightest chrome possible. Picks the iOS Glass skin with the Light theme and zero distractions.",
+    icon: Smartphone,
+    defaultTheme: "light",
+    skin: "ios-glass",
+    quote: "Less chrome, more content.",
+  },
+  {
+    id: "neon-archivist",
+    title: "Neon Archivist",
+    desc: "Cyberpunk shelving: dark neon grid skin, OLED reader theme, and synthwave vibes for late-night browsing.",
+    icon: Flame,
+    defaultTheme: "oled",
+    skin: "cyberpunk",
+    quote: "Neon on the shelf, dark in the head.",
+  },
+  {
+    id: "bibliophile-classic",
+    title: "Bibliophile Classic",
+    desc: "Walnut shelves, paper textures, warm amber light. The Library skin turns the app into a timeless reading room.",
+    icon: BookmarkIcon,
+    defaultTheme: "sepia",
+    skin: "library",
+    quote: "Like a library from another century.",
+  },
+  {
+    id: "material-maven",
+    title: "Material Maven",
+    desc: "Loves tonal palettes and expressive motion. Material Expressive skin with Paper theme for a clean, modern feel.",
+    icon: Target,
+    defaultTheme: "paper",
+    skin: "material-ex",
+    quote: "Motion with meaning.",
+  },
+  {
+    id: "monochrome-purist",
+    title: "Monochrome Purist",
+    desc: "Nothing OS aesthetic: NDOT fonts, monochrome chrome, and transparent layers. OLED theme for maximum contrast.",
+    icon: Smartphone,
+    defaultTheme: "oled",
+    skin: "nothing",
+    quote: "No color, just clarity.",
   },
 ];
 
@@ -172,12 +240,14 @@ const TOTAL_STEPS = 3;
 export default function OnboardingModal({
   isOpen,
   onComplete,
-  currentTheme,
   onThemeChange,
   autoDisplayTheme = false,
   onChangeAutoDisplayTheme,
   appSkin = DEFAULT_APP_SKIN,
   onOpenAuth,
+  readerPrefs,
+  onReaderPrefsChange,
+  onAppSkinChange,
 }: OnboardingModalProps) {
   const [step, setStep] = useState(1);
   const [nickname, setNickname] = useState("");
@@ -188,6 +258,9 @@ export default function OnboardingModal({
   const [dailyBriefNotification, setDailyBriefNotification] = useState(false);
   const [agreedToLicenses, setAgreedToLicenses] = useState(false);
   const [selectedTopics, setSelectedTopics] = useState<string[]>(["local", "world"]);
+
+  // Track display theme locally so completion payload stays valid
+  const [currentDisplayTheme, setCurrentDisplayTheme] = useState(() => localStorage.getItem("kora_display_theme") || "theme-light-white");
 
   // Feed URLs derived from selected topics (each topic bundles multiple site feeds).
   const selectedFeedUrls = React.useMemo(() => {
@@ -203,7 +276,15 @@ export default function OnboardingModal({
 
   const handleArchetypeSelect = (arc: (typeof ARCHETYPES)[0]) => {
     setSelectedArchetype(arc.id);
-    onThemeChange(arc.defaultTheme);
+    const display = READER_THEME_TO_DISPLAY[arc.defaultTheme] || arc.defaultTheme;
+    setCurrentDisplayTheme(display);
+    onThemeChange(display);
+    if (onReaderPrefsChange) {
+      onReaderPrefsChange({ theme: arc.defaultTheme, autoAdjustTheme: Boolean((arc as any).autoTheme) });
+    }
+    if (arc.skin && onAppSkinChange) {
+      onAppSkinChange(arc.skin as any);
+    }
   };
 
   const nextStep = () => {
@@ -225,7 +306,7 @@ export default function OnboardingModal({
     onComplete({
       nickname: nickname.trim() || "Registered Reader",
       archetype: selectedArchetype,
-      displayTheme: currentTheme,
+      displayTheme: currentDisplayTheme,
       appSkin,
       fontSize: 18,
       isContinuous: false,
