@@ -1,11 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import * as Sentry from "@sentry/react";
 import App from "./App.tsx";
 import "./index.css";
 import { initAndroidGestureNavigation } from "./lib/androidGestures";
 import { initIosTouchGuards } from "./lib/iosPwa";
 import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "./lib/appVersion";
 import { initCapacitorShell, isNativeApp } from "./lib/capacitorNative";
+import { initSentry } from "./lib/sentry";
+
+// Initialize Sentry as early as possible so boot-time errors are captured.
+initSentry();
 
 initAndroidGestureNavigation();
 initIosTouchGuards();
@@ -58,6 +63,30 @@ if ("serviceWorker" in navigator) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <Sentry.ErrorBoundary
+      fallback={({ resetError }) => (
+        <div className="min-h-screen bg-kindle-bg text-kindle-text flex flex-col items-center justify-center p-4">
+          <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
+          <p className="text-sm text-kindle-text-muted mb-4">
+            Kora encountered an unexpected error. A report has been sent to the team.
+          </p>
+          <button
+            onClick={resetError}
+            className="px-4 py-2 bg-kindle-accent text-white rounded-xl text-sm font-bold"
+          >
+            Reload
+          </button>
+        </div>
+      )}
+      beforeCapture={(error) => {
+        // Tag the error with build context for Sentry issue grouping
+        Sentry.withScope((scope) => {
+          scope.setTag("kora_build", typeof __KORA_BUILD_ID__ !== "undefined" ? __KORA_BUILD_ID__ : "dev");
+        });
+        return error;
+      }}
+    >
+      <App />
+    </Sentry.ErrorBoundary>
   </StrictMode>,
 );
