@@ -19,9 +19,9 @@ import {
 import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
-import LibraryManager from "./components/LibraryManager";
-import DiscoverView from "./components/DiscoverView";
-import SettingsView from "./components/SettingsView";
+const LibraryManager = lazy(() => import("./components/LibraryManager"));
+const DiscoverView = lazy(() => import("./components/DiscoverView"));
+const SettingsView = lazy(() => import("./components/SettingsView"));
 import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
 import LoungeView from "./components/LoungeView";
 import WikipediaWidget from "./components/WikipediaWidget";
@@ -60,17 +60,17 @@ import {
 import { applySelectedFeedSources, DEFAULT_FEED_SUBSCRIPTIONS } from "./lib/feedStorage";
 import { getTimeOfDayAutoTheme } from "./lib/readerThemes";
 import Quote from "./components/Quote";
-import FeedView from "./components/FeedView";
+const FeedView = lazy(() => import("./components/FeedView"));
 import DownloadBookBtn from "./components/DownloadBookBtn";
-import OnboardingModal from "./components/OnboardingModal";
-import GuideSetupPopup from "./components/GuideSetupPopup";
-import DailyReminderModal from "./components/DailyReminderModal";
+const OnboardingModal = lazy(() => import("./components/OnboardingModal"));
+const GuideSetupPopup = lazy(() => import("./components/GuideSetupPopup"));
+const DailyReminderModal = lazy(() => import("./components/DailyReminderModal"));
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import ApkUpdateBanner from "./components/ApkUpdateBanner";
 import ApkFooterLink from "./components/ApkFooterLink";
 import InstallView from "./components/InstallView";
-import AnnotationsHub from "./components/AnnotationsHub";
+const AnnotationsHub = lazy(() => import("./components/AnnotationsHub"));
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
 import { toast, Toaster } from "react-hot-toast";
@@ -92,7 +92,7 @@ import {
   registerThisDevice,
   listenAndServePeerRequests,
 } from "./lib/crossDeviceSync";
-import ProximitySyncModal from "./components/ProximitySyncModal";
+const ProximitySyncModal = lazy(() => import("./components/ProximitySyncModal"));
 import {
   APP_SKIN_STORAGE_KEY,
   type AppSkinId,
@@ -2805,6 +2805,7 @@ export default function App() {
             inert={activeTab !== "library" ? true : undefined}
           >
 
+          <Suspense fallback={null}>
           <LibraryManager
             userId={user?.uid || ""}
             books={books}
@@ -2836,6 +2837,7 @@ export default function App() {
               });
             }}
           />
+          </Suspense>
                   </div>
         )}
 {mountedTabs.has("feed") && (
@@ -2845,6 +2847,7 @@ export default function App() {
             inert={activeTab !== "feed" ? true : undefined}
           >
 
+          <Suspense fallback={null}>
           <FeedView
             userId={user?.uid || ""}
             onRefreshLibrary={refreshLibrary}
@@ -2855,6 +2858,7 @@ export default function App() {
             onClearInitialFilter={() => setFeedInitialFilter(null)}
             grayscaleCovers={grayscaleCovers}
           />
+          </Suspense>
                   </div>
         )}
 {mountedTabs.has("discover") && (
@@ -2864,6 +2868,7 @@ export default function App() {
             inert={activeTab !== "discover" ? true : undefined}
           >
 
+          <Suspense fallback={null}>
           <DiscoverView
             userId={user?.uid || ""}
             books={books}
@@ -2923,6 +2928,7 @@ export default function App() {
             initialQuery={discoverInitialQuery}
             onClearInitialQuery={() => setDiscoverInitialQuery(null)}
           />
+          </Suspense>
                   </div>
         )}
 {mountedTabs.has("tools") && (
@@ -2932,6 +2938,7 @@ export default function App() {
             inert={activeTab !== "tools" ? true : undefined}
           >
 
+          <Suspense fallback={null}>
           <SettingsView
             view="tools"
             user={user}
@@ -2974,6 +2981,7 @@ export default function App() {
             onOpenOnboarding={() => setShowOnboarding(true)}
             onModalToggle={setAnyModalOpen}
           />
+          </Suspense>
                   </div>
         )}
 {mountedTabs.has("settings") && (
@@ -2983,6 +2991,7 @@ export default function App() {
             inert={activeTab !== "settings" ? true : undefined}
           >
 
+          <Suspense fallback={null}>
           <SettingsView
             view="settings" 
             user={user}
@@ -3024,6 +3033,7 @@ export default function App() {
             onOpenOnboarding={() => setShowOnboarding(true)}
             onModalToggle={setAnyModalOpen}
           />
+          </Suspense>
                   </div>
         )}
       </main>
@@ -3483,7 +3493,7 @@ export default function App() {
 
           <div className="pt-4 border-t border-kindle-border/50 w-full flex flex-col items-center gap-1">
             <p>© 2026 Kora • Your reading lounge</p>
-            <p className="font-mono uppercase tracking-[0.2em] opacity-50 text-[9px]">Secure Firestore Cloud Persistence</p>
+            <p className="font-mono uppercase tracking-[0.2em] text-kindle-text-muted text-[9px]">Secure Firestore Cloud Persistence</p>
             <div className="pt-2">
               <ApkFooterLink />
             </div>
@@ -3529,11 +3539,13 @@ export default function App() {
       )}
 
       {/* Daily Motivation Reminder Modal */}
+      <Suspense fallback={null}>
       <DailyReminderModal
         isOpen={showDailyReminder}
         onClose={() => setShowDailyReminder(false)}
         nickname={userNickname}
       />
+      </Suspense>
 
       {deviceDownloadBooks && deviceDownloadBooks.length > 0 && (
         <DeviceDownloadPicker
@@ -3546,6 +3558,7 @@ export default function App() {
       )}
 
       {/* Playful Booknerd Onboarding Modal */}
+      <Suspense fallback={null}>
       <OnboardingModal
         isOpen={showOnboarding}
         onComplete={handleOnboardingComplete}
@@ -3558,7 +3571,9 @@ export default function App() {
         onReaderPrefsChange={setReaderPrefs}
         onOpenAuth={() => setShowAuthModal(true)}
       />
+      </Suspense>
 
+      <Suspense fallback={null}>
       <GuideSetupPopup
         isOpen={showGuideSetup}
         initial={{
@@ -3581,11 +3596,13 @@ export default function App() {
           emitGuideEvent("kora-guide:setup-saved", { skipped: true });
         }}
       />
+      </Suspense>
 
       <PwaLifecycleBanner />
       <ApkUpdateBanner />
 
       {showAnnotationsHub && (
+        <Suspense fallback={null}>
         <AnnotationsHub
           books={books}
           userId={user?.uid || ""}
@@ -3595,6 +3612,7 @@ export default function App() {
             handleOpenBook(book);
           }}
         />
+        </Suspense>
       )}
 
       {showWikipediaModal && (
@@ -3612,6 +3630,7 @@ export default function App() {
       )}
 
       {proximitySyncBook && (
+        <Suspense fallback={null}>
         <ProximitySyncModal
           book={proximitySyncBook}
           userId={user?.uid || "anonymous"}
@@ -3629,6 +3648,7 @@ export default function App() {
             }, 100);
           }}
         />
+        </Suspense>
       )}
     </div>
     </GuideProvider>
