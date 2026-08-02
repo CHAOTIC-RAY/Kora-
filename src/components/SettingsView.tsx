@@ -1369,7 +1369,7 @@ function SettingsView({
                           <div className="flex items-center justify-between w-full">
                             <div className="flex items-center gap-2">
                               <span className={`p-1 rounded-md ${active ? "bg-kindle-accent/20" : "bg-kindle-text/5"}`}>
-                                {React.createElement(skinIcon, { className: "w-4 h-4 text-kindle-accent" })}
+                                {React.createElement(skinIcon, { className: "w-4 h-4" })}
                               </span>
                               <span className="text-[10px] font-bold uppercase tracking-wider">{skin.label}</span>
                             </div>
