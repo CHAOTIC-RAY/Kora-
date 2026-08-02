@@ -7,7 +7,7 @@ import {
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
   FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
-  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers
+  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers, Library as LibraryIcon
 } from "lucide-react";
 
 // Icons for each app skin in the Settings skin selector
@@ -20,7 +20,7 @@ const skinIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   "material-ex": Layers,
   nothing: Grid3X3,
   cyberpunk: Flame,
-  library: BookMarked,
+  library: LibraryIcon,
 };
 
 import { toast } from "react-hot-toast";
