@@ -425,16 +425,18 @@ export function GameScoreTrackerDemo() {
 export function CrosswordSolvingDemo() {
   const gridSolution = [
     ["K", "O", "R", "A", ""],
-    ["", "", "", "", ""],
-    ["B", "O", "O", "K", ""],
-    ["", "", "", "", ""],
-    ["", "S", "H", "E", "D"]
+    ["A", "", "E", "", ""],
+    ["L", "E", "A", "D", ""],
+    ["E", "", "L", "", ""],
+    ["", "T", "A", "L", "E"]
   ];
 
   const clues = [
-    { num: "1A", text: "Offline-first reader companion.", word: "KORA" },
-    { num: "3A", text: "Physical reading asset.", word: "BOOK" },
-    { num: "5A", text: "Small structure or storage.", word: "SHED" }
+    { num: "1A", text: "Offline reader companion.", word: "KORA" },
+    { num: "1D", text: "Healthy green leaf.", word: "KALE" },
+    { num: "2D", text: "Genuine & authentic.", word: "REAL" },
+    { num: "3A", text: "Direct, guide, or main position.", word: "LEAD" },
+    { num: "4A", text: "Story from a classic book.", word: "TALE" }
   ];
 
   const [gridState, setGridState] = useState<string[][]>([
@@ -456,22 +458,28 @@ export function CrosswordSolvingDemo() {
     let timer: any;
     let step = 0;
 
-    // Ordered steps to solve
+    // Ordered steps to solve intersecting puzzle
     const path = [
       { r: 0, c: 0, val: "K", clue: 0 },
       { r: 0, c: 1, val: "O", clue: 0 },
       { r: 0, c: 2, val: "R", clue: 0 },
       { r: 0, c: 3, val: "A", clue: 0 },
-      
-      { r: 2, c: 0, val: "B", clue: 1 },
-      { r: 2, c: 1, val: "O", clue: 1 },
-      { r: 2, c: 2, val: "O", clue: 1 },
-      { r: 2, c: 3, val: "K", clue: 1 },
 
-      { r: 4, c: 1, val: "S", clue: 2 },
-      { r: 4, c: 2, val: "H", clue: 2 },
-      { r: 4, c: 3, val: "E", clue: 2 },
-      { r: 4, c: 4, val: "D", clue: 2 }
+      { r: 1, c: 0, val: "A", clue: 1 },
+      { r: 2, c: 0, val: "L", clue: 1 },
+      { r: 3, c: 0, val: "E", clue: 1 },
+
+      { r: 1, c: 2, val: "E", clue: 2 },
+      { r: 2, c: 2, val: "A", clue: 2 },
+      { r: 3, c: 2, val: "L", clue: 2 },
+
+      { r: 2, c: 1, val: "E", clue: 3 },
+      { r: 2, c: 3, val: "D", clue: 3 },
+
+      { r: 4, c: 1, val: "T", clue: 4 },
+      { r: 4, c: 2, val: "A", clue: 4 },
+      { r: 4, c: 3, val: "L", clue: 4 },
+      { r: 4, c: 4, val: "E", clue: 4 }
     ];
 
     const typeStep = () => {
@@ -527,7 +535,7 @@ export function CrosswordSolvingDemo() {
                 return (
                   <div 
                     key={`${rIdx}-${cIdx}`}
-                    className="aspect-square rounded-[3px] bg-kindle-border/40 border border-black/10 shadow-inner"
+                    className="aspect-square rounded-[3px] bg-neutral-900 dark:bg-black border border-neutral-950 shadow-inner"
                   />
                 );
               }
@@ -537,22 +545,23 @@ export function CrosswordSolvingDemo() {
                   key={`${rIdx}-${cIdx}`}
                   className={`relative flex items-center justify-center rounded-[2px] text-xs font-serif font-bold uppercase transition-all ${
                     isActive 
-                      ? "bg-[#d4a574] text-[#1a1510] border border-[#e8c49a] scale-105 z-10 shadow-md" 
-                      : "bg-kindle-card border border-kindle-border text-kindle-text"
+                      ? "bg-amber-400 text-neutral-950 border border-amber-600 scale-105 z-10 shadow-md font-black" 
+                      : "bg-white dark:bg-[#1a1a20] border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100"
                   }`}
                 >
                   {/* Word number label anchor */}
-                  {rIdx === 0 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono opacity-70 leading-none">1</span>}
-                  {rIdx === 2 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono opacity-70 leading-none">3</span>}
-                  {rIdx === 4 && cIdx === 1 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono opacity-70 leading-none">5</span>}
+                  {rIdx === 0 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono text-neutral-500 dark:text-neutral-400 font-bold leading-none">1</span>}
+                  {rIdx === 0 && cIdx === 2 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono text-neutral-500 dark:text-neutral-400 font-bold leading-none">2</span>}
+                  {rIdx === 2 && cIdx === 0 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono text-neutral-500 dark:text-neutral-400 font-bold leading-none">3</span>}
+                  {rIdx === 4 && cIdx === 1 && <span className="absolute top-[1px] left-[2px] text-[6px] font-mono text-neutral-500 dark:text-neutral-400 font-bold leading-none">4</span>}
                   
-                  <AnimatePresence mode="popLayout">
+                  <AnimatePresence>
                     {cell && (
                       <motion.span 
                         initial={{ opacity: 0, scale: 0.6 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0 }}
-                        className={isDone ? "text-emerald-500 font-bold" : ""}
+                        className={isDone ? "text-emerald-600 dark:text-emerald-400 font-black" : ""}
                       >
                         {cell}
                       </motion.span>
@@ -567,15 +576,15 @@ export function CrosswordSolvingDemo() {
         {/* Clues Column */}
         <div className="flex-1 flex flex-col justify-center space-y-2 text-left">
           <span className="text-[9px] font-black uppercase tracking-widest text-kindle-text-muted border-b border-kindle-border pb-1 block">Active Clues</span>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {clues.map((clue, idx) => {
               const isSelected = idx === activeClueIdx && !isDone;
               return (
                 <div 
                   key={clue.num} 
-                  className={`p-1.5 rounded-lg border transition-all ${
+                  className={`p-1 rounded-lg border transition-all ${
                     isSelected 
-                      ? "bg-amber-500/10 border-amber-500/30 text-kindle-text font-bold" 
+                      ? "bg-amber-500/15 border-amber-500/40 text-kindle-text font-bold" 
                       : "bg-transparent border-transparent text-kindle-text-muted"
                   }`}
                 >
@@ -594,13 +603,13 @@ export function CrosswordSolvingDemo() {
       {/* Done Celebration Overlay */}
       <div className="h-8 bg-kindle-card rounded-lg border border-kindle-border flex items-center justify-between px-3 text-[10px]">
         {isDone ? (
-          <div className="flex items-center gap-1.5 text-emerald-500 font-bold w-full justify-center">
+          <div className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold w-full justify-center">
             <Sparkles className="w-3.5 h-3.5 animate-bounce" />
             <span>CROSSWORD COMPLETED! 100% CORRECT</span>
           </div>
         ) : (
           <span className="text-kindle-text-muted font-mono tracking-wide">
-            &gt; Solver is typing across the grid...
+            &gt; Solver typing across intersecting grid...
           </span>
         )}
       </div>

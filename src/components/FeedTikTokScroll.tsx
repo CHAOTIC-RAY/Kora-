@@ -762,15 +762,29 @@ export default function FeedTikTokScroll({
                     isDarkMode ? "text-white/70" : "text-kindle-text font-medium"
                   }`}>
                   {isExpanded ? (
-                    <>
-                      <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                      <span>Tap to collapse</span>
-                    </>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedIndex(null);
+                      }}
+                      className="cursor-pointer p-1.5 -m-1.5 flex items-center justify-center hover:opacity-85 transition"
+                      aria-label="Collapse"
+                    >
+                      <ChevronUp className="w-5 h-5" />
+                    </button>
                   ) : (
-                    <>
-                      <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-bounce" />
-                      <span>Tap to read</span>
-                    </>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedIndex(index);
+                      }}
+                      className="cursor-pointer p-1.5 -m-1.5 flex items-center justify-center hover:opacity-85 transition"
+                      aria-label="Expand"
+                    >
+                      <ChevronDown className="w-5 h-5 animate-bounce text-kindle-accent" />
+                    </button>
                   )}
                   <span className="ml-auto font-mono">
                     {index + 1}/{items.length}

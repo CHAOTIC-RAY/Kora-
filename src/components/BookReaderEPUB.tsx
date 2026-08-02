@@ -48,7 +48,7 @@ import {
   recordPagesRead,
   recordReadingMinute,
 } from "../lib/readingStats";
-import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download, Sun, SunDim, Moon, ScanText, Sparkles, Clock } from "lucide-react";
+import { X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Menu, Settings, BookOpen, CircleAlert as AlertCircle, AlertTriangle, RefreshCw, Database, Zap, Type, LayoutGrid as Layout, Info, Globe, Search, Headphones, Play, Pause, RotateCcw, Volume2, FastForward, Rewind, BookMarked, Copy, Check, FileText, Highlighter, Trash2, MoreHorizontal, Undo2, Download, Sun, SunDim, Moon, ScanText, Sparkles, Clock, Edit2 } from "lucide-react";
 import { lookupWord, addDictionaryEntry } from "../lib/dictionary";
 import { loadEpubTocLabels, resolveChapterTitle, resolveEpubPath } from "../lib/epubToc";
 import {
@@ -397,6 +397,7 @@ interface BookReaderEPUBProps {
   book: BookMetadata;
   userId: string;
   onClose: () => void;
+  onOpenCreator?: (book: BookMetadata) => void;
   onProgressUpdate: (updatedBook: BookMetadata) => void;
   readerPrefs?: {
     fontSize: number;
@@ -439,7 +440,7 @@ interface EpubChapter {
   skip?: boolean;
 }
 
-export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate, readerPrefs, onReaderPrefsChange }: BookReaderEPUBProps) {
+export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, onProgressUpdate, readerPrefs, onReaderPrefsChange }: BookReaderEPUBProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [chapters, setChapters] = useState<EpubChapter[]>([]);
@@ -3050,6 +3051,17 @@ export default function BookReaderEPUB({ book, userId, onClose, onProgressUpdate
 
         {/* Action Controls */}
         <div className="flex items-center gap-2">
+          {onOpenCreator && (
+            <button
+              type="button"
+              onClick={() => onOpenCreator(book)}
+              className="p-2 rounded-xl hover:bg-neutral-500/10 text-kindle-accent transition flex items-center gap-1.5 text-xs font-bold"
+              title="Edit in EPUB Creator Studio"
+            >
+              <Edit2 className="w-4 h-4" />
+              <span className="hidden md:inline">Edit EPUB</span>
+            </button>
+          )}
           {annotateMode && (
             <span className="hidden sm:inline-flex items-center rounded-lg border border-kindle-accent/30 bg-kindle-accent/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-kindle-accent">
               Select text

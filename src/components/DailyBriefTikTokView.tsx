@@ -233,8 +233,8 @@ export default function DailyBriefTikTokView({
  <span className="font-sans text-[11px] uppercase tracking-wider hidden sm:inline">Feed</span>
  </button>
 
- <div className="bg-kindle-accent/20 border border-kindle-accent/40 rounded-full px-3.5 py-1 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-amber-900 shadow-sm">
- <Zap className="w-3.5 h-3.5 fill-current animate-pulse text-amber-600"/>
+ <div className="bg-kindle-accent/20 border border-kindle-accent/40 rounded-full px-3.5 py-1 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white shadow-sm">
+ <Zap className="w-3.5 h-3.5 fill-current animate-pulse text-kindle-accent"/>
  <span>News Brief</span>
  </div>
 

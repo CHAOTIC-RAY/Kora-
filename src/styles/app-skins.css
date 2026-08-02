@@ -1,9 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════
    App skins — orthogonal to display themes (color tokens).
-   .skin-kora    = classic frosted chrome (default)
-   .skin-paper   = matte e-reader
-   .skin-studio  = sharp editorial
-   .skin-soft    = rounded elevated
+   1. .skin-kora        = classic frosted chrome (default)
+   2. .skin-paper       = matte e-reader surfaces
+   3. .skin-studio      = sharp editorial (Swiss brutalist)
+   4. .skin-soft        = rounded elevated neumorphic touch
+   5. .skin-ios-glass   = liquid glass & iOS 18 vibrancy
+   6. .skin-material-ex = Material You 3 expressive
+   7. .skin-nothing     = Nothing OS monochrome & NDOT red LED
+   8. .skin-cyberpunk   = neon HUD grids & glitch scanlines
+   9. .skin-library     = mahogany wood shelves & gold parchment
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── Shared chrome hooks ── */
@@ -11,102 +16,120 @@
 .kora-desktop-nav,
 .kora-mobile-footer,
 .kora-chrome-btn,
-.kora-tab-pill {
+.kora-tab-pill,
+.kindle-card,
+.bg-kindle-card {
   transition:
-    border-radius 0.25s ease,
-    box-shadow 0.25s ease,
-    background-color 0.25s ease,
-    border-color 0.25s ease;
+    border-radius 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   KORA — classic frosted floating chrome
+   1. KORA — classic frosted floating chrome (default)
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-kora .kora-app-header {
-  border-bottom: 1px solid var(--theme-border) !important;
-  background: color-mix(in srgb, var(--theme-bg) 92%, transparent) !important;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-border) 75%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-bg) 90%, transparent) !important;
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
 }
 
 body.skin-kora .kora-desktop-nav {
-  border-radius: 0.75rem;
+  border-radius: 0.85rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 body.skin-kora .kora-mobile-footer {
-  border-radius: 1rem;
-  /* Solid fill — backdrop-filter is unreliable on mobile WebViews and lets content bleed through */
+  border-radius: 1.15rem;
   background: var(--theme-card) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.14);
   isolation: isolate;
 }
 
 body.skin-kora .kora-tab-pill {
-  border-radius: 0.75rem;
+  border-radius: 0.85rem;
   background: var(--theme-bg) !important;
   border: 1px solid var(--theme-border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
 body.skin-kora .kindle-card,
 body.skin-kora .bg-kindle-card,
 body.skin-kora section.bg-kindle-card {
-  border-radius: 1rem;
+  border-radius: 1.15rem;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 85%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 4px 20px -4px rgba(0, 0, 0, 0.06);
+}
+
+body.skin-kora .kindle-card:hover,
+body.skin-kora .bg-kindle-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 8px 28px -4px rgba(0, 0, 0, 0.12);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PAPER — warm matte reader surfaces
+   2. PAPER — warm matte e-reader surfaces
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-paper {
-  --skin-paper-warm: color-mix(in srgb, var(--theme-card) 94%, #c4a574 6%);
-  --skin-paper-line: color-mix(in srgb, var(--theme-border) 80%, #8b7355 20%);
+  --skin-paper-warm: color-mix(in srgb, var(--theme-card) 93%, #c4a574 7%);
+  --skin-paper-line: color-mix(in srgb, var(--theme-border) 78%, #8b7355 22%);
 }
 
 body.skin-paper .kora-app-header {
   border-bottom: 1px solid var(--skin-paper-line) !important;
   background: var(--skin-paper-warm) !important;
-  box-shadow: none;
+  box-shadow: 0 2px 8px rgba(60, 45, 30, 0.04);
 }
 
 body.skin-paper .kora-desktop-nav {
-  border-radius: 0.5rem;
+  border-radius: 0.625rem;
   background: var(--skin-paper-warm) !important;
   border-color: var(--skin-paper-line) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 body.skin-paper .kora-desktop-nav-item.is-active {
-  background: color-mix(in srgb, var(--theme-bg) 88%, #d4c4a8 12%) !important;
+  background: color-mix(in srgb, var(--theme-bg) 85%, #d4c4a8 15%) !important;
   border-color: var(--skin-paper-line) !important;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 body.skin-paper .kora-mobile-footer {
-  left: 0.75rem;
-  right: 0.75rem;
-  border-radius: 0.625rem;
+  left: 0.75rem !important;
+  right: 0.75rem !important;
+  width: auto !important;
+  transform: none !important;
+  border-radius: 0.75rem;
   background: var(--skin-paper-warm);
   border-color: var(--skin-paper-line) !important;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.5) inset,
-    0 6px 18px rgba(60, 45, 30, 0.08);
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 8px 22px rgba(60, 45, 30, 0.1);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 body.skin-paper .kora-tab-pill {
-  border-radius: 0.5rem;
+  border-radius: 0.625rem;
   background: color-mix(in srgb, var(--theme-bg) 85%, #d4c4a8 15%) !important;
   border: 1px solid var(--skin-paper-line) !important;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 body.skin-paper .kora-chrome-btn {
-  border-radius: 0.5rem !important;
+  border-radius: 0.625rem !important;
   border: 1px solid var(--skin-paper-line);
   background: var(--skin-paper-warm) !important;
 }
@@ -116,12 +139,20 @@ body.skin-paper .bg-kindle-card,
 body.skin-paper section.bg-kindle-card,
 body.skin-paper .rounded-2xl.bg-kindle-card,
 body.skin-paper .rounded-3xl.bg-kindle-card {
-  border-radius: 0.5rem !important;
+  border-radius: 0.625rem !important;
   background: var(--skin-paper-warm) !important;
   border-color: var(--skin-paper-line) !important;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.45) inset,
-    0 2px 8px rgba(60, 45, 30, 0.06) !important;
+    0 1px 0 rgba(255, 255, 255, 0.5) inset,
+    0 3px 12px rgba(60, 45, 30, 0.07) !important;
+}
+
+body.skin-paper .kindle-card:hover,
+body.skin-paper .bg-kindle-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 8px 20px rgba(60, 45, 30, 0.12) !important;
 }
 
 body.skin-paper input[type="text"],
@@ -131,10 +162,11 @@ body.skin-paper select {
   border-radius: 0.5rem !important;
   background: color-mix(in srgb, var(--theme-bg) 90%, #e8dfd0 10%) !important;
   border-color: var(--skin-paper-line) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   STUDIO — sharp editorial chrome
+   3. STUDIO — sharp editorial chrome (Swiss brutalist)
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-studio .kora-app-header {
@@ -150,6 +182,7 @@ body.skin-studio .kora-desktop-nav {
   overflow: hidden;
   border: 2px solid var(--theme-text) !important;
   background: var(--theme-bg) !important;
+  box-shadow: 3px 3px 0 var(--theme-text);
 }
 
 body.skin-studio .kora-desktop-nav-item {
@@ -166,6 +199,7 @@ body.skin-studio .kora-desktop-nav-item.is-active {
   color: var(--theme-bg) !important;
   border-color: transparent !important;
   box-shadow: none !important;
+  font-weight: 800 !important;
 }
 
 body.skin-studio .kora-desktop-nav-item.is-active svg {
@@ -173,9 +207,11 @@ body.skin-studio .kora-desktop-nav-item.is-active svg {
 }
 
 body.skin-studio .kora-mobile-footer {
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 0 !important;
+  right: 0 !important;
+  width: auto !important;
+  transform: none !important;
+  bottom: 0 !important;
   border-radius: 0;
   border-left: none;
   border-right: none;
@@ -197,7 +233,7 @@ body.skin-studio .kora-tab-pill {
   border-radius: 0.25rem;
   background: var(--theme-text) !important;
   border: none !important;
-  box-shadow: none;
+  box-shadow: 2px 2px 0 var(--theme-border);
 }
 
 body.skin-studio .kora-tab-item.is-active {
@@ -216,6 +252,12 @@ body.skin-studio .kora-chrome-btn {
   border-radius: 0.25rem !important;
   border: 2px solid var(--theme-text) !important;
   background: var(--theme-bg) !important;
+  box-shadow: 2px 2px 0 var(--theme-text);
+}
+
+body.skin-studio .kora-chrome-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--theme-text);
 }
 
 body.skin-studio .kindle-card,
@@ -226,7 +268,13 @@ body.skin-studio .rounded-3xl.bg-kindle-card {
   border-radius: 0.25rem !important;
   border-width: 2px !important;
   border-color: var(--theme-text) !important;
-  box-shadow: 4px 4px 0 color-mix(in srgb, var(--theme-text) 12%, transparent) !important;
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--theme-text) 18%, transparent) !important;
+}
+
+body.skin-studio .kindle-card:hover,
+body.skin-studio .bg-kindle-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--theme-text) 25%, transparent) !important;
 }
 
 body.skin-studio input[type="text"],
@@ -235,49 +283,52 @@ body.skin-studio textarea,
 body.skin-studio select {
   border-radius: 0.25rem !important;
   border-width: 2px !important;
+  border-color: var(--theme-text) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   SOFT — rounded elevated surfaces
+   4. SOFT — rounded elevated neumorphic surfaces
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-soft {
   --skin-soft-shadow:
-    0 14px 40px rgba(0, 0, 0, 0.1),
-    0 2px 8px rgba(0, 0, 0, 0.04);
-  --skin-soft-inset: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    0 16px 44px rgba(0, 0, 0, 0.09),
+    0 2px 8px rgba(0, 0, 0, 0.03);
+  --skin-soft-inset: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 body.skin-soft .kora-app-header {
   border-bottom: none !important;
   background: color-mix(in srgb, var(--theme-bg) 88%, transparent) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.07);
 }
 
 body.skin-soft .kora-desktop-nav {
   border-radius: 9999px;
   padding: 0.35rem !important;
-  background: color-mix(in srgb, var(--theme-card) 85%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-card) 90%, transparent) !important;
   border-color: color-mix(in srgb, var(--theme-border) 60%, transparent) !important;
   box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 body.skin-soft .kora-desktop-nav-item {
   border-radius: 9999px !important;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 body.skin-soft .kora-desktop-nav-item.is-active {
   border-radius: 9999px !important;
   background: var(--theme-bg) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1), var(--skin-soft-inset) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), var(--skin-soft-inset) !important;
+  transform: scale(1.03);
 }
 
 body.skin-soft .kora-mobile-footer {
-  max-width: min(24rem, calc(100vw - 2rem));
+  max-width: min(25rem, calc(100vw - 2rem));
   border-radius: 9999px;
   border-color: color-mix(in srgb, var(--theme-border) 70%, transparent) !important;
   background: var(--theme-card) !important;
@@ -301,15 +352,14 @@ body.skin-soft .kora-tab-pill {
 
 body.skin-soft .kora-chrome-btn {
   border-radius: 9999px !important;
-  width: 2.65rem;
-  height: 2.65rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 !important;
   border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent) !important;
   background: color-mix(in srgb, var(--theme-card) 90%, transparent) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), var(--skin-soft-inset);
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body.skin-soft .kora-chrome-btn:hover {
+  transform: scale(1.08);
 }
 
 body.skin-soft .kindle-card,
@@ -317,115 +367,123 @@ body.skin-soft .bg-kindle-card,
 body.skin-soft section.bg-kindle-card,
 body.skin-soft .rounded-2xl.bg-kindle-card,
 body.skin-soft .rounded-3xl.bg-kindle-card {
-  border-radius: 1.5rem !important;
+  border-radius: 1.65rem !important;
   border-color: color-mix(in srgb, var(--theme-border) 55%, transparent) !important;
   box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset) !important;
+}
+
+body.skin-soft .kindle-card:hover,
+body.skin-soft .bg-kindle-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.13), var(--skin-soft-inset) !important;
 }
 
 body.skin-soft input[type="text"],
 body.skin-soft input[type="search"],
 body.skin-soft textarea,
-body.skin-soft select,
-body.skin-soft button.rounded-full {
+body.skin-soft select {
   border-radius: 9999px !important;
   box-shadow: var(--skin-soft-inset) !important;
 }
 
-body.skin-soft .kora-mobile-media-dock--joined {
-  border-radius: 9999px !important;
-  box-shadow: var(--skin-soft-shadow), var(--skin-soft-inset);
-}
-
 /* ═══════════════════════════════════════════════════════════════
-   IOS GLASS — liquid glass, vibrancy, frosted layers
+   5. IOS GLASS — liquid glass, vibrancy, frosted layers
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-ios-glass {
-  --skin-glass-tint: rgba(255, 255, 255, 0.08);
-  --skin-glass-border: rgba(255, 255, 255, 0.18);
-  --skin-glass-shadow: 0 12px 48px rgba(0, 0, 0, 0.12);
-  font-family: -apple-system, BlinkMacSystemFont, SF Pro Display, sans-serif;
+  --skin-glass-border: rgba(255, 255, 255, 0.25);
+  --skin-glass-shadow: 0 16px 52px rgba(0, 0, 0, 0.14);
 }
 
 body.skin-ios-glass .kora-app-header {
-  background: color-mix(in srgb, var(--theme-bg) 72%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-bg) 68%, transparent) !important;
   border-bottom: 1px solid var(--skin-glass-border) !important;
+  box-shadow: var(--skin-glass-shadow);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+}
+
+body.skin-ios-glass .kora-desktop-nav {
+  border-radius: 1.35rem !important;
+  background: color-mix(in srgb, var(--theme-card) 72%, transparent) !important;
+  border: 1px solid var(--skin-glass-border) !important;
   box-shadow: var(--skin-glass-shadow);
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
 }
 
-body.skin-ios-glass .kora-desktop-nav {
-  border-radius: 1.25rem !important;
-  background: color-mix(in srgb, var(--theme-card) 76%, transparent) !important;
-  border: 1px solid var(--skin-glass-border) !important;
-  box-shadow: var(--skin-glass-shadow);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-}
-
 body.skin-ios-glass .kora-desktop-nav-item.is-active {
-  background: color-mix(in srgb, var(--theme-accent) 18%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-accent) 22%, transparent) !important;
   border: 1px solid var(--skin-glass-border) !important;
   border-radius: 1rem !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 body.skin-ios-glass .kora-mobile-footer {
-  background: color-mix(in srgb, var(--theme-card) 82%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-card) 80%, transparent) !important;
   border-top: 1px solid var(--skin-glass-border) !important;
-  border-radius: 1.5rem 1.5rem 0 0 !important;
-  box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-radius: 1.65rem 1.65rem 0 0 !important;
+  box-shadow: 0 -6px 36px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(28px) saturate(200%);
+  -webkit-backdrop-filter: blur(28px) saturate(200%);
 }
 
 body.skin-ios-glass .kora-tab-pill {
-  background: color-mix(in srgb, var(--theme-bg) 92%, transparent) !important;
+  background: color-mix(in srgb, var(--theme-bg) 90%, transparent) !important;
   border: 1px solid var(--skin-glass-border) !important;
   border-radius: 9999px !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 body.skin-ios-glass .kora-chrome-btn {
-  border-radius: 0.75rem !important;
+  border-radius: 0.85rem !important;
   background: color-mix(in srgb, var(--theme-card) 60%, transparent) !important;
   border: 1px solid var(--skin-glass-border) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 body.skin-ios-glass .kindle-card,
 body.skin-ios-glass .bg-kindle-card,
 body.skin-ios-glass section.bg-kindle-card {
-  border-radius: 1.25rem !important;
-  background: color-mix(in srgb, var(--theme-card) 70%, transparent) !important;
+  border-radius: 1.35rem !important;
+  background: color-mix(in srgb, var(--theme-card) 68%, transparent) !important;
   border: 1px solid var(--skin-glass-border) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+}
+
+body.skin-ios-glass .kindle-card:hover,
+body.skin-ios-glass .bg-kindle-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
 }
 
 body.skin-ios-glass input[type="text"],
 body.skin-ios-glass input[type="search"],
 body.skin-ios-glass textarea,
 body.skin-ios-glass select {
-  border-radius: 0.75rem !important;
-  background: color-mix(in srgb, var(--theme-bg) 68%, transparent) !important;
+  border-radius: 0.85rem !important;
+  background: color-mix(in srgb, var(--theme-bg) 65%, transparent) !important;
   border: 1px solid var(--skin-glass-border) !important;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MATERIAL EXPRESSIVE — tonal palettes, motion, elevated surfaces
+   6. MATERIAL EXPRESSIVE — tonal palettes, expressive motion
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-material-ex {
-  --material-tonal-container: color-mix(in srgb, var(--theme-card) 92%, var(--theme-accent) 8%);
-  --material-tonal-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.04);
-  --material-tonal-elevation-2: 0 4px 16px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.06);
-  font-family: Google Sans, Roboto, sans-serif;
+  --material-tonal-container: color-mix(in srgb, var(--theme-card) 90%, var(--theme-accent) 10%);
+  --material-tonal-elevation-1: 0 2px 6px rgba(0, 0, 0, 0.08), 0 6px 16px rgba(0, 0, 0, 0.04);
+  --material-tonal-elevation-2: 0 6px 20px rgba(0, 0, 0, 0.12), 0 16px 48px rgba(0, 0, 0, 0.08);
 }
 
 body.skin-material-ex .kora-app-header {
@@ -438,7 +496,7 @@ body.skin-material-ex .kora-desktop-nav {
   border-radius: 2rem !important;
   background: var(--material-tonal-container) !important;
   padding: 0.5rem 0.75rem !important;
-  gap: 0.25rem !important;
+  gap: 0.35rem !important;
   box-shadow: var(--material-tonal-elevation-1);
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent) !important;
 }
@@ -448,13 +506,13 @@ body.skin-material-ex .kora-desktop-nav-item.is-active {
   color: var(--theme-bg) !important;
   border-radius: 1.5rem !important;
   box-shadow: var(--material-tonal-elevation-1);
-  font-weight: 600 !important;
+  font-weight: 700 !important;
 }
 
 body.skin-material-ex .kora-mobile-footer {
   background: var(--material-tonal-container) !important;
-  border-radius: 1.75rem 1.75rem 0 0 !important;
-  box-shadow: 0 -2px 20px rgba(0, 0, 0, 0.08);
+  border-radius: 1.85rem 1.85rem 0 0 !important;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.09);
 }
 
 body.skin-material-ex .kora-tab-pill {
@@ -469,27 +527,27 @@ body.skin-material-ex .kora-chrome-btn {
   background: var(--material-tonal-container) !important;
   border: 1px solid color-mix(in srgb, var(--theme-border) 60%, transparent) !important;
   box-shadow: var(--material-tonal-elevation-1);
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
 }
 
 body.skin-material-ex .kora-chrome-btn:hover {
-  transform: scale(1.08);
+  transform: scale(1.1);
   box-shadow: var(--material-tonal-elevation-2);
 }
 
 body.skin-material-ex .kindle-card,
 body.skin-material-ex .bg-kindle-card,
 body.skin-material-ex section.bg-kindle-card {
-  border-radius: 1.5rem !important;
+  border-radius: 1.65rem !important;
   background: var(--material-tonal-container) !important;
   border: 1px solid color-mix(in srgb, var(--theme-border) 50%, transparent) !important;
   box-shadow: var(--material-tonal-elevation-1);
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
 }
 
 body.skin-material-ex .kindle-card:hover,
 body.skin-material-ex .bg-kindle-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   box-shadow: var(--material-tonal-elevation-2);
 }
 
@@ -497,167 +555,323 @@ body.skin-material-ex input[type="text"],
 body.skin-material-ex input[type="search"],
 body.skin-material-ex textarea,
 body.skin-material-ex select {
-  border-radius: 1rem !important;
+  border-radius: 1.15rem !important;
   background: var(--material-tonal-container) !important;
   border: 1px solid color-mix(in srgb, var(--theme-border) 55%, transparent) !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   NOTHING OS — monochrome, NDOT matrix icons, transparent layers
+   7. NOTHING OS — monochrome, NDOT matrix icons, red LED accent
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-nothing {
-  --nothing-dot: rgba(255, 255, 255, 0.12);
-  --nothing-dot-active: rgba(255, 255, 255, 0.35);
-  font-family: Noto Sans, NDOT, sans-serif;
+  --nothing-dot: rgba(255, 255, 255, 0.22);
+  --nothing-dot-active: rgba(255, 255, 255, 0.6);
+  --nothing-red: #ff2020;
+
+  --theme-bg: #000000;
+  --theme-card: #121214;
+  --theme-text: #ffffff;
+  --theme-text-muted: #a1a1aa;
+  --theme-border: #27272a;
+  --theme-accent: #ff2020;
+
+  background-color: #000000 !important;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.2px, transparent 1.2px) !important;
+  background-size: 16px 16px !important;
+  color: #ffffff !important;
+}
+
+/* Force dark mode crisp white text across Nothing OS */
+body.skin-nothing h1,
+body.skin-nothing h2,
+body.skin-nothing h3,
+body.skin-nothing h4,
+body.skin-nothing h5,
+body.skin-nothing h6,
+body.skin-nothing p,
+body.skin-nothing span,
+body.skin-nothing label,
+body.skin-nothing div,
+body.skin-nothing .text-neutral-900,
+body.skin-nothing .text-slate-900,
+body.skin-nothing .text-neutral-800,
+body.skin-nothing .text-slate-800,
+body.skin-nothing .text-neutral-700,
+body.skin-nothing .text-gray-900,
+body.skin-nothing .text-black,
+body.skin-nothing .text-kindle-text {
+  color: #ffffff !important;
+}
+
+body.skin-nothing .text-neutral-500,
+body.skin-nothing .text-slate-500,
+body.skin-nothing .text-neutral-400,
+body.skin-nothing .text-slate-400,
+body.skin-nothing .text-kindle-text-muted {
+  color: #a1a1aa !important;
 }
 
 body.skin-nothing .kora-app-header {
-  background: rgba(0, 0, 0, 0.65) !important;
-  border-bottom: 1px solid var(--nothing-dot) !important;
+  background: rgba(0, 0, 0, 0.92) !important;
+  border-bottom: 1px dashed var(--nothing-dot) !important;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
 
 body.skin-nothing .kora-desktop-nav {
   border-radius: 9999px !important;
-  background: rgba(20, 20, 20, 0.75) !important;
+  background: rgba(18, 18, 22, 0.9) !important;
   border: 1px solid var(--nothing-dot) !important;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
 
 body.skin-nothing .kora-desktop-nav-item.is-active {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border: 1px solid var(--nothing-dot-active) !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #ffffff !important;
   border-radius: 9999px !important;
-  color: #fff !important;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+  font-weight: 800 !important;
+}
+
+body.skin-nothing .kora-desktop-nav-item.is-active * {
+  color: #000000 !important;
 }
 
 body.skin-nothing .kora-mobile-footer {
-  background: rgba(0, 0, 0, 0.8) !important;
-  border-top: 1px solid var(--nothing-dot) !important;
+  background: rgba(0, 0, 0, 0.95) !important;
+  border-top: 1px dashed var(--nothing-dot) !important;
   border-radius: 1.5rem 1.5rem 0 0 !important;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
 body.skin-nothing .kora-tab-pill {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border: 1px solid var(--nothing-dot-active) !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #ffffff !important;
   border-radius: 9999px !important;
+  font-weight: 700 !important;
+}
+
+body.skin-nothing .kora-tab-pill * {
+  color: #000000 !important;
 }
 
 body.skin-nothing .kora-chrome-btn {
-  border-radius: 0.75rem !important;
-  background: rgba(255, 255, 255, 0.04) !important;
+  border-radius: 0.5rem !important;
+  background: rgba(255, 255, 255, 0.08) !important;
   border: 1px solid var(--nothing-dot) !important;
-  color: #fff !important;
+  color: #ffffff !important;
 }
 
 body.skin-nothing .kindle-card,
 body.skin-nothing .bg-kindle-card,
-body.skin-nothing section.bg-kindle-card {
+body.skin-nothing section.bg-kindle-card,
+body.skin-nothing .bg-white {
   border-radius: 1rem !important;
-  background: rgba(18, 18, 18, 0.8) !important;
-  border: 1px solid var(--nothing-dot) !important;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  background: rgba(18, 18, 22, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  color: #ffffff !important;
+}
+
+body.skin-nothing .kindle-card:hover,
+body.skin-nothing .bg-kindle-card:hover {
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.9);
 }
 
 body.skin-nothing input[type="text"],
 body.skin-nothing input[type="search"],
 body.skin-nothing textarea,
 body.skin-nothing select {
-  border-radius: 0.75rem !important;
-  background: rgba(12, 12, 12, 0.7) !important;
-  border: 1px solid var(--nothing-dot) !important;
-  color: #fff !important;
+  border-radius: 0.5rem !important;
+  background: rgba(12, 12, 16, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
 }
 
-body.skin-nothing .kora-app-header svg,
-body.skin-nothing .kora-desktop-nav-item svg {
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.15));
+/* Nothing OS Active Red LED Badges and Matrix Icon details */
+body.skin-nothing .bg-neutral-900,
+body.skin-nothing .bg-slate-900,
+body.skin-nothing .bg-black,
+body.skin-nothing .bg-kindle-text {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+body.skin-nothing .bg-neutral-900 *,
+body.skin-nothing .bg-slate-900 *,
+body.skin-nothing .bg-black *,
+body.skin-nothing .bg-kindle-text * {
+  color: #000000 !important;
+}
+
+body.skin-nothing svg {
+  stroke-width: 2.2px;
+  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.25));
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   CYBERPUNK — neon grids, glitch borders, dark mode only
+   8. CYBERPUNK — neon grids, glitch scanlines, cyber HUD
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-cyberpunk {
   --cyber-neon-pink: #ff007f;
   --cyber-neon-cyan: #00fff9;
   --cyber-neon-yellow: #faff00;
-  --cyber-grid: rgba(0, 255, 249, 0.06);
-  font-family: Orbitron, Rajdhani, sans-serif;
+  --cyber-grid: rgba(0, 255, 249, 0.08);
+
+  --theme-bg: #050510;
+  --theme-card: #08081a;
+  --theme-text: #00fff9;
+  --theme-text-muted: #80e6ff;
+  --theme-border: rgba(0, 255, 249, 0.35);
+  --theme-accent: #ff007f;
+
+  background-color: #050510 !important;
+  background-image:
+    linear-gradient(var(--cyber-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cyber-grid) 1px, transparent 1px) !important;
+  background-size: 24px 24px, 24px 24px !important;
+  color: #00fff9 !important;
 }
 
-body.skin-cyberpunk {
-  background:
-    linear-gradient(var(--cyber-grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--cyber-grid) 1px, transparent 1px),
-    color-mix(in srgb, #050510 92%, transparent);
-  background-size: 24px 24px, 24px 24px, 100% 100%;
+/* CRITICAL FIX FOR CYBERPUNK BLACK TEXT: Force all text in Cyberpunk mode to bright cyan / white / neon pink */
+body.skin-cyberpunk h1,
+body.skin-cyberpunk h2,
+body.skin-cyberpunk h3,
+body.skin-cyberpunk h4,
+body.skin-cyberpunk h5,
+body.skin-cyberpunk h6,
+body.skin-cyberpunk p,
+body.skin-cyberpunk span,
+body.skin-cyberpunk label,
+body.skin-cyberpunk div,
+body.skin-cyberpunk .text-neutral-900,
+body.skin-cyberpunk .text-slate-900,
+body.skin-cyberpunk .text-neutral-800,
+body.skin-cyberpunk .text-slate-800,
+body.skin-cyberpunk .text-neutral-700,
+body.skin-cyberpunk .text-slate-700,
+body.skin-cyberpunk .text-gray-900,
+body.skin-cyberpunk .text-black,
+body.skin-cyberpunk .text-kindle-text {
+  color: #00fff9 !important;
+}
+
+body.skin-cyberpunk .text-neutral-500,
+body.skin-cyberpunk .text-slate-500,
+body.skin-cyberpunk .text-neutral-400,
+body.skin-cyberpunk .text-slate-400,
+body.skin-cyberpunk .text-kindle-text-muted {
+  color: rgba(0, 255, 249, 0.75) !important;
 }
 
 body.skin-cyberpunk .kora-app-header {
-  background: rgba(5, 5, 16, 0.85) !important;
+  background: rgba(5, 5, 16, 0.92) !important;
   border-bottom: 2px solid var(--cyber-neon-cyan) !important;
   box-shadow:
-    0 0 20px rgba(0, 255, 249, 0.25),
-    inset 0 -1px 0 rgba(0, 255, 249, 0.15);
+    0 0 24px rgba(0, 255, 249, 0.35),
+    inset 0 -1px 0 rgba(0, 255, 249, 0.2);
+}
+
+body.skin-cyberpunk .kora-app-header h1,
+body.skin-cyberpunk .kora-app-header h2,
+body.skin-cyberpunk .kora-app-header span,
+body.skin-cyberpunk .kora-app-header p {
+  color: var(--cyber-neon-cyan) !important;
+  text-shadow: 0 0 10px rgba(0, 255, 249, 0.6);
 }
 
 body.skin-cyberpunk .kora-desktop-nav {
   border-radius: 0.5rem !important;
-  background: rgba(5, 5, 16, 0.85) !important;
+  background: rgba(5, 5, 16, 0.92) !important;
   border: 1px solid var(--cyber-neon-cyan) !important;
-  box-shadow: 0 0 24px rgba(0, 255, 249, 0.2), inset 0 0 12px rgba(0, 255, 249, 0.08);
+  box-shadow: 0 0 28px rgba(0, 255, 249, 0.25), inset 0 0 14px rgba(0, 255, 249, 0.1);
 }
 
 body.skin-cyberpunk .kora-desktop-nav-item.is-active {
   background: var(--cyber-neon-pink) !important;
   color: #050510 !important;
   border-radius: 0.25rem !important;
-  box-shadow: 0 0 16px rgba(255, 0, 127, 0.5);
+  box-shadow: 0 0 20px rgba(255, 0, 127, 0.7);
   text-shadow: none !important;
+  font-weight: 800 !important;
+}
+
+body.skin-cyberpunk .kora-desktop-nav-item.is-active * {
+  color: #050510 !important;
 }
 
 body.skin-cyberpunk .kora-mobile-footer {
-  background: rgba(5, 5, 16, 0.92) !important;
+  background: rgba(5, 5, 16, 0.95) !important;
   border-top: 2px solid var(--cyber-neon-cyan) !important;
   border-radius: 0 !important;
-  box-shadow: 0 -4px 32px rgba(0, 255, 249, 0.2);
+  box-shadow: 0 -6px 36px rgba(0, 255, 249, 0.3);
 }
 
 body.skin-cyberpunk .kora-tab-pill {
   background: var(--cyber-neon-pink) !important;
   color: #050510 !important;
   border-radius: 0.25rem !important;
-  box-shadow: 0 0 14px rgba(255, 0, 127, 0.45);
+  box-shadow: 0 0 18px rgba(255, 0, 127, 0.6);
+  font-weight: 800 !important;
+}
+
+body.skin-cyberpunk .kora-tab-pill * {
+  color: #050510 !important;
+}
+
+body.skin-cyberpunk .bg-neutral-900,
+body.skin-cyberpunk .bg-slate-900,
+body.skin-cyberpunk .bg-black,
+body.skin-cyberpunk .bg-kindle-text {
+  background-color: var(--cyber-neon-pink) !important;
+  color: #050510 !important;
+}
+
+body.skin-cyberpunk .bg-neutral-900 *,
+body.skin-cyberpunk .bg-slate-900 *,
+body.skin-cyberpunk .bg-black *,
+body.skin-cyberpunk .bg-kindle-text * {
+  color: #050510 !important;
 }
 
 body.skin-cyberpunk .kora-chrome-btn {
   border-radius: 0.25rem !important;
-  background: rgba(5, 5, 16, 0.7) !important;
+  background: rgba(5, 5, 16, 0.85) !important;
   border: 1px solid var(--cyber-neon-cyan) !important;
   color: var(--cyber-neon-cyan) !important;
-  box-shadow: 0 0 10px rgba(0, 255, 249, 0.2);
+  box-shadow: 0 0 12px rgba(0, 255, 249, 0.25);
   transition: all 0.2s ease;
 }
 
 body.skin-cyberpunk .kora-chrome-btn:hover {
-  box-shadow: 0 0 20px rgba(0, 255, 249, 0.45);
-  text-shadow: 0 0 8px var(--cyber-neon-cyan);
+  box-shadow: 0 0 24px rgba(0, 255, 249, 0.55);
+  text-shadow: 0 0 10px var(--cyber-neon-cyan);
 }
 
 body.skin-cyberpunk .kindle-card,
 body.skin-cyberpunk .bg-kindle-card,
-body.skin-cyberpunk section.bg-kindle-card {
+body.skin-cyberpunk section.bg-kindle-card,
+body.skin-cyberpunk .bg-white {
   border-radius: 0.5rem !important;
-  background: rgba(8, 8, 22, 0.88) !important;
-  border: 1px solid color-mix(in srgb, var(--cyber-neon-cyan) 40%, transparent) !important;
-  box-shadow: 0 0 16px rgba(0, 255, 249, 0.1), inset 0 0 8px rgba(0, 255, 249, 0.04);
+  background: rgba(8, 8, 26, 0.92) !important;
+  border: 1px solid rgba(0, 255, 249, 0.45) !important;
+  box-shadow: 0 0 22px rgba(0, 255, 249, 0.15), inset 0 0 12px rgba(0, 255, 249, 0.05) !important;
+  color: #00fff9 !important;
+}
+
+body.skin-cyberpunk .kindle-card:hover,
+body.skin-cyberpunk .bg-kindle-card:hover {
+  border-color: var(--cyber-neon-cyan) !important;
+  box-shadow: 0 0 34px rgba(0, 255, 249, 0.35), inset 0 0 18px rgba(0, 255, 249, 0.1) !important;
+  transform: translateY(-2px);
 }
 
 body.skin-cyberpunk input[type="text"],
@@ -665,9 +879,10 @@ body.skin-cyberpunk input[type="search"],
 body.skin-cyberpunk textarea,
 body.skin-cyberpunk select {
   border-radius: 0.25rem !important;
-  background: rgba(5, 5, 16, 0.75) !important;
+  background: rgba(5, 5, 20, 0.95) !important;
   border: 1px solid var(--cyber-neon-cyan) !important;
-  color: var(--cyber-neon-cyan) !important;
+  color: #00fff9 !important;
+  box-shadow: 0 0 12px rgba(0, 255, 249, 0.2) !important;
 }
 
 @keyframes cyberpunk-scanline {
@@ -680,112 +895,212 @@ body.skin-cyberpunk::after {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(to bottom, transparent 0%, rgba(0, 255, 249, 0.04) 50%, transparent 100%);
+  background: linear-gradient(to bottom, transparent 0%, rgba(0, 255, 249, 0.035) 50%, transparent 100%);
   animation: cyberpunk-scanline 8s linear infinite;
   z-index: 9999;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   LIBRARY — walnut shelves, paper textures, warm amber light
+   9. LIBRARY — walnut shelves, paper textures, warm amber light
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-library {
-  --library-wood: #7a5230;
-  --library-wood-light: #a67c52;
+  --library-wood: #3d2010;
+  --library-wood-dark: #221006;
   --library-amber: #d4a054;
-  --library-parchment: #f4ecd8;
-  font-family: Merriweather, Lora, serif;
+  --library-parchment: #f6eedb;
+
+  --theme-bg: #221006;
+  --theme-card: #f6eedb;
+  --theme-text: #f6eedb;
+  --theme-text-muted: #d4a054;
+  --theme-border: #d4a054;
+  --theme-accent: #d4a054;
+
+  background-color: #221006 !important;
+  background-image:
+    linear-gradient(90deg, rgba(0,0,0,0.25) 0%, transparent 8%, transparent 92%, rgba(0,0,0,0.25) 100%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0px, transparent 1px, transparent 6px, rgba(0, 0, 0, 0.2) 7px),
+    linear-gradient(180deg, #3d2010 0%, #221006 100%) !important;
+  background-attachment: fixed !important;
+  color: #f6eedb !important;
+}
+
+/* Text on wood wall surface outside cards */
+body.skin-library h1,
+body.skin-library h2,
+body.skin-library h3,
+body.skin-library h4,
+body.skin-library .kora-app-header *,
+body.skin-library .kora-tab-bar * {
+  color: #f6eedb;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+body.skin-library .text-neutral-900,
+body.skin-library .text-slate-900,
+body.skin-library .text-neutral-800,
+body.skin-library .text-slate-800,
+body.skin-library .text-black {
+  color: #f6eedb;
 }
 
 body.skin-library .kora-app-header {
-  background:
-    linear-gradient(to bottom, color-mix(in srgb, var(--library-wood) 88%, #3b2410 12%), color-mix(in srgb, var(--library-wood) 72%, #3b2410 28%)) !important;
-  border-bottom: 3px solid var(--library-amber) !important;
+  background: linear-gradient(180deg, #422312 0%, #291307 100%) !important;
+  border-bottom: 3px solid #d4a054 !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 4px 20px rgba(60, 35, 15, 0.35);
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 8px 32px rgba(0, 0, 0, 0.6) !important;
 }
 
 body.skin-library .kora-desktop-nav {
-  border-radius: 0.5rem !important;
-  background:
-    linear-gradient(135deg, var(--library-wood) 0%, color-mix(in srgb, var(--library-wood) 75%, #3b2410 25%) 100%) !important;
-  border: 2px solid var(--library-amber) !important;
+  border-radius: 0.625rem !important;
+  background: linear-gradient(135deg, #3d2010 0%, #221006 100%) !important;
+  border: 2px solid #d4a054 !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 6px 24px rgba(60, 35, 15, 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 8px 24px rgba(0, 0, 0, 0.5) !important;
 }
 
 body.skin-library .kora-desktop-nav-item.is-active {
-  background: var(--library-parchment) !important;
-  color: var(--library-wood) !important;
-  border-radius: 0.35rem !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 2px 8px rgba(60, 35, 15, 0.2);
+  background: #f6eedb !important;
+  color: #2a1406 !important;
+  border-radius: 0.45rem !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 3px 10px rgba(0, 0, 0, 0.4) !important;
+  font-weight: 700 !important;
+}
+
+body.skin-library .kora-desktop-nav-item.is-active * {
+  color: #2a1406 !important;
 }
 
 body.skin-library .kora-mobile-footer {
-  background:
-    linear-gradient(to top, var(--library-wood), color-mix(in srgb, var(--library-wood) 85%, transparent)) !important;
-  border-top: 3px solid var(--library-amber) !important;
-  border-radius: 1rem 1rem 0 0 !important;
-  box-shadow: 0 -4px 28px rgba(60, 35, 15, 0.35);
+  background: linear-gradient(0deg, #3d2010 0%, #221006 100%) !important;
+  border-top: 3px solid #d4a054 !important;
+  border-radius: 1.15rem 1.15rem 0 0 !important;
+  box-shadow: 0 -6px 32px rgba(0, 0, 0, 0.5);
 }
 
-body.skin-library .kora-tab-pill {
-  background: var(--library-parchment) !important;
-  color: var(--library-wood) !important;
-  border-radius: 0.5rem !important;
-  border: 1px solid var(--library-amber) !important;
-  box-shadow: 0 2px 10px rgba(60, 35, 15, 0.25);
+body.skin-library .kora-tab-pill,
+body.skin-library .bg-kindle-text,
+body.skin-library .bg-neutral-900,
+body.skin-library .bg-slate-900,
+body.skin-library .bg-black {
+  background: #d4a054 !important;
+  color: #2a1406 !important;
+  border: 1px solid #b3823b !important;
+  font-weight: 700 !important;
+}
+
+body.skin-library .bg-kindle-text *,
+body.skin-library .bg-neutral-900 *,
+body.skin-library .bg-slate-900 *,
+body.skin-library .bg-black * {
+  color: #2a1406 !important;
 }
 
 body.skin-library .kora-chrome-btn {
-  border-radius: 0.5rem !important;
-  background: var(--library-parchment) !important;
-  border: 1px solid var(--library-amber) !important;
-  color: var(--library-wood) !important;
-  box-shadow: 0 2px 8px rgba(60, 35, 15, 0.2);
+  border-radius: 0.625rem !important;
+  background: #3d2010 !important;
+  border: 1px solid #d4a054 !important;
+  color: #f6eedb !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
 }
 
+body.skin-library .kora-chrome-btn * {
+  color: #f6eedb !important;
+}
+
+/* Parchment Cards on Wooden Shelves */
 body.skin-library .kindle-card,
 body.skin-library .bg-kindle-card,
 body.skin-library section.bg-kindle-card {
-  border-radius: 0.75rem !important;
-  background:
-    linear-gradient(135deg, var(--library-parchment) 0%, color-mix(in srgb, var(--library-parchment) 90%, #d4c4a8 10%) 100%) !important;
-  border: 1px solid var(--library-amber) !important;
+  border-radius: 0.85rem !important;
+  background: linear-gradient(135deg, #f6eedb 0%, #e8dcc4 100%) !important;
+  border: 2px solid #d4a054 !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 6px 20px rgba(60, 35, 15, 0.15);
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 4px 0 #180a03 !important;
+  color: #2a1406 !important;
+}
+
+body.skin-library .kindle-card *,
+body.skin-library .bg-kindle-card *,
+body.skin-library section.bg-kindle-card * {
+  color: #2a1406;
+}
+
+body.skin-library .kindle-card .text-neutral-500,
+body.skin-library .bg-kindle-card .text-neutral-500,
+body.skin-library .kindle-card .text-slate-500,
+body.skin-library .bg-kindle-card .text-slate-500,
+body.skin-library .kindle-card .text-neutral-400,
+body.skin-library .bg-kindle-card .text-neutral-400 {
+  color: #7a5c3e !important;
+}
+
+body.skin-library .kindle-card:hover,
+body.skin-library .bg-kindle-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 16px 36px rgba(0, 0, 0, 0.55),
+    0 4px 0 #180a03 !important;
 }
 
 body.skin-library input[type="text"],
 body.skin-library input[type="search"],
 body.skin-library textarea,
 body.skin-library select {
-  border-radius: 0.5rem !important;
-  background: var(--library-parchment) !important;
-  border: 1px solid var(--library-amber) !important;
-  color: var(--library-wood) !important;
+  border-radius: 0.625rem !important;
+  background: #f6eedb !important;
+  border: 2px solid #d4a054 !important;
+  color: #2a1406 !important;
 }
 
-body.skin-library .kindle-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background:
-    repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(139, 115, 85, 0.04) 2px,
-      rgba(139, 115, 85, 0.04) 4px
-    );
-  pointer-events: none;
-  z-index: 0;
+body.skin-library input[type="text"]::placeholder,
+body.skin-library input[type="search"]::placeholder {
+  color: #8c6d4d !important;
 }
 
 body.skin-library .kora-tab-bar {
-  background: var(--library-wood) !important;
+  background: #3d2010 !important;
+}
+
+/* ── Custom Skin Scrollbars ── */
+body.skin-cyberpunk ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+body.skin-cyberpunk ::-webkit-scrollbar-track {
+  background: #050510;
+}
+body.skin-cyberpunk ::-webkit-scrollbar-thumb {
+  background: var(--cyber-neon-cyan);
+  border-radius: 2px;
+}
+
+body.skin-library ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+body.skin-library ::-webkit-scrollbar-track {
+  background: #f6eedb;
+}
+body.skin-library ::-webkit-scrollbar-thumb {
+  background: #a67c52;
+  border-radius: 4px;
+}
+
+body.skin-nothing ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+body.skin-nothing ::-webkit-scrollbar-track {
+  background: #000000;
+}
+body.skin-nothing ::-webkit-scrollbar-thumb {
+  background: #ffffff;
+  border-radius: 0;
 }

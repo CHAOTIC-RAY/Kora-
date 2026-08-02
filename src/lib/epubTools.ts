@@ -355,3 +355,143 @@ export function slugifyFilename(value: string, ext: string): string {
   const base = value.trim().replace(/[^\w.\- ]+/g, "_").replace(/\s+/g, " ").slice(0, 80) || "kora-export";
   return `${base}.${ext.replace(/^\./, "")}`;
 }
+
+export type EpubHtmlChapter = {
+  id: string;
+  title: string;
+  html: string;
+  text: string;
+};
+
+export async function extractEpubChaptersHtml(blob: Blob): Promise<EpubHtmlChapter[]> {
+  try {
+    if (blob.type === "text/html" || blob.type === "text/plain") {
+      const text = await blob.text();
+      const doc = new DOMParser().parseFromString(text, "text/html");
+      const h1s = Array.from(doc.querySelectorAll("h1, h2"));
+      if (h1s.length > 1) {
+        const chapters: EpubHtmlChapter[] = [];
+        let currentTitle = h1s[0].textContent?.trim() || "Chapter 1";
+        let currentHtml = "";
+
+        const children = Array.from(doc.body.children);
+        for (const child of children) {
+          if (child.tagName === "H1" || child.tagName === "H2") {
+            if (currentHtml.trim()) {
+              chapters.push({
+                id: "chap_" + Math.random().toString(36).slice(2, 8),
+                title: currentTitle,
+                html: currentHtml,
+                text: currentHtml.replace(/<[^>]+>/g, " ").trim(),
+              });
+            }
+            currentTitle = child.textContent?.trim() || `Chapter ${chapters.length + 1}`;
+            currentHtml = child.outerHTML;
+          } else {
+            currentHtml += child.outerHTML;
+          }
+        }
+        if (currentHtml.trim()) {
+          chapters.push({
+            id: "chap_" + Math.random().toString(36).slice(2, 8),
+            title: currentTitle,
+            html: currentHtml,
+            text: currentHtml.replace(/<[^>]+>/g, " ").trim(),
+          });
+        }
+        if (chapters.length > 0) return chapters;
+      }
+      const title = doc.querySelector("title, h1")?.textContent?.trim() || "Chapter 1";
+      return [
+        {
+          id: "chap_1",
+          title,
+          html: doc.body.innerHTML || text,
+          text: (doc.body.textContent || text).trim(),
+        },
+      ];
+    }
+
+    const zip = await JSZip.loadAsync(blob);
+    const containerXml = await zip.file("META-INF/container.xml")?.async("string");
+    if (!containerXml) {
+      const text = await blob.text();
+      return [
+        {
+          id: "chap_1",
+          title: "Chapter 1",
+          html: text,
+          text: text.replace(/<[^>]+>/g, " ").trim(),
+        },
+      ];
+    }
+
+    const parser = new DOMParser();
+    const containerDoc = parser.parseFromString(containerXml, "text/xml");
+    const rootfilePath = containerDoc.querySelector("rootfile")?.getAttribute("full-path") || "";
+    const rootDir = rootfilePath.includes("/") ? rootfilePath.substring(0, rootfilePath.lastIndexOf("/") + 1) : "";
+
+    const opfText = (await zip.file(rootfilePath)?.async("string")) || "";
+    const opfDoc = parser.parseFromString(opfText, "text/xml");
+
+    const manifestItems: Record<string, string> = {};
+    opfDoc.querySelectorAll("manifest > item, item").forEach((item) => {
+      const id = item.getAttribute("id");
+      const href = item.getAttribute("href");
+      if (id && href) manifestItems[id] = href;
+    });
+
+    const spineItems: string[] = [];
+    opfDoc.querySelectorAll("spine > itemref, itemref").forEach((itemref) => {
+      const idref = itemref.getAttribute("idref");
+      if (idref && manifestItems[idref]) spineItems.push(manifestItems[idref]);
+    });
+
+    const chapters: EpubHtmlChapter[] = [];
+    for (let i = 0; i < spineItems.length; i++) {
+      const relativeHref = spineItems[i];
+      const fullChapterPath = pathResolve(rootDir, relativeHref);
+      const chapterFile = zip.file(fullChapterPath) || zip.file(`${rootDir}${relativeHref}`);
+      if (!chapterFile) continue;
+
+      const rawContent = await chapterFile.async("string");
+      const chapterDoc = parser.parseFromString(rawContent, "text/html");
+      const title =
+        chapterDoc.querySelector("h1, h2, h3, title")?.textContent?.trim() || `Chapter ${i + 1}`;
+
+      const bodyHtml = chapterDoc.body ? chapterDoc.body.innerHTML : rawContent;
+      const bodyText = chapterDoc.body ? chapterDoc.body.textContent || "" : rawContent;
+
+      chapters.push({
+        id: `chap_${i + 1}_` + Math.random().toString(36).slice(2, 6),
+        title,
+        html: bodyHtml,
+        text: bodyText.trim(),
+      });
+    }
+
+    if (!chapters.length) {
+      return [
+        {
+          id: "chap_1",
+          title: "Chapter 1",
+          html: "<p>Start writing your book here...</p>",
+          text: "Start writing your book here...",
+        },
+      ];
+    }
+
+    return chapters;
+  } catch (err) {
+    console.warn("[extractEpubChaptersHtml] error:", err);
+    return [
+      {
+        id: "chap_1",
+        title: "Chapter 1",
+        html: "<p>Start writing your book here...</p>",
+        text: "Start writing your book here...",
+      },
+    ];
+  }
+}
+

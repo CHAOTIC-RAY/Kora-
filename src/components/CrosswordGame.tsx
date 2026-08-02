@@ -772,7 +772,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  return (
  <div
  key={`${r}-${c}`}
- className="aspect-square rounded-[3px] bg-neutral-200"
+ className="aspect-square rounded-[3px] bg-neutral-900 dark:bg-black border border-neutral-950 shadow-inner"
  />
  );
 }
@@ -794,23 +794,23 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  type="button"
  onClick={() => selectCell(r, c)}
  disabled={isWheel}
- className={`relative aspect-square rounded-[3px] border text-center font-serif font-bold uppercase leading-none transition-transform ${
+ className={`relative aspect-square rounded-[3px] border text-center font-serif font-bold uppercase leading-none transition-all ${
  selected
- ?"bg-kindle-accent text-kindle-bg border-kindle-accent scale-105 z-10"
+ ?"bg-amber-400 dark:bg-amber-500 text-neutral-950 border-amber-600 dark:border-amber-400 scale-105 z-10 font-black shadow-md"
  : inWord
- ?"bg-kindle-accent/30 text-kindle-text border-kindle-accent/40"
+ ?"bg-amber-100 dark:bg-amber-950/70 text-amber-950 dark:text-amber-100 border-amber-400 dark:border-amber-600"
  : filled && isWheel
- ?"bg-kindle-accent/85 text-kindle-bg border-kindle-accent/50"
- :"bg-white text-kindle-text border-kindle-border"
-} ${flashing ?"kora-xw-pop":""} ${wrong ?"ring-1 ring-red-400/70":""}`}
+ ?"bg-amber-400 text-neutral-950 border-amber-500 font-bold"
+ :"bg-white dark:bg-[#1a1a20] text-neutral-900 dark:text-neutral-100 border-neutral-300 dark:border-neutral-700 hover:border-amber-400"
+} ${flashing ?"kora-xw-pop":""} ${wrong ?"ring-2 ring-red-500 bg-red-100 dark:bg-red-950/50":""}`}
  style={{fontSize: `clamp(10px, ${Math.floor(280 / puzzle.size)}px, 18px)`}}
  >
  {num != null ? (
- <span className="absolute top-0 left-0.5 text-[7px] font-mono opacity-70 leading-none">
+ <span className="absolute top-0.5 left-0.5 text-[8px] font-mono font-bold text-neutral-500 dark:text-neutral-400 leading-none select-none pointer-events-none">
  {num}
  </span>
  ) : null}
- <span className="block pt-0.5">{cell}</span>
+ <span className="block pt-1">{cell}</span>
  </button>
  );
 })

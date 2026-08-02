@@ -1039,16 +1039,17 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             key={p.id}
                             className={`p-2.5 rounded-xl border transition ${
                               isCurrent
-                                ? "bg-kindle-accent/20 border-kindle-accent ring-1 ring-kindle-accent/30"
-                                : "bg-kindle-bg  border-kindle-border "
+                                ? "bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/30 dark:bg-amber-500/20"
+                                : "bg-kindle-card border-kindle-border"
                             }`}
                           >
                             <div className="flex items-center gap-1.5 mb-0.5 min-w-0">
                               <div className={`w-2 h-2 rounded-full ${isCurrent ? "bg-amber-500 animate-pulse" : "bg-neutral-400"}`} />
-                              <span className="text-xs font-bold text-kindle-text  truncate">{p.name}</span>
+                              <span className="text-xs font-bold text-kindle-text truncate">{p.name}</span>
                             </div>
-                            <p className="text-xl font-serif font-black text-kindle-text dark:text-white">
-                              {p.score} <span className="text-[10px] text-kindle-text-muted  font-normal">pts</span>
+                            <p className="text-2xl font-serif font-black text-kindle-text flex items-baseline gap-1.5">
+                              <span>{p.score}</span>
+                              <span className="text-xs font-sans font-bold text-amber-800 dark:text-amber-300">pts</span>
                             </p>
                           </div>
                         );

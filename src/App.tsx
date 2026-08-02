@@ -17,7 +17,7 @@ import {
   User,
 } from "firebase/auth";
 import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
-import { clearAllCachedBooks, storeBookFile, listCachedBookIds } from "./db/indexedDB";
+import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
 import LibraryManager from "./components/LibraryManager";
 import DiscoverView from "./components/DiscoverView";
@@ -33,6 +33,7 @@ import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
 const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
 const BookReaderText = lazy(() => import("./components/BookReaderText"));
+const CreateView = lazy(() => import("./components/CreateView"));
 const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
@@ -392,6 +393,7 @@ export default function App() {
     [activeTab, switchTab]
   );
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
+  const [activeBookMode, setActiveBookMode] = useState<"read" | "create">("read");
   const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
   const [audiobookPlaying, setAudiobookPlaying] = useState(false);
   const [lastReadBook, setLastReadBook] = useState<BookMetadata | null>(() => {
@@ -699,6 +701,38 @@ export default function App() {
   const [feedInitialUrl, setFeedInitialUrl] = useState<string | null>(null);
   const [feedInitialFilter, setFeedInitialFilter] = useState<"all" | "unread" | "saved" | "briefs" | null>(null);
   const shortcutHandledRef = useRef(false);
+
+  // Lock body scroll when any major modal or popup overlay is open
+  useEffect(() => {
+    const shouldLock = Boolean(
+      showSettings ||
+      showOnboarding ||
+      showGuideSetup ||
+      showDailyReminder ||
+      showAuthModal ||
+      showAnnotationsHub ||
+      showWikipediaModal ||
+      anyModalOpen ||
+      proximitySyncBook
+    );
+    if (shouldLock) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev || "";
+      };
+    }
+  }, [
+    showSettings,
+    showOnboarding,
+    showGuideSetup,
+    showDailyReminder,
+    showAuthModal,
+    showAnnotationsHub,
+    showWikipediaModal,
+    anyModalOpen,
+    proximitySyncBook,
+  ]);
 
   // Restore minimized audiobook player after reload if playback was active.
   useEffect(() => {
@@ -1426,18 +1460,48 @@ export default function App() {
   // 1. Authenticate user anonymously on mount if not logged in
   useEffect(() => {
     initFirebase();
+    const isInstallView = window.location.pathname === "/install" || window.location.pathname === "/install/";
+    
     // Display theme = colors; app skin = chrome/materials (orthogonal).
-    const classes = [displayTheme, skinBodyClass(appSkin)];
-    const isDark = displayTheme.includes("dark") || displayTheme === "theme-night" || displayTheme === "theme-oled";
+    const rawTheme = isInstallView ? "light" : (displayTheme || "light");
+    const cleanTheme = rawTheme.replace(/^theme-/, "");
+    const prefixedTheme = rawTheme.startsWith("theme-") ? rawTheme : `theme-${rawTheme}`;
+    const activeSkin = isInstallView ? "kora" : appSkin;
+
+    const classes = [rawTheme, cleanTheme, prefixedTheme, skinBodyClass(activeSkin)];
+    if (cleanTheme === "dark") {
+      classes.push("theme-dark-grey", "dark-grey");
+    } else if (cleanTheme === "sepia") {
+      // Keep true sepia, do not override with light-yellow
+    } else if (cleanTheme === "night") {
+      classes.push("theme-dark-grey", "dark-grey");
+    } else if (cleanTheme === "oled") {
+      classes.push("theme-dark-blue", "dark-blue");
+    } else if (cleanTheme === "light") {
+      classes.push("theme-light-white", "light-white");
+    }
+
+    const isDark =
+      !isInstallView && (
+        cleanTheme === "night" ||
+        cleanTheme === "oled" ||
+        cleanTheme === "dark" ||
+        cleanTheme === "dark-grey" ||
+        cleanTheme === "dark-blue" ||
+        rawTheme.includes("dark") ||
+        rawTheme === "theme-night" ||
+        rawTheme === "theme-oled"
+      );
+
     if (isDark) {
       classes.push("dark");
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
-    document.body.className = classes.join(" ");
-    document.documentElement.dataset.skin = appSkin;
-  }, [displayTheme, appSkin]);
+    document.body.className = Array.from(new Set(classes.filter(Boolean))).join(" ");
+    document.documentElement.dataset.skin = activeSkin;
+  }, [displayTheme, appSkin, window.location.pathname]);
 
   useEffect(() => {
     const handleDisplayThemeChanged = (e: Event) => {
@@ -2473,10 +2537,38 @@ export default function App() {
       return;
     }
 
-    if (!cachedBookIds.has(book.id)) {
+    let isCached = cachedBookIds.has(book.id);
+    if (!isCached) {
+      try {
+        isCached = await checkBookFileCached(book.id);
+        if (isCached) {
+          setCachedBookIds((prev) => {
+            const next = new Set(prev);
+            next.add(book.id);
+            return next;
+          });
+        }
+      } catch (err) {
+        console.warn("Failed checking book file cache:", err);
+      }
+    }
+
+    if (!isCached) {
       setProximitySyncBook(book);
       return;
     }
+
+    if (
+      book.id.startsWith("created_") ||
+      book.id.startsWith("blank_") ||
+      book.tags?.includes("created") ||
+      book.tags?.includes("template")
+    ) {
+      setActiveBookMode("create");
+    } else {
+      setActiveBookMode("read");
+    }
+
     setActiveBook(book);
     setLastReadBook(book);
     localStorage.setItem("kindle_last_read", JSON.stringify(book));
@@ -2864,10 +2956,7 @@ export default function App() {
             loungeEnabled={loungeEnabled}
             onChangeLoungeEnabled={handleLoungeEnabledChange}
             onToggleGrayscale={toggleGrayscale}
-            onChangeTheme={(theme) => {
-              setDisplayTheme(theme);
-              localStorage.setItem("kora_display_theme", theme);
-            }}
+            onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
             onSignIn={() => setShowAuthModal(true)}
@@ -3004,7 +3093,21 @@ export default function App() {
         )}
       {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
         <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading context="reader" /></div>}>
-        {activeBook.extension?.toLowerCase() === "pdf" ? (
+        {activeBookMode === "create" ? (
+          <CreateView
+            book={activeBook}
+            userId={user?.uid || ""}
+            onClose={dismissReader}
+            onOpenReader={(b) => {
+              setActiveBookMode("read");
+            }}
+            onBookUpdated={(updatedBook) => {
+              setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
+              setActiveBook(updatedBook);
+              setLastReadBook(updatedBook);
+            }}
+          />
+        ) : activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
             book={activeBook}
             userId={user?.uid || ""}
@@ -3022,6 +3125,9 @@ export default function App() {
             readerPrefs={readerPrefs}
             onReaderPrefsChange={setReaderPrefs}
             onClose={dismissReader}
+            onOpenCreator={(b) => {
+              setActiveBookMode("create");
+            }}
             onProgressUpdate={(updatedBook) => {
               setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
               setLastReadBook(updatedBook);
@@ -3307,7 +3413,7 @@ export default function App() {
 
       {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book or modal open */}
       {!readerOpen && !anyModalOpen && (
-      <footer className="md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden">
+      <footer className={`md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden ${activeTab === "feed" ? "is-glass-tab" : ""}`}>
         <LayoutGroup id="kora-mobile-tabs">
           <nav className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`} aria-label="Main">
             {mobileTabs.map(({ id, label, Icon }) => {

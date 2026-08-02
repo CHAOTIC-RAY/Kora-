@@ -568,13 +568,13 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
               </div>
 
               <div className="flex-1 relative overflow-hidden flex flex-col justify-end p-3.5 select-none bg-neutral-900">
-                <AnimatePresence mode="wait">
+                <AnimatePresence>
                   <motion.div
                     key={newsIdx}
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -15 }}
-                    transition={{ duration: 0.4 }}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
                     className="absolute inset-0 w-full h-full"
                   >
                     <img
@@ -604,23 +604,19 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                   </div>
 
                   {/* Daily Brief Button (Zap) */}
-                  <div className="w-8 h-8 rounded-full border border-kindle-accent/30 bg-kindle-accent flex items-center justify-center shadow-md animate-pulse relative">
+                  <div className="w-8 h-8 rounded-full border border-kindle-accent/30 bg-kindle-accent flex items-center justify-center shadow-md relative">
                     <Zap className="w-3.5 h-3.5 text-kindle-bg fill-current" />
-                    <span className="absolute -top-0.5 -right-0.5 flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white"></span>
-                    </span>
                   </div>
                 </div>
 
                 <div className="relative z-10 space-y-2 mb-12 pr-10 text-left">
-                  <AnimatePresence mode="wait">
+                  <AnimatePresence>
                     <motion.div
                       key={newsIdx}
-                      initial={{ opacity: 0, y: 10 }}
+                      initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.35 }}
+                      exit={{ opacity: 0, y: -6 }}
+                      transition={{ duration: 0.4 }}
                       className="space-y-2"
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -999,32 +995,64 @@ export default function InstallView() {
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const theme = localStorage.getItem("kora_display_theme") || "theme-light-white";
-    return theme.includes("dark") || document.body.classList.contains("dark");
+    return theme.includes("dark") || theme === "night" || theme === "oled" || document.body.classList.contains("dark");
   });
+
+  // Keep site CSS variables and root dark mode class perfectly in sync
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+
+    if (isDarkMode) {
+      root.classList.add("dark");
+      body.classList.add("dark");
+      const darkVars: Record<string, string> = {
+        "--theme-bg": "#121214",
+        "--theme-text": "#FAFAFA",
+        "--theme-card": "#1E1E22",
+        "--theme-border": "#2D2D30",
+        "--theme-accent": "#F59E0B",
+        "--theme-text-muted": "#A1A1AA",
+        "--color-kindle-bg": "#121214",
+        "--color-kindle-text": "#FAFAFA",
+        "--color-kindle-card": "#1E1E22",
+        "--color-kindle-border": "#2D2D30",
+        "--color-kindle-accent": "#F59E0B",
+        "--color-kindle-text-muted": "#A1A1AA",
+      };
+      Object.entries(darkVars).forEach(([k, v]) => {
+        root.style.setProperty(k, v);
+        body.style.setProperty(k, v);
+      });
+    } else {
+      root.classList.remove("dark");
+      body.classList.remove("dark");
+      const lightVars: Record<string, string> = {
+        "--theme-bg": "#FAF7F2",
+        "--theme-text": "#2C2A26",
+        "--theme-card": "#F3EEE6",
+        "--theme-border": "#E4DDD2",
+        "--theme-accent": "#8B7355",
+        "--theme-text-muted": "#6F6A5F",
+        "--color-kindle-bg": "#FAF7F2",
+        "--color-kindle-text": "#2C2A26",
+        "--color-kindle-card": "#F3EEE6",
+        "--color-kindle-border": "#E4DDD2",
+        "--color-kindle-accent": "#8B7355",
+        "--color-kindle-text-muted": "#6F6A5F",
+      };
+      Object.entries(lightVars).forEach(([k, v]) => {
+        root.style.setProperty(k, v);
+        body.style.setProperty(k, v);
+      });
+    }
+  }, [isDarkMode]);
 
   const toggleTheme = () => {
     const nextDark = !isDarkMode;
     setIsDarkMode(nextDark);
-    const body = document.body;
-    if (nextDark) {
-      body.classList.add("dark");
-      localStorage.setItem("kora_display_theme", "theme-dark-charcoal");
-      body.style.setProperty("--theme-bg", "#121214");
-      body.style.setProperty("--theme-text", "#FAFAFA");
-      body.style.setProperty("--theme-card", "#1E1E22");
-      body.style.setProperty("--theme-border", "#2D2D30");
-      body.style.setProperty("--theme-accent", "#F59E0B");
-      body.style.setProperty("--theme-text-muted", "#A1A1AA");
-    } else {
-      body.classList.remove("dark");
-      localStorage.setItem("kora_display_theme", "theme-light-white");
-      body.style.setProperty("--theme-bg", "#FAF7F2");
-      body.style.setProperty("--theme-text", "#2C2A26");
-      body.style.setProperty("--theme-card", "#F3EEE6");
-      body.style.setProperty("--theme-border", "#E4DDD2");
-      body.style.setProperty("--theme-accent", "#8B7355");
-      body.style.setProperty("--theme-text-muted", "#6F6A5F");
-    }
+    localStorage.setItem("kora_display_theme", nextDark ? "theme-dark-charcoal" : "theme-light-white");
+    window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: nextDark ? "dark" : "paper" }));
   };
 
   const [apk, setApk] = useState<{ url: string; versionName: string; size: number } | null>(null);
@@ -1824,7 +1852,27 @@ export default function InstallView() {
             </button>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Direct Theme Switcher Button */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="p-2 sm:px-3 sm:py-2 rounded-xl bg-kindle-card border border-kindle-border text-kindle-text hover:border-kindle-accent transition cursor-pointer shadow-xs flex items-center gap-1.5 text-[10px] sm:text-xs font-bold"
+              title={isDarkMode ? "Switch to Pristine Light Theme" : "Switch to Dark Theme"}
+            >
+              {isDarkMode ? (
+                <>
+                  <Sun className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                  <span className="hidden sm:inline">Light Mode</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-3.5 h-3.5 text-kindle-accent" />
+                  <span className="hidden sm:inline">Dark Mode</span>
+                </>
+              )}
+            </button>
+
             {/* Back to Web Reader */}
             <a
               href="/"
@@ -2063,23 +2111,23 @@ export default function InstallView() {
 
                        {/* Active Download Progress Bar at bottom if active */}
                        {activeDownload && (
-                         <div className="p-4 bg-neutral-900 text-white rounded-2xl space-y-2 border border-emerald-500/40 shadow-xl animate-in fade-in duration-200 mt-2">
+                         <div className="p-4 bg-kindle-card text-kindle-text rounded-2xl space-y-2 border border-emerald-500/40 shadow-xl animate-in fade-in duration-200 mt-2">
                            <div className="flex items-center justify-between text-xs font-bold">
                              <div className="flex items-center gap-2 truncate">
-                               <Download className="w-4 h-4 text-emerald-400 animate-bounce" />
+                               <Download className="w-4 h-4 text-emerald-500 animate-bounce" />
                                <span className="truncate">{activeDownload.name}</span>
                              </div>
-                             <span className="font-mono text-xs text-emerald-400 shrink-0">
+                             <span className="font-mono text-xs text-emerald-600 dark:text-emerald-400 shrink-0">
                                {activeDownload.completed ? "COMPLETED" : `${activeDownload.progress}%`}
                              </span>
                            </div>
-                           <div className="w-full bg-neutral-800 rounded-full h-2 overflow-hidden">
+                           <div className="w-full bg-kindle-border rounded-full h-2 overflow-hidden">
                              <div
-                               className="bg-gradient-to-r from-amber-400 to-emerald-400 h-full transition-all duration-300"
+                               className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full transition-all duration-300"
                                style={{ width: `${activeDownload.progress}%` }}
                               />
                            </div>
-                           <div className="flex items-center justify-between text-[10px] font-mono text-neutral-400">
+                           <div className="flex items-center justify-between text-[10px] font-mono text-kindle-text-muted">
                              <span>Source: {activeDownload.source}</span>
                              <span>{activeDownload.completed ? "Saved to Kora Local Library!" : "Downloading..."}</span>
                            </div>
@@ -2090,36 +2138,36 @@ export default function InstallView() {
                     {/* POPUP MODAL: Download Mirror Hub on Top of Discover Tab */}
                     <AnimatePresence>
                       {isDownloadModalOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200">
                           <motion.div
                             initial={{ opacity: 0, scale: 0.95, y: 15 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 15 }}
                             transition={{ duration: 0.25, ease: "easeOut" }}
-                            className="relative w-full max-w-xl max-h-[90vh] bg-[#121214] border border-neutral-700 rounded-3xl p-6 sm:p-7 shadow-2xl overflow-y-auto space-y-5 text-left"
+                            className="relative w-full max-w-xl max-h-[90vh] bg-kindle-card border border-kindle-border text-kindle-text rounded-3xl p-6 sm:p-7 shadow-2xl overflow-y-auto space-y-5 text-left"
                           >
                             {/* Modal Header */}
-                            <div className="flex items-start justify-between border-b border-neutral-800 pb-4">
+                            <div className="flex items-start justify-between border-b border-kindle-border pb-4">
                               <div className="flex items-center gap-4 min-w-0">
                                 <BookCoverImage
                                   book={selectedBook}
-                                  className="w-16 h-22 object-cover rounded-xl shadow-md border border-neutral-700 shrink-0 bg-neutral-900 overflow-hidden"
+                                  className="w-16 h-22 object-cover rounded-xl shadow-md border border-kindle-border shrink-0 bg-kindle-bg overflow-hidden"
                                 />
                                 <div className="space-y-1 min-w-0 flex-1">
-                                  <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
                                     DOWNLOAD MIRROR HUB
                                   </span>
-                                  <h4 className="text-lg sm:text-xl font-serif font-bold text-white truncate leading-snug">
+                                  <h4 className="text-lg sm:text-xl font-serif font-bold text-kindle-text truncate leading-snug">
                                     {selectedBook.title}
                                   </h4>
-                                  <p className="text-xs text-neutral-400 truncate">by {selectedBook.author}</p>
-                                  <p className="text-[10.5px] font-mono text-neutral-500 truncate">{selectedBook.info}</p>
+                                  <p className="text-xs text-kindle-text-muted truncate">by {selectedBook.author}</p>
+                                  <p className="text-[10.5px] font-mono text-kindle-text-muted opacity-80 truncate">{selectedBook.info}</p>
                                 </div>
                               </div>
                               <button
                                 type="button"
                                 onClick={() => setIsDownloadModalOpen(false)}
-                                className="p-2 rounded-full bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition cursor-pointer shrink-0 ml-2"
+                                className="p-2 rounded-full bg-kindle-bg hover:bg-kindle-border/50 text-kindle-text transition cursor-pointer shrink-0 ml-2 border border-kindle-border"
                                 title="Close"
                               >
                                 <X className="w-4 h-4" />
@@ -2128,17 +2176,17 @@ export default function InstallView() {
 
                             {/* SELECT EDITION Box */}
                             <div className="space-y-2">
-                              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
+                              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-kindle-text-muted">
                                 SELECT EDITION / FORMAT:
                               </span>
-                              <div className="p-3 bg-[#18181c] border border-neutral-800 rounded-2xl flex flex-wrap gap-2 items-center">
+                              <div className="p-3 bg-kindle-bg border border-kindle-border rounded-2xl flex flex-wrap gap-2 items-center">
                                 {selectedBook.editions.map((ed, i) => (
                                   <span
                                     key={i}
                                     className={`px-3 py-1 rounded-xl text-xs font-mono font-bold uppercase tracking-wider border cursor-pointer transition ${
                                       i === 0
-                                        ? "bg-white text-black border-white shadow-sm"
-                                        : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-neutral-500"
+                                        ? "bg-kindle-text text-kindle-bg border-kindle-text shadow-xs"
+                                        : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent"
                                     }`}
                                   >
                                     {ed}
@@ -2149,21 +2197,21 @@ export default function InstallView() {
 
                             {/* AVAILABLE DOWNLOAD MIRRORS Box */}
                             <div className="space-y-2.5">
-                              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-neutral-400">
+                              <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-kindle-text-muted">
                                 AVAILABLE DOWNLOAD MIRRORS:
                               </span>
-                              <div className="p-3 bg-[#18181c] border border-neutral-800 rounded-2xl space-y-2.5">
+                              <div className="p-3 bg-kindle-bg border border-kindle-border rounded-2xl space-y-2.5">
                                 {selectedBook.mirrors.map((mirror, idx) => (
                                   <div
                                     key={idx}
-                                    className="p-3 bg-[#121214] border border-neutral-800/90 rounded-xl flex items-center justify-between gap-3 hover:border-neutral-700 transition"
+                                    className="p-3 bg-kindle-card border border-kindle-border rounded-xl flex items-center justify-between gap-3 hover:border-kindle-accent transition"
                                   >
                                     <div className="space-y-0.5 min-w-0">
                                       <div className="flex items-center gap-2">
-                                        <span className={`w-2 h-2 rounded-full ${mirror.status === "fast" || mirror.status === "online" ? "bg-emerald-400 shadow-xs shadow-emerald-400/50 animate-pulse" : "bg-amber-400"}`} />
-                                        <span className="font-bold text-xs text-white truncate">{mirror.name}</span>
+                                        <span className={`w-2 h-2 rounded-full ${mirror.status === "fast" || mirror.status === "online" ? "bg-emerald-500 shadow-xs shadow-emerald-500/50 animate-pulse" : "bg-amber-500"}`} />
+                                        <span className="font-bold text-xs text-kindle-text truncate">{mirror.name}</span>
                                       </div>
-                                      <p className="text-[10px] font-mono text-neutral-500 truncate">{mirror.url}</p>
+                                      <p className="text-[10px] font-mono text-kindle-text-muted truncate">{mirror.url}</p>
                                     </div>
 
                                     <div className="flex items-center gap-2 shrink-0">
@@ -2172,7 +2220,7 @@ export default function InstallView() {
                                         onClick={() => {
                                           toast.success(`Opening mirror link: ${mirror.name}`);
                                         }}
-                                        className="p-2.5 rounded-xl bg-neutral-800 border border-neutral-700 text-neutral-300 hover:text-white hover:border-neutral-500 transition cursor-pointer"
+                                        className="p-2.5 rounded-xl bg-kindle-bg border border-kindle-border text-kindle-text hover:border-kindle-accent transition cursor-pointer"
                                         title="Mirror Link"
                                       >
                                         <ExternalLink className="w-3.5 h-3.5" />
@@ -2182,7 +2230,7 @@ export default function InstallView() {
                                         onClick={() => {
                                           startSimulatedDownload(mirror.name, "EPUB", selectedBook.title);
                                         }}
-                                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer"
                                       >
                                         <Download className="w-3.5 h-3.5" /> Get File
                                       </button>
@@ -2196,27 +2244,27 @@ export default function InstallView() {
                             {selectedBook.audioTracks && selectedBook.audioTracks.length > 0 && (
                               <div className="space-y-2.5 pt-2">
                                 <div className="flex items-center gap-2">
-                                  <Headphones className="w-4 h-4 text-sky-400" />
-                                  <h5 className="text-xs font-bold text-white uppercase tracking-wider">AUDIOBOOK TRACKS</h5>
+                                  <Headphones className="w-4 h-4 text-sky-500" />
+                                  <h5 className="text-xs font-bold text-kindle-text uppercase tracking-wider">AUDIOBOOK TRACKS</h5>
                                 </div>
-                                <div className="bg-[#18181c] border border-neutral-800 rounded-2xl overflow-hidden divide-y divide-neutral-800/80">
+                                <div className="bg-kindle-bg border border-kindle-border rounded-2xl overflow-hidden divide-y divide-kindle-border">
                                   {selectedBook.audioTracks.map((trackTitle, tIdx) => (
                                     <div
                                       key={tIdx}
-                                      className="p-3 flex items-center justify-between gap-3 text-xs hover:bg-neutral-800/50 transition cursor-pointer group"
+                                      className="p-3 flex items-center justify-between gap-3 text-xs hover:bg-kindle-card/80 transition cursor-pointer group"
                                       onClick={() => toast.success(`Playing preview: ${trackTitle}`)}
                                     >
                                       <div className="flex items-center gap-3 min-w-0">
-                                        <span className="text-[10px] font-mono text-neutral-500 font-bold w-4 text-right">
+                                        <span className="text-[10px] font-mono text-kindle-text-muted font-bold w-4 text-right">
                                           {tIdx + 1}
                                         </span>
-                                        <span className="text-neutral-300 group-hover:text-white truncate text-xs">
+                                        <span className="text-kindle-text group-hover:text-kindle-accent truncate text-xs font-medium">
                                           {trackTitle}
                                         </span>
                                       </div>
                                       <button
                                         type="button"
-                                        className="p-1.5 rounded-lg bg-neutral-800 text-neutral-300 group-hover:text-white transition shrink-0 cursor-pointer"
+                                        className="p-1.5 rounded-lg bg-kindle-card border border-kindle-border text-kindle-text group-hover:bg-kindle-accent group-hover:text-kindle-bg transition shrink-0 cursor-pointer"
                                       >
                                         <Play className="w-3.5 h-3.5 fill-current" />
                                       </button>
@@ -2231,7 +2279,7 @@ export default function InstallView() {
                               <button
                                 type="button"
                                 onClick={() => setIsDownloadModalOpen(false)}
-                                className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                                className="px-5 py-2.5 bg-kindle-bg border border-kindle-border hover:border-kindle-accent text-kindle-text font-bold text-xs rounded-xl transition cursor-pointer"
                               >
                                 Close Mirror Hub
                               </button>
@@ -2466,18 +2514,18 @@ export default function InstallView() {
         <div id="workshop" className="pt-4 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
           <Reveal>
             {/* Workshop Lounge Header Card */}
-            <div className="bg-[#e0533c]/20 backdrop-blur-2xl border border-white/20 rounded-3xl p-6 sm:p-8 flex flex-col justify-center items-center text-center space-y-4 relative overflow-hidden group shadow-2xl min-h-[160px]">
-              <div className="absolute inset-0 bg-gradient-to-tr from-[#e0533c]/30 via-black/30 to-amber-500/10 z-0" />
-              <div className="absolute -top-12 -left-12 w-48 h-48 bg-[#e0533c]/30 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
+            <div className="bg-gradient-to-r from-amber-600 via-[#e0533c] to-amber-700 border border-amber-500/30 rounded-3xl p-6 sm:p-8 flex flex-col justify-center items-center text-center space-y-4 relative overflow-hidden group shadow-xl min-h-[160px]">
+              <div className="absolute inset-0 bg-black/20 z-0" />
+              <div className="absolute -top-12 -left-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+              <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-amber-300/20 rounded-full blur-2xl pointer-events-none" />
               <div className="relative z-10 space-y-3 flex flex-col items-center">
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest backdrop-blur-md border border-white/30 shadow-sm">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 text-white text-[10px] font-bold uppercase tracking-widest backdrop-blur-md border border-white/30 shadow-xs">
                   <Gamepad2 className="w-3.5 h-3.5 animate-pulse" /> Kora Workshop
                 </div>
                 <h3 className="text-2xl sm:text-3xl font-serif font-bold text-white tracking-tight">
                   Interactive Tools &amp; Games
                 </h3>
-                <p className="text-xs sm:text-sm text-white/90 leading-relaxed max-w-lg mx-auto">
+                <p className="text-xs sm:text-sm text-white/95 font-medium leading-relaxed max-w-lg mx-auto">
                   Launch mini-games and reference tools directly in your browser! Sharpen your vocabulary, track board game scores, and build custom books.
                 </p>
               </div>

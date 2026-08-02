@@ -113,8 +113,9 @@
   font-display: swap;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Orbitron:wght@600;800&family=Rajdhani:wght@500;700&family=DotGothic16&family=Share+Tech+Mono&family=VT323&display=swap');
 @import "tailwindcss";
+@import "./styles/app-skins.css";
 
 /* Hover styles only on devices with a fine pointer (not touch/mobile) */
 @custom-variant hover {
@@ -444,7 +445,7 @@ mark.kora-hl-pink {
 }
 
 
-:root, .theme-light-white {
+:root, .theme-light-white, .light-white {
   --theme-bg: #FAFAFA;
   --theme-text: #111111;
   --theme-text-muted: #52525B;
@@ -480,7 +481,7 @@ mark.kora-hl-pink {
 }
 
 /* ── Dark Grey — clean dark mode with warm neutrals ── */
-.theme-dark-grey, .dark-grey {
+.theme-dark-grey, .dark-grey, .theme-dark, .dark {
   --theme-bg: #18181B;
   --theme-text: #FAFAFA;
   --theme-text-muted: #A1A1AA;
@@ -497,9 +498,8 @@ mark.kora-hl-pink {
   --color-kindle-card: #27272A;
 }
 
-
 /* ── Natural Paper ── */
-.theme-paper {
+.theme-paper, .paper {
   --theme-bg: #FAF7F2;
   --theme-text: #2C2A26;
   --theme-text-muted: #8B7355;
@@ -517,7 +517,7 @@ mark.kora-hl-pink {
 }
 
 /* ── Vintage Sepia ── */
-.theme-sepia {
+.theme-sepia, .sepia {
   --theme-bg: #F4ECD8;
   --theme-text: #5B4636;
   --theme-text-muted: #9C7A5B;
@@ -535,7 +535,7 @@ mark.kora-hl-pink {
 }
 
 /* ── Botanical Mint ── */
-.theme-green {
+.theme-green, .green {
   --theme-bg: #E3EDD3;
   --theme-text: #2D3E1E;
   --theme-text-muted: #4A6B32;
@@ -553,7 +553,7 @@ mark.kora-hl-pink {
 }
 
 /* ── Dusk Twilight ── */
-.theme-night {
+.theme-night, .night {
   --theme-bg: #1C1F26;
   --theme-text: #D6D8DE;
   --theme-text-muted: #94A3B8;
@@ -571,7 +571,7 @@ mark.kora-hl-pink {
 }
 
 /* ── Midnight OLED ── */
-.theme-oled {
+.theme-oled, .oled {
   --theme-bg: #000000;
   --theme-text: #E8E8E8;
   --theme-text-muted: #888888;
@@ -589,7 +589,7 @@ mark.kora-hl-pink {
 }
 
 /* ── Pristine Light ── */
-.theme-light {
+.theme-light, .light {
   --theme-bg: #FFFFFF;
   --theme-text: #111111;
   --theme-text-muted: #52525B;
@@ -706,6 +706,31 @@ html.kora-android body {
   -webkit-backdrop-filter: none !important;
   isolation: isolate;
   box-sizing: border-box;
+}
+
+body .kora-mobile-footer.is-glass-tab {
+  background: rgba(15, 15, 18, 0.45) !important;
+  backdrop-filter: blur(24px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body .kora-mobile-footer.is-glass-tab .kora-tab-item {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+
+body .kora-mobile-footer.is-glass-tab .kora-tab-item.is-active {
+  color: #ffffff !important;
+}
+
+body .kora-mobile-footer.is-glass-tab .kora-tab-pill {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+}
+
+body .kora-mobile-footer.is-glass-tab .kora-tab-pill * {
+  color: #ffffff !important;
 }
 
 .kora-tab-bar {

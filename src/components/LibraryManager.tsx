@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2 } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft } from "lucide-react";
 import {
   WALKTHROUGH_BOOK_ID,
   hideWalkthroughBookFromLibrary,
@@ -19,6 +19,7 @@ import AudiobookCassetteCard from "./AudiobookCassetteCard";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
+import { buildEpubFromText } from "../lib/epubTools";
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
@@ -269,6 +270,260 @@ function LibraryDownloadOverlay({
   );
 }
 
+export interface BookTemplate {
+  id: string;
+  name: string;
+  description: string;
+  tag: string;
+  defaultTitle: string;
+  getHtml: (title: string, author: string) => string;
+}
+
+const BOOK_TEMPLATES: BookTemplate[] = [
+  {
+    id: "blank",
+    name: "Start from Blank",
+    description: "Clean blank HTML document for custom writing, notes, or manual formatting.",
+    tag: "Blank",
+    defaultTitle: "Untitled Book",
+    getHtml: (title, author) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: serif; padding: 2rem; max-width: 650px; margin: 0 auto; line-height: 1.6; color: #1a1a1a; }
+    h1 { font-family: sans-serif; border-bottom: 2px solid #e5e5e5; padding-bottom: 0.5rem; }
+    .author { font-style: italic; color: #666; margin-bottom: 2rem; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <p class="author">By ${author || "Unknown"}</p>
+  <p>Start writing your book here...</p>
+</body>
+</html>`
+  },
+  {
+    id: "novel",
+    name: "Novel & Fiction Draft",
+    description: "Formatted chapter structure with prologue, chapter headings, and scene separators.",
+    tag: "Fiction",
+    defaultTitle: "My Novel Draft",
+    getHtml: (title, author) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: Georgia, serif; padding: 2.5rem 2rem; max-width: 680px; margin: 0 auto; line-height: 1.8; color: #1f1f1f; }
+    .title-page { text-align: center; margin-top: 3rem; margin-bottom: 5rem; }
+    h1 { font-size: 2.5rem; font-weight: normal; margin-bottom: 0.5rem; }
+    .author { font-size: 1.1rem; color: #555; text-transform: uppercase; letter-spacing: 0.15em; }
+    h2 { font-size: 1.5rem; font-weight: normal; margin-top: 3rem; margin-bottom: 1.5rem; text-align: center; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 1px solid #ddd; padding-bottom: 0.5rem; }
+    p { text-indent: 1.5em; margin-top: 0; margin-bottom: 0; }
+    .scene-break { text-align: center; margin: 2rem 0; font-size: 1.2rem; color: #888; }
+  </style>
+</head>
+<body>
+  <div class="title-page">
+    <h1>${title}</h1>
+    <p class="author">By ${author || "Author"}</p>
+  </div>
+  
+  <h2>Chapter 1</h2>
+  <p>The morning light filtered softly through the tall windows, casting long amber shadows across the hardwood floor. Everything was still, save for the faint hum of distant traffic down below.</p>
+  <p>She paused at the doorway, holding her breath as if the silence itself might shatter if she moved too quickly.</p>
+  
+  <div class="scene-break">♦ ♦ ♦</div>
+  
+  <p>Later that afternoon, the clouds gathered over the ridge. Rain began to patter against the tin roof, steady and rhythmic.</p>
+  
+  <h2>Chapter 2</h2>
+  <p>Begin chapter two here...</p>
+</body>
+</html>`
+  },
+  {
+    id: "journal",
+    name: "Journal & Daily Logger",
+    description: "Structured journal with daily timestamps, goal tracking, and reflection prompts.",
+    tag: "Journal",
+    defaultTitle: "Personal Journal",
+    getHtml: (title, author) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 2rem; max-width: 650px; margin: 0 auto; line-height: 1.6; color: #2d3748; }
+    .header { border-bottom: 2px solid #edf2f7; padding-bottom: 1rem; margin-bottom: 2rem; }
+    h1 { margin: 0; color: #1a202c; font-size: 2rem; }
+    .meta { font-size: 0.9rem; color: #718096; margin-top: 0.25rem; }
+    .entry { background: #f7fafc; border-left: 4px solid #3182ce; padding: 1.25rem; border-radius: 0 8px 8px 0; margin-bottom: 2rem; }
+    h2 { font-size: 1.25rem; margin-top: 0; color: #2b6cb0; }
+    ul { padding-left: 1.2rem; }
+    li { margin-bottom: 0.4rem; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>${title}</h1>
+    <div class="meta">Kept by ${author || "Journalist"}</div>
+  </div>
+
+  <div class="entry">
+    <h2>Entry: ${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h2>
+    <h3>Today's Focus & Intentions</h3>
+    <ul>
+      <li>Complete core project milestones</li>
+      <li>Take a 30-minute afternoon walk</li>
+      <li>Read 20 pages before sleep</li>
+    </ul>
+
+    <h3>Reflections & Thoughts</h3>
+    <p>Write your thoughts, ideas, and reflections for today...</p>
+  </div>
+</body>
+</html>`
+  },
+  {
+    id: "notes",
+    name: "Technical & Study Notes",
+    description: "Monospace-friendly layout with key takeaways, code blocks, and glossary sections.",
+    tag: "Study",
+    defaultTitle: "Study & Course Notes",
+    getHtml: (title, author) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; max-width: 720px; margin: 0 auto; line-height: 1.6; color: #111827; }
+    h1 { font-size: 2.25rem; margin-bottom: 0.25rem; }
+    .author { color: #6b7280; font-size: 0.95rem; margin-bottom: 2rem; }
+    .summary-box { background-color: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 12px; padding: 1.25rem; margin-bottom: 2rem; }
+    .summary-box h3 { margin-top: 0; color: #1f2937; }
+    h2 { font-size: 1.4rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.4rem; margin-top: 2rem; }
+    pre { background-color: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 8px; overflow-x: auto; font-family: monospace; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div class="author">Notes by ${author || "Researcher"} • Created ${new Date().toLocaleDateString()}</div>
+
+  <div class="summary-box">
+    <h3>📌 Executive Summary</h3>
+    <p>Quick overview of core principles, takeaways, and primary references covered in these notes.</p>
+  </div>
+
+  <h2>1. Core Concepts</h2>
+  <p>Detailed explanation of fundamental concepts and mechanisms...</p>
+
+  <h2>2. Code & Implementation Reference</h2>
+  <pre><code>// Example snippet
+function calculateMetrics(data) {
+  return data.reduce((acc, val) => acc + val, 0);
+}</code></pre>
+
+  <h2>3. Questions & Key Terms</h2>
+  <ul>
+    <li><strong>Term A:</strong> Definition and context.</li>
+    <li><strong>Term B:</strong> Definition and context.</li>
+  </ul>
+</body>
+</html>`
+  },
+  {
+    id: "recipe",
+    name: "Recipe Book / Cookbook",
+    description: "Ingredients list, step-by-step cooking instructions, prep time badges, and servings.",
+    tag: "Cookbook",
+    defaultTitle: "My Recipe Collection",
+    getHtml: (title, author) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 2rem; max-width: 680px; margin: 0 auto; line-height: 1.6; color: #2d3748; }
+    h1 { color: #c53030; font-size: 2.2rem; margin-bottom: 0.25rem; }
+    .author { color: #718096; font-style: italic; margin-bottom: 1.5rem; }
+    .badges { display: flex; gap: 1rem; background: #fff5f5; border: 1px solid #fed7d7; padding: 0.75rem 1rem; border-radius: 8px; margin-bottom: 2rem; font-size: 0.9rem; color: #9b2c2c; }
+    h2 { color: #2d3748; border-bottom: 2px solid #feebc8; padding-bottom: 0.3rem; margin-top: 1.8rem; }
+    ul, ol { padding-left: 1.25rem; }
+    li { margin-bottom: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div class="author">Recipes by ${author || "Chef"}</div>
+
+  <div class="badges">
+    <span>⏱️ <strong>Prep:</strong> 15 mins</span>
+    <span>🔥 <strong>Cook:</strong> 25 mins</span>
+    <span>🍽️ <strong>Serves:</strong> 4</span>
+  </div>
+
+  <h2>Ingredients</h2>
+  <ul>
+    <li>2 tbsp olive oil</li>
+    <li>1 medium onion, diced</li>
+    <li>2 cloves garlic, minced</li>
+    <li>1 pinch salt & black pepper</li>
+  </ul>
+
+  <h2>Instructions</h2>
+  <ol>
+    <li>Heat olive oil in a large skillet over medium heat.</li>
+    <li>Add onion and garlic; cook until fragrant and translucent (approx. 5 minutes).</li>
+    <li>Season with salt and pepper to taste. Serve warm.</li>
+  </ol>
+</body>
+</html>`
+  },
+  {
+    id: "poetry",
+    name: "Anthology & Poetry",
+    description: "Centered typography layout designed for stanzas, verses, and creative literature.",
+    tag: "Poetry",
+    defaultTitle: "Collected Poems",
+    getHtml: (title, author) => `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    body { font-family: "Times New Roman", Times, Georgia, serif; padding: 3rem 2rem; max-width: 600px; margin: 0 auto; line-height: 1.9; color: #111; text-align: center; }
+    h1 { font-weight: normal; font-size: 2.2rem; margin-bottom: 0.5rem; letter-spacing: 0.05em; }
+    .author { font-style: italic; color: #555; margin-bottom: 4rem; }
+    h2 { font-weight: normal; font-size: 1.4rem; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 3rem; margin-bottom: 1.5rem; }
+    .stanza { margin-bottom: 2rem; font-size: 1.1rem; }
+    .stanza p { margin: 0.25rem 0; text-indent: 0; }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div class="author">By ${author || "Poet"}</div>
+
+  <h2>I. First Verse</h2>
+
+  <div class="stanza">
+    <p>The quiet dawn begins to rise,</p>
+    <p>A whisper through the morning skies.</p>
+    <p>Soft shadows fall on quiet stone,</p>
+    <p>And leave the peaceful heart alone.</p>
+  </div>
+
+  <div class="stanza">
+    <p>The river flows toward the sea,</p>
+    <p>In silent, timeless harmony.</p>
+  </div>
+</body>
+</html>`
+  }
+];
+
 interface LibraryManagerProps {
   userId: string;
   books: BookMetadata[];
@@ -276,7 +531,7 @@ interface LibraryManagerProps {
   onRefreshLibrary: () => void;
   onBooksRemoved?: (bookIds: string[]) => void;
   cachedBookIds: Set<string>;
-  onCachedIdsChanged: () => void;
+  onCachedIdsChanged: () => void | Promise<void>;
   grayscaleCovers?: boolean;
   hideCovers?: boolean;
   downloads?: any[];
@@ -286,6 +541,7 @@ interface LibraryManagerProps {
   onPauseDownload?: (downloadId: string) => void;
   onResumeDownload?: (downloadId: string) => void;
   onSearchTrigger?: (query: string) => void;
+  onNavigateToDiscover?: () => void;
   onOpenAnnotations?: () => void;
   onBookUpdated?: (book: BookMetadata) => void;
 }
@@ -342,9 +598,18 @@ function LibraryManager({
   onPauseDownload,
   onResumeDownload,
   onSearchTrigger,
+  onNavigateToDiscover,
   onOpenAnnotations,
   onBookUpdated,
 }: LibraryManagerProps) {
+  // Add Book Modal States
+  const [showAddBookOptions, setShowAddBookOptions] = useState<boolean>(false);
+  const [showTemplateCatalog, setShowTemplateCatalog] = useState<boolean>(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("blank");
+  const [customBookTitle, setCustomBookTitle] = useState<string>("");
+  const [customBookAuthor, setCustomBookAuthor] = useState<string>("");
+  const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState<boolean>(false);
+
   // Filters & sorting
   const [search, setSearch] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -1382,29 +1647,20 @@ function LibraryManager({
             {!isManageMode && (
               <button
                 type="button"
-                onClick={async (e) => {
+                onClick={(e) => {
                   e.stopPropagation();
-                  const title = prompt("Book title?", "Untitled Book");
-                  if (!title || !title.trim()) return;
-                  const author = prompt("Author?", "") || "";
-                  onBookSelected({
-                    id: "blank_" + Date.now().toString(36),
-                    title: title.trim(),
-                    author: author.trim(),
-                    extension: "html",
-                    size: "0 B",
-                    language: "English",
-                    tags: ["blank"],
-                    status: "to-read",
-                    progress: { percent: 0, lastReadTime: Date.now() },
-                    dateAdded: Date.now(),
-                  } as BookMetadata);
+                  setShowAddBookOptions(true);
                 }}
-                className="kindle-card w-full min-w-0 overflow-hidden flex flex-col items-center justify-center cursor-pointer transition duration-300 select-none relative border-2 border-dashed border-kindle-border hover:border-kindle-accent hover:bg-kindle-accent/5 group"
+                className="kindle-card w-full min-w-0 min-h-[220px] overflow-hidden flex flex-col items-center justify-center p-6 cursor-pointer transition duration-300 select-none relative border-2 border-dashed border-kindle-border hover:border-kindle-accent hover:bg-kindle-accent/5 group"
               >
-                <Plus className="w-10 h-10 text-kindle-text-muted group-hover:text-kindle-accent mb-2" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted group-hover:text-kindle-accent">
+                <div className="w-12 h-12 rounded-2xl bg-kindle-accent/10 border border-kindle-accent/20 flex items-center justify-center mb-3 group-hover:scale-110 transition">
+                  <Plus className="w-6 h-6 text-kindle-accent" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-kindle-text-muted group-hover:text-kindle-accent text-center">
                   Add Book
+                </span>
+                <span className="text-[9px] text-kindle-text-muted/70 font-normal mt-1 text-center">
+                  Discover or Create
                 </span>
               </button>
             )}
@@ -2081,6 +2337,294 @@ function LibraryManager({
           </div>
         </motion.div>
       )}
+
+      {/* 1. Add Book Options Modal — Popup on Desktop, Fullscreen on Mobile */}
+      <FluidOverlay
+        open={showAddBookOptions}
+        onClose={() => setShowAddBookOptions(false)}
+        variant="sheet"
+        panelClassName="sm:max-w-md w-full h-full sm:h-auto rounded-none sm:rounded-3xl p-5 sm:p-6 bg-kindle-card"
+      >
+        <div className="flex flex-col h-full sm:h-auto justify-between space-y-6">
+          <div className="flex items-center justify-between pb-3 border-b border-kindle-border">
+            <div>
+              <h3 className="text-xl font-bold font-lexend text-kindle-text">Add to Library</h3>
+              <p className="text-xs text-kindle-text-muted mt-0.5">Choose how you want to add a book</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAddBookOptions(false)}
+              className="p-2 rounded-full border border-kindle-border hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-3.5 my-auto py-2">
+            {/* Option 1: Find Books in Discovery */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddBookOptions(false);
+                if (onNavigateToDiscover) {
+                  onNavigateToDiscover();
+                } else if (onSearchTrigger) {
+                  onSearchTrigger("");
+                }
+              }}
+              className="w-full text-left p-4 rounded-2xl border border-kindle-border bg-kindle-bg/50 hover:bg-amber-500/10 hover:border-amber-500/40 group transition duration-200 flex items-start gap-4 cursor-pointer"
+            >
+              <div className="p-3 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 group-hover:scale-105 transition shrink-0">
+                <Compass className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-kindle-text group-hover:text-amber-600 dark:group-hover:text-amber-400 transition">
+                    Find Books in Discovery
+                  </h4>
+                  <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    Explore
+                  </span>
+                </div>
+                <p className="text-xs text-kindle-text-muted mt-1 leading-relaxed">
+                  Browse online catalogs, curated lists, Project Gutenberg, and open digital libraries.
+                </p>
+              </div>
+            </button>
+
+            {/* Option 2: Create from Template */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddBookOptions(false);
+                setShowTemplateCatalog(true);
+              }}
+              className="w-full text-left p-4 rounded-2xl border border-kindle-border bg-kindle-bg/50 hover:bg-emerald-500/10 hover:border-emerald-500/40 group transition duration-200 flex items-start gap-4 cursor-pointer"
+            >
+              <div className="p-3 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 group-hover:scale-105 transition shrink-0">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-kindle-text group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition">
+                    Create from Template
+                  </h4>
+                  <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    Write &amp; Craft
+                  </span>
+                </div>
+                <p className="text-xs text-kindle-text-muted mt-1 leading-relaxed">
+                  Start from scratch or choose from formatted templates (Novel, Journal, Notes, Recipe, Poetry).
+                </p>
+              </div>
+            </button>
+          </div>
+
+          <div className="pt-2 text-center text-[10px] text-kindle-text-muted font-mono uppercase tracking-widest">
+            Kora Book Studio
+          </div>
+        </div>
+      </FluidOverlay>
+
+      {/* 2. Template Selection Modal — Popup on Desktop, Fullscreen on Mobile */}
+      <FluidOverlay
+        open={showTemplateCatalog}
+        onClose={() => setShowTemplateCatalog(false)}
+        variant="sheet"
+        panelClassName="sm:max-w-2xl w-full h-full sm:h-auto sm:max-h-[90vh] rounded-none sm:rounded-3xl p-5 sm:p-6 bg-kindle-card flex flex-col overflow-y-auto"
+      >
+        <div className="flex flex-col h-full justify-between space-y-5">
+          <div className="flex items-center justify-between pb-3 border-b border-kindle-border">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowTemplateCatalog(false);
+                  setShowAddBookOptions(true);
+                }}
+                className="p-2 rounded-full border border-kindle-border hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+                title="Back to options"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div>
+                <h3 className="text-xl font-bold font-lexend text-kindle-text">Select Book Template</h3>
+                <p className="text-xs text-kindle-text-muted mt-0.5">Pick a layout to start writing or taking notes</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowTemplateCatalog(false)}
+              className="p-2 rounded-full border border-kindle-border hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Book Info Inputs */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-kindle-bg/50 p-3.5 rounded-2xl border border-kindle-border">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted mb-1">
+                Book Title
+              </label>
+              <input
+                type="text"
+                value={customBookTitle}
+                onChange={(e) => setCustomBookTitle(e.target.value)}
+                placeholder={
+                  BOOK_TEMPLATES.find((t) => t.id === selectedTemplateId)?.defaultTitle || "My New Book"
+                }
+                className="w-full px-3.5 py-2 bg-kindle-card border border-kindle-border rounded-xl text-xs font-bold text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted mb-1">
+                Author Name
+              </label>
+              <input
+                type="text"
+                value={customBookAuthor}
+                onChange={(e) => setCustomBookAuthor(e.target.value)}
+                placeholder="Author (optional)"
+                className="w-full px-3.5 py-2 bg-kindle-card border border-kindle-border rounded-xl text-xs font-bold text-kindle-text focus:outline-none focus:ring-1 focus:ring-kindle-accent"
+              />
+            </div>
+          </div>
+
+          {/* Template Choices Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[360px] overflow-y-auto pr-1">
+            {BOOK_TEMPLATES.map((tmpl) => {
+              const isSelected = selectedTemplateId === tmpl.id;
+              return (
+                <div
+                  key={tmpl.id}
+                  onClick={() => {
+                    setSelectedTemplateId(tmpl.id);
+                    if (!customBookTitle) {
+                      setCustomBookTitle(tmpl.defaultTitle);
+                    }
+                  }}
+                  className={`p-3.5 rounded-2xl border cursor-pointer transition duration-200 flex flex-col justify-between ${
+                    isSelected
+                      ? "bg-kindle-accent/10 border-kindle-accent ring-2 ring-kindle-accent/30"
+                      : "bg-kindle-bg/40 border-kindle-border hover:border-kindle-text/40"
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`p-2 rounded-xl text-xs font-bold ${
+                            isSelected
+                              ? "bg-kindle-accent text-kindle-bg"
+                              : "bg-kindle-card border border-kindle-border text-kindle-text-muted"
+                          }`}
+                        >
+                          {tmpl.id === "blank" && <FileText className="w-4 h-4" />}
+                          {tmpl.id === "novel" && <BookMarked className="w-4 h-4" />}
+                          {tmpl.id === "journal" && <Calendar className="w-4 h-4" />}
+                          {tmpl.id === "notes" && <Award className="w-4 h-4" />}
+                          {tmpl.id === "recipe" && <Flame className="w-4 h-4" />}
+                          {tmpl.id === "poetry" && <PenTool className="w-4 h-4" />}
+                        </div>
+                        <span className="text-xs font-bold text-kindle-text">{tmpl.name}</span>
+                      </div>
+                      <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-md bg-kindle-card border border-kindle-border text-kindle-text-muted">
+                        {tmpl.tag}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-kindle-text-muted line-clamp-2 leading-relaxed">
+                      {tmpl.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Modal Actions */}
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-kindle-border">
+            <button
+              type="button"
+              onClick={() => setShowTemplateCatalog(false)}
+              className="px-4 py-2.5 rounded-xl border border-kindle-border text-xs font-bold uppercase tracking-wider text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              disabled={isCreatingFromTemplate}
+              onClick={async () => {
+                setIsCreatingFromTemplate(true);
+                try {
+                  const tmpl = BOOK_TEMPLATES.find((t) => t.id === selectedTemplateId) || BOOK_TEMPLATES[0];
+                  const finalTitle = customBookTitle.trim() || tmpl.defaultTitle;
+                  const finalAuthor = customBookAuthor.trim();
+                  const bookId = "created_" + Date.now().toString(36);
+
+                  const htmlContent = tmpl.getHtml(finalTitle, finalAuthor);
+
+                  // Compile EPUB blob from template HTML content
+                  const epubBlob = await buildEpubFromText({
+                    title: finalTitle,
+                    creator: finalAuthor,
+                    chapters: [
+                      {
+                        title: "Chapter 1",
+                        html: htmlContent,
+                        text: htmlContent.replace(/<[^>]+>/g, " ").trim(),
+                      },
+                    ],
+                  });
+
+                  // Save EPUB file in IndexedDB
+                  await storeBookFile(bookId, epubBlob, `${finalTitle}.epub`, "epub");
+
+                  const newBook: BookMetadata = {
+                    id: bookId,
+                    title: finalTitle,
+                    author: finalAuthor,
+                    extension: "epub",
+                    size: `${Math.round(epubBlob.size / 1024)} KB`,
+                    language: "English",
+                    tags: [tmpl.tag.toLowerCase(), "created", "template", "epub"],
+                    status: "to-read",
+                    progress: { percent: 0, lastReadTime: Date.now() },
+                    dateAdded: Date.now(),
+                  };
+
+                  // Sync book metadata to Firebase cloud
+                  await syncBookToCloud(userId, newBook);
+
+                  await onCachedIdsChanged();
+                  onRefreshLibrary();
+
+                  setShowTemplateCatalog(false);
+                  setCustomBookTitle("");
+                  setCustomBookAuthor("");
+
+                  // Open newly created book
+                  onBookSelected(newBook);
+                } catch (err) {
+                  console.error("[Create Template Error]:", err);
+                  alert("Failed to create template book. Please try again.");
+                } finally {
+                  setIsCreatingFromTemplate(false);
+                }
+              }}
+              className="px-5 py-2.5 rounded-xl bg-kindle-accent text-kindle-bg text-xs font-bold uppercase tracking-wider shadow-lg hover:opacity-90 transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isCreatingFromTemplate ? (
+                <div className="w-4 h-4 border-2 border-kindle-bg border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Plus className="w-4 h-4" />
+              )}
+              <span>Create Book</span>
+            </button>
+          </div>
+        </div>
+      </FluidOverlay>
     </div>
   );
 }

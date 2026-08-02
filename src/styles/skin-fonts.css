@@ -55,6 +55,31 @@ body.skin-soft {
   --font-ui-display: "Lexend", "Inter", system-ui, sans-serif;
 }
 
+body.skin-ios-glass {
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Lexend", sans-serif;
+  --font-ui-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Lexend", sans-serif;
+}
+
+body.skin-material-ex {
+  --font-ui: "Lexend", "Inter", system-ui, sans-serif;
+  --font-ui-display: "Lexend", "Inter", system-ui, sans-serif;
+}
+
+body.skin-nothing {
+  --font-ui: "DotGothic16", "Share Tech Mono", "VT323", "JetBrains Mono", monospace;
+  --font-ui-display: "DotGothic16", "Share Tech Mono", "VT323", "JetBrains Mono", monospace;
+}
+
+body.skin-cyberpunk {
+  --font-ui: "Rajdhani", "Orbitron", sans-serif;
+  --font-ui-display: "Orbitron", "Rajdhani", sans-serif;
+}
+
+body.skin-library {
+  --font-ui: "Merriweather", "Lora", Georgia, serif;
+  --font-ui-display: "Merriweather", "Lora", Georgia, serif;
+}
+
 /* App chrome typography — does not affect in-book reader faces (font-lexica, font-serif, etc.) */
 body {
   font-family: var(--font-ui);

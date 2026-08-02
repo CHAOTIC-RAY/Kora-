@@ -203,12 +203,12 @@ export default function GuideSpotlight({
             <>
               <div
                 data-kora-pass-through
-                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
+                className={`absolute bg-black/60 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{ top: 0, left: 0, right: 0, height: hole.top }}
               />
               <div
                 data-kora-pass-through
-                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
+                className={`absolute bg-black/60 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top + hole.height,
                   left: 0,
@@ -218,7 +218,7 @@ export default function GuideSpotlight({
               />
               <div
                 data-kora-pass-through
-                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
+                className={`absolute bg-black/60 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top,
                   left: 0,
@@ -228,7 +228,7 @@ export default function GuideSpotlight({
               />
               <div
                 data-kora-pass-through
-                className={`absolute bg-black/62 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
+                className={`absolute bg-black/60 ${passThroughHole ? "pointer-events-none" : "pointer-events-auto"}`}
                 style={{
                   top: hole.top,
                   left: hole.left + hole.width,
@@ -267,7 +267,7 @@ export default function GuideSpotlight({
           ) : (
             // No spotlight target: keep the tip readable but do NOT block the UI
             // (otherwise wait-event steps like “select text” can never complete).
-            <div data-kora-pass-through className="absolute inset-0 bg-black/35 pointer-events-none" />
+            <div data-kora-pass-through className="absolute inset-0 bg-black/40 pointer-events-none" />
           )}
 
           {/* Tip card — pointer events on */}
@@ -281,7 +281,7 @@ export default function GuideSpotlight({
           >
             <div className="rounded-2xl border border-kindle-border bg-kindle-card text-kindle-text shadow-2xl p-4">
               <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-kindle-accent/15 flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-kindle-accent/20 flex items-center justify-center shrink-0">
                   <BookOpen className="w-4 h-4 text-neutral-400" />
                 </div>
                 <div className="min-w-0 flex-1">

@@ -51,12 +51,13 @@ interface OnboardingModalProps {
 }
 
 const READER_THEME_TO_DISPLAY: Record<string, string> = {
-  sepia: "theme-light-yellow",
-  paper: "theme-light-white",
-  light: "theme-light-white",
-  night: "theme-dark-grey",
-  oled: "theme-dark-blue",
-  green: "theme-light-yellow",
+  sepia: "sepia",
+  paper: "paper",
+  light: "light",
+  night: "night",
+  oled: "oled",
+  green: "green",
+  dark: "dark",
 };
 
 const ARCHETYPES = [

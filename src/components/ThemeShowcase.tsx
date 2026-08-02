@@ -182,13 +182,7 @@ export function applyThemeToSite(t: ReadingThemeItem) {
     body.classList.remove("dark");
   }
 
-  let displayThemeName = "theme-light-white";
-  if (t.id === "sepia") displayThemeName = "theme-light-yellow";
-  else if (t.id === "paper" || t.id === "light") displayThemeName = "theme-light-white";
-  else if (t.id === "night") displayThemeName = "theme-dark-grey";
-  else if (t.id === "oled") displayThemeName = "theme-dark-blue";
-  else if (t.id === "green") displayThemeName = "theme-light-yellow";
-
+  const displayThemeName = t.id || "paper";
   localStorage.setItem("kora_display_theme", displayThemeName);
   window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: displayThemeName }));
 }
@@ -336,12 +330,12 @@ export default function ThemeShowcase() {
                 </span>
               </div>
 
-              <AnimatePresence mode="wait">
+              <AnimatePresence>
                 <motion.div
                   key={`${currentThemeIndex}-${currentFontIndex}-${excerptIndex}`}
-                  initial={{ opacity: 0.4, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0.4, y: -4 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
                   transition={{ duration: 0.3 }}
                   style={{
                     fontSize: `${

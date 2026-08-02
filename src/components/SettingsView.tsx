@@ -1263,48 +1263,104 @@ function SettingsView({
                   </div>
                 </div>
                 
-                <div className={`grid grid-cols-3 gap-2 ${autoDisplayTheme ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className={`grid grid-cols-3 sm:grid-cols-4 gap-2 ${autoDisplayTheme ? 'opacity-50 pointer-events-none' : ''}`}>
                   {PRIMARY_READER_THEME_KEYS.concat(["light", "green", "dark"]).map((tKey) => {
                     const th = resolveReaderTheme(tKey);
+                    const cleanDisplay = (displayTheme || "").replace(/^theme-/, "");
+                    const cleanTKey = tKey.replace(/^theme-/, "");
+                    const isSelected =
+                      cleanDisplay === cleanTKey ||
+                      (cleanTKey === "sepia" && cleanDisplay === "light-yellow") ||
+                      (cleanTKey === "night" && cleanDisplay === "dark-grey") ||
+                      (cleanTKey === "oled" && cleanDisplay === "dark-blue") ||
+                      (cleanTKey === "light" && cleanDisplay === "light-white");
+
                     return (
                       <button
                         key={tKey}
+                        type="button"
                         onClick={() => onChangeTheme(tKey)}
-                        className="flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer"
+                        className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border transition cursor-pointer ${
+                          isSelected ? 'ring-2 ring-kindle-accent font-bold scale-[1.02]' : 'hover:opacity-90'
+                        }`}
                         style={{
                           backgroundColor: th.previewBg,
-                          borderColor: displayTheme === tKey ? th.previewText : th.border,
-                          boxShadow: displayTheme === tKey ? `0 0 0 1px ${th.previewText}40` : 'none',
-                          opacity: displayTheme === tKey ? 1 : 0.65
+                          borderColor: isSelected ? th.previewText : th.border,
+                          boxShadow: isSelected ? `0 0 0 2px ${th.previewText}` : 'none',
+                          opacity: isSelected ? 1 : 0.75
                         }}
                       >
-                        <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: th.previewText }}>{th.label}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: th.previewText }}>
+                          {th.label}
+                        </span>
                       </button>
                     );
                   })}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">App Skin</h4>
-                    <span className="text-[10px] font-mono text-kindle-text-muted">{appSkin}</span>
+                    <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">App Skin Chrome</h4>
+                    <span className="text-[10px] font-mono text-kindle-text-muted font-bold uppercase">{appSkin}</span>
                   </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
                     {APP_SKINS.map((skin) => {
                       const active = appSkin === skin.id;
+
+                      let skinCardClass = "border-kindle-border bg-kindle-bg/50";
+                      let badgeClass = "bg-kindle-text/10 text-kindle-text";
+
+                      if (skin.id === "kora") {
+                        skinCardClass = "bg-sky-500/10 dark:bg-sky-500/15 border-sky-500/40 rounded-xl shadow-xs";
+                        badgeClass = "bg-sky-500 text-white rounded-full shadow-xs";
+                      } else if (skin.id === "paper") {
+                        skinCardClass = "bg-[#F7F4EE] dark:bg-[#25221E] text-[#2C2A26] dark:text-[#E8E2D6] border-[#8B7355]/60 rounded-lg font-serif shadow-xs";
+                        badgeClass = "bg-[#8B7355] text-[#F7F4EE] rounded-xs font-serif";
+                      } else if (skin.id === "studio") {
+                        skinCardClass = "bg-white dark:bg-neutral-900 text-black dark:text-white border-2 border-black dark:border-white rounded-xs shadow-[3px_3px_0px_currentColor] font-sans";
+                        badgeClass = "bg-black dark:bg-white text-white dark:text-black rounded-none font-mono uppercase tracking-widest";
+                      } else if (skin.id === "soft") {
+                        skinCardClass = "bg-neutral-200/80 dark:bg-neutral-800/80 border-neutral-300 dark:border-neutral-700 rounded-3xl shadow-md";
+                        badgeClass = "bg-neutral-900 dark:bg-neutral-100 text-white dark:text-black rounded-full";
+                      } else if (skin.id === "ios-glass") {
+                        skinCardClass = "bg-white/40 dark:bg-white/10 backdrop-blur-xl border border-white/60 dark:border-white/20 rounded-2xl shadow-sm";
+                        badgeClass = "bg-white/70 dark:bg-white/25 text-neutral-950 dark:text-white rounded-full backdrop-blur-md";
+                      } else if (skin.id === "material-ex") {
+                        skinCardClass = "bg-indigo-500/15 dark:bg-indigo-400/20 border border-indigo-500/40 rounded-3xl";
+                        badgeClass = "bg-indigo-600 dark:bg-indigo-400 text-white dark:text-black rounded-full font-bold";
+                      } else if (skin.id === "nothing") {
+                        skinCardClass = "bg-neutral-950 text-white border border-neutral-700 rounded-xl font-mono shadow-md";
+                        badgeClass = "bg-[#ff2020] text-white rounded-full font-bold";
+                      } else if (skin.id === "cyberpunk") {
+                        skinCardClass = "bg-[#050510] text-[#00fff9] border border-[#00fff9] rounded-md shadow-[0_0_12px_rgba(0,255,249,0.35)] font-mono";
+                        badgeClass = "bg-[#ff007f] text-black font-black rounded-xs";
+                      } else if (skin.id === "library") {
+                        skinCardClass = "bg-[#F6EEDB] text-[#6A4423] border-2 border-[#D4A054] rounded-lg font-serif shadow-sm";
+                        badgeClass = "bg-[#6A4423] text-[#F6EEDB] rounded-sm font-serif";
+                      }
+
                       return (
                         <button
                           key={skin.id}
                           type="button"
                           onClick={() => onChangeAppSkin?.(skin.id)}
-                          className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border transition cursor-pointer ${
+                          className={`relative flex flex-col justify-between p-3 transition text-left cursor-pointer overflow-hidden min-h-[90px] ${skinCardClass} ${
                             active
-                              ? "border-kindle-accent ring-1 ring-kindle-accent/30 bg-kindle-card"
-                              : "border-kindle-border hover:bg-kindle-bg"
+                              ? "ring-2 ring-kindle-accent ring-offset-2 ring-offset-kindle-bg scale-[1.02]"
+                              : "opacity-80 hover:opacity-100"
                           }`}
                         >
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text">{skin.label}</span>
-                          <span className="text-[8px] text-kindle-text-muted text-center leading-tight line-clamp-2">{skin.description}</span>
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-[10px] font-bold uppercase tracking-wider">{skin.label}</span>
+                            {active && (
+                              <span className={`text-[8px] px-1.5 py-0.5 font-bold uppercase ${badgeClass}`}>
+                                Active
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[8.5px] leading-snug opacity-85 line-clamp-2 mt-2">
+                            {skin.description}
+                          </span>
                         </button>
                       );
                     })}
