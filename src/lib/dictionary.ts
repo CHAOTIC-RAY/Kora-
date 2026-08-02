@@ -69,57 +69,75 @@ const FALLBACK_DICTIONARY: DictionaryEntry[] = [
 ];
 
 const DICT_BASE = "/data/dict";
+const DICT_BUCKET_COUNT = 32;
 
-function shardFor(word: string): string {
-  const w = (word || "").trim().toLowerCase();
-  const c = w[0] || "#";
-  if (/[a-z]/.test(c)) return c;
-  if (/[0-9]/.test(c)) return "0";
-  return "#";
+// Must match bucketFor() in scripts/build-data-bundle.mjs.
+function bucketFor(word) {
+  const w = (word || "").toLowerCase();
+  let h = 0;
+  for (let i = 0; i < w.length; i++) {
+    h = (Math.imul(h, 31) + w.charCodeAt(i)) >>> 0;
+  }
+  return h % DICT_BUCKET_COUNT;
 }
 
-// Loaded shards, keyed by letter. Each shard is fetched at most once.
-const shardCache: Map<string, DictionaryEntry[]> = new Map();
-let shardLoadsInFlight: Map<string, Promise<DictionaryEntry[]>> = new Map();
+// Loaded shards, keyed by bucket number. Each shard is fetched at most once.
+const shardCache: Map<number, DictionaryEntry[]> = new Map();
+let shardLoadsInFlight: Map<number, Promise<DictionaryEntry[]>> = new Map();
 
-async function loadShard(letter: string): Promise<DictionaryEntry[]> {
-  if (shardCache.has(letter)) return shardCache.get(letter)!;
-  const inflight = shardLoadsInFlight.get(letter);
-  if (inflight) return inflight;
-  const p = (async () => {
-    try {
-      const res = await fetch(`${DICT_BASE}/${letter}.json`);
-      if (!res.ok) return [];
-      const data = (await res.json()) as DictionaryEntry[];
-      shardCache.set(letter, data);
-      return data;
-    } catch {
-      return [];
-    }
-  })();
-  shardLoadsInFlight.set(letter, p);
-  const out = await p;
-  shardLoadsInFlight.delete(letter);
-  return out;
-}
-
-async function loadAllShards(): Promise<DictionaryEntry[]> {
-  // index.json tells us which shards exist.
-  let letters: string[] = [];
+// The set of shard filenames that actually exist (from index.json). Lets us
+// avoid 404s for buckets that happen to be empty.
+let knownShards: Set<string> | null = null;
+async function loadKnownShards(): Promise<Set<string>> {
+  if (knownShards) return knownShards;
   try {
     const res = await fetch(`${DICT_BASE}/index.json`);
     if (res.ok) {
-      const idx = (await res.json()) as { shards?: number };
-      // index.json doesn't list letters; fall back to the known bucket set.
-      if (typeof idx.shards === "number") {
-        letters = "abcdefghijklmnopqrstuvwxyz0#".split("");
+      const idx = (await res.json()) as { shards?: string[] };
+      if (Array.isArray(idx.shards)) {
+        knownShards = new Set(idx.shards);
+        return knownShards;
       }
     }
   } catch {
     /* ignore */
   }
-  if (!letters.length) letters = "abcdefghijklmnopqrstuvwxyz0#".split("");
-  const all = await Promise.all(letters.map((l) => loadShard(l)));
+  knownShards = new Set(); // don't retry on failure
+  return knownShards;
+}
+
+async function loadShard(bucket: number): Promise<DictionaryEntry[]> {
+  if (shardCache.has(bucket)) return shardCache.get(bucket)!;
+  const inflight = shardLoadsInFlight.get(bucket);
+  if (inflight) return inflight;
+  const p = (async () => {
+    const fname = `${bucket}.json`;
+    const known = await loadKnownShards();
+    if (!known.has(fname)) {
+      shardCache.set(bucket, []);
+      return [];
+    }
+    try {
+      const res = await fetch(`${DICT_BASE}/${fname}`);
+      if (!res.ok) return [];
+      const data = (await res.json()) as DictionaryEntry[];
+      shardCache.set(bucket, data);
+      return data;
+    } catch {
+      return [];
+    }
+  })();
+  shardLoadsInFlight.set(bucket, p);
+  const out = await p;
+  shardLoadsInFlight.delete(bucket);
+  return out;
+}
+
+async function loadAllShards(): Promise<DictionaryEntry[]> {
+  const known = await loadKnownShards();
+  const buckets = [...known].map((f) => parseInt(f.replace(/\.json$/, ""), 10));
+  if (!buckets.length) return [];
+  const all = await Promise.all(buckets.map((b) => loadShard(b)));
   return all.flat();
 }
 
@@ -208,8 +226,8 @@ export async function lookupWord(word: string): Promise<DictionaryEntry | null> 
 
   // Only fetch the shard(s) the candidate forms actually fall into — never the
   // whole 2 MB dictionary. Covers + custom entries are always consulted.
-  const letters = new Set(forms.map(shardFor));
-  const shardLists = await Promise.all([...letters].map((l) => loadShard(l)));
+  const buckets = new Set(forms.map(bucketFor));
+  const shardLists = await Promise.all([...buckets].map((b) => loadShard(b)));
   const external = shardLists.flat();
 
   const custom = getCustomDictionary();

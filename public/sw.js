@@ -34,15 +34,24 @@ async function warmApiCache() {
 }
 
 async function warmDataCache() {
-  // Perf plan 3.2: precache the immutable dictionary shards (one JSON per initial
-  // letter) so offline lookups never hit the network. Cache-first thereafter.
-  const letters = "abcdefghijklmnopqrstuvwxyz0#".split("");
-  const toCache = ["/data/dict/index.json", ...letters.map((l) => `/data/dict/${l}.json`)];
+  // Perf plan 3.2: precache the immutable dictionary shards so offline lookups
+  // never hit the network. The exact shards that exist are listed in index.json
+  // (hash-bucketed, ~32 max), so we precache precisely those — no 404 guesses.
   const cache = await caches.open(DATA_CACHE);
+  let shards = ["index.json"];
+  try {
+    const idxRes = await fetch("/data/dict/index.json");
+    if (idxRes.ok) {
+      const idx = (await idxRes.json());
+      if (idx && Array.isArray(idx.shards)) shards = ["index.json", ...idx.shards];
+    }
+  } catch {
+    /* fall back to index.json only */
+  }
   await Promise.allSettled(
-    toCache.map((url) =>
-      fetch(url).then((res) => {
-        if (res.ok) return cache.put(url, res);
+    shards.map((f) =>
+      fetch(`/data/dict/${f}`).then((res) => {
+        if (res.ok) return cache.put(`/data/dict/${f}`, res);
       }).catch(() => {})
     )
   );
