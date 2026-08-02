@@ -7,8 +7,22 @@ import {
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
   FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
-  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords
+  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers
 } from "lucide-react";
+
+// Icons for each app skin in the Settings skin selector
+const skinIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  kora: Layout,
+  paper: FileText,
+  studio: Type,
+  soft: Mouse,
+  "ios-glass": Wind,
+  "material-ex": Layers,
+  nothing: Grid3X3,
+  cyberpunk: Flame,
+  library: BookMarked,
+};
+
 import { toast } from "react-hot-toast";
 import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE, PRIMARY_READER_THEME_KEYS, resolveReaderTheme } from "../lib/readerThemes";
 import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
@@ -1304,7 +1318,7 @@ function SettingsView({
                     <span className="text-[10px] font-mono text-kindle-text-muted font-bold uppercase">{appSkin}</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
-                    {APP_SKINS.map((skin) => {
+            {APP_SKINS.map((skin) => {
                       const active = appSkin === skin.id;
 
                       let skinCardClass = "border-kindle-border bg-kindle-bg/50";
@@ -1339,6 +1353,8 @@ function SettingsView({
                         badgeClass = "bg-[#6A4423] text-[#F6EEDB] rounded-sm font-serif";
                       }
 
+                      const skinIcon = skinIcons[skin.id] || Grid3X3;
+
                       return (
                         <button
                           key={skin.id}
@@ -1351,7 +1367,12 @@ function SettingsView({
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
-                            <span className="text-[10px] font-bold uppercase tracking-wider">{skin.label}</span>
+                            <div className="flex items-center gap-2">
+                              <span className={`p-1 rounded-md ${active ? "bg-kindle-accent/20" : "bg-kindle-text/5"}`}>
+                                {React.createElement(skinIcon, { className: "w-4 h-4 text-kindle-accent" })}
+                              </span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider">{skin.label}</span>
+                            </div>
                             {active && (
                               <span className={`text-[8px] px-1.5 py-0.5 font-bold uppercase ${badgeClass}`}>
                                 Active
