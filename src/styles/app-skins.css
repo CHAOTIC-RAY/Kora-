@@ -576,6 +576,14 @@ body.skin-nothing {
   --theme-border: #27272a;
   --theme-accent: #ff2020;
 
+  /* Propagate skin colors to Tailwind utility variables that :root overrides directly */
+  --color-kindie-bg: #000000;
+  --color-kindie-text: #ffffff;
+  --color-kindie-text-muted: #a1a1aa;
+  --color-kindie-border: #27272a;
+  --color-kindie-accent: #ff2020;
+  --color-kindie-card: #121214;
+
   background-color: #000000 !important;
   background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.2px, transparent 1.2px) !important;
   background-size: 16px 16px !important;
@@ -732,6 +740,14 @@ body.skin-cyberpunk {
   --theme-text-muted: #80e6ff;
   --theme-border: rgba(0, 255, 249, 0.35);
   --theme-accent: #ff007f;
+
+  /* Propagate skin colors to Tailwind utility variables that :root overrides directly */
+  --color-kindie-bg: #050510;
+  --color-kindie-text: #00fff9;
+  --color-kindie-text-muted: #80e6ff;
+  --color-kindie-border: rgba(0, 255, 249, 0.35);
+  --color-kindie-accent: #ff007f;
+  --color-kindie-card: #08081a;
 
   background-color: #050510 !important;
   background-image:
@@ -916,6 +932,14 @@ body.skin-library {
   --theme-text-muted: #d4a054;
   --theme-border: #d4a054;
   --theme-accent: #d4a054;
+
+  /* Propagate skin colors to Tailwind utility variables that :root overrides directly */
+  --color-kindie-bg: #221006;
+  --color-kindie-text: #f6eedb;
+  --color-kindie-text-muted: #d4a054;
+  --color-kindie-border: #d4a054;
+  --color-kindie-accent: #d4a054;
+  --color-kindie-card: #f6eedb;
 
   background-color: #221006 !important;
   background-image:
