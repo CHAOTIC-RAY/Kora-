@@ -58,9 +58,16 @@ android {
             // Phase 1.2: shrink the release APK (smaller install + faster load).
             // R8 keep rules live in proguard-rules.pro and protect Capacitor/Firebase
             // reflection bridges so the WebView and sign-in keep working.
+            //
+            // NB: we use proguard-android.txt (R8 *compatibility* mode) rather than
+            // proguard-android-optimize.txt. The optimize config runs R8 in full mode,
+            // which hard-fails on the optional Facebook SDK classes that
+            // @capacitor-firebase/authentication references but this build does not
+            // include (we only use Google sign-in). Compatibility mode warns instead
+            // of erroring, while still shrinking/minifying.
             minifyEnabled true
             shrinkResources true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
     }

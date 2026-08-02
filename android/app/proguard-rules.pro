@@ -35,3 +35,7 @@
 -keep class * implements com.getcapacitor.Plugin
 -dontwarn com.getcapacitor.**
 -dontwarn com.google.firebase.**
+# @capacitor-firebase/authentication references the optional Facebook SDK which
+# this build does not include (Google sign-in only). R8 must not error/warn on it.
+-dontwarn com.facebook.**
+-keep class io.capawesome.capacitorjs.plugins.firebase.authentication.** { *; }
