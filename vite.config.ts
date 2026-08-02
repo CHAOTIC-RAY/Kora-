@@ -3,6 +3,18 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
 import { defineConfig } from 'vite';
+import compression from 'vite-plugin-compression2';
+
+// Heavy, rarely-changing vendors are split out so the app shell loads without
+// parsing the whole graph on first paint (Phase 1.1 of the perf plan).
+function manualChunks(id: string): string | undefined {
+  if (!id.includes('node_modules')) return undefined;
+  if (id.includes('react') || id.includes('scheduler')) return 'vendor-react';
+  if (id.includes('firebase')) return 'vendor-firebase';
+  if (id.includes('puppeteer') || id.includes('cheerio') || id.includes('linkedom') || id.includes('readability')) return 'vendor-scraper';
+  if (id.includes('jszip') || id.includes('pdf-lib') || id.includes('jsdom') || id.includes('crawlee')) return 'vendor-docs';
+  return 'vendor-misc';
+}
 
 const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 const builtAt = new Date().toISOString();
@@ -26,6 +38,9 @@ export default defineConfig(() => {
     plugins: [
       react(),
       tailwindcss(),
+      // Emit .br (brotli) companions for static assets so the SW / CDN can serve
+      // them; also shrinks what Capacitor bundles into the APK (Phase 1.1 / 3.5).
+      compression({ algorithms: ['brotliCompress'], exclude: [/\.(?:png|jpe?g|gif|webp|svg|woff2?)$/i] }),
       {
         name: 'kora-version-json',
         writeBundle() {
@@ -50,6 +65,17 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      target: 'es2020',
+      cssCodeSplit: true,
+      reportCompressedSize: true,
+      chunkSizeWarningLimit: 900,
+      rollupOptions: {
+        output: {
+          manualChunks,
+        },
       },
     },
     server: {

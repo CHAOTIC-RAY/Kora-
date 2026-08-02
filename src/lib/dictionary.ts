@@ -1,6 +1,12 @@
 // Custom Personal Dictionary Utility
 // Comes with a default dictionary and manages user additions in localStorage.
 // Can load external dictionary data from dictionary-data.json (parsed from StarDict).
+//
+// Perf plan (Phase 3.5): the external dictionary is split into one JSON shard per
+// initial letter under /data/dict/<letter>.json. We never parse the whole 2 MB
+// file on the main thread — lookups fetch only the shard for the tapped word's
+// first letter and cache it. The service worker precaches these as cache-first
+// (immutable), so lookups also work fully offline.
 
 export interface DictionaryEntry {
   word: string;
@@ -62,31 +68,59 @@ const FALLBACK_DICTIONARY: DictionaryEntry[] = [
   }
 ];
 
-// External dictionary cache (loaded from StarDict)
-let EXTERNAL_DICTIONARY: DictionaryEntry[] | null = null;
-let externalDictLoaded = false;
+const DICT_BASE = "/data/dict";
 
-// Load external dictionary data from JSON file (browser-safe)
-async function loadExternalDictionary(): Promise<void> {
-  if (externalDictLoaded) return;
-  
-  try {
-    const response = await fetch('/dictionary-data.json');
-    if (response.ok) {
-      EXTERNAL_DICTIONARY = await response.json();
-      console.log(`Loaded ${EXTERNAL_DICTIONARY!.length} entries from external dictionary`);
-    }
-  } catch (e) {
-    // Silently fail - will use fallback dictionary
-    console.warn('Failed to load external dictionary:', e);
-  }
-  
-  externalDictLoaded = true;
+function shardFor(word: string): string {
+  const w = (word || "").trim().toLowerCase();
+  const c = w[0] || "#";
+  if (/[a-z]/.test(c)) return c;
+  if (/[0-9]/.test(c)) return "0";
+  return "#";
 }
 
-// Get the default dictionary (external if available, otherwise fallback)
-function getDefaultDictionary(): DictionaryEntry[] {
-  return EXTERNAL_DICTIONARY || FALLBACK_DICTIONARY;
+// Loaded shards, keyed by letter. Each shard is fetched at most once.
+const shardCache: Map<string, DictionaryEntry[]> = new Map();
+let shardLoadsInFlight: Map<string, Promise<DictionaryEntry[]>> = new Map();
+
+async function loadShard(letter: string): Promise<DictionaryEntry[]> {
+  if (shardCache.has(letter)) return shardCache.get(letter)!;
+  const inflight = shardLoadsInFlight.get(letter);
+  if (inflight) return inflight;
+  const p = (async () => {
+    try {
+      const res = await fetch(`${DICT_BASE}/${letter}.json`);
+      if (!res.ok) return [];
+      const data = (await res.json()) as DictionaryEntry[];
+      shardCache.set(letter, data);
+      return data;
+    } catch {
+      return [];
+    }
+  })();
+  shardLoadsInFlight.set(letter, p);
+  const out = await p;
+  shardLoadsInFlight.delete(letter);
+  return out;
+}
+
+async function loadAllShards(): Promise<DictionaryEntry[]> {
+  // index.json tells us which shards exist.
+  let letters: string[] = [];
+  try {
+    const res = await fetch(`${DICT_BASE}/index.json`);
+    if (res.ok) {
+      const idx = (await res.json()) as { shards?: number };
+      // index.json doesn't list letters; fall back to the known bucket set.
+      if (typeof idx.shards === "number") {
+        letters = "abcdefghijklmnopqrstuvwxyz0#".split("");
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  if (!letters.length) letters = "abcdefghijklmnopqrstuvwxyz0#".split("");
+  const all = await Promise.all(letters.map((l) => loadShard(l)));
+  return all.flat();
 }
 
 export function getCustomDictionary(): DictionaryEntry[] {
@@ -110,15 +144,11 @@ export function saveCustomDictionary(entries: DictionaryEntry[]): void {
 }
 
 export async function getAllDictionaryEntries(): Promise<DictionaryEntry[]> {
-  // Try to load external dictionary on first call
-  if (!externalDictLoaded) {
-    await loadExternalDictionary();
-  }
-  
+  const external = await loadAllShards();
   const custom = getCustomDictionary();
-  const defaults = [...FALLBACK_DICTIONARY, ...(EXTERNAL_DICTIONARY || [])];
+  const defaults = [...FALLBACK_DICTIONARY, ...external];
   const defaultWords = defaults.filter(
-    defWord => !custom.some(custWord => custWord.word.toLowerCase() === defWord.word.toLowerCase())
+    (defWord) => !custom.some((custWord) => custWord.word.toLowerCase() === defWord.word.toLowerCase())
   );
   // Prefer custom, then dedupe defaults by word
   const seen = new Set(custom.map((e) => e.word.toLowerCase()));
@@ -175,8 +205,22 @@ function candidateForms(word: string): string[] {
 export async function lookupWord(word: string): Promise<DictionaryEntry | null> {
   const forms = candidateForms(word);
   if (!forms.length) return null;
-  const all = await getAllDictionaryEntries();
-  const byWord = new Map(all.map((entry) => [entry.word.toLowerCase(), entry]));
+
+  // Only fetch the shard(s) the candidate forms actually fall into — never the
+  // whole 2 MB dictionary. Covers + custom entries are always consulted.
+  const letters = new Set(forms.map(shardFor));
+  const shardLists = await Promise.all([...letters].map((l) => loadShard(l)));
+  const external = shardLists.flat();
+
+  const custom = getCustomDictionary();
+  const defaults = [...FALLBACK_DICTIONARY, ...external];
+  const byWord = new Map<string, DictionaryEntry>();
+  for (const entry of defaults) {
+    const key = entry.word.toLowerCase();
+    if (!byWord.has(key)) byWord.set(key, entry);
+  }
+  // Custom entries override defaults.
+  for (const entry of custom) byWord.set(entry.word.toLowerCase(), entry);
 
   for (const form of forms) {
     const hit = byWord.get(form);

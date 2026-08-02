@@ -19,3 +19,19 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# === Kora perf plan (Phase 1.2): R8 keep rules ===
+# Without these, minification strips the reflection-based Capacitor plugin
+# bridge and Firebase classes the WebView / sign-in depend on.
+-keep class com.getcapacitor.** { *; }
+-keep class app.kora.reader.** { *; }
+-keep class com.google.firebase.** { *; }
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,Exceptions
+-keepclassmembers class * {
+    @com.getcapacitor.PluginMethod <methods>;
+}
+# Preserve reflection entry points Capacitor uses to enumerate plugins.
+-keep class * extends com.getcapacitor.Plugin
+-keep class * implements com.getcapacitor.Plugin
+-dontwarn com.getcapacitor.**
+-dontwarn com.google.firebase.**

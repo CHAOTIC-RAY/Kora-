@@ -10,6 +10,7 @@ const PREFS_STORE = "prefs";
 const SHELL_CACHE = "kora-shell-v6";
 const API_CACHE = "kora-api-v6";
 const COVER_CACHE = "kora-covers-v1";
+const DATA_CACHE = "kora-data-v1"; // perf plan 3.2: bundled dictionary shards (immutable)
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.
 const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
@@ -32,12 +33,28 @@ async function warmApiCache() {
   );
 }
 
+async function warmDataCache() {
+  // Perf plan 3.2: precache the immutable dictionary shards (one JSON per initial
+  // letter) so offline lookups never hit the network. Cache-first thereafter.
+  const letters = "abcdefghijklmnopqrstuvwxyz0#".split("");
+  const toCache = ["/data/dict/index.json", ...letters.map((l) => `/data/dict/${l}.json`)];
+  const cache = await caches.open(DATA_CACHE);
+  await Promise.allSettled(
+    toCache.map((url) =>
+      fetch(url).then((res) => {
+        if (res.ok) return cache.put(url, res);
+      }).catch(() => {})
+    )
+  );
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     Promise.all([
       caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {})),
       warmApiCache(),
+      warmDataCache(),
     ])
   );
 });
@@ -46,7 +63,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      const keep = new Set([SHELL_CACHE, API_CACHE, COVER_CACHE]);
+      const keep = new Set([SHELL_CACHE, API_CACHE, COVER_CACHE, DATA_CACHE]);
       await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
       await self.clients.claim();
       // Tell open tabs a new worker is live so they can reload onto the new build.
@@ -862,6 +879,26 @@ self.addEventListener("fetch", (event) => {
             req.onerror = () => resolve(new Response("[]", { headers: { "Content-Type": "application/json" } }));
           })
       )
+    );
+    return;
+  }
+
+  // Perf plan 3.2: bundled, immutable dictionary shards — cache-first, served
+  // offline. These live under /data/ and never change between deploys.
+  if (event.request.method === "GET" && url.pathname.startsWith("/data/")) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(DATA_CACHE);
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        try {
+          const res = await fetch(event.request);
+          if (res && res.ok) cache.put(event.request, res.clone());
+          return res;
+        } catch (e) {
+          return cached || new Response("", { status: 504 });
+        }
+      })()
     );
     return;
   }

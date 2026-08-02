@@ -40,5 +40,5 @@ export default function CachedCoverImage({ coverUrl, bookTitle, alt, ...rest }: 
     );
   }
 
-  return <img src={src} alt={alt || bookTitle || "Book cover"} loading="lazy" decoding="async" {...rest} />;
+  return <img src={src} alt={alt || bookTitle || "Book cover"} className={`kora-cover-img ${rest.className || ""}`} loading="lazy" decoding="async" {...rest} />;
 }

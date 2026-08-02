@@ -55,10 +55,23 @@ android {
             minifyEnabled false
         }
         release {
-            minifyEnabled false
-            shrinkResources false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Phase 1.2: shrink the release APK (smaller install + faster load).
+            // R8 keep rules live in proguard-rules.pro and protect Capacitor/Firebase
+            // reflection bridges so the WebView and sign-in keep working.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
+        }
+    }
+    // Phase 1.3: ship only the architectures modern phones use.
+    // Roughly halves the release APK size vs. the universal (all-ABI) build.
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a'
+            universalApk false
         }
     }
     compileOptions {

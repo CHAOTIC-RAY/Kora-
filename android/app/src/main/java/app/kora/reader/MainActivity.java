@@ -37,7 +37,28 @@ public class MainActivity extends BridgeActivity {
     super.onCreate(savedInstanceState);
     applyDarkSystemBars();
     enableHomeScreenWidgets();
+    tuneWebView();
     handleWidgetDeepLink(getIntent());
+  }
+
+  /**
+   * Perf plan 4.1: tune the Capacitor WebView so cached assets (incl. the bundled
+   * offline dictionary + shell) are served from cache first, DOM/local storage are
+   * enabled for the PWA, and audiobooks keep playing in the background.
+   */
+  private void tuneWebView() {
+    try {
+      if (getBridge() == null || getBridge().getWebView() == null) return;
+      android.webkit.WebSettings ws = getBridge().getWebView().getSettings();
+      ws.setCacheMode(android.webkit.WebSettings.LOAD_CACHE_ELSE_NETWORK);
+      ws.setDomStorageEnabled(true);
+      ws.setDatabaseEnabled(true);
+      ws.setOffscreenPreRaster(true);
+      // Allow audiobook playback to continue without a user gesture each time.
+      ws.setMediaPlaybackRequiresUserGesture(false);
+    } catch (Exception ignored) {
+      /* WebView not ready — safe to skip */
+    }
   }
 
   @Override

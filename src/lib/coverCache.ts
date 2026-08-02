@@ -6,6 +6,11 @@ const DB_NAME = "KoraCoverCache";
 const STORE = "covers";
 const DB_VERSION = 1;
 
+// Phase 2.4: cap the cover cache so it can't grow unbounded on device storage.
+// When total stored bytes exceed this, the oldest covers (by savedAt) are
+// evicted first (LRU).
+const COVER_CACHE_BUDGET_BYTES = 200 * 1024 * 1024; // 200 MB
+
 interface CoverRecord {
   urlKey: string;
   blob: Blob;
@@ -15,7 +20,11 @@ interface CoverRecord {
 
 const objectUrlCache = new Map<string, string>();
 
-function openCoverDB(): Promise<IDBDatabase> {
+function urlKey(url: string): string {
+  return url.trim();
+}
+
+async function openCoverDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
@@ -29,10 +38,6 @@ function openCoverDB(): Promise<IDBDatabase> {
   });
 }
 
-function urlKey(url: string): string {
-  return url.trim();
-}
-
 async function getRecord(key: string): Promise<CoverRecord | null> {
   const db = await openCoverDB();
   return new Promise((resolve, reject) => {
@@ -43,8 +48,48 @@ async function getRecord(key: string): Promise<CoverRecord | null> {
   });
 }
 
+/** Sum stored cover bytes so we can enforce the budget (Phase 2.4). */
+async function sumCoverBytes(db: IDBDatabase): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = () => {
+      const rows = (req.result || []) as CoverRecord[];
+      resolve(rows.reduce((acc, r) => acc + (r?.blob?.size || 0), 0));
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** Evict oldest covers (by savedAt) until total bytes drop to <= target. */
+async function evictOldestCovers(db: IDBDatabase, target: number): Promise<void> {
+  const tx = db.transaction(STORE, "readwrite");
+  const store = tx.objectStore(STORE);
+  const all = await new Promise<CoverRecord[]>((resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve((req.result || []) as CoverRecord[]);
+    req.onerror = () => reject(req.error);
+  });
+  let total = all.reduce((acc, r) => acc + (r?.blob?.size || 0), 0);
+  if (total <= target) return;
+  const byAge = all.slice().sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+  for (const row of byAge) {
+    if (total <= target) break;
+    total -= row?.blob?.size || 0;
+    store.delete(row.urlKey);
+  }
+  return new Promise((resolve) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+  });
+}
+
 async function putRecord(record: CoverRecord): Promise<void> {
   const db = await openCoverDB();
+  const current = await sumCoverBytes(db);
+  if (current + record.blob.size > COVER_CACHE_BUDGET_BYTES) {
+    await evictOldestCovers(db, COVER_CACHE_BUDGET_BYTES - record.blob.size);
+  }
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readwrite");
     tx.objectStore(STORE).put(record);

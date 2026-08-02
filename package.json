@@ -5,16 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:data": "node scripts/build-data-bundle.mjs",
+    "build": "npm run build:data && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "build:prod": "VITE_APP_CHANNEL=production vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "build:beta": "VITE_APP_CHANNEL=beta vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:prod": "VITE_APP_CHANNEL=production npm run build:data && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:beta": "VITE_APP_CHANNEL=beta npm run build:data && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "deploy": "npm run build:prod",
     "deploy:prod": "npm run build:prod",
     "deploy:beta": "npm run build:beta",
     "cf-dev": "wrangler dev",
     "cf-dev:beta": "wrangler dev --env beta",
-    "build:apk-web": "VITE_APP_CHANNEL=production vite build",
+    "build:apk-web": "VITE_APP_CHANNEL=production npm run build:data && vite build",
     "icons:android": "npm install --no-save sharp && node scripts/generate-android-icons.mjs",
     "cap:sync": "npx cap sync android",
     "cap:open": "npx cap open android",
@@ -23,7 +24,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "parse-dict": "tsx parse-stardict.ts"
+    "parse-dict": "tsx parse-stardict.ts",
+    "size": "vite build && node scripts/measure-bundle.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.3.0",
@@ -77,6 +79,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
+    "vite-plugin-compression2": "^2.5.3",
     "wrangler": "^4.115.0"
   }
 }
