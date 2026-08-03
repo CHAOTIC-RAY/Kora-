@@ -1469,7 +1469,14 @@ export default function App() {
     const prefixedTheme = rawTheme.startsWith("theme-") ? rawTheme : `theme-${rawTheme}`;
     const activeSkin = isInstallView ? "kora" : appSkin;
 
-    const classes = [rawTheme, cleanTheme, prefixedTheme, skinBodyClass(activeSkin)];
+    // Only the `theme-` prefixed token is applied to <body>. The bare theme
+    // name (e.g. "sepia") collides with a Tailwind utility class of the same
+    // name — `sepia` is Tailwind's `filter: sepia(100%)`. A `filter` on <body>
+    // makes every `position: fixed` descendant (the floating mobile tab bar)
+    // resolve against <body> instead of the viewport, so it scrolls away with
+    // the page. The `theme-` prefixed class carries the theme CSS variables
+    // without that side effect.
+    const classes = [prefixedTheme, skinBodyClass(activeSkin)];
     if (cleanTheme === "dark") {
       classes.push("theme-dark-grey", "dark-grey");
     } else if (cleanTheme === "sepia") {
