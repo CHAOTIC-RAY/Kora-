@@ -26,7 +26,7 @@ import {
   TOPIC_FEED_GROUPS,
 } from "../lib/feedStorage";
 import { DEFAULT_APP_SKIN, type AppSkinId } from "../lib/appSkin";
-import { getTimeOfDayAutoTheme } from "../lib/readerThemes";
+
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -52,15 +52,10 @@ interface OnboardingModalProps {
   onReaderPrefsChange?: (prefs: { theme?: string; autoAdjustTheme?: boolean; themeManuallySet?: boolean }) => void;
 }
 
-const READER_THEME_TO_DISPLAY: Record<string, string> = {
-  sepia: "sepia",
-  paper: "paper",
-  light: "light",
-  night: "night",
-  oled: "oled",
-  green: "green",
-  dark: "dark",
-};
+// Each archetype is a BUNDLE of both an app skin and an app display theme
+// preset. Selecting one applies both so the whole app (chrome + palette)
+// transforms, not just the reader. displayTheme is a real app theme token
+// (the value stored in kora_display_theme / applied to <body> as theme-<x>).
 
 const ARCHETYPES = [
   {
@@ -68,7 +63,8 @@ const ARCHETYPES = [
     title: "The Midnight Reader",
     desc: "Reads until 3 AM under a warm blanket. Drinks black coffee, loves mysterious thrillers, and lives in dark mode.",
     icon: MoonIcon,
-    defaultTheme: "night",
+    skin: "soft",
+    displayTheme: "theme-night",
     quote: "Just one more chapter...",
   },
   {
@@ -76,7 +72,8 @@ const ARCHETYPES = [
     title: "The Cozy Tea Sipper",
     desc: "Enjoys warm sepia lighting, a hot cup of chamomile tea, and peaceful, timeless classics.",
     icon: CoffeeIcon,
-    defaultTheme: "sepia",
+    skin: "library",
+    displayTheme: "theme-sepia",
     quote: "A cup of tea and a good book is bliss.",
   },
   {
@@ -84,7 +81,8 @@ const ARCHETYPES = [
     title: "The Bibliophile Curator",
     desc: "Loves cataloging, keeping shelves perfectly organized, and tracking fine literary details.",
     icon: BookmarkIcon,
-    defaultTheme: "light",
+    skin: "paper",
+    displayTheme: "theme-light-white",
     quote: "My library is my sanctuary.",
   },
   {
@@ -92,34 +90,36 @@ const ARCHETYPES = [
     title: "The Speed Scholar",
     desc: "Inhales textbooks and non-fiction at light speed. Uses clean sans-serif layouts to optimize focus.",
     icon: GlassesIcon,
-    defaultTheme: "oled",
+    skin: "studio",
+    displayTheme: "theme-light-yellow",
     quote: "Knowledge is the ultimate superpower.",
   },
   {
     id: "auto-riser",
     title: "Auto-Riser",
-    desc: "Lets the app adapt from dawn to dusk. Reader theme shifts with the sun so morning pages stay soft and late-night chapters stay dark.",
+    desc: "Lets the app adapt from dawn to dusk. Skin + theme shift with the sun so morning pages stay soft and late-night chapters stay dark.",
     icon: Sun,
-    defaultTheme: getTimeOfDayAutoTheme(),
+    skin: "kora",
+    displayTheme: "theme-dark-blue",
     autoTheme: true,
     quote: "I let the day pick my palette.",
   },
   {
     id: "glass-minimalist",
     title: "Glass Minimalist",
-    desc: "Wants the lightest chrome possible. Picks the iOS Glass skin with the Light theme and zero distractions.",
+    desc: "Wants the lightest chrome possible. iOS Glass skin with the crisp Light theme and zero distractions.",
     icon: Smartphone,
-    defaultTheme: "light",
     skin: "ios-glass",
+    displayTheme: "theme-light-white",
     quote: "Less chrome, more content.",
   },
   {
     id: "neon-archivist",
     title: "Neon Archivist",
-    desc: "Cyberpunk shelving: dark neon grid skin, OLED reader theme, and synthwave vibes for late-night browsing.",
+    desc: "Cyberpunk shelving: dark neon grid skin, OLED theme, and synthwave vibes for late-night browsing.",
     icon: Flame,
-    defaultTheme: "oled",
     skin: "cyberpunk",
+    displayTheme: "theme-oled",
     quote: "Neon on the shelf, dark in the head.",
   },
   {
@@ -127,17 +127,17 @@ const ARCHETYPES = [
     title: "Bibliophile Classic",
     desc: "Walnut shelves, paper textures, warm amber light. The Library skin turns the app into a timeless reading room.",
     icon: Library,
-    defaultTheme: "sepia",
     skin: "library",
+    displayTheme: "theme-paper",
     quote: "Like a library from another century.",
   },
   {
     id: "material-maven",
     title: "Material Maven",
-    desc: "Loves tonal palettes and expressive motion. Material Expressive skin with Paper theme for a clean, modern feel.",
+    desc: "Loves tonal palettes and expressive motion. Material Expressive skin with a clean, modern Paper theme.",
     icon: Target,
-    defaultTheme: "paper",
     skin: "material-ex",
+    displayTheme: "theme-green",
     quote: "Motion with meaning.",
   },
   {
@@ -145,8 +145,8 @@ const ARCHETYPES = [
     title: "Monochrome Purist",
     desc: "Nothing OS aesthetic: NDOT fonts, monochrome chrome, and transparent layers. OLED theme for maximum contrast.",
     icon: Contrast,
-    defaultTheme: "oled",
     skin: "nothing",
+    displayTheme: "theme-dark",
     quote: "No color, just clarity.",
   },
 ];
@@ -279,14 +279,20 @@ export default function OnboardingModal({
 
   const handleArchetypeSelect = (arc: (typeof ARCHETYPES)[0]) => {
     setSelectedArchetype(arc.id);
-    const display = READER_THEME_TO_DISPLAY[arc.defaultTheme] || arc.defaultTheme;
-    setCurrentDisplayTheme(display);
-    onThemeChange(display);
-    if (onReaderPrefsChange) {
-      onReaderPrefsChange({ theme: arc.defaultTheme, autoAdjustTheme: Boolean((arc as any).autoTheme), themeManuallySet: true });
-    }
+    // Apply the bundled skin + app display theme preset together.
     if (arc.skin && onAppSkinChange) {
       onAppSkinChange(arc.skin as any);
+    }
+    if (arc.displayTheme) {
+      setCurrentDisplayTheme(arc.displayTheme);
+      onThemeChange(arc.displayTheme);
+    }
+    if (onReaderPrefsChange) {
+      onReaderPrefsChange({
+        theme: arc.displayTheme,
+        autoAdjustTheme: Boolean((arc as any).autoTheme),
+        themeManuallySet: true,
+      });
     }
   };
 
