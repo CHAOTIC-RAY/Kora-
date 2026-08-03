@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Kora is a client-rendered SPA; the shell + manifest + sitemap are crawlable.
+# Disallow heavy/authenticated/transient surfaces to keep crawl budget focused.
+Disallow: /api/
+Disallow: /install
+Disallow: /share
+Disallow: /settings
+Disallow: /library
+Disallow: /reader
+
+Sitemap: https://kora.chaoticstudio.workers.dev/sitemap.xml

@@ -6,6 +6,8 @@ coverage/
 *.log
 .env*
 !.env.example
+.dev.vars
+.dev.vars*
 .env
 do.json
 do2.json

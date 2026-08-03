@@ -40,6 +40,7 @@ import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import BetaChannelBadge from "./components/BetaChannelBadge";
 import { enqueueAudiobookDownload, handleAudiobookSwMessage } from "./lib/audiobookSyncQueue";
 import { enqueueEbookDownload } from "./lib/ebookDownloadQueue";
+import { setSeo } from "./lib/seo";
 import {
   LIBGEN_MIRRORS,
   buildLibgenDownloadUrl,
@@ -1516,6 +1517,25 @@ export default function App() {
     };
   }, []);
 
+  // Keep document head SEO (title/description/canonical) in sync with the active SPA route.
+  useEffect(() => {
+    const path = window.location.pathname.replace(/\/+$/, "") || "/";
+    const routes: Record<string, { title: string; description?: string; noindex?: boolean }> = {
+      "/": { title: "", description: "Discover, track, and read books across EPUB, PDF, and more. Search millions of ebooks and audiobooks and read offline." },
+      "/discover": { title: "Discover", description: "Search millions of ebooks and audiobooks across LibGen, Anna's Archive, Open Library, and more." },
+      "/feed": { title: "Feed", description: "Your personalized reading feed and daily news brief." },
+      "/create": { title: "Create", description: "Author your own EPUB and PDF books inside Kora." },
+      "/workshop": { title: "Workshop", description: "Interactive reading tools and experiments." },
+      "/library": { title: "Library", noindex: true },
+    };
+    const match = routes[path];
+    if (match) {
+      setSeo({ title: match.title, description: match.description, canonical: path, noindex: match.noindex });
+    } else {
+      setSeo({ title: "Kora", canonical: path });
+    }
+  }, []);
+
   useEffect(() => {
     void (async () => {
       await ensureServiceWorkerReady();
@@ -2805,7 +2825,7 @@ export default function App() {
             inert={activeTab !== "library" ? true : undefined}
           >
 
-          <Suspense fallback={null}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <LibraryManager
             userId={user?.uid || ""}
             books={books}
@@ -2847,7 +2867,7 @@ export default function App() {
             inert={activeTab !== "feed" ? true : undefined}
           >
 
-          <Suspense fallback={null}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <FeedView
             userId={user?.uid || ""}
             onRefreshLibrary={refreshLibrary}
@@ -2868,7 +2888,7 @@ export default function App() {
             inert={activeTab !== "discover" ? true : undefined}
           >
 
-          <Suspense fallback={null}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <DiscoverView
             userId={user?.uid || ""}
             books={books}
@@ -2938,7 +2958,7 @@ export default function App() {
             inert={activeTab !== "tools" ? true : undefined}
           >
 
-          <Suspense fallback={null}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <SettingsView
             view="tools"
             user={user}
@@ -2991,7 +3011,7 @@ export default function App() {
             inert={activeTab !== "settings" ? true : undefined}
           >
 
-          <Suspense fallback={null}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <SettingsView
             view="settings" 
             user={user}
@@ -3539,7 +3559,7 @@ export default function App() {
       )}
 
       {/* Daily Motivation Reminder Modal */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
       <DailyReminderModal
         isOpen={showDailyReminder}
         onClose={() => setShowDailyReminder(false)}
@@ -3558,7 +3578,7 @@ export default function App() {
       )}
 
       {/* Playful Booknerd Onboarding Modal */}
-      <Suspense fallback={null}>
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
       <OnboardingModal
         isOpen={showOnboarding}
         onComplete={handleOnboardingComplete}
@@ -3573,7 +3593,7 @@ export default function App() {
       />
       </Suspense>
 
-      <Suspense fallback={null}>
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
       <GuideSetupPopup
         isOpen={showGuideSetup}
         initial={{
@@ -3602,7 +3622,7 @@ export default function App() {
       <ApkUpdateBanner />
 
       {showAnnotationsHub && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
         <AnnotationsHub
           books={books}
           userId={user?.uid || ""}
@@ -3630,7 +3650,7 @@ export default function App() {
       )}
 
       {proximitySyncBook && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
         <ProximitySyncModal
           book={proximitySyncBook}
           userId={user?.uid || "anonymous"}

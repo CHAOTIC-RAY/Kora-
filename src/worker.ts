@@ -42,7 +42,8 @@ async function sha256(message: string): Promise<string> {
 
 // Build an NYT-shaped "overview" feed from the Rave engine so the Discover page
 // always has real content even when the NYT Books API key is missing/invalid.
-async function buildRaveFallbackFeed(): Promise<any> {
+async function buildRaveFallbackFeed(env: any): Promise<any> {
+  const raveApiKey = env?.RAVE_API_KEY || "";
   const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
   const topics = [
     { key: "hardcover-fiction", name: "Hardcover Fiction", q: "bestselling fiction" },
@@ -55,17 +56,34 @@ async function buildRaveFallbackFeed(): Promise<any> {
   const lists: any[] = [];
   for (const t of topics) {
     try {
-      const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(t.q)}&mode=ebooks&source=all&page=1`;
-      const r = await fetch(url, { headers: { "User-Agent": ua } });
-      if (!r.ok) continue;
-      const j = await r.json();
-      const books = (j.results || []).slice(0, 8).map((b: any) => ({
-        title: (b.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim(),
-        author: (b.author || "Unknown").replace(/[,;]$/, "").trim(),
-        book_image: b.coverUrl || "",
-        description: b.publisher || "",
-        primary_isbn13: b.md5 || ""
-      }));
+      let books: any[] = [];
+      // Prefer the v1 API when the key is present; otherwise use the legacy endpoint.
+      if (raveApiKey) {
+        const u = `https://api.ravebooksearch.com/api/v1/search?q=${encodeURIComponent(t.q)}&mode=ebooks&page=1`;
+        const r = await fetch(u, { headers: { "X-API-Key": raveApiKey, "Accept": "application/json" }, signal: AbortSignal.timeout(12000) });
+        if (r.ok) {
+          const j = await r.json();
+          books = (j?.results || []).slice(0, 8).map((b: any) => ({
+            title: (b.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim(),
+            author: (b.author || "Unknown").replace(/[,;]$/, "").trim(),
+            book_image: b.coverUrl || "",
+            description: b.publisher || "",
+            primary_isbn13: b.md5 || ""
+          }));
+        }
+      } else {
+        const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(t.q)}&mode=ebooks&source=all&page=1`;
+        const r = await fetch(url, { headers: { "User-Agent": ua }, signal: AbortSignal.timeout(12000) });
+        if (!r.ok) continue;
+        const j = await r.json();
+        books = (j.results || []).slice(0, 8).map((b: any) => ({
+          title: (b.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim(),
+          author: (b.author || "Unknown").replace(/[,;]$/, "").trim(),
+          book_image: b.coverUrl || "",
+          description: b.publisher || "",
+          primary_isbn13: b.md5 || ""
+        }));
+      }
       if (books.length) {
         lists.push({
           list_name: t.name,
@@ -263,7 +281,45 @@ function resolveUrl(href: string, base: string): string {
 }
 
 async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
-  const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(query)}&mode=${mode}&source=${source}&page=${page}`;
+  // Prefer the new header-authenticated Rave v1 API (api.ravebooksearch.com).
+  // The key is a Cloudflare secret (env.RAVE_API_KEY) — never exposed to the client
+  // or committed to the repo. See .env.example and the README migration note.
+  const raveApiKey = env?.RAVE_API_KEY || "";
+  const normalizedMode = mode === "audiobooks" ? "audiobooks" : "ebooks";
+
+  if (raveApiKey) {
+    const url = `https://api.ravebooksearch.com/api/v1/search?q=${encodeURIComponent(query)}&mode=${normalizedMode}${source && source !== "all" ? `&source=${encodeURIComponent(source)}` : ""}&page=${page}`;
+    const raveHeaders = {
+      "X-API-Key": raveApiKey,
+      "Accept": "application/json"
+    };
+    // Bound search latency so book-detail "scanning" cannot hang indefinitely.
+    const raveInit: RequestInit = { headers: raveHeaders, signal: AbortSignal.timeout(12000) };
+    try {
+      let res;
+      if (env && env.RAVE_BOOK_SEARCH) {
+        console.log("Using Cloudflare Service Binding RAVE_BOOK_SEARCH (v1 API)");
+        res = await env.RAVE_BOOK_SEARCH.fetch(url, raveInit);
+      } else {
+        console.log("Using new Rave v1 API (api.ravebooksearch.com)");
+        res = await fetch(url, raveInit);
+      }
+
+      if (!res.ok) {
+        // 401/429/etc: log and fall back to the legacy public endpoint below.
+        console.warn(`[Rave v1] non-OK status ${res.status} — falling back to legacy endpoint`);
+      } else {
+        const data = await res.json() as any;
+        const mapped = await mapRaveV1Results(data?.results || [], query);
+        return { results: mapped, meta: data?.meta || {} };
+      }
+    } catch (e: any) {
+      console.warn("[Rave v1] request failed, falling back to legacy endpoint:", e?.message);
+    }
+  }
+
+  // Legacy fallback — still works per the PDF's migration window; no API key needed.
+  const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(query)}&mode=${normalizedMode}&source=${source}&page=${page}`;
   const raveHeaders = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
   };
@@ -291,77 +347,86 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
       return { results: [], meta: meta };
     }
 
-    const mapped = [];
-    for (const r of rawResults) {
-      let title = (r.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim();
-      title = title.replace(/ b [fl] \d+$/i, "").trim();
-
-      let author = (r.author || "Unknown Author")
-        .replace(/[,;]$/, "")
-        .trim();
-      if (author.endsWith(",")) author = author.slice(0, -1);
-
-      let extension = (r.format || "").toLowerCase().replace(/^\./, "");
-      if (!extension && (r.directUrl || r.downloadUrl)) {
-        const url = (r.directUrl || r.downloadUrl).toLowerCase();
-        if (url.endsWith(".pdf")) extension = "pdf";
-        else if (url.endsWith(".epub")) extension = "epub";
-        else if (url.endsWith(".mobi")) extension = "mobi";
-        else if (url.endsWith(".azw3")) extension = "azw3";
-        else if (url.endsWith(".html")) extension = "html";
-        else if (url.endsWith(".json")) extension = "json";
-        else if (url.endsWith(".txt")) extension = "txt";
-      }
-      if (!extension) extension = "epub";
-
-      let md5 = r.md5 || "";
-      if (!md5) {
-        const uniqueString = r.directUrl || r.downloadUrl || (r.title + r.author + extension);
-        md5 = await sha256(uniqueString);
-      }
-
-      let size = "Unknown";
-      if (r.filesize && r.filesize > 0) {
-        const bytes = parseInt(r.filesize);
-        if (bytes > 1048576) size = (bytes / 1048576).toFixed(1) + " MB";
-        else if (bytes > 1024) size = Math.round(bytes / 1024) + " KB";
-        else size = bytes + " B";
-      } else if (r.size) {
-        size = r.size;
-      }
-
-      const isbnMatch = (r.title || "").match(/(\d{10,13})/);
-      const isbn = isbnMatch ? isbnMatch[1] : null;
-
-      let coverUrl = r.coverUrl || "";
-      if (!coverUrl && isbn && /^\d{10,13}$/.test(isbn)) {
-        coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
-      }
-      if (!coverUrl) {
-        coverUrl = `/api/cover-redirect?md5=${md5}`;
-      }
-
-      mapped.push({
-        id: md5,
-        md5,
-        isbn: isbn || null,
-        title,
-        author,
-        extension: extension.toUpperCase(),
-        size: size,
-        source: r.source || "Rave",
-        language: r.language || r.lang || r.language_code || r.language_names || r.info?.language || undefined,
-        downloadUrl: r.directUrl || r.downloadUrl || "",
-        iaId: r.source === "Internet Archive" ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
-        coverUrl
-      });
-    }
-
+    const mapped = await mapRaveV1Results(rawResults, query);
     return { results: mapped, meta };
   } catch (err) {
     console.error("fetchFromRaveBookSearch error:", err);
     return { results: [], meta: {} };
   }
+}
+
+/**
+ * Map a Rave result set to Kora's internal book shape.
+ * The Rave v1 API ("Same shape as before") and the legacy /search/all endpoint
+ * return identical result objects, so this single mapper serves both.
+ */
+async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[]> {
+  const mapped = [];
+  for (const r of rawResults) {
+    let title = (r.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim();
+    title = title.replace(/ b [fl] \d+$/i, "").trim();
+
+    let author = (r.author || "Unknown Author")
+      .replace(/[,;]$/, "")
+      .trim();
+    if (author.endsWith(",")) author = author.slice(0, -1);
+
+    let extension = (r.format || "").toLowerCase().replace(/^\./, "");
+    if (!extension && (r.directUrl || r.downloadUrl)) {
+      const extUrl = (r.directUrl || r.downloadUrl).toLowerCase();
+      if (extUrl.endsWith(".pdf")) extension = "pdf";
+      else if (extUrl.endsWith(".epub")) extension = "epub";
+      else if (extUrl.endsWith(".mobi")) extension = "mobi";
+      else if (extUrl.endsWith(".azw3")) extension = "azw3";
+      else if (extUrl.endsWith(".html")) extension = "html";
+      else if (extUrl.endsWith(".json")) extension = "json";
+      else if (extUrl.endsWith(".txt")) extension = "txt";
+    }
+    if (!extension) extension = "epub";
+
+    let md5 = r.md5 || "";
+    if (!md5) {
+      const uniqueString = r.directUrl || r.downloadUrl || (r.title + r.author + extension);
+      md5 = await sha256(uniqueString);
+    }
+
+    let size = "Unknown";
+    if (r.filesize && r.filesize > 0) {
+      const bytes = parseInt(r.filesize);
+      if (bytes > 1048576) size = (bytes / 1048576).toFixed(1) + " MB";
+      else if (bytes > 1024) size = Math.round(bytes / 1024) + " KB";
+      else size = bytes + " B";
+    } else if (r.size) {
+      size = r.size;
+    }
+
+    const isbnMatch = (r.title || "").match(/(\d{10,13})/);
+    const isbn = isbnMatch ? isbnMatch[1] : null;
+
+    let coverUrl = r.coverUrl || "";
+    if (!coverUrl && isbn && /^\d{10,13}$/.test(isbn)) {
+      coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
+    }
+    if (!coverUrl) {
+      coverUrl = `/api/cover-redirect?md5=${md5}`;
+    }
+
+    mapped.push({
+      id: md5,
+      md5,
+      isbn: isbn || null,
+      title,
+      author,
+      extension: extension.toUpperCase(),
+      size: size,
+      source: r.source || "Rave",
+      language: r.language || r.lang || r.language_code || r.language_names || r.info?.language || undefined,
+      downloadUrl: r.directUrl || r.downloadUrl || "",
+      iaId: r.source === "Internet Archive" ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
+      coverUrl
+    });
+  }
+  return mapped;
 }
 
 export interface Env {
@@ -1218,7 +1283,7 @@ export default {
         }
 
         console.warn("[NYT] overview unavailable (key invalid or API down). Serving Rave fallback feed.");
-        const fallback = await buildRaveFallbackFeed();
+        const fallback = await buildRaveFallbackFeed(env);
         return new Response(JSON.stringify({
           ...fallback,
           source: "rave-fallback",
@@ -1229,7 +1294,7 @@ export default {
       } catch (err: any) {
         console.warn("[NYT] overview fetch failed, serving Rave fallback feed:", err.message);
         try {
-          const fallback = await buildRaveFallbackFeed();
+          const fallback = await buildRaveFallbackFeed(env);
           return new Response(JSON.stringify({
             ...fallback,
             source: "rave-fallback",
