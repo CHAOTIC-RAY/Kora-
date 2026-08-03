@@ -1573,35 +1573,64 @@ export default {
         });
       }
 
-      const cached = getCachedAudiobookSearch(q);
-      if (cached) {
-        return new Response(JSON.stringify(cached), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "X-Cache": "HIT" }
-        });
-      }
-
-      const deduped = await searchAudiobooksFromSources(fetchPageHtmlWithProxies, q, 16);
-
-      if (deduped.length === 0) {
-        const lower = q.toLowerCase();
-        POPULAR_AUDIOBOOKS.filter(b =>
-          b.title.toLowerCase().includes(lower) || b.author.toLowerCase().includes(lower)
-        ).forEach(b => {
-          deduped.push({
-            ...b,
-            coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
-            link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-            listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-            listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-            source: "fulllengthaudiobooks",
+      try {
+        const cached = getCachedAudiobookSearch(q);
+        if (cached) {
+          return new Response(JSON.stringify(cached), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "X-Cache": "HIT" }
           });
+        }
+
+        // Primary: scrape the known free-audiobook hosts.
+        let deduped = await searchAudiobooksFromSources(fetchPageHtmlWithProxies, q, 16);
+
+        // Fallback: Rave Book Search (the app's sole search relay) — many titles are
+        // available as audio and Rave results give us a real cover/link to surface.
+        if (deduped.length === 0 && env) {
+          try {
+            const { results: rave } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
+            deduped = rave.slice(0, 16).map((b: any) => ({
+              title: b.title,
+              author: b.author || "Unknown",
+              coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
+              link: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
+              listenUrl: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : ""),
+              listenUrlAlt: "",
+              source: "rave",
+            }));
+          } catch (raveErr: any) {
+            console.warn("[Audiobooks] Rave fallback failed:", raveErr?.message);
+          }
+        }
+
+        if (deduped.length === 0) {
+          const lower = q.toLowerCase();
+          POPULAR_AUDIOBOOKS.filter(b =>
+            b.title.toLowerCase().includes(lower) || b.author.toLowerCase().includes(lower)
+          ).forEach(b => {
+            deduped.push({
+              ...b,
+              coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author)}`,
+              link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+              listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+              listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+              source: "fulllengthaudiobooks",
+            });
+          });
+        }
+
+        setCachedAudiobookSearch(q, deduped);
+        // Always return a valid JSON body (never empty) so the client never sees "Failed to fetch".
+        return new Response(JSON.stringify(deduped ?? []), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      } catch (err: any) {
+        console.error("[Audiobooks search] fatal error:", err);
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }
-
-      setCachedAudiobookSearch(q, deduped);
-      return new Response(JSON.stringify(deduped), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-      });
     }
 
     if (path === "/api/audiobooks/search/stream") {
@@ -1610,50 +1639,79 @@ export default {
         return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
       }
 
-      const stream = new ReadableStream({
-        async start(controller) {
-          const enc = new TextEncoder();
-          const write = (obj: any) => controller.enqueue(enc.encode(JSON.stringify(obj) + "\n"));
+      try {
+        const stream = new ReadableStream({
+          async start(controller) {
+            const enc = new TextEncoder();
+            const write = (obj: any) => controller.enqueue(enc.encode(JSON.stringify(obj) + "\n"));
 
-          const cached = getCachedAudiobookSearch(q);
-          if (cached) {
-            write({ source: "cache", results: cached });
+            const cached = getCachedAudiobookSearch(q);
+            if (cached) {
+              write({ source: "cache", results: cached });
+              write({ done: true });
+              controller.close();
+              return;
+            }
+
+            const all: any[] = [];
+            const seen = new Set<string>();
+
+            // Primary: scrape the known free-audiobook hosts.
+            const scrapeSources = [
+              { name: "fulllengthaudiobooks", url: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://fulllengthaudiobooks.com" },
+              { name: "hdaudiobooks", url: `https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://hdaudiobooks.com" },
+            ];
+
+            await Promise.allSettled(scrapeSources.map(async (src) => {
+              try {
+                const html = await fetchPageHtmlWithProxies(src.url);
+                const batch = parseAudiobookSearchHtml(html, src.name, src.base).filter((r) => {
+                  if (seen.has(r.link)) return false;
+                  seen.add(r.link);
+                  return true;
+                });
+                if (batch.length) {
+                  all.push(...batch);
+                  write({ source: src.name, results: batch });
+                }
+              } catch (_) { /* skip */ }
+            }));
+
+            // Fallback: Rave Book Search so the stream still yields results.
+            if (all.length === 0 && env) {
+              try {
+                const { results: rave } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
+                const raveBatch = rave.slice(0, 16).map((b: any) => ({
+                  title: b.title,
+                  author: b.author || "Unknown",
+                  coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
+                  link: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
+                  listenUrl: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : ""),
+                  listenUrlAlt: "",
+                  source: "rave",
+                })).filter((r: any) => { if (seen.has(r.link)) return false; seen.add(r.link); return true; });
+                if (raveBatch.length) {
+                  all.push(...raveBatch);
+                  write({ source: "rave", results: raveBatch });
+                }
+              } catch (_) { /* skip */ }
+            }
+
+            setCachedAudiobookSearch(q, all.slice(0, 16));
             write({ done: true });
             controller.close();
-            return;
           }
+        });
 
-          const all: any[] = [];
-          const seen = new Set<string>();
-          const sources = [
-            { name: "fulllengthaudiobooks", url: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://fulllengthaudiobooks.com" },
-            { name: "hdaudiobooks", url: `https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://hdaudiobooks.com" },
-          ];
-
-          await Promise.allSettled(sources.map(async (src) => {
-            try {
-              const html = await fetchPageHtmlWithProxies(src.url);
-              const batch = parseAudiobookSearchHtml(html, src.name, src.base).filter((r) => {
-                if (seen.has(r.link)) return false;
-                seen.add(r.link);
-                return true;
-              });
-              if (batch.length) {
-                all.push(...batch);
-                write({ source: src.name, results: batch });
-              }
-            } catch (_) { /* skip */ }
-          }));
-
-          setCachedAudiobookSearch(q, all.slice(0, 16));
-          write({ done: true });
-          controller.close();
-        }
-      });
-
-      return new Response(stream, {
-        headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache" }
-      });
+        return new Response(stream, {
+          headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache" }
+        });
+      } catch (err: any) {
+        console.error("[Audiobooks stream] fatal error:", err);
+        return new Response(JSON.stringify({ done: true }) + "\n", {
+          headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*" }
+        });
+      }
     }
 
     if (path === "/api/audiobooks/detail") {

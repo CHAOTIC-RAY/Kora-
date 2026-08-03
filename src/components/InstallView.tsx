@@ -485,44 +485,44 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                 </div>
               </div>
 
-              <div className="flex-1 p-4 sm:p-5 bg-black text-left relative overflow-hidden flex flex-col justify-between select-none">
-                <div className="space-y-2 text-white">
-                  <div className="text-[8px] font-mono tracking-widest text-neutral-400 uppercase font-bold">CHAPTER 3 OF 6</div>
-                  <h3 className="text-base font-serif font-bold text-white mb-2 leading-snug">P2P sync &amp; devices</h3>
+              <div className="flex-1 p-4 sm:p-5 bg-kindle-text text-left relative overflow-hidden flex flex-col justify-between select-none">
+                <div className="space-y-2 text-kindle-bg">
+                  <div className="text-[8px] font-mono tracking-widest text-kindle-bg/60 uppercase font-bold">CHAPTER 3 OF 6</div>
+                  <h3 className="text-base font-serif font-bold text-kindle-bg mb-2 leading-snug">P2P sync &amp; devices</h3>
                   
-                  <div className="space-y-1.5 text-[9px] font-sans text-neutral-300 leading-relaxed max-h-[160px] overflow-hidden">
-                    <p className="font-bold text-white text-[10px]">P2P sync &amp; devices</p>
-                    <p className="font-bold text-white text-[9.5px]">How sync works in Kora</p>
-                    <p className="text-neutral-300">
+                  <div className="space-y-1.5 text-[9px] font-sans text-kindle-bg/70 leading-relaxed max-h-[160px] overflow-hidden">
+                    <p className="font-bold text-kindle-bg text-[10px]">P2P sync &amp; devices</p>
+                    <p className="font-bold text-kindle-bg text-[9.5px]">How sync works in Kora</p>
+                    <p className="text-kindle-bg/70">
                       Kora keeps book files on your device. Sign-in syncs shelf metadata, reading progress, highlights, and notes — not the raw EPUB bytes.
                     </p>
 
-                    <p className="font-bold text-white text-[9.5px] pt-1">Peer-to-peer (P2P) transfer</p>
-                    <p className="text-neutral-300">
+                    <p className="font-bold text-kindle-bg text-[9.5px] pt-1">Peer-to-peer (P2P) transfer</p>
+                    <p className="text-kindle-bg/70">
                       When a title shows a P2P badge, another nearby device running Kora may share the file directly — no cloud upload of the book itself.
                     </p>
 
-                    <p className="font-bold text-white text-[9.5px] pt-1">Open Tools → Devices &amp; Sync</p>
-                    <p className="text-neutral-300 pl-1 border-l border-amber-500/50">Enable sharing on both devices on the same network</p>
-                    <p className="text-neutral-300 pl-1 border-l border-amber-500/50">Tap a cloud-only book — proximity transfer can fill the local copy</p>
+                    <p className="font-bold text-kindle-bg text-[9.5px] pt-1">Open Tools → Devices &amp; Sync</p>
+                    <p className="text-kindle-bg/70 pl-1 border-l border-amber-500/50">Enable sharing on both devices on the same network</p>
+                    <p className="text-kindle-bg/70 pl-1 border-l border-amber-500/50">Tap a cloud-only book — proximity transfer can fill the local copy</p>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-neutral-800/80 space-y-1">
-                  <div className="flex items-center justify-between text-[8px] font-mono text-neutral-400">
+                <div className="pt-2 border-t border-kindle-bg/20 space-y-1">
+                  <div className="flex items-center justify-between text-[8px] font-mono text-kindle-bg/60">
                     <span>End of P2P sync &amp; devices</span>
                     <span>50% read</span>
                   </div>
 
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <div className="flex-1 relative flex items-center h-2">
-                      <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-white rounded-full" style={{ width: "50%" }} />
+                      <div className="w-full h-1 bg-kindle-bg/25 rounded-full overflow-hidden">
+                        <div className="h-full bg-kindle-bg rounded-full" style={{ width: "50%" }} />
                       </div>
-                      <div className="absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-black shadow-md" />
+                      <div className="absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-kindle-bg border-2 border-kindle-text shadow-md" />
                     </div>
-                    <span className="text-[7.5px] font-mono text-neutral-400 whitespace-nowrap">chapter 3 of 6 • 50% • ~3 min left</span>
-                    <div className="px-2 py-0.5 rounded bg-black border border-neutral-700 text-white text-[7.5px] font-bold tracking-wider flex items-center gap-1">
+                    <span className="text-[7.5px] font-mono text-kindle-bg/60 whitespace-nowrap">chapter 3 of 6 • 50% • ~3 min left</span>
+                    <div className="px-2 py-0.5 rounded bg-kindle-bg/10 border border-kindle-bg/30 text-kindle-bg text-[7.5px] font-bold tracking-wider flex items-center gap-1">
                       <LayoutGrid className="w-2.5 h-2.5" /> 2-PAGE
                     </div>
                   </div>
@@ -567,7 +567,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                 </div>
               </div>
 
-              <div className="flex-1 relative overflow-hidden flex flex-col justify-end p-3.5 select-none bg-neutral-900">
+              <div className="flex-1 relative overflow-hidden flex flex-col justify-end p-3.5 select-none bg-kindle-card">
                 <AnimatePresence>
                   <motion.div
                     key={newsIdx}

@@ -113,11 +113,17 @@ export async function streamAudiobookSearch(
     }
   } catch (err: any) {
     if (err?.name === "AbortError") throw err;
-    const res = await fetch(`/api/audiobooks/search?q=${encodeURIComponent(query)}`, { signal });
-    const data = await res.json();
-    const results = Array.isArray(data) ? data : [];
-    onChunk("fallback", results);
-    all.push(...results);
+    // Graceful fallback to the non-streaming endpoint.
+    try {
+      const res = await fetch(`/api/audiobooks/search?q=${encodeURIComponent(query)}`, { signal });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : [];
+      const results = Array.isArray(data) ? data : [];
+      onChunk("fallback", results);
+      all.push(...results);
+    } catch {
+      /* both stream and fallback failed — return whatever we have */
+    }
   }
 
   setCachedSearch(query, "audiobook", all);

@@ -410,7 +410,7 @@ export default function App() {
   });
 
   const [autoDisplayTheme, setAutoDisplayTheme] = useState<boolean>(() => {
-    return localStorage.getItem("kora_auto_display_theme") !== "false";
+    return localStorage.getItem("kora_auto_display_theme") === "true";
   });
 
   const [appSkin, setAppSkin] = useState<AppSkinId>(() => readStoredAppSkin());
@@ -617,8 +617,9 @@ export default function App() {
   });
 
   // Auto-adjust displayTheme based on time of day if autoDisplayTheme is true
+  // AND the user hasn't explicitly chosen a theme (so a manual light/dark pick sticks).
   useEffect(() => {
-    if (autoDisplayTheme) {
+    if (autoDisplayTheme && !localStorage.getItem("kora_display_theme_manual")) {
       const updateTheme = () => {
         const timeTheme = getTimeOfDayAutoTheme();
         const uiThemeKey = `theme-${timeTheme}`;
@@ -1506,6 +1507,9 @@ export default function App() {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
+      // Clear any stray `dark` class left on <body> by InstallView/ThemeShowcase
+      // so a manually-selected light theme never inherits a darkened background.
+      document.body.classList.remove("dark");
     }
     document.body.className = Array.from(new Set(classes.filter(Boolean))).join(" ");
     document.documentElement.dataset.skin = activeSkin;
@@ -2525,6 +2529,7 @@ export default function App() {
   function changeTheme(newTheme: string) {
     setDisplayTheme(newTheme);
     localStorage.setItem("kora_display_theme", newTheme);
+    localStorage.setItem("kora_display_theme_manual", "true");
     window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: newTheme }));
   }
 
