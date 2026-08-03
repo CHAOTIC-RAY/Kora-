@@ -572,7 +572,10 @@ function DiscoverView({
     }
 
     try {
-      if (variant.sourceId === "zlib") {
+      // Z-Library is now served through Rave (the sole relay). The direct
+      // Z-Lib eAPI login/download calls were removed from the Worker, so any
+      // "zlib" result falls through to the Rave-based download path below.
+      if (false && variant.sourceId === "zlib") {
         setFetchingFeaturedMirrors(true);
         let userId = undefined;
         let userKey = undefined;
@@ -2101,7 +2104,8 @@ function DiscoverView({
 
     let hadUsableMirrors = false;
     try {
-      if (activeVariant.sourceId === "zlib") {
+      // Z-Library results now come via Rave; the direct eAPI path was removed.
+      if (false && activeVariant.sourceId === "zlib") {
         let userId = undefined;
         let userKey = undefined;
 
@@ -2491,7 +2495,9 @@ function DiscoverView({
     try {
       let response: Response;
 
-      if (mirror.sourceId === "zlib") {
+      // Z-Library mirrors are now proxied through /api/proxy-file like any
+      // other Rave-sourced link (the dedicated /api/zlib/download was removed).
+      if (false && mirror.sourceId === "zlib") {
         response = await fetch(`/api/zlib/download`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

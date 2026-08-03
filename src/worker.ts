@@ -101,6 +101,8 @@ async function buildRaveFallbackFeed(env: any): Promise<any> {
 // keyless link to an ads page that embeds the signed link in an <a href>.
 // Returns "" if it cannot be resolved within timeoutMs.
 // Hosts are raced in parallel so a single slow mirror cannot block the UI.
+// NOTE: this only resolves LibGen links that RAVE returns (Rave is the sole
+// search relay); the Worker never searches LibGen on its own.
 async function resolveLibgenSigned(md5: string, timeoutMs = 2800): Promise<string> {
   const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
   const hosts = [
@@ -2218,17 +2220,21 @@ export default {
 
       let downloadLinks: any[] = [];
 
-      // PRIMARY: use Rave Book Search's real direct-download link (same method as ravebooksearch.com).
-      // LibGen -> signed get.php?md5=<hash>&key=<token> that 307-redirects to the booksdl.lc CDN.
-      // Internet Archive -> /details/ page (resolved to the actual file by /api/proxy-file).
+      // PRIMARY + ONLY: use Rave Book Search's real direct-download link.
+      // Rave is the sole relay — it already aggregates LibGen, Anna's Archive,
+      // Z-Library and Internet Archive and returns signed direct URLs
+      // (e.g. LibGen get.php?md5=<h>&key=<t> -> 307 to booksdl.lc CDN).
+      // The Worker no longer contacts LibGen/Z-Library directly.
       if (raveDirect) {
         try {
           const parsed = new URL(raveDirect);
           const isDirectLink = /get\.php\?md5=.+&key=/.test(parsed.pathname + parsed.search) ||
-                              parsed.hostname.includes("archive.org");
+                              parsed.hostname.includes("archive.org") ||
+                              parsed.hostname.includes("booksdl.lc") ||
+                              parsed.hostname.includes("annas-archive");
           if (isDirectLink) {
             downloadLinks.push({
-              label: "Rave Direct (LibGen CDN)",
+              label: "Rave Direct Download",
               url: parsed.toString(),
               isDirect: true,
               sourceId: "rave"
@@ -2237,42 +2243,9 @@ export default {
         } catch (_) { /* ignore malformed url */ }
       }
 
-      if (isRealMd5) {
-        // Instant mirrors first so the client never waits on LibGen HTML scraping.
-        // Signed CDN resolution is best-effort with a short parallel timeout.
-        const instantMirrors = [
-          {
-            label: "Libgen Mirror (libgen.li)",
-            url: `https://libgen.li/get.php?md5=${md5.toLowerCase()}`,
-            isDirect: true
-          },
-          {
-            label: "Anna's Archive",
-            url: `https://annas-archive.org/md5/${md5}`,
-            isDirect: false
-          }
-        ];
-
-        const alreadySigned =
-          (raveDirect && /get\.php\?md5=.+&key=/i.test(raveDirect) && raveDirect) ||
-          downloadLinks.find((l) => /get\.php\?md5=.+&key=/i.test(l.url || ""))?.url ||
-          "";
-        const signed = alreadySigned || (await resolveLibgenSigned(md5, 2800));
-        if (signed && !downloadLinks.some((l) => l.url === signed)) {
-          downloadLinks.unshift({
-            label: "Direct Mirror (LibGen CDN)",
-            url: signed,
-            isDirect: true,
-            sourceId: "libgen"
-          });
-        }
-        for (const mirror of instantMirrors) {
-          if (!downloadLinks.some((l) => l.url === mirror.url)) {
-            downloadLinks.push(mirror);
-          }
-        }
-      } else if (iaId && downloadLinks.length === 0) {
-        // Internet Archive item with known iaId — proxy through /api/proxy-file
+      if (iaId && downloadLinks.length === 0) {
+        // Internet Archive item with known iaId — proxy through /api/proxy-file.
+        // IA is surfaced via Rave results (iaId), so this still flows through Rave.
         downloadLinks = [
           {
             label: "Internet Archive (Direct Download)",
@@ -2285,11 +2258,12 @@ export default {
             isDirect: false
           }
         ];
-      } else {
-        // SHA-256 pseudo-ID with no iaId — generic fallback
+      } else if (downloadLinks.length === 0) {
+        // No Rave direct link and no IA id — point the user back to Rave/Anna's
+        // rather than scraping LibGen ourselves.
         downloadLinks = [
           {
-            label: "Search Anna's Archive",
+            label: "Search on Anna's Archive (via Rave)",
             url: `https://annas-archive.org/search`,
             isDirect: false
           }
@@ -3395,109 +3369,9 @@ export default {
     }
 
     // 7. Z-Library Domains
-    if (path === "/api/zlib/domains") {
-      try {
-        const response = await fetch(`https://raw.githubusercontent.com/ZlibraryKO/zlibrary.koplugin/main/assets/domains.json`);
-        if (!response.ok) throw new Error("Github domains fetch failed");
-        const text = await response.text();
-        const data = JSON.parse(text);
-        return new Response(JSON.stringify(data), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch {
-        return new Response(JSON.stringify(FALLBACK_DOMAINS), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-    }
-
-    // 8. Z-Library Login
-    if (path === "/api/zlib/login" && request.method === "POST") {
-      try {
-        const { email, password, baseUrl } = await request.json() as any;
-        if (!baseUrl) return new Response(JSON.stringify({ error: "Missing baseUrl" }), { status: 400 });
-        
-        const body = new URLSearchParams();
-        body.append("email", email);
-        body.append("password", password);
-        
-        const response = await fetch(`${baseUrl}/eapi/user/login`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "User-Agent": "Z-Library plugin KOReader"
-          },
-          body: body.toString()
-        });
-        
-        const data = await response.json();
-        return new Response(JSON.stringify(data), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
-
-    // 9. Z-Library Search
-    if (path === "/api/zlib/search" && request.method === "POST") {
-      try {
-        const { query, page = 1, limit = 50, baseUrl, user_id, user_key } = await request.json() as any;
-        if (!baseUrl) return new Response(JSON.stringify({ error: "Missing baseUrl" }), { status: 400 });
-        
-        const body = new URLSearchParams();
-        body.append("message", query);
-        body.append("page", String(page));
-        body.append("limit", String(limit));
-        
-        const headers: any = {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Z-Library plugin KOReader"
-        };
-        if (user_id && user_key) {
-          headers["Cookie"] = `remix_userid=${user_id}; remix_userkey=${user_key}`;
-        }
-        
-        const response = await fetch(`${baseUrl}/eapi/book/search`, {
-          method: "POST",
-          headers,
-          body: body.toString()
-        });
-        
-        const data = await response.json();
-        return new Response(JSON.stringify(data), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
-
-    // 10. Z-Library Download-Link
-    if (path === "/api/zlib/download-link" && request.method === "POST") {
-      try {
-        const { book_id, book_hash, baseUrl, user_id, user_key } = await request.json() as any;
-        if (!baseUrl || !book_id || !book_hash) return new Response(JSON.stringify({ error: "Missing parameters" }), { status: 400 });
-        
-        const headers: any = {
-          "User-Agent": "Z-Library plugin KOReader"
-        };
-        if (user_id && user_key) {
-          headers["Cookie"] = `remix_userid=${user_id}; remix_userkey=${user_key}`;
-        }
-        
-        const response = await fetch(`${baseUrl}/eapi/book/${book_id}/${book_hash}/file`, {
-          headers
-        });
-        
-        const data = await response.json();
-        return new Response(JSON.stringify(data), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-      }
-    }
+    // Z-Library is now reached ONLY through the Rave engine (which aggregates
+    // Z-Lib results). The Worker no longer calls Z-Library's eAPI directly
+    // (/api/zlib/login|search|download-link|domains). Rely on Rave for Z-Lib.
 
     // WebDAV proxy for BYO personal archive (avoids browser CORS)
     if (path === "/api/webdav-proxy") {
@@ -3595,17 +3469,13 @@ export default {
     }
 
     // 11. File Proxy / Z-Library Download Proxy
-    if ((path === "/api/proxy-file" || path === "/api/zlib/download") && (request.method === "GET" || request.method === "HEAD" || request.method === "POST")) {
+    if ((path === "/api/proxy-file") && (request.method === "GET" || request.method === "HEAD" || request.method === "POST")) {
       try {
         let downloadUrl = url.searchParams.get("url");
-        let userId = "";
-        let userKey = "";
 
         if (request.method === "POST") {
           const body = await request.json() as any;
           downloadUrl = downloadUrl || body.download_url;
-          userId = body.user_id || "";
-          userKey = body.user_key || "";
         }
 
         if (!downloadUrl) {
@@ -3937,10 +3807,6 @@ export default {
             "Referer": "https://annas-archive.org/",
             "Accept": "application/octet-stream,application/epub+zip,application/pdf,*/*",
           };
-          if (userId && userKey) {
-            finalHeaders["Cookie"] = `remix_userid=${userId}; remix_userkey=${userKey}`;
-          }
-
           if (isLibgenUrl(targetUrl)) {
             try {
               finalHeaders["Referer"] = `${new URL(targetUrl).origin}/`;
