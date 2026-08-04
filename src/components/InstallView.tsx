@@ -1120,26 +1120,28 @@ export default function InstallView() {
     return () => observer.disconnect();
   }, []);
 
-  // Lock scroll position when window loses focus — prevents
-  // the landing view from jumping back to top after switching apps.
+  // Lock scroll position when the tab/app is hidden — prevents the landing
+  // view from jumping back to top after switching apps. Uses visibilitychange
+  // (not window blur/focus) so it only fires on real app/tab switches, not on
+  // spurious focus changes (e.g. speech-synthesis audio focus, iframe focus,
+  // address-bar show/hide) that would otherwise yank the page around.
   useEffect(() => {
-    const onBlur = () => {
-      if (heroSectionRef.current) {
-        heroSectionRef.current.dataset.scrollY = String(window.scrollY || window.pageYOffset || 0);
+    let saved = 0;
+    let wasHidden = false;
+    const onVisibility = () => {
+      if (document.hidden) {
+        wasHidden = true;
+        saved = window.scrollY || window.pageYOffset || 0;
+      } else if (wasHidden) {
+        wasHidden = false;
+        const current = window.scrollY || 0;
+        if (saved > 0 && Math.abs(current - saved) > 10) {
+          window.scrollTo({ top: saved, behavior: "instant" });
+        }
       }
     };
-    const onFocus = () => {
-      const saved = Number(heroSectionRef.current?.dataset.scrollY || 0);
-      if (saved > 0 && Math.abs((window.scrollY || 0) - saved) > 10) {
-        window.scrollTo({ top: saved, behavior: "instant" });
-      }
-    };
-    window.addEventListener("blur", onBlur);
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.removeEventListener("blur", onBlur);
-      window.removeEventListener("focus", onFocus);
-    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
 
   // FAQ stays fully visible — no scroll fade.
