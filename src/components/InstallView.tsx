@@ -58,6 +58,10 @@ import {
   FileText,
   RefreshCw,
   Compass,
+  PenLine,
+  Highlighter,
+  NotebookPen,
+  FileDown,
   Heart,
   MessageCircle,
   Bookmark,
@@ -377,11 +381,11 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
             </div>
 
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif font-extrabold text-kindle-text leading-[1.05] tracking-tight">
-              Read, Listen <span className="font-light italic text-kindle-accent font-serif">&amp;</span> Discover
+              Read, Listen, Write <span className="font-light italic text-kindle-accent font-serif">&amp;</span> Discover
             </h1>
 
             <p className="text-base sm:text-lg text-kindle-text-muted leading-relaxed font-medium">
-              The open E-Ink digital reader with integrated high-fidelity voice narration, federated mirror discovery, and a beautiful mind games lounge.
+              The open E-Ink digital reader with integrated high-fidelity voice narration, federated mirror discovery, a distraction-free writing space for highlights and notes, and a beautiful mind games lounge.
             </p>
           </motion.div>
 
@@ -1359,19 +1363,24 @@ export default function InstallView() {
 
   const features = [
     {
-      icon: Volume2,
-      title: "Voice Audiobook Engine",
-      description: "Convert any EPUB, PDF, or document into a natural voice audiobook with customizable speeds, pitch controls, and background playback."
-    },
-    {
       icon: BookOpen,
       title: "Distraction-Free E-Ink Canvas",
       description: "Enjoy offline reading with custom typography, line spacing, paper tinting, and dedicated amber warm backlight filters."
     },
     {
+      icon: Volume2,
+      title: "Voice Audiobook Engine",
+      description: "Convert any EPUB, PDF, or document into a natural voice audiobook with customizable speeds, pitch controls, synchronized sentence highlighting, and screen-off playback."
+    },
+    {
+      icon: PenLine,
+      title: "Annotations & Notebook",
+      description: "Highlight passages, color-code them, and jot chapter notes in a private notebook — then export everything to Markdown or JSON."
+    },
+    {
       icon: Compass,
       title: "Federated Book Discovery",
-      description: "Search open digital catalogs across Rave Engine, LibGen, and Anna's Archive with direct file mirror downloads."
+      description: "Search open digital catalogs through the Rave Book Search engine for direct file mirror downloads — one relay, no scraping, no account."
     },
     {
       icon: Radio,
@@ -1386,7 +1395,7 @@ export default function InstallView() {
     {
       icon: ShieldCheck,
       title: "100% Private & Offline First",
-      description: "Your library, reading progress, and settings stay stored locally on your device with complete offline access."
+      description: "Your library, reading progress, and notes stay stored locally on your device with complete offline access."
     }
   ];
 
@@ -1401,7 +1410,7 @@ export default function InstallView() {
     },
     {
       q: "Is Kora for piracy, or can I read copyrighted books?",
-      a: "Kora is a reader, not a file host. Its discovery tools can query catalogs including LibGen, Anna's Archive, Rave, and Z-Library, some of which host copyrighted material. You decide what to open, and you're responsible for doing so legally in your jurisdiction. Kora itself stores nothing — it just loads whatever link or file you point it at (EPUB, PDF, MOBI, AZW3) and reads it.",
+      a: "Kora is a reader, not a file host. Its discovery tools search open catalogs through the Rave Book Search engine, which returns direct mirror download links — Kora itself does no scraping of LibGen signed links and never calls any Z-Library eAPI. Some catalogs host copyrighted material; you decide what to open, and you're responsible for doing so legally in your jurisdiction. Kora stores nothing — it just loads whatever link or file you point it at (EPUB, PDF, MOBI, AZW3) and reads it.",
     },
     {
       q: "How does the Voice Narrator / audiobook feature work?",
@@ -1821,6 +1830,13 @@ export default function InstallView() {
               className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
             >
               Voice Reader
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToSection("write")}
+              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
+            >
+              Write
             </button>
             <button
               type="button"
@@ -2508,6 +2524,48 @@ export default function InstallView() {
             </div>
 
           </div>
+        </div>
+
+        {/* Kora Write: Annotations & Notebook Pillar Section */}
+        <div id="write" className="pt-4 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
+          <Reveal className="flex-1 flex flex-col">
+            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 sm:p-6 space-y-4 flex flex-col justify-start flex-grow">
+              <div className="flex flex-col items-start justify-between gap-4 border-b border-kindle-border pb-5">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-kindle-accent/10 text-kindle-accent text-[10px] font-bold uppercase tracking-widest chromatic-amber">
+                    <PenLine className="w-3.5 h-3.5" /> Write &amp; Annotate
+                  </div>
+                  <h3 className="text-xl font-serif font-bold text-kindle-text">
+                    Annotations &amp; Notebook
+                  </h3>
+                  <p className="text-xs text-kindle-text-muted leading-relaxed">
+                    Turn every book into your own working notebook — highlight, color-code, and capture chapter notes, all kept private on your device.
+                  </p>
+                </div>
+
+                <a
+                  href="/"
+                  className="w-full justify-center px-4 py-2.5 bg-kindle-accent text-kindle-bg font-bold text-[10px] uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-sm cursor-pointer flex items-center gap-2 shrink-0"
+                >
+                  <NotebookPen className="w-3.5 h-3.5" /> Open Annotations Hub
+                </a>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { icon: Highlighter, label: "Highlights", desc: "Select any passage and color-code it." },
+                  { icon: NotebookPen, label: "Chapter Notes", desc: "Jot thoughts per chapter in a private notebook." },
+                  { icon: FileDown, label: "Export", desc: "Send notes to Markdown or JSON anytime." },
+                ].map(({ icon: Icon, label, desc }) => (
+                  <div key={label} className="bg-kindle-bg border border-kindle-border rounded-2xl p-4 space-y-2">
+                    <Icon className="w-5 h-5 text-kindle-accent" />
+                    <h4 className="text-sm font-bold text-kindle-text">{label}</h4>
+                    <p className="text-[11px] text-kindle-text-muted leading-relaxed">{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Reveal>
         </div>
 
         {/* Kora Workshop: Interactive Tools & Games Section (Unified) */}
