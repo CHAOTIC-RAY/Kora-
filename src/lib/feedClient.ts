@@ -58,19 +58,26 @@ export function mapParsedItems(
 }
 
 export async function refreshSubscription(subscription: FeedSubscription): Promise<FeedItem[]> {
-  const parsed = await fetchFeed(subscription.feedUrl);
+  // Bound each feed so a single slow/hanging source can't stall the whole refresh.
+  const timeout = new Promise<{ title: string; link?: string; items: ParsedFeedItem[] }>((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), 15000)
+  );
+  const parsed = await Promise.race([fetchFeed(subscription.feedUrl), timeout]);
   return mapParsedItems(subscription, parsed.items);
 }
 
 export async function refreshAllSubscriptions(subscriptions: FeedSubscription[]): Promise<FeedItem[]> {
+  // Refresh in parallel (was sequential, which let one hanging feed block all others).
+  const results = await Promise.allSettled(
+    subscriptions.map((sub) => refreshSubscription(sub))
+  );
   const batches: FeedItem[] = [];
-  for (const subscription of subscriptions) {
-    try {
-      const items = await refreshSubscription(subscription);
-      batches.push(...items);
-    } catch (error) {
-      console.warn(`Feed refresh failed for ${subscription.title}:`, error);
+  results.forEach((res, i) => {
+    if (res.status === "fulfilled") {
+      batches.push(...res.value);
+    } else {
+      console.warn(`Feed refresh failed for ${subscriptions[i]?.title}:`, res.reason);
     }
-  }
+  });
   return batches;
 }

@@ -1795,36 +1795,52 @@ export default {
           const write = (obj: any) => controller.enqueue(enc.encode(JSON.stringify(obj) + "\n"));
           const all: any[] = [];
 
-          await Promise.allSettled([
-            fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=12`)
-              .then(r => r.json())
-              .then(data => {
-                const books = (data.items || []).map((item: any) => {
-                  const info = item.volumeInfo || {};
-                  return {
-                    title: info.title,
-                    author: (info.authors || []).join(", "),
-                    coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
-                    year: info.publishedDate?.split("-")[0],
-                    publisher: info.publisher,
-                    isGoogleBook: true,
-                    source: "google",
-                  };
-                });
-                if (books.length) {
-                  all.push(...books);
-                  write({ source: "google", books });
-                }
-              }),
-          ]);
+          // Primary source: Rave Book Search (reliable, keyed, no daily quota).
+          try {
+            const { results: raveResults } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
+            if (raveResults.length) {
+              all.push(...raveResults);
+              write({ source: "rave", books: raveResults });
+            }
+          } catch (e: any) {
+            console.warn("[search/stream] Rave search failed:", e?.message);
+          }
+
+          // Fallback: Google Books (only if Rave returned nothing — Google has a
+          // hard daily quota and returns 429 once exhausted).
+          if (all.length === 0) {
+            try {
+              const data = await fetch(
+                `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=12`
+              ).then((r) => r.json());
+              const books = (data.items || []).map((item: any) => {
+                const info = item.volumeInfo || {};
+                return {
+                  title: info.title,
+                  author: (info.authors || []).join(", "),
+                  coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
+                  year: info.publishedDate?.split("-")[0],
+                  publisher: info.publisher,
+                  isGoogleBook: true,
+                  source: "google",
+                };
+              });
+              if (books.length) {
+                all.push(...books);
+                write({ source: "google", books });
+              }
+            } catch (e: any) {
+              console.warn("[search/stream] Google Books fallback failed:", e?.message);
+            }
+          }
 
           write({ done: true, totalCount: all.length, hasMore: all.length >= 12 });
           controller.close();
-        }
+        },
       });
 
       return new Response(stream, {
-        headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache" }
+        headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache" },
       });
     }
 
