@@ -2015,28 +2015,11 @@ export default function App() {
     localStorage.setItem("kora_search_prefs", JSON.stringify(searchPrefs));
   }, [searchPrefs]);
 
-  // ZLib Auto-discover Base URL
-  useEffect(() => {
-    if (zlibConfig.autoDiscover) {
-      fetch("/api/zlib/domains")
-        .then(res => res.json())
-        .then(data => {
-          if (data && data.domains && data.domains.length > 0) {
-            // Select a random domain
-            const randomDomainObj = data.domains[Math.floor(Math.random() * data.domains.length)];
-            let domainUrl = randomDomainObj.domain || randomDomainObj;
-            if (typeof domainUrl === 'string') {
-              if (!domainUrl.startsWith("http")) domainUrl = "https://" + domainUrl;
-              
-              if (domainUrl !== zlibConfig.baseUrl) {
-                setZlibConfig((prev: any) => ({ ...prev, baseUrl: domainUrl }));
-              }
-            }
-          }
-        })
-        .catch(err => console.error("Failed to auto-discover zlib domains:", err));
-    }
-  }, [zlibConfig.autoDiscover]);
+  // Z-Library auto-discover removed: per the Rave-only architecture, all Z-Lib
+  // access (including mirror-domain discovery) flows through Rave. The old
+  // /api/zlib/domains route was dropped, so this call 404'd. Search/download
+  // relies solely on Rave now; zlibConfig is retained for the (disabled) mirror
+  // branch in DiscoverView but no longer performs domain auto-discovery.
 
   // Sync index of locally cached books in IndexedDB (keys only — never load blobs)
   const updateCachedBookIndex = useCallback(async () => {
