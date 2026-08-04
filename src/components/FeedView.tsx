@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import {
+  AlertCircle,
   Bookmark,
   CheckCircle2,
   ExternalLink,
@@ -368,6 +369,7 @@ function FeedView({
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [showManageFeeds, setShowManageFeeds] = useState(false);
   const [addFeedUrl, setAddFeedUrl] = useState("");
   const [addFeedError, setAddFeedError] = useState<string | null>(null);
@@ -430,8 +432,12 @@ function FeedView({
     setSubscriptions(subs);
     const activeSubs = subs.filter(isFeedSubscriptionEnabled);
     setRefreshing(true);
+    setRefreshError(null);
     try {
       const incoming = await refreshAllSubscriptions(activeSubs);
+      if (incoming.length === 0) {
+        setRefreshError("Couldn't load feeds. The news service may be unreachable — pull to refresh or tap retry.");
+      }
       const merged = mergeFeedItems(incoming);
       setItems(merged);
       void syncAndroidHomeWidgets({ brief: briefPayloadFromFeeds() });
@@ -444,6 +450,7 @@ function FeedView({
       void enrichFeedItems(merged);
     } catch (error) {
       console.error("Feed refresh failed:", error);
+      setRefreshError("Feed refresh failed. Check your connection and try again.");
     } finally {
       setRefreshing(false);
     }
@@ -761,6 +768,22 @@ function FeedView({
         <div className="flex flex-col items-center justify-center py-16 text-kindle-text-muted">
           <Loader2 className="w-8 h-8 animate-spin mb-3" />
           <p className="text-sm">Fetching your feeds…</p>
+        </div>
+      ) : visibleItems.length === 0 && refreshError ? (
+        <div className="bg-kindle-card border border-red-500/40 rounded-2xl p-12 text-center">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4 opacity-80" />
+          <h3 className="text-lg font-lexend font-bold mb-2">News service unreachable</h3>
+          <p className="text-sm text-kindle-text-muted max-w-md mx-auto mb-4">
+            {refreshError}
+          </p>
+          <button
+            type="button"
+            onClick={() => void refreshFeeds()}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-kindle-accent text-kindle-bg text-sm font-bold"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            Retry
+          </button>
         </div>
       ) : visibleItems.length === 0 ? (
         <div className="bg-kindle-card border border-kindle-border rounded-2xl p-12 text-center">
