@@ -1593,8 +1593,8 @@ export default {
               title: b.title,
               author: b.author || "Unknown",
               coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
-              link: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
-              listenUrl: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : ""),
+              link: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
+              listenUrl: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : ""),
               listenUrlAlt: "",
               source: "rave",
             }));
@@ -1685,8 +1685,8 @@ export default {
                   title: b.title,
                   author: b.author || "Unknown",
                   coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
-                  link: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
-                  listenUrl: b.url || (b.md5 ? `https://annas-archive.org/md5/${b.md5}` : ""),
+                  link: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
+                  listenUrl: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : ""),
                   listenUrlAlt: "",
                   source: "rave",
                 })).filter((r: any) => { if (seen.has(r.link)) return false; seen.add(r.link); return true; });
@@ -2322,7 +2322,7 @@ export default {
         downloadLinks = [
           {
             label: "Search on Anna's Archive (via Rave)",
-            url: `https://annas-archive.org/search`,
+            url: `https://annas-archive.gl/search`,
             isDirect: false
           }
         ];

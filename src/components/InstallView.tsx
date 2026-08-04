@@ -1442,7 +1442,7 @@ export default function InstallView() {
       editions: ["EPUB", "EN", "Unknown", "ANNA'S"],
       mirrors: [
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "online" },
-        { name: "Anna's Archive", url: "https://annas-archive.org/md5/8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "fast" },
+        { name: "Anna's Archive", url: "https://annas-archive.gl/md5/8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "fast" },
         { name: "Anna's Archive (Slow/Manual)", url: "https://annas-archive.gl/slow_download/8391ab7228dbf0be62701dd7c639107a", format: "PDF", size: "3.2 MB", status: "slow" },
       ],
       audioTracks: [
@@ -1466,7 +1466,7 @@ export default function InstallView() {
       color: "text-amber-500",
       editions: ["EPUB", "EN", "Penguin", "FAST CDN"],
       mirrors: [
-        { name: "Anna's Archive Node 1", url: "https://annas-archive.org/md5/71829bc81726a7182736152", format: "EPUB", size: "890 KB", status: "fast" },
+        { name: "Anna's Archive Node 1", url: "https://annas-archive.gl/md5/71829bc81726a7182736152", format: "EPUB", size: "890 KB", status: "fast" },
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=71829bc81726a7182736152", format: "PDF", size: "2.1 MB", status: "online" },
       ],
       audioTracks: [
@@ -1526,7 +1526,7 @@ export default function InstallView() {
       color: "text-rose-500",
       editions: ["EPUB", "EN", "HarperCollins"],
       mirrors: [
-        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.org/md5/98127391283719", format: "EPUB", size: "780 KB", status: "fast" },
+        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.gl/md5/98127391283719", format: "EPUB", size: "780 KB", status: "fast" },
       ],
       audioTracks: [
         "Tahereh Mafi – Shatter Me Audiobook (Part 1)",
@@ -1563,7 +1563,7 @@ export default function InstallView() {
       color: "text-teal-500",
       editions: ["EPUB", "EN", "HarperTeen"],
       mirrors: [
-        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.org/md5/812739128371", format: "EPUB", size: "950 KB", status: "fast" },
+        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.gl/md5/812739128371", format: "EPUB", size: "950 KB", status: "fast" },
       ],
       audioTracks: [
         "Becky Albertalli & Adam Silvera – What If It's Us Audiobook (Track 1)",
@@ -1583,7 +1583,7 @@ export default function InstallView() {
       editions: ["EPUB", "EN", "Penguin Press", "BEST SELLER"],
       mirrors: [
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=38192739128371", format: "EPUB", size: "2.1 MB", status: "online" },
-        { name: "Anna's Archive", url: "https://annas-archive.org/md5/38192739128371", format: "EPUB", size: "2.1 MB", status: "fast" },
+        { name: "Anna's Archive", url: "https://annas-archive.gl/md5/38192739128371", format: "EPUB", size: "2.1 MB", status: "fast" },
       ],
       audioTracks: [
         "Rick Rubin – The Creative Act: A Way of Being Audiobook (Narrated by Rick Rubin - Part 1)",
@@ -1602,7 +1602,7 @@ export default function InstallView() {
       color: "text-emerald-500",
       editions: ["EPUB", "EN", "Hay House"],
       mirrors: [
-        { name: "Anna's Archive Fast Node", url: "https://annas-archive.org/md5/19283719283719", format: "EPUB", size: "1.6 MB", status: "fast" },
+        { name: "Anna's Archive Fast Node", url: "https://annas-archive.gl/md5/19283719283719", format: "EPUB", size: "1.6 MB", status: "fast" },
       ],
       audioTracks: [
         "Mel Robbins – The Let Them Theory Audiobook (Full Stream)",
@@ -1657,7 +1657,7 @@ export default function InstallView() {
       color: "text-amber-500",
       editions: ["EPUB", "EN", "Workman"],
       mirrors: [
-        { name: "Anna's Archive Fast Node", url: "https://annas-archive.org/md5/912837192837", format: "EPUB", size: "1.5 MB", status: "fast" },
+        { name: "Anna's Archive Fast Node", url: "https://annas-archive.gl/md5/912837192837", format: "EPUB", size: "1.5 MB", status: "fast" },
       ],
       audioTracks: [
         "Ramit Sethi – I Will Teach You To Be Rich Audiobook (Full Narration)",
@@ -1676,7 +1676,7 @@ export default function InstallView() {
       editions: ["EPUB", "EN", "Avery", "BEST SELLER"],
       mirrors: [
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=712839182739182", format: "EPUB", size: "1.8 MB", status: "online" },
-        { name: "Anna's Archive", url: "https://annas-archive.org/md5/712839182739182", format: "EPUB", size: "1.8 MB", status: "fast" },
+        { name: "Anna's Archive", url: "https://annas-archive.gl/md5/712839182739182", format: "EPUB", size: "1.8 MB", status: "fast" },
       ],
       audioTracks: [
         "James Clear – Atomic Habits Audiobook (Narrated by James Clear)",
@@ -1763,7 +1763,7 @@ export default function InstallView() {
         editions: ["EPUB", "EN", "Primary Mirror"],
         mirrors: [
           { name: "Libgen Fast Mirror (libgen.li)", url: `https://libgen.li/get.php?md5=${b.id}`, format: "EPUB", size: "1.2 MB", status: "online" as const },
-          { name: "Anna's Archive Node 1", url: `https://annas-archive.org/md5/${b.id}`, format: "EPUB", size: "1.2 MB", status: "fast" as const },
+          { name: "Anna's Archive Node 1", url: `https://annas-archive.gl/md5/${b.id}`, format: "EPUB", size: "1.2 MB", status: "fast" as const },
         ],
         audioTracks: [
           `${b.author} – ${b.title} Audiobook (Part 1)`,

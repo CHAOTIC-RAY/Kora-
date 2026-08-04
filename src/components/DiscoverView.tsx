@@ -374,7 +374,7 @@ function DiscoverView({
       });
       links.push({
         label: "Anna's Archive",
-        url: `https://annas-archive.org/md5/${md5}`,
+        url: `https://annas-archive.gl/md5/${md5}`,
         isDirect: false,
         sourceId: "annas"
       });

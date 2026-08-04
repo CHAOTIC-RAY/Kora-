@@ -30,9 +30,9 @@ interface QuickLink {
 const QUICK_LINKS: QuickLink[] = [
   {
     name: "Anna's Archive",
-    url: "https://annas-archive.org/",
+    url: "https://annas-archive.gl/",
     description: "The largest shadow library of books, papers, and comics.",
-    domain: "annas-archive.org",
+    domain: "annas-archive.gl",
     badge: "Recommended",
     color: "from-emerald-500/10 to-teal-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
   },

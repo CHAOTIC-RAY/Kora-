@@ -1265,7 +1265,10 @@ function SettingsView({
               </Row>
 
               <Row title="Performance Mode" desc="Reduce animations and heavy effects for older or low-battery devices">
-                <Toggle on={performanceMode} onClick={() => setPerformanceMode(!performanceMode)} />
+                <Toggle on={performanceMode} onClick={() => {
+                  try { localStorage.setItem("kora_performance_mode_user_set", "1"); } catch {}
+                  setPerformanceMode(!performanceMode);
+                }} />
               </Row>
 
               <div className="space-y-4">

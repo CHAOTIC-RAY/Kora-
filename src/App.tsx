@@ -253,6 +253,69 @@ export default function App() {
     if (!chosen) setStorageChoiceOpen(true);
   }, []);
 
+  // Auto-detect low-performance devices (especially low-end mobile) and turn on
+  // performance mode automatically, with a one-time in-app notification.
+  // Skips if the user has previously made an explicit choice.
+  useEffect(() => {
+    try {
+      const KEY_AUTO = "kora_performance_mode_auto";
+      const KEY_USER_SET = "kora_performance_mode_user_set";
+      const KEY_NOTIFIED = "kora_perf_auto_notified";
+      if (localStorage.getItem(KEY_USER_SET) === "1") return; // respect explicit choice
+
+      const nav = navigator as any;
+      const ua = navigator.userAgent || "";
+      const isMobileUA = /Android|iPhone|iPad|iPod|Mobile|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+      const isAndroid = /Android/i.test(ua);
+      const deviceMemory: number | undefined = nav.deviceMemory;
+      const cores: number | undefined = nav.hardwareConcurrency;
+      const conn: any = nav.connection || nav.webkitConnection || nav.mozConnection;
+      const saveData: boolean = !!(conn && conn.saveData);
+      const effectiveType: string = (conn && conn.effectiveType) || "";
+      const connType: string = (conn && conn.type) || "";
+
+      // Weighted heuristic: each weak signal adds points; >=3 => treat as low-end.
+      let score = 0;
+      if (isMobileUA) score += 1;
+      if (isAndroid) score += 1;
+      if (typeof deviceMemory === "number" && deviceMemory <= 4) score += 2;
+      if (typeof cores === "number" && cores <= 4) score += 2;
+      if (saveData) score += 2;
+      if (effectiveType === "slow-2g" || effectiveType === "2g") score += 3;
+      else if (effectiveType === "3g") score += 1;
+      if (connType === "cellular" || connType === "2g" || connType === "3g") score += 1;
+
+      const lowPerf = score >= 3;
+      if (!lowPerf) return;
+
+      // Enable performance mode + persist so SettingsView stays in sync.
+      localStorage.setItem("kora_performance_mode", "true");
+      localStorage.setItem(KEY_AUTO, "1");
+      document.documentElement.classList.add("perf-mode");
+
+      // Notify once.
+      if (localStorage.getItem(KEY_NOTIFIED) !== "1") {
+        localStorage.setItem(KEY_NOTIFIED, "1");
+        toast(
+          (t) => (
+            <div className="flex items-start gap-3">
+              <Zap className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-kindle-text">Performance mode turned on</p>
+                <p className="text-xs text-kindle-text-muted mt-0.5">
+                  We detected a low-performance device and enabled lighter animations for a smoother experience. You can switch it off anytime in Settings.
+                </p>
+              </div>
+            </div>
+          ),
+          { duration: 6000 }
+        );
+      }
+    } catch {
+      /* ignore — detection must never break the app */
+    }
+  }, []);
+
   const handleStorageChoice = async (mode: KoraStorageMode) => {
     try {
       localStorage.setItem("kora_storage_mode_chosen", "true");
