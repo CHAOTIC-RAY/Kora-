@@ -216,15 +216,10 @@ export async function initCapacitorShell(): Promise<void> {
     /* ignore */
   }
 
-  // Mirror dark chrome on the system navigation bar (gesture indicator strip).
-  // Capacitor has no NavigationBar plugin here — use the CSS/env insets +
-  // MainActivity Java theme. Also ensure the WebView document fills the bar area.
-  try {
-    document.documentElement.style.backgroundColor = "#18181B";
-    if (document.body) document.body.style.backgroundColor = "#18181B";
-  } catch {
-    /* ignore */
-  }
+  // The WebView document/body background is driven by the active theme via
+  // `--theme-bg` (see index.css `html.kora-android body`). Do NOT hardcode a dark
+  // inline background here — it overrides the theme and makes light mode stay dark.
+  // The native status/nav bar color is handled by the StatusBar plugin above.
 
   // Prime Android native TTS (and WebView speech as fallback) early.
   try {

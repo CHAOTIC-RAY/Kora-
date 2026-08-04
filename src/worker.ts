@@ -603,13 +603,15 @@ export default {
 
     // Handle CORS preflights
     if (request.method === "OPTIONS") {
+      const origin = request.headers.get("Origin") || "*";
       return new Response(null, {
         headers: {
-          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Origin": origin,
           "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
-          "Access-Control-Allow-Credentials": "true"
-        }
+          "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-Requested-With",
+          "Access-Control-Max-Age": "86400",
+          "Vary": "Origin",
+        },
       });
     }
 
