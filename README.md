@@ -43,7 +43,7 @@ Kora isn't just a reader—it's a **unified content consumption platform** built
 | **🎧 Neural Text-to-Speech** | Convert any book to audiobook with system voices | Transform reading into listening, no API calls |
 | **📰 RSS + News Feed** | Integrated news reader & morning briefing | Morning paper + library in one place |
 | **☁️ Cross-Device Sync** | Firebase Firestore + peer-to-peer transfer | Your library follows you everywhere |
-| **📡 Federated Search** | Query Rave, LibGen, Anna's Archive simultaneously | Discover & download freely-available books |
+| **📡 Federated Search** | Single Rave relay → Anna's Archive, LibGen, Z-Library, Internet Archive, Open Library | Discover & download freely-available books |
 | **🌍 Offline-First PWA** | Works completely offline with IndexedDB | Read anywhere, anytime, no connection needed |
 | **📱 Cross-Platform** | Web (PWA) + Android + iOS | One codebase, installed on your device |
 | **🎮 Workshop Lounge** | Crossword, Word Search, Linguist Guardian | Take reading breaks with word games |
@@ -94,13 +94,14 @@ Your personal library—read offline, sync across devices.
 - 🔍 Full-text search within your library
 
 **Discovery & Downloads:**
-- 🌐 **Federated book search** across multiple open-source indexes
-  - [Rave Search Engine](https://ravebooksearch.com/) — comprehensive open-source title index
-  - LibGen & Anna's Archive — free ebook mirrors with auto-retry
-  - iAudio — audiobook streaming backend
+- 🌐 **Rave Book Search relay** — the Cloudflare Worker proxies all book search through [Rave Book Search](https://ravebooksearch.com/) (v1 API, server-side `RAVE_API_KEY`), which aggregates Anna's Archive, LibGen, Z-Library, Internet Archive, and Open Library results in one call
+- 🎧 **Audiobooks** — streamed via Rave's audiobook sources (iAudio / HDAudiobooks / Internet Archive)
 - 📥 Parallel downloads with automatic mirror fallback
-- 🛡️ CORS-safe cover image proxying
+- 🔗 **`get.php?md5=` resolution** — the Worker turns Rave's signed LibGen CDN links into working `booksdl.lc` downloads via `/api/proxy-file`
+- 🛡️ CORS-safe cover image proxying (`/api/cover-redirect`, `/api/proxy-image`)
 - ⭐ Goodreads integration for curated lists
+
+> **Search architecture:** Kora does **not** independently scrape LibGen or call Z-Library's `eapi` from the client. All ebook/audiobook search flows through Rave as the sole relay engine (Worker route `/api/annas-archive/search` → Rave v1 with a server-side key). The one exception is the LibGen landing-page resolution in `/api/proxy-file` (`get.php?md5=`), which converts Rave's signed LibGen CDN links into working downloads. This keeps the API key server-side and the client code free of provider-specific scraping.
 
 ---
 
@@ -178,7 +179,7 @@ Your library follows you everywhere:
 | **Styling** | Tailwind CSS 4, Motion animations |
 | **Local Storage** | IndexedDB (books), localStorage (UI state) |
 | **Cloud Sync** | Firebase Firestore + Auth |
-| **Backend** | Express / Cloudflare Workers (API proxy) |
+| **Backend** | Cloudflare Worker (API proxy + Rave Book Search relay) |
 | **Book Rendering** | epub.js (EPUB), PDF.js (PDF) |
 | **Text-to-Speech** | Web Speech API (web), Android TextToSpeech (native) |
 | **Deployment** | Cloudflare Pages (frontend) + Workers (backend) |
@@ -266,9 +267,14 @@ VITE_FIREBASE_APP_ID=your_app_id
 
 # Backend API (optional)
 VITE_API_URL=http://localhost:5000
+
+# Rave Book Search API key (server-side, for the Cloudflare Worker)
+# Set as a Worker secret: `wrangler secret put RAVE_API_KEY`
+RAVE_API_KEY=your_rave_api_key
 ```
 
 > **Note:** Firebase is fully optional. Without it, Kora works entirely offline with IndexedDB.
+> The `RAVE_API_KEY` is **server-side only** (a Cloudflare Worker secret) — it is never exposed to the client. Book search is relayed through Rave via the Worker so the key stays secret.
 
 ---
 
@@ -323,7 +329,7 @@ You're free to use Kora in personal, commercial, or educational projects.
 - **[epub.js](https://github.com/futurepress/epub.js)** — EPUB rendering engine
 - **[PDF.js](https://mozilla.github.io/pdf.js/)** — PDF viewer
 - **[React](https://react.dev)** — UI framework
-- **[Rave Search](https://ravebooksearch.com/)** — Federated search engine
+- **[Rave Search](https://ravebooksearch.com/)** — Federated book search relay (Anna's Archive, LibGen, Z-Library, Internet Archive, Open Library)
 - **[Tailwind CSS](https://tailwindcss.com)** — Utility-first CSS
 - **[Firebase](https://firebase.google.com)** — Backend & sync infrastructure
 - **[Capacitor](https://capacitorjs.com)** — Cross-platform native bridge
