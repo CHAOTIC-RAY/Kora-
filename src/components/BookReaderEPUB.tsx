@@ -3052,6 +3052,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
         {/* Action Controls */}
         <div className="flex items-center gap-2">
           {onOpenCreator && (
+            book.id.startsWith("created_") ||
+            book.id.startsWith("blank_") ||
+            book.tags?.includes("created") ||
+            book.tags?.includes("template")
+          ) && (
             <button
               type="button"
               onClick={() => onOpenCreator(book)}
