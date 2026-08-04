@@ -946,6 +946,7 @@ export default function CreateView({
                     {(editorMode === "visual" || editorMode === "split") && (
                       <div className={`flex-1 bg-kindle-card border border-kindle-border rounded-none p-6 sm:p-14 shadow-xs min-h-[500px] overflow-y-auto ${editorFont} text-base leading-relaxed text-kindle-text focus:outline-none max-w-4xl mx-auto w-full`}>
                         <div
+                          key={activeChapterId}
                           ref={editorRef}
                           contentEditable
                           suppressContentEditableWarning
