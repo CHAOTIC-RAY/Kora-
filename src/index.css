@@ -1142,3 +1142,36 @@ h1, h2, h3, h4 {
   }
 }
 
+/* ── Typewriter writing feel (CreateView) ── */
+@keyframes typewriter-caret-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.typewriter-caret {
+  caret-color: var(--color-kindle-accent, #f59e0b);
+}
+.typewriter-caret:focus::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--color-kindle-accent, #f59e0b);
+  animation: typewriter-caret-blink 1s steps(1) infinite;
+  pointer-events: none;
+}
+
+.typewriter-mode {
+  animation: typewriter-soft-pulse 2.4s ease-in-out infinite;
+}
+@keyframes typewriter-soft-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 rgba(0,0,0,0); }
+  50% { box-shadow: inset 0 0 60px rgba(245, 158, 11, 0.05); }
+}
+
+.typewriter-mode :where(p, li, blockquote, h1, h2, h3) {
+  transition: opacity 0.25s ease, letter-spacing 0.25s ease;
+}
+

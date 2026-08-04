@@ -39,6 +39,11 @@ import {
   ChevronLeft,
   Menu,
   Type,
+  Search,
+  Replace,
+  Maximize2,
+  Minimize2,
+  FileType2,
 } from "lucide-react";
 import { motion, LayoutGroup } from "motion/react";
 import { BookMetadata } from "../lib/firebase";
@@ -51,6 +56,8 @@ import {
   EpubHtmlChapter,
 } from "../lib/epubTools";
 import { exportBookToPdf } from "../lib/pdfTools";
+import { replaceAll } from "../lib/textUtils";
+import { chaptersToMarkdown } from "../lib/htmlToMarkdown";
 import { toast } from "react-hot-toast"; // using custom or console toast fallback
 
 interface CreateViewProps {
@@ -116,6 +123,40 @@ export default function CreateView({
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // New writer features state
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [replaceQuery, setReplaceQuery] = useState("");
+  const [findMatches, setFindMatches] = useState(0);
+  const [distractionFree, setDistractionFree] = useState(false);
+  const [typewriter, setTypewriter] = useState(false);
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+  const saveTimer = useRef<number | null>(null);
+  const templateMenuRef = useRef<HTMLDivElement>(null);
+
+  // Chapter templates (seeded HTML when adding a chapter)
+  const CHAPTER_TEMPLATES = {
+    blank: { label: "Blank Chapter", title: "Chapter", html: "<p></p>" },
+    sceneBreak: {
+      label: "Chapter + Scene Break",
+      title: "Chapter",
+      html: "<p>Opening line of the chapter…</p><div class=\"scene-break\" style=\"text-align:center;margin:2rem 0;color:#888;\">♦ ♦ ♦</div><p>Continued…</p>",
+    },
+    frontMatter: {
+      label: "Front Matter (Title Page)",
+      title: "Title Page",
+      html: "<h1 style=\"text-align:center\">Book Title</h1><p style=\"text-align:center\">by Author Name</p><p style=\"text-align:center\"><em>A Kora Original</em></p>",
+    },
+    dialogue: {
+      label: "Dialogue Scene",
+      title: "Chapter",
+      html: "<p><strong>Alice:</strong> …</p><p><strong>Bob:</strong> …</p>",
+    },
+  } as const;
+  type TemplateKey = keyof typeof CHAPTER_TEMPLATES;
+
   // Download menu dropdown state
   const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -159,12 +200,39 @@ export default function CreateView({
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setShowDownloadDropdown(false);
       }
+      if (templateMenuRef.current && !templateMenuRef.current.contains(event.target as Node)) {
+        setShowTemplateMenu(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // Debounced autosave to IndexedDB (local only) — never alerts, just updates indicator.
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(async () => {
+      try {
+        const epubBlob = await buildEpubFromText({
+          title,
+          creator: author,
+          language,
+          chapters: chapters.map((c) => ({ title: c.title, html: c.html, text: c.text })),
+        });
+        await storeBookFile(book.id, epubBlob, `${title}.epub`, "epub");
+        setLastSavedAt(Date.now());
+        setHasUnsavedChanges(false);
+      } catch (e) {
+        console.warn("[CreateView] autosave failed", e);
+      }
+    }, 1500);
+    return () => {
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    };
+  }, [hasUnsavedChanges, chapters, title, author, language]);
 
   // Lock body scroll on mobile when chapters bottom sheet is expanded
   useEffect(() => {
@@ -204,19 +272,46 @@ export default function CreateView({
   };
 
   // Chapter management actions
-  const handleAddChapter = () => {
+  const handleAddChapter = (templateKey: TemplateKey = "blank") => {
+    const tpl = CHAPTER_TEMPLATES[templateKey];
+    const plainText = (() => {
+      const d = document.createElement("div");
+      d.innerHTML = tpl.html;
+      return d.textContent || "";
+    })();
     const newId = "chap_" + Date.now().toString(36);
     const newNum = chapters.length + 1;
+    const baseTitle = tpl.title === "Chapter" ? `Chapter ${newNum}` : tpl.title;
     const newChap: EpubHtmlChapter = {
       id: newId,
-      title: `Chapter ${newNum}`,
-      html: "<p>Write chapter content here...</p>",
-      text: "Write chapter content here...",
+      title: baseTitle,
+      html: tpl.html,
+      text: plainText || baseTitle,
     };
     setChapters((prev) => [...prev, newChap]);
     setActiveChapterId(newId);
     setHasUnsavedChanges(true);
+    setShowTemplateMenu(false);
   };
+
+  // Find & Replace within the active chapter
+  const countFindMatches = (html: string, q: string): number => {
+    if (!q) return 0;
+    const text = html.replace(/<[^>]+>/g, " ");
+    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(escaped, "gi");
+    const m = text.match(re);
+    return m ? m.length : 0;
+  };
+
+  const runReplaceAll = () => {
+    if (!findQuery) return;
+    const updated = replaceAll(activeChapter.html, findQuery, replaceQuery);
+    updateChapterHtml(updated);
+    setFindMatches(0);
+    toast.success(`Replaced all occurrences of "${findQuery}"`);
+  };
+
 
   const handleDuplicateChapter = (chap: EpubHtmlChapter) => {
     const newId = "chap_" + Date.now().toString(36);
@@ -271,6 +366,34 @@ export default function CreateView({
     return sum + words;
   }, 0);
   const estimatedReadMins = Math.max(1, Math.ceil(totalWords / 200));
+
+  // Per-chapter live statistics
+  const activeText = activeChapter?.text ?? "";
+  const activeChapterWords = activeText.trim() ? activeText.trim().split(/\s+/).length : 0;
+  const activeChapterChars = activeText.replace(/\s/g, "").length;
+  const activeChapterMins = Math.max(1, Math.ceil(activeChapterWords / 200));
+
+  // Keep the caret vertically centered when typewriter mode is on.
+  const handleEditorInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const html = e.currentTarget.innerHTML;
+    updateChapterHtml(html);
+    if (typewriter && editorScrollRef.current) {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        const box = editorScrollRef.current.getBoundingClientRect();
+        if (rect.top > 0) {
+          editorScrollRef.current.scrollTop += rect.top - box.top - box.height / 2;
+        }
+      }
+    }
+  };
+
+  // Live find-match count for the active chapter
+  useEffect(() => {
+    setFindMatches(countFindMatches(activeChapter?.html ?? "", findQuery));
+  }, [findQuery, activeChapter?.html]);
+
 
   // Save book to IndexedDB & Firebase
   const handleSaveBook = async () => {
@@ -468,6 +591,12 @@ export default function CreateView({
             <span className="hidden lg:inline">Save</span>
           </button>
 
+          {lastSavedAt && !hasUnsavedChanges && (
+            <span className="hidden md:inline text-[10px] font-bold text-emerald-500/80 flex items-center gap-1" title={new Date(lastSavedAt).toLocaleTimeString()}>
+              <Check className="w-3 h-3" /> Saved
+            </span>
+          )}
+
           {/* Combined Download Dropdown */}
           <div
             className="relative"
@@ -523,6 +652,30 @@ export default function CreateView({
                     <FileDown className="w-3.5 h-3.5 text-rose-500" />
                   )}
                   <span>Download PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const md = chaptersToMarkdown(title, author, chapters.map((c) => ({ title: c.title, html: c.html })));
+                    downloadBlob(slugifyFilename(title, "md"), new Blob([md], { type: "text/markdown" }));
+                    setShowDownloadDropdown(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-kindle-text hover:bg-kindle-bg flex items-center gap-2 transition cursor-pointer"
+                >
+                  <FileType2 className="w-3.5 h-3.5 text-sky-500" />
+                  <span>Download Markdown</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const txt = chapters.map((c) => `${c.title}\n\n${c.text}`).join("\n\n");
+                    downloadBlob(slugifyFilename(title, "txt"), new Blob([txt], { type: "text/plain" }));
+                    setShowDownloadDropdown(false);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-kindle-text hover:bg-kindle-bg flex items-center gap-2 transition cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Download Text</span>
                 </button>
               </div>
             )}
@@ -622,15 +775,31 @@ export default function CreateView({
                         Chapters ({chapters.length})
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleAddChapter}
-                      className="p-1.5 rounded-lg bg-kindle-accent/10 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-kindle-bg transition flex items-center gap-1 text-xs font-bold cursor-pointer"
-                      title="Add Chapter"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>New</span>
-                    </button>
+                    <div className="relative" ref={templateMenuRef}>
+                      <button
+                        type="button"
+                        onClick={() => setShowTemplateMenu((v) => !v)}
+                        className="p-1.5 rounded-lg bg-kindle-accent/10 border border-kindle-accent/30 text-kindle-accent hover:bg-kindle-accent hover:text-kindle-bg transition flex items-center gap-1 text-xs font-bold cursor-pointer"
+                        title="Add Chapter"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>New</span>
+                      </button>
+                      {showTemplateMenu && (
+                        <div className="absolute right-0 mt-1 z-30 w-56 bg-kindle-card border border-kindle-border rounded-xl shadow-lg p-1 space-y-0.5">
+                          {(Object.keys(CHAPTER_TEMPLATES) as TemplateKey[]).map((key) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => handleAddChapter(key)}
+                              className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+                            >
+                              {CHAPTER_TEMPLATES[key].label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Chapter List */}
@@ -719,6 +888,10 @@ export default function CreateView({
 
                   {/* Sidebar Stats Footer */}
                   <div className="p-3 bg-kindle-bg/60 border-t border-kindle-border text-[11px] text-kindle-text-muted space-y-1">
+                    <div className="flex justify-between font-mono">
+                      <span>This Chapter:</span>
+                      <span className="font-bold text-kindle-text">{activeChapterWords} w · {activeChapterChars} ch · {activeChapterMins} min</span>
+                    </div>
                     <div className="flex justify-between font-mono">
                       <span>Total Words:</span>
                       <span className="font-bold text-kindle-text">{totalWords}</span>
@@ -937,22 +1110,89 @@ export default function CreateView({
                       >
                         <span>♦ ♦ ♦</span>
                       </button>
+
+                      <div className="w-px h-5 bg-kindle-border mx-1" />
+
+                      <button
+                        type="button"
+                        onClick={() => setFindOpen((v) => !v)}
+                        className={`p-2 sm:p-1.5 rounded-lg border transition-colors ${findOpen ? "bg-kindle-accent text-kindle-bg border-kindle-accent" : "border-kindle-border hover:bg-kindle-card text-kindle-text"}`}
+                        title="Find & Replace"
+                      >
+                        <Search className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTypewriter((v) => !v)}
+                        className={`p-2 sm:p-1.5 rounded-lg border transition-colors ${typewriter ? "bg-kindle-accent text-kindle-bg border-kindle-accent" : "border-kindle-border hover:bg-kindle-card text-kindle-text"}`}
+                        title="Typewriter scroll"
+                      >
+                        <Type className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDistractionFree((v) => !v)}
+                        className={`p-2 sm:p-1.5 rounded-lg border transition-colors ${distractionFree ? "bg-kindle-accent text-kindle-bg border-kindle-accent" : "border-kindle-border hover:bg-kindle-card text-kindle-text"}`}
+                        title="Distraction-free mode"
+                      >
+                        {distractionFree ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Find & Replace bar */}
+                  {findOpen && (
+                    <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-kindle-card border border-kindle-border rounded-xl mb-3 text-kindle-text">
+                      <Search className="w-3.5 h-3.5 text-kindle-text-muted" />
+                      <input
+                        value={findQuery}
+                        onChange={(e) => setFindQuery(e.target.value)}
+                        placeholder="Find"
+                        className="w-36 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-md text-xs outline-none focus:ring-1 focus:ring-kindle-accent"
+                      />
+                      <Replace className="w-3.5 h-3.5 text-kindle-text-muted" />
+                      <input
+                        value={replaceQuery}
+                        onChange={(e) => setReplaceQuery(e.target.value)}
+                        placeholder="Replace"
+                        className="w-36 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-md text-xs outline-none focus:ring-1 focus:ring-kindle-accent"
+                      />
+                      <span className="text-[11px] text-kindle-text-muted font-bold">{findMatches} match{findMatches === 1 ? "" : "es"}</span>
+                      <button
+                        type="button"
+                        onClick={runReplaceAll}
+                        disabled={!findQuery}
+                        className="px-2.5 py-1 rounded-md bg-kindle-accent text-kindle-bg text-[11px] font-bold disabled:opacity-40 hover:opacity-90 transition"
+                      >
+                        Replace All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFindOpen(false); setFindQuery(""); setReplaceQuery(""); setFindMatches(0); }}
+                        className="ml-auto p-1 rounded-md hover:bg-kindle-bg text-kindle-text-muted"
+                        title="Close"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   )}
 
                   {/* Editor Workspace */}
-                  <div className="flex-1 overflow-y-auto p-3 sm:p-6 md:p-8 flex flex-col lg:flex-row gap-6 bg-kindle-bg">
+                  <div
+                    ref={editorScrollRef}
+                    className={`flex-1 overflow-y-auto p-3 sm:p-6 md:p-8 flex flex-col lg:flex-row gap-6 bg-kindle-bg ${distractionFree ? "lg:max-w-3xl lg:mx-auto" : ""}`}
+                  >
                     {/* Visual WYSIWYG Editor */}
                     {(editorMode === "visual" || editorMode === "split") && (
-                      <div className={`flex-1 bg-kindle-card border border-kindle-border rounded-none p-6 sm:p-14 shadow-xs min-h-[500px] overflow-y-auto ${editorFont} text-base leading-relaxed text-kindle-text focus:outline-none max-w-4xl mx-auto w-full`}>
+                      <div className={`flex-1 bg-kindle-card border border-kindle-border rounded-none p-6 sm:p-14 shadow-xs min-h-[500px] overflow-y-auto ${editorFont} text-base leading-relaxed text-kindle-text focus:outline-none max-w-4xl mx-auto w-full ${typewriter ? "typewriter-mode" : ""}`}>
                         <div
                           key={activeChapterId}
                           ref={editorRef}
                           contentEditable
                           suppressContentEditableWarning
-                          onInput={(e) => updateChapterHtml(e.currentTarget.innerHTML)}
+                          onInput={handleEditorInput}
                           dangerouslySetInnerHTML={{ __html: activeChapter.html }}
-                          className="min-h-[450px] outline-none prose dark:prose-invert max-w-none"
+                          className={`min-h-[450px] outline-none prose dark:prose-invert max-w-none ${typewriter ? "typewriter-caret" : ""}`}
                         />
                       </div>
                     )}
