@@ -20,6 +20,7 @@ import { resolveCoverImageSrc } from "../lib/coverImage";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
 import { buildEpubFromText } from "../lib/epubTools";
+import { resolveApiUrl } from "../lib/capacitorNative";
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
@@ -823,7 +824,7 @@ function LibraryManager({
         author: b.author
       }));
 
-      const res = await fetch("/api/nytimes/recommendations", {
+      const res = await fetch(resolveApiUrl("/api/nytimes/recommendations"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

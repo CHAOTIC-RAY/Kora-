@@ -287,8 +287,8 @@ function ensureCuratedToggleCatalog(existing: FeedSubscription[]): FeedSubscript
       ...option,
       id: makeFeedSubscriptionId(option.feedUrl),
       addedAt: Date.now(),
-      // New international sources start off; Maldives defaults start on.
-      enabled: DEFAULT_FEED_URLS.has(option.feedUrl),
+      // All curated sources start enabled so a fresh install actually loads news.
+      enabled: true,
     };
   });
 

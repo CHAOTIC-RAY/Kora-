@@ -1,12 +1,14 @@
 import { ParsedFeedItem, normalizeFeedArticleLink } from "./rssParser";
 import { FeedItem, FeedSubscription } from "./feedStorage";
+import { resolveApiUrl } from "./capacitorNative";
 
 export async function discoverFeed(url: string): Promise<{
   title: string;
   siteUrl: string;
   feedUrl: string;
 }> {
-  const response = await fetch("/api/feed/discover", {
+  const endpoint = resolveApiUrl("/api/feed/discover");
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
@@ -23,7 +25,8 @@ export async function fetchFeed(feedUrl: string): Promise<{
   link?: string;
   items: ParsedFeedItem[];
 }> {
-  const response = await fetch("/api/feed/fetch", {
+  const endpoint = resolveApiUrl("/api/feed/fetch");
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ feedUrl }),
