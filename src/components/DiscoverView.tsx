@@ -2865,7 +2865,7 @@ function DiscoverView({
                   className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
                     audiobookLibraryMode
                       ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                      : "bg-kindle-accent/10 border-kindle-accent/40 text-kindle-accent hover:bg-kindle-accent/20"
+                      : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:border-kindle-accent/50"
                   }`}
                 >
                   <Headphones className="w-3 h-3" />
@@ -2971,7 +2971,7 @@ function DiscoverView({
         </header>
 
       {/* Audiobook Search Results */}
-      {searchMode && (isAudiobookSearch || audiobookResults.length > 0 || audiobookLoading) && (
+      {searchMode && isAudiobookSearch && (audiobookResults.length > 0 || audiobookLoading) && (
         <section className="space-y-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-lexend font-bold flex items-center gap-2 text-kindle-accent">
