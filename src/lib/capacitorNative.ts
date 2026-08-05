@@ -223,9 +223,13 @@ export async function ensureNotificationChannel(): Promise<void> {
 
 /** Init Capacitor shell: status bar, splash, permissions, fetch shim. */
 export async function initCapacitorShell(): Promise<void> {
-  if (!isNativeApp()) return;
-
+  // Install the /api -> Worker rewrite first. Do this even when isNativeApp()
+  // reports false, because some Android webview builds don't expose
+  // Capacitor.isNativePlatform() reliably — yet the origin is still
+  // https://localhost, so relative /api calls would hit a dead origin.
   installCapacitorApiFetchShim();
+
+  if (!isNativeApp()) return;
 
   try {
     const { StatusBar, Style } = await import("@capacitor/status-bar");

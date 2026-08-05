@@ -2,6 +2,8 @@ const SEARCH_CACHE_KEY = "kora_search_cache_v1";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 
+import { resolveApiUrl } from "./capacitorNative";
+
 interface SearchCacheEntry {
   results: any[];
   expires: number;
@@ -143,7 +145,7 @@ export async function streamEbookSearch(
 
   const all: any[] = [];
   try {
-    const res = await fetch(`/api/search/stream?q=${encodeURIComponent(query)}&page=1`, { signal });
+    const res = await fetch(resolveApiUrl(`/api/search/stream?q=${encodeURIComponent(query)}&page=1`), { signal });
     if (!res.ok || !res.body) throw new Error("Stream failed");
 
     const reader = res.body.getReader();
