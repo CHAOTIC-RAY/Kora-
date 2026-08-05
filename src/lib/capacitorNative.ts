@@ -28,6 +28,21 @@ export function getApiBaseUrl(): string {
   if (fromEnv) return fromEnv;
   // Capacitor APK must never fall back to relative /api (that hits https://localhost).
   if (isNativeApp()) return "https://kora.chaoticstudio.workers.dev";
+  // Robust fallback: inside the APK webview the origin is a local/capacitor URL.
+  // If Capacitor.isNativePlatform() is unreliable in this webview build, relative
+  // /api/* would hit a dead origin and every feed/search call fails. Force the
+  // Worker base for any local/capacitor origin so the APK works regardless.
+  if (typeof window !== "undefined") {
+    const o = window.location.origin;
+    if (
+      o === "https://localhost" ||
+      o === "http://localhost" ||
+      o.startsWith("capacitor://") ||
+      o.includes("localhost")
+    ) {
+      return "https://kora.chaoticstudio.workers.dev";
+    }
+  }
   return "";
 }
 
@@ -57,7 +72,14 @@ export function resolveApiUrl(input: string): string {
  */
 export function installCapacitorApiFetchShim(): void {
   if (typeof window === "undefined") return;
-  if (!isNativeApp()) return;
+  // Install the rewrite when running natively OR from a local/capacitor origin.
+  // Some webview builds report isNativePlatform() unreliably, and a relative
+  // /api/* call from https://localhost hits a dead origin. Force the shim on.
+  const localOrigin =
+    typeof window !== "undefined" &&
+    (window.location.origin.includes("localhost") ||
+      window.location.origin.startsWith("capacitor://"));
+  if (!isNativeApp() && !localOrigin) return;
   const base = getApiBaseUrl();
   if (!base) {
     console.warn("[Kora/Capacitor] VITE_API_BASE_URL is empty — /api calls may fail offline.");
