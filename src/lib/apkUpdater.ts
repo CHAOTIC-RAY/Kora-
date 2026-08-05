@@ -96,7 +96,7 @@ export function getLastApkCheckAt(): number {
   }
 }
 
-function rememberRemote(info: ApkReleaseInfo | null): void {
+export function rememberRemote(info: ApkReleaseInfo | null): void {
   try {
     if (!info) {
       localStorage.removeItem(LAST_KNOWN_KEY);
@@ -129,7 +129,7 @@ function parseVersionName(tagOrName: string): string {
   return raw || tagOrName;
 }
 
-async function getLocalAppInfo(): Promise<{ version: string; build: string }> {
+export async function getLocalAppInfo(): Promise<{ version: string; build: string }> {
   const baked =
     (import.meta.env.VITE_APK_VERSION as string | undefined)?.trim() ||
     (import.meta.env.VITE_APP_VERSION as string | undefined)?.trim() ||

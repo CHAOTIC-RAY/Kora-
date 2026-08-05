@@ -5,9 +5,12 @@ import {
   ApkReleaseInfo,
   downloadAndInstallApk,
   getCachedRemoteRelease,
+  getLocalAppInfo,
   isApkAutoUpdateEnabled,
   isApkUpdateSnoozed,
+  isRemoteNewer,
   maybeAutoCheckApkUpdate,
+  rememberRemote,
   snoozeApkUpdate,
 } from "../lib/apkUpdater";
 import { isNativeAndroid } from "../lib/capacitorNative";
@@ -24,12 +27,34 @@ export default function ApkUpdateBanner() {
   useEffect(() => {
     if (!isNativeAndroid()) return;
 
-    const cached = getCachedRemoteRelease();
-    if (cached && !isApkUpdateSnoozed()) setRelease(cached);
+    // Validate a cached release against the *installed* app version before
+    // showing the banner. Without this, the stale "update available" cache from
+    // a previous version keeps nagging even after the user installed the latest
+    // APK — the banner must only appear when the remote is genuinely newer.
+    const validate = async (remote: ApkReleaseInfo | null): Promise<boolean> => {
+      if (!remote?.apkUrl) return false;
+      if (isApkUpdateSnoozed()) return false;
+      const local = await getLocalAppInfo();
+      if (!isRemoteNewer(remote, local)) return false;
+      return true;
+    };
+
+    void (async () => {
+      const cached = getCachedRemoteRelease();
+      if (cached && (await validate(cached))) setRelease(cached);
+    })();
 
     const onUpdate = (event: Event) => {
       const detail = (event as CustomEvent<ApkReleaseInfo>).detail;
-      if (detail?.apkUrl) setRelease(detail);
+      // Show only if the remote build is actually newer than what's installed.
+      void validate(detail).then((ok) => {
+        if (ok) setRelease(detail);
+        else {
+          // Remote matches the installed version — drop the stale cache + banner.
+          rememberRemote(null);
+          setRelease(null);
+        }
+      });
     };
     window.addEventListener("kora-apk-update", onUpdate as EventListener);
 
@@ -37,7 +62,7 @@ export default function ApkUpdateBanner() {
     const t = window.setTimeout(() => {
       if (!isApkAutoUpdateEnabled()) return;
       void maybeAutoCheckApkUpdate({ notify: true }).then((info) => {
-        if (info) setRelease(info);
+        if (info) void validate(info).then((ok) => ok && setRelease(info));
       });
     }, 4000);
 
@@ -46,7 +71,7 @@ export default function ApkUpdateBanner() {
       if (!isApkAutoUpdateEnabled()) return;
       void maybeAutoCheckApkUpdate({ minIntervalMs: 6 * 60 * 60 * 1000, notify: true }).then(
         (info) => {
-          if (info) setRelease(info);
+          if (info) void validate(info).then((ok) => ok && setRelease(info));
         }
       );
     };
