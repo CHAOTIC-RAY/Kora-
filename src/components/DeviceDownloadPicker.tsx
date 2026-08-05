@@ -37,6 +37,10 @@ export default function DeviceDownloadPicker({
   );
   const [busy, setBusy] = useState(false);
 
+  // Collapsed in-app notification by default; the full book list only opens when
+  // the user taps the notification (matching the APK update banner behaviour).
+  const [expanded, setExpanded] = useState(false);
+
   const toggle = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -52,7 +56,7 @@ export default function DeviceDownloadPicker({
   const handleDownload = async () => {
     const chosen = candidates.filter((b) => selected.has(b.id));
     if (!chosen.length) {
-      onClose();
+      setExpanded(false);
       return;
     }
     setBusy(true);
@@ -83,16 +87,61 @@ export default function DeviceDownloadPicker({
     onCachedIdsChanged();
     setBusy(false);
     if (ok) toast.success(ok === 1 ? "1 book ready on this device" : `${ok} books ready on this device`);
-    if (!fail) onClose();
+    if (!fail) {
+      // Everything downloaded — no reason to keep the notification around.
+      onClose();
+      return;
+    }
+    // Some failed; collapse back to the notification so the user can retry later.
+    setExpanded(false);
   };
 
   if (!candidates.length) {
     return null;
   }
 
+  // ── Collapsed: in-app notification (same look as the update banner) ──────────
+  if (!expanded) {
+    return (
+      <div className="fixed bottom-[calc(4.5rem+env(safe-area-inset-bottom))] left-3 right-3 z-[91] flex flex-col gap-2 pointer-events-none md:left-auto md:right-6 md:w-[360px]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-auto rounded-2xl border border-kindle-border bg-kindle-card shadow-lg p-3.5 flex items-start gap-3"
+        >
+          <Download className="w-5 h-5 text-kindle-accent shrink-0 mt-0.5" aria-hidden />
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="min-w-0 flex-1 text-left cursor-pointer"
+          >
+            <p className="text-sm font-bold text-kindle-text">
+              {candidates.length} book{candidates.length === 1 ? "" : "s"} on your other devices
+            </p>
+            <p className="text-[11px] text-kindle-text-muted mt-0.5 leading-relaxed">
+              Available to download for offline reading. Tap to choose.
+            </p>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded-lg hover:bg-black/5 shrink-0 text-kindle-text-muted"
+            aria-label="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Expanded: full picker (the popup) ───────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-6">
-      <div className="absolute inset-0 bg-black/55 backdrop-blur-sm" onClick={() => !busy && onClose()} />
+      <div
+        className="absolute inset-0 bg-black/55 backdrop-blur-sm"
+        onClick={() => !busy && setExpanded(false)}
+      />
       <div className="relative w-full max-w-lg max-h-[min(92dvh,40rem)] flex flex-col bg-kindle-bg border border-kindle-border rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden">
         <header className="px-5 pt-5 pb-3 border-b border-kindle-border shrink-0">
           <div className="flex items-start justify-between gap-3">
@@ -108,7 +157,7 @@ export default function DeviceDownloadPicker({
             <button
               type="button"
               disabled={busy}
-              onClick={onClose}
+              onClick={() => setExpanded(false)}
               className="p-2 rounded-xl text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card transition"
               aria-label="Close"
             >
@@ -195,7 +244,7 @@ export default function DeviceDownloadPicker({
           <button
             type="button"
             disabled={busy}
-            onClick={onClose}
+            onClick={() => setExpanded(false)}
             className="flex-1 py-3 rounded-2xl border border-kindle-border text-[11px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text transition"
           >
             Skip for now
