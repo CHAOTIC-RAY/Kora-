@@ -1,6 +1,8 @@
 // Diagnostic Logging System for Kora Reader
 // Captures system operations, downloads, errors, and mirror details.
 
+import { resolveApiUrl, getApiBaseUrl } from "./capacitorNative";
+
 export interface LogEntry {
   timestamp: string;
   type: "info" | "warn" | "error";
@@ -206,37 +208,55 @@ class DiagnosticLogger {
       // ignore malformed download log
     }
 
-    const content = logsText + downloadLogSection;
-    const fileName = `kora-diagnostic-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+    // Live self-diagnostic: hit the exact endpoints the app uses, so the exported
+    // file reveals WHY feeds/search fail (URL, HTTP status, or the JS error).
+    const diag: string[] = [];
+    const apiBase = getApiBaseUrl();
+    const feedUrl = resolveApiUrl("/api/feed/fetch");
+    const searchUrl = resolveApiUrl("/api/search/stream?q=dune&page=1");
+    diag.push(`API base (getApiBaseUrl): ${apiBase || "(empty -> same-origin)"}`);
+    diag.push(`Resolved feed URL:   ${feedUrl}`);
+    diag.push(`Resolved search URL: ${searchUrl}`);
+    diag.push(`window.location.origin: ${typeof window !== "undefined" ? window.location.origin : "n/a"}`);
 
+    const probe = async (label: string, url: string, body?: string) => {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 12000);
+        const r = await fetch(url, {
+          method: body ? "POST" : "GET",
+          headers: body ? { "Content-Type": "application/json" } : undefined,
+          body,
+          signal: ctrl.signal,
+        });
+        clearTimeout(t);
+        const txt = await r.text();
+        diag.push(`${label}: HTTP ${r.status} | len=${txt.length} | head=${txt.slice(0, 160).replace(/\n/g, " ")}`);
+      } catch (e: any) {
+        diag.push(`${label}: ERROR ${e?.name || ""} ${e?.message || String(e)}`);
+      }
+    };
+    await probe("FEED", feedUrl, JSON.stringify({ feedUrl: "https://feeds.npr.org/1001/rss.xml" }));
+    await probe("SEARCH", searchUrl);
+
+    const content =
+      logsText + downloadLogSection +
+      "\n\n" + "=".repeat(60) + "\nLIVE API DIAGNOSTIC\n" + "=".repeat(60) + "\n\n" +
+      diag.join("\n") + "\n";
+
+    const fileName = `kora-diagnostic-logs-${new Date().toISOString().slice(0, 10)}.txt`;
     const isNative = typeof (window as any).Capacitor !== "undefined" &&
       (window as any).Capacitor.isNativePlatform?.();
 
-    // Native (APK): write the .txt straight to a user-visible location on the
-    // device and surface it via the share sheet so it can be saved/opened.
     if (isNative) {
-      // 1) Preferred: the user's chosen Kora SAF folder (if available).
-      try {
-        const { writeKoraText } = await import("./koraStorage");
-        const ok = await writeKoraText("data", fileName, content);
-        if (ok) {
-          try {
-            const { Share } = await import("@capacitor/share");
-            await Share.share({ title: "Kora Diagnostic Logs", text: content, dialogTitle: "Save Kora logs" });
-          } catch { /* share optional */ }
-          return;
-        }
-      } catch {
-        // fall through to Filesystem path
-      }
-
-      // 2) Reliable fallback: write to device Documents and share the real file.
+      // Write a clean UTF-8 .txt to device Documents and share the real file.
       try {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
         const res = await Filesystem.writeFile({
           path: fileName,
           data: content,
           directory: Directory.Documents,
+          encoding: "utf8" as any,
           recursive: false,
         });
         try {
@@ -247,16 +267,14 @@ class DiagnosticLogger {
             files: [res.uri],
             dialogTitle: "Save Kora logs",
           });
-        } catch {
-          // Share cancelled — file is already written to Documents, that's fine.
-        }
+        } catch { /* share optional */ }
         return;
       } catch (err) {
-        console.warn("[Kora/Logs] Native export failed, falling back:", err);
+        console.warn("[Kora/Logs] Native export failed:", err);
       }
     }
 
-    // 3) Web fallback: trigger a download via a Blob anchor.
+    // Web fallback: trigger a download via a Blob anchor.
     try {
       const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
