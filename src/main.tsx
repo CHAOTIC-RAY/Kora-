@@ -7,6 +7,7 @@ import { initAndroidGestureNavigation } from "./lib/androidGestures";
 import { initIosTouchGuards } from "./lib/iosPwa";
 import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "./lib/appVersion";
 import { initCapacitorShell, isNativeApp } from "./lib/capacitorNative";
+import { installNativeHttpShim, isNativeHttpAvailable } from "./lib/nativeHttp";
 import { initSentry } from "./lib/sentry";
 
 // Initialize Sentry as early as possible so boot-time errors are captured.
@@ -14,6 +15,15 @@ initSentry();
 
 initAndroidGestureNavigation();
 initIosTouchGuards();
+
+// Install native HTTP bridge synchronously before React mounts so that the
+// first feed/news fetch doesn't race with the async initCapacitorShell import.
+// The native bridge routes /api/* through HttpURLConnection to bypass the
+// Android WebView localhost→external-origin exception.
+if (isNativeApp() && isNativeHttpAvailable()) {
+  installNativeHttpShim();
+}
+
 void initCapacitorShell();
 
 // Apply Performance Mode immediately if the user enabled it previously,
