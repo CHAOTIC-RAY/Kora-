@@ -6,6 +6,19 @@
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+
+    <!-- Explicitly trust the Kora worker origin (HTTPS) from the app.
+         The APK's WebView runs at https://localhost, so cross-origin HTTPS
+         calls to the worker must be permitted by the network security policy
+         on Android 9+ (network security config is the system-level gate,
+         separate from the Chromium localhost exception fixed in JS code). -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">kora.chaoticstudio.workers.dev</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">localhost</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>

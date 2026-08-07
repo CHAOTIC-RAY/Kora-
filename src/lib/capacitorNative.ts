@@ -28,21 +28,6 @@ export function getApiBaseUrl(): string {
   if (fromEnv) return fromEnv;
   // Capacitor APK must never fall back to relative /api (that hits https://localhost).
   if (isNativeApp()) return "https://kora.chaoticstudio.workers.dev";
-  // Robust fallback: inside the APK webview the origin is a local/capacitor URL.
-  // If Capacitor.isNativePlatform() is unreliable in this webview build, relative
-  // /api/* would hit a dead origin and every feed/search call fails. Force the
-  // Worker base for any local/capacitor origin so the APK works regardless.
-  if (typeof window !== "undefined") {
-    const o = window.location.origin;
-    if (
-      o === "https://localhost" ||
-      o === "http://localhost" ||
-      o.startsWith("capacitor://") ||
-      o.includes("localhost")
-    ) {
-      return "https://kora.chaoticstudio.workers.dev";
-    }
-  }
   return "";
 }
 
@@ -72,14 +57,7 @@ export function resolveApiUrl(input: string): string {
  */
 export function installCapacitorApiFetchShim(): void {
   if (typeof window === "undefined") return;
-  // Install the rewrite when running natively OR from a local/capacitor origin.
-  // Some webview builds report isNativePlatform() unreliably, and a relative
-  // /api/* call from https://localhost hits a dead origin. Force the shim on.
-  const localOrigin =
-    typeof window !== "undefined" &&
-    (window.location.origin.includes("localhost") ||
-      window.location.origin.startsWith("capacitor://"));
-  if (!isNativeApp() && !localOrigin) return;
+  if (!isNativeApp()) return;
   const base = getApiBaseUrl();
   if (!base) {
     console.warn("[Kora/Capacitor] VITE_API_BASE_URL is empty — /api calls may fail offline.");
@@ -223,13 +201,30 @@ export async function ensureNotificationChannel(): Promise<void> {
 
 /** Init Capacitor shell: status bar, splash, permissions, fetch shim. */
 export async function initCapacitorShell(): Promise<void> {
-  // Install the /api -> Worker rewrite first. Do this even when isNativeApp()
-  // reports false, because some Android webview builds don't expose
-  // Capacitor.isNativePlatform() reliably — yet the origin is still
-  // https://localhost, so relative /api calls would hit a dead origin.
-  installCapacitorApiFetchShim();
-
   if (!isNativeApp()) return;
+
+  // Route /api/* requests through the native HTTP bridge to bypass Android
+  // WebView's localhost→external-origin exception (Chromium 128+). The native
+  // bridge uses HttpURLConnection, not the WebView, so CORS/origin policies do
+  // not block the requests. When the native plugin is unavailable (or fails to
+  // install), fall back to the URL-rewriting shim below.
+  let nativeHttpInstalled = false;
+  try {
+    const { installNativeHttpShim, isNativeHttpAvailable } = await import("./nativeHttp");
+    if (isNativeHttpAvailable()) {
+      installNativeHttpShim();
+      nativeHttpInstalled = true;
+    }
+  } catch (err) {
+    console.warn("[Kora/Capacitor] native HTTP shim install failed", err);
+  }
+
+  // Fallback URL-rewriting shim: rewrites relative /api/* to the absolute
+  // worker origin. Only installed when the native bridge is unavailable, to
+  // avoid wrapping fetch twice (the native shim already rewrites /api URLs).
+  if (!nativeHttpInstalled) {
+    installCapacitorApiFetchShim();
+  }
 
   try {
     const { StatusBar, Style } = await import("@capacitor/status-bar");
@@ -242,10 +237,15 @@ export async function initCapacitorShell(): Promise<void> {
     /* ignore */
   }
 
-  // The WebView document/body background is driven by the active theme via
-  // `--theme-bg` (see index.css `html.kora-android body`). Do NOT hardcode a dark
-  // inline background here — it overrides the theme and makes light mode stay dark.
-  // The native status/nav bar color is handled by the StatusBar plugin above.
+  // Mirror dark chrome on the system navigation bar (gesture indicator strip).
+  // Capacitor has no NavigationBar plugin here — use the CSS/env insets +
+  // MainActivity Java theme. Also ensure the WebView document fills the bar area.
+  try {
+    document.documentElement.style.backgroundColor = "#18181B";
+    if (document.body) document.body.style.backgroundColor = "#18181B";
+  } catch {
+    /* ignore */
+  }
 
   // Prime Android native TTS (and WebView speech as fallback) early.
   try {
