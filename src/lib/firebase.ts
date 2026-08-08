@@ -228,6 +228,53 @@ export async function syncBookToCloud(userId: string, book: BookMetadata): Promi
   }
 }
 
+/**
+ * Clear the user's entire library from Firestore + local cache, keeping only
+ * the books whose ids are in `keepIds` (e.g. the built-in Getting-started guide).
+ * Used by the "Clear Library" action. Each kept book is left untouched; every
+ * other book document (and its highlights/notes subcollections) is deleted.
+ */
+export async function clearLibraryExcept(userId: string, keepIds: string[]): Promise<void> {
+  const keepSet = new Set(keepIds.map((id) => String(id).toLowerCase()));
+
+  // 1. Local cache: drop everything not in the keep list.
+  const localBooks = getLocalLibrary();
+  const keptLocal = localBooks.filter((b) => keepSet.has(String(b.id).toLowerCase()));
+  saveLocalLibrary(keptLocal);
+
+  // 2. Firestore: enumerate and delete each non-kept book document.
+  if (isRealFirebase && userId) {
+    try {
+      const colRef = collection(db, "users", userId, "library");
+      const snap = await getDocs(colRef);
+      const deletes: Promise<void>[] = [];
+      snap.forEach((d) => {
+        if (keepSet.has(String(d.id).toLowerCase())) return;
+        // Clean up subcollections first, then the book doc.
+        const highlightsRef = collection(db, "users", userId, "library", d.id, "highlights");
+        const notesRef = collection(db, "users", userId, "library", d.id, "notes");
+        deletes.push(
+          (async () => {
+            try {
+              const [hSnap, nSnap] = await Promise.all([getDocs(highlightsRef), getDocs(notesRef)]);
+              await Promise.all([
+                ...hSnap.docs.map((x) => deleteDoc(x.ref)),
+                ...nSnap.docs.map((x) => deleteDoc(x.ref)),
+              ]);
+              await deleteDoc(d.ref);
+            } catch (err) {
+              noteFirestoreSyncIssue(err, "clearLibraryExcept");
+            }
+          })()
+        );
+      });
+      await Promise.all(deletes);
+    } catch (err) {
+      noteFirestoreSyncIssue(err, "clearLibraryExcept");
+    }
+  }
+}
+
 export async function syncDeleteBook(userId: string, bookId: string): Promise<void> {
   const localBooks = getLocalLibrary();
   const updated = localBooks.filter(b => b.id !== bookId);

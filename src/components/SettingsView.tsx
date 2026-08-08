@@ -1989,6 +1989,45 @@ function SettingsView({
 
         {view === "settings" && (
         <>
+        {/* Storage Mode — prominent on APK: choose Device Folder (SAF) vs App Storage (virtual) */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 bg-kindle-bg border border-kindle-border text-indigo-500 rounded-lg shrink-0">
+                <HardDrive className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-kindle-text">Storage Mode</h4>
+                <p className="text-[9px] text-kindle-text-muted mt-0.5 uppercase tracking-widest font-semibold">
+                  {useVirtualDir ? "App Storage (managed by Kora)" : "Device Folder (your chosen system folder)"}
+                </p>
+              </div>
+            </div>
+            <Toggle
+              on={!useVirtualDir}
+              onClick={() => handleToggleVirtualDir()}
+            />
+          </div>
+          <p className="text-[10px] text-kindle-text-muted leading-relaxed mt-3">
+            <span className="font-semibold text-kindle-text">Device Folder</span> saves books to a real folder you pick on your device (visible in your file manager).
+            <span className="font-semibold text-kindle-text"> App Storage</span> keeps everything inside Kora's private space — fully managed and easier to clear.
+          </p>
+          {!useVirtualDir && (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { pickKoraFolder } = await import("../lib/koraStorage");
+                  await pickKoraFolder();
+                } catch { /* ignore */ }
+              }}
+              className="mt-3 w-full flex items-center justify-center gap-2 py-2 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+            >
+              <FolderOpen className="w-3.5 h-3.5 text-kindle-accent" /> Choose Device Folder
+            </button>
+          )}
+        </section>
+
         {/* Reading */}
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
           <div 

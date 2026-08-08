@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "motion/react";
-import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
+import { BookMetadata, syncBookToCloud, syncDeleteBook, clearLibraryExcept, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft } from "lucide-react";
+import { toast } from "react-hot-toast";
 import {
   WALKTHROUGH_BOOK_ID,
   hideWalkthroughBookFromLibrary,
@@ -646,6 +647,8 @@ function LibraryManager({
   const [showTagConfig, setShowTagConfig] = useState<boolean>(false);
   const [activeBookForTags, setActiveBookForTags] = useState<BookMetadata | null>(null);
   const [activeBookForDelete, setActiveBookForDelete] = useState<BookMetadata | null>(null);
+  const [showClearLibrary, setShowClearLibrary] = useState<boolean>(false);
+  const [clearingLibrary, setClearingLibrary] = useState<boolean>(false);
   const [activeShelf, setActiveShelf] = useState<string>("All");
   const [syncingBookIds, setSyncingBookIds] = useState<Set<string>>(new Set());
   const [deletingBookIds, setDeletingBookIds] = useState<Set<string>>(new Set());
@@ -950,6 +953,39 @@ function LibraryManager({
     })();
   }
 
+  async function confirmClearLibrary() {
+    setClearingLibrary(true);
+    try {
+      const keepIds = [WALKTHROUGH_BOOK_ID];
+      // Purge cached file bytes + audiobook tracks for every non-kept book so
+      // device storage is actually freed (not just the Firestore/library record).
+      const toRemove = books.filter((b) => !keepIds.includes(b.id));
+      await Promise.all(
+        toRemove.map((b) =>
+          (async () => {
+            try {
+              clearAudiobookSyncQueue(b.id);
+              await deleteAudiobookTracks(b.id).catch(() => undefined);
+              await deleteBookFile(b.id);
+            } catch { /* ignore per-book cleanup errors */ }
+          })()
+        )
+      );
+      // Wipe library records (Firestore + local) except the kept guide book.
+      await clearLibraryExcept(userId, keepIds);
+      onBooksRemoved?.(toRemove.map((b) => b.id));
+      onCachedIdsChanged();
+      onRefreshLibrary();
+      toast.success("Library cleared — only the Getting started guide remains.");
+    } catch (err) {
+      console.error("Clear Library Error:", err);
+      toast.error("Failed to clear library. Please try again.");
+    } finally {
+      setClearingLibrary(false);
+      setShowClearLibrary(false);
+    }
+  }
+
   function stopOrRemoveDownload(download: { id?: string; status?: string } | null) {
     if (!download?.id) return;
     if (download.status === "downloading") {
@@ -1190,6 +1226,15 @@ function LibraryManager({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowClearLibrary(true)}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 dark:border-red-900/30 text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition cursor-pointer"
+            title="Remove every book except the Getting started guide"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Clear Library
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1909,6 +1954,51 @@ function LibraryManager({
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition"
               >
                 Delete Permanently
+              </button>
+            </div>
+      </FluidOverlay>
+
+      <FluidOverlay
+        open={showClearLibrary}
+        onClose={() => setShowClearLibrary(false)}
+        variant="dialog"
+        zIndexClassName="z-[100]"
+        panelClassName="p-6 max-w-sm"
+      >
+            <h3 className="font-sans font-bold text-base text-red-700 mb-2 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> Clear entire Library?
+            </h3>
+            <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-2">
+              This permanently removes <strong>every book</strong> from your library — including
+              downloaded files and cloud-synced progress.
+            </p>
+            <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-5">
+              The built-in <strong>“Getting started with Kora”</strong> guide is kept so your shelf
+              is never empty.
+            </p>
+
+            <div className="flex gap-3 justify-end font-sans">
+              <button
+                onClick={() => setShowClearLibrary(false)}
+                disabled={clearingLibrary}
+                className="px-4 py-2 border border-kindle-border text-kindle-text-muted rounded-xl text-xs font-semibold hover:bg-kindle-bg transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmClearLibrary}
+                disabled={clearingLibrary}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition disabled:opacity-60 flex items-center gap-1.5"
+              >
+                {clearingLibrary ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Clearing…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" /> Clear Library
+                  </>
+                )}
               </button>
             </div>
       </FluidOverlay>
