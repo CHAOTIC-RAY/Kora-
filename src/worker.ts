@@ -23,6 +23,7 @@ import {
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
+import { resolveLibgenSigned } from "./lib/libgenSigned";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 import {
   getNetgalleyCoverUrl,
@@ -97,52 +98,10 @@ async function buildRaveFallbackFeed(env: any): Promise<any> {
   return { status: "OK", results: { lists } };
 }
 
-// signed CDN download link (get.php?md5=<h>&key=<t>). LibGen 307-redirects the
-// keyless link to an ads page that embeds the signed link in an <a href>.
-// Returns "" if it cannot be resolved within timeoutMs.
-// Hosts are raced in parallel so a single slow mirror cannot block the UI.
-// NOTE: this only resolves LibGen links that RAVE returns (Rave is the sole
-// search relay); the Worker never searches LibGen on its own.
-async function resolveLibgenSigned(md5: string, timeoutMs = 2800): Promise<string> {
-  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
-  const hosts = [
-    "libgen.li",
-    "libgen.vg",
-    "libgen.la",
-    "libgen.bz",
-    "libgen.gl",
-    "libgen.gs",
-    "libgen.st",
-    "libgen.is",
-    "libgen.rs",
-  ];
-
-  const tryHost = async (host: string): Promise<string> => {
-    for (const proto of ["https", "http"] as const) {
-      try {
-        const res = await fetch(`${proto}://${host}/get.php?md5=${md5}`, {
-          headers: { "User-Agent": ua },
-          redirect: "follow",
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (!res.ok) continue;
-        const html = await res.text();
-        const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
-        if (!m) continue;
-        return `${proto}://${host}/${m[0]}`;
-      } catch {
-        /* try next proto */
-      }
-    }
-    throw new Error(`libgen ${host} no signed key`);
-  };
-
-  try {
-    return await Promise.any(hosts.map(tryHost));
-  } catch (_) {
-    return "";
-  }
-}
+// resolveLibgenSigned() is imported from ./lib/libgenSigned (shared with libgenProxy).
+// It mints a fresh LibGen signed CDN key (get.php?md5=<h>&key=<t>) for a given md5,
+// racing multiple mirrors in parallel. RAVE returns signed links whose `key` expires;
+// when that happens the Worker must re-resolve rather than retry the dead URL.
 
 /** When Google Books is quota-limited, return an Open Library result shaped like a volumes response. */
 async function googleBooksFallbackFromOpenLibrary(q: string, maxResults = 5): Promise<any | null> {
