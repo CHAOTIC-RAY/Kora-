@@ -3940,7 +3940,14 @@ export default {
         return new Response("Inline image URLs cannot be proxied", { status: 400 });
       }
       // Only allow image hosts; block everything else (no open proxy).
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio[0-9]*\.(com|club)|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|static01\.nyt\.com|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gstatic\.com|goodreads\.com|cloudfront\.net|amazonaws\.com|wikimedia\.org|wikipedia\.org|bksh\.co|covers\.bksh\.co|netgalley\.com)$/i;
+      // Cover/book artwork can legitimately come from many CDNs. This allowlist
+      // mirrors what /api/feed/image (proxyFeedImage) already accepts for news
+      // thumbnails — it only blocks obvious non-image hosts, never a real cover
+      // CDN. Previously NYT/featured covers (duxstudios.net) and other mainstream
+      // CDNs (amazon, nytimes static) were missing here and returned 403, so every
+      // book cover failed to load in the APK while news thumbnails (a different
+      // endpoint) kept working.
+      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio[0-9]*\.(com|club)|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|goodreads\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|nytimes\.com|static01\.nyt\.com|duxstudios\.net|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gstatic\.com|cloudfront\.net|amazonaws\.com|amazon\.com|m\.media-amazon\.com|images-na\.ssl-images-amazon\.com|media-amazon\.com|wikimedia\.org|wikipedia\.org|upload\.wikimedia\.org|bksh\.co|covers\.bksh\.co|netgalley\.com|imgur\.com|fbcdn\.net|pbs\.twimg\.com|twimg\.com|wordpress\.com|wp\.com|blogspot\.com|substack\.com|substackcdn\.com|cdn\.[a-z0-9.-]+\.(com|net|org)|images\.[a-z0-9.-]+\.(com|net|org)|img\.[a-z0-9.-]+\.(com|net|org)|static\.[a-z0-9.-]+\.(com|net|org)|cdn2\.[a-z0-9.-]+\.(com|net|org)|assets\.[a-z0-9.-]+\.(com|net|org))$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
