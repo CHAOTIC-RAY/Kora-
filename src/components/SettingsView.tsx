@@ -41,8 +41,12 @@ import {
   getVirtualDirectoryPath, setVirtualDirectoryPath, getVirtualDirectoryFiles, addVirtualDirectoryFile,
   removeVirtualDirectoryFile, scanVirtualDirectory, VirtualBookFile
 } from "../lib/directoryHelper";
-import { BookMetadata, syncBookToCloud, getLocalLibrary } from "../lib/firebase";
+import { BookMetadata, syncBookToCloud, getLocalLibrary, clearLibraryExcept } from "../lib/firebase";
 import { storeBookFile } from "../db/indexedDB";
+import { deleteBookFile } from "../db/indexedDB";
+import { deleteAudiobookTracks } from "../lib/audiobookStorage";
+import { clearAudiobookSyncQueue } from "../lib/audiobookSyncQueue";
+import { WALKTHROUGH_BOOK_ID } from "../lib/walkthroughBook";
 import { inferBookTags } from "../lib/tagsHelper";
 import {
   BUILT_IN_TXT_PARSERS,
@@ -326,6 +330,8 @@ function SettingsView({
   const [showDictionary, setShowDictionary] = useState<boolean>(false);
   const [showClipper, setShowClipper] = useState<boolean>(false);
   const [showFolderWatch, setShowFolderWatch] = useState<boolean>(false);
+  const [showClearLibrary, setShowClearLibrary] = useState<boolean>(false);
+  const [clearingLibrary, setClearingLibrary] = useState<boolean>(false);
   const [showReadAloud, setShowReadAloud] = useState<boolean>(false);
   const [showWikipedia, setShowWikipedia] = useState<boolean>(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -640,6 +646,37 @@ function SettingsView({
     import("../lib/koraStorage").then(({ setKoraStorageMode }) =>
       setKoraStorageMode(newValue ? "virtual" : "saf").catch(() => {})
     );
+  };
+
+  const confirmClearLibrary = async () => {
+    setClearingLibrary(true);
+    try {
+      const keepIds = [WALKTHROUGH_BOOK_ID];
+      // Purge cached file bytes + audiobook tracks so device storage is freed too.
+      const lib = (books as BookMetadata[]) || getLocalLibrary();
+      const toRemove = lib.filter((b) => !keepIds.includes(b.id));
+      await Promise.all(
+        toRemove.map((b) =>
+          (async () => {
+            try {
+              clearAudiobookSyncQueue(b.id);
+              await deleteAudiobookTracks(b.id).catch(() => undefined);
+              await deleteBookFile(b.id);
+            } catch { /* ignore per-book cleanup errors */ }
+          })()
+        )
+      );
+      await clearLibraryExcept(userId || "", keepIds);
+      if (onCachedIdsChanged) onCachedIdsChanged();
+      if (onRefreshLibrary) onRefreshLibrary();
+      toast.success("Library cleared — only the Getting started guide remains.");
+    } catch (err) {
+      console.error("Clear Library Error:", err);
+      toast.error("Failed to clear library. Please try again.");
+    } finally {
+      setClearingLibrary(false);
+      setShowClearLibrary(false);
+    }
   };
 
   const handleUpdateVirtualPath = (path: string) => {
@@ -2637,6 +2674,13 @@ function SettingsView({
             <Trash2 className="w-3.5 h-3.5" /> Clear Recent Searches
           </button>
 
+          <button
+            onClick={() => setShowClearLibrary(true)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 border border-red-300 dark:border-red-900/40 rounded-xl text-[10px] font-bold uppercase tracking-widest text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Clear Library
+          </button>
+
           <div className="border-t border-kindle-border/40 pt-4 space-y-2.5">
             <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Diagnostic & Download Logs</h4>
             <div className="flex gap-2">
@@ -3176,6 +3220,51 @@ function SettingsView({
           />
         </div>
       )}
+
+      <FluidOverlay
+        open={showClearLibrary}
+        onClose={() => setShowClearLibrary(false)}
+        variant="dialog"
+        zIndexClassName="z-[100]"
+        panelClassName="p-6 max-w-sm"
+      >
+        <h3 className="font-sans font-bold text-base text-red-700 mb-2 flex items-center gap-2">
+          <Trash2 className="w-4 h-4" /> Clear entire Library?
+        </h3>
+        <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-2">
+          This permanently removes <strong>every book</strong> from your library — including
+          downloaded files and cloud-synced progress.
+        </p>
+        <p className="text-xs text-kindle-text-muted font-sans leading-relaxed mb-5">
+          The built-in <strong>&ldquo;Getting started with Kora&rdquo;</strong> guide is kept so your shelf
+          is never empty.
+        </p>
+
+        <div className="flex gap-3 justify-end font-sans">
+          <button
+            onClick={() => setShowClearLibrary(false)}
+            disabled={clearingLibrary}
+            className="px-4 py-2 border border-kindle-border text-kindle-text-muted rounded-xl text-xs font-semibold hover:bg-kindle-bg transition disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirmClearLibrary}
+            disabled={clearingLibrary}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition disabled:opacity-60 flex items-center gap-1.5"
+          >
+            {clearingLibrary ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Clearing&hellip;
+              </>
+            ) : (
+              <>
+                <Trash2 className="w-3.5 h-3.5" /> Clear Library
+              </>
+            )}
+          </button>
+        </div>
+      </FluidOverlay>
     </div>
   );
 }
