@@ -1541,17 +1541,31 @@ export default function App() {
     // the page. The `theme-` prefixed class carries the theme CSS variables
     // without that side effect.
     const classes = [prefixedTheme, skinBodyClass(activeSkin)];
-    if (cleanTheme === "dark") {
-      classes.push("theme-dark-grey", "dark-grey");
-    } else if (cleanTheme === "sepia") {
-      // Keep true sepia, do not override with light-yellow
-    } else if (cleanTheme === "night") {
-      classes.push("theme-dark-grey", "dark-grey");
-    } else if (cleanTheme === "oled") {
-      classes.push("theme-dark-blue", "dark-blue");
-    } else if (cleanTheme === "light") {
-      classes.push("theme-light-white", "light-white");
-    }
+    // Always attach the matching theme-* class so --theme-bg / --theme-text are
+    // applied for EVERY known theme. Previously only dark/night/oled/light pushed a
+    // theme-* class; themes like green/paper/sepia fell through, leaving <body>
+    // without a theme class so --theme-bg reverted to the dark :root fallback and
+    // light mode rendered dark. The bare synonyms (dark-grey, dark-blue, etc.) are
+    // kept for older persisted values / tailwind parity.
+    const THEME_CLASS: Record<string, string[]> = {
+      "light-white": ["theme-light-white", "light-white"],
+      light: ["theme-light", "light"],
+      "light-yellow": ["theme-light-yellow", "light-yellow"],
+      yellow: ["theme-light-yellow", "light-yellow"],
+      sepia: ["theme-sepia", "sepia"],
+      paper: ["theme-paper", "paper"],
+      green: ["theme-green", "green"],
+      mint: ["theme-green", "green"],
+      "dark-grey": ["theme-dark-grey", "dark-grey"],
+      dark: ["theme-dark-grey", "dark-grey"],
+      grey: ["theme-dark-grey", "dark-grey"],
+      night: ["theme-night", "night"],
+      "dark-blue": ["theme-dark-blue", "dark-blue"],
+      blue: ["theme-dark-blue", "dark-blue"],
+      oled: ["theme-oled", "oled"],
+    };
+    const extra = THEME_CLASS[cleanTheme];
+    if (extra) classes.push(...extra);
 
     const isDark =
       !isInstallView && (

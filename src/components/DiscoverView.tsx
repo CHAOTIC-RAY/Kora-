@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import ReactDOM from "react-dom";
 import JSZip from "jszip";
@@ -716,6 +716,24 @@ function DiscoverView({
       }
     };
   }, [hasMore, loading, loadingMore]);
+
+  // Auto-retry once when Discover lands on an empty state (e.g. a transient
+  // Worker/network hiccup or a stale same-day cache that failed to load) instead
+  // of showing a dead-end "No trending titles". Skips when an explicit error is
+  // already shown or a load is in flight.
+  const featuredAttempted = useRef(false);
+  useEffect(() => {
+    if (loadingFeatured) return;
+    const hasAny = Object.values(featuredData).some((arr) => Array.isArray(arr) && arr.length > 0);
+    if (!hasAny && !error && !featuredAttempted.current) {
+      featuredAttempted.current = true;
+      const t = setTimeout(() => loadFeaturedContent(true), 1500);
+      return () => clearTimeout(t);
+    }
+    // Reset the guard once content actually arrives, so a later empty state
+    // (after navigating away/back) can retry again.
+    if (hasAny) featuredAttempted.current = false;
+  }, [featuredData, loadingFeatured, error]);
 
   async function loadFeaturedContent(forceRefresh = false) {
     setLoadingFeatured(true);
@@ -3525,10 +3543,18 @@ function DiscoverView({
                 return (
                   <div className="py-20 flex flex-col items-center gap-4 text-center">
                     <Compass className="w-10 h-10 text-kindle-text-muted opacity-40" />
-                    <p className="text-sm font-bold text-kindle-text-muted">No trending titles right now</p>
-                    <p className="text-xs text-kindle-text-muted/70 max-w-sm">Use the search above to find any book across the global archives.</p>
+                    {error ? (
+                      <p className="text-sm font-bold text-kindle-text-muted">{error}</p>
+                    ) : (
+                      <p className="text-sm font-bold text-kindle-text-muted">No trending titles right now</p>
+                    )}
+                    <p className="text-xs text-kindle-text-muted/70 max-w-sm">
+                      {error
+                        ? "Couldn't reach the book service. Retrying automatically — or use the search above to find any book across the global archives."
+                        : "Use the search above to find any book across the global archives."}
+                    </p>
                     <button
-                      onClick={() => loadFeaturedContent()}
+                      onClick={() => loadFeaturedContent(true)}
                       className="flex items-center gap-2 px-4 py-2 border border-kindle-border rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-kindle-card transition"
                     >
                       <RefreshCw className="w-3.5 h-3.5" /> Refresh

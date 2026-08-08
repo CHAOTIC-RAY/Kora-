@@ -675,6 +675,15 @@ function FeedView({
     }
   }, [userId, onRefreshLibrary]);
 
+  // Latest actual post time among the visible items — shown next to the count.
+  const latestPostAt = useMemo(() => {
+    let max = 0;
+    for (const it of visibleItems) {
+      if (it.publishedAt > max) max = it.publishedAt;
+    }
+    return max;
+  }, [visibleItems]);
+
   return (
     <div className="space-y-5 md:space-y-7 pb-8 md:pb-10 text-left">
       <header ref={headerRef} className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 md:pb-3 border-b border-kindle-border font-sans gap-3">
@@ -684,6 +693,14 @@ function FeedView({
             {unreadCount > 0 && (
               <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-kindle-text/10 text-kindle-text border border-kindle-border shrink-0">
                 {unreadCount} unread
+              </span>
+            )}
+            {latestPostAt > 0 && (
+              <span
+                className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-kindle-text/5 text-kindle-text-muted border border-kindle-border shrink-0"
+                title={`Newest post: ${new Date(latestPostAt).toLocaleString()}`}
+              >
+                {visibleItems.length} · {formatFeedDate(latestPostAt)}
               </span>
             )}
           </div>
