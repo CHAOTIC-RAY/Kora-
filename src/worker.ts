@@ -3939,22 +3939,21 @@ export default {
       if (/^data:/i.test(target) || /^blob:/i.test(target)) {
         return new Response("Inline image URLs cannot be proxied", { status: 400 });
       }
-      // Only allow image hosts; block everything else (no open proxy).
-      // Cover/book artwork can legitimately come from many CDNs. This allowlist
-      // mirrors what /api/feed/image (proxyFeedImage) already accepts for news
-      // thumbnails — it only blocks obvious non-image hosts, never a real cover
-      // CDN. Previously NYT/featured covers (duxstudios.net) and other mainstream
-      // CDNs (amazon, nytimes static) were missing here and returned 403, so every
-      // book cover failed to load in the APK while news thumbnails (a different
-      // endpoint) kept working.
-      const ALLOWED_IMG = /(^|\.)(openlibrary\.org|covers\.openlibrary\.org|hdaudiobooks\.com|fulllengthaudiobooks\.com|ipaudio[0-9]*\.(com|club)|ipaudio3\.club|i\.gr-assets\.com|gr-assets\.com|goodreads\.com|libgen\.(li|is|rs|be|gl|lc|rocks)|archive\.org|annas-archive\.(gl|org)|booksdl\.lc|library\.lol|z-lib\.(gd|sk)|liber3\.eth\.limo|nyt\.com|nytimes\.com|static01\.nyt\.com|duxstudios\.net|books\.google\.[a-z.]{2,8}|google\.[a-z.]{2,8}|googleusercontent\.[a-z.]{2,8}|gstatic\.com|cloudfront\.net|amazonaws\.com|amazon\.com|m\.media-amazon\.com|images-na\.ssl-images-amazon\.com|media-amazon\.com|wikimedia\.org|wikipedia\.org|upload\.wikimedia\.org|bksh\.co|covers\.bksh\.co|netgalley\.com|imgur\.com|fbcdn\.net|pbs\.twimg\.com|twimg\.com|wordpress\.com|wp\.com|blogspot\.com|substack\.com|substackcdn\.com|cdn\.[a-z0-9.-]+\.(com|net|org)|images\.[a-z0-9.-]+\.(com|net|org)|img\.[a-z0-9.-]+\.(com|net|org)|static\.[a-z0-9.-]+\.(com|net|org)|cdn2\.[a-z0-9.-]+\.(com|net|org)|assets\.[a-z0-9.-]+\.(com|net|org))$/i;
+      // Covers can legitimately come from any book-cover CDN. Mirroring the
+      // news image endpoint (proxyFeedImage), we allow any https host and rely
+      // on the upstream content-type / magic-byte check (below) to reject
+      // non-images. A short denylist blocks obvious non-cover targets so this
+      // isn't a fully open proxy. Previously a per-host ALLOWED_IMG list caused
+      // every book cover to 403 in the APK (NYT/featured + mainstream CDNs were
+      // missing) while news thumbnails (a different, allow-any endpoint) loaded.
+      const BLOCKED_IMG_HOSTS = /(^|\.)(localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.[0-9.]+|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9.]+|metadata\.google\.internal|kora\.chaoticstudio\.workers\.dev|chaoticstudio\.workers\.dev)$/i;
       let parsed: URL;
       try {
         parsed = new URL(target);
       } catch {
         return new Response("Bad url", { status: 400 });
       }
-      if (!/^https?:$/i.test(parsed.protocol) || !ALLOWED_IMG.test(parsed.hostname)) {
+      if (!/^https?:$/i.test(parsed.protocol) || !parsed.hostname || BLOCKED_IMG_HOSTS.test(parsed.hostname)) {
         return new Response("Host not allowed", { status: 403 });
       }
       try {

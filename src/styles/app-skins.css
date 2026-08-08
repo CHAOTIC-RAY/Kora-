@@ -1089,7 +1089,66 @@ body.skin-library input[type="search"]::placeholder {
 }
 
 body.skin-library .kora-tab-bar {
-  background: #3d2010 !important;
+  background: linear-gradient(0deg, #2c160a 0%, #3d2010 100%) !important;
+  border-top: 3px solid #d4a054 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 -6px 28px rgba(0, 0, 0, 0.5) !important;
+  padding: 0.4rem 0.6rem !important;
+  gap: 0.4rem !important;
+}
+
+body.skin-library .kora-mobile-footer {
+  background: linear-gradient(0deg, #2c160a 0%, #3d2010 100%) !important;
+  border-top: 3px solid #d4a054 !important;
+  border-radius: 1.25rem 1.25rem 0 0 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 -6px 32px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Floating amber "pill" that holds the active tab icon — mirrors the
+   screenshot's gold-highlighted active tab, but keeps the walnut base. */
+body.skin-library .kora-tab-pill {
+  background: linear-gradient(135deg, #f6eedb 0%, #e8dcc4 100%) !important;
+  color: #2a1406 !important;
+  border: 2px solid #d4a054 !important;
+  border-radius: 9999px !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 4px 14px rgba(0, 0, 0, 0.45) !important;
+  font-weight: 800 !important;
+  padding: 0.35rem 0.95rem !important;
+}
+
+body.skin-library .kora-tab-pill * {
+  color: #2a1406 !important;
+}
+
+body.skin-library .kora-tab-item {
+  color: #d4a054 !important;
+  opacity: 0.72;
+  transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+body.skin-library .kora-tab-item:hover {
+  opacity: 1;
+}
+
+body.skin-library .kora-tab-item.is-active {
+  color: #f6eedb !important;
+  opacity: 1;
+  transform: translateY(-1px);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+body.skin-library .kora-tab-item.is-active .kora-tab-icon svg {
+  color: #f6eedb !important;
+  filter: drop-shadow(0 0 6px rgba(212, 160, 84, 0.55));
+}
+
+body.skin-library .kora-tab-item.is-active span {
+  color: #f6eedb !important;
 }
 
 /* ── Custom Skin Scrollbars ── */
