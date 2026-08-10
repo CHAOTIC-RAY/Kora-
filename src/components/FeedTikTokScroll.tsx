@@ -491,7 +491,10 @@ export default function FeedTikTokScroll({
     >
       {/* 1. Immersive Floating Header for Mobile */}
       {isMobile && (
-        <div className="absolute top-4 left-0 right-0 z-30 flex items-center justify-between pointer-events-none px-4">
+        <div
+          className="absolute left-0 right-0 z-30 flex items-center justify-between pointer-events-none px-4"
+          style={{ top: "calc(var(--kora-safe-top, 0px) + 0.75rem)" }}
+        >
           <div className="pointer-events-auto">
             {onManage && (
               <button
@@ -739,7 +742,7 @@ export default function FeedTikTokScroll({
                 </div>
 
                 <div
-                  className={`relative z-10 cursor-pointer select-text ${isMobile ? "pb-20" : "pb-6"} transition-all duration-300 pr-16 md:pr-24 ${
+                  className={`relative z-10 cursor-pointer select-text ${isMobile ? "pb-36" : "pb-6"} transition-all duration-300 pr-16 md:pr-24 ${
                     isDarkMode
                       ? "text-white"
                       : "text-kindle-text"

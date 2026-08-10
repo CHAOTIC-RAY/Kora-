@@ -363,6 +363,8 @@ function DiscoverView({
   const [audiobookResults, setAudiobookResults] = useState<any[]>([]);
   const [audiobookLoading, setAudiobookLoading] = useState<boolean>(false);
   const [featuredDownloadVariants, setFeaturedDownloadVariants] = useState<any[]>([]);
+  // Editions are ranked best-first; only the top 2 show until expanded.
+  const [showAllEditions, setShowAllEditions] = useState(false);
   const [loadingFeaturedDownloads, setLoadingFeaturedDownloads] = useState<boolean>(false);
   const [selectedFeaturedVariant, setSelectedFeaturedVariant] = useState<any | null>(null);
   const [featuredMirrors, setFeaturedMirrors] = useState<any[]>([]);
@@ -479,6 +481,42 @@ function DiscoverView({
         return { books: [], totalCount: 0, hasMore: false };
       }
     }
+  }
+
+  // Rank download editions in place so the best one is index 0.
+  //
+  // Priority, in order:
+  //   1. English (or unlabelled — LibGen often omits the language on English
+  //      uploads, so treating "unknown" as a near-English tier avoids burying
+  //      perfectly good entries below a tagged foreign edition)
+  //   2. Direct/known-good sources — Rave direct first, then LibGen
+  //   3. Reader-friendly format (EPUB > AZW3 > MOBI > FB2 > PDF)
+  // Ties keep their original relative order (Array.prototype.sort is stable).
+  function rankVariants(variants: any[]): any[] {
+    const langRank = (v: any): number => {
+      const l = (v.language || "").trim().toLowerCase();
+      if (!l) return 1; // unlabelled — probably English, but below an explicit match
+      if (l === "en" || l === "eng" || l === "english") return 0;
+      return 2;
+    };
+    const sourceRank = (v: any): number => {
+      const s = (v.source || "").trim().toLowerCase();
+      // A direct URL means no mirror-resolution round trip and no dead link.
+      if (v.directUrl || s.includes("rave")) return 0;
+      if (s.includes("libgen")) return 1;
+      return 2;
+    };
+    const FORMATS = ["epub", "azw3", "mobi", "fb2", "pdf"];
+    const formatRank = (v: any): number => {
+      const idx = FORMATS.indexOf((v.extension || "").trim().toLowerCase());
+      return idx === -1 ? FORMATS.length : idx;
+    };
+    variants.sort((a, b) =>
+      langRank(a) - langRank(b) ||
+      sourceRank(a) - sourceRank(b) ||
+      formatRank(a) - formatRank(b)
+    );
+    return variants;
   }
 
   function sortMirrors(mirrors: any[]): any[] {
@@ -644,7 +682,14 @@ function DiscoverView({
         }
         return acc;
       }, []);
-      
+
+      // Rank editions so the one we auto-select (and the two we show before the
+      // "show more" fold) is the one a user actually wants: English first, then
+      // a direct/known-good source (Rave direct or LibGen), then a sane format.
+      // Previously this was raw API order, which is why a Korean LibGen EPUB
+      // could end up selected by default.
+      rankVariants(uniqueVariants);
+
       setFeaturedDownloadVariants(uniqueVariants);
       
       if (uniqueVariants.length > 0) {
@@ -1198,6 +1243,7 @@ function DiscoverView({
     setSelectedFeaturedVariant(null);
     setFeaturedMirrors([]);
     setFeaturedMirrorError(null);
+    setShowAllEditions(false);
     setSelectedFeaturedBook(book);
     // Seed overview immediately from list data (NYT synopses, etc.) so the
     // panel is never empty while Google / Open Library enrich it.
@@ -4325,7 +4371,10 @@ function DiscoverView({
                             <div className="space-y-2">
                               <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted/60">Select Edition:</span>
                               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {featuredDownloadVariants.map((v, idx) => {
+                                {(showAllEditions
+                                  ? featuredDownloadVariants
+                                  : featuredDownloadVariants.slice(0, 2)
+                                ).map((v, idx) => {
                                   const isActive = selectedFeaturedVariant?.md5 === v.md5 || selectedFeaturedVariant?.id === v.id;
                                   const lang = formatLanguage(v.language || selectedFeaturedBook?.language || featuredBookDetails?.language || "English");
                                   return (
@@ -4366,6 +4415,16 @@ function DiscoverView({
                                   );
                                 })}
                               </div>
+                              {featuredDownloadVariants.length > 2 && (
+                                <button
+                                  onClick={() => setShowAllEditions((s) => !s)}
+                                  className="w-full mt-1 py-1.5 rounded-lg border border-kindle-border bg-kindle-bg text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text hover:border-kindle-text-muted/50 transition flex items-center justify-center gap-1"
+                                >
+                                  {showAllEditions
+                                    ? "Show fewer editions"
+                                    : `Show ${featuredDownloadVariants.length - 2} more edition${featuredDownloadVariants.length - 2 === 1 ? "" : "s"}`}
+                                </button>
+                              )}
                             </div>
 
                             {/* Mirrors for selected variant */}
