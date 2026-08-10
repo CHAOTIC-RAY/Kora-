@@ -26,3 +26,7 @@ services/*/work/
 android/local.properties
 android/app/build/
 android/.gradle/
+
+# bun (use npm on Cloudflare Pages)
+bun.lock
+bunfig.toml
