@@ -51,6 +51,41 @@ export default defineConfig(() => {
       compression({ algorithms: ['brotliCompress'], exclude: [/\\.(?:png|jpe?g|gif|webp|svg|woff2?)$/i] }),
       apkHtml(),
       {
+        // Perf plan Phase 4: emit a precache manifest of the hashed build
+        // assets (entry chunk, CSS, lazy tab chunks, fonts). Without this the
+        // service worker only precached unhashed shell files, so the 2 MB entry
+        // chunk and every lazy tab chunk still went to the network on a cold
+        // start — the exact cost the tab prewarming is trying to avoid.
+        //
+        // Emitted as a separate JSON file (not inlined into sw.js) so the SW
+        // itself stays byte-stable across builds except for its version stamp.
+        name: 'kora-precache-manifest',
+        writeBundle(_options: any, bundle: Record<string, any>) {
+          const outDir = path.resolve(__dirname, 'dist');
+          // Only precache what's actually needed to boot + switch tabs. Big
+          // leaf chunks that are only reachable behind an explicit user action
+          // (the PDF engine, scraper/doc vendors) stay on-demand so we don't
+          // blow the cache budget or the APK's first-run data use.
+          const EXCLUDE = /(vendor-scraper|vendor-docs|BookReaderPDF)/;
+          const files = Object.keys(bundle)
+            .filter((f) => /\.(?:js|css)$/.test(f))
+            .filter((f) => !EXCLUDE.test(f))
+            .map((f) => `/${f}`);
+          const manifest = {
+            buildId,
+            version: pkgVersion,
+            assets: files.sort(),
+            generatedAt: builtAt,
+          };
+          fs.mkdirSync(outDir, { recursive: true });
+          fs.writeFileSync(
+            path.join(outDir, 'precache-manifest.json'),
+            JSON.stringify(manifest, null, 2)
+          );
+          console.log(`[kora-precache-manifest] ${files.length} hashed assets`);
+        },
+      },
+      {
         name: 'kora-version-json',
         writeBundle() {
           const outDir = path.resolve(__dirname, 'dist');

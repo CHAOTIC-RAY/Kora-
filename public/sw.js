@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v6";
-const API_CACHE = "kora-api-v6";
+const SHELL_CACHE = "kora-shell-v7";
+const API_CACHE = "kora-api-v7";
 const COVER_CACHE = "kora-covers-v1";
 const DATA_CACHE = "kora-data-v1"; // perf plan 3.2: bundled dictionary shards (immutable)
 // Do NOT cache sw.js / version.json — those must always hit the network so
@@ -57,11 +57,41 @@ async function warmDataCache() {
   );
 }
 
+async function warmShellCache() {
+  // Perf plan Phase 4: precache the hashed build assets listed in
+  // precache-manifest.json (entry chunk, CSS, lazy tab chunks). SHELL_ASSETS
+  // alone only covered unhashed files, so the ~2 MB entry chunk and every lazy
+  // tab chunk still hit the network on a cold start.
+  //
+  // Best-effort and non-fatal: a missing/failed manifest must never block SW
+  // install, it just means we fall back to runtime caching.
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    const res = await fetch("/precache-manifest.json", { cache: "no-cache" });
+    if (!res.ok) return;
+    const manifest = await res.json();
+    const assets = Array.isArray(manifest && manifest.assets) ? manifest.assets : [];
+    if (!assets.length) return;
+    await Promise.allSettled(
+      assets.map((url) =>
+        fetch(url)
+          .then((r) => {
+            if (r && r.ok) return cache.put(url, r);
+          })
+          .catch(() => {})
+      )
+    );
+  } catch {
+    /* no manifest (dev server / older build) — runtime caching still applies */
+  }
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     Promise.all([
       caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {})),
+      warmShellCache(),
       warmApiCache(),
       warmDataCache(),
     ])

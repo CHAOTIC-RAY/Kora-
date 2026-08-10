@@ -1,6 +1,15 @@
 # Plan — Pack more into the APK + seamless background tab loading
 
-Status: Phase 0 (tab prewarming) is **implemented**; Phases 1–5 are proposed.
+Status: Phases 0–4 **implemented**. Phase 5 remains proposed.
+
+> **Correction after reading the code:** most of this plan was already built on
+> main before I wrote it. `public/sw.js` (1004 lines) already precached the
+> dictionary shards, covers, and API warm paths, and `pdfjs-dist` was already
+> in its own lazy 372 KB chunk. The plan's Phase 2 claim that "Service Workers
+> do not run on `file://`" was **wrong for this app**: `capacitor.config.ts`
+> sets `androidScheme: "https"`, so the SW runs in the APK too. The one real
+> gap was that **no hashed asset was precached** — see Phase 4.
+
 Target: Kora Capacitor Android APK (WebView) + web build.
 
 ---
@@ -52,9 +61,10 @@ served from `file:///android_asset/`, making them instant and fully offline.
   Kora logo set, and the offline fallback page.
 - Strategy: **cache-first, immutable** for hashed assets; **stale-while-revalidate**
   for `/data/**`; **network-first** for `/api/**`.
-- APK caveat: on `file://` origins Service Workers do **not** run. So this phase
-  benefits the **web/PWA** build; the APK gets the same win from Phase 1
-  (assets already local). Do not conflate the two.
+- **Already implemented** in `public/sw.js`: shell/API/cover/data caches with
+  cache-first for `/data/**`, stale-while-revalidate for warm API paths.
+- APK note: because `androidScheme: "https"` (not `file://`), the SW **does**
+  run inside the Capacitor WebView, so the APK gets this too.
 
 ## Phase 3 — Cover & image pipeline
 
@@ -64,7 +74,28 @@ served from `file:///android_asset/`, making them instant and fully offline.
   catalog covers; swap to full quality on load.
 - Prefer WebP via the cover proxy `?fmt=webp` where the source allows it.
 
-## Phase 4 — Bundle discipline
+## Phase 4 — Precache the hashed assets (DONE — the real gap)
+
+`SHELL_ASSETS` only listed unhashed files (`/`, `index.html`, manifest, fonts),
+so on a cold start the **2.0 MB entry chunk and every lazy tab chunk still went
+to the network** — defeating the Phase 0 prewarming, which can only import a
+chunk the network can deliver.
+
+- `vite.config.ts` gains a `kora-precache-manifest` plugin emitting
+  `dist/precache-manifest.json` from the real rollup bundle (so hashes can
+  never drift from what shipped). Verified: 56 assets, all present on disk.
+- `public/sw.js` gains `warmShellCache()`, run during `install`, which fetches
+  the manifest and caches every listed asset.
+- Excluded from precache: `vendor-scraper`, `vendor-docs`, `BookReaderPDF` —
+  reachable only behind an explicit user action, so precaching them would waste
+  first-run data. Total precache: **3.14 MB**, of which 2.0 MB is the entry
+  chunk needed to boot regardless.
+- Cache version bumped `v6 → v7` so existing installs actually refill.
+- Failure modes exercised against the real manifest (404, empty, malformed,
+  offline throw): all degrade to 0 cached assets **without throwing**, so a bad
+  manifest can never block SW install.
+
+## Phase 4b — Bundle discipline
 
 Current `vite.config.ts` deliberately does **not** split React/Firebase
 (cross-chunk TDZ caused white screens — see the comment there). Keep that.
@@ -73,8 +104,10 @@ Safe wins only:
 - Keep `vendor-scraper` / `vendor-docs` Worker-only splits as-is.
 - Audit `lucide-react` imports — ensure named imports only (tree-shaken); no
   `import * as Icons`.
-- Move `pdfjs-dist` to a lazy `import()` inside `BookReaderPDF` so the ~1 MB
-  PDF engine is not in the boot path for users who never open a PDF.
+- ~~Move `pdfjs-dist` to a lazy `import()`~~ — **already done**: `BookReaderPDF`
+  is a `React.lazy` route, so pdfjs is a separate 372 KB chunk off the boot path.
+- `lucide-react` audited: 56 named-import sites, zero `import * as` — already
+  tree-shaken.
 - Keep `cssCodeSplit:false` and `crossOrigin:false` — both are APK white-screen
   guards, not perf knobs.
 
