@@ -7,13 +7,17 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v7";
-const API_CACHE = "kora-api-v7";
+const SHELL_CACHE = "kora-shell-v8";
+const API_CACHE = "kora-api-v8";
 const COVER_CACHE = "kora-covers-v1";
 const DATA_CACHE = "kora-data-v1"; // perf plan 3.2: bundled dictionary shards (immutable)
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.
-const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
+const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/favicon.svg"];
+// NOTE: /fonts/* are intentionally NOT precached here. They are served by the
+// Worker and routed network-only in the fetch handler (see /fonts/ route) — the
+// old code cached them via SHELL_ASSETS, which could store a truncated copy
+// that failed OTS decoding permanently.
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
 const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
@@ -923,9 +927,13 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Google Fonts (Lexend / Inter / Lora / ...) are pulled in via an @import in
-  // the stylesheet, so without caching they simply fail offline and in the APK
-  // on a cold network — the exact "fonts don't work" symptom. Cache-first: the
-  // CSS and the woff2 files it points at are effectively immutable per URL.
+  // the stylesheet. We used to cache-first these, but a partial/opaque response
+  // fetched during a flaky network would get cached and then served forever,
+  // which is exactly how "fonts don't work" persisted across reloads (the OTS
+  // "decompressed WOFF 2.0 is less than compressed size" failure). Switch to
+  // network-first: the browser HTTP cache + gstatic edge cache already handle
+  // repeat fetches, so we only fall back to a cached copy when offline, and
+  // we only ever store a response we actually received in full (res.ok).
   if (
     event.request.method === "GET" &&
     (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com")
@@ -933,14 +941,13 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       (async () => {
         const cache = await caches.open(SHELL_CACHE);
-        const cached = await cache.match(event.request);
-        if (cached) return cached;
         try {
           const res = await fetch(event.request);
-          // Font CSS/woff2 are cross-origin; opaque responses are still usable.
-          if (res && (res.ok || res.type === "opaque")) cache.put(event.request, res.clone());
+          // Only cache a genuine, complete response — never an opaque/partial one.
+          if (res && res.ok) cache.put(event.request, res.clone());
           return res;
         } catch {
+          const cached = await cache.match(event.request);
           return cached || new Response("", { status: 504 });
         }
       })()
@@ -1000,6 +1007,17 @@ self.addEventListener("fetch", (event) => {
         }
       })()
     );
+    return;
+  }
+
+  // Fonts (same-origin /fonts/*, served by the Worker) are routed straight to
+  // the network and NOT cached by the SW. The browser HTTP cache + Cloudflare
+  // edge cache already handle repeat fetches, and SW-caching here only risked
+  // storing a truncated/partial copy that then failed OTS decoding forever
+  // ("Size of decompressed WOFF 2.0 is less than compressed size"). We must
+  // never serve a possibly-corrupt cached font, so we skip caching entirely.
+  if (url.pathname.startsWith("/fonts/")) {
+    event.respondWith(fetch(event.request));
     return;
   }
 
