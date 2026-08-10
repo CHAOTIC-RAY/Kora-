@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import ReactDOM from "react-dom";
 import JSZip from "jszip";
-import { BookMetadata, syncBookToCloud } from "../lib/firebase";
+import { BookMetadata, syncBookToCloud, getCommunityBooks, CommunityBook, likeCommunityBook, isCommunityBookLikedByUser, incrementCommunityBookReads, getCommunityComments, addCommunityComment, CommunityComment } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause } from "lucide-react";
+import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
 import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
+import CommunityStoriesHub from "./CommunityStoriesHub";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
@@ -57,6 +58,7 @@ interface DiscoverViewProps {
   onPlayAudiobook?: (book: BookMetadata) => void;
   showFirstBookNudge?: boolean;
   onDismissFirstBookNudge?: () => void;
+  onOpenCreateView?: () => void;
 }
 
 async function injectMetadataIntoEpub(
@@ -209,6 +211,7 @@ function DiscoverView({
   onPlayAudiobook,
   showFirstBookNudge = false,
   onDismissFirstBookNudge,
+  onOpenCreateView,
 }: DiscoverViewProps) {
   const getAudiobookCoverSrc = (coverUrl?: string | null) => resolveCoverImageSrc(coverUrl);
   const stripHtml = (html: string) => {
@@ -240,8 +243,40 @@ function DiscoverView({
     return tempStorage.get<any>("preferred_source") || "google";
   });
   const [loadingFeatured, setLoadingFeatured] = useState<boolean>(true);
-  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook" | "netgalley">("all");
+  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook" | "netgalley" | "community">("all");
   const [audiobookLibraryMode, setAudiobookLibraryMode] = useState(false);
+
+  // Community Wattpad-style Stories state
+  const [communityBooks, setCommunityBooks] = useState<CommunityBook[]>([]);
+  const [communityGenreFilter, setCommunityGenreFilter] = useState<string>("all");
+  const [selectedCommunityBook, setSelectedCommunityBook] = useState<CommunityBook | null>(null);
+  const [selectedCommunityChapterIdx, setSelectedCommunityChapterIdx] = useState<number>(0);
+  const [readingCommunityBook, setReadingCommunityBook] = useState<CommunityBook | null>(null);
+  const [communityComments, setCommunityComments] = useState<CommunityComment[]>([]);
+  const [newCommentText, setNewCommentText] = useState<string>("");
+  const [isLikingCommunityBook, setIsLikingCommunityBook] = useState<boolean>(false);
+  const [isUserLikedMap, setIsUserLikedMap] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (feedFilter === "community") {
+      async function loadCommunity() {
+        try {
+          const list = await getCommunityBooks(communityGenreFilter);
+          setCommunityBooks(list);
+          
+          const likedMap: Record<string, boolean> = {};
+          for (const b of list) {
+            const liked = await isCommunityBookLikedByUser(b.id, userId);
+            likedMap[b.id] = liked;
+          }
+          setIsUserLikedMap(likedMap);
+        } catch (err) {
+          console.warn("[DiscoverView] Error loading community books:", err);
+        }
+      }
+      loadCommunity();
+    }
+  }, [feedFilter, communityGenreFilter, userId]);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -258,6 +293,26 @@ function DiscoverView({
   const prefetchCache = React.useRef(new Map<number, any[]>());
   const prefetchingPage = React.useRef<number | null>(null);
   const [feedNotice, setFeedNotice] = useState<string | null>(null);
+
+  // Memoize randomized categories and books to prevent CPU overhead and layout shift on re-render
+  const shuffledFeaturedCategories = useMemo(() => {
+    const filtered = ALL_CATEGORIES.filter(cat => {
+      if (feedFilter === "all") return true;
+      return cat.source === feedFilter;
+    }).sort((a, b) => {
+      if (a.source === "audiobook" && b.source !== "audiobook") return 1;
+      if (b.source === "audiobook" && a.source !== "audiobook") return -1;
+      return 0;
+    });
+
+    const shuffledCats = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffledCats.map(cat => {
+      const rawBooks = featuredData[cat.id];
+      if (!Array.isArray(rawBooks) || rawBooks.length === 0) return null;
+      const books = [...rawBooks].sort(() => Math.random() - 0.5);
+      return { cat, books };
+    }).filter(Boolean) as { cat: any; books: any[] }[];
+  }, [featuredData, feedFilter]);
 
   // New NYT Category Detail States
   const [viewingCategory, setViewingCategory] = useState<any | null>(null);
@@ -357,12 +412,22 @@ function DiscoverView({
         sourceId: "rave"
       });
     } else if (directUrl && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
-      links.push({
-        label: "Direct Download",
-        url: directUrl,
-        isDirect: true,
-        sourceId: variant.sourceId || "rave"
-      });
+      const isMobilismUrl = directUrl.toLowerCase().includes("mobilism.org") || directUrl.toLowerCase().includes("mobilism");
+      if (isMobilismUrl) {
+        links.push({
+          label: "Mobilism Forum Mirror",
+          url: directUrl,
+          isDirect: false,
+          sourceId: variant.sourceId || "rave"
+        });
+      } else {
+        links.push({
+          label: "Direct Download",
+          url: directUrl,
+          isDirect: true,
+          sourceId: variant.sourceId || "rave"
+        });
+      }
     }
     const md5 = (variant.md5 || "").toLowerCase();
     if (/^[a-f0-9]{32}$/.test(md5)) {
@@ -424,26 +489,54 @@ function DiscoverView({
       return true;
     });
 
-    return [...filtered].sort((a, b) => {
+    const processed = filtered.map(m => {
+      const label = (m.label || "").toLowerCase();
+      const url = (m.url || "").toLowerCase();
+      const sourceId = (m.sourceId || "").toLowerCase();
+
+      const isRave = sourceId === "rave" || label.includes("rave") || url.includes("rave");
+      const isLibgen = sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis");
+      const isLibretext = label.includes("libretext") || url.includes("libretext");
+
+      const direct = isRave || isLibgen || isLibretext;
+      
+      let newLabel = m.label;
+      if (isLibretext && !label.includes("direct") && !label.includes("libretexts")) {
+        newLabel = "LibreTexts Direct Download";
+      } else if (isRave && !label.includes("direct") && !label.includes("rave")) {
+        newLabel = "Rave Direct Download";
+      } else if (isLibgen && !label.includes("libgen")) {
+        newLabel = "Libgen Mirror (libgen.li)";
+      } else if (url.includes("mobilism.org") || url.includes("mobilism")) {
+        newLabel = "Mobilism Forum Mirror";
+      }
+
+      return {
+        ...m,
+        label: newLabel,
+        isDirect: direct
+      };
+    });
+
+    return [...processed].sort((a, b) => {
       const getOrderScore = (m: any) => {
         const label = (m.label || "").toLowerCase();
         const url = (m.url || "").toLowerCase();
-        const sourceId = (m.sourceId || "").toLowerCase();
         
-        // 1. Rave Link
-        if (sourceId === "rave" || label.includes("rave") || url.includes("rave")) {
+        // 1. Rave Link / Libretext Direct
+        if (label.includes("rave") || label.includes("libretext") || url.includes("libretext")) {
           return 1;
         }
         // 2. LibGen
-        if (sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis")) {
+        if (label.includes("libgen") || url.includes("libgen") || url.includes("genesis")) {
           return 2;
         }
         // 3. Internet Archive
         if (label.includes("internet archive") || label.includes("archive") || url.includes("archive.org")) {
           return 3;
         }
-        // 4. Anna's Archive (anas archive)
-        if (label.includes("anna") || label.includes("anas") || url.includes("annas-archive") || url.includes("annas")) {
+        // 4. Anna's Archive / Mobilism Forum
+        if (label.includes("anna") || label.includes("anas") || url.includes("annas-archive") || url.includes("annas") || url.includes("mobilism")) {
           return 4;
         }
         return 5;
@@ -1020,9 +1113,20 @@ function DiscoverView({
     setFeaturedAudiobookSource(null);
 
     try {
-      let sourceBook = book.link || book.listenUrl ? book : null;
+      const isAudiobookSource = (b: any) => {
+        if (!b) return false;
+        if (b.isAudiobook) return true;
+        if (b.source === "hdaudiobooks" || b.source === "fulllengthaudiobooks") return true;
+        const linkStr = b.link || b.listenUrl || "";
+        return linkStr.includes("hdaudiobooks.com") || linkStr.includes("fulllengthaudiobooks.com");
+      };
+
+      let sourceBook = isAudiobookSource(book) ? book : null;
       if (!sourceBook) {
-        sourceBook = await findAudiobookMatch(book.title, book.author, generation);
+        const match = await findAudiobookMatch(book.title, book.author, generation);
+        if (isAudiobookSource(match)) {
+          sourceBook = match;
+        }
       }
       if (generation !== audiobookFetchGen.current) return;
       if (!sourceBook) {
@@ -2781,6 +2885,12 @@ function DiscoverView({
 
   function handleMirrorClick(m: any) {
     console.log("[DiscoverView] handleMirrorClick called for:", m.label, m.url);
+    // If it is a Mobilism URL, we cannot download directly in-app, so open it in a new tab
+    if (m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"))) {
+      console.log("[DiscoverView] Mobilism link detected. Opening in a new tab.");
+      window.open(m.url, '_blank');
+      return;
+    }
     // Always try direct download first - it will store in app's IndexedDB
     // and fall back to in-app browser on CAPTCHA/Cloudflare errors
     if (m.isDirect || (m.url && m.url.toLowerCase().includes("libgen"))) {
@@ -3457,68 +3567,35 @@ function DiscoverView({
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                All Feeds
-              </button>
-              <button
-                onClick={() => setFeedFilter("nyt")}
-                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "nyt"
-                    ? "border-kindle-text text-kindle-text"
-                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
-                }`}
-              >
-                <NytIcon className="w-3.5 h-3.5 text-kindle-text" />
-                NYT Best Sellers
+                Archives
               </button>
               <button
                 onClick={() => {
                   if (audiobookLibraryMode) closeAudiobookLibrary();
-                  setFeedFilter("netgalley");
+                  setFeedFilter("community");
                 }}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "netgalley"
-                    ? "border-kindle-text text-kindle-text"
+                  feedFilter === "community"
+                    ? "border-amber-500 text-amber-500 font-extrabold"
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                <NetgalleyIcon className="w-3.5 h-3.5 text-kindle-accent" />
-                NetGalley Catalog
-              </button>
-              <button
-                onClick={() => setFeedFilter("goodreads")}
-                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "goodreads"
-                    ? "border-kindle-text text-kindle-text"
-                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
-                }`}
-              >
-                <GoodreadsIcon className="w-3.5 h-3.5 text-[#553B08] dark:text-[#D9C5A0]" />
-                Goodreads Favorites
-              </button>
-              <button
-                onClick={() => {
-                  if (feedFilter === "audiobook" && audiobookLibraryMode) {
-                    closeAudiobookLibrary();
-                  } else {
-                    openAudiobookLibrary();
-                  }
-                }}
-                className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "audiobook"
-                    ? "border-kindle-text text-kindle-text"
-                    : "border-transparent text-kindle-text-muted hover:text-kindle-text"
-                }`}
-              >
-                <Headphones className="w-3.5 h-3.5 text-kindle-text" />
-                Audiobooks
+                <Feather className="w-3.5 h-3.5 text-amber-500" />
+                Community
               </button>
             </div>
             <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
-              {feedFilter === "all" ? "Showing all" : feedFilter === "goodreads" ? "Goodreads lists" : feedFilter === "audiobook" ? "Audiobooks" : feedFilter === "netgalley" ? "NetGalley Catalog" : "NYT Best Sellers"}
+              {feedFilter === "all" ? "Archives & Curated Feeds" : "Kora Community"}
             </div>
           </div>
 
-          {loadingFeatured ? (
+          {feedFilter === "community" ? (
+            <CommunityStoriesHub
+              userId={userId}
+              onOpenCreateView={onOpenCreateView}
+              onImportToLibrary={onBookAdded}
+            />
+          ) : loadingFeatured ? (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-5">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="space-y-2.5 animate-pulse">
@@ -3530,15 +3607,7 @@ function DiscoverView({
             </div>
           ) : (
             (() => {
-              const filteredCategories = ALL_CATEGORIES.filter(cat => {
-                if (feedFilter === "all") return true;
-                return cat.source === feedFilter;
-              }).sort((a, b) => {
-                if (a.source === "audiobook" && b.source !== "audiobook") return 1;
-                if (b.source === "audiobook" && a.source !== "audiobook") return -1;
-                return 0;
-              });
-              const totalBooks = filteredCategories.reduce((n, c) => n + (featuredData[c.id]?.length || 0), 0);
+              const totalBooks = shuffledFeaturedCategories.reduce((n, c) => n + c.books.length, 0);
               if (totalBooks === 0) {
                 return (
                   <div className="py-20 flex flex-col items-center gap-4 text-center">
@@ -3562,12 +3631,7 @@ function DiscoverView({
                   </div>
                 );
               }
-              // Randomize category order and books within each list for the featured widget
-              const shuffledCats = [...filteredCategories].sort(() => Math.random() - 0.5);
-              return shuffledCats.map((cat) => {
-                const rawBooks = featuredData[cat.id];
-                if (!Array.isArray(rawBooks) || rawBooks.length === 0) return null;
-                const books = [...rawBooks].sort(() => Math.random() - 0.5);
+              return shuffledFeaturedCategories.map(({ cat, books }) => {
                 return (
                   <section key={cat.id} className="discover-category-section space-y-3">
                     <div className="flex items-center justify-between">
@@ -3631,16 +3695,16 @@ function DiscoverView({
                       ))}
                     </div>
                   ) : (
-                  <div className="flex gap-3 overflow-x-auto pb-4 scroll-smooth snap-x">
+                  <div className="flex gap-3 overflow-x-auto pb-4 scroll-smooth snap-x gpu-scroll-container snap-carousel">
                     {books.map((book, idx) => (
                       <div
                         key={idx}
                         onMouseEnter={() => { if (canHover()) prefetchAudiobookDetail(book); }}
                         onFocus={() => prefetchAudiobookDetail(book)}
                         onClick={() => openBookDetail(book)}
-                        className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start"
+                        className="flex-shrink-0 w-28 sm:w-36 space-y-2 cursor-pointer group snap-start snap-carousel-item"
                       >
-                        <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
+                        <div className="aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500 gpu-image-card">
                           <BookRatingBadge book={book} />
                           {!hideCovers && book.coverUrl ? (
                             <img loading="lazy" decoding="async"
@@ -3879,73 +3943,78 @@ function DiscoverView({
                     </div>
                   ) : (
                     <div className="space-y-1.5">
-                      {mirrors.map((m, i) => (
-                        <div
-                          key={i}
-                          onClick={() => handleMirrorClick(m)}
-                          className={`w-full p-3 rounded-xl border transition text-left group flex items-center justify-between cursor-pointer ${
-                            m.isDirect 
-                              ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card" 
-                              : "border-kindle-border/60 hover:border-amber-500/40 bg-kindle-bg/40 hover:bg-kindle-card/60"
-                          }`}
-                        >
-                          <div className="overflow-hidden flex-1 min-w-0 pr-2">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-bold font-sans truncate pr-2">{m.label}</p>
-                              {m.isDirect ? (
-                                <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
-                              ) : (
-                                <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">External</span>
-                              )}
+                      {mirrors.map((m, i) => {
+                        const isMobilismReal = m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"));
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => handleMirrorClick(m)}
+                            className={`w-full p-3 rounded-xl border transition text-left group flex items-center justify-between cursor-pointer ${
+                              m.isDirect 
+                                ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card" 
+                                : "border-kindle-border/60 hover:border-amber-500/40 bg-kindle-bg/40 hover:bg-kindle-card/60"
+                            }`}
+                          >
+                            <div className="overflow-hidden flex-1 min-w-0 pr-2">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold font-sans truncate pr-2">{m.label}</p>
+                                {m.isDirect ? (
+                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
+                                ) : (
+                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">External</span>
+                                )}
+                              </div>
+                              <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5 opacity-60">
+                                {isMobilismReal ? "Mobilism Forum link (requires external browser login)" : m.url}
+                              </p>
                             </div>
-                            <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5 opacity-60">{m.url}</p>
-                          </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {/* Always show Open in New Tab button for all mirrors */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(m.url, '_blank');
-                              }}
-                              title="Open in new tab"
-                              className="p-2 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </button>
-
-                            {m.isDirect && (
+                            <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              {/* Always show Open in New Tab button for all mirrors */}
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onOpenBrowser?.(m.url);
+                                  window.open(m.url, '_blank');
                                 }}
-                                title="Open in-app browser"
+                                title="Open in new tab"
                                 className="p-2 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
                               >
-                                <Globe className="w-3.5 h-3.5" />
+                                <ExternalLink className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleMirrorClick(m);
-                              }}
-                              title={m.isDirect ? "Download directly" : "Open external mirror"}
-                              className={`p-2 rounded-xl border transition cursor-pointer ${
-                                m.isDirect
-                                  ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"
-                                  : "bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white border-amber-500/20"
-                              }`}
-                            >
-                              {m.isDirect ? <Download className="w-3.5 h-3.5" /> : <ExternalLink className="w-3.5 h-3.5" />}
-                            </button>
+
+                              {m.isDirect && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenBrowser?.(m.url);
+                                  }}
+                                  title="Open in-app browser"
+                                  className="p-2 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+                                >
+                                  <Globe className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMirrorClick(m);
+                                }}
+                                title={m.isDirect ? "Download directly" : "Open external mirror"}
+                                className={`p-2 rounded-xl border transition cursor-pointer ${
+                                  m.isDirect
+                                    ? "bg-emerald-500/10 hover:bg-emerald-500 text-emerald-600 hover:text-white border-emerald-500/20"
+                                    : "bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white border-amber-500/20"
+                                }`}
+                              >
+                                {m.isDirect ? <Download className="w-3.5 h-3.5" /> : <ExternalLink className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -3995,9 +4064,9 @@ function DiscoverView({
       {selectedFeaturedBook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => dismissDiscoverDetail()} />
-          <div className="relative bg-kindle-bg w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200">
+          <div className="relative bg-kindle-card kindle-card w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="sticky top-0 z-10 flex items-center justify-between p-4 md:p-6 bg-kindle-bg/95 backdrop-blur-md border-b border-kindle-border">
+            <div className="sticky top-0 z-10 flex items-center justify-between p-4 md:p-6 bg-kindle-card/95 backdrop-blur-md border-b border-kindle-border">
               <h2 className="text-sm font-bold uppercase tracking-widest text-kindle-text font-sans">Book Details</h2>
               <button 
                 onClick={closeBookDetail}
@@ -4007,7 +4076,7 @@ function DiscoverView({
               </button>
             </div>
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar bg-kindle-bg">
+            <div className="flex-1 overflow-y-auto custom-scrollbar bg-kindle-card">
               <div className="max-w-6xl mx-auto px-6 py-10">
                 <div className="flex flex-col md:flex-row gap-10">
                   {/* Left Column: Cover & Action Buttons */}
@@ -4318,81 +4387,59 @@ function DiscoverView({
                                   <p className="text-xs text-kindle-text-muted italic py-4 text-center">No mirrors available for this variant.</p>
                                 ) : (
                                   <div className="space-y-2">
-                                    {featuredMirrors.map((m, i) => (
-                                      <div
-                                        key={i}
-                                        onClick={() => handleMirrorClick(m)}
-                                        className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
-                                          m.isDirect 
-                                            ? "border-kindle-border hover:border-emerald-500/40 hover:bg-emerald-500/5 bg-kindle-bg shadow-sm" 
-                                            : "border-kindle-border hover:border-amber-500/40 hover:bg-amber-500/5 bg-kindle-bg shadow-sm"
-                                        }`}
-                                      >
-                                        <div className="min-w-0 flex-1 pr-4">
-                                          <div className="flex items-center gap-2 mb-1">
-                                            <span className={`w-1.5 h-1.5 rounded-full ${m.isDirect ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                            <p className="text-sm font-bold text-kindle-text group-hover:text-kindle-accent transition-colors">{m.label}</p>
+                                    {featuredMirrors.map((m, i) => {
+                                      const isMobilismReal = m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"));
+                                      return (
+                                        <div
+                                          key={i}
+                                          onClick={() => handleMirrorClick(m)}
+                                          className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
+                                            m.isDirect 
+                                              ? "border-kindle-border hover:border-emerald-500/40 hover:bg-emerald-500/5 bg-kindle-bg shadow-sm" 
+                                              : "border-kindle-border hover:border-amber-500/40 hover:bg-amber-500/5 bg-kindle-bg shadow-sm"
+                                          }`}
+                                        >
+                                          <div className="min-w-0 flex-1 pr-4">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <span className={`w-1.5 h-1.5 rounded-full ${m.isDirect ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                              <p className="text-sm font-bold text-kindle-text group-hover:text-kindle-accent transition-colors">{m.label}</p>
+                                            </div>
+                                            <p className="text-[10px] text-kindle-text-muted/60 truncate font-mono">
+                                              {isMobilismReal ? "Mobilism Forum link (requires external browser login)" : m.url}
+                                            </p>
                                           </div>
-                                          <p className="text-[10px] text-kindle-text-muted/60 truncate font-mono">{m.url}</p>
+                                          <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                            {/* Always show Open in New Tab button for featured details mirrors */}
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                window.open(m.url, "_blank");
+                                              }}
+                                              title="Open in new tab"
+                                              className="p-2.5 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition-all"
+                                            >
+                                              <ExternalLink className="w-4 h-4" />
+                                            </button>
+
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleMirrorClick(m);
+                                              }}
+                                              className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
+                                                m.isDirect
+                                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
+                                                  : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
+                                              }`}
+                                            >
+                                              {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+                                            </button>
+                                          </div>
                                         </div>
-                                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-
-                                          {/* Always show Open in New Tab button for featured details mirrors */}
-
-                                          <button
-
-                                            type="button"
-
-                                            onClick={(e) => {
-
-                                              e.stopPropagation();
-
-                                              window.open(m.url, "_blank");
-
-                                            }}
-
-                                            title="Open in new tab"
-
-                                            className="p-2.5 rounded-xl border border-kindle-border hover:border-kindle-accent/50 hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition-all"
-
-                                          >
-
-                                            <ExternalLink className="w-4 h-4" />
-
-                                          </button>
-
-
-                                          <button
-
-                                            type="button"
-
-                                            onClick={(e) => {
-
-                                              e.stopPropagation();
-
-                                              handleMirrorClick(m);
-
-                                            }}
-
-                                            className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
-
-                                              m.isDirect
-
-                                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
-
-                                                : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
-
-                                            }`}
-
-                                          >
-
-                                            {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
-
-                                          </button>
-
-                                        </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>

@@ -709,28 +709,30 @@ html.kora-android body {
 }
 
 body .kora-mobile-footer.is-glass-tab {
-  background: rgba(15, 15, 18, 0.45) !important;
+  background: color-mix(in srgb, var(--theme-card) 45%, transparent) !important;
   backdrop-filter: blur(24px) saturate(190%) !important;
   -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: color-mix(in srgb, var(--theme-text) 12%, transparent) !important;
 }
 
 body .kora-mobile-footer.is-glass-tab .kora-tab-item {
-  color: rgba(255, 255, 255, 0.55) !important;
+  color: var(--theme-text-muted) !important;
+  opacity: 0.75;
 }
 
 body .kora-mobile-footer.is-glass-tab .kora-tab-item.is-active {
-  color: #ffffff !important;
+  color: var(--theme-text) !important;
+  opacity: 1;
 }
 
 body .kora-mobile-footer.is-glass-tab .kora-tab-pill {
-  background: rgba(255, 255, 255, 0.14) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+  background: color-mix(in srgb, var(--theme-text) 12%, transparent) !important;
+  border-color: color-mix(in srgb, var(--theme-text) 18%, transparent) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1) !important;
 }
 
 body .kora-mobile-footer.is-glass-tab .kora-tab-pill * {
-  color: #ffffff !important;
+  color: var(--theme-text) !important;
 }
 
 .kora-tab-bar {
@@ -743,11 +745,15 @@ body .kora-mobile-footer.is-glass-tab .kora-tab-pill * {
 }
 
 .kora-tab-panel {
-  /* keep-alive tabs: inactive panels stay mounted but hidden */
+  /* keep-alive tabs: isolated style context for zero cross-panel thrashing without trapping fixed viewport overlays */
+  contain: style;
 }
 
 .kora-tab-panel[hidden] {
   display: none !important;
+  content-visibility: hidden;
+  contain-intrinsic-size: 0px;
+  pointer-events: none !important;
 }
 
 .discover-category-section {

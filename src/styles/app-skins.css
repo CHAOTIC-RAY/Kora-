@@ -565,6 +565,33 @@ body.skin-material-ex select {
    ═══════════════════════════════════════════════════════════════ */
 
 body.skin-nothing {
+  --nothing-dot: rgba(0, 0, 0, 0.08);
+  --nothing-dot-active: rgba(0, 0, 0, 0.4);
+  --nothing-red: #ff2020;
+
+  --theme-bg: #f4f4f5 !important;
+  --theme-card: #ffffff !important;
+  --theme-text: #000000 !important;
+  --theme-text-muted: #71717a !important;
+  --theme-border: #e4e4e7 !important;
+  --theme-accent: #ff2020 !important;
+
+  /* Propagate skin colors to Tailwind utility variables */
+  --color-kindle-bg: #f4f4f5 !important;
+  --color-kindle-text: #000000 !important;
+  --color-kindle-text-muted: #71717a !important;
+  --color-kindle-border: #e4e4e7 !important;
+  --color-kindle-accent: #ff2020 !important;
+  --color-kindle-card: #ffffff !important;
+
+  background-color: #f4f4f5 !important;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.06) 1.2px, transparent 1.2px) !important;
+  background-size: 16px 16px !important;
+  color: #000000 !important;
+}
+
+body.skin-nothing.dark,
+html.dark body.skin-nothing {
   --nothing-dot: rgba(255, 255, 255, 0.22);
   --nothing-dot-active: rgba(255, 255, 255, 0.6);
   --nothing-red: #ff2020;
@@ -577,12 +604,12 @@ body.skin-nothing {
   --theme-accent: #ff2020 !important;
 
   /* Propagate skin colors to Tailwind utility variables that :root overrides directly */
-  --color-kindie-bg: #000000 !important;
-  --color-kindie-text: #ffffff !important;
-  --color-kindie-text-muted: #a1a1aa !important;
-  --color-kindie-border: #27272a !important;
-  --color-kindie-accent: #ff2020 !important;
-  --color-kindie-card: #121214 !important;
+  --color-kindle-bg: #000000 !important;
+  --color-kindle-text: #ffffff !important;
+  --color-kindle-text-muted: #a1a1aa !important;
+  --color-kindle-border: #27272a !important;
+  --color-kindle-accent: #ff2020 !important;
+  --color-kindle-card: #121214 !important;
 
   background-color: #000000 !important;
   background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1.2px, transparent 1.2px) !important;
@@ -590,7 +617,7 @@ body.skin-nothing {
   color: #ffffff !important;
 }
 
-/* Force dark mode crisp white text across Nothing OS */
+/* Force correct text colors across Nothing OS dynamically */
 body.skin-nothing h1,
 body.skin-nothing h2,
 body.skin-nothing h3,
@@ -609,7 +636,7 @@ body.skin-nothing .text-neutral-700,
 body.skin-nothing .text-gray-900,
 body.skin-nothing .text-black,
 body.skin-nothing .text-kindle-text {
-  color: #ffffff !important;
+  color: var(--theme-text) !important;
 }
 
 body.skin-nothing .text-neutral-500,
@@ -617,62 +644,99 @@ body.skin-nothing .text-slate-500,
 body.skin-nothing .text-neutral-400,
 body.skin-nothing .text-slate-400,
 body.skin-nothing .text-kindle-text-muted {
-  color: #a1a1aa !important;
+  color: var(--theme-text-muted) !important;
 }
 
 body.skin-nothing .kora-app-header {
-  background: rgba(0, 0, 0, 0.92) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
   border-bottom: 1px dashed var(--nothing-dot) !important;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
+body.skin-nothing.dark .kora-app-header,
+html.dark body.skin-nothing .kora-app-header {
+  background: rgba(0, 0, 0, 0.92) !important;
+}
 
 body.skin-nothing .kora-desktop-nav {
   border-radius: 9999px !important;
-  background: rgba(18, 18, 22, 0.9) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
   border: 1px solid var(--nothing-dot) !important;
-  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.12);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
+body.skin-nothing.dark .kora-desktop-nav,
+html.dark body.skin-nothing .kora-desktop-nav {
+  background: rgba(18, 18, 22, 0.9) !important;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.8);
+}
 
 body.skin-nothing .kora-desktop-nav-item.is-active {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.15);
+  font-weight: 800 !important;
+}
+body.skin-nothing .kora-desktop-nav-item.is-active * {
+  color: #ffffff !important;
+}
+body.skin-nothing.dark .kora-desktop-nav-item.is-active,
+html.dark body.skin-nothing .kora-desktop-nav-item.is-active {
   background: #ffffff !important;
   color: #000000 !important;
   border: 1px solid #ffffff !important;
-  border-radius: 9999px !important;
   box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
-  font-weight: 800 !important;
 }
-
-body.skin-nothing .kora-desktop-nav-item.is-active * {
+body.skin-nothing.dark .kora-desktop-nav-item.is-active *,
+html.dark body.skin-nothing .kora-desktop-nav-item.is-active * {
   color: #000000 !important;
 }
 
 body.skin-nothing .kora-mobile-footer {
-  background: rgba(0, 0, 0, 0.95) !important;
+  background: rgba(255, 255, 255, 0.95) !important;
   border-top: 1px dashed var(--nothing-dot) !important;
   border-radius: 1.5rem 1.5rem 0 0 !important;
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
 }
+body.skin-nothing.dark .kora-mobile-footer,
+html.dark body.skin-nothing .kora-mobile-footer {
+  background: rgba(0, 0, 0, 0.95) !important;
+}
 
 body.skin-nothing .kora-tab-pill {
-  background: #ffffff !important;
-  color: #000000 !important;
-  border: 1px solid #ffffff !important;
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 1px solid #000000 !important;
   border-radius: 9999px !important;
   font-weight: 700 !important;
 }
-
 body.skin-nothing .kora-tab-pill * {
+  color: #ffffff !important;
+}
+body.skin-nothing.dark .kora-tab-pill,
+html.dark body.skin-nothing .kora-tab-pill {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #ffffff !important;
+}
+body.skin-nothing.dark .kora-tab-pill *,
+html.dark body.skin-nothing .kora-tab-pill * {
   color: #000000 !important;
 }
 
 body.skin-nothing .kora-chrome-btn {
   border-radius: 0.5rem !important;
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(0, 0, 0, 0.05) !important;
   border: 1px solid var(--nothing-dot) !important;
+  color: #000000 !important;
+}
+body.skin-nothing.dark .kora-chrome-btn,
+html.dark body.skin-nothing .kora-chrome-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
   color: #ffffff !important;
 }
 
@@ -681,6 +745,19 @@ body.skin-nothing .bg-kindle-card,
 body.skin-nothing section.bg-kindle-card,
 body.skin-nothing .bg-white {
   border-radius: 1rem !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+  color: #000000 !important;
+}
+body.skin-nothing.dark .kindle-card,
+body.skin-nothing.dark .bg-kindle-card,
+body.skin-nothing.dark section.bg-kindle-card,
+body.skin-nothing.dark .bg-white,
+html.dark body.skin-nothing .kindle-card,
+html.dark body.skin-nothing .bg-kindle-card,
+html.dark body.skin-nothing section.bg-kindle-card,
+html.dark body.skin-nothing .bg-white {
   background: rgba(18, 18, 22, 0.95) !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
@@ -689,6 +766,13 @@ body.skin-nothing .bg-white {
 
 body.skin-nothing .kindle-card:hover,
 body.skin-nothing .bg-kindle-card:hover {
+  border-color: rgba(0, 0, 0, 0.25) !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+}
+body.skin-nothing.dark .kindle-card:hover,
+body.skin-nothing.dark .bg-kindle-card:hover,
+html.dark body.skin-nothing .kindle-card:hover,
+html.dark body.skin-nothing .bg-kindle-card:hover {
   border-color: rgba(255, 255, 255, 0.5) !important;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.9);
 }
@@ -698,29 +782,64 @@ body.skin-nothing input[type="search"],
 body.skin-nothing textarea,
 body.skin-nothing select {
   border-radius: 0.5rem !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  color: #000000 !important;
+}
+body.skin-nothing.dark input[type="text"],
+body.skin-nothing.dark input[type="search"],
+body.skin-nothing.dark textarea,
+body.skin-nothing.dark select,
+html.dark body.skin-nothing input[type="text"],
+html.dark body.skin-nothing input[type="search"],
+html.dark body.skin-nothing textarea,
+html.dark body.skin-nothing select {
   background: rgba(12, 12, 16, 0.95) !important;
   border: 1px solid rgba(255, 255, 255, 0.28) !important;
   color: #ffffff !important;
 }
 
-/* Nothing OS Active Red LED Badges and Matrix Icon details */
 body.skin-nothing .bg-neutral-900,
 body.skin-nothing .bg-slate-900,
 body.skin-nothing .bg-black,
 body.skin-nothing .bg-kindle-text {
-  background-color: #ffffff !important;
-  color: #000000 !important;
+  background-color: #000000 !important;
+  color: #ffffff !important;
 }
-
 body.skin-nothing .bg-neutral-900 *,
 body.skin-nothing .bg-slate-900 *,
 body.skin-nothing .bg-black *,
 body.skin-nothing .bg-kindle-text * {
+  color: #ffffff !important;
+}
+body.skin-nothing.dark .bg-neutral-900,
+body.skin-nothing.dark .bg-slate-900,
+body.skin-nothing.dark .bg-black,
+body.skin-nothing.dark .bg-kindle-text,
+html.dark body.skin-nothing .bg-neutral-900,
+html.dark body.skin-nothing .bg-slate-900,
+html.dark body.skin-nothing .bg-black,
+html.dark body.skin-nothing .bg-kindle-text {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+body.skin-nothing.dark .bg-neutral-900 *,
+body.skin-nothing.dark .bg-slate-900 *,
+body.skin-nothing.dark .bg-black *,
+body.skin-nothing.dark .bg-kindle-text *,
+html.dark body.skin-nothing .bg-neutral-900 *,
+html.dark body.skin-nothing .bg-slate-900 *,
+html.dark body.skin-nothing .bg-black *,
+html.dark body.skin-nothing .bg-kindle-text * {
   color: #000000 !important;
 }
 
 body.skin-nothing svg {
   stroke-width: 2.2px;
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.1));
+}
+body.skin-nothing.dark svg,
+html.dark body.skin-nothing svg {
   filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.25));
 }
 
@@ -742,12 +861,12 @@ body.skin-cyberpunk {
   --theme-accent: #ff007f !important;
 
   /* Propagate skin colors to Tailwind utility variables that :root overrides directly */
-  --color-kindie-bg: #050510 !important;
-  --color-kindie-text: #00fff9 !important;
-  --color-kindie-text-muted: #80e6ff !important;
-  --color-kindie-border: rgba(0, 255, 249, 0.35) !important;
-  --color-kindie-accent: #ff007f !important;
-  --color-kindie-card: #08081a !important;
+  --color-kindle-bg: #050510 !important;
+  --color-kindle-text: #00fff9 !important;
+  --color-kindle-text-muted: #80e6ff !important;
+  --color-kindle-border: rgba(0, 255, 249, 0.35) !important;
+  --color-kindle-accent: #ff007f !important;
+  --color-kindle-card: #08081a !important;
 
   background-color: #050510 !important;
   background-image:
@@ -934,12 +1053,12 @@ body.skin-library {
   --theme-accent: #d4a054 !important;
 
   /* Propagate skin colors to Tailwind utility variables that :root overrides directly */
-  --color-kindie-bg: #221006 !important;
-  --color-kindie-text: #f6eedb !important;
-  --color-kindie-text-muted: #d4a054 !important;
-  --color-kindie-border: #d4a054 !important;
-  --color-kindie-accent: #d4a054 !important;
-  --color-kindie-card: #f6eedb !important;
+  --color-kindle-bg: #221006 !important;
+  --color-kindle-text: #f6eedb !important;
+  --color-kindle-text-muted: #d4a054 !important;
+  --color-kindle-border: #d4a054 !important;
+  --color-kindle-accent: #d4a054 !important;
+  --color-kindle-card: #f6eedb !important;
 
   background-color: #221006 !important;
   background-image:
@@ -1049,10 +1168,16 @@ body.skin-library section.bg-kindle-card {
   color: #2a1406 !important;
 }
 
-body.skin-library .kindle-card *,
-body.skin-library .bg-kindle-card *,
-body.skin-library section.bg-kindle-card * {
+body.skin-library .kindle-card *:not([class*="text-"]):not(svg),
+body.skin-library .bg-kindle-card *:not([class*="text-"]):not(svg),
+body.skin-library section.bg-kindle-card *:not([class*="text-"]):not(svg) {
   color: #2a1406;
+}
+
+body.skin-library .kindle-card svg,
+body.skin-library .bg-kindle-card svg,
+body.skin-library section.bg-kindle-card svg {
+  color: inherit !important;
 }
 
 body.skin-library .kindle-card .text-neutral-500,
@@ -1118,7 +1243,6 @@ body.skin-library .kora-tab-pill {
     inset 0 1px 0 rgba(255, 255, 255, 0.85),
     0 4px 14px rgba(0, 0, 0, 0.45) !important;
   font-weight: 800 !important;
-  padding: 0.35rem 0.95rem !important;
 }
 
 body.skin-library .kora-tab-pill * {
@@ -1131,24 +1255,72 @@ body.skin-library .kora-tab-item {
   transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+body.skin-library .kora-tab-item .kora-tab-icon svg,
+body.skin-library .kora-tab-item .kora-tab-icon * {
+  color: #d4a054 !important;
+}
+
 body.skin-library .kora-tab-item:hover {
   opacity: 1;
 }
 
 body.skin-library .kora-tab-item.is-active {
-  color: #f6eedb !important;
+  color: #2a1406 !important;
   opacity: 1;
   transform: translateY(-1px);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 }
 
-body.skin-library .kora-tab-item.is-active .kora-tab-icon svg {
-  color: #f6eedb !important;
-  filter: drop-shadow(0 0 6px rgba(212, 160, 84, 0.55));
+body.skin-library .kora-tab-item.is-active .kora-tab-icon svg,
+body.skin-library .kora-tab-item.is-active .kora-tab-icon * {
+  color: #2a1406 !important;
 }
 
 body.skin-library .kora-tab-item.is-active span {
-  color: #f6eedb !important;
+  color: #2a1406 !important;
+}
+
+/* Also ensure that if the tab bar has .is-glass-tab on the feed view, the library skin's beautiful wood-shelf aesthetic is preserved intact */
+body.skin-library .kora-mobile-footer.is-glass-tab {
+  background: linear-gradient(0deg, #2c160a 0%, #3d2010 100%) !important;
+  border-top: 3px solid #d4a054 !important;
+  border-radius: 1.25rem 1.25rem 0 0 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 -6px 32px rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-item {
+  color: #d4a054 !important;
+  opacity: 0.72;
+}
+
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-item .kora-tab-icon svg,
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-item .kora-tab-icon * {
+  color: #d4a054 !important;
+}
+
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-item.is-active {
+  color: #2a1406 !important;
+  opacity: 1;
+}
+
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-item.is-active .kora-tab-icon svg,
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-item.is-active .kora-tab-icon * {
+  color: #2a1406 !important;
+}
+
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-pill {
+  background: linear-gradient(135deg, #f6eedb 0%, #e8dcc4 100%) !important;
+  border-color: #d4a054 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 4px 14px rgba(0, 0, 0, 0.45) !important;
+}
+
+body.skin-library .kora-mobile-footer.is-glass-tab .kora-tab-pill * {
+  color: #2a1406 !important;
 }
 
 /* ── Custom Skin Scrollbars ── */
@@ -1186,4 +1358,34 @@ body.skin-nothing ::-webkit-scrollbar-track {
 body.skin-nothing ::-webkit-scrollbar-thumb {
   background: #ffffff;
   border-radius: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   High-Performance Rendering & GPU Acceleration Optimizations
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Hardware accelerated scroll layers with smooth momentum scrolling on iOS and Android browsers */
+.gpu-scroll-container {
+  -webkit-overflow-scrolling: touch;
+  will-change: scroll-position;
+  backface-visibility: hidden;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Accelerated cover/image cards with composite layers to avoid layout reflows */
+.gpu-image-card {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Fluid snap scrolling for categories */
+.snap-carousel {
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+}
+
+.snap-carousel-item {
+  scroll-snap-align: start;
 }

@@ -619,3 +619,460 @@ export async function loadBookHighlights(userId: string, bookId: string): Promis
   return localHighlights;
 }
 
+// ==========================================
+// Community Stories (Kora publishing)
+// ==========================================
+
+export interface CommunityBook {
+  id: string;
+  title: string;
+  author: string;
+  authorId: string;
+  authorAvatar?: string;
+  description: string;
+  genre: string;
+  tags?: string[];
+  coverUrl?: string;
+  coverGradient?: string;
+  chapters: { id: string; title: string; text: string; html?: string }[];
+  readsCount: number;
+  likesCount: number;
+  commentsCount: number;
+  publishedAt: string;
+  updatedAt: string;
+  language?: string;
+}
+
+export interface CommunityComment {
+  id: string;
+  bookId: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  text: string;
+  createdAt: string;
+}
+
+export const SEEDED_COMMUNITY_BOOKS: CommunityBook[] = [
+  {
+    id: "comm_seed_1",
+    title: "The Last Alchemist of Aethelgard",
+    author: "Evelyn Thorne",
+    authorId: "author_evelyn",
+    authorAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80",
+    description: "In a kingdom where magic is outlawed and alchemy is punished by exile, Eliana discovers an ancient codex hidden beneath her grandfather's workshop. When soldiers storm the city, she must master forgotten elemental transmutations before the moon rises.",
+    genre: "Fantasy",
+    tags: ["Magic", "Ancient Mystery", "Alchemist", "Adventure"],
+    coverGradient: "linear-gradient(135deg, #1e3c72 0%, #2a5298 100%)",
+    chapters: [
+      {
+        id: "c1",
+        title: "Chapter 1: The Silver Dust",
+        text: "The smell of dried lavender and quicksilver filled the subterranean cellar. Eliana carefully wiped the brass scales, her fingers stained with indigo dye. Deep in the heart of Aethelgard, where the Crown forbidden any work touching the Aether, her family had secretly preserved the craft for three generations.",
+        html: "<p>The smell of dried lavender and quicksilver filled the subterranean cellar. Eliana carefully wiped the brass scales, her fingers stained with indigo dye. Deep in the heart of Aethelgard, where the Crown forbidden any work touching the Aether, her family had secretly preserved the craft for three generations.</p><p>'You are dreaming again, child,' Master Aaron rasped from his velvet armchair in the corner. 'Aethelgard does not welcome dreamers. It welcomes taxpayers and silent soldiers.'</p><p>Eliana turned to the heavy mahogany cabinet. Beneath a loose stone, the leather book lay untouched—its silver spine humming softly against her palm.</p>"
+      },
+      {
+        id: "c2",
+        title: "Chapter 2: The Midnight Raid",
+        text: "Iron boots resounded against cobblestones outside the workshop windows. Torch light flickered across the glass panes as the Royal Inquisitors surrounded the court.",
+        html: "<p>Iron boots resounded against cobblestones outside the workshop windows. Torch light flickered across the glass panes as the Royal Inquisitors surrounded the court.</p><p>'Open in the name of the Crown!' a voice roared through the door, followed by the splintering crack of heavy timber.</p>"
+      }
+    ],
+    readsCount: 24890,
+    likesCount: 1840,
+    commentsCount: 142,
+    publishedAt: "2026-07-12T10:00:00.000Z",
+    updatedAt: "2026-08-01T14:30:00.000Z",
+    language: "en"
+  },
+  {
+    id: "comm_seed_2",
+    title: "Midnight in Neo-Tokyo",
+    author: "Kenji Sato",
+    authorId: "author_kenji",
+    authorAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80",
+    description: "In the rain-slicked neon alleys of 2099 Neo-Tokyo, illegal memory couriers trade secret thoughts. When Ren intercepts an encrypted memory node belonging to the megacorp's CEO, he realizes it contains a human consciousness that doesn't want to die.",
+    genre: "Sci-Fi",
+    tags: ["Cyberpunk", "Neo-Tokyo", "Memory Courier", "Thriller"],
+    coverGradient: "linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%)",
+    chapters: [
+      {
+        id: "c1",
+        title: "Chapter 1: Neon Whispers",
+        text: "Rain fell in glowing violet sheets through the holographic billboards of Shinjuku. Ren adjusted his neural visor, the optical interface pulsing red as data streams flooded his optic nerve.",
+        html: "<p>Rain fell in glowing violet sheets through the holographic billboards of Shinjuku. Ren adjusted his neural visor, the optical interface pulsing red as data streams flooded his optic nerve.</p><p>The package was light—a micro-crystal drive no larger than a grain of rice, sealed inside a lead casing. But the heat radiating through his pocket told him this wasn't ordinary corporate telemetry.</p>"
+      }
+    ],
+    readsCount: 18520,
+    likesCount: 2120,
+    commentsCount: 98,
+    publishedAt: "2026-07-20T18:00:00.000Z",
+    updatedAt: "2026-08-05T11:20:00.000Z",
+    language: "en"
+  },
+  {
+    id: "comm_seed_3",
+    title: "Coffee, Starlight & You",
+    author: "Aria Montgomery",
+    authorId: "author_aria",
+    authorAvatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80",
+    description: "When Maya takes a night shift at an astronomy-themed café in Seattle, she doesn't expect her regulars to include a mysterious astrophysics student who leaves handwritten universe equations on paper napkins every Tuesday at 2 AM.",
+    genre: "Romance",
+    tags: ["Cozy Romance", "Seattle", "Astronomy", "Coffee Shop"],
+    coverGradient: "linear-gradient(135deg, #eecda3 0%, #ef629f 100%)",
+    chapters: [
+      {
+        id: "c1",
+        title: "Chapter 1: The Tuesday Napkin",
+        text: "The espresso machine hissed, releasing a cloud of sweet hazelnut steam into the quiet café. It was 1:45 AM, and outside, rain beat rhythmically against the glass of Starlight Brews.",
+        html: "<p>The espresso machine hissed, releasing a cloud of sweet hazelnut steam into the quiet café. It was 1:45 AM, and outside, rain beat rhythmically against the glass of Starlight Brews.</p><p>Maya wiped down the counter, glancing toward booth four. He was sitting there again—the dark coat, messy copper hair, and a stack of star maps spread across the table.</p>"
+      }
+    ],
+    readsCount: 32100,
+    likesCount: 3420,
+    commentsCount: 285,
+    publishedAt: "2026-06-15T12:00:00.000Z",
+    updatedAt: "2026-08-08T09:15:00.000Z",
+    language: "en"
+  },
+  {
+    id: "comm_seed_4",
+    title: "Whispers in the Fog",
+    author: "Marcus Vance",
+    authorId: "author_marcus",
+    authorAvatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80",
+    description: "An isolated lighthouse off the coast of Maine receives radio distress calls from a ship that sank fifty years ago. Detective Clara Briggs arrives to investigate, only to find the lighthouse keeper's diary ends with a warning: 'Do not open the door when the fog speaks.'",
+    genre: "Mystery",
+    tags: ["Psychological Thriller", "Lighthouse", "Coastal Mystery", "Suspense"],
+    coverGradient: "linear-gradient(135deg, #232526 0%, #414345 100%)",
+    chapters: [
+      {
+        id: "c1",
+        title: "Chapter 1: Blackwood Light",
+        text: "The ferry pitch and rolled against six-foot Atlantic swells. Through the heavy sea mist, Blackwood Island rose like a jagged black tooth against the gray sky.",
+        html: "<p>The ferry pitch and rolled against six-foot Atlantic swells. Through the heavy sea mist, Blackwood Island rose like a jagged black tooth against the gray sky.</p><p>Clara pulled her trench coat tighter against the salt air. In her pocket was the audio tape sent to state police yesterday—the voice raspy and panicked: 'The fog isn't sea water. It has eyes.'</p>"
+      }
+    ],
+    readsCount: 12840,
+    likesCount: 920,
+    commentsCount: 64,
+    publishedAt: "2026-07-01T08:00:00.000Z",
+    updatedAt: "2026-07-28T16:45:00.000Z",
+    language: "en"
+  }
+];
+
+export async function publishCommunityBook(
+  bookData: Omit<CommunityBook, "id" | "readsCount" | "likesCount" | "commentsCount" | "publishedAt" | "updatedAt"> & { id?: string }
+): Promise<CommunityBook> {
+  const id = bookData.id || `comm_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const now = new Date().toISOString();
+
+  const fullBook: CommunityBook = {
+    ...bookData,
+    id,
+    readsCount: (bookData as any).readsCount || 1,
+    likesCount: (bookData as any).likesCount || 0,
+    commentsCount: (bookData as any).commentsCount || 0,
+    publishedAt: (bookData as any).publishedAt || now,
+    updatedAt: now,
+  };
+
+  // 1. Save to local storage cache for instant offline & client update
+  try {
+    const cachedStr = localStorage.getItem("kora_community_books_cache");
+    let cachedList: CommunityBook[] = cachedStr ? JSON.parse(cachedStr) : [];
+    const existingIdx = cachedList.findIndex((b) => b.id === id);
+    if (existingIdx >= 0) {
+      cachedList[existingIdx] = fullBook;
+    } else {
+      cachedList.unshift(fullBook);
+    }
+    localStorage.setItem("kora_community_books_cache", JSON.stringify(cachedList));
+  } catch (err) {
+    console.warn("Failed to write community book to local storage:", err);
+  }
+
+  // 2. Sync to Cloud Firestore if connected
+  if (isRealFirebase) {
+    const path = `communityBooks/${id}`;
+    try {
+      const docRef = doc(db, "communityBooks", id);
+      await setDoc(docRef, fullBook, { merge: true });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  }
+
+  return fullBook;
+}
+
+export async function getCommunityBooks(genreFilter?: string): Promise<CommunityBook[]> {
+  let booksList: CommunityBook[] = [];
+
+  // Try Firestore first if available
+  if (isRealFirebase) {
+    const path = "communityBooks";
+    try {
+      const colRef = collection(db, "communityBooks");
+      const snap = await getDocs(colRef);
+      snap.forEach((doc) => {
+        booksList.push(doc.data() as CommunityBook);
+      });
+    } catch (err) {
+      console.warn("Failed to fetch community books from Firestore:", err);
+    }
+  }
+
+  // Load local published books cache
+  try {
+    const cachedStr = localStorage.getItem("kora_community_books_cache");
+    if (cachedStr) {
+      const localBooks: CommunityBook[] = JSON.parse(cachedStr);
+      localBooks.forEach((lb) => {
+        if (!booksList.some((b) => b.id === lb.id)) {
+          booksList.push(lb);
+        }
+      });
+    }
+  } catch {}
+
+  // Include seeded stories if list is empty or small
+  SEEDED_COMMUNITY_BOOKS.forEach((sb) => {
+    if (!booksList.some((b) => b.id === sb.id)) {
+      booksList.push(sb);
+    }
+  });
+
+  // Filter by genre if specified
+  if (genreFilter && genreFilter !== "all" && genreFilter !== "All") {
+    booksList = booksList.filter(
+      (b) => b.genre?.toLowerCase() === genreFilter.toLowerCase()
+    );
+  }
+
+  // Sort by publishedAt / updatedAt descending
+  return booksList.sort(
+    (a, b) => new Date(b.updatedAt || b.publishedAt).getTime() - new Date(a.updatedAt || a.publishedAt).getTime()
+  );
+}
+
+export async function getCommunityBookById(bookId: string): Promise<CommunityBook | null> {
+  if (isRealFirebase) {
+    try {
+      const docRef = doc(db, "communityBooks", bookId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        return snap.data() as CommunityBook;
+      }
+    } catch (err) {
+      console.warn("Failed to get community book by ID from Firestore:", err);
+    }
+  }
+
+  const all = await getCommunityBooks();
+  return all.find((b) => b.id === bookId) || null;
+}
+
+export async function incrementCommunityBookReads(bookId: string): Promise<void> {
+  // Update local cache
+  try {
+    const cachedStr = localStorage.getItem("kora_community_books_cache");
+    let cachedList: CommunityBook[] = cachedStr ? JSON.parse(cachedStr) : [];
+    const item = cachedList.find((b) => b.id === bookId);
+    if (item) {
+      item.readsCount = (item.readsCount || 0) + 1;
+      localStorage.setItem("kora_community_books_cache", JSON.stringify(cachedList));
+    }
+  } catch {}
+
+  if (isRealFirebase) {
+    try {
+      const docRef = doc(db, "communityBooks", bookId);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const curReads = snap.data()?.readsCount || 0;
+        await setDoc(docRef, { readsCount: curReads + 1 }, { merge: true });
+      }
+    } catch (err) {
+      console.warn("Increment community reads failed:", err);
+    }
+  }
+}
+
+export async function likeCommunityBook(
+  bookId: string,
+  userId: string
+): Promise<{ liked: boolean; likesCount: number }> {
+  const localLikesKey = `kora_community_likes_${userId}`;
+  let userLikes: string[] = [];
+  try {
+    const raw = localStorage.getItem(localLikesKey);
+    if (raw) userLikes = JSON.parse(raw);
+  } catch {}
+
+  const isAlreadyLiked = userLikes.includes(bookId);
+  const newLiked = !isAlreadyLiked;
+
+  if (newLiked) {
+    userLikes.push(bookId);
+  } else {
+    userLikes = userLikes.filter((id) => id !== bookId);
+  }
+
+  try {
+    localStorage.setItem(localLikesKey, JSON.stringify(userLikes));
+  } catch {}
+
+  let newLikesCount = 0;
+
+  if (isRealFirebase) {
+    try {
+      const bookRef = doc(db, "communityBooks", bookId);
+      const likeRef = doc(db, "communityBooks", bookId, "likes", userId);
+      const snap = await getDoc(bookRef);
+      const curLikes = snap.exists() ? snap.data()?.likesCount || 0 : 0;
+      newLikesCount = Math.max(0, curLikes + (newLiked ? 1 : -1));
+
+      if (newLiked) {
+        await setDoc(likeRef, { likedAt: new Date().toISOString() });
+      } else {
+        await deleteDoc(likeRef);
+      }
+      await setDoc(bookRef, { likesCount: newLikesCount }, { merge: true });
+    } catch (err) {
+      console.warn("Failed to sync community like to Firestore:", err);
+    }
+  } else {
+    // Local calculation
+    const all = await getCommunityBooks();
+    const b = all.find((x) => x.id === bookId);
+    newLikesCount = Math.max(0, (b?.likesCount || 0) + (newLiked ? 1 : -1));
+  }
+
+  return { liked: newLiked, likesCount: newLikesCount };
+}
+
+export async function isCommunityBookLikedByUser(
+  bookId: string,
+  userId: string
+): Promise<boolean> {
+  const localLikesKey = `kora_community_likes_${userId}`;
+  try {
+    const raw = localStorage.getItem(localLikesKey);
+    if (raw) {
+      const userLikes: string[] = JSON.parse(raw);
+      if (userLikes.includes(bookId)) return true;
+    }
+  } catch {}
+
+  if (isRealFirebase && userId) {
+    try {
+      const likeRef = doc(db, "communityBooks", bookId, "likes", userId);
+      const snap = await getDoc(likeRef);
+      return snap.exists();
+    } catch {}
+  }
+  return false;
+}
+
+export async function getCommunityComments(bookId: string): Promise<CommunityComment[]> {
+  let comments: CommunityComment[] = [];
+
+  if (isRealFirebase) {
+    try {
+      const colRef = collection(db, "communityBooks", bookId, "comments");
+      const snap = await getDocs(colRef);
+      snap.forEach((d) => {
+        comments.push(d.data() as CommunityComment);
+      });
+    } catch (err) {
+      console.warn("Failed to get community comments from Firestore:", err);
+    }
+  }
+
+  // Check local comments cache
+  try {
+    const raw = localStorage.getItem(`kora_community_comments_${bookId}`);
+    if (raw) {
+      const localComments: CommunityComment[] = JSON.parse(raw);
+      localComments.forEach((lc) => {
+        if (!comments.some((c) => c.id === lc.id)) {
+          comments.push(lc);
+        }
+      });
+    }
+  } catch {}
+
+  // Seed sample comment if empty
+  if (comments.length === 0) {
+    comments = [
+      {
+        id: "comm_c_seed_1",
+        bookId,
+        userId: "user_reader_1",
+        userName: "Sophia R.",
+        text: "This chapter was so gripping! The plot twist at the end blew my mind. Can't wait for the next update!",
+        createdAt: "2026-08-02T14:20:00.000Z",
+      },
+      {
+        id: "comm_c_seed_2",
+        bookId,
+        userId: "user_reader_2",
+        userName: "Alex Chen",
+        text: "The atmosphere building here is top tier. Beautiful writing style!",
+        createdAt: "2026-08-04T09:15:00.000Z",
+      },
+    ];
+  }
+
+  return comments.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+export async function addCommunityComment(
+  bookId: string,
+  user: { uid: string; displayName?: string | null; photoURL?: string | null },
+  text: string
+): Promise<CommunityComment> {
+  const commentId = `cmt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  const comment: CommunityComment = {
+    id: commentId,
+    bookId,
+    userId: user.uid,
+    userName: user.displayName || "Anonymous Writer",
+    userAvatar: user.photoURL || undefined,
+    text: text.trim(),
+    createdAt: new Date().toISOString(),
+  };
+
+  // Local write
+  try {
+    const key = `kora_community_comments_${bookId}`;
+    const raw = localStorage.getItem(key);
+    let list: CommunityComment[] = raw ? JSON.parse(raw) : [];
+    list.unshift(comment);
+    localStorage.setItem(key, JSON.stringify(list));
+  } catch {}
+
+  // Firestore write
+  if (isRealFirebase) {
+    try {
+      const docRef = doc(db, "communityBooks", bookId, "comments", commentId);
+      await setDoc(docRef, comment);
+
+      // Update comments count on book
+      const bookRef = doc(db, "communityBooks", bookId);
+      const bSnap = await getDoc(bookRef);
+      if (bSnap.exists()) {
+        const curCount = bSnap.data()?.commentsCount || 0;
+        await setDoc(bookRef, { commentsCount: curCount + 1 }, { merge: true });
+      }
+    } catch (err) {
+      console.warn("Failed to add community comment to Firestore:", err);
+    }
+  }
+
+  return comment;
+}

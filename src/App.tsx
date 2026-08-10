@@ -22,9 +22,9 @@ import { inferBookTags } from "./lib/tagsHelper";
 const LibraryManager = lazy(() => import("./components/LibraryManager"));
 const DiscoverView = lazy(() => import("./components/DiscoverView"));
 const SettingsView = lazy(() => import("./components/SettingsView"));
-import DeviceDownloadPicker from "./components/DeviceDownloadPicker";
-import LoungeView from "./components/LoungeView";
-import WikipediaWidget from "./components/WikipediaWidget";
+const DeviceDownloadPicker = lazy(() => import("./components/DeviceDownloadPicker"));
+const LoungeView = lazy(() => import("./components/LoungeView"));
+const WikipediaWidget = lazy(() => import("./components/WikipediaWidget"));
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
 import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
@@ -1552,7 +1552,7 @@ export default function App() {
       light: ["theme-light", "light"],
       "light-yellow": ["theme-light-yellow", "light-yellow"],
       yellow: ["theme-light-yellow", "light-yellow"],
-      sepia: ["theme-sepia", "sepia"],
+      sepia: ["theme-sepia"],
       paper: ["theme-paper", "paper"],
       green: ["theme-green", "green"],
       mint: ["theme-green", "green"],
@@ -2568,53 +2568,187 @@ export default function App() {
     }
   }
 
+  // Stable tab navigation & action callbacks for React.memo tab keep-alive optimization
+  const handleOpenTab = useCallback((tab: AppTab) => {
+    switchTab(tab);
+  }, [switchTab]);
+
+  const handleSearchDiscover = useCallback((query: string) => {
+    setDiscoverInitialQuery(query);
+    switchTab("discover");
+  }, [switchTab]);
+
+  const handleStartGuide = useCallback((id: string) => {
+    window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
+  }, []);
+
+  const handleOpenAnnotations = useCallback(() => {
+    setShowAnnotationsHub(true);
+  }, []);
+
+  const handleOpenWikipedia = useCallback(() => {
+    setPendingWikiArticle(null);
+    setShowWikipediaModal(true);
+  }, []);
+
+  const handleOpenArticle = useCallback((article: any) => {
+    setPendingWikiArticle(article);
+    setShowWikipediaModal(true);
+  }, []);
+
+  const handlePlayGame = useCallback((game: any) => {
+    switchTab("tools");
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("kora-open-tool", { detail: { tool: game } }));
+    }, 50);
+  }, [switchTab]);
+
+  const handleToggleAudiobookPlay = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("kora-audiobook:toggle-play"));
+  }, []);
+
+  const handleExpandAudiobook = useCallback(() => {
+    setAudiobookPlayback((current) => {
+      if (current) setActiveBook(current);
+      return current;
+    });
+  }, []);
+
+  const handleBookUpdated = useCallback((updatedBook: BookMetadata) => {
+    setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
+    setLastReadBook((current) => {
+      if (current && current.id === updatedBook.id) {
+        localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+        return updatedBook;
+      }
+      return current;
+    });
+  }, []);
+
+  const handleClearFeedInitialUrl = useCallback(() => {
+    setFeedInitialUrl(null);
+  }, []);
+
+  const handleClearFeedInitialFilter = useCallback(() => {
+    setFeedInitialFilter(null);
+  }, []);
+
+  const handleDismissFirstBookNudge = useCallback(() => {
+    localStorage.removeItem("kora_first_book_nudge");
+    setShowFirstBookNudge(false);
+  }, []);
+
+  const handleOpenBrowser = useCallback((url: string) => {
+    setFeedInitialUrl(url);
+    switchTab("feed");
+  }, [switchTab]);
+
+  const handleBookAdded = useCallback(async (book: BookMetadata) => {
+    setBooks((prev) => {
+      if (prev.some((b) => b.id === book.id)) return prev;
+      return [...prev, book];
+    });
+    emitGuideEvent("kora-guide:book-added", { bookId: book.id });
+
+    if (book.extension?.toLowerCase() === "audiobook" && book.audiobookTracks?.length) {
+      try {
+        await syncBookToCloud(user?.uid || "", book);
+        await enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks);
+      } catch (err) {
+        console.error("Audiobook auto-download failed:", err);
+      }
+    } else if (book.extension !== "audiobook") {
+      switchTab("library");
+    }
+
+    const enriched = await enrichBookMetadata(user?.uid || "", book);
+    setBooks((prev) => prev.map((b) => (b.id === enriched.id ? enriched : b)));
+  }, [user?.uid, switchTab]);
+
+  const handlePlayAudiobook = useCallback((book: BookMetadata) => {
+    setBooks((prev) => {
+      if (prev.some((b) => b.id === book.id)) return prev;
+      return [...prev, book];
+    });
+    if (book.audiobookTracks?.length) {
+      syncBookToCloud(user?.uid || "", book).catch(console.error);
+      enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks).catch(console.error);
+    }
+    setActiveBook(book);
+    setLastReadBook(book);
+    localStorage.setItem("kindle_last_read", JSON.stringify(book));
+  }, [user?.uid]);
+
+  const handleClearDiscoverInitialQuery = useCallback(() => {
+    setDiscoverInitialQuery(null);
+  }, []);
+
+  const handleChangeAutoDisplayTheme = useCallback((enabled: boolean) => {
+    setAutoDisplayTheme(enabled);
+    localStorage.setItem("kora_auto_display_theme", String(enabled));
+  }, []);
+
+  const handleChangeDailyReminders = useCallback((enabled: boolean) => {
+    setDailyRemindersEnabled(enabled);
+    localStorage.setItem("kora_daily_reminders", String(enabled));
+  }, []);
+
+  const handleShowAuthModal = useCallback(() => {
+    setShowAuthModal(true);
+  }, []);
+
+  const handleShowOnboarding = useCallback(() => {
+    setShowOnboarding(true);
+  }, []);
+
   // Handle logout (returns to anonymous account)
-  async function handleSignOut() {
+  const handleSignOut = useCallback(async () => {
     try {
       await signOutGoogle(auth);
       setUser(null);
-      // Will auto trigger onAuthStateChanged and sign back in anonymously
     } catch (err) {
       console.error("Sign out failed:", err);
     }
-  }
+  }, []);
 
   // Handle settings toggle
-  function toggleGrayscale() {
-    const newValue = !grayscaleCovers;
-    setGrayscaleCovers(newValue);
-    localStorage.setItem("kindle_grayscale_covers", String(newValue));
-  }
+  const toggleGrayscale = useCallback(() => {
+    setGrayscaleCovers((prev) => {
+      const newValue = !prev;
+      localStorage.setItem("kindle_grayscale_covers", String(newValue));
+      return newValue;
+    });
+  }, []);
 
-  function changeTheme(newTheme: string) {
+  const changeTheme = useCallback((newTheme: string) => {
     setDisplayTheme(newTheme);
     localStorage.setItem("kora_display_theme", newTheme);
     localStorage.setItem("kora_display_theme_manual", "true");
     window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: newTheme }));
-  }
+  }, []);
 
-  function changeAppSkin(nextSkin: AppSkinId) {
+  const changeAppSkin = useCallback((nextSkin: AppSkinId) => {
     setAppSkin(nextSkin);
     localStorage.setItem(APP_SKIN_STORAGE_KEY, nextSkin);
-  }
+  }, []);
 
   // Clear locally cached book files from IndexedDB
-  async function handleClearDeviceCache() {
+  const handleClearDeviceCache = useCallback(async () => {
     try {
       await clearAllCachedBooks();
       await updateCachedBookIndex();
     } catch (err) {
       console.error("Failed to clear device cache:", err);
     }
-  }
+  }, [updateCachedBookIndex]);
 
   // Clear recent searches
-  function handleClearRecentSearches() {
+  const handleClearRecentSearches = useCallback(() => {
     localStorage.removeItem("kora_recent_searches");
-  }
+  }, []);
 
   // Handle book selection for reading
-  async function handleOpenBook(book: BookMetadata) {
+  const handleOpenBook = useCallback(async (book: BookMetadata) => {
     if (book.extension?.toLowerCase() === "audiobook") {
       if (!book.audiobookTracks?.length) {
         toast.error("This audiobook has no tracks. Open it from Discover to load audio files.");
@@ -2677,7 +2811,7 @@ export default function App() {
     } else {
       window.dispatchEvent(new CustomEvent("kora-guide:clear-active"));
     }
-  }
+  }, [cachedBookIds]);
 
   if (window.location.pathname === "/install" || window.location.pathname === "/install/") {
     return <InstallView />;
@@ -2842,12 +2976,13 @@ export default function App() {
         )}
 
         {/* Tab Displays — keep visited tabs mounted to avoid remount lag */}
-{loungeEnabled && mountedTabs.has("lounge") && (
+        {loungeEnabled && mountedTabs.has("lounge") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "lounge"}
             inert={activeTab !== "lounge" ? true : undefined}
           >
+            <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
             <LoungeView
               books={books}
               lastReadBook={lastReadBook}
@@ -2857,47 +2992,28 @@ export default function App() {
               audiobookPlayback={audiobookPlayback}
               audiobookPlaying={audiobookPlaying}
               onOpenBook={handleOpenBook}
-              onOpenTab={(tab) => switchTab(tab)}
-              onSearchDiscover={(query) => {
-                setDiscoverInitialQuery(query);
-                switchTab("discover");
-              }}
-              onStartGuide={(id) => {
-                window.dispatchEvent(new CustomEvent("kora-guide:start", { detail: { id } }));
-              }}
-              onOpenAnnotations={() => setShowAnnotationsHub(true)}
-              onOpenWikipedia={() => {
-                setPendingWikiArticle(null);
-                setShowWikipediaModal(true);
-              }}
-              onOpenArticle={(article) => {
-                setPendingWikiArticle(article);
-                setShowWikipediaModal(true);
-              }}
-              onPlayGame={(game) => {
-                switchTab("tools");
-                setTimeout(() => {
-                  window.dispatchEvent(new CustomEvent("kora-open-tool", { detail: { tool: game } }));
-                }, 50);
-              }}
+              onOpenTab={handleOpenTab}
+              onSearchDiscover={handleSearchDiscover}
+              onStartGuide={handleStartGuide}
+              onOpenAnnotations={handleOpenAnnotations}
+              onOpenWikipedia={handleOpenWikipedia}
+              onOpenArticle={handleOpenArticle}
+              onPlayGame={handlePlayGame}
               onRefreshLibrary={refreshLibrary}
-              onToggleAudiobookPlay={() => {
-                window.dispatchEvent(new CustomEvent("kora-audiobook:toggle-play"));
-              }}
-              onExpandAudiobook={() => {
-                if (audiobookPlayback) setActiveBook(audiobookPlayback);
-              }}
+              onToggleAudiobookPlay={handleToggleAudiobookPlay}
+              onExpandAudiobook={handleExpandAudiobook}
             />
+            </Suspense>
           </div>
         )}
-{mountedTabs.has("library") && (
+        {mountedTabs.has("library") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "library"}
             inert={activeTab !== "library" ? true : undefined}
           >
 
-          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <LibraryManager
             userId={user?.uid || ""}
             books={books}
@@ -2913,54 +3029,42 @@ export default function App() {
             onRetryDownload={retryFailedDownload}
             onPauseDownload={pauseBackgroundDownload}
             onResumeDownload={resumeBackgroundDownload}
-            onOpenAnnotations={() => setShowAnnotationsHub(true)}
-            onSearchTrigger={(query) => {
-              setDiscoverInitialQuery(query);
-              switchTab("discover");
-            }}
-            onBookUpdated={(updatedBook) => {
-              setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
-              setLastReadBook((current) => {
-                if (current && current.id === updatedBook.id) {
-                  localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
-                  return updatedBook;
-                }
-                return current;
-              });
-            }}
+            onOpenAnnotations={handleOpenAnnotations}
+            onSearchTrigger={handleSearchDiscover}
+            onBookUpdated={handleBookUpdated}
           />
           </Suspense>
                   </div>
         )}
-{mountedTabs.has("feed") && (
+        {mountedTabs.has("feed") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "feed"}
             inert={activeTab !== "feed" ? true : undefined}
           >
 
-          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <FeedView
             userId={user?.uid || ""}
             onRefreshLibrary={refreshLibrary}
             onOpenBook={handleOpenBook}
             initialUrl={feedInitialUrl}
-            onClearInitialUrl={() => setFeedInitialUrl(null)}
+            onClearInitialUrl={handleClearFeedInitialUrl}
             initialFilter={feedInitialFilter}
-            onClearInitialFilter={() => setFeedInitialFilter(null)}
+            onClearInitialFilter={handleClearFeedInitialFilter}
             grayscaleCovers={grayscaleCovers}
           />
           </Suspense>
                   </div>
         )}
-{mountedTabs.has("discover") && (
+        {mountedTabs.has("discover") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "discover"}
             inert={activeTab !== "discover" ? true : undefined}
           >
 
-          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <DiscoverView
             userId={user?.uid || ""}
             books={books}
@@ -2968,69 +3072,45 @@ export default function App() {
             selectedBook={selectedBookForDownload}
             onSelectedBookChange={setSelectedBookForDownload}
             showFirstBookNudge={showFirstBookNudge && books.length === 0}
-            onDismissFirstBookNudge={() => {
-              localStorage.removeItem("kora_first_book_nudge");
-              setShowFirstBookNudge(false);
-            }}
+            onDismissFirstBookNudge={handleDismissFirstBookNudge}
             onTriggerDownload={startBackgroundDownload}
-            onOpenBrowser={(url) => {
-              setFeedInitialUrl(url);
-              switchTab("feed");
-            }}
-            onBookAdded={async (book) => {
-              setBooks(prev => {
-                const updated = [...prev];
-                if (!updated.some(b => b.id === book.id)) {
-                  updated.push(book);
-                }
-                return updated;
-              });
-              emitGuideEvent("kora-guide:book-added", { bookId: book.id });
-
-              if (book.extension?.toLowerCase() === "audiobook" && book.audiobookTracks?.length) {
-                try {
-                  await syncBookToCloud(user?.uid || "", book);
-                  await enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks);
-                } catch (err) {
-                  console.error("Audiobook auto-download failed:", err);
-                }
-              } else if (book.extension !== "audiobook") {
-                switchTab("library");
-              }
-              
-              // Enrich metadata in background after addition
-              const enriched = await enrichBookMetadata(user?.uid || "", book);
-              setBooks(prev => prev.map(b => b.id === enriched.id ? enriched : b));
-            }}
-            onPlayAudiobook={(book) => {
-              setBooks(prev => {
-                if (prev.some(b => b.id === book.id)) return prev;
-                return [...prev, book];
-              });
-              if (book.audiobookTracks?.length) {
-                syncBookToCloud(user?.uid || "", book).catch(console.error);
-                enqueueAudiobookDownload(book.id, book.title, book.audiobookTracks).catch(console.error);
-              }
-              setActiveBook(book);
-              setLastReadBook(book);
-              localStorage.setItem("kindle_last_read", JSON.stringify(book));
-            }}
+            onOpenBrowser={handleOpenBrowser}
+            onBookAdded={handleBookAdded}
+            onPlayAudiobook={handlePlayAudiobook}
             cachedBookIds={cachedBookIds}
             grayscaleCovers={grayscaleCovers}
             initialQuery={discoverInitialQuery}
-            onClearInitialQuery={() => setDiscoverInitialQuery(null)}
+            onClearInitialQuery={handleClearDiscoverInitialQuery}
+            onOpenCreateView={() => {
+              const newBook: BookMetadata = {
+                id: `created_${Date.now()}`,
+                title: "Untitled Community Story",
+                author: user?.displayName || "Anonymous Author",
+                size: "0 KB",
+                extension: "epub",
+                tags: ["created", "community", "draft"],
+                status: "reading",
+                progress: { percent: 0, lastReadTime: Date.now() },
+                dateAdded: Date.now(),
+                dateModified: Date.now(),
+                description: "",
+              };
+              setBooks((prev) => [newBook, ...prev]);
+              setActiveBook(newBook);
+              setActiveBookMode("create");
+            }}
           />
           </Suspense>
                   </div>
         )}
-{mountedTabs.has("tools") && (
+        {mountedTabs.has("tools") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "tools"}
             inert={activeTab !== "tools" ? true : undefined}
           >
 
-          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <SettingsView
             view="tools"
             user={user}
@@ -3039,17 +3119,10 @@ export default function App() {
             hideCovers={false}
             displayTheme={displayTheme}
             autoDisplayTheme={autoDisplayTheme}
-            onChangeAutoDisplayTheme={(enabled: boolean) => {
-              setAutoDisplayTheme(enabled);
-              localStorage.setItem("kora_auto_display_theme", String(enabled));
-            }}
-
+            onChangeAutoDisplayTheme={handleChangeAutoDisplayTheme}
             appSkin={appSkin}
             dailyRemindersEnabled={dailyRemindersEnabled}
-            onChangeDailyReminders={(enabled) => {
-              setDailyRemindersEnabled(enabled);
-              localStorage.setItem("kora_daily_reminders", String(enabled));
-            }}
+            onChangeDailyReminders={handleChangeDailyReminders}
             dailyNewsBriefEnabled={dailyNewsBriefEnabled}
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             loungeEnabled={loungeEnabled}
@@ -3058,7 +3131,7 @@ export default function App() {
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
-            onSignIn={() => setShowAuthModal(true)}
+            onSignIn={handleShowAuthModal}
             readerPrefs={readerPrefs}
             onReaderPrefsChange={setReaderPrefs}
             searchPrefs={searchPrefs}
@@ -3070,20 +3143,20 @@ export default function App() {
             books={books}
             onRefreshLibrary={refreshLibrary}
             onCachedIdsChanged={updateCachedBookIndex}
-            onOpenOnboarding={() => setShowOnboarding(true)}
+            onOpenOnboarding={handleShowOnboarding}
             onModalToggle={setAnyModalOpen}
           />
           </Suspense>
                   </div>
         )}
-{mountedTabs.has("settings") && (
+        {mountedTabs.has("settings") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "settings"}
             inert={activeTab !== "settings" ? true : undefined}
           >
 
-          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <SettingsView
             view="settings" 
             user={user}
@@ -3092,17 +3165,10 @@ export default function App() {
             onToggleGrayscale={toggleGrayscale}
             displayTheme={displayTheme}
             autoDisplayTheme={autoDisplayTheme}
-            onChangeAutoDisplayTheme={(enabled: boolean) => {
-              setAutoDisplayTheme(enabled);
-              localStorage.setItem("kora_auto_display_theme", String(enabled));
-            }}
-
+            onChangeAutoDisplayTheme={handleChangeAutoDisplayTheme}
             appSkin={appSkin}
             dailyRemindersEnabled={dailyRemindersEnabled}
-            onChangeDailyReminders={(enabled) => {
-              setDailyRemindersEnabled(enabled);
-              localStorage.setItem("kora_daily_reminders", String(enabled));
-            }}
+            onChangeDailyReminders={handleChangeDailyReminders}
             dailyNewsBriefEnabled={dailyNewsBriefEnabled}
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             loungeEnabled={loungeEnabled}
@@ -3110,7 +3176,7 @@ export default function App() {
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
-            onSignIn={() => setShowAuthModal(true)}
+            onSignIn={handleShowAuthModal}
             readerPrefs={readerPrefs}
             onReaderPrefsChange={setReaderPrefs}
             searchPrefs={searchPrefs}
@@ -3122,7 +3188,7 @@ export default function App() {
             books={books}
             onRefreshLibrary={refreshLibrary}
             onCachedIdsChanged={updateCachedBookIndex}
-            onOpenOnboarding={() => setShowOnboarding(true)}
+            onOpenOnboarding={handleShowOnboarding}
             onModalToggle={setAnyModalOpen}
           />
           </Suspense>
@@ -3208,6 +3274,7 @@ export default function App() {
               setActiveBook(updatedBook);
               setLastReadBook(updatedBook);
             }}
+            onOpenCommunity={() => switchTab("discover")}
           />
         ) : activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
@@ -3631,7 +3698,7 @@ export default function App() {
       )}
 
       {/* Daily Motivation Reminder Modal */}
-      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
       <DailyReminderModal
         isOpen={showDailyReminder}
         onClose={() => setShowDailyReminder(false)}
@@ -3640,6 +3707,7 @@ export default function App() {
       </Suspense>
 
       {deviceDownloadBooks && deviceDownloadBooks.length > 0 && (
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
         <DeviceDownloadPicker
           books={deviceDownloadBooks}
           cachedBookIds={cachedBookIds}
@@ -3647,10 +3715,11 @@ export default function App() {
           onClose={() => setDeviceDownloadBooks(null)}
           onCachedIdsChanged={updateCachedBookIndex}
         />
+        </Suspense>
       )}
 
       {/* Playful Booknerd Onboarding Modal */}
-      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
       <OnboardingModal
         isOpen={showOnboarding}
         onComplete={handleOnboardingComplete}
@@ -3665,7 +3734,7 @@ export default function App() {
       />
       </Suspense>
 
-      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+      <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
       <GuideSetupPopup
         isOpen={showGuideSetup}
         initial={{
@@ -3694,7 +3763,7 @@ export default function App() {
       <ApkUpdateBanner />
 
       {showAnnotationsHub && (
-        <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
         <AnnotationsHub
           books={books}
           userId={user?.uid || ""}
@@ -3709,6 +3778,7 @@ export default function App() {
 
       {showWikipediaModal && (
         <div className="fixed inset-0 z-50 bg-kindle-bg flex flex-col">
+          <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <WikipediaWidget
             onClose={() => {
               setPendingWikiArticle(null);
@@ -3718,11 +3788,12 @@ export default function App() {
             onRefreshLibrary={refreshLibrary}
             initialArticle={pendingWikiArticle}
           />
+          </Suspense>
         </div>
       )}
 
       {proximitySyncBook && (
-        <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindie-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+        <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
         <ProximitySyncModal
           book={proximitySyncBook}
           userId={user?.uid || "anonymous"}

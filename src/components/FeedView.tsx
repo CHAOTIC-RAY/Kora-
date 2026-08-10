@@ -5,11 +5,13 @@ import {
   Bookmark,
   CheckCircle2,
   ExternalLink,
+  Grid,
   Loader2,
   Newspaper,
   RefreshCw,
   Rss,
   Settings2,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -396,8 +398,7 @@ function FeedView({
 
   const performanceMode = localStorage.getItem("kora_performance_mode") === "1";
 
-  // Desktop always uses the grid; mobile defaults to TikTok scroll view.
-  const effectiveLayout: FeedLayout = isMobile ? "scroll" : "grid";
+  const effectiveLayout: FeedLayout = feedLayout;
 
   const [showFilterSheet, setShowFilterSheet] = useState(false);
 
@@ -560,7 +561,7 @@ function FeedView({
       const totalUsed = appHeaderHeight + feedHeaderHeight + filterHeight + sourcesHeight + bottomOffset + mainPaddingTop + mediaDockHeight + 16;
       const calculated = window.innerHeight - totalUsed;
 
-      setScrollContainerHeight(Math.max(calculated, 280));
+      setScrollContainerHeight(Math.max(calculated, 450));
     };
 
     updateHeight();
@@ -709,6 +710,32 @@ function FeedView({
           </p>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="flex items-center gap-1 bg-kindle-bg p-1 rounded-xl border border-kindle-border">
+            <button
+              onClick={() => persistFeedLayout("grid")}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1 ${
+                effectiveLayout === "grid"
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border"
+                  : "text-kindle-text-muted hover:text-kindle-text"
+              }`}
+              title="Grid View"
+            >
+              <Grid className="w-3 h-3" />
+              <span>Grid</span>
+            </button>
+            <button
+              onClick={() => persistFeedLayout("scroll")}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition flex items-center gap-1 ${
+                effectiveLayout === "scroll"
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border"
+                  : "text-kindle-text-muted hover:text-kindle-text"
+              }`}
+              title="TikTok Scroll View"
+            >
+              <Sparkles className="w-3 h-3 text-amber-500" />
+              <span>Scroll</span>
+            </button>
+          </div>
           <button
             onClick={() => setShowManageFeeds(true)}
             className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border border-kindle-border bg-kindle-card text-[10px] font-bold uppercase tracking-wider text-kindle-text hover:bg-kindle-bg transition shrink-0"
@@ -821,6 +848,7 @@ function FeedView({
           onManage={() => setShowManageFeeds(true)}
           onFilter={() => setShowFilterSheet(true)}
           onOpenDailyBrief={() => setShowDailyBriefTikTok(true)}
+          onToggleLayout={persistFeedLayout}
           refreshing={refreshing}
           height={scrollContainerHeight}
         />

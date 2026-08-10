@@ -44,9 +44,14 @@ import {
   Maximize2,
   Minimize2,
   FileType2,
+  Globe,
+  Feather,
+  Send,
+  Heart,
+  MessageSquare,
 } from "lucide-react";
 import { motion, LayoutGroup } from "motion/react";
-import { BookMetadata } from "../lib/firebase";
+import { BookMetadata, publishCommunityBook, CommunityBook } from "../lib/firebase";
 import { getBookFile, storeBookFile } from "../db/indexedDB";
 import {
   buildEpubFromText,
@@ -66,6 +71,7 @@ interface CreateViewProps {
   onClose: () => void;
   onOpenReader?: (book: BookMetadata) => void;
   onBookUpdated?: (updatedBook: BookMetadata) => void;
+  onOpenCommunity?: () => void;
 }
 
 const editorFonts = [
@@ -84,6 +90,7 @@ export default function CreateView({
   onClose,
   onOpenReader,
   onBookUpdated,
+  onOpenCommunity,
 }: CreateViewProps) {
   const [title, setTitle] = useState(book.title || "My New Book");
   const [author, setAuthor] = useState(book.author || "Unknown Author");
@@ -91,6 +98,13 @@ export default function CreateView({
   const [publisher, setPublisher] = useState(book.publisher || "Kora EPUB Studio");
   const [description, setDescription] = useState(book.notes || "");
   const [tags, setTags] = useState<string[]>(book.tags || ["created", "epub"]);
+
+  // Community Publishing state
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [publishGenre, setPublishGenre] = useState("Fantasy");
+  const [publishSummary, setPublishSummary] = useState(book.notes || "");
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [publishedSuccess, setPublishedSuccess] = useState<CommunityBook | null>(null);
 
   // Cover image / style
   const [coverBg, setCoverBg] = useState("linear-gradient(135deg, #2c3e50 0%, #000000 100%)");
@@ -159,6 +173,7 @@ export default function CreateView({
 
   // Download menu dropdown state
   const [showDownloadDropdown, setShowDownloadDropdown] = useState(false);
+  const [showMobileDownloadPopup, setShowMobileDownloadPopup] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Font chooser for visual editor & preview
@@ -483,6 +498,36 @@ export default function CreateView({
     }
   };
 
+  const handlePublishToCommunity = async () => {
+    try {
+      setIsPublishing(true);
+      const communityBook = await publishCommunityBook({
+        id: `comm_${book.id || Date.now()}`,
+        title: title || "Untitled Story",
+        author: author || "Anonymous Author",
+        authorId: userId || "user_community_author",
+        description: publishSummary || description || "A community story written on Kora.",
+        genre: publishGenre,
+        tags: tags.length > 0 ? tags : ["community", "story", publishGenre.toLowerCase()],
+        coverGradient: coverBg,
+        coverUrl: coverImage || undefined,
+        chapters: chapters.map((c) => ({
+          id: c.id,
+          title: c.title,
+          text: c.text,
+          html: c.html,
+        })),
+      });
+
+      setPublishedSuccess(communityBook);
+    } catch (err) {
+      console.error("[CreateView] Publish to Community failed:", err);
+      alert("Failed to publish story to community.");
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col font-sans overflow-hidden">
       {/* Top Navigation Header */}
@@ -574,8 +619,22 @@ export default function CreateView({
           </button>
         </div>
 
-        {/* Right Actions: Save, Combined Download Dropdown, Read Mode */}
+        {/* Right Actions: Save, Publish, Combined Download Dropdown, Read Mode */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Publish to Community Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setPublishSummary(description || "");
+              setShowPublishModal(true);
+            }}
+            className="p-1.5 sm:px-3 sm:py-1.5 rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition cursor-pointer shadow-xs"
+            title="Publish Story to Kora Community"
+          >
+            <Globe className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Publish</span>
+          </button>
+
           <button
             type="button"
             onClick={handleSaveBook}
@@ -601,12 +660,26 @@ export default function CreateView({
           <div
             className="relative"
             ref={dropdownRef}
-            onMouseEnter={() => setShowDownloadDropdown(true)}
-            onMouseLeave={() => setShowDownloadDropdown(false)}
+            onMouseEnter={() => {
+              if (window.innerWidth >= 768) {
+                setShowDownloadDropdown(true);
+              }
+            }}
+            onMouseLeave={() => {
+              if (window.innerWidth >= 768) {
+                setShowDownloadDropdown(false);
+              }
+            }}
           >
             <button
               type="button"
-              onClick={() => setShowDownloadDropdown(!showDownloadDropdown)}
+              onClick={() => {
+                if (window.innerWidth < 768) {
+                  setShowMobileDownloadPopup(true);
+                } else {
+                  setShowDownloadDropdown(!showDownloadDropdown);
+                }
+              }}
               className="p-1.5 sm:px-3 sm:py-1.5 rounded-md border border-kindle-border bg-kindle-bg hover:bg-kindle-card text-kindle-text text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
               title="Download or Export Options"
             >
@@ -1389,6 +1462,304 @@ export default function CreateView({
               </div>
             )}
           </>
+        )}
+
+        {/* Mobile Download Popup / Bottom Sheet */}
+        {showMobileDownloadPopup && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[100] flex items-end sm:items-center justify-center p-4" onClick={() => setShowMobileDownloadPopup(false)}>
+            <motion.div
+              initial={{ opacity: 0, y: 100 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 100 }}
+              className="w-full max-w-md bg-kindle-card border border-kindle-border rounded-t-2xl sm:rounded-2xl shadow-2xl p-6 flex flex-col gap-4 text-kindle-text"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-kindle-border">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-kindle-text">Download Book</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowMobileDownloadPopup(false)}
+                  className="p-1.5 rounded-full hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Brief Book Detail */}
+              <div className="flex gap-4 bg-kindle-bg/50 border border-kindle-border/40 p-3 rounded-xl">
+                {/* Mini Book Cover Preview */}
+                <div
+                  className="w-20 h-30 shrink-0 rounded-lg shadow-md overflow-hidden relative flex flex-col justify-between p-2 border border-kindle-border/50"
+                  style={{
+                    background: coverImage ? `url(${coverImage}) center/cover no-repeat` : coverBg,
+                  }}
+                >
+                  {!coverImage && (
+                    <>
+                      <span className="text-[7px] font-bold text-white/90 uppercase tracking-wider line-clamp-2">
+                        {title}
+                      </span>
+                      <span className="text-[6px] text-white/70 font-medium">
+                        {author}
+                      </span>
+                    </>
+                  )}
+                </div>
+
+                {/* Book Metadata */}
+                <div className="flex flex-col min-w-0 justify-center">
+                  <h4 className="text-base font-bold truncate text-kindle-text">{title}</h4>
+                  <p className="text-xs text-kindle-text-muted mt-0.5">by {author}</p>
+                  {publisher && (
+                    <p className="text-[10px] text-kindle-text-muted mt-1 truncate">
+                      Publisher: {publisher}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-kindle-accent font-semibold mt-1">
+                    {chapters.length} Chapter{chapters.length === 1 ? "" : "s"} • {chapters.reduce((sum, c) => sum + (c.text?.length || 0), 0)} Characters
+                  </p>
+                  {description && (
+                    <p className="text-[10px] text-kindle-text-muted mt-2 line-clamp-2 italic">
+                      "{description}"
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Download Buttons Section */}
+              <div className="flex flex-col gap-3 mt-1">
+                <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold">Select Format</p>
+                
+                {/* EPUB Option */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleDownloadEpub();
+                    setShowMobileDownloadPopup(false);
+                  }}
+                  disabled={isDownloadingEpub}
+                  className="w-full flex items-center justify-between p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-kindle-text transition cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-600">
+                      <Download className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-kindle-text">Download EPUB</p>
+                      <p className="text-[10px] text-kindle-text-muted">Standard flowable e-reader format</p>
+                    </div>
+                  </div>
+                  {isDownloadingEpub ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                  ) : (
+                    <span className="text-[10px] font-mono font-bold bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded">.epub</span>
+                  )}
+                </button>
+
+                {/* PDF Option */}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await handleDownloadPdf();
+                    setShowMobileDownloadPopup(false);
+                  }}
+                  disabled={isDownloadingPdf}
+                  className="w-full flex items-center justify-between p-3 rounded-xl border border-rose-500/30 bg-rose-500/5 hover:bg-rose-500/10 text-kindle-text transition cursor-pointer disabled:opacity-50"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-rose-500/10 text-rose-600">
+                      <FileDown className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-xs font-bold text-kindle-text">Download PDF</p>
+                      <p className="text-[10px] text-kindle-text-muted">High-fidelity print-ready layout</p>
+                    </div>
+                  </div>
+                  {isDownloadingPdf ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                  ) : (
+                    <span className="text-[10px] font-mono font-bold bg-rose-500/10 text-rose-600 px-1.5 py-0.5 rounded">.pdf</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Publish to Community Modal */}
+        {showPublishModal && (
+          <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-kindle-card border border-kindle-border rounded-2xl p-6 max-w-md w-full shadow-2xl relative flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPublishModal(false);
+                  setPublishedSuccess(null);
+                }}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {publishedSuccess ? (
+                <div className="text-center py-4 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center mx-auto text-white shadow-lg">
+                    <Sparkles className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-kindle-text">Story Published! 🎉</h3>
+                    <p className="text-xs text-kindle-text-muted mt-1">
+                      "{publishedSuccess.title}" is now live on the Kora Community. Readers can now discover, like, and comment on your work!
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-kindle-bg rounded-xl border border-kindle-border/60 text-left text-xs space-y-1">
+                    <p className="font-bold text-kindle-text">{publishedSuccess.title}</p>
+                    <p className="text-kindle-text-muted">Genre: <span className="text-kindle-accent font-semibold">{publishedSuccess.genre}</span> • {publishedSuccess.chapters.length} Chapters</p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPublishModal(false);
+                        setPublishedSuccess(null);
+                        onClose();
+                        if (onOpenCommunity) onOpenCommunity();
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-md hover:brightness-110 transition cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Globe className="w-4 h-4" />
+                      View in Community Discover
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowPublishModal(false);
+                        setPublishedSuccess(null);
+                      }}
+                      className="w-full py-2 rounded-xl border border-kindle-border text-kindle-text font-bold text-xs hover:bg-kindle-bg transition cursor-pointer"
+                    >
+                      Keep Editing
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 border-b border-kindle-border/40 pb-3">
+                    <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                      <Globe className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-kindle-text">Publish to Kora Community</h3>
+                      <p className="text-[11px] text-kindle-text-muted">Share your story with readers on Kora</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3.5">
+                    <div>
+                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
+                        Story Title
+                      </label>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-bold focus:outline-none focus:border-kindle-accent"
+                        placeholder="Title of your story"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
+                        Pen Name / Author
+                      </label>
+                      <input
+                        type="text"
+                        value={author}
+                        onChange={(e) => setAuthor(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-semibold focus:outline-none focus:border-kindle-accent"
+                        placeholder="Author name"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
+                        Primary Genre
+                      </label>
+                      <select
+                        value={publishGenre}
+                        onChange={(e) => setPublishGenre(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-bold focus:outline-none focus:border-kindle-accent"
+                      >
+                        <option value="Fantasy">Fantasy</option>
+                        <option value="Romance">Romance</option>
+                        <option value="Sci-Fi">Sci-Fi / Cyberpunk</option>
+                        <option value="Mystery">Mystery / Thriller</option>
+                        <option value="Young Adult">Young Adult</option>
+                        <option value="Fanfiction">Fanfiction</option>
+                        <option value="General Fiction">General Fiction</option>
+                        <option value="Poetry">Poetry</option>
+                        <option value="Adventure">Adventure</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
+                        Synopsis / Description
+                      </label>
+                      <textarea
+                        value={publishSummary}
+                        onChange={(e) => setPublishSummary(e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text focus:outline-none focus:border-kindle-accent resize-none"
+                        placeholder="Hooks, blurbs, and summary for community readers..."
+                      />
+                    </div>
+
+                    <div className="p-3 bg-kindle-bg rounded-xl border border-kindle-border/50 text-[11px] flex justify-between text-kindle-text-muted font-medium">
+                      <span>📖 Chapters: <strong className="text-kindle-text">{chapters.length}</strong></span>
+                      <span>✍️ Total Words: <strong className="text-kindle-text">{chapters.reduce((sum, c) => sum + (c.text ? c.text.split(/\s+/).filter(Boolean).length : 0), 0)}</strong></span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-2 border-t border-kindle-border/40">
+                    <button
+                      type="button"
+                      onClick={() => setShowPublishModal(false)}
+                      className="flex-1 py-2 rounded-xl border border-kindle-border text-xs font-bold text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handlePublishToCommunity}
+                      disabled={isPublishing || !title.trim()}
+                      className="flex-[2] py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-md hover:brightness-110 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isPublishing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Publishing...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          Publish Story Now
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
         )}
       </div>
     </div>

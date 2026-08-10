@@ -40,6 +40,36 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "text", "color", "chapterIdx", "chapterTitle"]
+    },
+    "CommunityBook": {
+      "title": "CommunityBook",
+      "description": "User-authored book published to the public Wattpad-style community",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "authorId": { "type": "string" },
+        "description": { "type": "string" },
+        "genre": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "publishedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "author", "authorId", "description", "genre"]
+    },
+    "CommunityComment": {
+      "title": "CommunityComment",
+      "description": "User comment on a community story",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "bookId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "bookId", "userId", "userName", "text"]
     }
   },
   "firestore": {
@@ -54,6 +84,14 @@
     "/users/{userId}/library/{bookId}/highlights/{highlightId}": {
       "schema": "BookHighlight",
       "description": "User's highlights and annotations"
+    },
+    "/communityBooks/{bookId}": {
+      "schema": "CommunityBook",
+      "description": "Public community published books"
+    },
+    "/communityBooks/{bookId}/comments/{commentId}": {
+      "schema": "CommunityComment",
+      "description": "Comments on a community book"
     }
   }
 }

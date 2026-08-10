@@ -769,6 +769,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
   const contentRef = useRef<HTMLElement | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const zipRef = useRef<JSZip | null>(null);
+  const zipImageMapRef = useRef<Map<string, string> | null>(null);
   const rootDirRef = useRef<string>("");
   const blobUrlsRef = useRef<string[]>([]);
   // Maps an EPUB internal href (normalized) -> spine chapter index, so in-book
@@ -2160,6 +2161,17 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       const zip = await JSZip.loadAsync(fileData.blob);
       zipRef.current = zip;
 
+      // Build static imageMap once for the whole zip file to optimize chapter loadings
+      const imageMap = new Map<string, string>();
+      for (const path of Object.keys(zip.files)) {
+        if (zip.files[path].dir) continue;
+        if (/\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(path)) {
+          const base = path.split("/").pop()!.toLowerCase();
+          if (!imageMap.has(base)) imageMap.set(base, path);
+        }
+      }
+      zipImageMapRef.current = imageMap;
+
       // 3. Read container.xml to locate the .opf file
       const containerXml = await zip.file("META-INF/container.xml")?.async("string");
       if (!containerXml) {
@@ -2326,14 +2338,18 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
   // broken <img> never 404s against the site origin.
   async function resolveInternalAssets(chapterDoc: Document, zip: JSZip, rootDir: string, chapterHref: string): Promise<string> {
 
-    // Pre-cache basename -> zip path for every image-like entry (cheap, ~1 pass).
-    const imageMap = new Map<string, string>();
-    for (const path of Object.keys(zip.files)) {
-      if (zip.files[path].dir) continue;
-      if (/\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(path)) {
-        const base = path.split("/").pop()!.toLowerCase();
-        if (!imageMap.has(base)) imageMap.set(base, path);
+    // Use the pre-cached image map or build a fallback if missing.
+    let imageMap = zipImageMapRef.current;
+    if (!imageMap) {
+      imageMap = new Map<string, string>();
+      for (const path of Object.keys(zip.files)) {
+        if (zip.files[path].dir) continue;
+        if (/\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(path)) {
+          const base = path.split("/").pop()!.toLowerCase();
+          if (!imageMap.has(base)) imageMap.set(base, path);
+        }
       }
+      zipImageMapRef.current = imageMap;
     }
 
     const resolvePath = (relativeSrc: string): string | null => {

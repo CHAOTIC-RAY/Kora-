@@ -247,6 +247,7 @@ interface FeedTikTokScrollProps {
   onManage?: () => void;
   onFilter?: () => void;
   onOpenDailyBrief?: () => void;
+  onToggleLayout?: (layout: "grid" | "scroll") => void;
   refreshing?: boolean;
   height?: number | null;
 }
@@ -272,12 +273,33 @@ export default function FeedTikTokScroll({
   onManage,
   onFilter,
   onOpenDailyBrief,
+  onToggleLayout,
   refreshing,
   height,
 }: FeedTikTokScrollProps) {
+  const [isDarkMode, setIsDarkMode] = useState(() =>
+    typeof document !== "undefined" && (document.body.classList.contains("dark") || document.body.className.includes("dark"))
+  );
   const ref = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(0);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 768 : false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const updateTheme = () => {
+      setIsDarkMode(document.body.classList.contains("dark") || document.body.className.includes("dark"));
+    };
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [articleHtmlMap, setArticleHtmlMap] = useState<Record<string, { html: string; loading: boolean }>>({});
   const [autoScroll, setAutoScroll] = useState(false);
@@ -461,45 +483,44 @@ export default function FeedTikTokScroll({
       style={wrapperStyle}
       className={
         isMobile
-          ? "fixed inset-x-0 top-0 bottom-0 w-full bg-neutral-950 z-[45] flex flex-col overflow-hidden"
+          ? `fixed inset-0 w-full z-[45] flex flex-col overflow-hidden ${
+              isDarkMode ? "bg-neutral-950 text-white" : "bg-kindle-bg text-kindle-text"
+            }`
           : "relative w-full rounded-2xl overflow-hidden border border-kindle-border bg-kindle-card shadow-xs"
       }
     >
       {/* 1. Immersive Floating Header for Mobile */}
       {isMobile && (
-        <div className="absolute left-0 right-0 z-30 flex items-center justify-between gap-2 pointer-events-none pt-[max(env(safe-area-inset-top),0.75rem)] px-3">
-          <div className="flex items-center gap-1.5 pointer-events-auto">
+        <div className="absolute top-4 left-0 right-0 z-30 flex items-center justify-between pointer-events-none px-4">
+          <div className="pointer-events-auto">
             {onManage && (
               <button
                 type="button"
                 onClick={onManage}
-                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
-                title="Manage feeds"
+                className={`w-10 h-10 rounded-full border backdrop-blur-md active:scale-95 transition flex items-center justify-center shadow-lg ${
+                  isDarkMode
+                    ? "border-white/20 bg-black/60 text-white hover:bg-black/80"
+                    : "border-kindle-border bg-kindle-card/90 text-kindle-text hover:bg-kindle-card"
+                }`}
+                title="Manage Feeds & Sources"
               >
                 <Settings2 className="w-4 h-4" />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            {onExit && (
-              <button
-                type="button"
-                onClick={onExit}
-                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition"
-                title="Close"
-              >
-                <Grid className="w-4 h-4" />
-              </button>
-            )}
-
+          <div className="pointer-events-auto">
             {onRefresh && (
               <button
                 type="button"
                 onClick={onRefresh}
                 disabled={refreshing}
-                className="p-2.5 rounded-full border border-white/20 bg-black/50 backdrop-blur-md text-white active:scale-95 transition disabled:opacity-50"
-                title="Refresh feeds"
+                className={`w-10 h-10 rounded-full border backdrop-blur-md active:scale-95 transition disabled:opacity-50 flex items-center justify-center shadow-lg ${
+                  isDarkMode
+                    ? "border-white/20 bg-black/60 text-white hover:bg-black/80"
+                    : "border-kindle-border bg-kindle-card/90 text-kindle-text hover:bg-kindle-card"
+                }`}
+                title="Refresh Feeds"
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
               </button>
@@ -507,13 +528,13 @@ export default function FeedTikTokScroll({
           </div>
         </div>
       )}
-      {/* 2. Top Progress Indicators - Extracted out of flow to prevent offset clipping */}
-      <div className={`absolute left-4 right-4 z-20 flex gap-1 pointer-events-none ${isMobile ? "top-20" : "top-3"}`}>
+      {/* 2. Top Progress Indicators */}
+      <div className={`absolute left-4 right-4 z-20 flex gap-1 pointer-events-none ${isMobile ? "hidden" : "top-3"}`}>
         {items.map((_, i) => (
           <div
             key={i}
             className={`h-1 flex-1 rounded-full transition-colors ${
-              i <= active ? "bg-kindle-accent" : "bg-white/20"
+              i <= active ? "bg-kindle-accent" : isDarkMode ? "bg-white/20" : "bg-kindle-border"
             }`}
           />
         ))}
@@ -543,8 +564,8 @@ export default function FeedTikTokScroll({
         {items.map((item, index) => {
           const cover = getItemThumbnail(item);
           const isExpanded = expandedIndex === index;
-          const isDarkMode = document.body.classList.contains("dark") || document.body.className.includes("dark");
           const kbCls = !perfMode ? kbClassFor(item, index) : "";
+          const isFar = Math.abs(index - active) > 3;
 
           const onImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
             try {
@@ -575,30 +596,42 @@ export default function FeedTikTokScroll({
               className="relative snap-start snap-always [scroll-snap-stop:always] flex flex-col justify-end p-4 md:p-6 h-full w-full shrink-0 overflow-hidden"
             >
               {cover ? (
-                <img
-                  src={cover}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  loading="lazy"
-                  onLoad={onImgLoad}
-                  className={
-                    isMobile
-                      ? `absolute inset-0 w-full h-full object-cover ${kbCls} ${
-                          isExpanded ? "blur-sm" : ""
-                        } ${grayscaleCovers ? "grayscale" : ""}`
-                      : `absolute inset-0 w-full h-full object-cover rounded-2xl ${kbCls} ${
-                          isExpanded ? "blur-sm" : ""
-                        } ${grayscaleCovers ? "grayscale" : ""}`
-                  }
-                />
+                isFar ? (
+                  <div className={`absolute inset-0 ${isDarkMode ? "bg-neutral-950/40" : "bg-kindle-bg/40"} ${isMobile ? "" : "rounded-2xl"}`} />
+                ) : (
+                  <img
+                    src={cover}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                    onLoad={onImgLoad}
+                    className={
+                      isMobile
+                        ? `absolute inset-0 w-full h-full object-cover [transform:translateZ(0)] [will-change:transform,opacity] ${kbCls} ${
+                            isExpanded ? "blur-sm" : ""
+                          } ${grayscaleCovers ? "grayscale" : ""}`
+                        : `absolute inset-0 w-full h-full object-cover rounded-2xl [transform:translateZ(0)] [will-change:transform,opacity] ${kbCls} ${
+                            isExpanded ? "blur-sm" : ""
+                          } ${grayscaleCovers ? "grayscale" : ""}`
+                    }
+                  />
+                )
               ) : (
                 <div
                   className={
                     isMobile
-                      ? `absolute inset-0 bg-gradient-to-br from-kindle-accent/30 to-black/60 ${kbCls} ${
+                      ? `absolute inset-0 ${
+                          isDarkMode
+                            ? "bg-gradient-to-br from-kindle-accent/30 to-black/60"
+                            : "bg-gradient-to-br from-kindle-accent/20 to-kindle-bg"
+                        } [transform:translateZ(0)] [will-change:transform,opacity] ${kbCls} ${
                           isExpanded ? "blur-xs" : ""
                         }`
-                      : `absolute inset-0 bg-gradient-to-br from-kindle-accent/30 to-black/60 rounded-2xl ${kbCls} ${
+                      : `absolute inset-0 ${
+                          isDarkMode
+                            ? "bg-gradient-to-br from-kindle-accent/30 to-black/60"
+                            : "bg-gradient-to-br from-kindle-accent/20 to-kindle-bg"
+                        } rounded-2xl [transform:translateZ(0)] [will-change:transform,opacity] ${kbCls} ${
                           isExpanded ? "blur-xs" : ""
                         }`
                   }
@@ -610,17 +643,17 @@ export default function FeedTikTokScroll({
                 } ${
                   isExpanded
                     ? isDarkMode
-                      ? "bg-black/90"
-                      : "bg-kindle-bg"
+                      ? "bg-black/95 text-white"
+                      : "bg-kindle-bg text-kindle-text"
                     : isDarkMode
-                      ? "bg-gradient-to-t from-black/95 via-black/55 to-black/10"
-                      : "bg-gradient-to-t from-kindle-bg via-kindle-bg/95 to-kindle-bg/30"
+                      ? "bg-gradient-to-t from-black/95 via-black/70 via-35% to-black/15 text-white"
+                      : "bg-gradient-to-t from-[#ECE8D4] via-[#ECE8D4]/95 via-35% to-[#ECE8D4]/20 text-kindle-text"
                 }`}
               />
 
                 {/* Floating Side Action Buttons (TikTok style) */}
                 <div
-                  className="absolute right-4 bottom-[8.5rem] z-30 flex flex-col items-center gap-4"
+                  className={`absolute right-3 ${isMobile ? "bottom-36" : "bottom-6"} z-30 flex flex-col items-center gap-3`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Filter Button */}
@@ -628,10 +661,14 @@ export default function FeedTikTokScroll({
                     <button
                       type="button"
                       onClick={onFilter}
-                      className="active:scale-95 transition text-white group"
+                      className="active:scale-95 transition group"
                     >
-                      <div className="w-11 h-11 rounded-full border border-white/20 bg-black/60 backdrop-blur-md flex items-center justify-center hover:bg-black/80 shadow-lg transition-all duration-200">
-                        <Filter className="w-4.5 h-4.5 text-white" />
+                      <div className={`w-10 h-10 rounded-full border backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-200 ${
+                        isDarkMode
+                          ? "bg-black/60 border-white/20 text-white hover:bg-black/80"
+                          : "bg-kindle-card/90 border-kindle-border text-kindle-text hover:bg-kindle-card"
+                      }`}>
+                        <Filter className="w-4 h-4" />
                       </div>
                     </button>
                   )}
@@ -640,14 +677,16 @@ export default function FeedTikTokScroll({
                   <button
                     type="button"
                     onClick={() => onSave(item)}
-                    className="active:scale-95 transition text-white group"
+                    className="active:scale-95 transition group"
                   >
-                    <div className={`w-11 h-11 rounded-full border flex items-center justify-center hover:bg-black/80 shadow-lg transition-all duration-200 ${
+                    <div className={`w-10 h-10 rounded-full border flex items-center justify-center shadow-lg transition-all duration-200 ${
                       item.saved
                         ? "bg-kindle-accent border-kindle-accent text-neutral-950 scale-105"
-                        : "bg-black/60 border-white/20 text-white"
+                        : isDarkMode
+                          ? "bg-black/60 border-white/20 text-white hover:bg-black/80 backdrop-blur-md"
+                          : "bg-kindle-card/90 border-kindle-border text-kindle-text hover:bg-kindle-card backdrop-blur-md"
                     }`}>
-                      <Bookmark className={`w-4.5 h-4.5 ${item.saved ? "fill-current" : ""}`} />
+                      <Bookmark className={`w-4 h-4 ${item.saved ? "fill-current" : ""}`} />
                     </div>
                   </button>
 
@@ -655,10 +694,14 @@ export default function FeedTikTokScroll({
                   <button
                     type="button"
                     onClick={() => void handleShare(item)}
-                    className="active:scale-95 transition text-white group"
+                    className="active:scale-95 transition group"
                   >
-                    <div className="w-11 h-11 rounded-full border border-white/20 bg-black/60 backdrop-blur-md flex items-center justify-center hover:bg-black/80 shadow-lg transition-all duration-200">
-                      <Share2 className="w-4.5 h-4.5 text-white" />
+                    <div className={`w-10 h-10 rounded-full border backdrop-blur-md flex items-center justify-center shadow-lg transition-all duration-200 ${
+                      isDarkMode
+                        ? "bg-black/60 border-white/20 text-white hover:bg-black/80"
+                        : "bg-kindle-card/90 border-kindle-border text-kindle-text hover:bg-kindle-card"
+                    }`}>
+                      <Share2 className="w-4 h-4" />
                     </div>
                   </button>
 
@@ -667,11 +710,11 @@ export default function FeedTikTokScroll({
                     <button
                       type="button"
                       onClick={onOpenDailyBrief}
-                      className="active:scale-95 transition text-white group"
+                      className="active:scale-95 transition group"
                       title="Open Daily News Brief"
                     >
-                      <div className="w-11 h-11 rounded-full border border-kindle-accent/30 bg-kindle-accent flex items-center justify-center hover:opacity-95 shadow-lg transition-all duration-200 relative animate-pulse">
-                        <Zap className={`w-4.5 h-4.5 fill-current ${isDarkMode ? "text-neutral-950" : "text-kindle-bg"}`} />
+                      <div className="w-10 h-10 rounded-full border border-kindle-accent/40 bg-kindle-accent text-neutral-950 flex items-center justify-center hover:opacity-95 shadow-lg transition-all duration-200 relative animate-pulse">
+                        <Zap className="w-4 h-4 fill-current text-neutral-950" />
                         <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                           <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
@@ -682,12 +725,14 @@ export default function FeedTikTokScroll({
                 </div>
 
                 <div
-                  className={`relative z-10 cursor-pointer select-text pb-[7rem] md:pb-6 transition-all duration-300 pr-18 md:pr-24 ${
-                    isDarkMode ? "text-white" : "text-kindle-text"
+                  className={`relative z-10 cursor-pointer select-text ${isMobile ? "pb-20" : "pb-6"} transition-all duration-300 pr-16 md:pr-24 ${
+                    isDarkMode
+                      ? "text-white"
+                      : "text-kindle-text"
                   }`}
                   onClick={() => setExpandedIndex(isExpanded ? null : index)}
                 >
-                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-1 sm:mb-2 transition-colors ${
+                  <span className={`inline-flex items-center flex-wrap gap-1.5 text-[10px] font-bold uppercase tracking-widest mb-1 sm:mb-2 transition-colors ${
                     isDarkMode ? "text-white/80" : "text-kindle-text-muted"
                   }`}>
                     {source}
@@ -696,15 +741,26 @@ export default function FeedTikTokScroll({
                         isDarkMode ? "bg-white/20 text-white" : "bg-kindle-border text-kindle-text"
                       }`}>Read</span>
                     ) : (
-                      <span className={`rounded-full px-1.5 py-0.5 text-[9px] ${
-                        isDarkMode ? "bg-kindle-accent text-black" : "bg-kindle-accent text-kindle-bg"
-                      }`}>New</span>
+                      <span className="rounded-full px-1.5 py-0.5 text-[9px] bg-kindle-accent text-neutral-950 font-bold">New</span>
+                    )}
+                    {item.publishedAt && (
+                      <>
+                        <span className="opacity-50 mx-0.5">•</span>
+                        <span className="opacity-75 tracking-wider lowercase">
+                          {new Date(item.publishedAt).toLocaleString(undefined, { 
+                            month: 'short', 
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </>
                     )}
                   </span>
-                  <h2 className={`text-lg sm:text-xl md:text-2xl font-lexend font-bold leading-tight mb-2 sm:mb-3 transition-all ${
+                  <h2 className={`text-base sm:text-xl md:text-2xl font-lexend font-bold leading-tight mb-2 sm:mb-3 transition-all ${
                     isDarkMode
-                      ? isExpanded ? "text-white" : "line-clamp-4 text-white"
-                      : isExpanded ? "text-kindle-text" : "line-clamp-4 text-kindle-text"
+                      ? isExpanded ? "text-white" : "line-clamp-3 sm:line-clamp-4 text-white drop-shadow-md"
+                      : isExpanded ? "text-kindle-text" : "line-clamp-3 sm:line-clamp-4 text-kindle-text"
                   }`}>
                     {item.title}
                   </h2>
@@ -759,7 +815,7 @@ export default function FeedTikTokScroll({
 
                   {/* Navigation and State Indicator */}
                   <div className={`flex items-center gap-2 mt-3.5 text-[10px] sm:text-[11px] transition-colors ${
-                    isDarkMode ? "text-white/70" : "text-kindle-text font-medium"
+                    isDarkMode ? "text-white/70" : "text-kindle-text-muted font-medium"
                   }`}>
                   {isExpanded ? (
                     <button
@@ -783,7 +839,7 @@ export default function FeedTikTokScroll({
                       className="cursor-pointer p-1.5 -m-1.5 flex items-center justify-center hover:opacity-85 transition"
                       aria-label="Expand"
                     >
-                      <ChevronDown className="w-5 h-5 animate-bounce text-kindle-accent" />
+                      <ChevronDown className={`w-5 h-5 animate-bounce ${isDarkMode ? "text-kindle-accent" : "text-kindle-text"}`} />
                     </button>
                   )}
                   <span className="ml-auto font-mono">

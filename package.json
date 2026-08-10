@@ -65,6 +65,7 @@
     "motion": "^12.23.24",
     "nodemailer": "^9.0.3",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38",
     "puppeteer": "^25.3.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
