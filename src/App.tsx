@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, lazy, Suspense } from "react";
 import { 
   auth, 
   isRealFirebase, 
@@ -84,7 +84,7 @@ import {
   RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench, Sofa, Hammer
 } from "lucide-react";
 import JSZip from "jszip";
-import { LayoutGroup, motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import FluidOverlay, { koraTabSpring } from "./components/FluidOverlay";
 import {
   hydrateBookFile,
@@ -225,6 +225,137 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     }
     return this.props.children;
   }
+}
+
+/**
+ * Floating mobile tab bar.
+ *
+ * The active pill is a SINGLE persistent element rendered once and moved with
+ * `transform` only. The previous implementation used Framer Motion's
+ * `layoutId` "magic motion": on every switch Motion ran a global layout
+ * measurement pass for the pill at the same instant the heavy incoming tab
+ * panel mounted, and that measurement-vs-mount competition was the visible
+ * stutter/lag. Here we measure the target cell geometry once (in a layout
+ * effect, after paint) and animate one element's `x` — no layout pass, no
+ * magic motion, so the slide is always GPU-smooth regardless of what the new
+ * tab is doing.
+ */
+type MobileTabDef = { id: string; label: string; Icon: React.ComponentType<any> };
+
+function MobileTabBar({
+  mobileTabs,
+  activeTab,
+  switchTab,
+  loungeEnabled,
+}: {
+  mobileTabs: MobileTabDef[];
+  activeTab: AppTab;
+  switchTab: (tab: AppTab) => void;
+  loungeEnabled: boolean;
+}) {
+  const activeIndex = mobileTabs.findIndex(
+    (t) => t.id === activeTab || (t.id === "tools" && activeTab === "settings")
+  );
+  const safeIndex = activeIndex < 0 ? 0 : activeIndex;
+  const barRef = useRef<HTMLElement | null>(null);
+  const [pill, setPill] = React.useState<{ x: number; w: number } | null>(null);
+  const reduceMotion = useReducedMotion();
+
+  const measure = useCallback(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    // The pill is a child of <nav>, so index into the button list specifically
+    // (not bar.children, which would include the pill at index 0).
+    const buttons = bar.querySelectorAll<HTMLElement>(".kora-tab-item");
+    const cell = buttons[safeIndex];
+    if (!cell) return;
+    // Match the old `inset-x-0.5` (2px) horizontal padding the pill sat inside.
+    const INSET = 2;
+    setPill({ x: cell.offsetLeft + INSET, w: cell.offsetWidth - INSET * 2 });
+  }, [safeIndex]);
+
+  // Measure once after the bar paints (and whenever the tab set changes).
+  useLayoutEffect(() => {
+    measure();
+  }, [measure, mobileTabs.length]);
+
+  // Keep the pill glued to its cell across rotations / viewport changes.
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined" || !barRef.current) return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(barRef.current);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("orientationchange", measure);
+    };
+  }, [measure]);
+
+  return (
+    <footer
+      className={`md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden ${
+        activeTab === "feed" ? "is-glass-tab" : ""
+      }`}
+    >
+      <nav
+        ref={barRef}
+        className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`}
+        aria-label="Main"
+      >
+        {/* Single persistent active pill — animated by transform only. */}
+        {pill && (
+          <motion.span
+            aria-hidden
+            className="kora-tab-pill absolute top-0.5 bottom-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
+            style={{ left: 0, width: pill.w }}
+            initial={false}
+            animate={{ x: pill.x }}
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : { type: "spring" as const, stiffness: 720, damping: 40, mass: 0.6 }
+            }
+          />
+        )}
+        {mobileTabs.map(({ id, label, Icon }) => {
+          const isActive = activeTab === id || (id === "tools" && activeTab === "settings");
+          return (
+            <button
+              key={id}
+              type="button"
+              data-guide={
+                id === "discover"
+                  ? "nav-discover"
+                  : id === "library"
+                    ? "nav-library"
+                    : id === "feed"
+                      ? "nav-feed"
+                      : id === "tools"
+                        ? "nav-tools"
+                        : id === "lounge"
+                          ? "nav-lounge"
+                          : undefined
+              }
+              onClick={() => switchTab(id as AppTab)}
+              className={`kora-tab-item relative flex items-center justify-center rounded-xl transition-colors ${
+                isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
+              }`}
+              aria-current={isActive ? "page" : undefined}
+            >
+              <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
+                <Icon
+                  className={`w-5.5 h-5.5 shrink-0 transition-transform duration-150 ${
+                    isActive ? "scale-105" : "opacity-80"
+                  }`}
+                  strokeWidth={isActive ? 2.25 : 2}
+                />
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+    </footer>
+  );
 }
 
 export default function App() {
@@ -3660,55 +3791,12 @@ export default function App() {
 
       {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book or modal open */}
       {!readerOpen && !anyModalOpen && (
-      <footer className={`md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden ${activeTab === "feed" ? "is-glass-tab" : ""}`}>
-        <LayoutGroup id="kora-mobile-tabs">
-          <nav className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`} aria-label="Main">
-            {mobileTabs.map(({ id, label, Icon }) => {
-              const isActive = activeTab === id || (id === "tools" && activeTab === "settings");
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  data-guide={
-                    id === "discover"
-                      ? "nav-discover"
-                      : id === "library"
-                        ? "nav-library"
-                        : id === "feed"
-                          ? "nav-feed"
-                          : id === "tools"
-                            ? "nav-tools"
-                            : id === "lounge"
-                              ? "nav-lounge"
-                              : undefined
-                  }
-                  onClick={() => switchTab(id)}
-                  className={`kora-tab-item relative flex items-center justify-center rounded-xl transition-colors ${
-                    isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
-                  }`}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId="kora-tab-pill"
-                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
-                      transition={koraTabSpring}
-                    />
-                  )}
-                  <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
-                    <Icon
-                      className={`w-5.5 h-5.5 shrink-0 transition-transform duration-150 ${
-                        isActive ? "scale-105" : "opacity-80"
-                      }`}
-                      strokeWidth={isActive ? 2.25 : 2}
-                    />
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-        </LayoutGroup>
-      </footer>
+        <MobileTabBar
+          mobileTabs={mobileTabs}
+          activeTab={activeTab}
+          switchTab={switchTab}
+          loungeEnabled={loungeEnabled}
+        />
       )}
 
       {/* 6. Compact Desktop Footer */}
