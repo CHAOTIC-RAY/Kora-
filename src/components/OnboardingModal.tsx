@@ -8,7 +8,6 @@ import {
   Contrast,
   Headphones,
   Heart,
-  Library,
   ShieldCheck,
   Wifi,
   Globe,
@@ -77,15 +76,6 @@ const ARCHETYPES = [
     quote: "A cup of tea and a good book is bliss.",
   },
   {
-    id: "curator-bibliophile",
-    title: "The Bibliophile Curator",
-    desc: "Loves cataloging, keeping shelves perfectly organized, and tracking fine literary details.",
-    icon: BookmarkIcon,
-    skin: "paper",
-    displayTheme: "theme-light-white",
-    quote: "My library is my sanctuary.",
-  },
-  {
     id: "speed-scholar",
     title: "The Speed Scholar",
     desc: "Inhales textbooks and non-fiction at light speed. Uses clean sans-serif layouts to optimize focus.",
@@ -121,15 +111,6 @@ const ARCHETYPES = [
     skin: "cyberpunk",
     displayTheme: "theme-oled",
     quote: "Neon on the shelf, dark in the head.",
-  },
-  {
-    id: "bibliophile-classic",
-    title: "Bibliophile Classic",
-    desc: "Walnut shelves, paper textures, warm amber light. The Library skin turns the app into a timeless reading room.",
-    icon: Library,
-    skin: "library",
-    displayTheme: "theme-paper",
-    quote: "Like a library from another century.",
   },
   {
     id: "material-maven",
@@ -204,14 +185,6 @@ function CoffeeIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-function BookmarkIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
-    </svg>
-  );
-}
-
 function GlassesIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -254,7 +227,7 @@ export default function OnboardingModal({
 }: OnboardingModalProps) {
   const [step, setStep] = useState(1);
   const [nickname, setNickname] = useState("");
-  const [selectedArchetype, setSelectedArchetype] = useState("curator-bibliophile");
+  const [selectedArchetype, setSelectedArchetype] = useState(ARCHETYPES[0].id);
   const [dailyGoal, setDailyGoal] = useState(30);
   const [autoCache, setAutoCache] = useState(true);
   const [dailyReminders, setDailyReminders] = useState(false);

@@ -366,6 +366,75 @@ export default function App() {
     });
   }, [scrollActiveTabToTop]);
 
+  // ---------------------------------------------------------------------
+  // Background tab prewarming (seamless tab switching)
+  //
+  // Tabs are React.lazy + keep-alive: a tab only mounts the first time it is
+  // visited, so that first switch pays for a chunk fetch AND a full mount —
+  // the visible lag. Here we warm both, in the background, after the app is
+  // idle: first the JS chunks (network/parse), then the panels themselves are
+  // added to mountedTabs so they render offscreen (the inactive panel is
+  // display:none + content-visibility:hidden, so it costs no paint).
+  //
+  // Staged so we never compete with the first paint or the active tab's data
+  // fetches, and gated off on low-end devices/perf mode where the extra
+  // resident DOM costs more than the switch it saves.
+  const prewarmedRef = useRef(false);
+  useEffect(() => {
+    if (prewarmedRef.current) return;
+    prewarmedRef.current = true;
+
+    let perfMode = false;
+    try {
+      perfMode = localStorage.getItem("kora_performance_mode") === "1";
+    } catch { /* ignore */ }
+    const nav = navigator as any;
+    const lowMemory = typeof nav.deviceMemory === "number" && nav.deviceMemory <= 2;
+    const fewCores = typeof nav.hardwareConcurrency === "number" && nav.hardwareConcurrency <= 4;
+    const saveData = !!(nav.connection && nav.connection.saveData);
+    if (perfMode || lowMemory || fewCores || saveData) return;
+
+    const idle: (cb: () => void, timeout: number) => number =
+      typeof (window as any).requestIdleCallback === "function"
+        ? (cb, timeout) => (window as any).requestIdleCallback(cb, { timeout })
+        : (cb, timeout) => window.setTimeout(cb, timeout);
+
+    const timers: number[] = [];
+
+    // Stage 1 — pull the lazy chunks into the module cache (no mount yet).
+    timers.push(idle(() => {
+      void import("./components/DiscoverView");
+      void import("./components/FeedView");
+      void import("./components/LibraryManager");
+    }, 2000));
+
+    // Stage 2 — heavier / less-likely tabs.
+    timers.push(idle(() => {
+      void import("./components/SettingsView");
+      if (isLoungeEnabled()) void import("./components/LoungeView");
+    }, 4000));
+
+    // Stage 3 — mount the panels offscreen so the first switch is a pure
+    // visibility flip rather than a mount.
+    timers.push(idle(() => {
+      setMountedTabs((prev) => {
+        const next = new Set(prev);
+        (["library", "discover", "feed", "tools"] as AppTab[]).forEach((t) => next.add(t));
+        if (isLoungeEnabled()) next.add("lounge");
+        return next.size === prev.size ? prev : next;
+      });
+    }, 6000));
+
+    return () => {
+      timers.forEach((id) => {
+        if (typeof (window as any).cancelIdleCallback === "function") {
+          try { (window as any).cancelIdleCallback(id); } catch { /* ignore */ }
+        }
+        clearTimeout(id);
+      });
+    };
+  }, []);
+
   // Android hardware back / gesture:
   //  - from any non-home tab → go to home (Lounge if enabled, else Library)
   //  - on home → first press shows "press back again to exit"; second press

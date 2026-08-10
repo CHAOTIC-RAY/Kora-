@@ -235,6 +235,10 @@ function DiscoverView({
   const [previewPlaying, setPreviewPlaying] = useState(false);
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
   const audiobookFetchGen = React.useRef(0);
+  // Guards every async detail-panel fetch (metadata, download variants, mirrors).
+  // Opening book B while book A's requests are still in flight must not let A's
+  // slower response overwrite B's title/overview/editions/mirrors.
+  const detailFetchGen = React.useRef(0);
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
@@ -620,6 +624,8 @@ function DiscoverView({
   }
 
   const loadFeaturedDownloads = async (title: string, author: string) => {
+    const gen = detailFetchGen.current;
+    const isStale = () => gen !== detailFetchGen.current;
     setLoadingFeaturedDownloads(true);
     setFeaturedDownloadVariants([]);
     setSelectedFeaturedVariant(null);
@@ -629,6 +635,7 @@ function DiscoverView({
     try {
       const q = cleanTitleAndAuthorForEbookSearch(title, author);
       const result = await searchDownloadVariants(q);
+      if (isStale()) return;
       const rawBooks = result.books || [];
       const uniqueVariants = rawBooks.reduce((acc: any[], current: any) => {
         const key = `${(current.extension || "").toLowerCase()}-${current.size || ""}-${current.source || ""}-${current.language || ""}`;
@@ -648,11 +655,13 @@ function DiscoverView({
     } catch (err) {
       console.error("Failed to load featured downloads:", err);
     } finally {
-      setLoadingFeaturedDownloads(false);
+      if (!isStale()) setLoadingFeaturedDownloads(false);
     }
   };
 
   const fetchFeaturedVariantMirrors = async (variant: any) => {
+    const gen = detailFetchGen.current;
+    const isStale = () => gen !== detailFetchGen.current;
     setFetchingFeaturedMirrors(true);
     setFeaturedMirrors([]);
     setFeaturedMirrorError(null);
@@ -660,6 +669,7 @@ function DiscoverView({
     // Paint usable mirrors immediately from md5 / directUrl while the API enriches.
     const instant = buildInstantMirrors(variant);
     if (instant.length > 0) {
+      if (isStale()) return;
       setFeaturedMirrors(sortMirrors(instant));
       setFetchingFeaturedMirrors(false);
     }
@@ -722,6 +732,7 @@ function DiscoverView({
         const data = await res.json();
         if (data.error) throw new Error(data.error);
 
+        if (isStale()) return;
         const links = data.downloadLinks || data.options || [];
         if (links.length > 0) {
           setFeaturedMirrors(sortMirrors([...instant, ...links]));
@@ -731,11 +742,12 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error(err);
+      if (isStale()) return;
       if (instant.length === 0) {
         setFeaturedMirrorError(err.message || "Failed to fetch download mirrors.");
       }
     } finally {
-      setFetchingFeaturedMirrors(false);
+      if (!isStale()) setFetchingFeaturedMirrors(false);
     }
   };
 
@@ -1176,6 +1188,16 @@ function DiscoverView({
     setAudiobookDetailError(null);
     setFeaturedAudiobookSource(null);
     audiobookFetchGen.current += 1;
+    // Invalidate any detail fetches still in flight for a previously opened
+    // book so their late responses can't overwrite this book's panel.
+    detailFetchGen.current += 1;
+    // Clear the previous book's editions/mirrors immediately — otherwise the
+    // old book's download links stay on screen (and remain clickable) until
+    // the new search resolves.
+    setFeaturedDownloadVariants([]);
+    setSelectedFeaturedVariant(null);
+    setFeaturedMirrors([]);
+    setFeaturedMirrorError(null);
     setSelectedFeaturedBook(book);
     // Seed overview immediately from list data (NYT synopses, etc.) so the
     // panel is never empty while Google / Open Library enrich it.
@@ -1202,7 +1224,9 @@ function DiscoverView({
     setPreviewTrackIdx(null);
     setPreviewPlaying(false);
     audiobookFetchGen.current += 1;
+    detailFetchGen.current += 1;
     setSelectedFeaturedBook(null);
+    setFeaturedBookDetails(null);
     setFeaturedAudiobookSource(null);
     setAudiobookDetail(null);
     setAudiobookDetailError(null);
@@ -1317,6 +1341,8 @@ function DiscoverView({
     forceSource?: "google" | "nyt" | "openlibrary",
     seedDescriptionArg?: string
   ) => {
+    const gen = detailFetchGen.current;
+    const isStale = () => gen !== detailFetchGen.current;
     setLoadingFeaturedDetails(true);
     // Keep any seeded synopsis visible while we enrich — don't flash empty.
     setSimilarBooks([]);
@@ -1388,6 +1414,7 @@ function DiscoverView({
         }
 
         if (info) {
+          if (isStale()) return;
           const description =
             info.description || seedDescription || selectedFeaturedBook?.description || "";
           setFeaturedBookDetails({
@@ -1426,6 +1453,7 @@ function DiscoverView({
 
         // Last resort for Google tab: keep/show the seeded NYT synopsis.
         if (seedDescription) {
+          if (isStale()) return;
           setFeaturedBookDetails((prev: any) => ({
             ...(prev || {}),
             title: cleanTitle,
@@ -1445,11 +1473,13 @@ function DiscoverView({
           const data = await nytRes.json();
           if (data && data.results && data.results.length > 0) {
             const book = data.results[0];
+            if (isStale()) return;
             let description = book.description || selectedFeaturedBook?.description || "";
             if (!description) {
               const ol = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
               description = ol.description;
             }
+            if (isStale()) return;
             setFeaturedBookDetails({
               title: book.title,
               authors: [book.author],
@@ -1472,6 +1502,7 @@ function DiscoverView({
       if (sourceToUse === "openlibrary" || sourceToUse === "google" || sourceToUse === "nyt") {
         const { description, doc } = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
         if (doc) {
+          if (isStale()) return;
           setFeaturedBookDetails({
             title: doc.title,
             authors: doc.author_name,
@@ -1497,6 +1528,7 @@ function DiscoverView({
     } catch (e) {
       console.error("Failed to fetch featured book details:", e);
     }
+    if (isStale()) return;
     setLoadingFeaturedDetails(false);
   };
 

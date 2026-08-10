@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, Loader2, RefreshCw, Share2, Settings2, Zap } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, LayoutGrid, Loader2, RefreshCw, Share2, Settings2, Zap } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { getItemThumbnail } from "../lib/feedPreview";
 import { resolveFeedArticle, prepareFeedArticleHtml } from "../lib/feedArticle";
@@ -509,7 +509,21 @@ export default function FeedTikTokScroll({
             )}
           </div>
 
-          <div className="pointer-events-auto">
+          <div className="pointer-events-auto flex items-center gap-2">
+            {onToggleLayout && (
+              <button
+                type="button"
+                onClick={() => onToggleLayout("grid")}
+                className={`w-10 h-10 rounded-full border backdrop-blur-md active:scale-95 transition flex items-center justify-center shadow-lg ${
+                  isDarkMode
+                    ? "border-white/20 bg-black/60 text-white hover:bg-black/80"
+                    : "border-kindle-border bg-kindle-card/90 text-kindle-text hover:bg-kindle-card"
+                }`}
+                title="Switch to Grid View"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            )}
             {onRefresh && (
               <button
                 type="button"

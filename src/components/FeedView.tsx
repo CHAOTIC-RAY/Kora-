@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Rss,
   Settings2,
-  Sparkles,
+  GalleryVertical,
   Trash2,
   X,
 } from "lucide-react";
@@ -388,7 +388,8 @@ function FeedView({
   const [feedLayout, setFeedLayout] = useState<FeedLayout>(() => {
     const v = localStorage.getItem("kora_feed_layout");
     if (v === "scroll" || v === "grid") return v;
-    return isMobile ? "scroll" : "grid";
+    // Mobile defaults to the immersive vertical scroll feed; desktop to grid.
+    return window.innerWidth < 768 ? "scroll" : "grid";
   });
 
   const persistFeedLayout = (next: FeedLayout) => {
@@ -732,7 +733,7 @@ function FeedView({
               }`}
               title="TikTok Scroll View"
             >
-              <Sparkles className="w-3 h-3 text-amber-500" />
+              <GalleryVertical className="w-3 h-3" />
               <span>Scroll</span>
             </button>
           </div>
