@@ -710,7 +710,7 @@ function FeedView({
             Maldives news and more — tap to read fullscreen.
           </p>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-between sm:justify-end">
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-start sm:justify-end flex-wrap">
           <div className="flex items-center gap-1 bg-kindle-bg p-1 rounded-xl border border-kindle-border">
             <button
               onClick={() => persistFeedLayout("grid")}

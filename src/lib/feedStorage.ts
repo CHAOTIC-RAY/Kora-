@@ -78,7 +78,7 @@ export const INTERNATIONAL_FEED_OPTIONS: Omit<FeedSubscription, "id" | "addedAt"
   {
     title: "Reuters World",
     siteUrl: "https://www.reuters.com/world/",
-    feedUrl: "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
+    feedUrl: "https://news.google.com/rss/search?q=site:reuters.com+world&hl=en-US&gl=US&ceid=US:en",
   },
   {
     title: "Al Jazeera",
@@ -116,7 +116,7 @@ export const TOPIC_FEED_GROUPS: TopicFeedGroup[] = [
     feeds: [
       { title: "BBC World", siteUrl: "https://www.bbc.com/news/world", feedUrl: "https://feeds.bbci.co.uk/news/world/rss.xml" },
       { title: "The Guardian World", siteUrl: "https://www.theguardian.com/world", feedUrl: "https://www.theguardian.com/world/rss" },
-      { title: "Reuters World", siteUrl: "https://www.reuters.com/world/", feedUrl: "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best" },
+      { title: "Reuters World", siteUrl: "https://www.reuters.com/world/", feedUrl: "https://news.google.com/rss/search?q=site:reuters.com+world&hl=en-US&gl=US&ceid=US:en" },
       { title: "Al Jazeera", siteUrl: "https://www.aljazeera.com/", feedUrl: "https://www.aljazeera.com/xml/rss/all.xml" },
       { title: "NPR News", siteUrl: "https://www.npr.org/", feedUrl: "https://feeds.npr.org/1001/rss.xml" },
     ],
@@ -269,6 +269,31 @@ function migrateMaldivesIndependentFeed(subscriptions: FeedSubscription[]): Feed
   });
 }
 
+/**
+ * Reuters retired reutersagency.com (the old feed 404s) and the legacy
+ * feeds.reuters.com endpoint no longer resolves at all, so existing installs
+ * have a permanently dead Reuters World subscription saved in localStorage.
+ * Rewrite it to the working Google News proxy and clear lastFetchedAt so the
+ * source re-fetches immediately instead of waiting out its refresh interval.
+ */
+const REUTERS_DEAD_FEEDS = [
+  "https://www.reutersagency.com/feed/?taxonomy=best-topics&post_type=best",
+  "https://feeds.reuters.com/reuters/worldNews",
+];
+const REUTERS_WORLD_FEED =
+  "https://news.google.com/rss/search?q=site:reuters.com+world&hl=en-US&gl=US&ceid=US:en";
+
+function migrateReutersWorldFeed(subscriptions: FeedSubscription[]): FeedSubscription[] {
+  return subscriptions.map((sub) => {
+    if (!REUTERS_DEAD_FEEDS.includes(sub.feedUrl)) return sub;
+    return {
+      ...sub,
+      feedUrl: REUTERS_WORLD_FEED,
+      lastFetchedAt: undefined,
+    };
+  });
+}
+
 /** Ensure Maldives + international curated sources exist and can be toggled. */
 function ensureCuratedToggleCatalog(existing: FeedSubscription[]): FeedSubscription[] {
   const byUrl = new Map(existing.map((sub) => [sub.feedUrl, sub]));
@@ -348,7 +373,7 @@ export function saveFeedItems(items: FeedItem[]): void {
 
 export function ensureDefaultSubscriptions(): FeedSubscription[] {
   const raw = purgeRemovedFeedData(getFeedSubscriptions());
-  let existing = migrateMaldivesIndependentFeed(raw);
+  let existing = migrateReutersWorldFeed(migrateMaldivesIndependentFeed(raw));
 
   const subscriptionsChanged =
     existing.length !== raw.length ||

@@ -389,10 +389,14 @@ export default function App() {
       perfMode = localStorage.getItem("kora_performance_mode") === "1";
     } catch { /* ignore */ }
     const nav = navigator as any;
-    const lowMemory = typeof nav.deviceMemory === "number" && nav.deviceMemory <= 2;
-    const fewCores = typeof nav.hardwareConcurrency === "number" && nav.hardwareConcurrency <= 4;
+    // Only skip prewarming on genuinely constrained devices. An earlier version
+    // also bailed on `hardwareConcurrency <= 4`, which disabled prewarming on
+    // the majority of real Android phones — exactly the devices where the
+    // first tab switch is slowest. Chunk imports are cheap and idle-scheduled,
+    // so the useful floor is much lower than that.
+    const lowMemory = typeof nav.deviceMemory === "number" && nav.deviceMemory <= 1;
     const saveData = !!(nav.connection && nav.connection.saveData);
-    if (perfMode || lowMemory || fewCores || saveData) return;
+    const skipMounts = perfMode || lowMemory || saveData;
 
     const idle: (cb: () => void, timeout: number) => number =
       typeof (window as any).requestIdleCallback === "function"
@@ -402,28 +406,33 @@ export default function App() {
     const timers: number[] = [];
 
     // Stage 1 — pull the lazy chunks into the module cache (no mount yet).
+    // Always worth doing: it's network/parse work that would otherwise happen
+    // synchronously on the user's first tap, and it costs no resident DOM.
     timers.push(idle(() => {
-      void import("./components/DiscoverView");
       void import("./components/FeedView");
+      void import("./components/DiscoverView");
       void import("./components/LibraryManager");
-    }, 2000));
+    }, 800));
 
     // Stage 2 — heavier / less-likely tabs.
     timers.push(idle(() => {
       void import("./components/SettingsView");
       if (isLoungeEnabled()) void import("./components/LoungeView");
-    }, 4000));
+    }, 2500));
 
     // Stage 3 — mount the panels offscreen so the first switch is a pure
-    // visibility flip rather than a mount.
-    timers.push(idle(() => {
-      setMountedTabs((prev) => {
-        const next = new Set(prev);
-        (["library", "discover", "feed", "tools"] as AppTab[]).forEach((t) => next.add(t));
-        if (isLoungeEnabled()) next.add("lounge");
-        return next.size === prev.size ? prev : next;
-      });
-    }, 6000));
+    // visibility flip rather than a mount. This is the part that costs
+    // resident DOM, so it stays gated on constrained devices.
+    if (!skipMounts) {
+      timers.push(idle(() => {
+        setMountedTabs((prev) => {
+          const next = new Set(prev);
+          (["library", "discover", "feed", "tools"] as AppTab[]).forEach((t) => next.add(t));
+          if (isLoungeEnabled()) next.add("lounge");
+          return next.size === prev.size ? prev : next;
+        });
+      }, 4000));
+    }
 
     return () => {
       timers.forEach((id) => {
