@@ -502,13 +502,17 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
   const contentHeightRef = React.useRef<number>(0);
   const viewportHeightRef = React.useRef<number>(0);
   const [doubleColumns, setDoubleColumns] = useState<boolean>(readerPrefs?.doubleColumns ?? false); // Dual page mode
-  const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 0); // KOReader-style page overlap (px repeated across page turns)
+  const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 2); // KOReader-style page overlap (px repeated across page turns)
   const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
   const [hyphenation, setHyphenation] = useState<boolean>(readerPrefs?.hyphenation ?? true);
   const [pageTurnMode, setPageTurnMode] = useState<string>(() => {
     const mode = readerPrefs?.pageTurnMode ?? "fifty-fifty";
-    // Legacy rename: swipe-only → keys-only
-    return mode === "swipe-only" ? "keys-only" : mode;
+    // Legacy renames: swipe-only → keys-only, and floating-buttons → keys-only
+    // (the floating-buttons option was removed; it behaved the same as keys-only
+    // for tap-to-turn purposes, and leaving it set would strand users on an
+    // option no longer offered in the UI).
+    if (mode === "swipe-only" || mode === "floating-buttons") return "keys-only";
+    return mode;
   });
   const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(() => {
     const saved = readerPrefs?.pageTransitionEffect;
@@ -1824,6 +1828,38 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       };
     }
   }, [isDraggingSelection]);
+
+  // Continuous scroll: actually be continuous. Previously reaching the end of a
+  // chapter just stopped, and the user had to tap to advance — which defeats the
+  // point of the mode. Watch the scroller and roll into the next readable
+  // chapter automatically once the bottom is reached.
+  useEffect(() => {
+    if (!useScrollLayout) return;
+    const el = pageCanvasRef.current;
+    if (!el || loading) return;
+
+    let advancing = false;
+    const onScroll = () => {
+      if (advancing) return;
+      // ~48px of slack so it fires on the last flick rather than demanding a
+      // pixel-perfect landing at the exact bottom.
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 48;
+      if (!atBottom) return;
+      if (currentChapterIdx >= chapters.length - 1) return;
+      const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
+      if (next === currentChapterIdx) return;
+      advancing = true;
+      updateProgress(next, false);
+      // Land at the top of the new chapter instead of inheriting the old
+      // scroll offset (which would look like content was skipped).
+      requestAnimationFrame(() => {
+        if (pageCanvasRef.current) pageCanvasRef.current.scrollTop = 0;
+      });
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [useScrollLayout, loading, currentChapterIdx, chapters, updateProgress]);
 
   const handleNextPage = () => {
     playFlipSound();
@@ -3575,7 +3611,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                         { label: "Classic 50/50 Split", val: "fifty-fifty", desc: "Left half goes backward, right half goes forward." },
                         { label: "Classic E-Reader", val: "classic-ereader", desc: "Left 25% goes backward, right 75% goes forward." },
                         { label: "Margins Only (15%)", val: "margins-only", desc: "Only tapping outer 15% edges turns pages." },
-                        { label: "Floating Buttons", val: "floating-buttons", desc: "Use on-screen circular buttons to turn pages." },
                         { label: "Keys Only", val: "keys-only", desc: "Disable tap-to-turn entirely. Use keyboard arrows or space." }
                       ].map((mode) => (
                         <button

@@ -922,6 +922,32 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Google Fonts (Lexend / Inter / Lora / ...) are pulled in via an @import in
+  // the stylesheet, so without caching they simply fail offline and in the APK
+  // on a cold network — the exact "fonts don't work" symptom. Cache-first: the
+  // CSS and the woff2 files it points at are effectively immutable per URL.
+  if (
+    event.request.method === "GET" &&
+    (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com")
+  ) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(SHELL_CACHE);
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        try {
+          const res = await fetch(event.request);
+          // Font CSS/woff2 are cross-origin; opaque responses are still usable.
+          if (res && (res.ok || res.type === "opaque")) cache.put(event.request, res.clone());
+          return res;
+        } catch {
+          return cached || new Response("", { status: 504 });
+        }
+      })()
+    );
+    return;
+  }
+
   // Perf plan 3.2: bundled, immutable dictionary shards — cache-first, served
   // offline. These live under /data/ and never change between deploys.
   if (event.request.method === "GET" && url.pathname.startsWith("/data/")) {

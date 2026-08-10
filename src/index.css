@@ -1,3 +1,9 @@
+/* Google Fonts MUST be the first at-rule in the sheet: CSS requires every
+   @import to precede all other rules, so when this sat below the
+   @font-face blocks the browser dropped it entirely and Lexend/Inter
+   silently never loaded (verified: 0 googleapis refs in the built CSS). */
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Orbitron:wght@600;800&family=Rajdhani:wght@500;700&family=DotGothic16&family=Share+Tech+Mono&family=VT323&display=swap');
+
 @font-face {
   font-family: "OpenDyslexic";
   src: url("/fonts/opendyslexic-regular.woff2") format("woff2");
@@ -113,7 +119,6 @@
   font-display: swap;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Orbitron:wght@600;800&family=Rajdhani:wght@500;700&family=DotGothic16&family=Share+Tech+Mono&family=VT323&display=swap');
 @import "tailwindcss";
 @import "./styles/app-skins.css";
 
