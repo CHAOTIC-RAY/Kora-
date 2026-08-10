@@ -145,7 +145,8 @@
   --font-serif: "Lora", ui-serif, Georgia, serif;
   --font-display: "Lora", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-lexend: "Lexend", "Nata Sans", "Inter", sans-serif;
+  --font-lexend: "Lexend", "Nata Sans", sans-serif;
+  --font-inter: "Inter", "Nata Sans", "Lexend", sans-serif;
   --font-thaana: "Faruma", "Noto Sans Thaana", "MV Waheed", sans-serif;
   --font-opendyslexic: "OpenDyslexic", "Lexend", sans-serif;
   --font-bookerly: "Bookerly", serif;
@@ -936,13 +937,86 @@ h1, h2, h3, h4 {
   box-shadow: 0 10px 30px -4px rgba(0, 0, 0, 0.45), 0 4px 6px -2px rgba(0, 0, 0, 0.25);
 }
 
-/* EPUB Text Reader Style Overrides to Prevent Text Clipping on Mobile */
-.epub-content {
-  box-sizing: border-box;
-  color: inherit;
-  orphans: 3;
-  widows: 3;
+/* Force the chosen reader font. EPUB/HTML documents inline their own
+   font-family declarations, which would otherwise beat the font class on
+   .epub-content. We must out-specify them with !important so the user's font
+   choice actually takes effect. (Local fonts like OpenDyslexic resolve
+   immediately; Lexend/Inter come from the Google Fonts @import and are cached
+   by the service worker so they work offline / inside the APK.) */
+.epub-content.font-lexend,
+.epub-content.font-inter,
+.epub-content.font-opendyslexic,
+.epub-content.font-sans,
+.epub-content.font-serif,
+.epub-content.font-bookerly,
+.epub-content.font-chareink,
+.epub-content.font-lexica,
+.epub-content.font-rakuten,
+.epub-content.font-thaana,
+.epub-content.font-display {
+  font-family: inherit !important;
 }
+
+.epub-content.font-lexend,
+.epub-content.font-lexend * {
+  font-family: var(--font-lexend) !important;
+}
+.epub-content.font-inter,
+.epub-content.font-inter * {
+  font-family: var(--font-inter) !important;
+}
+.epub-content.font-opendyslexic,
+.epub-content.font-opendyslexic * {
+  font-family: var(--font-opendyslexic) !important;
+}
+.epub-content.font-sans,
+.epub-content.font-sans * {
+  font-family: var(--font-sans) !important;
+}
+.epub-content.font-serif,
+.epub-content.font-serif * {
+  font-family: var(--font-serif) !important;
+}
+.epub-content.font-bookerly,
+.epub-content.font-bookerly * {
+  font-family: var(--font-bookerly) !important;
+}
+.epub-content.font-chareink,
+.epub-content.font-chareink * {
+  font-family: var(--font-chareink) !important;
+}
+.epub-content.font-lexica,
+.epub-content.font-lexica * {
+  font-family: var(--font-lexica) !important;
+}
+.epub-content.font-rakuten,
+.epub-content.font-rakuten * {
+  font-family: var(--font-rakuten) !important;
+}
+.epub-content.font-thaana,
+.epub-content.font-thaana * {
+  font-family: var(--font-thaana) !important;
+}
+.epub-content.font-display,
+.epub-content.font-display * {
+  font-family: var(--font-display) !important;
+}
+
+/* Force the chosen font in the news/article reader too — same reason as
+   .epub-content above: injected article HTML carries its own font rules. */
+.feed-article-content.font-lexend,
+.feed-article-content.font-lexend * { font-family: var(--font-lexend) !important; }
+.feed-article-content.font-inter,
+.feed-article-content.font-inter * { font-family: var(--font-inter) !important; }
+.feed-article-content.font-opendyslexic,
+.feed-article-content.font-opendyslexic * { font-family: var(--font-opendyslexic) !important; }
+.feed-article-content.font-sans,
+.feed-article-content.font-sans * { font-family: var(--font-sans) !important; }
+.feed-article-content.font-serif,
+.feed-article-content.font-serif * { font-family: var(--font-serif) !important; }
+.feed-article-content.font-display,
+.feed-article-content.font-display * { font-family: var(--font-display) !important; }
+
 
 /* Avoid nuking table layout — max-width:100% on every cell collapses multi-col tables. */
 .epub-content *:not(table):not(thead):not(tbody):not(tfoot):not(tr):not(td):not(th):not(col):not(colgroup) {
