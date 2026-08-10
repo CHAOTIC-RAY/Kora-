@@ -67,15 +67,6 @@ const ARCHETYPES = [
     quote: "Just one more chapter...",
   },
   {
-    id: "cozy-tea-sipper",
-    title: "The Cozy Tea Sipper",
-    desc: "Enjoys warm sepia lighting, a hot cup of chamomile tea, and peaceful, timeless classics.",
-    icon: CoffeeIcon,
-    skin: "library",
-    displayTheme: "theme-sepia",
-    quote: "A cup of tea and a good book is bliss.",
-  },
-  {
     id: "speed-scholar",
     title: "The Speed Scholar",
     desc: "Inhales textbooks and non-fiction at light speed. Uses clean sans-serif layouts to optimize focus.",
@@ -407,34 +398,37 @@ export default function OnboardingModal({
                   <label className="text-[11px] uppercase tracking-wider font-bold text-kindle-text-muted block">
                     Reader Archetype
                   </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {ARCHETYPES.map((arc) => {
+                  <div className="grid grid-cols-2 auto-rows-[minmax(0,1fr)] gap-2.5">
+                    {ARCHETYPES.map((arc, idx) => {
                       const IconComponent = arc.icon;
                       const isSelected = selectedArchetype === arc.id;
+                      // Compact bento: first two are wide (full-width row), the
+                      // rest tile in a 2-col grid. Keeps it dense, not a loose grid.
+                      const wide = idx < 2;
                       return (
                         <button
                           key={arc.id}
                           type="button"
                           onClick={() => handleArchetypeSelect(arc)}
-                          className={`p-4 rounded-xl border text-left transition-all duration-300 flex gap-3 cursor-pointer ${
+                          className={`${wide ? "col-span-2" : "col-span-1"} p-3 rounded-xl border text-left transition-all duration-300 flex gap-2.5 cursor-pointer relative overflow-hidden ${
                             isSelected
-                              ? "bg-kindle-card border-kindle-accent shadow-xs scale-[1.01]"
+                              ? "bg-kindle-accent/10 border-kindle-accent shadow-xs"
                               : "bg-kindle-card/50 border-kindle-border hover:border-kindle-text-muted"
                           }`}
                         >
                           <div
-                            className={`p-2 rounded-lg shrink-0 h-10 w-10 flex items-center justify-center ${
+                            className={`p-2 rounded-lg shrink-0 h-9 w-9 flex items-center justify-center ${
                               isSelected ? "bg-kindle-accent text-kindle-bg" : "bg-kindle-border/40 text-kindle-text-muted"
                             }`}
                           >
-                            <IconComponent className="w-5 h-5" />
+                            <IconComponent className="w-4.5 h-4.5" />
                           </div>
-                          <div className="space-y-1">
-                            <h4 className="font-display font-bold text-xs text-kindle-text flex items-center gap-1.5">
+                          <div className="space-y-0.5 min-w-0">
+                            <h4 className="font-display font-bold text-xs text-kindle-text flex items-center gap-1.5 truncate">
                               {arc.title}
-                              {isSelected && <Check className="w-3.5 h-3.5 text-emerald-500" />}
+                              {isSelected && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
                             </h4>
-                            <p className="text-[10px] text-kindle-text-muted leading-relaxed">{arc.desc}</p>
+                            <p className="text-[10px] text-kindle-text-muted leading-relaxed line-clamp-2">{arc.desc}</p>
                           </div>
                         </button>
                       );
