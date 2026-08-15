@@ -204,7 +204,7 @@ export default function BookMetadataEditor({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-2xl bg-kindle-card border border-kindle-border rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in fade-in duration-200 overflow-y-auto max-h-[90vh]">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex justify-between items-center mb-6 pt-[var(--kora-safe-top)]">
           <h2 className="text-xl font-lexend font-bold">Book Details</h2>
           <div className="flex items-center gap-2">
             <button
