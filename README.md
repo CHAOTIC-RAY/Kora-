@@ -43,7 +43,7 @@ Kora isn't just a reader—it's a **unified content consumption platform** built
 | **🎧 Neural Text-to-Speech** | Convert any book to audiobook with system voices | Transform reading into listening, no API calls |
 | **📰 RSS + News Feed** | Integrated news reader & morning briefing | Morning paper + library in one place |
 | **☁️ Cross-Device Sync** | Firebase Firestore + peer-to-peer transfer | Your library follows you everywhere |
-| **📡 Federated Search** | Single Rave relay → Anna's Archive, LibGen, Z-Library, Internet Archive, Open Library | Discover & download freely-available books |
+| **📡 Federated Search** | Rave Engine (another dev's project — a search relay querying LibGen + Anna's Archive) aggregated server-side via the Cloudflare Worker, + Google Books metadata enrichment (+ Open Library fallback) | Discover & download freely-available books |
 | **🌍 Offline-First PWA** | Works completely offline with IndexedDB | Read anywhere, anytime, no connection needed |
 | **📱 Cross-Platform** | Web (PWA) + Android + iOS | One codebase, installed on your device |
 | **🎮 Workshop Lounge** | Crossword, Word Search, Linguist Guardian | Take reading breaks with word games |
@@ -102,6 +102,28 @@ Your personal library—read offline, sync across devices.
 - ⭐ Goodreads integration for curated lists
 
 > **Search architecture:** Kora does **not** independently scrape LibGen or call Z-Library's `eapi` from the client. All ebook/audiobook search flows through Rave as the sole relay engine (Worker route `/api/annas-archive/search` → Rave v1 with a server-side key). The one exception is the LibGen landing-page resolution in `/api/proxy-file` (`get.php?md5=`), which converts Rave's signed LibGen CDN links into working downloads. This keeps the API key server-side and the client code free of provider-specific scraping.
+
+---
+
+#### How the Book Engine Actually Works
+
+Kora is a front-end reader and a search/download relay. It does **not** host books itself. Here is the exact data flow, traced through the source.
+
+**Rave Engine (another dev's project)** — a search relay that queries LibGen and Anna's Archive. Kora talks to Rave from its Cloudflare Worker (`server.ts` / `src/worker.ts`) so the `RAVE_API_KEY` is never sent to the browser. The Worker exposes `/api/annas-archive/search`, which calls through to Rave's v1 API at `api.ravebooksearch.com` (`/src/worker.ts:244`, `server.ts:1114`), and returns the merged results.
+
+**Google Books** — clean metadata, descriptions, professional cover images, and verified reader ratings. These aren't always downloadable (you'd buy or borrow them elsewhere), but the metadata makes Kora's search results much more useful. The Worker proxies Google Books via `/api/google-books/search` (`src/worker.ts:2159`), and if Google is down or quota-exhausted (HTTP 429), it synthesizes a volumes-like payload from Open Library (`googleBooksFallbackFromOpenLibrary`).
+
+**Kora merges both:** it shows you Google's detailed catalog info alongside Rave's downloadable files, so you get both professional book metadata and the actual book files in one search. The `/api/search/stream` route (`src/worker.ts:1745`) races them in parallel — Google Books first for metadata, then Rave when Google returns nothing — and streams NDJSON back to the client (`src/lib/searchClient.ts:streamEbookSearch`).
+
+**For the direct download link:** When you search in Kora, results come from Rave Engine which aggregates from LibGen + Anna's Archive. But Rave doesn't give Kora direct file links — it gives Kora a unique string (MD5). Kora takes that MD5 and builds a LibGen download URL like <code>@url:`https://libgen.li/get.php?md5=943105537`</code>. LibGen doesn't let you download directly by MD5 alone — you need a `key` parameter. So Kora makes two requests: one to resolve the signed key (via `resolveLibgenSigned` in `src/lib/libgenSigned.ts`, which races multiple LibGen mirrors in parallel), then another to actually download using both `md5` + `key`. The signed link is then streamed through `/api/proxy-file` (`server.ts:2988`, `src/worker.ts:3518`), which resolves landing pages, handles IPFS gateways, retries mirrors, and enforces SSRF guards.
+
+**If Google Books is down** — Kora queries Open Library instead and maps results to the same Google-Books-shaped `volumeInfo` payload (`googleBooksFallbackFromOpenLibrary`), so enrichment on the detail page still works.
+
+**Advanced search** — Skips metadata enrichment (Google Books / Open Library), goes straight to the MD5 hash with Rave. The `/api/annas-archive/download` route (`server.ts:3504`) resolves the MD5 into a ranked list of mirrors: Rave's signed direct URL first, then LibGen mirrors (`libgen.li`, `libgen.be`, `libgen.lc`, …), Anna's Archive manual lookup, and Internet Archive direct file links — deduplicated and sorted client-side (`DiscoverView.tsx:buildInstantMirrors` + `rankVariants`).
+
+**When Rave is down** — Kora falls back to direct LibGen/Anna's Archive scraping. The Worker's `fetchPageHtmlWithProxies` (`src/worker.ts:419`) fetches ebook-site pages (LibGen, Anna's Archive, Z-Library) directly with rotating user-agents and a Puppeteer/Cloudflare-Browser bypass for anti-bot walls (`src/lib/libgenProxy.ts:fetchBinaryWithLibgenMirrors`). It extracts MD5 hashes and signed download URLs, racing multiple mirrors in parallel so one dead host doesn't kill the download.
+
+**Context Warnings** — Kora logs diagnostic warnings when content extraction fails, e.g. <code>@url:`https://libgen.li/get.php?md5=943105537`: no content extracted</code>. These surface in the live API diagnostic export (see `fix(logger): export readable UTF-8 txt + live API diagnostic`). They mean a mirror returned HTML instead of a binary stream, so Kora moves on to the next candidate and records which host failed.
 
 ---
 
