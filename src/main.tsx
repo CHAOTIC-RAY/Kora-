@@ -9,6 +9,7 @@ import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "./lib/appVersion
 import { initCapacitorShell, isNativeApp } from "./lib/capacitorNative";
 import { installNativeHttpShim, isNativeHttpAvailable } from "./lib/nativeHttp";
 import { initSentry } from "./lib/sentry";
+import { Bug } from "lucide-react";
 
 // Initialize Sentry as early as possible so boot-time errors are captured.
 initSentry();
@@ -80,12 +81,28 @@ createRoot(document.getElementById("root")!).render(
           <p className="text-sm text-kindle-text-muted mb-4">
             Kora encountered an unexpected error. A report has been sent to the team.
           </p>
-          <button
-            onClick={resetError}
-            className="px-4 py-2 bg-kindle-accent text-white rounded-xl text-sm font-bold"
-          >
-            Reload
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={resetError}
+              className="px-4 py-2 bg-kindle-accent text-white rounded-xl text-sm font-bold"
+            >
+              Reload
+            </button>
+            <button
+              onClick={() => {
+                const build = typeof __KORA_BUILD_ID__ !== "undefined" ? __KORA_BUILD_ID__ : "dev";
+                window.open(
+                  `https://github.com/CHAOTIC-RAY/Kora-/issues/new?title=Report%20a%20bug%20(v${build})&body=Kora%20build%20ID%3A%20${build}%0A%0A%E2%96%B2%20What%20happened%3F%0A%0A%E2%96%B2%20Steps%20to%20reproduce%0A%0A%E2%96%B2%20Expected%20behavior%0A%0A%E2%96%B2%20Actual%20behavior%0A%0A%E2%96%B2%20Device%20%2F%20OS%20%2F%20browser`,
+                  "_blank",
+                  "noopener,noreferrer"
+                );
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 border border-kindle-border rounded-xl text-sm font-bold text-kindle-text hover:bg-kindle-card transition-colors"
+            >
+              <Bug className="w-4 h-4 text-kindle-accent" />
+              Report a bug
+            </button>
+          </div>
         </div>
       )}
       beforeCapture={(error) => {

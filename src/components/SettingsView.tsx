@@ -7,7 +7,8 @@ import {
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
   FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
-  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers, Library as LibraryIcon
+  Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers, Library as LibraryIcon,
+  Bug
 } from "lucide-react";
 
 // Icons for each app skin in the Settings skin selector
@@ -2958,17 +2959,53 @@ function SettingsView({
               <span className="text-kindle-text-muted">Version</span>
               <span className="font-mono font-bold">{isAndroidApk ? apkLabel : "Kora 1.2.0"}</span>
             </div>
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-kindle-text-muted">Search powered by</span>
+              <a
+                href="https://ravebooksearch.com/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-kindle-accent hover:text-accent transition-colors font-semibold"
+              >
+                RaveSearch
+              </a>
+            </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">GitHub</span>
-              <a 
-                href="https://github.com/CHAOTIC-RAY/Kora-" 
-                target="_blank" 
-                rel="noreferrer" 
+              <a
+                href="https://github.com/CHAOTIC-RAY/Kora-"
+                target="_blank"
+                rel="noreferrer"
                 className="font-bold flex items-center gap-1.5 hover:text-kindle-accent transition-colors"
               >
                 <Github className="w-3.5 h-3.5" />
                 Kora Repository
               </a>
+            </div>
+
+            <div className="pt-2 border-t border-kindle-border/50">
+              <button
+                onClick={() => {
+                  // Opens the Sentry User Feedback form (SDK ≥ 7.85.0)
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const SentryMod = (window as any).__SENTRY__ || {};
+                  if (SentryMod.showFeedback) {
+                    SentryMod.showFeedback();
+                  } else {
+                    // Fallback: open a GitHub issue pre-filled with the build id.
+                    const build = typeof __KORA_BUILD_ID__ !== "undefined" ? __KORA_BUILD_ID__ : "dev";
+                    window.open(
+                      `https://github.com/CHAOTIC-RAY/Kora-/issues/new?title=Report%20a%20bug%20(v${build})&body=Kora%20build%20ID%3A%20${build}%0A%0A%E2%96%B2%20What%20happened%3F%0A%0A%E2%96%B2%20Steps%20to%20reproduce%0A%0A%E2%96%B2%20Expected%20behavior%0A%0A%E2%96%B2%20Actual%20behavior%0A%0A%E2%96%B2%20Device%20%2F%20OS%20%2F%20browser`,
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-bg hover:bg-kindle-card hover:border-kindle-accent/50 transition-colors text-sm font-bold text-kindle-text"
+              >
+                <Bug className="w-4 h-4 text-kindle-accent shrink-0" />
+                Report a bug
+              </button>
             </div>
 
             {isAndroidApk && (

@@ -319,6 +319,7 @@ RAVE_API_KEY=your_rave_api_key
 - 📅 Reading goals & streak tracking
 - 💬 Community highlights & annotations
 - 🎤 Voice commands (read aloud)
+- 🐞 In-app bug reporting via Sentry User Feedback (error screen + Settings)
 
 ---
 
@@ -352,6 +353,7 @@ You're free to use Kora in personal, commercial, or educational projects.
 - **[PDF.js](https://mozilla.github.io/pdf.js/)** — PDF viewer
 - **[React](https://react.dev)** — UI framework
 - **[Rave Search](https://ravebooksearch.com/)** — Federated book search relay (Anna's Archive, LibGen, Z-Library, Internet Archive, Open Library)
+- **[Sentry](https://sentry.io)** — Error tracking + User Feedback bug reporting
 - **[Tailwind CSS](https://tailwindcss.com)** — Utility-first CSS
 - **[Firebase](https://firebase.google.com)** — Backend & sync infrastructure
 - **[Capacitor](https://capacitorjs.com)** — Cross-platform native bridge
@@ -361,5 +363,5 @@ You're free to use Kora in personal, commercial, or educational projects.
 
 <p align="center">
   <i>Your bookshelf, your narrator, and your morning paper. Unified.</i><br />
-  Built with ☕ and passion by <a href="https://github.com/CHAOTIC-RAY">CHAOTIC-RAY</a> · <a href="https://kora.chaoticstudio.workers.dev">Visit Kora →</a>
+  Built with ☕ and passion by <a href="https://github.com/CHAOTIC-RAY">CHAOTIC-RAY</a> · <a href="https://kora.chaoticstudio.workers.dev">Visit Kora →</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/issues/new?title=Report%20a%20bug">Report a bug →</a>
 </p>

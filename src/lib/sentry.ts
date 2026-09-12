@@ -18,9 +18,15 @@ export function initSentry() {
   Sentry.init({
     dsn:
       import.meta.env.VITE_SENTRY_DSN ||
-      "https://448617ca76507b39cdf227cd0aec7f6c@o4511839938150400.ingest.de.sentry.io/4511839944376400",
+      "https://448617...7f6c@o4511839938150400.ingest.de.sentry.io/4511839944376400",
 
-    integrations: [Sentry.browserTracingIntegration(), Sentry.replayIntegration()],
+    integrations: [
+      Sentry.browserTracingIntegration(),
+      Sentry.replayIntegration(),
+      Sentry.feedbackIntegration({
+        colorScheme: "system",
+      }),
+    ],
 
     // Tracing — capture 100% of transactions in dev, 10% in production
     tracesSampleRate: import.meta.env.PROD ? 0.1 : 1.0,
@@ -29,8 +35,8 @@ export function initSentry() {
     tracePropagationTargets: [
       "localhost",
       "127.0.0.1",
-      /^https:\/\/.*\.workers\.dev\/api/,
-      /^https:\/\/kora\.chaoticstudio\.workers\.dev\/api/,
+      /^https:\/\/.*\.workers\.dev\/api\//,
+      /^https:\/\/kora\.chaoticstudio\.workers\.dev\/api\//,
     ],
 
     // Session Replay — 10% of sessions, 100% of sessions with errors
@@ -62,7 +68,8 @@ export function initSentry() {
       return event;
     },
 
-    // Don't capture console noise from known dev-only warnings
+    // Don't capture console noise from known dev-only warnings.
+    // Strings are substring-matched; RegExp objects are tested with .test().
     ignoreErrors: [
       "Network Error",
       "Failed to execute 'insertBefore' on 'Node'",
@@ -70,7 +77,7 @@ export function initSentry() {
       // Firestore SDK internal assertion failures (12.15.0) — known bug triggered by
       // rapid tab switching / app backgrounding / network interruption mid-write.
       // The global unhandledrejection handler in logger.ts will reinit Firestore on these.
-      "FIRESTORE.*INTERNAL ASSERTION FAILED",
+      /FIRESTORE.*INTERNAL ASSERTION FAILED/,
       "Attempt to iterate a cursor that doesn't exist",
       // IndexedDB lifecycle noise — handled by indexedDB.ts guards
       "The database is not running a version change transaction",
