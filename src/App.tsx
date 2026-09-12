@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, lazy, Suspense } from "react";
-import { 
+import { importWithRetry, isBundleStale } from "./lib/importRetry";
+import {
   auth, 
   isRealFirebase, 
   loadLibrary, 
@@ -19,22 +20,22 @@ import {
 import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
-const LibraryManager = lazy(() => import("./components/LibraryManager"));
-const DiscoverView = lazy(() => import("./components/DiscoverView"));
-const SettingsView = lazy(() => import("./components/SettingsView"));
-const DeviceDownloadPicker = lazy(() => import("./components/DeviceDownloadPicker"));
-const LoungeView = lazy(() => import("./components/LoungeView"));
-const WikipediaWidget = lazy(() => import("./components/WikipediaWidget"));
+const LibraryManager = lazy(() => importWithRetry(() => import("./components/LibraryManager")));
+const DiscoverView = lazy(() => importWithRetry(() => import("./components/DiscoverView")));
+const SettingsView = lazy(() => importWithRetry(() => import("./components/SettingsView")));
+const DeviceDownloadPicker = lazy(() => importWithRetry(() => import("./components/DeviceDownloadPicker")));
+const LoungeView = lazy(() => importWithRetry(() => import("./components/LoungeView")));
+const WikipediaWidget = lazy(() => importWithRetry(() => import("./components/WikipediaWidget")));
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
 import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
-const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
-const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
-const BookReaderText = lazy(() => import("./components/BookReaderText"));
-const CreateView = lazy(() => import("./components/CreateView"));
-const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
+const BookReaderEPUB = lazy(() => importWithRetry(() => import("./components/BookReaderEPUB")));
+const BookReaderPDF = lazy(() => importWithRetry(() => import("./components/BookReaderPDF")));
+const BookReaderText = lazy(() => importWithRetry(() => import("./components/BookReaderText")));
+const CreateView = lazy(() => importWithRetry(() => import("./components/CreateView")));
+const AudiobookPlayer = lazy(() => importWithRetry(() => import("./components/AudiobookPlayer")));
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import BetaChannelBadge from "./components/BetaChannelBadge";
@@ -61,17 +62,17 @@ import {
 import { applySelectedFeedSources, DEFAULT_FEED_SUBSCRIPTIONS } from "./lib/feedStorage";
 import { getTimeOfDayAutoTheme } from "./lib/readerThemes";
 import Quote from "./components/Quote";
-const FeedView = lazy(() => import("./components/FeedView"));
+const FeedView = lazy(() => importWithRetry(() => import("./components/FeedView")));
 import DownloadBookBtn from "./components/DownloadBookBtn";
-const OnboardingModal = lazy(() => import("./components/OnboardingModal"));
-const GuideSetupPopup = lazy(() => import("./components/GuideSetupPopup"));
-const DailyReminderModal = lazy(() => import("./components/DailyReminderModal"));
+const OnboardingModal = lazy(() => importWithRetry(() => import("./components/OnboardingModal")));
+const GuideSetupPopup = lazy(() => importWithRetry(() => import("./components/GuideSetupPopup")));
+const DailyReminderModal = lazy(() => importWithRetry(() => import("./components/DailyReminderModal")));
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import ApkUpdateBanner from "./components/ApkUpdateBanner";
 import ApkFooterLink from "./components/ApkFooterLink";
 import InstallView from "./components/InstallView";
-const AnnotationsHub = lazy(() => import("./components/AnnotationsHub"));
+const AnnotationsHub = lazy(() => importWithRetry(() => import("./components/AnnotationsHub")));
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
 import { toast, Toaster } from "react-hot-toast";
@@ -93,7 +94,7 @@ import {
   registerThisDevice,
   listenAndServePeerRequests,
 } from "./lib/crossDeviceSync";
-const ProximitySyncModal = lazy(() => import("./components/ProximitySyncModal"));
+const ProximitySyncModal = lazy(() => importWithRetry(() => import("./components/ProximitySyncModal")));
 import {
   APP_SKIN_STORAGE_KEY,
   type AppSkinId,
@@ -573,6 +574,24 @@ export default function App() {
         clearTimeout(id);
       });
     };
+  }, []); // prewarming
+
+  // ── PWA version-mismatch guard ─────────────────────────────────────────
+  // After a new deploy, the service worker may serve stale JS chunks (Issue 1/5/18/21).
+  // If the remote version.json buildId differs from the embedded __KORA_BUILD_ID__,
+  // prompt the user to reload so they get the fresh bundle.
+  useEffect(() => {
+    let cancelled = false;
+    isBundleStale().then((stale) => {
+      if (!cancelled && stale) {
+        // Post a message to the service worker to skip the normal lifecycle;
+        // then prompt via PwaLifecycleBanner (which listens for the same signal).
+        if (navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: "version-mismatch" });
+        }
+      }
+    });
+    return () => { cancelled = true; };
   }, []);
 
   // Android hardware back / gesture:

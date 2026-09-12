@@ -433,7 +433,7 @@ export default function FeedTikTokScroll({
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      if (a && a.parentNode) document.body.removeChild(a);
       await navigator.clipboard.writeText(item.link);
       toast.success("Share card saved & link copied");
     } catch {

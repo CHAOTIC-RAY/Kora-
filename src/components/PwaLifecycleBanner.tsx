@@ -37,6 +37,7 @@ export default function PwaLifecycleBanner() {
   const [updateReason, setUpdateReason] = useState<string>("A newer version of Kora is ready.");
   const refreshingRef = useRef(false);
   const updateTimerRef = useRef<number | null>(null);
+  const updateShownRef = useRef(false);
 
   useEffect(() => {
     if (isStandalone()) return;
@@ -110,6 +111,13 @@ export default function PwaLifecycleBanner() {
         if (refreshingRef.current) return;
         refreshingRef.current = true;
         safeReload("SW_ACTIVATED");
+      } else if (type === "version-mismatch") {
+        // Boot-time signal from App.tsx: the deployed version.json buildId differs
+        // from the embedded one → the SW is likely serving stale JS chunks.
+        // Show the update banner so the user can reload into the fresh build.
+        if (!updateShownRef.current) {
+          markUpdate(null, "A newer version of Kora is available. Reload to apply the latest changes.");
+        }
       }
     };
 

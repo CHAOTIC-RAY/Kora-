@@ -2097,10 +2097,10 @@ function SettingsView({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold">Line Spacing</h4>
-                  <span className="text-[10px] font-mono text-kindle-text-muted">{readerPrefs.lineSpacing.toFixed(1)}</span>
+                  <span className="text-[10px] font-mono text-kindle-text-muted">{readerPrefs.lineSpacing?.toFixed(1) ?? "1.6"}</span>
                 </div>
                 <input
-                  type="range" min={1.2} max={2.4} step={0.1} value={readerPrefs.lineSpacing}
+                  type="range" min={1.2} max={2.4} step={0.1} value={readerPrefs.lineSpacing ?? 1.6}
                   onChange={(e) => setRP({ lineSpacing: Number(e.target.value) })}
                   className="w-full accent-kindle-accent cursor-pointer"
                 />

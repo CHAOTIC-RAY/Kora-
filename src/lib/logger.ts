@@ -138,13 +138,49 @@ class DiagnosticLogger {
   private setupGlobalHandlers() {
     if (typeof window === "undefined") return;
 
-    // Capture unhandled promise rejections
-    window.addEventListener("unhandledrejection", (event) => {
+    // ── Firestore assertion recovery ──────────────────────────────────────
+    // Firestore SDK 12.15.0 can throw internal assertion failures ("Unexpected state (ID: b815)")
+    // when the write queue reaches an invalid state (rapid tab switching, app backgrounding,
+    // network interruption mid-write, or IndexedDB being deleted mid-operation).
+    // These are unhandled rejections that should trigger a Firestore reinit, not crash the app.
+    const isFirestoreAssertionError = (reason: unknown): boolean => {
+      if (!reason || typeof reason !== "object") return false;
+      const s = String(reason);
+      return (
+        s.includes("FIRESTORE") &&
+        s.includes("INTERNAL ASSERTION FAILED") &&
+        (s.includes("b815") || s.includes("b7de") || s.includes("cursor that doesn't exist"))
+      );
+    };
+
+    // Capture unhandled promise rejections — specifically recover from Firestore assertion failures
+    window.addEventListener("unhandledrejection", async (event) => {
       this.addLog(
         "error",
         `Unhandled Promise Rejection: ${event.reason?.message || event.reason}`,
         event.reason?.stack || event.reason
       );
+
+      // If this is a Firestore assertion failure, attempt recovery by terminating and
+      // re-initializing Firebase. The next Firestore call will create a fresh client.
+      if (isFirestoreAssertionError(event.reason)) {
+        try {
+          const mod = await import("./firebase");
+          if (mod.initFirebase && typeof mod.initFirebase === "function") {
+            // Reset module-level state so createFirestoreInstance creates a fresh client
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const fb = mod as any;
+            if (fb.db) fb.db = null;
+            if (fb.app) fb.app = null;
+            fb.initialized = false;
+            fb.isRealFirebase = false;
+            mod.initFirebase();
+            this.addLog("info", "Firestore recovered from assertion failure — reinitialized");
+          }
+        } catch (recoveryErr) {
+          this.addLog("error", "Firestore recovery attempt failed", recoveryErr);
+        }
+      }
     });
 
     // Capture general runtime errors
@@ -283,7 +319,7 @@ class DiagnosticLogger {
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
+      if (a && a.parentNode) document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
       console.warn("[Kora/Logs] Web download failed:", err);

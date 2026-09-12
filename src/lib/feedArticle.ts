@@ -83,11 +83,11 @@ function stripLeadingEmpty(parent: ParentNode) {
   while (parent.firstChild) {
     const node = parent.firstChild;
     if (node.nodeType === Node.TEXT_NODE && !(node.textContent || "").trim()) {
-      parent.removeChild(node);
+      if (node.parentNode === parent) parent.removeChild(node);
       continue;
     }
     if (node.nodeType === Node.COMMENT_NODE) {
-      parent.removeChild(node);
+      if (node.parentNode === parent) parent.removeChild(node);
       continue;
     }
     break;

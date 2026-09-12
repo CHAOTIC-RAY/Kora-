@@ -63,35 +63,51 @@ async function evictOldestBooks(db: IDBDatabase, targetBytes: number): Promise<n
 
 export function getDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    // Guard against calling open after the database was deleted or the connection is closing.
+    // In those states, indexedDB.open may fire onupgradeneeded with a null result or throw.
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "bookId" });
-      }
-      if (!db.objectStoreNames.contains(AUDIOBOOK_TRACK_STORE)) {
-        const trackStore = db.createObjectStore(AUDIOBOOK_TRACK_STORE, { keyPath: "trackKey" });
-        trackStore.createIndex("bookId", "bookId", { unique: false });
-      }
-      if (!db.objectStoreNames.contains(TTS_CHAPTER_CACHE_STORE)) {
-        db.createObjectStore(TTS_CHAPTER_CACHE_STORE, { keyPath: "cacheKey" });
-      }
-      if (!db.objectStoreNames.contains(AUDIOBOOK_TRANSCRIPT_STORE)) {
-        const transcriptStore = db.createObjectStore(AUDIOBOOK_TRANSCRIPT_STORE, {
-          keyPath: "transcriptKey",
-        });
-        transcriptStore.createIndex("bookId", "bookId", { unique: false });
-      }
-    };
+      request.onupgradeneeded = (event) => {
+        // Only operate on a valid database reference. If the DB was deleted concurrently,
+        // event.target.result may be null/undefined and createObjectStore would throw.
+        const db = request.result;
+        if (!db) return;
 
-    request.onsuccess = () => {
-      resolve(request.result);
-    };
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: "bookId" });
+        }
+        if (!db.objectStoreNames.contains(AUDIOBOOK_TRACK_STORE)) {
+          const trackStore = db.createObjectStore(AUDIOBOOK_TRACK_STORE, { keyPath: "trackKey" });
+          trackStore.createIndex("bookId", "bookId", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(TTS_CHAPTER_CACHE_STORE)) {
+          db.createObjectStore(TTS_CHAPTER_CACHE_STORE, { keyPath: "cacheKey" });
+        }
+        if (!db.objectStoreNames.contains(AUDIOBOOK_TRANSCRIPT_STORE)) {
+          const transcriptStore = db.createObjectStore(AUDIOBOOK_TRANSCRIPT_STORE, {
+            keyPath: "transcriptKey",
+          });
+          transcriptStore.createIndex("bookId", "bookId", { unique: false });
+        }
+      };
 
-    request.onerror = () => {
-      reject(request.error);
-    };
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+
+      request.onerror = () => {
+        reject(request.error);
+      };
+
+      // Handle the case where the DB is deleted while opening (e.g. user cleared site data)
+      request.onblocked = () => {
+        // Another tab has the DB open — the open will block. Reject so callers can retry.
+        reject(new Error("IndexedDB open blocked: another tab has the database open"));
+      };
+    } catch (openError) {
+      reject(openError);
+    }
   });
 }
 

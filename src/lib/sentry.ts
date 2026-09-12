@@ -37,9 +37,23 @@ export function initSentry() {
     replaysSessionSampleRate: 0.1,
     replaysOnErrorSampleRate: 1.0,
 
-    // Tag releases with the build ID so Sentry issues can be correlated
-    // to a specific Kora deployment.
+    // Suppress AbortError / Firestore assertion events at the event level so they
+    // never reach Sentry even if they slip past ignoreErrors (e.g. non-standard shapes).
+    // Also tags releases with the build ID so Sentry issues can be correlated.
     beforeSend(event) {
+      const msg = event.exception?.values?.[0]?.value;
+      if (msg && (
+        msg.includes("AbortError") ||
+        msg.includes("signal is aborted without reason") ||
+        // Firestore assertion failures are handled by logger.ts recovery; suppress noise.
+        (msg.includes("FIRESTORE") && msg.includes("INTERNAL ASSERTION FAILED")) ||
+        msg.includes("Attempt to iterate a cursor that doesn't exist") ||
+        msg.includes("The database is not running a version change transaction") ||
+        msg.includes("The database connection is closing") ||
+        msg.includes("Database deleted by request of the user")
+      )) {
+        return null;
+      }
       event.tags = {
         ...(event.tags || {}),
         buildId: typeof __KORA_BUILD_ID__ !== "undefined" ? __KORA_BUILD_ID__ : undefined,
@@ -53,6 +67,18 @@ export function initSentry() {
       "Network Error",
       "Failed to execute 'insertBefore' on 'Node'",
       "ResizeObserver loop limit exceeded",
+      // Firestore SDK internal assertion failures (12.15.0) — known bug triggered by
+      // rapid tab switching / app backgrounding / network interruption mid-write.
+      // The global unhandledrejection handler in logger.ts will reinit Firestore on these.
+      "FIRESTORE.*INTERNAL ASSERTION FAILED",
+      "Attempt to iterate a cursor that doesn't exist",
+      // IndexedDB lifecycle noise — handled by indexedDB.ts guards
+      "The database is not running a version change transaction",
+      "The database connection is closing",
+      "Database deleted by request of the user",
+      // Benign AbortError from Firestore stream cancellation (nav, reconnect)
+      "AbortError",
+      "signal is aborted without reason",
     ],
   });
 }
