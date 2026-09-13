@@ -36,7 +36,10 @@ export function hydrateCapabilityLabel(book: BookMetadata, cached: boolean): str
 }
 
 async function fetchViaProxy(url: string, signal?: AbortSignal): Promise<Blob> {
-  const res = await fetch(`/api/proxy-file?url=${encodeURIComponent(url)}`, { signal });
+  const proxyUrl = url.startsWith("/api/proxy-file")
+    ? url
+    : `/api/proxy-file?url=${encodeURIComponent(url)}`;
+  const res = await fetch(proxyUrl, { signal });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
