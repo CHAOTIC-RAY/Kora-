@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
 import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft, Globe } from "lucide-react";
 import {
   WALKTHROUGH_BOOK_ID,
   hideWalkthroughBookFromLibrary,
@@ -95,14 +95,15 @@ function LibraryDownloadOverlay({
   onResume,
 }: {
   book: { coverUrl?: string };
-  download: { id?: string; percent?: number; status?: string; error?: string };
+  download: { id?: string; percent?: number; status?: string; error?: string; errorMessage?: string; downloadUrl?: string };
   hideCovers?: boolean;
   onStop?: () => void;
   onDelete?: () => void;
   onRetry?: () => void;
   onPause?: () => void;
   onResume?: () => void;
-}) {
+  onManualDownload?: () => void;
+} {
   const pct = typeof download.percent === "number" ? download.percent : 0;
   const isError = download.status === "error";
   const isPaused = download.status === "paused";
@@ -224,8 +225,13 @@ function LibraryDownloadOverlay({
               <AlertTriangle className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-red-300 drop-shadow px-2">
-              {download.error === "Cancelled" ? "Stopped" : "Download Failed"}
+              {download.error === "Cancelled" || download.status === "cancelled" ? "Stopped" : "Download Failed"}
             </span>
+            {download.downloadUrl && (
+              <p className="text-[9px] text-amber-500 mt-1 max-w-[220px] sm:max-w-xs truncate">
+                Mirror unavailable — open directly in browser
+              </p>
+            )}
             {onRetry && (
               <button
                 type="button"
@@ -238,6 +244,20 @@ function LibraryDownloadOverlay({
               >
                 <RefreshCw className="w-3 h-3" />
                 <span>Retry</span>
+              </button>
+            )}
+            {onManualDownload && download.downloadUrl && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onManualDownload({ ...download, downloadUrl: download.downloadUrl });
+                }}
+                className="mt-2.5 px-3 py-1 rounded-full bg-kindle-accent hover:bg-kindle-accent-hover text-kindle-bg text-[9px] font-bold uppercase tracking-wider shadow-md active:scale-95 transition flex items-center gap-1"
+              >
+                <Globe className="w-3 h-3" />
+                <span>Open in browser</span>
               </button>
             )}
           </>
@@ -539,6 +559,7 @@ interface LibraryManagerProps {
   onCancelDownload?: (downloadId: string) => void;
   onDismissDownload?: (downloadId: string) => void;
   onRetryDownload?: (downloadId: string) => void;
+  onManualDownload?: (download: any) => void;
   onPauseDownload?: (downloadId: string) => void;
   onResumeDownload?: (downloadId: string) => void;
   onSearchTrigger?: (query: string) => void;
@@ -596,6 +617,7 @@ function LibraryManager({
   onCancelDownload,
   onDismissDownload,
   onRetryDownload,
+  onManualDownload,
   onPauseDownload,
   onResumeDownload,
   onSearchTrigger,
@@ -1511,6 +1533,11 @@ function LibraryManager({
                         onRetry={
                           activeDownload.status === "error" && onRetryDownload
                             ? () => onRetryDownload(activeDownload.id)
+                            : undefined
+                        }
+                        onManualDownload={
+                          activeDownload.status === "error" && activeDownload.downloadUrl && onManualDownload
+                            ? () => onManualDownload(activeDownload)
                             : undefined
                         }
                         onDelete={

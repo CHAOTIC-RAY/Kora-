@@ -1,0 +1,11 @@
+Kora Android signing fingerprints
+=================================
+Version:     1.0.245
+Commit:      9e46fd02d6ee585cff72df5dc84b3e705d0d74a4
+Branch:      main
+Signing:     upload-secret
+Key alias:   kora
+Application: app.kora.reader
+
+SHA-1:   0D:AF:C5:11:03:5A:1C:21:CC:F4:0D:97:D8:CE:4B:EB:A8:9C:73:DD
+SHA-256: 0E:6A:41:DC:18:FC:FC:FA:1F:CC:1E:EE:AD:E4:10:1A:3F:8C:F5:68:53:48:91:43:BB:99:F0:9F:B1:36:1B:24

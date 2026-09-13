@@ -1155,7 +1155,8 @@ export default function App() {
     [removeDownloadEntry]
   );
 
-  const retryFailedDownload = useCallback((downloadId: string) => {
+  const retryFailedDownload = useCallback((download: { id: string } | string) => {
+    const downloadId = typeof download === "string" ? download : download.id;
     let fallback = swDownloadFallbackRef.current.get(downloadId);
     if (!fallback) {
       try {
@@ -1183,6 +1184,21 @@ export default function App() {
     void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
       reuseDownloadId: downloadId,
     });
+  }, []);
+
+  const manualDownload = useCallback((download: any) => {
+    const url = download.downloadUrl;
+    if (!url) return;
+    try {
+      if (isNativeAndroid()) {
+        import("@capacitor/browser").then(({ Browser }) => Browser.open({ url }));
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+    toast.success(`Opening ${download.title || "book"} in browser...`);
   }, []);
 
   /** Expand a short mirror list into LibGen host candidates so one 500 doesn't kill the download. */
@@ -1742,7 +1758,12 @@ export default function App() {
       logger.error(`All mirrors failed for "${book.title}". Last error: ${finalError?.message || finalError}`, finalError);
       console.error("Background download failed on all mirrors:", finalError);
       setGlobalDownloads(prev => {
-        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: finalError?.message } : dl);
+        const updated = prev.map(dl => dl.id === downloadId ? {
+          ...dl,
+          status: "error",
+          errorMessage: finalError?.message,
+          downloadUrl: variant.downloadUrl || variant.directUrl || mirrorList[0]?.url || ""
+        } : dl);
         persistDownloadsLogNow(updated);
         return updated;
       });
@@ -1916,7 +1937,7 @@ export default function App() {
       console.error("SW pickup failed:", err);
       setGlobalDownloads((prev) => {
         const updated = prev.map((dl) =>
-          dl.id === downloadId ? { ...dl, status: "error", error: "Pickup failed" } : dl
+          dl.id === downloadId ? { ...dl, status: "error", errorMessage: "Pickup failed", downloadUrl: variant.downloadUrl || variant.directUrl || "" } : dl
         );
         persistDownloadsLogNow(updated);
         return updated;
@@ -2005,7 +2026,7 @@ export default function App() {
         }
         setGlobalDownloads((prev) => {
           const updated = prev.map((dl) =>
-            dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl
+            dl.id === data.downloadId ? { ...dl, status: "error", errorMessage: data.error, downloadUrl: fallback?.variant?.downloadUrl || fallback?.variant?.directUrl || "" } : dl
           );
           persistDownloadsLogNow(updated);
           return updated;
@@ -3255,6 +3276,7 @@ export default function App() {
             onCancelDownload={cancelBackgroundDownload}
             onDismissDownload={dismissDownload}
             onRetryDownload={retryFailedDownload}
+            onManualDownload={manualDownload}
             onPauseDownload={pauseBackgroundDownload}
             onResumeDownload={resumeBackgroundDownload}
             onOpenAnnotations={handleOpenAnnotations}

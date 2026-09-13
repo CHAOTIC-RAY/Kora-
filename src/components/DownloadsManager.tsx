@@ -3,12 +3,13 @@ import { Download, CheckCircle, Clock, FileWarning, Trash2, Globe, BookOpen, Ale
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { storeBookFile } from "../db/indexedDB";
 
-interface DownloadsManagerProps {
+export interface DownloadsManagerProps {
   userId?: string;
   onRefreshLibrary?: () => void;
   downloads: any[];
   onSetDownloads: (downloads: any[]) => void;
   onRetryDownload?: (dl: any) => void;
+  onManualDownload?: (dl: any) => void;
 }
 
 export default function DownloadsManager({ 
@@ -16,7 +17,8 @@ export default function DownloadsManager({
   onRefreshLibrary,
   downloads,
   onSetDownloads,
-  onRetryDownload
+  onRetryDownload,
+  onManualDownload
 }: DownloadsManagerProps) {
   const [clipperUrl, setClipperUrl] = useState<string>("");
   const [clipStatus, setClipStatus] = useState<"idle" | "fetching" | "converting" | "saving" | "success" | "error">("idle");
@@ -97,7 +99,6 @@ export default function DownloadsManager({
       }
 
       setTimeout(() => setClipStatus("idle"), 3500);
-
     } catch (err: any) {
       console.error("[Clipper Error]:", err);
       setClipError(err.message || "Failed to convert website.");
@@ -237,6 +238,11 @@ export default function DownloadsManager({
                       <span>{dl.size || "Unknown size"}</span>
                     )}
                   </p>
+                  {dl.status === "error" && dl.errorMessage && (
+                    <p className="text-[10px] text-red-500 mt-0.5 truncate max-w-[200px] sm:max-w-xs">
+                      {dl.errorMessage}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   {dl.status === "completed" && <CheckCircle className="w-5 h-5 text-green-500" />}
@@ -280,6 +286,16 @@ export default function DownloadsManager({
                       className="p-2 text-kindle-text-muted hover:text-kindle-accent transition"
                     >
                       <ArrowRight className="w-4 h-4 rotate-[-45deg]" />
+                    </button>
+                  )}
+                  {/* Download manually — open raw mirror URL in browser/share */}
+                  {dl.status === "error" && dl.downloadUrl && (
+                    <button
+                      title="Download manually"
+                      onClick={() => onManualDownload?.(dl)}
+                      className="p-2 text-kindle-text-muted hover:text-kindle-accent transition"
+                    >
+                      <Globe className="w-4 h-4" />
                     </button>
                   )}
                   <button 
