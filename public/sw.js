@@ -221,9 +221,19 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
+const WORKER_ORIGIN = typeof self !== "undefined" && self.location.hostname === "localhost"
+  ? "https://kora.chaoticstudio.workers.dev"
+  : self.location.origin;
+
 function absoluteUrl(url) {
   try {
-    return new URL(url, self.location.origin).href;
+    // In the APK, self.location.origin is https://localhost. API calls
+    // like /api/proxy-file must go to the Worker origin, not the local
+    // WebView — otherwise the local dev server returns index.html (HTML).
+    if (url.startsWith("/api/")) {
+      return WORKER_ORIGIN + url;
+    }
+    return new URL(url, WORKER_ORIGIN).href;
   } catch (e) {
     return url;
   }

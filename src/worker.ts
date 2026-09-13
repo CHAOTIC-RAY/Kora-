@@ -372,6 +372,14 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
       coverUrl = `/api/cover-redirect?md5=${md5}`;
     }
 
+    let downloadUrl = r.directUrl || r.downloadUrl || "";
+    if (!downloadUrl && md5) {
+      downloadUrl = `https://libgen.li/get.php?md5=${md5}`;
+    }
+    const isLibgenDirect = /^https?:\/\/(www\.)?(libgen\.(li|lc|gs|st|rocks|bz|su|re|ro)|library\.lol|booksdl\.lc|1lib\.[a-z]{2})/i.test(downloadUrl);
+    if (downloadUrl && (isLibgenDirect || downloadUrl.includes("get.php?md5="))) {
+      downloadUrl = `/api/proxy-file?url=${encodeURIComponent(downloadUrl)}`;
+    }
     mapped.push({
       id: md5,
       md5,
@@ -382,7 +390,7 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
       size: size,
       source: r.source || "Rave",
       language: r.language || r.lang || r.language_code || r.language_names || r.info?.language || undefined,
-      downloadUrl: r.directUrl || r.downloadUrl || "",
+      downloadUrl,
       iaId: r.source === "Internet Archive" ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
       coverUrl
     });
