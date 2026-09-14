@@ -673,6 +673,13 @@ export default function App() {
     return () => window.clearTimeout(t);
   }, [loungeEnabled]);
 
+  // Feature toggles must be declared BEFORE the mobileTabs useMemo
+  // (which reads them synchronously during render), otherwise the
+  // useMemo factory throws "Cannot access 'X' before initialization".
+  const [newsTabEnabled, setNewsTabEnabledState] = useState<boolean>(() => isNewsTabEnabled());
+  const [discoverTabEnabled, setDiscoverTabEnabledState] = useState<boolean>(() => isDiscoverTabEnabled());
+  const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState<boolean>(() => isSoundEffectsEnabled());
+
   const mobileTabs = useMemo(() => {
     const tabs: MobileTabDef[] = [];
     if (isLoungeEnabled()) {
@@ -749,13 +756,6 @@ export default function App() {
   });
   const [dailyNewsBriefEnabled, setDailyNewsBriefEnabled] = useState<boolean>(() => isDailyNewsBriefEnabled());
   const [showDailyReminder, setShowDailyReminder] = useState<boolean>(false);
-
-  // Feature toggles must be declared BEFORE the mobileTabs useMemo
-  // (which reads them synchronously during render), otherwise the
-  // useMemo factory throws "Cannot access 'X' before initialization".
-  const [newsTabEnabled, setNewsTabEnabledState] = useState<boolean>(() => isNewsTabEnabled());
-  const [discoverTabEnabled, setDiscoverTabEnabledState] = useState<boolean>(() => isDiscoverTabEnabled());
-  const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState<boolean>(() => isSoundEffectsEnabled());
 
   const handleNewsTabChange = useCallback((enabled: boolean) => {
     setNewsTabEnabledState(enabled);
