@@ -1706,7 +1706,9 @@ export default {
         }
 
         const isValid = (detail: any) =>
-          detail?.tracks?.length && (!expectedTitle || titlesRoughlyMatch(expectedTitle, detail.title));
+          detail?.tracks?.length &&
+          (!expectedTitle ||
+            titlesRoughlyMatch(expectedTitle, detail.title, detail.author));
 
         for (const u of urls) {
           const cached = getCachedAudiobookDetail(u.split("?")[0]);

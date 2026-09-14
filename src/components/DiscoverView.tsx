@@ -1156,7 +1156,9 @@ function DiscoverView({
     try {
       const results = await streamAudiobookSearch(q, () => {});
       if (generation !== undefined && generation !== audiobookFetchGen.current) return null;
-      const match = results.find((r) => titlesRoughlyMatch(title, r.title));
+      const match = results.find(
+        (r) => titlesRoughlyMatch(title, r.title, r.author)
+      );
       return match || results[0] || null;
     } catch {
       return null;
@@ -1323,7 +1325,11 @@ function DiscoverView({
     const cardTitle = book.title;
     const cardAuthor = book.author || "Unknown";
     const detailTitle = audiobookDetail?.title;
-    const useDetailMeta = detailTitle && titlesRoughlyMatch(cardTitle, detailTitle);
+    const useDetailMeta = detailTitle && titlesRoughlyMatch(
+      cardTitle,
+      detailTitle,
+      audiobookDetail?.author
+    );
 
     return {
       id: book.id || `audiobook-${cardTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60)}`,

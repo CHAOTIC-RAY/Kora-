@@ -103,7 +103,7 @@ function LibraryDownloadOverlay({
   onPause?: () => void;
   onResume?: () => void;
   onManualDownload?: () => void;
-} {
+}) {
   const pct = typeof download.percent === "number" ? download.percent : 0;
   const isError = download.status === "error";
   const isPaused = download.status === "paused";

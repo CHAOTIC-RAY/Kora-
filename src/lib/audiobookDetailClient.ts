@@ -51,7 +51,7 @@ function normalizeDetailTracks(detail: AudiobookDetail): AudiobookDetail {
 function isValidCachedDetail(book: any, detail: AudiobookDetail | null): detail is AudiobookDetail {
   if (!detail?.tracks?.length) return false;
   if (!book?.title) return true;
-  return titlesRoughlyMatch(book.title, detail.title);
+  return titlesRoughlyMatch(book.title, detail.title, book.author);
 }
 
 export function getCachedAudiobookDetailClient(book: any): AudiobookDetail | null {

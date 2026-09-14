@@ -19,8 +19,14 @@ binding = "BROWSER"
 name = "kora"
 vars = { APP_CHANNEL = "production" }
 
+[env.production.browser]
+binding = "BROWSER"
+
 # Beta sandbox Worker (deploy from `beta` with deploy:beta).
 [env.beta]
 name = "kora-beta"
 vars = { APP_CHANNEL = "beta" }
+
+[env.beta.browser]
+binding = "BROWSER"
 

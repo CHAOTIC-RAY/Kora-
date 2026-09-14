@@ -4499,7 +4499,17 @@ app.get("/api/nytimes/book-details-raw", async (req, res) => {
   }
 });
 
-// Google Books API Proxy
+// Google Books API Proxy — Google Books first (most accurate when quota allows),
+// Open Library as fallback (keyless, no quota), and LibraryThing thingTitle as an
+// optional identity verifier when the token is configured.
+//
+// Priority:
+//   1. Google Books API (env.GOOGLE_BOOKS_API_KEY) — best descriptions, ratings,
+//      covers. Falls back automatically when quota is exhausted (429).
+//   2. Open Library search.json — keyless, always works. Query parsing handles
+//      both `intitle:"Multi Word Title"` and `intitle:Multi+Word+Title` forms.
+//   3. LibraryThing thingTitle (env.LIBRARYTHING_TOKEN) — not a search source;
+//      used to verify which OL result matches the intended work by ISBN overlap.
 app.get("/api/google-books/search", async (req, res) => {
   const { q, maxResults, startIndex } = req.query;
   if (!q) return res.status(400).json({ error: "Missing query" });
@@ -4512,25 +4522,180 @@ app.get("/api/google-books/search", async (req, res) => {
     return res.json(cached.data);
   }
 
+  const max = Math.min(Math.max(Number(maxResults) || 5, 1), 20);
+  const start = startIndex ? Number(startIndex) : 0;
+
+  // 1. Google Books (primary when key is configured and quota allows).
   const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
-  const limit = maxResults || 1;
-  const start = startIndex ? `&startIndex=${startIndex}` : "";
-  const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q as string)}&maxResults=${limit}${start}${apiKey ? `&key=${apiKey}` : ""}`;
-  
-  try {
-    const response = await fetch(url);
-    const data = await response.json();
-    googleBooksCache.set(cacheKey, { data, timestamp: now });
-    res.json(data);
-  } catch (err) {
-    console.error("Google Books API Proxy Error:", err);
-    if (cached) {
-      console.log(`Error occurred. Serving expired cache for key: ${cacheKey}`);
-      return res.json(cached.data);
+  if (apiKey) {
+    const limit = max;
+    const startParam = start > 0 ? `&startIndex=${start}` : "";
+    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q as string)}&maxResults=${limit}${startParam}&key=${apiKey}`;
+
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      const googleOk = response.ok && !data?.error && Array.isArray(data?.items) && data.items.length > 0;
+
+      if (googleOk) {
+        const payload = JSON.stringify(data);
+        googleBooksCache.set(cacheKey, { data, timestamp: now });
+        return res.json(data);
+      }
+
+      // Google returned an error (likely 429 — quota = 0) — fall through to OL.
+      console.log(`[Google Books] non-ok response: ${response.status} — falling back to Open Library`);
+    } catch (err) {
+      console.error("Google Books API Proxy Error:", err);
+      // Fall through to OL.
     }
-    res.status(500).json({ error: "Failed to fetch from Google Books" });
   }
+
+  // 2. Open Library (keyless fallback, always available).
+  const ol = await fetchOpenLibraryVolumes(q as string, max, start);
+  if (ol) {
+    // 3. Optional: use LibraryThing to verify which OL result is the right work.
+    const ltToken = process.env.LIBRARYTHING_TOKEN;
+    if (ltToken && ol.items.length > 1) {
+      const ltEnhanced = await enrichWithLibraryThing(q as string, ol, ltToken);
+      if (ltEnhanced) {
+        googleBooksCache.set(cacheKey, { data: ltEnhanced, timestamp: now });
+        return res.json(ltEnhanced);
+      }
+    }
+
+    googleBooksCache.set(cacheKey, { data: ol, timestamp: now });
+    return res.json(ol);
+  }
+
+  // Nothing from any source — return empty shell.
+  return res.json({
+    kind: "books#volumes",
+    totalItems: 0,
+    items: [],
+    source: "none",
+  });
 });
+
+/**
+ * Parse a Google Books API query string into its structured components.
+ * Handles both forms:
+ *   - `intitle:"Crossing the Wine-Dark Sea" inauthor:"Emily Wilson"`
+ *   - `intitle:Crossing+the+Wine-Dark+Sea inauthor:Emily+Wilson`
+ *   - plain `"Title" "Author"` and bare `Title Author`
+ *
+ * Open Library's search.json understands `title` and `author` params directly,
+ * so we extract those and pass them instead of forwarding the raw Google query.
+ */
+function parseGoogleBooksQuery(q: string): { intitle: string; inauthor: string; bare: string } {
+  // Expand `+` (application/x-www-form-urlencoded space) so regexes see real spaces.
+  const normalized = q.replace(/\+/g, " ");
+
+  // Quoted intitle / inauthor:  intitle:"Multi Word Title"
+  const quotedIntitle = normalized.match(/intitle:\s*"([^"]+)"/i)?.[1]?.trim() || "";
+  const quotedInauthor = normalized.match(/inauthor:\s*"([^"]+)"/i)?.[1]?.trim() || "";
+
+  // Unquoted intitle / inauthor:  intitle:SomeTitle inauthor:SomeAuthor
+  // Consume everything up to the next clause keyword or end of string.
+  const unquotedIntitle = quotedIntitle
+    ? ""
+    : normalized.match(/intitle:\s*(.+?)(?=\s+(?:inauthor:|intitle:|$))/i)?.[1]?.trim() || "";
+  const unquotedInauthor = quotedInauthor
+    ? ""
+    : normalized.match(/inauthor:\s*(.+?)(?=\s+(?:intitle:|author:|$))/i)?.[1]?.trim() || "";
+
+  const intitle = quotedIntitle || unquotedIntitle;
+  const inauthor = quotedInauthor || unquotedInauthor;
+
+  // Strip out the parsed clauses and collapse the remainder into a bare search string.
+  let bare = normalized
+    .replace(/intitle:\s*"[^"]*"/gi, " ")
+    .replace(/intitle:\s*.+?(?=\s+(?:inauthor:|intitle:|$))/gi, " ")
+    .replace(/inauthor:\s*"[^"]*"/gi, " ")
+    .replace(/inauthor:\s*.+?(?=\s+(?:intitle:|author:|$))/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // If nothing is left after stripping clauses, re-derive a bare string from the
+  // non-clausaled portions of the original query.
+  if (!bare && !intitle && !inauthor) {
+    bare = q.replace(/\+/g, " ").trim();
+  }
+
+  return { intitle, inauthor, bare };
+}
+
+/**
+ * Use LibraryThing's thingTitle API (requires env.LIBRARYTHING_TOKEN) to verify
+ * which Open Library result is the correct work for the given title/author query.
+ *
+ * thingTitle returns the canonical work's ISBN list + work URL. We compare each
+ * OL result's ISBNs against LT's list and promote the best-matching OL doc to the
+ * front, marking it with `sourceNote: "openlibrary-verified"`.
+ *
+ * This is a verifier, not a search source — it only re-ranks OL results, never
+ * adds new ones. When LT returns no match we silently fall back to the unverified
+ * OL list.
+ */
+async function enrichWithLibraryThing(
+  q: string,
+  olResult: any,
+  ltToken: string,
+): Promise<any | null> {
+  try {
+    const parsed = parseGoogleBooksQuery(q);
+    // thingTitle wants a plain title string; use the intitle if available,
+    // otherwise fall back to the bare query (first "word" is usually the title).
+    const titleForLt = parsed.intitle || parsed.bare.split(/\s+/)[0] || "";
+    if (!titleForLt || titleForLt.length < 2) return null;
+
+    const ltUrl = `https://www.librarything.com/api/${encodeURIComponent(ltToken)}/thingTitle/${encodeURIComponent(titleForLt)}`;
+    const ltRes = await fetch(ltUrl, {
+      signal: AbortSignal.timeout(10000),
+      headers: { "User-Agent": "Kora/1.0 (book metadata verification)" },
+    });
+    if (!ltRes.ok) return null;
+
+    // thingTitle returns XML — parse ISBNs out of it with a simple regex
+    // (works in both Node.js dev server and Cloudflare Workers; no XML parser needed).
+    const ltText = await ltRes.text();
+    const ltIsbns = ltText.match(/<isbn>([^<]+)<\/isbn>/gi)
+      ?.map((m: string) => m.replace(/<\/?isbn>/g, "").trim().toUpperCase())
+      .filter(Boolean) || [];
+
+    if (!ltIsbns.length) return null;
+
+    // Score each OL item by ISBN overlap with LT's canonical list.
+    const scored = olResult.items.map((item: any) => {
+      const olIsbns = (item.volumeInfo?.industryIdentifiers || [])
+        .map((id: any) => (id?.identifier || "").toString().toUpperCase())
+        .filter(Boolean);
+      const overlap = olIsbns.filter((isbn: string) => ltIsbns.includes(isbn)).length;
+      return { item, score: overlap };
+    });
+
+    // If at least one OL item shares an ISBN with LT, promote the best match.
+    const best = scored.sort((a: any, b: any) => b.score - a.score)[0];
+    if (best && best.score > 0) {
+      // Rebuild the items array with the verified match first, then the rest.
+      const verifiedItem = { ...best.item, volumeInfo: { ...best.item.volumeInfo, sourceNote: "openlibrary-verified" } };
+      const restItems = scored
+        .filter((s: any) => s !== best)
+        .map((s: any) => s.item);
+      const reordered = [verifiedItem, ...restItems];
+
+      return {
+        ...olResult,
+        items: reordered,
+        source: "openlibrary-verified",
+      };
+    }
+  } catch (e) {
+    // LT enrichment is best-effort — never let it break the OL fallback.
+    console.warn("[LibraryThing] enrichment failed:", e);
+  }
+  return null;
+}
 
 // Serve static assets and Vite middleware
 async function startServer() {
