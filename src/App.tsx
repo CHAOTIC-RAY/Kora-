@@ -91,6 +91,7 @@ import {
   listenAndServePeerRequests,
 } from "./lib/crossDeviceSync";
 const ProximitySyncModal = lazy(() => importWithRetry(() => import("./components/ProximitySyncModal")));
+const LibraryManager = lazy(() => importWithRetry(() => import("./components/LibraryManager")));
 import {
   APP_SKIN_STORAGE_KEY,
   type AppSkinId,
