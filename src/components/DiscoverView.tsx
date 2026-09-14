@@ -220,6 +220,9 @@ function DiscoverView({
   };
 
   const [query, setQuery] = useState<string>("");
+  /** Tracks the term that was last actually executed, so re-submitting the same
+   * typed text still counts as "same" while a changed query always reruns. */
+  const lastSearchedTerm = React.useRef<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [results, setResults] = useState<any[]>([]);
@@ -1983,7 +1986,10 @@ function DiscoverView({
     });
 
     // Reset page if it's a new search term
-    const isNewTerm = typeof e === "string" && e !== query;
+    // For string calls (programmatic), compare string value.
+    // For FormEvent (user hitting SEARCH button), compare current term against last executed term.
+    const isNewTerm = term.trim() !== lastSearchedTerm.current.trim();
+    lastSearchedTerm.current = term.trim();
     if (isNewTerm) {
       setCurrentPage(1);
       prefetchCache.current.clear();
@@ -2206,6 +2212,7 @@ function DiscoverView({
     setActiveSource("all");
     setCommunityBook(null);
     prefetchCache.current.clear();
+    lastSearchedTerm.current = "";
   }
 
   async function fetchVerifiedDetails(title: string, author: string) {
@@ -3047,10 +3054,10 @@ function DiscoverView({
 
           <div className="flex flex-col gap-3">
             <form onSubmit={handleSearch} className="relative group w-full" data-guide="discover-search">
-              <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent transition" />
+              <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent group-hover:text-kindle-accent/70 transition pointer-events-none z-10" />
               <input
                 type="text"
-                placeholder="Search millions of books, authors, ISBNs..."
+                placeholder="For best results, use the full book title and author name…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 data-guide="discover-search-input"
