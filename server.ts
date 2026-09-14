@@ -4697,6 +4697,58 @@ async function enrichWithLibraryThing(
   return null;
 }
 
+/**
+ * Open Library volumes-shaped fallback used when Google Books is unavailable.
+ * Maps openlibrary.org/search.json results to the Google Books `items[]`/`totalItems`
+ * shape the /api/google-books/search consumer already expects.
+ */
+async function fetchOpenLibraryVolumes(q: string, max: number, start: number): Promise<any | null> {
+  const parsed = parseGoogleBooksQuery(q);
+  const url = new URL("https://openlibrary.org/search.json");
+  if (parsed.intitle) url.searchParams.set("title", parsed.intitle);
+  if (parsed.inauthor) url.searchParams.set("author", parsed.inauthor);
+  if (parsed.bare) url.searchParams.set("q", parsed.bare);
+  url.searchParams.set("limit", String(Math.min(Math.max(max, 1), 20)));
+  if (start > 0) url.searchParams.set("offset", String(start));
+
+  const response = await fetch(url.toString());
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (!data || !Array.isArray(data.docs) || data.docs.length === 0) return null;
+
+  const totalItems = typeof data.num_found === "number" ? data.num_found : data.docs.length;
+  const items = data.docs.map((doc: any, idx: number) => {
+    const id = doc.key?.replace("/works/", "") || `OL-${start + idx}`;
+    const title = doc.title || "Unknown";
+    const author = doc.author_name?.join(", ") || doc.subject_artists?.join(", ") || undefined;
+    const isbn = doc.isbn?.[0] || undefined;
+    const coverId = doc.cover_i;
+    const coverUrl = coverId
+      ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`
+      : isbn
+        ? `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`
+        : undefined;
+    const publishedDate = doc.first_publish_year || doc.publish_date || undefined;
+    return {
+      kind: "books#volume",
+      id,
+      volumeInfo: {
+        title,
+        authors: author ? [author] : undefined,
+        publisher: doc.publish_date ? undefined : undefined,
+        publishedDate: publishedDate ? String(publishedDate) : undefined,
+        description: doc.notes ? doc.notes.slice(0, 500) + "…" : undefined,
+        imageLinks: coverUrl ? { smallThumbnail: coverUrl, thumbnail: coverUrl } : undefined,
+        categories: doc.subject?.slice(0, 5) || undefined,
+        industryIdentifiers: isbn ? [{ type: "ISBN_13", identifier: isbn }] : undefined,
+      },
+      searchInfo: { textSnippet: undefined },
+    };
+  });
+
+  return { kind: "books#volumes", totalItems, items };
+}
+
 // Serve static assets and Vite middleware
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

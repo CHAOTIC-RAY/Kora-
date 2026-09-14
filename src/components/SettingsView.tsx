@@ -8,7 +8,7 @@ import {
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
   FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
   Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers, Library as LibraryIcon,
-  Bug, Toc, Rss, Sliders, ToggleLeft
+  Bug, TableOfContents, Rss, Sliders, ToggleLeft
 } from "lucide-react";
 
 // Icons for each app skin in the Settings skin selector

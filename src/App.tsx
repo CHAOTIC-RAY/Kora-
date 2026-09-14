@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffe
 import { importWithRetry, isBundleStale } from "./lib/importRetry";
 import {
   auth, isRealFirebase, loadLibrary, BookMetadata, syncBookToCloud,
-  saveLocalLibrary, syncAndroidHomeWidgets, initFirebase
+  saveLocalLibrary, initFirebase
 } from "./lib/firebase";
 import { enrichBookMetadata } from "./lib/metadataEnricher";
 import { 
@@ -1981,7 +1981,7 @@ export default function App() {
       console.error("SW pickup failed:", err);
       setGlobalDownloads((prev) => {
         const updated = prev.map((dl) =>
-          dl.id === downloadId ? { ...dl, status: "error", errorMessage: "Pickup failed", downloadUrl: variant.downloadUrl || variant.directUrl || "" } : dl
+          dl.id === downloadId ? { ...dl, status: "error", errorMessage: "Pickup failed", downloadUrl: dl.downloadUrl || dl.directUrl || "" } : dl
         );
         persistDownloadsLogNow(updated);
         return updated;
@@ -3449,8 +3449,6 @@ export default function App() {
             onChangeLoungeEnabled={handleLoungeEnabledChange}
             newsTabEnabled={newsTabEnabled}
             onChangeNewsTabEnabled={handleNewsTabChange}
-            discoverTabEnabled={discoverTabEnabled}
-            onChangeDiscoverTabEnabled={handleDiscoverTabChange}
             soundEffectsEnabled={soundEffectsEnabled}
             onChangeSoundEffectsEnabled={handleSoundEffectsChange}
             onToggleGrayscale={toggleGrayscale}
@@ -3471,12 +3469,6 @@ export default function App() {
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={handleShowOnboarding}
             onModalToggle={setAnyModalOpen}
-            newsTabEnabled={newsTabEnabled}
-            onChangeNewsTabEnabled={handleNewsTabChange}
-            discoverTabEnabled={discoverTabEnabled}
-            onChangeDiscoverTabEnabled={handleDiscoverTabChange}
-            soundEffectsEnabled={soundEffectsEnabled}
-            onChangeSoundEffectsEnabled={handleSoundEffectsChange}
           />
           </Suspense>
                   </div>

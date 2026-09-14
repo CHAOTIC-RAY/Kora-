@@ -1,6 +1,7 @@
 import {
   parseAudiobookDetailHtml,
   extractBestBookLinkFromSearch,
+  extractFirstBookLinkFromSearch,
   isAudiobookSearchUrl,
   titlesRoughlyMatch,
   type AudiobookDetail,
@@ -123,7 +124,7 @@ export async function resolveAudiobookDetailFromPage(
   const result = { ...detail, sourceUrl: resolvedUrl };
   setCachedAudiobookDetail(cacheKey, result);
   if (resolvedUrl !== pageUrl)
-    setCachedAudiobookDetail(cacheKeyForUrl(resolvedUrl, bookLink), result);
+    setCachedAudiobookDetail(resolvedUrl.split("?")[0], result);
   return result;
 }
 
