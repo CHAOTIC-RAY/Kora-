@@ -8,7 +8,7 @@ import {
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
   FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
   Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers, Library as LibraryIcon,
-  Bug, Toc, Rss
+  Bug, Toc, Rss, Sliders, ToggleLeft
 } from "lucide-react";
 
 // Icons for each app skin in the Settings skin selector
@@ -2530,7 +2530,7 @@ function SettingsView({
           >
             <div className="flex items-center gap-3">
               <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-                <Toggle className="w-4 h-4 text-kindle-text" />
+                <Sliders className="w-4 h-4 text-kindle-text" />
               </div>
               <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Feature Toggles</h3>
             </div>
