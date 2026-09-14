@@ -287,7 +287,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
   // Play Web Audio Synth Beep
   const playBeepSound = (freq = 440, duration = 0.1) => {
-    if (!soundEnabled) return;
+    if (!soundEnabled || !isSoundEffectsEnabled()) return;
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
@@ -309,7 +309,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
   // Play Victory Sound Fanfare
   const playVictorySound = () => {
-    if (!soundEnabled) return;
+    if (!soundEnabled || !isSoundEffectsEnabled()) return;
     try {
       const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
       notes.forEach((freq, idx) => {
