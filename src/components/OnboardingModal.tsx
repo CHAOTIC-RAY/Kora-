@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Book,
   BookOpen,
@@ -240,6 +240,17 @@ export default function OnboardingModal({
   }, [selectedTopics]);
 
   if (!isOpen) return null;
+
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
 
   const handleArchetypeSelect = (arc: (typeof ARCHETYPES)[0]) => {
     setSelectedArchetype(arc.id);
