@@ -15,6 +15,15 @@ export function initSentry() {
   if ((window as { __sentryInitialized?: boolean }).__sentryInitialized) return;
   (window as { __sentryInitialized?: boolean }).__sentryInitialized = true;
 
+  const dsn = import.meta.env.VITE_SENTRY_DSN;
+  if (!dsn) {
+    // No Sentry DSN configured for this build (e.g. a fresh checkout or an
+    // APK/web build that didn't pass VITE_SENTRY_DSN at build time). Skip
+    // Sentry entirely rather than calling Sentry.init with a placeholder DSN,
+    // which would log "Invalid Sentry Dsn" on every load.
+    return;
+  }
+
   Sentry.init({
     dsn:
       import.meta.env.VITE_SENTRY_DSN ||
