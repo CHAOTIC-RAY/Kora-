@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffe
 import { importWithRetry, isBundleStale } from "./lib/importRetry";
 import {
   auth, isRealFirebase, loadLibrary, BookMetadata, syncBookToCloud,
-  syncAndroidHomeWidgets, initFirebase
+  saveLocalLibrary, syncAndroidHomeWidgets, initFirebase
 } from "./lib/firebase";
 import { enrichBookMetadata } from "./lib/metadataEnricher";
 import { 
@@ -2673,6 +2673,14 @@ export default function App() {
         return current;
       });
 
+      // Keep the currently-open book in sync with the refreshed library so the
+      // reader keeps receiving the latest progress (page/chapter) without a reopen.
+      setActiveBook((current) => {
+        if (!current) return current;
+        const updated = finalBooks.find((b) => b.id === current.id);
+        return updated ?? current;
+      });
+
       if (opts?.promptDeviceDownloads && uid) {
         const promptKey = `kora_device_dl_prompted_${uid}`;
         if (sessionStorage.getItem(promptKey) !== "true") {
@@ -3580,11 +3588,16 @@ export default function App() {
             onClose={handleAudiobookClose}
             onPlayingChange={setAudiobookPlaying}
             onProgressUpdate={(updatedBook) => {
-              setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
+              setBooks(prev => {
+                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
+                saveLocalLibrary(merged);
+                return merged;
+              });
               setLastReadBook(updatedBook);
-              setAudiobookPlayback(updatedBook);
               if (activeBook?.id === updatedBook.id) setActiveBook(updatedBook);
+              setAudiobookPlayback(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+              void syncBookToCloud(user?.uid || "", updatedBook);
             }}
           />
         </Suspense>
@@ -3612,12 +3625,17 @@ export default function App() {
             userId={user?.uid || ""}
             onClose={dismissReader}
             onProgressUpdate={(updatedBook) => {
-              setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+              setBooks(prev => {
+                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
+                saveLocalLibrary(merged);
+                return merged;
+              });
               setLastReadBook(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+              void syncBookToCloud(user?.uid || "", updatedBook);
             }}
           />
-        ) : (activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
+        ) : (activeBook.extension?.toLowerCase() === "pdf" || activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
@@ -3628,9 +3646,14 @@ export default function App() {
               setActiveBookMode("create");
             }}
             onProgressUpdate={(updatedBook) => {
-              setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
+              setBooks(prev => {
+                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
+                saveLocalLibrary(merged);
+                return merged;
+              });
               setLastReadBook(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+              void syncBookToCloud(user?.uid || "", updatedBook);
             }}
           />
         ) : ["html", "htm", "json", "txt", "md", "csv"].includes(activeBook.extension?.toLowerCase() || "") ? (

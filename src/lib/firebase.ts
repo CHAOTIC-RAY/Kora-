@@ -195,7 +195,7 @@ export function getLocalLibrary(): BookMetadata[] {
   }
 }
 
-function saveLocalLibrary(books: BookMetadata[]) {
+export function saveLocalLibrary(books: BookMetadata[]) {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(books));
   } catch (e) {

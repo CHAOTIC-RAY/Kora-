@@ -93,6 +93,7 @@ function LibraryDownloadOverlay({
   onRetry,
   onPause,
   onResume,
+  onManualDownload,
 }: {
   book: { coverUrl?: string };
   download: { id?: string; percent?: number; status?: string; error?: string; errorMessage?: string; downloadUrl?: string };
@@ -102,7 +103,7 @@ function LibraryDownloadOverlay({
   onRetry?: () => void;
   onPause?: () => void;
   onResume?: () => void;
-  onManualDownload?: () => void;
+  onManualDownload?: (download: any) => void;
 }) {
   const pct = typeof download.percent === "number" ? download.percent : 0;
   const isError = download.status === "error";

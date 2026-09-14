@@ -1023,16 +1023,25 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
     return () => clearInterval(interval);
   }, [book.id]);
 
-  // Restore page within chapter from saved progress
+  // Restore page within chapter from saved progress.
+  // Fires on open (loading clears) and whenever the incoming book prop updates,
+  // so in-session progress saves that update `activeBook` re-populate the page
+  // position without a full reopen. Restores both chapter index and page number
+  // so reopening lands on the exact spot rather than chapter 1 / page 1.
   useEffect(() => {
+    if (loading || !chapters.length) return;
+    const savedChapter = book.progress?.chapterIndex;
     const savedPage = book.progress?.pageNumber;
-    if (typeof savedPage === "number" && savedPage > 1 && !loading && chapters.length) {
+    if (typeof savedChapter === "number" && savedChapter >= 0 && savedChapter < chapters.length) {
+      setCurrentChapterIdx(savedChapter);
+    }
+    if (typeof savedPage === "number" && savedPage > 1) {
       const t = setTimeout(() => {
         setCurrentPageNum(Math.min(savedPage, totalPages || savedPage));
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [loading, chapters.length]);
+  }, [loading, chapters.length, book.progress?.chapterIndex, book.progress?.pageNumber, totalPages]);
 
   // Persist page position + estimate time left
   useEffect(() => {
@@ -1065,7 +1074,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       onProgressUpdate(updated);
       void syncBookToCloud(userId, updated);
     }, 800);
-    return () => clearTimeout(t);
+    return () => {
+      // Flush pending progress save on cleanup/unmount (reader close, swipe-back, etc.)
+      // without waiting for the 800ms debounce. We still try/fail silently so a user
+      // navigating away fast never loses their last page turn.
+      clearTimeout(t);
+      onProgressUpdate(updated);
+      void syncBookToCloud(userId, updated).catch((e) => {
+        console.warn("[Kora/reader] progress save on cleanup failed:", e);
+      });
+    };
   }, [currentPageNum, currentChapterIdx, totalPages, chapters.length, loading]);
 
   // Track page turns for pages/day stats
