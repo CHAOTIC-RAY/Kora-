@@ -8,7 +8,7 @@ import {
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
   FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
   Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers, Library as LibraryIcon,
-  Bug
+  Bug, Toc, Rss
 } from "lucide-react";
 
 // Icons for each app skin in the Settings skin selector
@@ -152,6 +152,14 @@ interface SettingsViewProps {
   /** When false (hidden keep-alive tab), skip heavy IDB/dir init until first activation. */
   isActive?: boolean;
   onModalToggle?: (isOpen: boolean) => void;
+
+  /** Feature toggles section */
+  newsTabEnabled?: boolean;
+  onChangeNewsTabEnabled?: (enabled: boolean) => void;
+  discoverTabEnabled?: boolean;
+  onChangeDiscoverTabEnabled?: (enabled: boolean) => void;
+  soundEffectsEnabled?: boolean;
+  onChangeSoundEffectsEnabled?: (enabled: boolean) => void;
 }
 
 function getRemainingGuestDays(user: User | null): number {
@@ -237,6 +245,12 @@ function SettingsView({
   onOpenOnboarding,
   isActive = true,
   onModalToggle,
+  newsTabEnabled = true,
+  onChangeNewsTabEnabled,
+  discoverTabEnabled = true,
+  onChangeDiscoverTabEnabled,
+  soundEffectsEnabled = true,
+  onChangeSoundEffectsEnabled,
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -245,6 +259,7 @@ function SettingsView({
     appearance: true,
     reading: false,
     newsReading: false,
+    featureToggles: false,
     import: false,
     search: false,
     dictionary: false,
@@ -2507,7 +2522,41 @@ function SettingsView({
           )}
         </section>
 
-        {/* Search & Discovery */}
+        {/* Feature Toggles */}
+        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
+          <div
+            onClick={() => toggleCategory("featureToggles")}
+            className="flex items-center justify-between cursor-pointer select-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
+                <Toggle className="w-4 h-4 text-kindle-text" />
+              </div>
+              <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Feature Toggles</h3>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-kindle-text-muted transition-transform duration-200 ${expandedCategories.featureToggles ? "rotate-180" : ""}`} />
+          </div>
+
+          {expandedCategories.featureToggles && (
+            <div className="mt-4 pt-4 border-t border-kindle-border/40 space-y-5 animate-in slide-in-from-top-2 duration-200">
+              <p className="text-[10px] text-kindle-text-muted">
+                Turn specific features on or off. Changes are remembered on this device.
+              </p>
+
+              <Row title="News Tab" desc="Remove the News tab from the navigation bar">
+                <Toggle on={newsTabEnabled} onClick={() => onChangeNewsTabEnabled?.(!newsTabEnabled)} />
+              </Row>
+
+              <Row title="Discover Tab" desc="Remove the Discover tab from the navigation bar">
+                <Toggle on={discoverTabEnabled} onClick={() => onChangeDiscoverTabEnabled?.(!discoverTabEnabled)} />
+              </Row>
+
+              <Row title="Sound Effects" desc="Disable page-turn and UI sound effects across the app">
+                <Toggle on={soundEffectsEnabled} onClick={() => onChangeSoundEffectsEnabled?.(!soundEffectsEnabled)} />
+              </Row>
+            </div>
+          )}
+        </section>
         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-5 shadow-xs transition-all duration-200">
           <div 
             onClick={() => toggleCategory("search")}

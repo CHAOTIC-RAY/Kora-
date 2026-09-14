@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
+import { isSoundEffectsEnabled } from "../lib/featureToggles";
 import {
   X,
   Shuffle,
@@ -88,7 +89,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   const [roomCode, setRoomCode] = useState("");
   const [roomMsg, setRoomMsg] = useState("");
   const [isHost, setIsHost] = useState(false);
-  
+
   // Game state
   const [board, setBoard] = useState<Record<string, BoardCell>>({});
   const [players, setPlayers] = useState<Player[]>([]);
@@ -97,7 +98,9 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   const [selectedRackIdx, setSelectedRackIdx] = useState<number | null>(null);
   const [tempPlaced, setTempPlaced] = useState<{ r: number; c: number; letter: string; rackIdx: number }[]>([]);
   const [log, setLog] = useState<string[]>([]);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // Local sound override; global toggle via featureToggles is authoritative.
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [invalidMsg, setInvalidMsg] = useState<string | null>(null);
 
   const unsubRef = useRef<(() => void) | undefined>(undefined);
@@ -111,7 +114,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   }, []);
 
   const playClickSound = () => {
-    if (!soundEnabled) return;
+    if (!soundEnabled || !isSoundEffectsEnabled()) return;
     try {
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const osc = audioCtx.createOscillator();

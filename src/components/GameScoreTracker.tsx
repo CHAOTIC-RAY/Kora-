@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { isSoundEffectsEnabled } from "../lib/featureToggles";
 import {
   Trophy,
   Flame,
@@ -196,6 +197,8 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const [activePlayerIndex, setActivePlayerIndex] = useState<number>(0);
   const [matchStartTime, setMatchStartTime] = useState<number | null>(null);
   const [matchEndTime, setMatchEndTime] = useState<number | null>(null);
+
+  // Local sound override; global toggle via featureToggles is authoritative.
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   // Turn Clock & Timer

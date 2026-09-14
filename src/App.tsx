@@ -1,12 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, lazy, Suspense } from "react";
 import { importWithRetry, isBundleStale } from "./lib/importRetry";
 import {
-  auth, 
-  isRealFirebase, 
-  loadLibrary, 
-  BookMetadata, 
-  syncBookToCloud,
-  initFirebase 
+  auth, isRealFirebase, loadLibrary, BookMetadata, syncBookToCloud,
+  syncAndroidHomeWidgets, initFirebase
 } from "./lib/firebase";
 import { enrichBookMetadata } from "./lib/metadataEnricher";
 import { 
@@ -20,7 +16,8 @@ import {
 import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
-const LibraryManager = lazy(() => importWithRetry(() => import("./components/LibraryManager")));
+import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
+import { isNewsTabEnabled, isDiscoverTabEnabled, isSoundEffectsEnabled, setNewsTabEnabled, setDiscoverTabEnabled, setSoundEffectsEnabled } from "./lib/featureToggles";
 const DiscoverView = lazy(() => importWithRetry(() => import("./components/DiscoverView")));
 const SettingsView = lazy(() => importWithRetry(() => import("./components/SettingsView")));
 const DeviceDownloadPicker = lazy(() => importWithRetry(() => import("./components/DeviceDownloadPicker")));
@@ -30,7 +27,6 @@ import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
 import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
-import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => importWithRetry(() => import("./components/BookReaderEPUB")));
 const BookReaderPDF = lazy(() => importWithRetry(() => import("./components/BookReaderPDF")));
 const BookReaderText = lazy(() => importWithRetry(() => import("./components/BookReaderText")));
@@ -114,7 +110,7 @@ import { provisionKoraStorage } from "./lib/capacitorNative";
 import { setKoraStorageMode, KoraStorageMode } from "./lib/koraStorage";
 import StorageChoiceModal from "./components/StorageChoiceModal";
 
-const BASE_MOBILE_TABS = [
+const BASE_MOBILE_TABS: MobileTabDef[] = [
   { id: "library" as const, label: "Library", Icon: Library },
   { id: "discover" as const, label: "Discover", Icon: Compass },
   { id: "feed" as const, label: "Read", Icon: Rss },
@@ -559,7 +555,18 @@ export default function App() {
       timers.push(idle(() => {
         setMountedTabs((prev) => {
           const next = new Set(prev);
-          (["library", "discover", "feed", "tools"] as AppTab[]).forEach((t) => next.add(t));
+          if (!discoverTabEnabled) {
+            // discover explicitly excluded
+          } else {
+            next.add("discover");
+          }
+          if (!newsTabEnabled) {
+            // feed explicitly excluded
+          } else {
+            next.add("feed");
+          }
+          next.add("library");
+          next.add("tools");
           if (isLoungeEnabled()) next.add("lounge");
           return next.size === prev.size ? prev : next;
         });
@@ -667,12 +674,20 @@ export default function App() {
   }, [loungeEnabled]);
 
   const mobileTabs = useMemo(() => {
-    if (!loungeEnabled) return BASE_MOBILE_TABS;
-    return [
-      { id: "lounge" as const, label: "Lounge", Icon: Sofa },
-      ...BASE_MOBILE_TABS,
-    ];
-  }, [loungeEnabled]);
+    const tabs: MobileTabDef[] = [];
+    if (isLoungeEnabled()) {
+      tabs.push({ id: "lounge" as const, label: "Lounge", Icon: Sofa });
+    }
+    tabs.push({ id: "library" as const, label: "Library", Icon: Library });
+    if (discoverTabEnabled) {
+      tabs.push({ id: "discover" as const, label: "Discover", Icon: Compass });
+    }
+    if (newsTabEnabled) {
+      tabs.push({ id: "feed" as const, label: "Read", Icon: Rss });
+    }
+    tabs.push({ id: "tools" as const, label: "Workshop", Icon: Hammer });
+    return tabs;
+  }, [loungeEnabled, discoverTabEnabled, newsTabEnabled]);
 
   const handleLoungeEnabledChange = useCallback(
     (enabled: boolean) => {
@@ -734,6 +749,31 @@ export default function App() {
   });
   const [dailyNewsBriefEnabled, setDailyNewsBriefEnabled] = useState<boolean>(() => isDailyNewsBriefEnabled());
   const [showDailyReminder, setShowDailyReminder] = useState<boolean>(false);
+
+  const [newsTabEnabled, setNewsTabEnabledState] = useState<boolean>(() => isNewsTabEnabled());
+  const [discoverTabEnabled, setDiscoverTabEnabledState] = useState<boolean>(() => isDiscoverTabEnabled());
+  const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState<boolean>(() => isSoundEffectsEnabled());
+
+  const handleNewsTabChange = useCallback((enabled: boolean) => {
+    setNewsTabEnabledState(enabled);
+    setNewsTabEnabled(enabled);
+    if (!enabled && activeTab === "feed") {
+      switchTab("library");
+    }
+  }, [activeTab, switchTab]);
+
+  const handleDiscoverTabChange = useCallback((enabled: boolean) => {
+    setDiscoverTabEnabledState(enabled);
+    setDiscoverTabEnabled(enabled);
+    if (!enabled && activeTab === "discover") {
+      switchTab("library");
+    }
+  }, [activeTab, switchTab]);
+
+  const handleSoundEffectsChange = useCallback((enabled: boolean) => {
+    setSoundEffectsEnabledState(enabled);
+    setSoundEffectsEnabled(enabled);
+  }, []);
 
   const handleDailyNewsBriefChange = async (enabled: boolean) => {
     setDailyNewsBriefEnabled(enabled);
@@ -2486,6 +2526,10 @@ export default function App() {
         return true;
       }
       if (go === "feed" || go === "news" || briefs) {
+        if (!newsTabEnabled) {
+          switchTab("library");
+          return true;
+        }
         switchTab("feed");
         if (briefs || go === "news") setFeedInitialFilter("briefs");
         return true;
@@ -2495,6 +2539,10 @@ export default function App() {
         return true;
       }
       if (go === "discover") {
+        if (!discoverTabEnabled) {
+          switchTab("library");
+          return true;
+        }
         switchTab("discover");
         return true;
       }
@@ -3154,11 +3202,16 @@ export default function App() {
             <button
               id="discover-tab"
               data-guide="nav-discover"
-              onClick={() => switchTab("discover")}
+              onClick={() => {
+                if (!discoverTabEnabled) return;
+                switchTab("discover");
+              }}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
-                activeTab === "discover" 
-                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
-                  : "text-kindle-text-muted hover:text-kindle-text"
+                discoverTabEnabled ? (
+                  activeTab === "discover"
+                    ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active"
+                    : "text-kindle-text-muted hover:text-kindle-text"
+                ) : "hidden"
               }`}
             >
               <Compass className="w-3.5 h-3.5" />
@@ -3167,11 +3220,16 @@ export default function App() {
             <button
               id="feed-tab"
               data-guide="nav-feed"
-              onClick={() => switchTab("feed")}
+              onClick={() => {
+                if (!newsTabEnabled) return;
+                switchTab("feed");
+              }}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
-                activeTab === "feed" 
-                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
-                  : "text-kindle-text-muted hover:text-kindle-text"
+                newsTabEnabled ? (
+                  activeTab === "feed"
+                    ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active"
+                    : "text-kindle-text-muted hover:text-kindle-text"
+                ) : "hidden"
               }`}
             >
               <Rss className="w-3.5 h-3.5" />
@@ -3286,7 +3344,7 @@ export default function App() {
           </Suspense>
                   </div>
         )}
-        {mountedTabs.has("feed") && (
+        {mountedTabs.has("feed") && newsTabEnabled && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "feed"}
@@ -3307,7 +3365,7 @@ export default function App() {
           </Suspense>
                   </div>
         )}
-        {mountedTabs.has("discover") && (
+        {mountedTabs.has("discover") && discoverTabEnabled && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "discover"}
@@ -3377,6 +3435,12 @@ export default function App() {
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             loungeEnabled={loungeEnabled}
             onChangeLoungeEnabled={handleLoungeEnabledChange}
+            newsTabEnabled={newsTabEnabled}
+            onChangeNewsTabEnabled={handleNewsTabChange}
+            discoverTabEnabled={discoverTabEnabled}
+            onChangeDiscoverTabEnabled={handleDiscoverTabChange}
+            soundEffectsEnabled={soundEffectsEnabled}
+            onChangeSoundEffectsEnabled={handleSoundEffectsChange}
             onToggleGrayscale={toggleGrayscale}
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
@@ -3395,11 +3459,17 @@ export default function App() {
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={handleShowOnboarding}
             onModalToggle={setAnyModalOpen}
+            newsTabEnabled={newsTabEnabled}
+            onChangeNewsTabEnabled={handleNewsTabChange}
+            discoverTabEnabled={discoverTabEnabled}
+            onChangeDiscoverTabEnabled={handleDiscoverTabChange}
+            soundEffectsEnabled={soundEffectsEnabled}
+            onChangeSoundEffectsEnabled={handleSoundEffectsChange}
           />
           </Suspense>
                   </div>
         )}
-        {mountedTabs.has("settings") && (
+        {mountedTabs.has("tools") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "settings"}
@@ -3423,6 +3493,12 @@ export default function App() {
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             loungeEnabled={loungeEnabled}
             onChangeLoungeEnabled={handleLoungeEnabledChange}
+            newsTabEnabled={newsTabEnabled}
+            onChangeNewsTabEnabled={handleNewsTabChange}
+            discoverTabEnabled={discoverTabEnabled}
+            onChangeDiscoverTabEnabled={handleDiscoverTabChange}
+            soundEffectsEnabled={soundEffectsEnabled}
+            onChangeSoundEffectsEnabled={handleSoundEffectsChange}
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
