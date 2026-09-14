@@ -2157,11 +2157,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
     return () => el.removeEventListener("wheel", onWheel);
   }, [currentChapterIdx, chapters.length, currentPageNum, totalPages, useScrollLayout, loading]);
 
+  const closeDictionary = useCallback(() => {
+    setDictionaryWord(null);
+    setDictionaryData(null);
+    dismissSelection();
+  }, []);
+
   async function lookupDictionary(word: string) {
     const clean = extractLookupWord(word);
     if (!clean) {
-      setDictionaryWord(null);
-      setDictionaryData(null);
+      closeDictionary();
       return;
     }
     try {
@@ -2169,7 +2174,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       setDictionaryWord(clean);
       setDictionaryData(null);
       
-      // 1. Check custom / bundled dictionary first
+      // 1. Check custom / bundled / online dictionary via dictionary.ts
       const localDef = await lookupWord(clean);
       if (localDef) {
         setDictionaryData({
@@ -2190,7 +2195,31 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
         return;
       }
 
-      // Built-in / personal dictionary only — no online Oxford / free-dict fallback
+      // 2. Additional fallback: Free Dictionary API
+      try {
+        const freeRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(clean)}`);
+        if (freeRes.ok) {
+          const freeData = await freeRes.json();
+          if (Array.isArray(freeData) && freeData[0]?.meanings?.length) {
+            const entry = freeData[0];
+            setDictionaryData({
+              word: entry.word || clean,
+              phonetic: entry.phonetic || entry.phonetics?.find((p: any) => p.text)?.text || "Free Dictionary",
+              meanings: (entry.meanings || []).map((m: any) => ({
+                partOfSpeech: m.partOfSpeech || "noun",
+                definitions: (m.definitions || []).map((d: any) => ({
+                  definition: d.definition,
+                  example: d.example
+                }))
+              }))
+            });
+            return;
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
       setDictionaryData(null);
     } catch (err) {
       console.error("Dictionary error:", err);
@@ -4140,7 +4169,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
             <div className="absolute inset-0 z-[70] pointer-events-none">
               <div
                 className="absolute inset-0 bg-black/25 pointer-events-auto"
-                onClick={() => setDictionaryWord(null)}
+                onClick={closeDictionary}
               />
               <div
                 className={`pointer-events-auto absolute left-1/2 w-[min(100%-1.5rem,22rem)] max-h-[min(52dvh,22rem)] ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-4 sm:p-5 overflow-y-auto animate-in fade-in zoom-in-95 duration-200`}
@@ -4175,7 +4204,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                     <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Oxford Dictionary</span>
                     <h3 className="text-xl font-extrabold font-serif leading-tight mt-0.5 break-words">{dictionaryWord}</h3>
                   </div>
-                  <button onClick={() => setDictionaryWord(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition shrink-0">
+                  <button onClick={closeDictionary} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition shrink-0">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -4262,7 +4291,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                         setDictFeedback("Saved highlight to personal dictionary!");
                         setTimeout(() => setDictFeedback(null), 2500);
                       }
-                      setDictionaryWord(null);
+                      closeDictionary();
                     }}
                     className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30 text-[10px] font-bold uppercase tracking-widest transition min-w-0"
                     title="Highlight selection"
@@ -4270,7 +4299,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                     <Highlighter className="w-3.5 h-3.5 shrink-0" /> Highlight
                   </button>
                   <button
-                    onClick={() => setDictionaryWord(null)}
+                    onClick={closeDictionary}
                     className="flex items-center justify-center px-2 py-2 rounded-lg bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest hover:opacity-80 transition min-w-0"
                     title="Close"
                   >
@@ -5023,7 +5052,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       </div>
 
       {/* Kindle-Style Selection Pin Handles rendered at top level to avoid overflow clipping and CSS transform offsets */}
-      {selectedText && selectionPins.start && (
+      {selectedText && selectionPins.start && !dictionaryWord && (
         <div 
           data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
@@ -5050,7 +5079,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
           </div>
         </div>
       )}
-      {selectedText && selectionPins.end && (
+      {selectedText && selectionPins.end && !dictionaryWord && (
         <div 
           data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
@@ -5079,7 +5108,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       )}
 
       {/* Native-style floating selection menu */}
-      {selectedText && selectionCoords && !isDraggingSelection && (() => {
+      {selectedText && selectionCoords && !isDraggingSelection && !dictionaryWord && (() => {
         const preferTop = selectionCoords.bottom > window.innerHeight * 0.62;
         const pos = clampSelectionMenuPosition(
           selectionCoords.x,

@@ -1,3 +1,19 @@
 # bun (use npm on Cloudflare Pages / CI — see 4893bbe)
 bun.lock
 bunfig.toml
+
+# Dependencies
+node_modules/
+
+# Production build & cache
+dist/
+tmp/
+.wrangler/
+.hermes/
+.cache/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+

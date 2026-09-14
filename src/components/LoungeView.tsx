@@ -68,6 +68,7 @@ interface LoungeViewProps {
   onRefreshLibrary?: () => void;
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;
+  newsTabEnabled?: boolean;
 }
 
 type FeaturedBook = {
@@ -322,6 +323,7 @@ export default function LoungeView({
   onRefreshLibrary,
   onToggleAudiobookPlay,
   onExpandAudiobook,
+  newsTabEnabled = true,
 }: LoungeViewProps) {
   const [modes, setModes] = useState(() => ({
     ...loadLoungeModes(),
@@ -351,15 +353,19 @@ export default function LoungeView({
 
   useEffect(() => {
     const refresh = () => setFeedTick((n) => n + 1);
-    window.addEventListener("storage", refresh);
-    const id = window.setInterval(refresh, 60_000);
     const greetId = window.setInterval(() => setGreetingTick((n) => n + 1), 20 * 60_000);
-    return () => {
-      window.removeEventListener("storage", refresh);
-      window.clearInterval(id);
-      window.clearInterval(greetId);
-    };
-  }, []);
+    // Only subscribe to news storage/interval when the News feature is enabled.
+    if (newsTabEnabled) {
+      window.addEventListener("storage", refresh);
+      const id = window.setInterval(refresh, 60_000);
+      return () => {
+        window.removeEventListener("storage", refresh);
+        window.clearInterval(id);
+        window.clearInterval(greetId);
+      };
+    }
+    return () => window.clearInterval(greetId);
+  }, [newsTabEnabled]);
 
   // Push Lounge widget data into native Android home-screen widgets (wiki / guides / notes).
   useEffect(() => {
@@ -915,6 +921,7 @@ export default function LoungeView({
 
         {/* Right column — Paper, Discover, Guides */}
         <div className="contents md:flex md:flex-col md:gap-5 md:min-w-0">
+          {newsTabEnabled && (
           <TileShell
             delay={0.06}
             className="bg-kindle-card/55 flex flex-col order-2 md:order-none"
@@ -960,6 +967,7 @@ export default function LoungeView({
               )}
             </div>
           </TileShell>
+          )}
 
           <TileShell
             delay={0.1}

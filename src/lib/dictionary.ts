@@ -220,6 +220,37 @@ function candidateForms(word: string): string[] {
   return [...forms].filter(Boolean);
 }
 
+async function fetchOnlineDefinition(term: string): Promise<DictionaryEntry | null> {
+  try {
+    const res = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(term)}&md=d&max=1`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length || !data[0].defs || !data[0].defs.length) {
+      return null;
+    }
+    const item = data[0];
+    const posMap: Record<string, string> = {
+      n: "noun",
+      v: "verb",
+      adj: "adjective",
+      adv: "adverb",
+      u: "interjection"
+    };
+    const rawDef = item.defs[0];
+    const parts = rawDef.split("\t");
+    const pos = posMap[parts[0]] || "definition";
+    const defText = parts.length > 1 ? parts[1].trim() : rawDef.trim();
+    return {
+      word: item.word || term,
+      definition: defText,
+      partOfSpeech: pos,
+      isCustom: false
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function lookupWord(word: string): Promise<DictionaryEntry | null> {
   const forms = candidateForms(word);
   if (!forms.length) return null;
@@ -244,6 +275,16 @@ export async function lookupWord(word: string): Promise<DictionaryEntry | null> 
     const hit = byWord.get(form);
     if (hit) return hit;
   }
+
+  // Fallback to online dictionary lookup if local shards lack the word (e.g. non-'a' words)
+  for (const form of forms) {
+    const onlineEntry = await fetchOnlineDefinition(form);
+    if (onlineEntry) {
+      addDictionaryEntry(onlineEntry);
+      return onlineEntry;
+    }
+  }
+
   return null;
 }
 

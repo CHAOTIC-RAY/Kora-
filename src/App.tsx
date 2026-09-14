@@ -67,7 +67,7 @@ import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import ApkUpdateBanner from "./components/ApkUpdateBanner";
 import ApkFooterLink from "./components/ApkFooterLink";
-import InstallView from "./components/InstallView";
+const InstallView = lazy(() => importWithRetry(() => import("./components/InstallView")));
 const AnnotationsHub = lazy(() => importWithRetry(() => import("./components/AnnotationsHub")));
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
@@ -80,7 +80,6 @@ import {
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle, Rss,
   RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench, Sofa, Hammer
 } from "lucide-react";
-import JSZip from "jszip";
 import { motion, useReducedMotion } from "motion/react";
 import FluidOverlay, { koraTabSpring } from "./components/FluidOverlay";
 import {
@@ -129,6 +128,7 @@ async function injectMetadataIntoEpub(
   year?: string
 ): Promise<Blob> {
   try {
+    const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(fileBlob);
     let opfPath = "";
     
@@ -244,12 +244,10 @@ function MobileTabBar({
   mobileTabs,
   activeTab,
   switchTab,
-  loungeEnabled,
 }: {
   mobileTabs: MobileTabDef[];
   activeTab: AppTab;
   switchTab: (tab: AppTab) => void;
-  loungeEnabled: boolean;
 }) {
   const activeIndex = mobileTabs.findIndex(
     (t) => t.id === activeTab || (t.id === "tools" && activeTab === "settings")
@@ -297,7 +295,8 @@ function MobileTabBar({
     >
       <nav
         ref={barRef}
-        className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`}
+        style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, 1fr)` }}
+        className="kora-tab-bar grid h-14 px-1.5 py-1"
         aria-label="Main"
       >
         {/* Single persistent active pill — animated by transform only. */}
@@ -644,35 +643,7 @@ export default function App() {
     });
   }, [activeTab, scrollActiveTabToTop]);
 
-  // Warm secondary tabs in the background so later switches stay keep-alive-fast.
-  useEffect(() => {
-    const warm = () => {
-      setMountedTabs((prev) => {
-        const next = new Set(prev);
-        const candidates: AppTab[] = loungeEnabled
-          ? ["lounge", "library", "discover", "feed", "tools"]
-          : ["library", "discover", "feed", "tools"];
-        let changed = false;
-        for (const id of candidates) {
-          if (!next.has(id)) {
-            next.add(id);
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-    };
-    const ric = (window as Window & {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-      cancelIdleCallback?: (id: number) => void;
-    }).requestIdleCallback;
-    if (typeof ric === "function") {
-      const id = ric(warm, { timeout: 1800 });
-      return () => (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(id);
-    }
-    const t = window.setTimeout(warm, 700);
-    return () => window.clearTimeout(t);
-  }, [loungeEnabled]);
+
 
   // Feature toggles must be declared BEFORE the mobileTabs useMemo
   // (which reads them synchronously during render), otherwise the
@@ -695,6 +666,39 @@ export default function App() {
     }
     tabs.push({ id: "tools" as const, label: "Workshop", Icon: Hammer });
     return tabs;
+  }, [loungeEnabled, discoverTabEnabled, newsTabEnabled]);
+
+  // Warm secondary tabs in the background so later switches stay keep-alive-fast.
+  // Only pre-mount tabs that are actually enabled — never mount a disabled feature.
+  useEffect(() => {
+    const warm = () => {
+      setMountedTabs((prev) => {
+        const next = new Set(prev);
+        const candidates: AppTab[] = [];
+        if (loungeEnabled) candidates.push("lounge");
+        candidates.push("library", "tools");
+        if (discoverTabEnabled) candidates.push("discover");
+        if (newsTabEnabled) candidates.push("feed");
+        let changed = false;
+        for (const id of candidates) {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    };
+    const ric = (window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    }).requestIdleCallback;
+    if (typeof ric === "function") {
+      const id = ric(warm, { timeout: 1800 });
+      return () => (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(warm, 700);
+    return () => window.clearTimeout(t);
   }, [loungeEnabled, discoverTabEnabled, newsTabEnabled]);
 
   const handleLoungeEnabledChange = useCallback(
@@ -3123,7 +3127,11 @@ export default function App() {
   }, [cachedBookIds]);
 
   if (window.location.pathname === "/install" || window.location.pathname === "/install/") {
-    return <InstallView />;
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
+        <InstallView />
+      </Suspense>
+    );
   }
 
   if (loadingAuth) {
@@ -3321,6 +3329,7 @@ export default function App() {
               onRefreshLibrary={refreshLibrary}
               onToggleAudiobookPlay={handleToggleAudiobookPlay}
               onExpandAudiobook={handleExpandAudiobook}
+              newsTabEnabled={newsTabEnabled}
             />
             </Suspense>
           </div>
@@ -3931,7 +3940,6 @@ export default function App() {
           mobileTabs={mobileTabs}
           activeTab={activeTab}
           switchTab={switchTab}
-          loungeEnabled={loungeEnabled}
         />
       )}
 

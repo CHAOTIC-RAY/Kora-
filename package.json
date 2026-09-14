@@ -24,6 +24,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test": "node scripts/test-firestore-rules.mjs && tsx scripts/test-app-logic.ts",
+    "test:rules": "node scripts/test-firestore-rules.mjs",
+    "test:logic": "tsx scripts/test-app-logic.ts",
     "parse-dict": "tsx parse-stardict.ts",
     "size": "vite build && node scripts/measure-bundle.mjs"
   },
