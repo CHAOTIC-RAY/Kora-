@@ -17,7 +17,17 @@ import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
-import { isNewsTabEnabled, isDiscoverTabEnabled, isSoundEffectsEnabled, setNewsTabEnabled, setDiscoverTabEnabled, setSoundEffectsEnabled } from "./lib/featureToggles";
+import {
+  isNewsTabEnabled,
+  isDiscoverTabEnabled,
+  isSoundEffectsEnabled,
+  isGettingStartedBookEnabled,
+  isLoungeGuidesEnabled,
+  setNewsTabEnabled,
+  setDiscoverTabEnabled,
+  setSoundEffectsEnabled,
+  setLoungeGuidesEnabled,
+} from "./lib/featureToggles";
 const DiscoverView = lazy(() => importWithRetry(() => import("./components/DiscoverView")));
 const SettingsView = lazy(() => importWithRetry(() => import("./components/SettingsView")));
 const DeviceDownloadPicker = lazy(() => importWithRetry(() => import("./components/DeviceDownloadPicker")));
@@ -25,7 +35,7 @@ const LoungeView = lazy(() => importWithRetry(() => import("./components/LoungeV
 const WikipediaWidget = lazy(() => importWithRetry(() => import("./components/WikipediaWidget")));
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
-import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
+import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden, setWalkthroughBookHidden } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
 const BookReaderEPUB = lazy(() => importWithRetry(() => import("./components/BookReaderEPUB")));
 const BookReaderPDF = lazy(() => importWithRetry(() => import("./components/BookReaderPDF")));
@@ -651,6 +661,8 @@ export default function App() {
   const [newsTabEnabled, setNewsTabEnabledState] = useState<boolean>(() => isNewsTabEnabled());
   const [discoverTabEnabled, setDiscoverTabEnabledState] = useState<boolean>(() => isDiscoverTabEnabled());
   const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState<boolean>(() => isSoundEffectsEnabled());
+  const [gettingStartedBookEnabled, setGettingStartedBookEnabledState] = useState<boolean>(() => isGettingStartedBookEnabled());
+  const [loungeGuidesEnabled, setLoungeGuidesEnabledState] = useState<boolean>(() => isLoungeGuidesEnabled());
 
   const mobileTabs = useMemo(() => {
     const tabs: MobileTabDef[] = [];
@@ -781,6 +793,29 @@ export default function App() {
   const handleSoundEffectsChange = useCallback((enabled: boolean) => {
     setSoundEffectsEnabledState(enabled);
     setSoundEffectsEnabled(enabled);
+  }, []);
+
+  const handleGettingStartedBookChange = useCallback((enabled: boolean) => {
+    setGettingStartedBookEnabledState(enabled);
+    // setWalkthroughBookHidden calls setGettingStartedBookEnabled internally and dispatches kora-walkthrough-visibility
+    setWalkthroughBookHidden(!enabled);
+  }, []);
+
+  const handleLoungeGuidesChange = useCallback((enabled: boolean) => {
+    setLoungeGuidesEnabledState(enabled);
+    setLoungeGuidesEnabled(enabled);
+  }, []);
+
+  useEffect(() => {
+    const syncToggles = () => {
+      setNewsTabEnabledState(isNewsTabEnabled());
+      setDiscoverTabEnabledState(isDiscoverTabEnabled());
+      setSoundEffectsEnabledState(isSoundEffectsEnabled());
+      setGettingStartedBookEnabledState(isGettingStartedBookEnabled());
+      setLoungeGuidesEnabledState(isLoungeGuidesEnabled());
+    };
+    window.addEventListener("kora-feature-toggles-changed", syncToggles);
+    return () => window.removeEventListener("kora-feature-toggles-changed", syncToggles);
   }, []);
 
   const handleDailyNewsBriefChange = async (enabled: boolean) => {
@@ -3330,6 +3365,7 @@ export default function App() {
               onToggleAudiobookPlay={handleToggleAudiobookPlay}
               onExpandAudiobook={handleExpandAudiobook}
               newsTabEnabled={newsTabEnabled}
+              loungeGuidesEnabled={loungeGuidesEnabled}
             />
             </Suspense>
           </div>
@@ -3460,6 +3496,10 @@ export default function App() {
             onChangeNewsTabEnabled={handleNewsTabChange}
             soundEffectsEnabled={soundEffectsEnabled}
             onChangeSoundEffectsEnabled={handleSoundEffectsChange}
+            gettingStartedBookEnabled={gettingStartedBookEnabled}
+            onChangeGettingStartedBookEnabled={handleGettingStartedBookChange}
+            loungeGuidesEnabled={loungeGuidesEnabled}
+            onChangeLoungeGuidesEnabled={handleLoungeGuidesChange}
             onToggleGrayscale={toggleGrayscale}
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
@@ -3512,6 +3552,10 @@ export default function App() {
             onChangeDiscoverTabEnabled={handleDiscoverTabChange}
             soundEffectsEnabled={soundEffectsEnabled}
             onChangeSoundEffectsEnabled={handleSoundEffectsChange}
+            gettingStartedBookEnabled={gettingStartedBookEnabled}
+            onChangeGettingStartedBookEnabled={handleGettingStartedBookChange}
+            loungeGuidesEnabled={loungeGuidesEnabled}
+            onChangeLoungeGuidesEnabled={handleLoungeGuidesChange}
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}

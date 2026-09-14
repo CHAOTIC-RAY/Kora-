@@ -69,6 +69,7 @@ interface LoungeViewProps {
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;
   newsTabEnabled?: boolean;
+  loungeGuidesEnabled?: boolean;
 }
 
 type FeaturedBook = {
@@ -324,6 +325,7 @@ export default function LoungeView({
   onToggleAudiobookPlay,
   onExpandAudiobook,
   newsTabEnabled = true,
+  loungeGuidesEnabled = true,
 }: LoungeViewProps) {
   const [modes, setModes] = useState(() => ({
     ...loadLoungeModes(),
@@ -1122,9 +1124,11 @@ export default function LoungeView({
             </div>
           </TileShell>
 
-          <TileShell delay={0.14} className="bg-kindle-card/60 p-3 md:p-4 order-6 md:order-none">
-            <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
-          </TileShell>
+          {loungeGuidesEnabled && (
+            <TileShell delay={0.14} className="bg-kindle-card/60 p-3 md:p-4 order-6 md:order-none">
+              <LoungeGuidesWidget onStartGuide={onStartGuide} variant="bento" />
+            </TileShell>
+          )}
         </div>
       </div>
 

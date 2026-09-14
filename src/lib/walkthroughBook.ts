@@ -7,6 +7,7 @@
 import { buildEpubFromText } from "./epubTools";
 import { syncBookToCloud, getLocalLibrary, type BookMetadata } from "./firebase";
 import { storeBookFile, getBookFile } from "../db/indexedDB";
+import { isGettingStartedBookEnabled, setGettingStartedBookEnabled } from "./featureToggles";
 
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
@@ -164,6 +165,7 @@ function buildMetadata(): BookMetadata {
 
 export function isWalkthroughBookHidden(): boolean {
   try {
+    if (!isGettingStartedBookEnabled()) return true;
     return localStorage.getItem(HIDDEN_KEY) === "true";
   } catch {
     return false;
@@ -172,8 +174,13 @@ export function isWalkthroughBookHidden(): boolean {
 
 export function setWalkthroughBookHidden(hidden: boolean) {
   try {
-    if (hidden) localStorage.setItem(HIDDEN_KEY, "true");
-    else localStorage.removeItem(HIDDEN_KEY);
+    if (hidden) {
+      localStorage.setItem(HIDDEN_KEY, "true");
+      setGettingStartedBookEnabled(false);
+    } else {
+      localStorage.removeItem(HIDDEN_KEY);
+      setGettingStartedBookEnabled(true);
+    }
     window.dispatchEvent(new CustomEvent("kora-walkthrough-visibility"));
   } catch {
     /* ignore */

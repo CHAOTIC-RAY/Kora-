@@ -160,6 +160,10 @@ interface SettingsViewProps {
   onChangeDiscoverTabEnabled?: (enabled: boolean) => void;
   soundEffectsEnabled?: boolean;
   onChangeSoundEffectsEnabled?: (enabled: boolean) => void;
+  gettingStartedBookEnabled?: boolean;
+  onChangeGettingStartedBookEnabled?: (enabled: boolean) => void;
+  loungeGuidesEnabled?: boolean;
+  onChangeLoungeGuidesEnabled?: (enabled: boolean) => void;
 }
 
 function getRemainingGuestDays(user: User | null): number {
@@ -251,6 +255,10 @@ function SettingsView({
   onChangeDiscoverTabEnabled,
   soundEffectsEnabled = true,
   onChangeSoundEffectsEnabled,
+  gettingStartedBookEnabled = true,
+  onChangeGettingStartedBookEnabled,
+  loungeGuidesEnabled = true,
+  onChangeLoungeGuidesEnabled,
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -2553,6 +2561,14 @@ function SettingsView({
 
               <Row title="Sound Effects" desc="Disable page-turn and UI sound effects across the app">
                 <Toggle on={soundEffectsEnabled} onClick={() => onChangeSoundEffectsEnabled?.(!soundEffectsEnabled)} />
+              </Row>
+
+              <Row title="Getting Started Book" desc="Hide the Kora guide book from your library shelf">
+                <Toggle on={gettingStartedBookEnabled} onClick={() => onChangeGettingStartedBookEnabled?.(!gettingStartedBookEnabled)} />
+              </Row>
+
+              <Row title="Lounge Guides" desc="Hide the Guides widget from the Lounge home screen">
+                <Toggle on={loungeGuidesEnabled} onClick={() => onChangeLoungeGuidesEnabled?.(!loungeGuidesEnabled)} />
               </Row>
             </div>
           )}

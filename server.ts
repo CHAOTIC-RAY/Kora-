@@ -2154,6 +2154,12 @@ app.get("/api/search/stream", async (req, res) => {
 
   const all: any[] = [];
 
+  /** Filter helper: skip books with missing/unknown authors */
+  function hasKnownAuthor(book: any): boolean {
+    const author = (book.author || book.contributor || "").trim().toLowerCase();
+    return !!(author && author !== "unknown" && author !== "unknown author");
+  }
+
   const googlePromise = fetch(`http://127.0.0.1:${PORT}/api/google-books/search?q=${encodeURIComponent(q)}&startIndex=${(page - 1) * 20}`)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
@@ -2166,10 +2172,18 @@ app.get("/api/search/stream", async (req, res) => {
           coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
           year: info.publishedDate?.split("-")[0],
           publisher: info.publisher,
+          description: info.description,
+          pageCount: info.pageCount,
+          categories: info.categories,
+          averageRating: info.averageRating,
+          ratingsCount: info.ratingsCount,
+          language: info.language,
+          isbn: info.industryIdentifiers?.find((id: any) => id.type === "ISBN_13")?.identifier
+            || info.industryIdentifiers?.find((id: any) => id.type === "ISBN_10")?.identifier,
           isGoogleBook: true,
           source: "google",
         };
-      });
+      }).filter(hasKnownAuthor);
       if (books.length) {
         all.push(...books);
         res.write(JSON.stringify({ source: "google", books }) + "\n");
@@ -2179,14 +2193,85 @@ app.get("/api/search/stream", async (req, res) => {
   const annasPromise = fetch(`http://127.0.0.1:${PORT}/api/annas-archive/search?q=${encodeURIComponent(q)}&page=${page}`)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
-      const books = (data?.results || data || []).slice(0, 12);
+      const rawBooks = (data?.results || data || []).slice(0, 12);
+      const books = rawBooks.filter(hasKnownAuthor);
       if (books.length) {
         all.push(...books);
         res.write(JSON.stringify({ source: "annas", books }) + "\n");
       }
     }).catch(() => {});
 
-  await Promise.allSettled([googlePromise, annasPromise]);
+  // NYT Bestseller History — query by title keywords for short queries (likely a book title)
+  const nytPromise = (async () => {
+    const apiKey = process.env.NYT_BOOKS_API_KEY || process.env.NYT_API_KEY;
+    if (!apiKey) return;
+    // Only search NYT for plain title-like queries (no inauthor: / isbn: prefixes, reasonable length)
+    if (q.startsWith("inauthor:") || q.startsWith("isbn:") || q.length < 3 || q.length > 120) return;
+    try {
+      const nytUrl = `https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?title=${encodeURIComponent(q)}&api-key=${apiKey}`;
+      const nytRes = await fetch(nytUrl, { signal: AbortSignal.timeout(6000) });
+      if (!nytRes.ok) return;
+      const nytData = await nytRes.json();
+      const nytBooks = (nytData?.results || []).slice(0, 8).map((b: any) => ({
+        title: b.title,
+        author: b.author,
+        description: b.description,
+        publisher: b.publisher,
+        isbn: b.isbns?.[0]?.isbn13 || b.isbns?.[0]?.isbn10,
+        isNYTBook: true,
+        isNYTBestseller: true,
+        nytListName: b.bestsellers_history?.[0]?.list_name,
+        nytWeeksOnList: b.bestsellers_history?.length,
+        nytRank: b.ranks_history?.[0]?.rank,
+        source: "nyt",
+        coverUrl: null, // NYT history API doesn't return covers; Google cover will be used if merged
+      })).filter(hasKnownAuthor);
+      if (nytBooks.length) {
+        all.push(...nytBooks);
+        res.write(JSON.stringify({ source: "nyt", books: nytBooks }) + "\n");
+      }
+    } catch {
+      /* NYT is best-effort */
+    }
+  })();
+
+  // LibraryThing thingTitle — enrich with tags/subject data when token is configured
+  const ltPromise = (async () => {
+    const ltToken = process.env.LIBRARYTHING_TOKEN;
+    if (!ltToken) return;
+    // Extract title from query for LT lookup
+    const parsed = parseGoogleBooksQuery(q);
+    const titleForLt = parsed.intitle || parsed.bare.split(/\s+/).slice(0, 4).join(" ") || "";
+    if (!titleForLt || titleForLt.length < 3) return;
+    try {
+      const ltUrl = `https://www.librarything.com/api/${encodeURIComponent(ltToken)}/thingTitle/${encodeURIComponent(titleForLt)}`;
+      const ltRes = await fetch(ltUrl, { signal: AbortSignal.timeout(6000), headers: { "User-Agent": "Kora/1.0 book search" } });
+      if (!ltRes.ok) return;
+      const ltText = await ltRes.text();
+      // Extract book info from LT XML
+      const ltTitle = ltText.match(/<title>([^<]+)<\/title>/i)?.[1]?.trim();
+      const ltAuthor = ltText.match(/<author>([^<]+)<\/author>/i)?.[1]?.trim();
+      const ltTags = Array.from(ltText.matchAll(/<tag>([^<]+)<\/tag>/gi)).map((m: any) => m[1]);
+      const ltUrl2 = ltText.match(/<url>([^<]+)<\/url>/i)?.[1]?.trim();
+      if (ltTitle && ltAuthor && hasKnownAuthor({ author: ltAuthor })) {
+        const ltBook = {
+          title: ltTitle,
+          author: ltAuthor,
+          tags: ltTags.slice(0, 10),
+          sourceUrl: ltUrl2,
+          source: "librarything",
+          isLibraryThingBook: true,
+          coverUrl: null,
+        };
+        all.push(ltBook);
+        res.write(JSON.stringify({ source: "librarything", books: [ltBook] }) + "\n");
+      }
+    } catch {
+      /* LT is best-effort */
+    }
+  })();
+
+  await Promise.allSettled([googlePromise, annasPromise, nytPromise, ltPromise]);
   res.write(JSON.stringify({ done: true, totalCount: all.length, hasMore: all.length >= 12 }) + "\n");
   res.end();
 });

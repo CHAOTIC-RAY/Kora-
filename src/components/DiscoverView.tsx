@@ -298,22 +298,33 @@ function DiscoverView({
   const prefetchingPage = React.useRef<number | null>(null);
   const [feedNotice, setFeedNotice] = useState<string | null>(null);
 
-  // Memoize randomized categories and books to prevent CPU overhead and layout shift on re-render
+  // Memoize categories and books; NYT categories are always prioritized on top.
   const shuffledFeaturedCategories = useMemo(() => {
     const filtered = ALL_CATEGORIES.filter(cat => {
       if (feedFilter === "all") return true;
       return cat.source === feedFilter;
-    }).sort((a, b) => {
-      if (a.source === "audiobook" && b.source !== "audiobook") return 1;
-      if (b.source === "audiobook" && a.source !== "audiobook") return -1;
-      return 0;
     });
 
-    const shuffledCats = [...filtered].sort(() => Math.random() - 0.5);
-    return shuffledCats.map(cat => {
+    // Always prioritize NYT categories on top
+    const nytCats = filtered.filter(cat => cat.source === "nyt");
+    const nonNytCats = filtered
+      .filter(cat => cat.source !== "nyt")
+      .sort((a, b) => {
+        if (a.source === "audiobook" && b.source !== "audiobook") return 1;
+        if (b.source === "audiobook" && a.source !== "audiobook") return -1;
+        return 0;
+      });
+
+    const orderedCats = [...nytCats, ...nonNytCats];
+    return orderedCats.map(cat => {
       const rawBooks = featuredData[cat.id];
       if (!Array.isArray(rawBooks) || rawBooks.length === 0) return null;
-      const books = [...rawBooks].sort(() => Math.random() - 0.5);
+      // Filter out books with unknown/missing authors
+      const books = rawBooks.filter((b: any) => {
+        const author = (b.author || b.contributor || "").trim().toLowerCase();
+        return author && author !== "unknown" && author !== "unknown author";
+      });
+      if (books.length === 0) return null;
       return { cat, books };
     }).filter(Boolean) as { cat: any; books: any[] }[];
   }, [featuredData, feedFilter]);
@@ -3307,7 +3318,7 @@ function DiscoverView({
                       : "border-transparent hover:bg-kindle-card/50"
                   }`}
                   onClick={() => {
-                    if (book.isGoogleBook) {
+                    if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
                       openBookDetail(book);
                     } else {
                       handleGetDownloadLinks(book);
@@ -3371,6 +3382,12 @@ function DiscoverView({
                         MATCH
                       </div>
                     )}
+                    {/* NYT Bestseller Badge */}
+                    {book.isNYTBestseller && (
+                      <div className="absolute top-2 left-2 bg-black/80 text-white px-1.5 py-0.5 rounded-full text-[6px] font-bold uppercase tracking-widest shadow-lg z-10 flex items-center gap-0.5">
+                        <span style={{color:'#d4af37'}}>★</span> NYT
+                      </div>
+                    )}
                     {/* Hover overlay */}
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
                       <div className="bg-kindle-bg text-kindle-text p-3.5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition duration-500">
@@ -3401,11 +3418,26 @@ function DiscoverView({
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                       <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-accent/80 flex items-center gap-1">
                         <Globe className="w-2 h-2" />
-                        {book.isGoogleBook ? "Google Books" : (book.source === "Library Genesis" ? "LibGen" : book.source === "Anna's Archive" ? "Anna's" : book.source)}
+                        {book.source === "nyt" ? "NYT Bestsellers"
+                          : book.source === "librarything" ? "LibraryThing"
+                          : book.isGoogleBook ? "Google Books"
+                          : book.source === "Library Genesis" ? "LibGen"
+                          : book.source === "Anna's Archive" ? "Anna's"
+                          : book.source}
                       </span>
+                      {book.nytListName && (
+                        <span className="text-[8px] text-amber-500/80 font-bold truncate">
+                          · {book.nytListName}
+                        </span>
+                      )}
+                      {book.nytWeeksOnList && (
+                        <span className="text-[8px] text-kindle-text-muted/60 shrink-0">
+                          · {book.nytWeeksOnList}w on list
+                        </span>
+                      )}
                       {book.pages && book.pages !== "0" && (
                         <span className="text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted/60 shrink-0">
                           · {book.pages} pp
@@ -3422,6 +3454,13 @@ function DiscoverView({
                         </span>
                       )}
                     </div>
+                    {book.tags?.length > 0 && (
+                      <div className="flex flex-wrap gap-0.5 mt-1">
+                        {book.tags.slice(0, 3).map((tag: string) => (
+                          <span key={tag} className="text-[7px] bg-kindle-accent/10 text-kindle-accent px-1 py-0.5 rounded-full">{tag}</span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

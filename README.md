@@ -175,6 +175,17 @@ Interactive games & tools to take reading breaks.
 
 ---
 
+### 5. ⚙️ Modular Feature Toggles
+Fine-tune your reading environment on a per-device basis:
+- **News Tab** — Toggle the entire RSS / Morning Paper tab and its background pollers
+- **Discover Tab** — Toggle online search and curated feeds for a distraction-free library
+- **Sound Effects** — Silence page-turn sounds and interactive puzzle audio
+- **Getting Started Guide** — Hide or show the built-in Kora starter book on your shelf
+- **Lounge Guides** — Show or hide the interactive walk-through cards on the Lounge home screen
+- **Dynamic Navigation** — The bottom navigation automatically reorganizes and evenly spaces remaining items without gaps
+
+---
+
 ## ☁️ Sync Across Devices
 
 Your library follows you everywhere:
@@ -303,14 +314,21 @@ RAVE_API_KEY=your_rave_api_key
 ## 📦 Features by Version
 
 ### ✅ v1.0 (Current)
-- ✅ EPUB/PDF/TXT reader with full UI customization
-- ✅ Firebase Firestore sync (optional)
+- ✅ EPUB/PDF/TXT reader with full UI customization & typography controls
+- ✅ Multi-tier dictionary lookup with automatic popup overlay management
+- ✅ Mobile viewport scaling protections (prevent accidental text zoom)
+- ✅ Discover tab featuring prioritized New York Times (NYT) Bestsellers, Goodreads lists, NetGalley review titles, and audiobooks
+- ✅ Device Feature Toggles (toggle News tab, Discover tab, Sound effects, Getting Started book, Lounge guides)
+- ✅ Dynamic responsive mobile navigation bar (adapts spacing with zero gaps when features are toggled off)
+- ✅ Background task optimization (news polling and widgets shut down when feature is toggled off)
+- ✅ Firebase Firestore sync (cloud bookmarks, highlights, progress, custom tags)
 - ✅ On-device neural text-to-speech (Web Speech API + Android TTS)
-- ✅ RSS feed reader & news aggregator
-- ✅ Offline PWA support
+- ✅ RSS feed reader & morning news aggregator
+- ✅ Offline PWA support with IndexedDB storage
 - ✅ Cross-device P2P file transfer
-- ✅ Workshop Lounge (Crossword, Word Search, Linguist Guardian)
+- ✅ Workshop Lounge (Crossword, Word Search, Linguist Guardian, interactive guides)
 - ✅ Wikipedia Hub & searchable dictionary
+- ✅ Clean onboarding flow with fast Google / Guest sign-in
 
 ### 🔮 Planned (v1.1+)
 - 📱 Native iOS app (React Native)
