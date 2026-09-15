@@ -122,12 +122,17 @@ jobs:
           printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-googlexr-license"
           echo "Accepted Android SDK licenses"
 
-          # Install only what we need — `tools` is dead, don't try to install it
-          echo "Installing Android SDK components..."
+          # Install only what we need — `tools` is dead, don't try to install it.
+          # Licenses are already accepted via files above; the `yes` pipe is a
+          # safety net for any newly-introduced license. Disable pipefail for the
+          # pipe so the inevitable SIGPIPE from `yes` (sdkmanager closes stdin
+          # after consuming what it needs) doesn't kill the step.
+          set +o pipefail
           yes | sdkmanager --install \
             "platform-tools" \
             "platforms;android-${ANDROID_COMPILE_SDK}" \
             "build-tools;${ANDROID_BUILD_TOOLS}"
+          set -o pipefail
           echo "Android SDK ready"
 
       - name: Build web assets for APK
