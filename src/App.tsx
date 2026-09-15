@@ -3396,6 +3396,7 @@ export default function App() {
             onResumeDownload={resumeBackgroundDownload}
             onOpenAnnotations={handleOpenAnnotations}
             onSearchTrigger={handleSearchDiscover}
+            onImportLocalBook={handleBookAdded}
             onBookUpdated={handleBookUpdated}
           />
           </Suspense>

@@ -567,6 +567,7 @@ interface LibraryManagerProps {
   onNavigateToDiscover?: () => void;
   onOpenAnnotations?: () => void;
   onBookUpdated?: (book: BookMetadata) => void;
+  onImportLocalBook?: (book: BookMetadata) => void;
 }
 
 function calculateStreak(stats: Record<string, { minutes: number }>): number {
@@ -625,6 +626,7 @@ function LibraryManager({
   onNavigateToDiscover,
   onOpenAnnotations,
   onBookUpdated,
+  onImportLocalBook,
 }: LibraryManagerProps) {
   // Add Book Modal States
   const [showAddBookOptions, setShowAddBookOptions] = useState<boolean>(false);
@@ -633,6 +635,7 @@ function LibraryManager({
   const [customBookTitle, setCustomBookTitle] = useState<string>("");
   const [customBookAuthor, setCustomBookAuthor] = useState<string>("");
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState<boolean>(false);
+  const [localFileDraft, setLocalFileDraft] = useState<{ file: File; title: string; ext: string } | null>(null);
 
   // Filters & sorting
   const [search, setSearch] = useState<string>("");
@@ -774,6 +777,55 @@ function LibraryManager({
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isLongPressedRef = useRef<boolean>(false);
+
+  /** Import a file the user selected from local storage into the library. */
+  async function handleLocalFileImport(draft: { file: File; title: string; ext: string }) {
+    try {
+      const arrayBuffer = await draft.file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+      const bookId = "file_" + hashHex.substring(0, 16);
+
+      let mimeType = "application/octet-stream";
+      if (draft.ext === "pdf") mimeType = "application/pdf";
+      else if (draft.ext === "epub") mimeType = "application/epub+zip";
+      else if (draft.ext === "html") mimeType = "text/html";
+      else if (draft.ext === "json") mimeType = "application/json";
+      else if (draft.ext === "txt") mimeType = "text/plain";
+
+      const blob = new Blob([arrayBuffer], { type: mimeType });
+      await storeBookFile(bookId, blob, draft.file.name, draft.ext);
+      if (onCachedIdsChanged) onCachedIdsChanged();
+
+      const cleanTitle = draft.title.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+      const extStr = draft.ext || "epub";
+
+      const newBook: BookMetadata = {
+        id: bookId,
+        title: cleanTitle,
+        author: draft.file.name.includes(" - ") ? draft.file.name.split(" - ")[0].trim() : "Local Import",
+        extension: extStr,
+        size: `${(draft.file.size / (1024 * 1024)).toFixed(1)} MB`,
+        language: "English",
+        tags: inferBookTags(cleanTitle, "Local Import", extStr),
+        status: "to-read",
+        progress: { percent: 0, lastReadTime: Date.now() },
+        dateAdded: Date.now(),
+      };
+
+      if (onImportLocalBook) {
+        onImportLocalBook(newBook);
+      }
+
+      setShowAddBookOptions(false);
+      if (onRefreshLibrary) onRefreshLibrary();
+      setLocalFileDraft(null);
+    } catch (err) {
+      console.error("Local file import failed:", err);
+      setLocalFileDraft(null);
+    }
+  }
 
   const startLongPress = (book: BookMetadata, e: React.TouchEvent | React.MouseEvent) => {
     isLongPressedRef.current = false;
@@ -2448,6 +2500,90 @@ function LibraryManager({
               </div>
             </button>
           </div>
+
+          {/* Hidden file input for local storage import */}
+          <input
+            id="kora-local-book-picker"
+            type="file"
+            accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const ext = file.name.split(".").pop()?.toLowerCase() || "";
+              if (!["epub", "pdf", "mobi", "azw3", "html", "json", "txt"].includes(ext)) {
+                setLocalFileDraft(null);
+                return;
+              }
+              setLocalFileDraft({ file, title: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "), ext });
+            }}
+            className="hidden"
+          />
+
+          {/* Option 3: Add from Local Storage */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddBookOptions(false);
+              const input = document.getElementById("kora-local-book-picker") as HTMLInputElement | null;
+              if (input) {
+                input.value = "";
+                input.click();
+              }
+            }}
+            className="w-full text-left p-4 rounded-2xl border border-kindle-border bg-kindle-bg/50 hover:bg-sky-500/10 hover:border-sky-500/40 group transition duration-200 flex items-start gap-4 cursor-pointer"
+          >
+            <div className="p-3 rounded-xl bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 group-hover:scale-105 transition shrink-0">
+              <HardDrive className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-kindle-text group-hover:text-sky-600 dark:group-hover:text-sky-400 transition">
+                  Add from Local Storage
+                </h4>
+                {localFileDraft ? (
+                  <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                    Selected
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                    Upload
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-kindle-text-muted mt-1 leading-relaxed">
+                {localFileDraft
+                  ? `“${localFileDraft.title}” (${(localFileDraft.file.size / 1024 / 1024).toFixed(1)} MB) — tap to import`
+                  : "Upload EPUB, PDF, or other ebooks from your device."}
+              </p>
+              {localFileDraft && (
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLocalFileImport(localFileDraft);
+                      setLocalFileDraft(null);
+                    }}
+                    className="flex-1 text-xs font-bold py-1.5 px-3 rounded-lg bg-sky-500 text-white hover:bg-sky-600 transition cursor-pointer"
+                  >
+                    Import Book
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLocalFileDraft(null);
+                      const input = document.getElementById("kora-local-book-picker") as HTMLInputElement | null;
+                      if (input) input.value = "";
+                    }}
+                    className="text-xs font-medium py-1.5 px-3 rounded-lg border border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </button>
 
           <div className="pt-2 text-center text-[10px] text-kindle-text-muted font-mono uppercase tracking-widest">
             Kora Book Studio
