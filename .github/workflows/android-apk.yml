@@ -90,6 +90,14 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        env:
+          ANDROID_SDK_LICENSE: "y"
+
+      - name: Accept Android SDK licenses
+        run: |
+          # setup-android@v3 ships a fresh cmdline-tools that prompts
+          # interactively for licenses. Accept them non-interactively here.
+          yes | "$ANDROID_HOME/cmdline-tools/"*/bin/sdkmanager --licenses >/dev/null 2>&1 || true
 
       - name: Install Android SDK packages
         run: |
