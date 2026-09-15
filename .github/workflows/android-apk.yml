@@ -88,24 +88,47 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        env:
-          ANDROID_SDK_LICENSE: "y"
-
-      - name: Accept Android SDK licenses
+      # setup-android@v3 internally runs `sdkmanager tools` which fails because
+      # `tools` was removed from the SDK repo (2023). Replace with manual setup:
+      # download cmdline-tools, write all known license files, then install real
+      # packages (platform-tools + platforms + build-tools).
+      - name: Setup Android SDK (manual)
         run: |
-          # setup-android@v3 ships a fresh cmdline-tools that prompts
-          # interactively for licenses. Accept them non-interactively here.
-          yes | "$ANDROID_HOME/cmdline-tools/"*/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+          set -euo pipefail
+          ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
+          mkdir -p "$ANDROID_HOME"
+          export ANDROID_HOME
 
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager --install \
+          # Download cmdline-tools if not already present
+          CMDLINE_DIR="$ANDROID_HOME/cmdline-tools"
+          mkdir -p "$CMDLINE_DIR"
+          if [ ! -d "$CMDLINE_DIR/latest" ]; then
+            echo "Downloading cmdline-tools..."
+            TMP="$(mktemp -d)"
+            curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o "$TMP/cmdline-tools.zip"
+            unzip -q "$TMP/cmdline-tools.zip" -d "$TMP"
+            mv "$TMP/cmdline-tools" "$CMDLINE_DIR/latest"
+            rm -rf "$TMP"
+          fi
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+          # Write every known Android SDK license file so sdkmanager never prompts
+          mkdir -p "$ANDROID_HOME/licenses"
+          printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+          printf '\n84831b9409646a918e30573bab4c9c91346d8abd\n' > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+          printf '\n504667f4c0de7af1a06de9f4b7b911b55a545d97\n' > "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license"
+          printf '\nea03753411e97f15b0e5b946cb70cf49d0a6427c\n' > "$ANDROID_HOME/licenses/google-gdk-license"
+          printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-googletv-license"
+          printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-googlexr-license"
+          echo "Accepted Android SDK licenses"
+
+          # Install only what we need — `tools` is dead, don't try to install it
+          echo "Installing Android SDK components..."
+          yes | sdkmanager --install \
             "platform-tools" \
             "platforms;android-${ANDROID_COMPILE_SDK}" \
             "build-tools;${ANDROID_BUILD_TOOLS}"
-          yes | sdkmanager --licenses >/dev/null || true
+          echo "Android SDK ready"
 
       - name: Build web assets for APK
         run: |
