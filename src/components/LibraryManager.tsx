@@ -1522,12 +1522,12 @@ function LibraryManager({
                   onMouseUp={isManageMode ? undefined : endLongPress}
                   onMouseLeave={isManageMode ? undefined : endLongPress}
                   onContextMenu={(e) => {
-                    // Desktop/web only: right-click opens the same options sheet.
-                    // In the APK the WebView owns right-click itself and long-press
-                    // already opens this menu, so leave native alone.
+                    // Desktop/web only: right-click anywhere on the card — cover
+                    // image included — opens the same options sheet. In the APK
+                    // the WebView owns right-click and long-press already covers
+                    // it, and manage mode needs right-click for multi-select.
                     e.preventDefault();
                     if (isNativeApp() || isManageMode) return;
-                    if ((e.target as HTMLElement)?.closest("img")) return;
                     setLongPressedBook(book);
                   }}
                   onClick={(e) => {
