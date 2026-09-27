@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
-import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
+import { storeBookFile, checkBookFileCached, deleteBookFile, getBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft, Globe } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft, Globe, Download } from "lucide-react";
 import {
   WALKTHROUGH_BOOK_ID,
   hideWalkthroughBookFromLibrary,
@@ -20,7 +20,7 @@ import { resolveCoverImageSrc } from "../lib/coverImage";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
 import { buildEpubFromText } from "../lib/epubTools";
-import { resolveApiUrl } from "../lib/capacitorNative";
+import { resolveApiUrl, isNativeApp } from "../lib/capacitorNative";
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
@@ -31,6 +31,53 @@ function buildBookShareLink(book: BookMetadata): string {
   } catch {
     return "https://kora.chaoticstudio.workers.dev/book";
   }
+}
+
+/**
+ * Save a book already cached in the library to the user's real device storage
+ * (browser Downloads folder / normal OS download), not just the app sandbox.
+ * Uses showSaveFilePicker where available so the user picks the location,
+ * falling back to a standard anchor download.
+ */
+async function downloadBookToDevice(book: BookMetadata): Promise<void> {
+  const fileData = await getBookFile(book.id);
+  if (!fileData?.blob) {
+    throw new Error("This book isn't downloaded yet. Download it from Discover first.");
+  }
+  const ext = (book.extension || fileData.fileName?.split(".").pop() || "epub").toLowerCase();
+  const safeTitle = (book.title || "book").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 80);
+  const fileName = fileData.fileName || `${safeTitle}.${ext}`;
+
+  const type = fileData.blob.type || "application/octet-stream";
+
+  // Chromium browsers: let the user choose the exact folder + filename.
+  const picker = (window as any).showSaveFilePicker;
+  if (typeof picker === "function") {
+    try {
+      const handle = await picker({
+        suggestedName: fileName,
+        types: [{ description: ext.toUpperCase(), accept: { [type]: [`.${ext}`] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(fileData.blob);
+      await writable.close();
+      return;
+    } catch (err: any) {
+      // User aborted the picker — respect that, don't fall through to a surprise download.
+      if (err?.name === "AbortError") return;
+      // Any other failure (unsupported, permission) → fall back below.
+    }
+  }
+
+  const url = URL.createObjectURL(fileData.blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Share a book using the device share sheet, falling back to copy-link. */
@@ -676,6 +723,7 @@ function LibraryManager({
   const [syncingBookIds, setSyncingBookIds] = useState<Set<string>>(new Set());
   const [deletingBookIds, setDeletingBookIds] = useState<Set<string>>(new Set());
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
+  const [savingBookId, setSavingBookId] = useState<string | null>(null);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
   const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
 
@@ -1473,7 +1521,15 @@ function LibraryManager({
                   }}
                   onMouseUp={isManageMode ? undefined : endLongPress}
                   onMouseLeave={isManageMode ? undefined : endLongPress}
-                  onContextMenu={(e) => e.preventDefault()}
+                  onContextMenu={(e) => {
+                    // Desktop/web only: right-click opens the same options sheet.
+                    // In the APK the WebView owns right-click itself and long-press
+                    // already opens this menu, so leave native alone.
+                    e.preventDefault();
+                    if (isNativeApp() || isManageMode) return;
+                    if ((e.target as HTMLElement)?.closest("img")) return;
+                    setLongPressedBook(book);
+                  }}
                   onClick={(e) => {
                     if (isManageMode) {
                       setSelectedBookIds(prev => {
@@ -2233,6 +2289,25 @@ function LibraryManager({
                   >
                     <Share2 className="w-4 h-4 text-kindle-text-muted" />
                     Share Book Link
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const book = longPressedBook;
+                      setLongPressedBook(null);
+                      setSavingBookId(book.id);
+                      downloadBookToDevice(book)
+                        .catch((err) => alert(err?.message || "Couldn't save the file."))
+                        .finally(() => setSavingBookId(null));
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                  >
+                    {savingBookId === longPressedBook.id ? (
+                      <RefreshCw className="w-4 h-4 text-kindle-text-muted animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 text-kindle-text-muted" />
+                    )}
+                    {savingBookId === longPressedBook.id ? "Saving…" : "Download to My Device"}
                   </button>
 
                   {!(isWalkthroughBook(longPressedBook) && !walkthroughAdvancedMenu) && (
