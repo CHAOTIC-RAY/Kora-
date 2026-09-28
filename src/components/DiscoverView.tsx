@@ -488,15 +488,28 @@ function DiscoverView({
     // source, carrying the book so the search actually lands on it. Replaces
     // the old "Anna's Archive" entry, which linked an unscoped homepage and
     // surfaced above the real mirrors.
-    const searchText = [variant.title, variant.author].filter(Boolean).join(" ").trim();
-    links.push({
-      label: searchText ? `Search Rave for this book` : "Search Rave",
-      url: searchText
-        ? `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText)}`
-        : "https://ravebooksearch.com",
-      isDirect: false,
-      sourceId: "rave"
-    });
+    //
+    // Only ever one Rave row: the Worker can also return a Rave search link for
+    // the same variant, so pushing this unconditionally produced a duplicate
+    // pair (one with the query, one bare). Anything already on the list that
+    // resolves to Rave is skipped.
+    const alreadyHasRave = links.some(
+      (l) => l.sourceId === "rave" || /ravebooksearch\.com/i.test(l.url || "")
+    );
+    if (!alreadyHasRave) {
+      const searchText = [variant.title, variant.author].filter(Boolean).join(" ").trim();
+      links.push({
+        label: searchText ? "Search Rave for this book" : "Search Rave",
+        url: searchText
+          ? `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText)}`
+          : "https://ravebooksearch.com",
+        isDirect: false,
+        // A search hand-off is not a file. `isSearch` hides the download
+        // affordance so it reads as "go and look" rather than "fetch this".
+        isSearch: true,
+        sourceId: "rave"
+      });
+    }
     return links;
   }
 
@@ -2176,6 +2189,24 @@ function DiscoverView({
       // sibling variant, and so page 1 + the streaming callback agree.
       mappedBooks = filterDownloadableBooks(mappedBooks);
 
+      // Same keyword-engine problem as the featured variants, one level up:
+      // LibreTexts is an open-textbook corpus, so searching a novel title
+      // surfaces unrelated chemistry/maths textbooks. Those are real, valid,
+      // downloadable rows — they are simply not the book that was asked for.
+      //
+      // We only narrow the visible list here (it is still keyword search, so a
+      // strict-only list would hide legitimate partial matches). Any book whose
+      // title genuinely matches survives untouched. When nothing matches at
+      // all we keep the unfiltered list rather than showing an empty page.
+      if (query.trim()) {
+        const titleMatched = mappedBooks.filter((b: any) =>
+          titlesRoughlyMatch(query, b.title || "", undefined)
+        );
+        if (titleMatched.length > 0) {
+          mappedBooks = titleMatched;
+        }
+      }
+
       // Group search results by simplified Title + Author + Year + Series to completely avoid duplicates of the same book
       const groupedBooksMap = new Map<string, any>();
 
@@ -3081,6 +3112,12 @@ function DiscoverView({
 
   function handleMirrorClick(m: any) {
     console.log("[DiscoverView] handleMirrorClick called for:", m.label, m.url);
+    // A search hand-off (e.g. Rave) is a lookup, not a file. Never try to fetch
+    // it as a download — just send the user to the search results in a new tab.
+    if (m.isSearch) {
+      window.open(m.url, "_blank");
+      return;
+    }
     // If it is a Mobilism URL, we cannot download directly in-app, so open it in a new tab
     if (m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"))) {
       console.log("[DiscoverView] Mobilism link detected. Opening in a new tab.");
@@ -4679,20 +4716,23 @@ function DiscoverView({
                                               <ExternalLink className="w-4 h-4" />
                                             </button>
 
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleMirrorClick(m);
-                                              }}
-                                              className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
-                                                m.isDirect
-                                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
-                                                  : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
-                                              }`}
-                                            >
-                                              {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
-                                            </button>
+                                            {/* Search hand-offs have no file to fetch, so no download button. */}
+                                            {!m.isSearch && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleMirrorClick(m);
+                                                }}
+                                                className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
+                                                  m.isDirect
+                                                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
+                                                    : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
+                                                }`}
+                                              >
+                                                {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
                                       );

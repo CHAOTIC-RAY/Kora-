@@ -2308,6 +2308,14 @@ export default {
             label: "Internet Archive (Browse Page)",
             url: `https://archive.org/details/${iaId}`,
             isDirect: false
+          },
+          {
+            label: "Search Rave for this book",
+            url: `https://ravebooksearch.com/search?q=${encodeURIComponent(url.searchParams.get("q") || md5 || "")}`,
+            isDirect: false,
+            // Flagged as a lookup, not a file, so the UI can hide its download
+            // button. The client skips adding its own Rave row when it sees this.
+            isSearch: true
           }
         ];
       } else if (downloadLinks.length === 0) {
