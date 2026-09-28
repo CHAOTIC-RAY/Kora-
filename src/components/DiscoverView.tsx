@@ -4,6 +4,7 @@ import ReactDOM from "react-dom";
 import JSZip from "jszip";
 import { BookMetadata, syncBookToCloud, getCommunityBooks, CommunityBook, likeCommunityBook, isCommunityBookLikedByUser, incrementCommunityBookReads, getCommunityComments, addCommunityComment, CommunityComment } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
+import { filterDownloadableBooks } from "../lib/bookAvailability";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
@@ -2061,8 +2062,10 @@ function DiscoverView({
               if (page === 1) {
                 setResults((prev) => {
                   const seen = new Set(prev.map((b) => b.title + b.author));
-                  const merged = [...prev, ...books.filter((b) => !seen.has(b.title + b.author))];
-                  return merged;
+                  const incoming = filterDownloadableBooks(books).filter(
+                    (b: any) => !seen.has(b.title + b.author)
+                  );
+                  return [...prev, ...incoming];
                 });
                 setLoading(false);
               }
@@ -2081,6 +2084,13 @@ function DiscoverView({
           }
         }
       }
+
+      // Hide anything we could never actually hand a file for. A result with
+      // no download URL, no catalog hash, and nothing to re-search on opens
+      // into an empty mirror sheet, so it should not be offered in the first
+      // place. Applied before grouping so a dropped row can't resurface via a
+      // sibling variant, and so page 1 + the streaming callback agree.
+      mappedBooks = filterDownloadableBooks(mappedBooks);
 
       // Group search results by simplified Title + Author + Year + Series to completely avoid duplicates of the same book
       const groupedBooksMap = new Map<string, any>();

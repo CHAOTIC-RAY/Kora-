@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   BookOpen,
@@ -23,6 +23,7 @@ import {
 } from "../lib/loungePrefs";
 import { buildLoungeGreeting } from "../lib/loungeGreeting";
 import CachedCoverImage from "./CachedCoverImage";
+import { pickBooksWithWorkingCovers, type AvailabilityBook } from "../lib/bookAvailability";
 import LoungeGuidesWidget from "./LoungeGuidesWidget";
 import LoungeNotesWidget from "./LoungeNotesWidget";
 import LoungeWikiWidget from "./LoungeWikiWidget";
@@ -337,6 +338,25 @@ export default function LoungeView({
   const [featuredAudio, setFeaturedAudio] = useState<FeaturedBook[]>([]);
   const [feedTick, setFeedTick] = useState(0);
   const [greetingTick, setGreetingTick] = useState(0);
+  // Cover URLs the <img> already failed on. The featured widget swaps these
+  // out for the next candidate instead of leaving a dead tile behind.
+  const [brokenCovers, setBrokenCovers] = useState<Set<string>>(() => new Set());
+
+  const markCoverBroken = useCallback((coverUrl?: string | null) => {
+    if (!coverUrl) return;
+    const key = coverUrl.trim();
+    if (!key) return;
+    setBrokenCovers((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
+
+  const forgetBrokenCovers = useCallback(() => {
+    setBrokenCovers(new Set());
+  }, []);
   const continuePauseUntil = useRef(0);
   const discoverPauseUntil = useRef(0);
   const continueLastFlipAt = useRef(Date.now());
@@ -561,6 +581,15 @@ export default function LoungeView({
   }, [modes.paper, feedTick]);
 
   const discoverItems = useMemo(() => {
+    // Books whose cover never loaded (or was already flagged as broken) are
+    // dropped here, so the hero and the strip below refill from the next
+    // candidate instead of rendering a dead tile.
+    const coverSafe = (list: FeaturedBook[], limit: number): FeaturedBook[] =>
+      pickBooksWithWorkingCovers(list, {
+        limit,
+        isBroken: (b: AvailabilityBook) => brokenCovers.has((b.coverUrl || "").trim()),
+      });
+
     if (modes.discover === "audiobooks") {
       const fromLibrary: FeaturedBook[] = recentAudio.map((b) => ({
         title: b.title,
@@ -568,13 +597,17 @@ export default function LoungeView({
         coverUrl: b.coverUrl,
         kind: "audiobook" as const,
       }));
-      // Library first, then Discover audiobook cache (popular/fiction/etc.), fill from trending if thin
-      const primary = dedupeFeatured([...fromLibrary, ...featuredAudio], 10);
-      if (primary.length >= 6) return primary;
-      return dedupeFeatured([...primary, ...featured.map((b) => ({ ...b, kind: "audiobook" as const }))], 10);
+      // Library first, then Discover audiobook cache (popular/fiction/etc.), fill from trending if thin.
+      // The final pass re-filters so a cover that failed above is replaced.
+      const merged = coverSafe(
+        dedupeFeatured([...fromLibrary, ...featuredAudio], 12),
+        10,
+      );
+      if (merged.length >= 6) return merged;
+      return coverSafe([...merged, ...featured], 10);
     }
-    return featured.slice(0, 8);
-  }, [modes.discover, featured, featuredAudio, recentAudio]);
+    return coverSafe(featured, 8);
+  }, [modes.discover, featured, featuredAudio, recentAudio, brokenCovers]);
 
   const greeting = useMemo(() => {
     void greetingTick;
@@ -988,6 +1021,7 @@ export default function LoungeView({
                       grayscaleCovers ? "grayscale" : ""
                     }`}
                     referrerPolicy="no-referrer"
+                    onError={() => markCoverBroken(discoverHero.coverUrl)}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-kindle-bg via-kindle-bg/80 to-kindle-bg/35" />
                   <div className="absolute inset-0 bg-gradient-to-r from-kindle-bg/95 via-kindle-bg/55 to-kindle-bg/20" />
@@ -1014,6 +1048,9 @@ export default function LoungeView({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      // Re-rolling should give known-dead covers another chance —
+                      // the failure may have been a flaky network, not a bad URL.
+                      forgetBrokenCovers();
                       setFeatured(loadFeaturedFromCache({ audiobooksOnly: false }));
                       setFeaturedAudio(loadFeaturedFromCache({ audiobooksOnly: true }));
                     }}
@@ -1099,6 +1136,7 @@ export default function LoungeView({
                                 bookTitle={book.title}
                                 className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`}
                                 referrerPolicy="no-referrer"
+                                onError={() => markCoverBroken(book.coverUrl)}
                               />
                             </button>
                           ))}

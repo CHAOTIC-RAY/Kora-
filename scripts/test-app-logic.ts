@@ -2,6 +2,12 @@ import { inferBookTags } from '../src/lib/tagsHelper.ts';
 import { mergeReadingProgress } from '../src/lib/progressMerge.ts';
 import { titlesRoughlyMatch } from '../src/lib/audiobookScraper.ts';
 import { isLibgenUrl, buildLibgenDownloadUrl, LIBGEN_MIRRORS } from '../src/lib/libgenProxy.ts';
+import {
+  hasDownloadableSource,
+  filterDownloadableBooks,
+  pickBooksWithWorkingCovers,
+  hasCoverCandidate,
+} from '../src/lib/bookAvailability.ts';
 
 console.log('--- KORA CORE BUSINESS LOGIC TESTS ---');
 
@@ -53,6 +59,53 @@ assert(titlesRoughlyMatch('1984', 'Nineteen Eighty-Four') === false, 'titlesRoug
 assert(isLibgenUrl('https://libgen.is/book/index.php?md5=ABC123') === true, 'isLibgenUrl detects libgen.is');
 assert(isLibgenUrl('https://libgen.rs/book/index.php?md5=DEF456') === true, 'isLibgenUrl detects libgen.rs');
 assert(isLibgenUrl('https://example.com/somefile.epub') === false, 'isLibgenUrl ignores non-libgen URLs');
+
+// 5. Book availability — cover + download filters
+assert(hasDownloadableSource({ downloadUrl: 'https://cdn.example.com/a.epub' }) === true, 'hasDownloadableSource accepts a direct download URL');
+assert(hasDownloadableSource({ md5: 'ABC123' }) === true, 'hasDownloadableSource accepts a libgen md5 row');
+assert(hasDownloadableSource({ title: 'Orphan' }) === false, 'hasDownloadableSource rejects a book with no resolvable source');
+assert(hasDownloadableSource({ source: 'nyt', title: 'Bestseller' }) === true, 'hasDownloadableSource accepts archive-searchable catalog rows');
+assert(hasDownloadableSource({ searchQuery: 'dune frank herbert' }) === true, 'hasDownloadableSource accepts a book carrying a searchQuery');
+assert(hasDownloadableSource({ title: 'Grouped', variants: [{ md5: 'XYZ' }] }) === true, 'hasDownloadableSource accepts a grouped book whose variant resolves');
+assert(hasDownloadableSource({ title: 'Grouped', variants: [{ title: 'no source' }] }) === false, 'hasDownloadableSource rejects a grouped book with no resolvable variant');
+assert(hasDownloadableSource({ downloadUrl: '   ' }) === false, 'hasDownloadableSource rejects a blank download URL');
+assert(hasDownloadableSource(null) === false, 'hasDownloadableSource handles null');
+
+const mixedFeed = [
+  { title: 'Has Link', downloadUrl: 'https://cdn.example.com/a.epub' },
+  { title: 'No Link' },
+  { title: 'Libgen', md5: 'DEAD' },
+];
+const filteredFeed = filterDownloadableBooks(mixedFeed as any);
+assert(filteredFeed.length === 2, 'filterDownloadableBooks drops books with no valid download link');
+assert(filteredFeed.every((b: any) => b.title !== 'No Link'), 'filterDownloadableBooks keeps only resolvable books');
+
+assert(hasCoverCandidate({ coverUrl: 'https://img/c.jpg' }) === true, 'hasCoverCandidate reads coverUrl');
+assert(hasCoverCandidate({ book_image: 'https://img/c.jpg' }) === true, 'hasCoverCandidate falls back to book_image');
+assert(hasCoverCandidate({ coverUrl: '   ' }) === false, 'hasCoverCandidate rejects a blank cover URL');
+assert(hasCoverCandidate({}) === false, 'hasCoverCandidate rejects a book with no cover field');
+
+const coverPool = [
+  { title: 'No Cover' },
+  { title: 'Good Cover', coverUrl: 'https://img/good.jpg' },
+  { title: 'Dead Cover', coverUrl: 'https://img/dead.jpg' },
+  { title: 'Backup Cover', coverUrl: 'https://img/backup.jpg' },
+];
+const pickedCovers = pickBooksWithWorkingCovers(coverPool as any, {
+  limit: 2,
+  isBroken: (b) => b.title === 'Dead Cover',
+});
+assert(pickedCovers.length === 2, 'pickBooksWithWorkingCovers backfills the list up to the limit');
+assert(
+  pickedCovers[0].title === 'Good Cover' && pickedCovers[1].title === 'Backup Cover',
+  'pickBooksWithWorkingCovers skips coverless and known-broken books'
+);
+
+const dedupedCovers = pickBooksWithWorkingCovers([
+  { title: 'Same', coverUrl: 'https://img/a.jpg' },
+  { title: 'Same', coverUrl: 'https://img/b.jpg' },
+] as any);
+assert(dedupedCovers.length === 1, 'pickBooksWithWorkingCovers dedupes by title');
 
 console.log('\n=============================================');
 console.log(`LOGIC TEST SUMMARY: ${passed} PASSED, ${failed} FAILED (Total: ${passed + failed})`);
