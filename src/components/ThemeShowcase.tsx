@@ -330,28 +330,47 @@ export default function ThemeShowcase() {
                 </span>
               </div>
 
-              <AnimatePresence>
-                <motion.div
-                  key={`${currentThemeIndex}-${currentFontIndex}-${excerptIndex}`}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  style={{
-                    fontSize: `${
-                      activeFont.value === "font-mono"
-                        ? fontSize - 2
-                        : activeFont.value === "font-opendyslexic"
-                        ? fontSize - 1
-                        : fontSize
-                    }px`,
-                    lineHeight: lineHeight
-                  }}
-                  className={`${activeFont.value} tracking-normal text-justify select-text leading-relaxed`}
-                >
-                  {activeExcerpt.text}
-                </motion.div>
-              </AnimatePresence>
+              {/* Cross-fade WITHOUT stacking.
+                  AnimatePresence keeps the outgoing paragraph mounted until its
+                  exit finishes, and both were in normal flow — so mid-swap the
+                  reader canvas briefly held two full paragraphs, one fading out
+                  under the other. That read as a huge blank gap with a ghosted
+                  duplicate. Here the exiting copy is taken out of flow and laid
+                  over the incoming one, so only one paragraph ever occupies the
+                  canvas and the frame height never changes. */}
+              <div className="relative">
+                <AnimatePresence initial={false}>
+                  <motion.div
+                    key={`${currentThemeIndex}-${currentFontIndex}-${excerptIndex}`}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{
+                      opacity: 0,
+                      // The outgoing copy is lifted out of flow so it cannot add
+                      // its height to the frame. Only the incoming paragraph
+                      // occupies layout while the swap happens.
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0
+                    }}
+                    transition={{ duration: 0.3 }}
+                    style={{
+                      fontSize: `${
+                        activeFont.value === "font-mono"
+                          ? fontSize - 2
+                          : activeFont.value === "font-opendyslexic"
+                          ? fontSize - 1
+                          : fontSize
+                      }px`,
+                      lineHeight: lineHeight
+                    }}
+                    className={`${activeFont.value} tracking-normal text-justify select-text leading-relaxed`}
+                  >
+                    {activeExcerpt.text}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
             </div>
 
             {/* Reading Progress Footer Indicator */}
