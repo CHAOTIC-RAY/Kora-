@@ -8,6 +8,7 @@ import {
   pickBooksWithWorkingCovers,
   hasCoverCandidate,
 } from '../src/lib/bookAvailability.ts';
+import { buildBookDeepLink, parseBookLink, buildBookPromoText } from '../src/lib/bookShare.ts';
 
 console.log('--- KORA CORE BUSINESS LOGIC TESTS ---');
 
@@ -106,6 +107,26 @@ const dedupedCovers = pickBooksWithWorkingCovers([
   { title: 'Same', coverUrl: 'https://img/b.jpg' },
 ] as any);
 assert(dedupedCovers.length === 1, 'pickBooksWithWorkingCovers dedupes by title');
+
+// 6. Shareable book links
+const linkBook = { id: 'abc123', title: 'The New Mind', author: 'J Krishnamurti' };
+const deepLink = buildBookDeepLink(linkBook as any);
+assert(deepLink.startsWith('https://kora.chaoticstudio.workers.dev/book?'), 'buildBookDeepLink targets the /book route');
+assert(deepLink.includes('id=abc123'), 'buildBookDeepLink carries the book id');
+
+const parsedLink = parseBookLink(deepLink);
+assert(parsedLink !== null && parsedLink.id === 'abc123', 'parseBookLink round-trips the id');
+assert(parsedLink !== null && parsedLink.query === 'The New Mind J Krishnamurti', 'parseBookLink recovers the title+author query');
+
+const md5Link = parseBookLink(buildBookDeepLink({ md5: 'MD5HASH', title: 'Fallback Book' } as any));
+assert(md5Link !== null && md5Link.id === 'MD5HASH', 'buildBookDeepLink falls back to md5 for the id');
+
+assert(parseBookLink('https://kora.chaoticstudio.workers.dev/library') === null, 'parseBookLink ignores non-book routes');
+assert(parseBookLink('https://kora.chaoticstudio.workers.dev/book') === null, 'parseBookLink ignores a book route with no id or query');
+
+const promoText = buildBookPromoText(linkBook as any);
+assert(promoText.includes('The New Mind') && promoText.includes('J Krishnamurti'), 'buildBookPromoText names the book and author');
+assert(promoText.includes(deepLink), 'buildBookPromoText embeds the deep link for the receiver');
 
 console.log('\n=============================================');
 console.log(`LOGIC TEST SUMMARY: ${passed} PASSED, ${failed} FAILED (Total: ${passed + failed})`);

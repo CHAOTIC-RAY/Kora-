@@ -1,0 +1,107 @@
+/**
+ * Shareable book links.
+ *
+ * One canonical deep link format used by every share surface in the app:
+ *   https://kora.chaoticstudio.workers.dev/book?id=<id>&q=<title author>
+ *
+ * `id` lets the receiver jump straight to the exact book when it can be
+ * resolved; `q` is the search query, so when the id is unknown locally the
+ * receiver can at least search Discover for the title + author.
+ */
+
+const KORA_ORIGIN = "https://kora.chaoticstudio.workers.dev";
+
+export interface ShareableBookLike {
+  id?: string | null;
+  md5?: string | null;
+  downloadId?: string | null;
+  title?: string | null;
+  author?: string | null;
+}
+
+/** Filesystem/URL-safe version of a search query. */
+function buildQueryText(title: string, author?: string | null): string {
+  return `${title || ""} ${author || ""}`.trim();
+}
+
+/** The canonical deep link for a book. */
+export function buildBookDeepLink(book: ShareableBookLike): string {
+  const id = book.id || book.md5 || book.downloadId || "";
+  const q = buildQueryText(book.title || "", book.author);
+  // URLSearchParams does the percent-encoding for us; encoding here as well
+  // would double-encode and the receiver would decode to a mangled query.
+  const params = new URLSearchParams();
+  if (id) params.set("id", id);
+  if (q) params.set("q", q);
+  return `${KORA_ORIGIN}/book?${params.toString()}`;
+}
+
+/** Parsed pieces of a shared book link. */
+export interface ParsedBookLink {
+  id: string;
+  query: string;
+}
+
+/**
+ * Read a shared book link out of a full URL (or a bare path+query).
+ * Returns null when the URL is not a Kora book link.
+ */
+export function parseBookLink(url: string): ParsedBookLink | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url, KORA_ORIGIN);
+  } catch {
+    return null;
+  }
+  const isBookPath = /^\/book\/?$/.test(parsed.pathname);
+  if (!isBookPath) return null;
+  const id = parsed.searchParams.get("id") || "";
+  const query = parsed.searchParams.get("q") || "";
+  if (!id && !query) return null;
+  return { id, query };
+}
+
+/** Promo blurb used when a book link is shared as text. */
+export function buildBookPromoText(book: ShareableBookLike): string {
+  const link = buildBookDeepLink(book);
+  const author = book.author ? ` by ${book.author}` : "";
+  return `“${book.title || "a book"}”${author}\n\nFind it and thousands more free on Kora:\n${link}`;
+}
+
+/**
+ * Share a book link using the platform share sheet, falling back to copying
+ * the text. Used by Discover, where there is no local file to attach — the
+ * receiver is sent to Kora to get the book.
+ */
+export async function shareBookLink(book: ShareableBookLike): Promise<void> {
+  const text = buildBookPromoText(book);
+  const link = buildBookDeepLink(book);
+  const title = book.title || "Kora";
+
+  // Native (APK) share sheet.
+  try {
+    const { Share } = await import("@capacitor/share");
+    await Share.share({ title, text, url: link, dialogTitle: "Share book" });
+    return;
+  } catch (err) {
+    console.warn("[Kora/Share] native link share failed, trying web", err);
+  }
+
+  // Web share sheet.
+  try {
+    if (navigator.share) {
+      await navigator.share({ title, text, url: link });
+      return;
+    }
+  } catch (err: any) {
+    if (err?.name === "AbortError") return; // user cancelled
+  }
+
+  // Last resort: copy the promo text (which contains the link).
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Book link copied to clipboard");
+  } catch {
+    alert("Couldn't share this book.");
+  }
+}

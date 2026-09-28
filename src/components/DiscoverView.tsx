@@ -5,6 +5,7 @@ import JSZip from "jszip";
 import { BookMetadata, syncBookToCloud, getCommunityBooks, CommunityBook, likeCommunityBook, isCommunityBookLikedByUser, incrementCommunityBookReads, getCommunityComments, addCommunityComment, CommunityComment } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { filterDownloadableBooks } from "../lib/bookAvailability";
+import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
@@ -54,6 +55,11 @@ interface DiscoverViewProps {
   zlibConfig?: any;
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
+  /** Book id from a shared /book?id=.. link. */
+  initialBookId?: string | null;
+  /** "Title Author" search text from a shared /book?q=.. link. */
+  initialBookQuery?: string | null;
+  onClearInitialBookLink?: () => void;
   onOpenBrowser?: (url: string) => void;
   onTriggerDownload?: (book: any, mirrors: any | any[], variant: any) => void;
   onPlayAudiobook?: (book: BookMetadata) => void;
@@ -207,6 +213,9 @@ function DiscoverView({
   zlibConfig,
   initialQuery = null,
   onClearInitialQuery,
+  initialBookId = null,
+  initialBookQuery = null,
+  onClearInitialBookLink,
   onOpenBrowser,
   onTriggerDownload,
   onPlayAudiobook,
@@ -231,6 +240,10 @@ function DiscoverView({
   const [searchMode, setSearchMode] = useState<boolean>(false);
   const [featuredData, setFeaturedData] = useState<Record<string, any[]>>({});
   const [selectedFeaturedBook, setSelectedFeaturedBook] = useState<any | null>(null);
+  // A shared /book link opens the detail view full screen (no dimmed page behind it).
+  const [fullscreenDetail, setFullscreenDetail] = useState(false);
+  // Book id we are waiting to match against incoming search results.
+  const deepLinkTargetRef = React.useRef<string | null>(null);
   const [featuredAudiobookSource, setFeaturedAudiobookSource] = useState<any | null>(null);
   const [audiobookDetail, setAudiobookDetail] = useState<any | null>(null);
   const [audiobookDetailLoading, setAudiobookDetailLoading] = useState(false);
@@ -852,6 +865,44 @@ function DiscoverView({
     }
   }, [initialQuery]);
 
+  // Shared book link (/book?id=..&q=..): search for the book, then open its
+  // detail view full screen so the receiver lands straight on the book.
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (!initialBookId && !initialBookQuery) return;
+    if (deepLinkHandledRef.current) return;
+    deepLinkHandledRef.current = true;
+
+    const searchText = (initialBookQuery || "").trim();
+    if (searchText) {
+      deepLinkTargetRef.current = initialBookId || "";
+      setQuery(searchText);
+      setSearchMode(true);
+      void handleSearch(searchText);
+    }
+    onClearInitialBookLink?.();
+  }, [initialBookId, initialBookQuery]);
+
+  // Once results for a shared link land, jump straight to the detail view.
+  // Runs after render, so openBookDetail (declared further down) is initialised.
+  useEffect(() => {
+    if (!deepLinkTargetRef.current) return;
+    if (!results.length) return;
+    const wanted = deepLinkTargetRef.current;
+    deepLinkTargetRef.current = null;
+
+    const match =
+      results.find((b) => b.md5 && b.md5 === wanted) ||
+      results.find((b) => b.id && b.id === wanted) ||
+      results[0];
+    if (!match) return;
+
+    setFullscreenDetail(true);
+    openBookDetail(match);
+    // openBookDetail is stable enough for this one-shot deep link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results]);
+
   useEffect(() => {
     if (searchMode && query) {
       handleSearch(query);
@@ -1288,6 +1339,8 @@ function DiscoverView({
     setPreviewPlaying(false);
     audiobookFetchGen.current += 1;
     detailFetchGen.current += 1;
+    setFullscreenDetail(false);
+    deepLinkTargetRef.current = null;
     setSelectedFeaturedBook(null);
     setFeaturedBookDetails(null);
     setFeaturedAudiobookSource(null);
@@ -3413,7 +3466,21 @@ function DiscoverView({
                     </div>
                   </div>
                   <div className="space-y-0.5 pr-1">
-                    <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
+                    <div className="flex items-start justify-between gap-1">
+                      <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void shareBookLink(book);
+                        }}
+                        className="shrink-0 p-1 rounded-full text-kindle-text-muted hover:text-kindle-accent hover:bg-kindle-accent/10 transition"
+                        title="Share this book"
+                        aria-label={`Share ${book.title}`}
+                      >
+                        <Share2 className="w-3 h-3" />
+                      </button>
+                    </div>
                     {book.topic && (
                       <p className="text-[8px] text-kindle-accent font-bold uppercase tracking-wider mt-1 truncate">
                         {book.topic}
@@ -4202,9 +4269,18 @@ function DiscoverView({
 
       {/* Featured Book Details Preview Modal */}
       {selectedFeaturedBook && ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => dismissDiscoverDetail()} />
-          <div className="relative bg-kindle-card kindle-card w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200">
+        <div className={`fixed inset-0 z-[9999] flex justify-center ${fullscreenDetail ? "items-stretch p-0" : "items-center p-4"}`}>
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            onClick={() => dismissDiscoverDetail()}
+          />
+          <div
+            className={`relative bg-kindle-card kindle-card w-full overflow-y-auto border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200 ${
+              fullscreenDetail
+                ? "max-w-none h-full rounded-none border-0 shadow-none"
+                : "max-w-4xl max-h-[90vh] rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]"
+            }`}
+          >
             {/* Modal Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between p-4 md:p-6 bg-kindle-card/95 backdrop-blur-md border-b border-kindle-border">
               <h2 className="text-sm font-bold uppercase tracking-widest text-kindle-text font-sans">Book Details</h2>
@@ -4245,19 +4321,16 @@ function DiscoverView({
                         Download Book
                       </button>
 
-                      <button 
-                        onClick={() => {
-                          const queryText = `${selectedFeaturedBook.title} ${selectedFeaturedBook.author || ""}`.trim();
-                          closeBookDetail();
-                          setIsAdvancedSearch(true);
-                          setSearchMode(true);
-                          handleSearch(queryText);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void shareBookLink(selectedFeaturedBook);
                         }}
                         className="w-full py-3.5 px-5 bg-kindle-card border border-kindle-border hover:border-kindle-accent text-kindle-text rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        title="Share this book with a friend"
                       >
-                        <Database className="w-4 h-4" />
-                        Advanced Search
+                        <Share2 className="w-4 h-4" />
+                        Share Book
                       </button>
                       
                       <div className="hidden md:block mt-8 space-y-8">

@@ -1074,6 +1074,9 @@ export default function App() {
   const [cachedBookIds, setCachedBookIds] = useState<Set<string>>(new Set());
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
+  // Shared /book?id=..&q=.. deep link → open that book's detail view full screen.
+  const [sharedBookId, setSharedBookId] = useState<string | null>(null);
+  const [sharedBookQuery, setSharedBookQuery] = useState<string | null>(null);
   const [feedInitialUrl, setFeedInitialUrl] = useState<string | null>(null);
   const [feedInitialFilter, setFeedInitialFilter] = useState<"all" | "unread" | "saved" | "briefs" | null>(null);
   const shortcutHandledRef = useRef(false);
@@ -2519,6 +2522,20 @@ export default function App() {
       const kind = (params.get("kind") || "").toLowerCase();
       const action = (params.get("action") || "").toLowerCase();
       const newsUrl = params.get("url");
+
+      // Shared book link: /book?id=..&q=.. → Discover, book detail full screen.
+      if (/^\/book\/?$/.test(window.location.pathname)) {
+        const id = params.get("id") || "";
+        const q = params.get("q") || "";
+        if (id || q) {
+          switchTab("discover");
+          setSharedBookId(id || null);
+          setSharedBookQuery(q || null);
+          return true;
+        }
+        return false;
+      }
+
       if (newsUrl) {
         switchTab("feed");
         setFeedInitialUrl(newsUrl);
@@ -2604,13 +2621,15 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const go = (params.get("go") || params.get("tab") || "").toLowerCase();
       const briefs = params.get("briefs") === "1";
-      if (go || briefs) {
+      // A shared /book link carries no ?go= — route on the pathname instead.
+      const isBookLink = /^\/book\/?$/.test(window.location.pathname);
+      if (go || briefs || isBookLink) {
         if (go === "continue" && loadingLibrary) {
           // wait for library
         } else {
           shortcutHandledRef.current = true;
           const clean = new URL(window.location.href);
-          ["go", "tab", "briefs", "source"].forEach((k) => clean.searchParams.delete(k));
+          ["go", "tab", "briefs", "source", "id", "q"].forEach((k) => clean.searchParams.delete(k));
           const qs = clean.searchParams.toString();
           window.history.replaceState({}, document.title, clean.pathname + (qs ? `?${qs}` : ""));
           routeFromParams(params);
@@ -3031,6 +3050,11 @@ export default function App() {
     setDiscoverInitialQuery(null);
   }, []);
 
+  const handleClearSharedBookLink = useCallback(() => {
+    setSharedBookId(null);
+    setSharedBookQuery(null);
+  }, []);
+
   const handleChangeAutoDisplayTheme = useCallback((enabled: boolean) => {
     setAutoDisplayTheme(enabled);
     localStorage.setItem("kora_auto_display_theme", String(enabled));
@@ -3447,6 +3471,9 @@ export default function App() {
             grayscaleCovers={grayscaleCovers}
             initialQuery={discoverInitialQuery}
             onClearInitialQuery={handleClearDiscoverInitialQuery}
+            initialBookId={sharedBookId}
+            initialBookQuery={sharedBookQuery}
+            onClearInitialBookLink={handleClearSharedBookLink}
             onOpenCreateView={() => {
               const newBook: BookMetadata = {
                 id: `created_${Date.now()}`,

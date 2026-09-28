@@ -21,16 +21,11 @@ import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
 import { buildEpubFromText } from "../lib/epubTools";
 import { resolveApiUrl, isNativeApp } from "../lib/capacitorNative";
+import { buildBookDeepLink } from "../lib/bookShare";
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
-  try {
-    const id = book.id || book.md5 || book.downloadId || "";
-    const q = encodeURIComponent(`${book.title} ${book.author || ""}`.trim());
-    return `https://kora.chaoticstudio.workers.dev/book?id=${encodeURIComponent(id)}&q=${q}`;
-  } catch {
-    return "https://kora.chaoticstudio.workers.dev/book";
-  }
+  return buildBookDeepLink(book);
 }
 
 /**
