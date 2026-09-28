@@ -475,12 +475,6 @@ function DiscoverView({
         isDirect: true,
         sourceId: "libgen"
       });
-      links.push({
-        label: "Anna's Archive",
-        url: `https://annas-archive.gl/md5/${md5}`,
-        isDirect: false,
-        sourceId: "annas"
-      });
     }
     if (variant.iaId) {
       links.push({
@@ -490,6 +484,19 @@ function DiscoverView({
         sourceId: "ia"
       });
     }
+    // Last resort: hand off to Rave, the engine that already aggregates every
+    // source, carrying the book so the search actually lands on it. Replaces
+    // the old "Anna's Archive" entry, which linked an unscoped homepage and
+    // surfaced above the real mirrors.
+    const searchText = [variant.title, variant.author].filter(Boolean).join(" ").trim();
+    links.push({
+      label: searchText ? `Search Rave for this book` : "Search Rave",
+      url: searchText
+        ? `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText)}`
+        : "https://ravebooksearch.com",
+      isDirect: false,
+      sourceId: "rave"
+    });
     return links;
   }
 
@@ -609,11 +616,15 @@ function DiscoverView({
         if (label.includes("internet archive") || label.includes("archive") || url.includes("archive.org")) {
           return 3;
         }
-        // 4. Anna's Archive / Mobilism Forum
-        if (label.includes("anna") || label.includes("anas") || url.includes("annas-archive") || url.includes("annas") || url.includes("mobilism")) {
+        // 4. Mobilism Forum
+        if (url.includes("mobilism")) {
           return 4;
         }
-        return 5;
+        // 5. Rave search handoff — the last resort, always below a real mirror.
+        if (label.includes("rave") || url.includes("ravebooksearch")) {
+          return 5;
+        }
+        return 6;
       };
       
       return getOrderScore(a) - getOrderScore(b);
@@ -707,7 +718,21 @@ function DiscoverView({
       const result = await searchDownloadVariants(q);
       if (isStale()) return;
       const rawBooks = result.books || [];
-      const uniqueVariants = rawBooks.reduce((acc: any[], current: any) => {
+
+      // Rave is a keyword engine, not a catalog lookup. Searching "Exit Party
+      // Emily St. John Mandel" happily returns "Every Exit Brings You Home" and
+      // "The Butt: An Exit Strategy" — and because those come back as real
+      // editions, the Royallib/LibreTexts mirror for them hands the user the
+      // wrong book. Only keep editions whose title actually matches.
+      const titleMatches = rawBooks.filter(
+        (b: any) => titlesRoughlyMatch(title, b.title || "", author || undefined)
+      );
+
+      // Fall back to the raw list only if the strict match found nothing —
+      // never silently hide a book because the matcher was too fussy.
+      const candidates = titleMatches.length > 0 ? titleMatches : rawBooks;
+
+      const uniqueVariants = candidates.reduce((acc: any[], current: any) => {
         const key = `${(current.extension || "").toLowerCase()}-${current.size || ""}-${current.source || ""}-${current.language || ""}`;
         if (!acc.some(item => `${(item.extension || "").toLowerCase()}-${item.size || ""}-${item.source || ""}-${item.language || ""}` === key)) {
           acc.push(current);

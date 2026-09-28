@@ -2311,13 +2311,20 @@ export default {
           }
         ];
       } else if (downloadLinks.length === 0) {
-        // No Rave direct link and no IA id — point the user back to Rave/Anna's
-        // rather than scraping LibGen ourselves.
+        // No Rave direct link and no IA id. Hand the user a real search on Rave
+        // — the engine that already aggregates every source — instead of
+        // Anna's Archive, which returned an unscoped homepage and read as a
+        // dead end. Carries the actual book so it lands on the right results.
+        const searchText = url.searchParams.get("q") || "";
+        const raveSearch = `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText || md5 || "")}`;
         downloadLinks = [
           {
-            label: "Search on Anna's Archive (via Rave)",
-            url: `https://annas-archive.gl/search`,
-            isDirect: false
+            label: searchText
+              ? `Search Rave for "${searchText}"`
+              : "Search Rave for this book",
+            url: searchText ? raveSearch : "https://ravebooksearch.com",
+            isDirect: false,
+            sourceId: "rave"
           }
         ];
       }
