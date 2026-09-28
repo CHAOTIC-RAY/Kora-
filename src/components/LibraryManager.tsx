@@ -80,38 +80,115 @@ async function downloadBookToDevice(book: BookMetadata): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** Share a book using the device share sheet, falling back to copy-link. */
+/** Read a Blob into a bare base64 string (no data: prefix) for Filesystem.writeFile. */
+async function blobToBase64(blob: Blob): Promise<string> {
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+  return dataUrl.slice(dataUrl.indexOf(",") + 1);
+}
+
+/** Filename-safe version of a book title, with the right extension. */
+function buildShareFileName(book: BookMetadata): string {
+  const cachedExt = (book.extension || "").trim().toLowerCase();
+  const ext = cachedExt || (book.filename?.split(".").pop() || "").trim().toLowerCase() || "epub";
+  const safeTitle = (book.title || "book").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 80);
+  return `${safeTitle}.${ext}`;
+}
+
+/** Promotional blurb that rides along with the shared file. */
+function buildShareText(book: BookMetadata, link: string): string {
+  const author = book.author ? ` by ${book.author}` : "";
+  return `“${book.title}”${author}\n\nRead more books free on Kora:\n${link}`;
+}
+
+/**
+ * Share a library book as the actual file, with a promo blurb + Kora link.
+ *
+ * Order of attempts:
+ *  1. Native (APK) share sheet with the file attached — most reliable there.
+ *  2. Web Share API with a File, when the browser supports sharing files.
+ *  3. Plain download of the file + the promo text copied to the clipboard.
+ *  4. No file available (never downloaded) — fall back to sharing just the link.
+ */
 async function shareBook(book: BookMetadata): Promise<void> {
   const link = buildBookShareLink(book);
-  const text = `“${book.title}”${book.author ? ` by ${book.author}` : ""} — via Kora`;
+  const shareText = buildShareText(book, link);
+
+  let blob: Blob | null = null;
+  try {
+    blob = (await getBookFile(book.id))?.blob || null;
+  } catch {
+    /* treat as not-downloaded */
+  }
+
+  // Nothing to attach — share the link alone.
+  if (!blob) {
+    try {
+      const { Share } = await import("@capacitor/share");
+      await Share.share({ title: book.title, text: shareText, url: link, dialogTitle: "Share book" });
+      return;
+    } catch { /* fall through to clipboard */ }
+    try {
+      await navigator.clipboard.writeText(shareText);
+      alert("Book not downloaded yet — promo text and link copied to clipboard");
+    } catch { /* ignore */ }
+    return;
+  }
+
+  const fileName = buildShareFileName(book);
+
+  // 1) Native share sheet (APK) with the real file attached.
   try {
     const { Share } = await import("@capacitor/share");
     const { Filesystem, Directory } = await import("@capacitor/filesystem");
-    const cover = book.coverUrl ? resolveCoverImageSrc(book.coverUrl) : null;
-    let files: string[] = [];
-    if (cover) {
-      try {
-        const res = await fetch(cover);
-        const blob = await res.blob();
-        const dataUrl = await new Promise<string>((resolve) => {
-          const r = new FileReader();
-          r.onload = () => resolve(r.result as string);
-          r.readAsDataURL(blob);
-        });
-        const fileName = "kora-book-cover.png";
-        await Filesystem.writeFile({ path: fileName, data: dataUrl, directory: Directory.Cache });
-        const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
-        files = [uri.uri];
-      } catch { /* cover optional */ }
-    }
-    await Share.share({ title: book.title, text: `${text}\n${link}`, files, dialogTitle: "Share book" });
+    const base64 = await blobToBase64(blob);
+    await Filesystem.writeFile({
+      path: fileName,
+      data: base64,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+    const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+    await Share.share({
+      title: book.title,
+      text: shareText,
+      files: [uri.uri],
+      dialogTitle: "Share book",
+    });
     return;
+  } catch (err) {
+    console.warn("[Kora/Share] native file share failed, trying web", err);
+  }
+
+  // 2) Web Share API with the file (Safari/Chrome support varies).
+  try {
+    const file = new File([blob], fileName, { type: blob.type || "application/octet-stream" });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: book.title, text: shareText });
+      return;
+    }
+  } catch (err: any) {
+    if (err?.name === "AbortError") return; // user cancelled — don't force a download
+  }
+
+  // 3) No file sharing available: save the file and copy the promo text.
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    await navigator.clipboard.writeText(shareText);
+    alert("Book file saved — promo text and link copied to clipboard");
   } catch {
-    // Web / no native share — copy link.
-    try {
-      await navigator.clipboard.writeText(link);
-      alert("Book link copied to clipboard");
-    } catch { /* ignore */ }
+    alert("Couldn't share this book. Try 'Download to My Device' instead.");
   }
 }
 
@@ -1686,7 +1763,7 @@ function LibraryManager({
                           void shareBook(book);
                         }}
                         className="p-2 bg-kindle-card border border-kindle-border text-kindle-text rounded-full shadow-lg hover:bg-kindle-bg transition"
-                        title="Share book link"
+                        title="Share book file"
                       >
                         <Share2 className="w-3 h-3" />
                       </button>
@@ -2288,7 +2365,7 @@ function LibraryManager({
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
                   >
                     <Share2 className="w-4 h-4 text-kindle-text-muted" />
-                    Share Book Link
+                    Share Book
                   </button>
 
                   <button
