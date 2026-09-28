@@ -90,13 +90,25 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       wrap.classList.remove("kora-ink-zoomed");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Size the canvas to its displayed box (capped so the wordmark stays sane).
-      const DISPLAY_W = Math.min(wrap.clientWidth || 420, 420);
+      // Size the canvas backing store to its displayed box (capped so the
+      // wordmark stays sane).
+      //
+      // Note: this must only set the bitmap resolution (canvas.width/height).
+      // It must NEVER set canvas.style.width/height. Doing so resized the
+      // element whenever the ink animation started, which changed the
+      // document height inside the closing notebook — a full-screen section
+      // at the very bottom of the page. The browser then re-anchored the
+      // scroll position, which pushed the wordmark back out of view, which
+      // reset the animation, which resized it again: a visible scroll loop
+      // on the landing page. Layout size is now owned entirely by CSS below.
+      const rect = canvas.getBoundingClientRect();
+      const DISPLAY_W = Math.max(
+        1,
+        Math.round(rect.width || Math.min(wrap.clientWidth || 420, 420))
+      );
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(DISPLAY_W * dpr);
       canvas.height = Math.round(DISPLAY_W * (VIEW_H / VIEW_W) * dpr);
-      canvas.style.width = `${DISPLAY_W}px`;
-      canvas.style.height = `${(DISPLAY_W * (VIEW_H / VIEW_W)).toFixed(1)}px`;
 
       const scale = (canvas.width / VIEW_W) * 0.92;
       const offsetX = (canvas.width - VIEW_W * scale) / 2;
@@ -325,7 +337,19 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
         className="kora-ink-wrapper w-full flex justify-center"
         style={{ filter: "url(#kora-realistic-ink)" }}
       >
-        <canvas ref={canvasRef} className="block" style={{ width: "min(86vw, 420px)", height: "auto", aspectRatio: "287.6 / 112.78" }} />
+        {/* Height is pinned by CSS (not `auto`, and never set from JS) so the
+            element's layout box is stable before, during and after the ink
+            animation. `height:auto` on a canvas falls back to the 300x150
+            default bitmap ratio until JS resizes it, which is what used to
+            shift the page height on the final section. */}
+        <canvas
+          ref={canvasRef}
+          className="block"
+          style={{
+            width: "min(86vw, 420px)",
+            aspectRatio: `${VIEW_W} / ${VIEW_H}`,
+          }}
+        />
       </div>
 
       <div
