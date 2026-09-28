@@ -113,10 +113,11 @@ function Reveal({
       whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={{ once: true, margin: "-12% 0px" }}
       transition={{ 
+        // Comfort: settle, never bounce. High damping, low stiffness.
         type: "spring",
-        stiffness: 65,
-        damping: 14,
-        mass: 0.8,
+        stiffness: 45,
+        damping: 26,
+        mass: 1,
         delay, 
       }}
       className={className}
@@ -354,10 +355,11 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
       y: 0,
       scale: 1,
       transition: {
+        // Comfort: ease-out character — settles rather than springs.
         type: "spring" as const,
-        stiffness: 90,
-        damping: 15,
-        mass: 0.8
+        stiffness: 48,
+        damping: 26,
+        mass: 1
       }
     }
   };
@@ -380,8 +382,8 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
               The E-Ink Reading Sanctuary
             </div>
 
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif font-extrabold text-kindle-text leading-[1.05] tracking-tight">
-              Read, Listen, Write <span className="font-light italic text-kindle-accent font-serif">&amp;</span> Discover
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif font-semibold text-kindle-text leading-[1.02] tracking-[-0.01em]">
+              Read, Listen, Write <span className="font-normal italic text-kindle-accent font-serif">&amp;</span> Discover
             </h1>
 
             <p className="text-base sm:text-lg text-kindle-text-muted leading-relaxed font-medium">
@@ -451,7 +453,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
         <motion.div 
           initial={{ opacity: 0, x: 28, scale: 0.97 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 55, damping: 14, delay: 0.28 }}
+          transition={{ type: "spring", stiffness: 42, damping: 24, delay: 0.28 }}
           className="lg:col-span-7 w-full flex items-center justify-center lg:justify-end"
         >
           <div className="relative w-full max-w-[580px] h-[460px] sm:h-[510px] flex items-center justify-center select-none">
@@ -469,7 +471,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                   ? "0 35px 75px rgba(0,0,0,0.85)" 
                   : "0 20px 45px rgba(0,0,0,0.55)"
               }}
-              transition={{ type: "spring", stiffness: 110, damping: 17 }}
+              transition={{ type: "spring", stiffness: 46, damping: 25 }}
               className={`absolute left-0 sm:left-2 top-4 sm:top-6 w-[360px] sm:w-[440px] h-[300px] sm:h-[340px] rounded-[22px] border-[10px] border-neutral-900 bg-black overflow-hidden flex flex-col cursor-pointer transition-shadow duration-300 ${
                 focusedDevice === "tablet" ? "ring-2 ring-sky-500/50" : ""
               }`}
@@ -547,7 +549,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                   ? "0 35px 75px rgba(0,0,0,0.85)" 
                   : "0 20px 50px rgba(0,0,0,0.6)"
               }}
-              transition={{ type: "spring", stiffness: 110, damping: 17 }}
+              transition={{ type: "spring", stiffness: 46, damping: 25 }}
               className={`absolute right-0 sm:right-2 bottom-2 w-[220px] sm:w-[245px] h-[410px] sm:h-[460px] rounded-[38px] border-[8px] border-neutral-900 bg-neutral-950 overflow-hidden flex flex-col cursor-pointer transition-shadow duration-300 ${
                 focusedDevice === "phone" ? "ring-2 ring-emerald-500/50" : ""
               }`}
@@ -1002,6 +1004,15 @@ export default function InstallView() {
     return theme.includes("dark") || theme === "night" || theme === "oled" || document.body.classList.contains("dark");
   });
 
+  // Comfort: mark <body> so the paper grain / warm scrollbar / reduced-motion
+  // rules in index.css apply to this page only — the app reader is untouched.
+  useEffect(() => {
+    document.body.classList.add("kora-install");
+    return () => {
+      document.body.classList.remove("kora-install");
+    };
+  }, []);
+
   // Keep site CSS variables and root dark mode class perfectly in sync
   useEffect(() => {
     const root = document.documentElement;
@@ -1010,19 +1021,20 @@ export default function InstallView() {
     if (isDarkMode) {
       root.classList.add("dark");
       body.classList.add("dark");
+      // Comfort: "lamplit dark" — a dim warm room, never cold black.
       const darkVars: Record<string, string> = {
-        "--theme-bg": "#121214",
-        "--theme-text": "#FAFAFA",
-        "--theme-card": "#1E1E22",
-        "--theme-border": "#2D2D30",
-        "--theme-accent": "#F59E0B",
-        "--theme-text-muted": "#A1A1AA",
-        "--color-kindle-bg": "#121214",
-        "--color-kindle-text": "#FAFAFA",
-        "--color-kindle-card": "#1E1E22",
-        "--color-kindle-border": "#2D2D30",
-        "--color-kindle-accent": "#F59E0B",
-        "--color-kindle-text-muted": "#A1A1AA",
+        "--theme-bg": "#1C1815",
+        "--theme-text": "#F2E9DE",
+        "--theme-card": "#262019",
+        "--theme-border": "#3A3128",
+        "--theme-accent": "#D9915B",
+        "--theme-text-muted": "#A99A8A",
+        "--color-kindle-bg": "#1C1815",
+        "--color-kindle-text": "#F2E9DE",
+        "--color-kindle-card": "#262019",
+        "--color-kindle-border": "#3A3128",
+        "--color-kindle-accent": "#D9915B",
+        "--color-kindle-text-muted": "#A99A8A",
       };
       Object.entries(darkVars).forEach(([k, v]) => {
         root.style.setProperty(k, v);
@@ -1031,18 +1043,19 @@ export default function InstallView() {
     } else {
       root.classList.remove("dark");
       body.classList.remove("dark");
+      // Comfort: warm paper + exactly one earthy accent (ochre ~32°).
       const lightVars: Record<string, string> = {
         "--theme-bg": "#FAF7F2",
         "--theme-text": "#2C2A26",
         "--theme-card": "#F3EEE6",
         "--theme-border": "#E4DDD2",
-        "--theme-accent": "#8B7355",
+        "--theme-accent": "#B07A45",
         "--theme-text-muted": "#6F6A5F",
         "--color-kindle-bg": "#FAF7F2",
         "--color-kindle-text": "#2C2A26",
         "--color-kindle-card": "#F3EEE6",
         "--color-kindle-border": "#E4DDD2",
-        "--color-kindle-accent": "#8B7355",
+        "--color-kindle-accent": "#B07A45",
         "--color-kindle-text-muted": "#6F6A5F",
       };
       Object.entries(lightVars).forEach(([k, v]) => {

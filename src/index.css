@@ -906,6 +906,64 @@ h1, h2, h3, h4 {
   }
 }
 
+/* ── Comfort: warm paper grain + reduced-motion + warm scrollbar ──────────
+   Scoped to the landing page only (body.kora-install). The app reader is a
+   separate surface and keeps its own (non-paper) treatment. */
+
+body.kora-install::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+body.kora-install {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-kindle-accent) var(--color-kindle-bg);
+}
+body.kora-install::-webkit-scrollbar {
+  width: 8px;
+}
+body.kora-install::-webkit-scrollbar-track {
+  background: var(--color-kindle-bg);
+}
+body.kora-install::-webkit-scrollbar-thumb {
+  background: var(--color-kindle-accent);
+  border-radius: 99px;
+}
+@media (hover: hover) and (pointer: fine) {
+  body.kora-install::-webkit-scrollbar-thumb:hover {
+    background: var(--color-kindle-text);
+  }
+}
+
+/* Comfort: motion is a warmth, never a performance. Full opt-out. */
+@media (prefers-reduced-motion: reduce) {
+  body.kora-install *,
+  body.kora-install *::before,
+  body.kora-install *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Comfort: honour a stronger contrast preference. */
+@media (prefers-contrast: more) {
+  body.kora-install {
+    --color-kindle-text-muted: #4A443B;
+    --color-kindle-border: #B3A895;
+  }
+  body.kora-install .kora-install-card,
+  body.kora-install .kora-install-panel {
+    border-width: 2px;
+  }
+}
+
 /* Hide scrollbars completely on mobile (screens 768px and under) */
 @media (max-w: 768px) {
   ::-webkit-scrollbar {
