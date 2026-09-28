@@ -244,6 +244,10 @@ function DiscoverView({
   const [fullscreenDetail, setFullscreenDetail] = useState(false);
   // Book id we are waiting to match against incoming search results.
   const deepLinkTargetRef = React.useRef<string | null>(null);
+  // True once a deep-link search has been kicked off, and true once it has
+  // resolved (or given up) so the fallback fires exactly once.
+  const deepLinkSearchingRef = React.useRef(false);
+  const deepLinkSearchDoneRef = React.useRef(false);
   const [featuredAudiobookSource, setFeaturedAudiobookSource] = useState<any | null>(null);
   const [audiobookDetail, setAudiobookDetail] = useState<any | null>(null);
   const [audiobookDetailLoading, setAudiobookDetailLoading] = useState(false);
@@ -876,6 +880,8 @@ function DiscoverView({
     const searchText = (initialBookQuery || "").trim();
     if (searchText) {
       deepLinkTargetRef.current = initialBookId || "";
+      deepLinkSearchingRef.current = true;
+      deepLinkSearchDoneRef.current = false;
       setQuery(searchText);
       setSearchMode(true);
       void handleSearch(searchText);
@@ -887,21 +893,67 @@ function DiscoverView({
   // Runs after render, so openBookDetail (declared further down) is initialised.
   useEffect(() => {
     if (!deepLinkTargetRef.current) return;
-    if (!results.length) return;
-    const wanted = deepLinkTargetRef.current;
-    deepLinkTargetRef.current = null;
+    if (deepLinkSearchDoneRef.current) return;
+    if (results.length) {
+      deepLinkSearchDoneRef.current = true;
+      const wanted = deepLinkTargetRef.current;
+      deepLinkTargetRef.current = null;
 
-    const match =
-      results.find((b) => b.md5 && b.md5 === wanted) ||
-      results.find((b) => b.id && b.id === wanted) ||
-      results[0];
-    if (!match) return;
+      const match =
+        results.find((b) => b.md5 && b.md5 === wanted) ||
+        results.find((b) => b.id && b.id === wanted) ||
+        results[0];
+      if (!match) return;
 
-    setFullscreenDetail(true);
-    openBookDetail(match);
-    // openBookDetail is stable enough for this one-shot deep link.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      setFullscreenDetail(true);
+      openBookDetail(match);
+      // openBookDetail is stable enough for this one-shot deep link.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }
   }, [results]);
+
+  // The archive backend is flaky and a shared book may not resolve. Rather
+  // than dumping the receiver on an empty search page, synthesize a minimal
+  // book from the link's title+author and open its detail view — the modal
+  // enriches itself via fetchFeaturedMetadata/loadFeaturedDownloads.
+  useEffect(() => {
+    if (!deepLinkTargetRef.current) return;
+    if (deepLinkSearchDoneRef.current) return;
+    if (!deepLinkSearchingRef.current) return; // search still running
+    if (loading || loadingMore) return;
+    if (error) {
+      deepLinkSearchingRef.current = false;
+      deepLinkSearchDoneRef.current = true;
+      const q = (initialBookQuery || "").trim();
+      deepLinkTargetRef.current = null;
+      if (!q) return;
+      setFullscreenDetail(true);
+      openBookDetail({
+        id: initialBookId || `deeplink_${q}`,
+        title: q,
+        author: "",
+        searchQuery: q,
+        source: "deep-link",
+      } as any);
+      return;
+    }
+    if (results.length) return; // handled by the effect above
+    if (!totalResults && !hasMore) {
+      deepLinkSearchingRef.current = false;
+      deepLinkSearchDoneRef.current = true;
+      const q = (initialBookQuery || "").trim();
+      deepLinkTargetRef.current = null;
+      if (!q) return;
+      setFullscreenDetail(true);
+      openBookDetail({
+        id: initialBookId || `deeplink_${q}`,
+        title: q,
+        author: "",
+        searchQuery: q,
+        source: "deep-link",
+      } as any);
+    }
+  }, [results, loading, loadingMore, error, totalResults, hasMore]);
 
   useEffect(() => {
     if (searchMode && query) {

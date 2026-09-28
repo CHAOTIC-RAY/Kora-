@@ -2528,9 +2528,16 @@ export default function App() {
         const id = params.get("id") || "";
         const q = params.get("q") || "";
         if (id || q) {
-          switchTab("discover");
-          setSharedBookId(id || null);
-          setSharedBookQuery(q || null);
+          if (discoverTabEnabled) {
+            switchTab("discover");
+            setSharedBookId(id || null);
+            setSharedBookQuery(q || null);
+          } else if (q) {
+            // Discover is switched off for this user, so DiscoverView never
+            // mounts and the detail view can't open. Fall back to a plain
+            // search so the link still lands somewhere useful.
+            setDiscoverInitialQuery(q);
+          }
           return true;
         }
         return false;
