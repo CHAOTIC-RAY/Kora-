@@ -27,12 +27,19 @@ function buildQueryText(title: string, author?: string | null): string {
 /** The canonical deep link for a book. */
 export function buildBookDeepLink(book: ShareableBookLike): string {
   const id = book.id || book.md5 || book.downloadId || "";
-  const q = buildQueryText(book.title || "", book.author);
+  const title = (book.title || "").trim();
+  const author = (book.author || "").trim();
+  const q = buildQueryText(title, author);
   // URLSearchParams does the percent-encoding for us; encoding here as well
   // would double-encode and the receiver would decode to a mangled query.
   const params = new URLSearchParams();
   if (id) params.set("id", id);
-  if (q) params.set("q", q);
+  // Title and author travel separately so the receiver can open the book's
+  // detail view directly, without a search round-trip that may return the
+  // wrong book entirely. `q` stays for search fallback + older links.
+  if (title) params.set("t", title);
+  if (author) params.set("a", author);
+  if (q && q !== title) params.set("q", q);
   return `${KORA_ORIGIN}/book?${params.toString()}`;
 }
 
@@ -40,6 +47,8 @@ export function buildBookDeepLink(book: ShareableBookLike): string {
 export interface ParsedBookLink {
   id: string;
   query: string;
+  title: string;
+  author: string;
 }
 
 /**
@@ -57,8 +66,12 @@ export function parseBookLink(url: string): ParsedBookLink | null {
   if (!isBookPath) return null;
   const id = parsed.searchParams.get("id") || "";
   const query = parsed.searchParams.get("q") || "";
-  if (!id && !query) return null;
-  return { id, query };
+  // Older links only carried `q` (title + author mashed together); newer ones
+  // carry `t` and `a` separately so no parsing guesswork is needed.
+  const title = parsed.searchParams.get("t") || "";
+  const author = parsed.searchParams.get("a") || "";
+  if (!id && !query && !title) return null;
+  return { id, query, title, author };
 }
 
 /** Promo blurb used when a book link is shared as text. */

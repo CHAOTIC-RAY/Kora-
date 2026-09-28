@@ -1074,9 +1074,11 @@ export default function App() {
   const [cachedBookIds, setCachedBookIds] = useState<Set<string>>(new Set());
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
-  // Shared /book?id=..&q=.. deep link → open that book's detail view full screen.
+  // Shared /book?id=..&t=..&a=.. deep link → open that book's detail view full screen.
   const [sharedBookId, setSharedBookId] = useState<string | null>(null);
   const [sharedBookQuery, setSharedBookQuery] = useState<string | null>(null);
+  const [sharedBookTitle, setSharedBookTitle] = useState<string | null>(null);
+  const [sharedBookAuthor, setSharedBookAuthor] = useState<string | null>(null);
   const [feedInitialUrl, setFeedInitialUrl] = useState<string | null>(null);
   const [feedInitialFilter, setFeedInitialFilter] = useState<"all" | "unread" | "saved" | "briefs" | null>(null);
   const shortcutHandledRef = useRef(false);
@@ -2523,20 +2525,24 @@ export default function App() {
       const action = (params.get("action") || "").toLowerCase();
       const newsUrl = params.get("url");
 
-      // Shared book link: /book?id=..&q=.. → Discover, book detail full screen.
+      // Shared book link: /book?id=..&t=..&a=.. → Discover, book detail full screen.
       if (/^\/book\/?$/.test(window.location.pathname)) {
         const id = params.get("id") || "";
+        const t = params.get("t") || "";
+        const a = params.get("a") || "";
         const q = params.get("q") || "";
-        if (id || q) {
+        if (id || t || q) {
           if (discoverTabEnabled) {
             switchTab("discover");
             setSharedBookId(id || null);
             setSharedBookQuery(q || null);
-          } else if (q) {
+            setSharedBookTitle(t || null);
+            setSharedBookAuthor(a || null);
+          } else if (t || q) {
             // Discover is switched off for this user, so DiscoverView never
             // mounts and the detail view can't open. Fall back to a plain
             // search so the link still lands somewhere useful.
-            setDiscoverInitialQuery(q);
+            setDiscoverInitialQuery(q || `${t} ${a}`.trim());
           }
           return true;
         }
@@ -2636,7 +2642,7 @@ export default function App() {
         } else {
           shortcutHandledRef.current = true;
           const clean = new URL(window.location.href);
-          ["go", "tab", "briefs", "source", "id", "q"].forEach((k) => clean.searchParams.delete(k));
+          ["go", "tab", "briefs", "source", "id", "q", "t", "a"].forEach((k) => clean.searchParams.delete(k));
           const qs = clean.searchParams.toString();
           window.history.replaceState({}, document.title, clean.pathname + (qs ? `?${qs}` : ""));
           routeFromParams(params);
@@ -3060,6 +3066,8 @@ export default function App() {
   const handleClearSharedBookLink = useCallback(() => {
     setSharedBookId(null);
     setSharedBookQuery(null);
+    setSharedBookTitle(null);
+    setSharedBookAuthor(null);
   }, []);
 
   const handleChangeAutoDisplayTheme = useCallback((enabled: boolean) => {
@@ -3480,6 +3488,8 @@ export default function App() {
             onClearInitialQuery={handleClearDiscoverInitialQuery}
             initialBookId={sharedBookId}
             initialBookQuery={sharedBookQuery}
+            initialBookTitle={sharedBookTitle}
+            initialBookAuthor={sharedBookAuthor}
             onClearInitialBookLink={handleClearSharedBookLink}
             onOpenCreateView={() => {
               const newBook: BookMetadata = {

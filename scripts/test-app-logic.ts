@@ -113,16 +113,32 @@ const linkBook = { id: 'abc123', title: 'The New Mind', author: 'J Krishnamurti'
 const deepLink = buildBookDeepLink(linkBook as any);
 assert(deepLink.startsWith('https://kora.chaoticstudio.workers.dev/book?'), 'buildBookDeepLink targets the /book route');
 assert(deepLink.includes('id=abc123'), 'buildBookDeepLink carries the book id');
+// Title and author must travel separately, otherwise the receiver has to
+// guess where the title ends and can land on the wrong book.
+assert(deepLink.includes('t=The+New+Mind'), 'buildBookDeepLink carries the title as t');
+assert(deepLink.includes('a=J+Krishnamurti'), 'buildBookDeepLink carries the author as a');
 
 const parsedLink = parseBookLink(deepLink);
 assert(parsedLink !== null && parsedLink.id === 'abc123', 'parseBookLink round-trips the id');
+assert(parsedLink !== null && parsedLink.title === 'The New Mind', 'parseBookLink recovers the title verbatim');
+assert(parsedLink !== null && parsedLink.author === 'J Krishnamurti', 'parseBookLink recovers the author verbatim');
 assert(parsedLink !== null && parsedLink.query === 'The New Mind J Krishnamurti', 'parseBookLink recovers the title+author query');
+
+// A title with an ampersand / comma must not corrupt the round-trip.
+const ampLink = parseBookLink(buildBookDeepLink({ title: 'Salt & Pepper', author: 'A. Baker' } as any));
+assert(ampLink !== null && ampLink.title === 'Salt & Pepper', 'parseBookLink survives punctuation in the title');
+assert(ampLink !== null && ampLink.author === 'A. Baker', 'parseBookLink survives punctuation in the author');
 
 const md5Link = parseBookLink(buildBookDeepLink({ md5: 'MD5HASH', title: 'Fallback Book' } as any));
 assert(md5Link !== null && md5Link.id === 'MD5HASH', 'buildBookDeepLink falls back to md5 for the id');
 
+// Older links shipped only ?id=&q=; they must still resolve to something.
+const legacyLink = parseBookLink('https://kora.chaoticstudio.workers.dev/book?id=old1&q=Legacy+Book+Someone');
+assert(legacyLink !== null && legacyLink.id === 'old1', 'parseBookLink handles legacy id+q links');
+assert(legacyLink !== null && legacyLink.title === '' && legacyLink.query === 'Legacy Book Someone', 'legacy links leave title empty so the caller falls back to q');
+
 assert(parseBookLink('https://kora.chaoticstudio.workers.dev/library') === null, 'parseBookLink ignores non-book routes');
-assert(parseBookLink('https://kora.chaoticstudio.workers.dev/book') === null, 'parseBookLink ignores a book route with no id or query');
+assert(parseBookLink('https://kora.chaoticstudio.workers.dev/book') === null, 'parseBookLink ignores a book route with no id, title or query');
 
 const promoText = buildBookPromoText(linkBook as any);
 assert(promoText.includes('The New Mind') && promoText.includes('J Krishnamurti'), 'buildBookPromoText names the book and author');
