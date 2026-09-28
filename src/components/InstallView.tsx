@@ -2589,6 +2589,20 @@ export default function InstallView() {
             {/* Workshop Lounge Header Card */}
             <div className="bg-gradient-to-r from-amber-600 via-[#e0533c] to-amber-700 border border-amber-500/30 rounded-3xl p-6 sm:p-8 flex flex-col justify-center items-center text-center space-y-4 relative overflow-hidden group shadow-xl min-h-[160px]">
               <div className="absolute inset-0 bg-black/20 z-0" />
+              {/* Dither overlay. A wide amber→red ramp across a large area hits
+                  the 8-bit colour limit and renders as visible horizontal
+                  banding. A pixel-scale noise layer breaks the steps up so the
+                  ramp reads as a smooth wash. Scoped to this banner because the
+                  page-level paper grain sits behind it and cannot reach it. */}
+              <div
+                aria-hidden
+                className="absolute inset-0 z-0 pointer-events-none opacity-[0.16] mix-blend-overlay"
+                style={{
+                  backgroundImage:
+                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='d'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23d)'/%3E%3C/svg%3E\")",
+                  backgroundSize: "120px 120px"
+                }}
+              />
               <div className="absolute -top-12 -left-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
               <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-amber-300/20 rounded-full blur-2xl pointer-events-none" />
               <div className="relative z-10 space-y-3 flex flex-col items-center">
