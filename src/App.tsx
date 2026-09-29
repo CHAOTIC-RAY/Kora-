@@ -33,6 +33,8 @@ const SettingsView = lazy(() => importWithRetry(() => import("./components/Setti
 const DeviceDownloadPicker = lazy(() => importWithRetry(() => import("./components/DeviceDownloadPicker")));
 const LoungeView = lazy(() => importWithRetry(() => import("./components/LoungeView")));
 const WikipediaWidget = lazy(() => importWithRetry(() => import("./components/WikipediaWidget")));
+const SeriesDetailView = lazy(() => importWithRetry(() => import("./components/SeriesDetailView")));
+import { buildLibraryGroups, findGroupForBook, type LibraryGroup } from "./lib/seriesHelper";
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
 import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden, setWalkthroughBookHidden } from "./lib/walkthroughBook";
@@ -724,6 +726,13 @@ export default function App() {
     [activeTab, switchTab]
   );
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
+  /**
+   * The series whose detail screen is open, or null. Multi-volume entries
+   * open this instead of the reader; picking a volume from it closes the
+   * screen and opens that volume.
+   */
+  const [openSeriesGroup, setOpenSeriesGroup] = useState<LibraryGroup | null>(null);
+
   const [activeBookMode, setActiveBookMode] = useState<"read" | "create">("read");
   const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
   const [audiobookPlaying, setAudiobookPlaying] = useState(false);
@@ -1070,6 +1079,8 @@ export default function App() {
 
   // Books Library list
   const [books, setBooks] = useState<BookMetadata[]>([]);
+  /** One row per series, so a ten-volume comic is a single library entry. */
+  const libraryGroups = useMemo(() => buildLibraryGroups(books), [books]);
   const [loadingLibrary, setLoadingLibrary] = useState<boolean>(false);
   const [cachedBookIds, setCachedBookIds] = useState<Set<string>>(new Set());
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
@@ -3136,6 +3147,17 @@ export default function App() {
 
   // Handle book selection for reading
   const handleOpenBook = useCallback(async (book: BookMetadata) => {
+    // A series with several volumes opens its detail screen first, the way
+    // Mihon opens a manga rather than jumping into a chapter. A single
+    // volume is still just a book, so it goes straight to the reader.
+    if (book.kind === "manga" || book.kind === "comic" || book.series?.trim()) {
+      const group = findGroupForBook(libraryGroups, book.id);
+      if (group && group.total > 1) {
+        setOpenSeriesGroup(group);
+        return;
+      }
+    }
+
     if (book.extension?.toLowerCase() === "audiobook") {
       if (!book.audiobookTracks?.length) {
         toast.error("This audiobook has no tracks. Open it from Discover to load audio files.");
@@ -3692,6 +3714,22 @@ export default function App() {
           />
         </Suspense>
         )}
+      {/* Series detail — opened instead of the reader for multi-volume
+          entries. Picking a volume closes this and opens that volume. */}
+      {openSeriesGroup && (
+        <Suspense fallback={null}>
+          <SeriesDetailView
+            group={openSeriesGroup}
+            onClose={() => setOpenSeriesGroup(null)}
+            cachedIds={cachedBookIds}
+            onOpenVolume={(book) => {
+              setOpenSeriesGroup(null);
+              void handleOpenBook(book);
+            }}
+          />
+        </Suspense>
+      )}
+
       {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
         <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading context="reader" /></div>}>
         {activeBookMode === "create" ? (
