@@ -173,6 +173,12 @@ export interface BookMetadata {
   description?: string;
   series?: string;
   seriesNumber?: string;
+  /**
+   * What this entry is. "book" is a standalone file; "manga" and "comic"
+   * are series that own many volumes and get a detail view listing them.
+   * Absent means "book", so existing libraries need no migration.
+   */
+  kind?: "book" | "manga" | "comic";
   /** Audiobook-specific metadata (track URLs sync; audio blobs stay on-device) */
   audiobookTracks?: { index: number; title: string; src: string }[];
   audiobookSourceUrl?: string;
