@@ -39,6 +39,7 @@ export default function SourcePluginsHub() {
     setError(null);
     const all: RepoEntry[] = [];
     const seen = new Set<string>();
+    const failed: string[] = [];
     for (const repo of getRepos()) {
       try {
         for (const e of await fetchRegistry(repo)) {
@@ -48,13 +49,18 @@ export default function SourcePluginsHub() {
           all.push(e);
         }
       } catch (err) {
-        // One unreachable repo must not blank out the whole list.
+        // One unreachable repo must not blank out the whole list, but it must
+        // not vanish silently either: a failed fetch and an empty registry
+        // look identical otherwise, and the user is left with no way to tell
+        // a broken url from a genuinely empty one.
         console.warn("[sources] registry failed:", repo, err);
+        failed.push(`${repo} — ${err instanceof Error ? err.message : "unreachable"}`);
       }
     }
     setEntries(all);
     setRepos(getRepos());
     setInstalled(getInstalledPlugins());
+    setError(failed.length ? failed.join(" · ") : null);
     setLoading(false);
   }, []);
 
