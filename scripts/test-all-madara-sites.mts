@@ -39,6 +39,11 @@ function baseUrlOf(desc: string): string | null {
 const res = await real("https://inkdex.github.io/madara-extensions/0.9/stable/versioning.json");
 const index = (await res.json()) as { sources: IndexSource[] };
 
+/** The manga detail path, used to probe a site's chapter list. */
+function mangaPathOf(): string {
+  return "/manga/";
+}
+
 const only = process.argv[2];
 const targets = only
   ? index.sources.filter((s) => s.name.toLowerCase() === only.toLowerCase())
@@ -84,7 +89,24 @@ for (const s of targets) {
     let pages = 0;
     if (chapters.length) pages = (await c.pages(chapters[0], detail)).length;
     if (!chapters.length) {
-      failed.push({ name: s.name, base, why: "listings but no chapters" });
+      // Distinguish "our selector missed it" from "the site ships no
+      // chapter list in HTML". A site that lazy-loads chapters via JS can
+      // never work without a browser, and saying so is more useful than a
+      // bare zero.
+      const probe = await real(
+        `${RELAY}/api/source-fetch?u=${encodeURIComponent(
+          `https://${base.replace(/^https?:\/\//, "")}${mangaPathOf()}`
+        )}`
+      );
+      const body = ((await probe.json()) as { body?: string }).body ?? "";
+      const chapterish = (body.match(/\/chapter[\w-]*\d|\/read\/\w|\/ch-\d/gi) || []).length;
+      failed.push({
+        name: s.name,
+        base,
+        why: chapterish
+          ? `no chapters parsed (${chapterish} chapter links present — selector gap)`
+          : "site serves no chapter list in HTML (JS-rendered)",
+      });
       continue;
     }
     if (!pages) {
