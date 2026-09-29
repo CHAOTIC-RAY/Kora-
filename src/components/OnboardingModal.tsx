@@ -17,6 +17,7 @@ import {
   Sun,
   Smartphone,
   Flame,
+  ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -25,6 +26,7 @@ import {
   TOPIC_FEED_GROUPS,
 } from "../lib/feedStorage";
 import { DEFAULT_APP_SKIN, type AppSkinId } from "../lib/appSkin";
+import { COUNTRY_FEEDS, COUNTRY_OPTIONS, feedsForCountry, countryName } from "../lib/countryFeeds";
 
 
 interface OnboardingModalProps {
@@ -229,15 +231,95 @@ export default function OnboardingModal({
   // Track display theme locally so completion payload stays valid
   const [currentDisplayTheme, setCurrentDisplayTheme] = useState(() => localStorage.getItem("kora_display_theme") || "theme-light-white");
 
+  // Which country's news the "Local" topic means. Remembered across sessions
+  // so the choice does not have to be made again on every onboarding.
+  const [localCountry, setLocalCountry] = useState<string>(
+    () => localStorage.getItem("kora_local_country") || ""
+  );
+  /** True when the user asked Kora to use their device location. */
+  const [useDeviceLocation, setUseDeviceLocation] = useState<boolean>(
+    () => localStorage.getItem("kora_local_auto") === "1"
+  );
+  const [detecting, setDetecting] = useState(false);
+  const [geoError, setGeoError] = useState("");
+
+  const chooseCountry = (code: string) => {
+    setLocalCountry(code);
+    if (code) localStorage.setItem("kora_local_country", code);
+    else localStorage.removeItem("kora_local_country");
+  };
+
+  /**
+   * Ask the browser where the user is and match it to a curated country.
+   *
+   * Geolocation needs an explicit grant, so this only runs from a click.
+   * A denied permission or an uncurated country falls back to whatever the
+   * user picked by hand rather than leaving them stuck.
+   */
+  const detectCountry = () => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoError("This browser cannot share your location.");
+      return;
+    }
+    setDetecting(true);
+    setGeoError("");
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          // Reverse-geocode the actual fix rather than the IP: the user
+          // granted location, so use it. ipapi-style IP lookups are also
+          // rate-limited on the free tier and answer with the wrong country
+          // for anyone travelling.
+          const r = await fetch(
+            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&localityLanguage=en`
+          );
+          const d = await r.json();
+          const code = String(d?.countryCode || "").toUpperCase();
+          if (code && COUNTRY_FEEDS.some((c) => c.code === code)) {
+            chooseCountry(code);
+          } else if (code) {
+            // A real country we have no curated set for: keep the worldwide
+            // fallback but say so, rather than silently ignoring the user.
+            chooseCountry("");
+            setGeoError(`${d.countryName || code} isn't in the list yet — using worldwide news.`);
+          } else {
+            setGeoError("Couldn't work out your country from that location.");
+          }
+        } catch {
+          setGeoError("Couldn't look up your country. Pick one below.");
+        } finally {
+          setDetecting(false);
+        }
+      },
+      () => {
+        setDetecting(false);
+        setGeoError("Location permission denied — pick your country below.");
+      },
+      { timeout: 10000, maximumAge: 600000 }
+    );
+  };
+
   // Feed URLs derived from selected topics (each topic bundles multiple site feeds).
   const selectedFeedUrls = React.useMemo(() => {
     const urls = new Set<string>();
     for (const topicId of selectedTopics) {
+      // "local" resolves through the chosen country rather than the shared
+      // default list, which is what makes the topic local to the user.
+      if (topicId === "local") {
+        feedsForCountry(localCountry).forEach((f) => urls.add(f.feedUrl));
+        continue;
+      }
       const group = TOPIC_FEED_GROUPS.find((g) => g.id === topicId);
       group?.feeds.forEach((f) => urls.add(f.feedUrl));
     }
     return Array.from(urls);
-  }, [selectedTopics]);
+  }, [selectedTopics, localCountry]);
+
+  /** Feed count for a topic, resolved the same way the URLs are. */
+  const topicFeedCount = (topicId: string) =>
+    topicId === "local"
+      ? feedsForCountry(localCountry).length
+      : (TOPIC_FEED_GROUPS.find((g) => g.id === topicId)?.feeds.length ?? 0);
 
   if (!isOpen) return null;
 
@@ -476,7 +558,7 @@ export default function OnboardingModal({
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {TOPIC_FEED_GROUPS.map((group) => {
                       const selected = selectedTopics.includes(group.id);
-                      const count = group.feeds.length;
+                      const count = topicFeedCount(group.id);
                       return (
                         <button
                           key={group.id}
@@ -503,6 +585,63 @@ export default function OnboardingModal({
                       );
                     })}
                   </div>
+
+                  {/* Country picker — only meaningful once Local is on. */}
+                  {selectedTopics.includes("local") && (
+                    <div className="rounded-xl border border-kindle-border bg-kindle-bg/40 p-3">
+                      <div className="flex items-center justify-between gap-3 mb-2.5">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                          Your country
+                        </span>
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={useDeviceLocation}
+                            onChange={(e) => {
+                              const on = e.target.checked;
+                              setUseDeviceLocation(on);
+                              localStorage.setItem("kora_local_auto", on ? "1" : "0");
+                              if (on) detectCountry();
+                            }}
+                            className="accent-kindle-accent w-3.5 h-3.5"
+                          />
+                          <span className="text-[10px] text-kindle-text-muted">
+                            Use my device location
+                          </span>
+                        </label>
+                      </div>
+
+                      <div className="relative">
+                        <select
+                          value={localCountry}
+                          onChange={(e) => chooseCountry(e.target.value)}
+                          aria-label="Select your country for local news"
+                          className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-kindle-border bg-kindle-card text-xs font-bold text-kindle-text outline-none focus:border-kindle-accent"
+                        >
+                          <option value="">
+                            Worldwide — no specific country
+                          </option>
+                          {COUNTRY_OPTIONS.map((c) => (
+                            <option key={c.code} value={c.code}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-kindle-text-muted pointer-events-none" />
+                      </div>
+
+                      <p className="text-[10px] text-kindle-text-muted mt-2">
+                        {detecting
+                          ? "Detecting your country…"
+                          : localCountry
+                            ? `Local news from ${countryName(localCountry)} — ${feedsForCountry(localCountry).length} feeds.`
+                            : "Pick a country, or tick the box and let Kora detect it."}
+                      </p>
+                      {geoError && (
+                        <p className="text-[10px] text-amber-600 mt-1">{geoError}</p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex flex-wrap gap-2">
                     <button
