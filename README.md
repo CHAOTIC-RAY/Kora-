@@ -228,16 +228,26 @@ kora/
 │   ├── pages/              # Page-level views
 │   ├── hooks/              # Custom React hooks
 │   ├── lib/                # Core libraries (Firebase, TTS, storage)
+│   │   ├── sources/        # Plugin system: types, selector, madara, json runtimes
+│   │   ├── seriesHelper.ts # Series/volume grouping
+│   │   ├── countryFeeds.ts # Per-country local news
+│   │   └── dictionary.ts   # Offline dictionary
 │   ├── db/                 # IndexedDB helpers
 │   ├── utils/              # Utility functions
 │   ├── styles/             # Tailwind config & globals
+│   ├── worker.ts           # Cloudflare Worker: /api/source-fetch relay
 │   └── App.tsx             # Root component
+├── scripts/                # Verification: live sources, feeds, production
 ├── android/                # Android native code (Capacitor)
 ├── backend/                # Express/Workers API proxy
 ├── public/                 # Static assets
 ├── vite.config.ts          # Vite configuration
+├── wrangler.toml           # Worker config (production / beta envs)
 └── capacitor.config.ts     # Capacitor configuration
 ```
+
+Related repository: **[Kora-Sources](https://github.com/CHAOTIC-RAY/Kora-Sources)** —
+the plugin registry. Source definitions live there, not here.
 
 ---
 
@@ -272,9 +282,22 @@ npm run build
 # Preview production build locally
 npm run preview
 
-# Deploy to Cloudflare Pages
-npm run deploy
+# Deploy the Worker + assets
+npm run build:prod
+npx wrangler deploy --env production
 ```
+
+> **Windows / Git Bash:** `build:prod` shells out to `cross-env`, which is
+> not on the default `PATH` here. Install it (`npm i -D cross-env`) or run the
+> steps directly:
+>
+> ```bash
+> export VITE_APP_CHANNEL=production
+> npm run build:data && npx vite build
+> npx esbuild server.ts --bundle --platform=node --format=cjs \
+>   --packages=external --sourcemap --outfile=dist/server.cjs
+> npx wrangler deploy --env production
+> ```
 
 ### Build Android APK
 
@@ -308,6 +331,102 @@ RAVE_API_KEY=your_rave_api_key
 
 > **Note:** Firebase is fully optional. Without it, Kora works entirely offline with IndexedDB.
 > The `RAVE_API_KEY` is **server-side only** (a Cloudflare Worker secret) — it is never exposed to the client. Book search is relayed through Rave via the Worker so the key stays secret.
+
+---
+
+## 🔌 Plugins (source extensions)
+
+Kora installs **plugins** from a registry, and a source is one category of
+plugin. Plugins live in a separate repository:
+
+**`CHAOTIC-RAY/Kora-Sources`** → <https://github.com/CHAOTIC-RAY/Kora-Sources>
+
+The app reads the registry at install time, so **adding a source needs no
+app release** — publish a definition and it appears in the hub.
+
+### What ships today
+
+| Source | Kind | Notes |
+|---|---|---|
+| Project Gutenberg | book | 75,000+ public-domain eBooks via Gutendex |
+| Internet Archive (Texts) | book | |
+| MangaZin, MangaReadOrg, ManhuaPlus, Manhuaus | manga | Madara theme, end-to-end verified |
+| ManhwaHot, S2Read | manga | Madara theme, gated as shadow libraries |
+
+### How a source is reached
+
+Every request goes through the Worker relay at `/api/source-fetch`, which
+does the origin-side fetch. The browser never calls a manga site directly —
+that is what avoids CORS, and it is why a site cannot tell it is being read
+by a scraper.
+
+```bash
+curl "https://kora.chaoticstudio.workers.dev/api/source-fetch?u=<encoded-url>"
+```
+
+### Source kinds
+
+A plugin is a `PluginManifest` with a `category`:
+
+- **`source`** — carries `baseUrl` + `endpoints`/`theme` and is fetchable
+- **`theme`** — restyles the reader
+- **`integration`** — bridges a library in and out of another app
+- **`tool`** — anything else
+
+`source` is the only category with an engine today. `PluginManifest` also
+carries an integration `target` and a `requires` list, so a plugin can
+declare *"needs permission"* up front instead of failing on first use.
+
+### Madara
+
+~248 of the Tachiyomi source list are WordPress sites running the **Madara**
+theme. One engine (`src/lib/sources/madara.ts`) covers them all, with a
+small per-site override block where a site deviates. A new Madara site is a
+JSON file, not a scraper.
+
+### Shadow libraries
+
+Sources flagged `piracy: true` are listed but **disabled until the user opts
+in**, per source, remembered on the device. The opt-in is explicit and
+reversible; the flag is never inferred from `nsfw`.
+
+### Verifying
+
+```bash
+# Every Madara site in the Inkdex 0.9 index, end to end
+npx tsx scripts/test-all-madara-sites.mts
+
+# The live registry through the deployed Worker
+npx tsx scripts/verify-production.mts
+```
+
+`verify-production.mts` **browses** rather than searches. Most Madara sites
+disable WordPress search — the `?s=` query returns a full page with zero
+cards — so a search-based check reports working sources as broken. Their
+catalogues are fully browsable, which is what a chip opens.
+
+### Test suites
+
+```bash
+npm run test          # all of the below
+npx tsx src/lib/sources/__tests__/jsonDispatch.test.ts   # runtime dispatch
+```
+
+| Suite | Covers |
+|---|---|
+| `seriesHelper` | series/volume grouping |
+| `countryFeeds` | per-country news selection |
+| `selector` | jsoup-like selector engine |
+| `runtime` | HTML source runtime |
+| `jsonClient` | JSON-API runtime |
+| `jsonDispatch` | that JSON sources actually reach it |
+| `madara` | the shared Madara engine |
+| `store` | install validation |
+
+`jsonDispatch` exists because `createJsonClient` was fully built and had 28
+passing tests while **nothing ever called it** — every `api: "json"` source
+silently returned zero results. Unit tests on a function cannot catch that
+a function is unreachable; this one asserts the dispatch.
 
 ---
 
@@ -378,6 +497,47 @@ You're free to use Kora in personal, commercial, or educational projects.
 - **Web Speech API & Android TextToSpeech** — On-device voice synthesis
 
 ---
+
+## ⚠️ Known Issues
+
+Written down so nobody has to rediscover them.
+
+- **`npm run test` exits non-zero.** `test-firestore-rules.mjs` reports 4
+  pre-existing Firestore rule warnings (unauthenticated read/write on P2P,
+  game and Scrabble rooms — intentional for anonymous WebRTC, but
+  unauthenticated *deletion* is not). The source suites all pass; the exit
+  code comes from the rules linter. The suites are runnable individually:
+  ```bash
+  npx tsx src/lib/sources/__tests__/jsonDispatch.test.ts
+  ```
+
+- **Search is unavailable on most Madara manga sources.** The `?s=` query
+  returns a full page with no result cards — those sites disable WordPress
+  search. Their catalogues browse correctly, which is what a plugin chip
+  opens, so this affects typing into the search box, not the chip flow.
+
+- **Kindle / Calibre sync are not implemented.** `PluginManifest` supports
+  the `integration` category and an explicit `requires` list, but no
+  integration runtime exists. Nothing is stubbed to look like it works.
+
+- **Library cards do not yet collapse by series.** Multi-volume entries open
+  a Mihon-shaped detail view listing every volume, but the grid still shows
+  each volume as its own card. `buildLibraryGroups()` in
+  `src/lib/seriesHelper.ts` already produces the grouped shape.
+
+- **MangaDex is excluded.** `sources/manga/mangadex.json.unverified` is not
+  in the registry. Cover art and signed at-home image flows could not be
+  verified from here, and shipping it unverified would mean a card that
+  opens to nothing.
+
+- **Most Madara sites return no page images.** Of 29 sites in the Inkdex
+  0.9 index, 4 are fully readable end to end. 7 parse a listing grid but
+  have no chapter list in HTML (they render chapters in JavaScript), and
+  the rest serve no parseable listing. Only the 4 are shipped — a card that
+  opens to an empty reader is worse than no card.
+
+---
+
 
 <p align="center">
   <i>Your bookshelf, your narrator, and your morning paper. Unified.</i><br />
