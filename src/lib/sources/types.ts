@@ -125,6 +125,24 @@ export interface StatusRule {
 }
 
 export interface SourceEndpoints {
+  /**
+   * JSON-API variant, used when the source sets `api: "json"`.
+   *
+   * `path` is a dot/bracket path into the decoded response — e.g. `data`,
+   * `data.0`, `data.attributes.title`, `data[].relationships`. HTML selectors
+   * are not involved, which is the only reliable way to consume sources like
+   * MangaDex and OpenLibrary.
+   */
+  json?: {
+    popular?: JsonListing;
+    latest?: JsonListing;
+    search?: JsonListing;
+    details?: JsonRule;
+    chapters?: JsonListing;
+    /** Image page list. `{pageId}` is the chapter id, `{mangaId}` the series id. */
+    pages?: JsonRule;
+  };
+
   popular?: { url: string; nextPage?: string; mangas: ListingRule };
   latest?: { url: string; nextPage?: string; mangas: ListingRule };
   search?: { url: string; nextPage?: string; mangas: ListingRule };
@@ -157,8 +175,54 @@ export interface SourceEndpoints {
   };
 }
 
+/** A listing over a JSON array, with a mapping for each field. */
+export interface JsonListing {
+  url: string;
+  /** Dot path to the array. `data` or `results` or `docs`. */
+  path: string;
+  title: string;
+  url_: string;
+  thumb?: string;
+  author?: string;
+  description?: string;
+  /** Page-number param, e.g. `page` or `offset`. */
+  pageParam?: string;
+  /** How many items per page. */
+  limit?: number;
+  /** True when the response reports more results. */
+  hasMore?: string;
+  transform?: "reverse" | "distinct";
+}
+
+/** A single JSON object, or an array mapped into one. */
+export interface JsonRule {
+  url: string;
+  path: string;
+  title?: string;
+  author?: string;
+  artist?: string;
+  description?: string;
+  thumbnail?: string;
+  status?: { path: string; map: Record<string, number> };
+  genres?: string;
+  /** For page lists: path to the image url on each entry. */
+  image?: string;
+  pageParam?: string;
+  limit?: number;
+}
+
 export interface SourcePlugin {
-  id: number;
+  /**
+   * Source id.
+   *
+   * Declared as a string deliberately. Tachiyomi Gen 2 ids are 64-bit hashes
+   * (e.g. "6289731484943315811") which do NOT survive a JSON number round
+   * trip — `Number("6289731484943315811")` collapses to 6289731484943316000.
+   * Sources that carry their own upstream id therefore declare it as a
+   * string; our own sources use a shorter numeric-range id for the same
+   * reason.
+   */
+  id: string;
   name: string;
   lang: string;
   /** Bump when selectors break — used to cache-bust cached pages. */
@@ -186,6 +250,18 @@ export interface SourcePlugin {
   headers?: Record<string, string>;
   /** Bot-wall hint. `cloudflare` routes through the Worker relay. */
   client?: "default" | "cloudflare" | "custom";
+  /**
+   * What this source returns.
+   *  - `manga`  — comics/graphic novels, read in the page reader
+   *  - `book`   — text, read in the EPUB/text reader
+   *  - `mixed`  — a site carrying both (most scanlation sites)
+   *
+   * Discover uses this to route a result to the right reader, so one search
+   * can return books and manga side by side.
+   */
+  kind?: "manga" | "book" | "mixed";
+  /** Marks a source that speaks JSON rather than HTML. See `json` on endpoints. */
+  api?: "json";
   filters?: FilterDef[];
   endpoints: SourceEndpoints;
 }
@@ -204,7 +280,7 @@ export interface Manga {
   genres?: string[];
   /** False until details/chapters have been fetched, so the UI can show a placeholder. */
   initialized: boolean;
-  sourceId: number;
+  sourceId: string;
 }
 
 export interface Chapter {

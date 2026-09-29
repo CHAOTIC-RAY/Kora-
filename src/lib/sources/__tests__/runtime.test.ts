@@ -90,7 +90,7 @@ const pagesHtml = `
 };
 
 const plugin: SourcePlugin = {
-  id: 1234567890,
+  id: "1234567890",
   name: "Example Madara",
   lang: "en",
   version: 1,

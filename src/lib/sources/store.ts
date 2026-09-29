@@ -78,14 +78,14 @@ export function installPlugin(plugin: SourcePlugin): void {
   writeJSON(LS_PLUGINS, all);
 }
 
-export function uninstallPlugin(id: number): void {
+export function uninstallPlugin(id: string): void {
   writeJSON(
     LS_PLUGINS,
     getInstalledPlugins().filter((p) => p.id !== id)
   );
 }
 
-export function isPluginEnabled(id: number): boolean {
+export function isPluginEnabled(id: string): boolean {
   return getInstalledPlugins().some((p) => p.id === id);
 }
 
@@ -96,14 +96,14 @@ export function isPluginEnabled(id: number): boolean {
  * The choice stays theirs, per source, and is remembered.
  */
 
-const optedIn = (): number[] => readJSON<number[]>(LS_OPTED_IN, []);
+const optedIn = (): string[] => readJSON<string[]>(LS_OPTED_IN, []);
 
 export function isSourceVisible(plugin: SourcePlugin): boolean {
   if (!plugin.piracy && !plugin.nsfw) return true;
   return optedIn().includes(plugin.id);
 }
 
-export function setSourceOptIn(id: number, allow: boolean): void {
+export function setSourceOptIn(id: string, allow: boolean): void {
   const set = new Set(optedIn());
   if (allow) set.add(id);
   else set.delete(id);
@@ -121,6 +121,16 @@ export interface RepoEntry {
   installed: boolean;
   /** True when this entry needs the user to opt in before it is shown. */
   gated: boolean;
+  /**
+   * Where the full definition lives.
+   *
+   * The registry index only carries *metadata* (id, name, language, home url)
+   * — the selectors live in the source file, so installing means fetching
+   * this. A missing installUrl means the registry entry is a bare listing
+   * with nothing behind it, and the UI must say so rather than offer an
+   * install that would install an empty plugin.
+   */
+  installUrl: string;
 }
 
 function absolutise(baseUrl: string, u: string | undefined): string {
@@ -153,8 +163,14 @@ export async function fetchRegistry(
   for (const ext of list) {
     const nsfw = isNsfwExtension(ext);
     for (const src of ext.sources ?? []) {
-      const id = Number(src.id);
-      if (!Number.isFinite(id) || !src.name) continue;
+      const id = String(src.id);
+      if (!id || !src.name) continue;
+
+      // `piracy` is our own field, not part of the Gen 2 shape, so a registry
+      // that omits it must not be read as "clean" by accident. Only an
+      // explicit `piracy: false` is treated as declared-safe; everything else
+      // is gated and the user decides.
+      const piracy = (src as { piracy?: boolean }).piracy === true;
 
       const plugin: SourcePlugin = {
         id,
@@ -162,7 +178,7 @@ export async function fetchRegistry(
         lang: src.language,
         version: 1,
         nsfw,
-        piracy: nsfw,
+        piracy,
         baseUrl: src.homeUrl || "",
         gen2: {
           packageName: ext.packageName,
@@ -176,9 +192,34 @@ export async function fetchRegistry(
       out.push({
         plugin,
         installed: installed.has(id),
-        gated: plugin.piracy || plugin.nsfw,
+        gated: piracy || nsfw,
+        installUrl: (ext.resources?.apkUrl as string | undefined) || "",
       });
     }
   }
   return out;
+}
+
+/**
+ * Fetch a source definition by its install url.
+ *
+ * Separate from `installPlugin` so the caller can validate before committing:
+ * a registry is remote input, and a definition with no endpoints is a broken
+ * install rather than a working one.
+ */
+export async function fetchPluginDefinition(
+  installUrl: string
+): Promise<SourcePlugin | null> {
+  if (!installUrl) return null;
+  const res = await fetch(installUrl);
+  if (!res.ok) throw new Error(`Source download failed (${res.status})`);
+  const plugin = (await res.json()) as SourcePlugin;
+  if (!plugin || typeof plugin !== "object") return null;
+  if (!plugin.id || !plugin.name || !plugin.baseUrl) {
+    throw new Error("Malformed source: missing id, name or baseUrl");
+  }
+  if (!plugin.endpoints || Object.keys(plugin.endpoints).length === 0) {
+    throw new Error(`"${plugin.name}" has no endpoints — nothing to fetch`);
+  }
+  return plugin;
 }

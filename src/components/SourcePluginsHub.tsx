@@ -17,6 +17,7 @@ import {
   getInstalledPlugins,
   getRepos,
   installPlugin,
+  fetchPluginDefinition,
   isSourceVisible,
   removeRepo,
   setSourceOptIn,
@@ -37,7 +38,7 @@ export default function SourcePluginsHub() {
     setLoading(true);
     setError(null);
     const all: RepoEntry[] = [];
-    const seen = new Set<number>();
+    const seen = new Set<string>();
     for (const repo of getRepos()) {
       try {
         for (const e of await fetchRegistry(repo)) {
@@ -64,10 +65,36 @@ export default function SourcePluginsHub() {
     return () => window.removeEventListener("kora-sources-changed", onChange);
   }, [load]);
 
-  const handleInstall = (p: SourcePlugin) => {
-    installPlugin(p);
-    setInstalled(getInstalledPlugins());
-    toast.success(`${p.name} installed`, { id: "src-install" });
+  const [installingId, setInstallingId] = useState<string | null>(null);
+
+  /**
+   * Installing is two steps: the registry entry is only metadata, so the real
+   * definition is fetched from its install url and validated before it is
+   * stored. Storing the registry stub would install a source with no
+   * selectors — it would show up in Discover and then return nothing.
+   */
+  const handleInstall = async (e: RepoEntry) => {
+    if (!e.installUrl) {
+      toast.error(`${e.plugin.name}: this registry lists the source but does not say where to download it`, {
+        id: "src-install",
+      });
+      return;
+    }
+    setInstallingId(e.plugin.id);
+    try {
+      const def = await fetchPluginDefinition(e.installUrl);
+      if (!def) throw new Error("empty response");
+      installPlugin(def);
+      setInstalled(getInstalledPlugins());
+      toast.success(`${def.name} installed`, { id: "src-install" });
+    } catch (err) {
+      toast.error(
+        `Could not install ${e.plugin.name}: ${err instanceof Error ? err.message : "unknown error"}`,
+        { id: "src-install" }
+      );
+    } finally {
+      setInstallingId(null);
+    }
   };
 
   const handleUninstall = (p: SourcePlugin) => {
@@ -191,7 +218,8 @@ export default function SourcePluginsHub() {
         </p>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {visible.map(({ plugin, installed: isInstalled }) => {
+          {visible.map((entry) => {
+            const { plugin, installed: isInstalled } = entry;
             const allowed = isSourceVisible(plugin);
             return (
               <div
@@ -251,10 +279,12 @@ export default function SourcePluginsHub() {
                     </>
                   ) : (
                     <button
-                      onClick={() => handleInstall(plugin)}
-                      className="inline-flex items-center gap-1 rounded-lg bg-kindle-text px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-bg hover:opacity-90 transition"
+                      onClick={() => handleInstall(entry)}
+                      disabled={installingId === plugin.id}
+                      className="inline-flex items-center gap-1 rounded-lg bg-kindle-text px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-bg hover:opacity-90 transition disabled:opacity-50"
                     >
-                      <Download className="w-3 h-3" /> Install
+                      <Download className="w-3 h-3" />
+                      {installingId === plugin.id ? "Installing…" : "Install"}
                     </button>
                   )}
                 </div>
@@ -278,20 +308,23 @@ export default function SourcePluginsHub() {
             until you install and switch one on, and the choice is remembered per source.
           </p>
           <div className="flex flex-wrap gap-2">
-            {gated.map(({ plugin }) => (
+            {gated.map((entry) => {
+              const { plugin } = entry;
+              return (
               <div
                 key={plugin.id}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-kindle-border bg-kindle-card px-3 py-1.5"
               >
                 <span className="text-[10px] font-bold text-kindle-text">{plugin.name}</span>
                 <button
-                  onClick={() => handleInstall(plugin)}
+                  onClick={() => handleInstall(entry)}
                   className="text-[9px] font-bold uppercase tracking-widest text-kindle-accent hover:opacity-70"
                 >
-                  Install
+                  {installingId === plugin.id ? "Installing…" : "Install"}
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
