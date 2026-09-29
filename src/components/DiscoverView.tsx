@@ -8,12 +8,12 @@ import { filterDownloadableBooks } from "../lib/bookAvailability";
 import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
+import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
 import KoraLoading from "./KoraLoading";
 import HardcoverCommunity from "./HardcoverCommunity";
-import CommunityStoriesHub from "./CommunityStoriesHub";
+import SourcePluginsHub from "./SourcePluginsHub";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
@@ -268,7 +268,7 @@ function DiscoverView({
     return tempStorage.get<any>("preferred_source") || "google";
   });
   const [loadingFeatured, setLoadingFeatured] = useState<boolean>(true);
-  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook" | "netgalley" | "community">("all");
+  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook" | "netgalley" | "plugins">("all");
   const [audiobookLibraryMode, setAudiobookLibraryMode] = useState(false);
 
   // Community Wattpad-style Stories state
@@ -283,7 +283,7 @@ function DiscoverView({
   const [isUserLikedMap, setIsUserLikedMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    if (feedFilter === "community") {
+    if (feedFilter === "plugins") {
       async function loadCommunity() {
         try {
           const list = await getCommunityBooks(communityGenreFilter);
@@ -3847,29 +3847,25 @@ function DiscoverView({
               <button
                 onClick={() => {
                   if (audiobookLibraryMode) closeAudiobookLibrary();
-                  setFeedFilter("community");
+                  setFeedFilter("plugins");
                 }}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "community"
+                  feedFilter === "plugins"
                     ? "border-amber-500 text-amber-500 font-extrabold"
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                <Feather className="w-3.5 h-3.5 text-amber-500" />
-                Community
+                <Puzzle className="w-3.5 h-3.5 text-amber-500" />
+                Plugins
               </button>
             </div>
             <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
-              {feedFilter === "all" ? "Archives & Curated Feeds" : "Kora Community"}
+              {feedFilter === "all" ? "Archives & Curated Feeds" : feedFilter === "plugins" ? "Source Plugins" : "Kora Community"}
             </div>
           </div>
 
-          {feedFilter === "community" ? (
-            <CommunityStoriesHub
-              userId={userId}
-              onOpenCreateView={onOpenCreateView}
-              onImportToLibrary={onBookAdded}
-            />
+          {feedFilter === "plugins" ? (
+            <SourcePluginsHub />
           ) : loadingFeatured ? (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-5">
               {[...Array(6)].map((_, i) => (

@@ -3950,7 +3950,84 @@ export default {
       }
     }
 
-    // 12. Image Proxy (covers) — serve third-party cover hosts same-origin
+    // 12. Source Plugin Relay
+    //
+    // Kora source plugins are pure data (selectors + urls), but the browser
+    // cannot fetch a third-party site directly: CORS blocks it, many sources
+    // need a Referer, and some sit behind bot walls. So the runtime asks the
+    // Worker to fetch on its behalf and hand back the HTML to parse locally.
+    //
+    // This relays. It does not store, index, or re-publish: the response is
+    // returned to the requesting client only, with no shared cache. That is
+    // what keeps Kora a reader that fetches from origin rather than a mirror
+    // of someone else's site.
+    if (path === "/api/source-fetch") {
+      const relayJson = (payload: unknown, status = 200) =>
+        new Response(JSON.stringify(payload), {
+          status,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      try {
+        const target = url.searchParams.get("u");
+        const referer = url.searchParams.get("r") || undefined;
+        if (!target) {
+          return relayJson({ status: 400, error: "missing u" }, 400);
+        }
+
+        let parsed: URL;
+        try {
+          parsed = new URL(target);
+        } catch {
+          return relayJson({ status: 400, error: "bad url" }, 400);
+        }
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          return relayJson({ status: 400, error: "unsupported protocol" }, 400);
+        }
+
+        // Skip the obvious footguns: never let a source reach the metadata
+        // endpoint of the cloud host it runs on.
+        const blockedHosts = [
+          "169.254.169.254",
+          "metadata.google.internal",
+          "localhost",
+          "127.0.0.1",
+        ];
+        if (blockedHosts.includes(parsed.hostname.toLowerCase())) {
+          return relayJson({ status: 403, error: "blocked host" }, 403);
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 20000);
+        let upstream: Response;
+        try {
+          upstream = await fetch(parsed.toString(), {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+              Accept: "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8",
+              "Accept-Language": "en-US,en;q=0.9",
+              ...(referer ? { Referer: referer } : {}),
+            },
+            redirect: "follow",
+            signal: controller.signal,
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        const body = await upstream.text();
+        return relayJson({
+          status: upstream.status,
+          ok: upstream.ok,
+          body,
+          finalUrl: upstream.url || parsed.toString(),
+        });
+      } catch (err: any) {
+        return relayJson({ status: 502, error: err?.message || "fetch failed" }, 502);
+      }
+    }
+
+    // 13. Image Proxy (covers) — serve third-party cover hosts same-origin
     // so they load on *.workers.dev despite hotlink/referrer protection & no-CSP.
     if (path === "/api/proxy-image") {
       const target = url.searchParams.get("url");
