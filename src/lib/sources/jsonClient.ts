@@ -367,7 +367,7 @@ export function createJsonClient(
         if (item === null || item === undefined) return;
         const raw = readStr(item, imagePath) || (typeof item === "string" ? item : "");
         if (!raw) return;
-        out.push({ index, url: toAbs(baseUrl, raw) });
+        out.push({ index, image: toAbs(baseUrl, raw) });
       });
 
       return out;

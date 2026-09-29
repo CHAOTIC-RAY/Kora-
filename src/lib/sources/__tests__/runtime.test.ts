@@ -164,8 +164,8 @@ check("chapter url relative", chs[0]?.url === "/chapter/1087", chs[0]?.url);
 
 const pgs = await client.pages(chs[0], pop.mangas[0]);
 check("pages found", pgs.length === 3, "n=" + pgs.length);
-check("protocol-relative page url resolved", pgs[0]?.url === "https://cdn.example.com/p1.jpg", pgs[0]?.url);
-check("absolute page url untouched", pgs[2]?.url === "https://cdn.example.com/p3.jpg", pgs[2]?.url);
+check("protocol-relative page image resolved", pgs[0]?.image === "https://cdn.example.com/p1.jpg", pgs[0]?.image);
+check("absolute page image untouched", pgs[2]?.image === "https://cdn.example.com/p3.jpg", pgs[2]?.image);
 check("page index is positional", pgs.map((p) => p.index).join(",") === "0,1,2", pgs.map((p) => p.index).join(","));
 
 // Resilience: a source with no endpoints must degrade, not throw.

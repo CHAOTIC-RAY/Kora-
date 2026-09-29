@@ -251,6 +251,12 @@ export interface SourcePlugin {
   /** Bot-wall hint. `cloudflare` routes through the Worker relay. */
   client?: "default" | "cloudflare" | "custom";
   /**
+   * Shared site engine. `madara` covers the WordPress `madara` plugin, which
+   * ~248 of the Tachiyomi source list runs — one port, hundreds of sites.
+   * A theme plugin needs no `endpoints`; the engine supplies them.
+   */
+  theme?: "madara" | "json";
+  /**
    * What this source returns.
    *  - `manga`  — comics/graphic novels, read in the page reader
    *  - `book`   — text, read in the EPUB/text reader
@@ -294,7 +300,16 @@ export interface Chapter {
 export interface Page {
   /** Positional advisory, exactly as Tachiyomi documents it. */
   index: number;
-  url: string;
+  /**
+   * The panel image.
+   *
+   * Tachiyomi names this `image`, with `url` reserved for the chapter page it
+   * was scraped from. The field is required because a page with no image is
+   * not a page — a caller must never have to null-check before rendering.
+   */
+  image: string;
+  /** The page this image was found on. Informational. */
+  url?: string;
 }
 
 export interface MangasPage {
@@ -329,4 +344,45 @@ export interface RegistryFile {
   name?: string;
   updatedAt?: string;
   sources: SourcePlugin[];
+}
+
+/**
+ * Madara theme overrides.
+ *
+ * Only needed when a site deviates from the WordPress `madara` plugin's
+ * default markup. Omit a field to inherit the base selector.
+ */
+export interface MadaraSelectors {
+  listingCard?: string;
+  listingUrl?: string;
+  listingTitle?: string;
+  listingThumb?: string;
+  nextPage?: string;
+  detailsTitle?: string;
+  detailsAuthor?: string;
+  detailsArtist?: string;
+  detailsStatus?: string;
+  detailsDescription?: string;
+  detailsThumbnail?: string;
+  detailsGenre?: string;
+  chapterList?: string;
+  chapterUrl?: string;
+  chapterName?: string;
+  chapterDate?: string;
+  pageList?: string;
+  pageImage?: string;
+  pageImageLazy?: string;
+}
+
+export interface MadaraOverride {
+  /** Path segment for the listing. Most sites use `manga`; some use `serie`. */
+  mangaSubString?: string;
+  popularOrderBy?: string;
+  latestOrderBy?: string;
+  selectors?: MadaraSelectors;
+}
+
+export interface MadaraPlugin extends SourcePlugin {
+  theme: "madara";
+  madara?: MadaraOverride;
 }

@@ -24,6 +24,7 @@ import {
   toRelativeUrl,
   nodeText,
 } from "./selector";
+import { createMadaraClient } from "./madara";
 import type {
   Chapter,
   FieldSelector,
@@ -200,6 +201,20 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
   const get = (url: string, referer?: string) =>
     relayFetch(url, { referer: referer || plugin.baseUrl, headers: plugin.headers });
 
+  /**
+   * A theme plugin carries no endpoints — the shared engine supplies them.
+   * Built lazily so a non-themed source pays nothing for it.
+   */
+  const madara =
+    plugin.theme === "madara"
+      ? createMadaraClient(plugin, (url, referer) =>
+          relayFetch(url, {
+            referer: referer || plugin.baseUrl,
+            headers: plugin.headers,
+          }).then((r) => r.body || "")
+        )
+      : null;
+
   async function fetchListing(
     endpoint: { url: string; nextPage?: string; mangas: ListingRule } | undefined,
     page: number,
@@ -215,10 +230,14 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
   return {
     plugin,
 
-    popular: (page = 1) => fetchListing(plugin.endpoints.popular, page),
-    latest: (page = 1) => fetchListing(plugin.endpoints.latest, page),
+    popular: (page = 1) =>
+      madara ? madara.popular(page) : fetchListing(plugin.endpoints.popular, page),
+    latest: (page = 1) =>
+      madara ? madara.latest(page) : fetchListing(plugin.endpoints.latest, page),
 
     async search(query, page = 1, filters = {}) {
+      if (madara) return madara.search(query, page);
+
       const ep = plugin.endpoints.search;
       if (!ep) return { mangas: [], hasNextPage: false };
 
@@ -235,6 +254,7 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     async details(manga: Manga) {
       const ep = plugin.endpoints.details;
       const out: Manga = { ...manga };
+      if (madara) return madara.details(manga) as Promise<Manga>;
       if (!ep) return out;
 
       const url = buildUrl(ep.url, plugin, { mangaUrl: manga.url });
@@ -277,6 +297,7 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
 
     async chapters(manga: Manga) {
       const ep = plugin.endpoints.chapters;
+      if (madara) return madara.chapters(manga);
       if (!ep) return [];
 
       const url = buildUrl(ep.url, plugin, { mangaUrl: manga.url });
@@ -315,6 +336,8 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     },
 
     async pages(chapter: Chapter, manga?: Manga) {
+      if (madara) return madara.pages(chapter);
+
       const ep = plugin.endpoints.pages;
       if (!ep) return [];
 
@@ -332,7 +355,7 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
         let raw = readField($, $(el), ep.image, pageUrl);
         if (!raw) return;
         if (ep.prefix) raw = ep.prefix + raw;
-        out.push({ index, url: absUrl(pageUrl, raw) });
+        out.push({ index, image: absUrl(pageUrl, raw), url: pageUrl });
       });
       return out;
     },
