@@ -4034,8 +4034,17 @@ function DiscoverView({
             </div>
           )}
 
-          {/* Feed Filter Tabs */}
-          <div id="discover-feeds" className="flex items-center justify-between border-b border-kindle-border/40 pb-2">
+          {/* Feed Filter Tabs
+              Hidden while a plugin chip is active. Tapping a chip means the
+              user already chose a source, so "Archives & Curated Feeds" and
+              the NYT shelf below it are contradictory clutter under the
+              results they asked for. `hidden` keeps the markup and its
+              state intact — the IIFE below makes a JSX wrapper awkward. */}
+          <div
+            id="discover-feeds"
+            hidden={activeSource !== "all"}
+            className="flex items-center justify-between border-b border-kindle-border/40 pb-2"
+          >
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
               <button
                 onClick={() => setFeedFilter("all")}
@@ -4067,6 +4076,9 @@ function DiscoverView({
             </div>
           </div>
 
+          {/* Curated shelves — same reasoning as the tab row above; they
+              belong to "Archives", not to browsing a single plugin. */}
+          <div hidden={activeSource !== "all"}>
           {feedFilter === "plugins" ? (
             <SourcePluginsHub />
           ) : loadingFeatured ? (
@@ -4233,10 +4245,12 @@ function DiscoverView({
             });
           })()
           )}
+          </div>
 
-          {/* Explore Categories Dashboard */}
+          {/* Explore Categories Dashboard — also "Archives", so also hidden
+              while a single plugin is being browsed. */}
           {!audiobookLibraryMode && (
-          <div className="space-y-8 pt-4">
+          <div hidden={activeSource !== "all"} className="space-y-8 pt-4">
             <div className="space-y-1">
               <h3 className="text-xl font-lexend font-bold tracking-tight text-kindle-text">Explore Archives</h3>
               <p className="text-xs text-kindle-text-muted font-sans">
