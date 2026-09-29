@@ -124,14 +124,22 @@ export function toRelativeUrl(baseUrl: string, absolute: string): string {
   return absolute;
 }
 
-/** Expand `{page}`, `{query}` and friends in a url template. */
+/**
+ * Expand `{page}`, `{query}` and friends in a url template.
+ *
+ * Only `query` is percent-encoded. The other placeholders are path segments
+ * (manga url, chapter url) or integers, and encoding them would turn
+ * `/series/one-piece` into `%2Fseries%2Fone-piece` and 404.
+ */
 export function expandTemplate(
   template: string,
   vars: Record<string, string | number | undefined>
 ): string {
-  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => {
     const v = vars[key];
-    return v === undefined || v === null ? "" : encodeURIComponent(String(v));
+    if (v === undefined || v === null) return "";
+    const raw = String(v);
+    return key === "query" ? encodeURIComponent(raw) : raw;
   });
 }
 
