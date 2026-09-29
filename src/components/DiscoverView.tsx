@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import ReactDOM from "react-dom";
 import JSZip from "jszip";
@@ -8,6 +8,7 @@ import { filterDownloadableBooks } from "../lib/bookAvailability";
 import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
+import { getDiscoverablePlugins } from "../lib/sources/store";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
@@ -304,6 +305,49 @@ function DiscoverView({
   }, [feedFilter, communityGenreFilter, userId]);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
+
+  /**
+   * Chips for sources the user has installed *and* enabled.
+   *
+   * A restricted source stays out until it is switched on, so it gets no chip
+   * either — the chip is an affordance, not a privacy reminder, and offering
+   * one here for a source the user has not opted into would undercut the
+   * whole point of that opt-in.
+   */
+  const [pluginChips, setPluginChips] = useState<
+    { id: string; name: string; icon?: string }[]
+  >([]);
+
+  const refreshPluginChips = useCallback(() => {
+    try {
+      setPluginChips(
+        getDiscoverablePlugins().map((p) => ({
+          id: p.id,
+          name: p.name,
+          icon: p.icon,
+        }))
+      );
+    } catch {
+      setPluginChips([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshPluginChips();
+    const onChange = () => refreshPluginChips();
+    window.addEventListener("kora-sources-changed", onChange);
+    return () => window.removeEventListener("kora-sources-changed", onChange);
+  }, [refreshPluginChips]);
+
+  // Clear a source filter that no longer exists, e.g. after an uninstall.
+  useEffect(() => {
+    if (
+      activeSource !== "all" &&
+      !pluginChips.some((c) => c.id === activeSource)
+    ) {
+      setActiveSource("all");
+    }
+  }, [pluginChips, activeSource]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalResults, setTotalResults] = useState<number>(0);
   const [searchMeta, setSearchMeta] = useState<any>({});
@@ -3184,6 +3228,46 @@ function DiscoverView({
           )}
 
           <div className="flex flex-col gap-3">
+            {/* Installed source chips.
+                A source is invisible once installed unless there is a chip
+                here — the user had no way back to it from the search box. */}
+            {pluginChips.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5" data-guide="discover-source-chips">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted/60 mr-0.5">
+                  Sources
+                </span>
+                {pluginChips.map((c) => {
+                  const on = activeSource === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      title={`Search only ${c.name}`}
+                      onClick={() => setActiveSource(on ? "all" : c.id)}
+                      className={`px-2.5 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap max-w-[190px] ${
+                        on
+                          ? "bg-kindle-accent text-white border-kindle-accent"
+                          : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
+                      }`}
+                    >
+                      {c.icon ? (
+                        <img
+                          src={c.icon}
+                          alt=""
+                          className="w-3 h-3 rounded-full object-cover shrink-0"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <Puzzle className="w-3 h-3 shrink-0" />
+                      )}
+                      <span className="truncate">{c.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <form onSubmit={handleSearch} className="relative group w-full" data-guide="discover-search">
               <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent group-hover:text-kindle-accent/70 transition pointer-events-none z-10" />
               <input

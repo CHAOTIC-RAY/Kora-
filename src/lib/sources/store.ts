@@ -98,6 +98,17 @@ export function isPluginEnabled(id: string): boolean {
 
 const optedIn = (): string[] => readJSON<string[]>(LS_OPTED_IN, []);
 
+/**
+ * Sources that should be offered as chips in Discover.
+ *
+ * Installing and the piracy opt-in are the only two gates: an installed
+ * source the user has not accepted is not discoverable, and one they have
+ * accepted is. There is no separate "enabled" flag to check.
+ */
+export function getDiscoverablePlugins(): SourcePlugin[] {
+  return getInstalledPlugins().filter(isSourceVisible);
+}
+
 export function isSourceVisible(plugin: SourcePlugin): boolean {
   if (!plugin.piracy && !plugin.nsfw) return true;
   return optedIn().includes(plugin.id);
@@ -222,8 +233,20 @@ export async function fetchPluginDefinition(
   if (!plugin.id || !plugin.name || !plugin.baseUrl) {
     throw new Error("Malformed source: missing id, name or baseUrl");
   }
-  if (!plugin.endpoints || Object.keys(plugin.endpoints).length === 0) {
-    throw new Error(`"${plugin.name}" has no endpoints — nothing to fetch`);
+  // A source is fetchable if it declares endpoints itself OR names a theme
+  // that supplies them. Madara sources carry no `endpoints` on purpose — the
+  // shared engine provides every rule — so rejecting an empty `endpoints` here
+  // made every themed source uninstallable.
+  const themed = typeof plugin.theme === "string" && plugin.theme.length > 0;
+  const hasEndpoints =
+    !!plugin.endpoints && Object.keys(plugin.endpoints).length > 0;
+  if (!themed && !hasEndpoints) {
+    throw new Error(
+      `"${plugin.name}" has no endpoints and no theme — nothing to fetch`
+    );
+  }
+  if (themed && plugin.theme !== "madara") {
+    throw new Error(`"${plugin.name}" uses unknown theme "${plugin.theme}"`);
   }
   return plugin;
 }
