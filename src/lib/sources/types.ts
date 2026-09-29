@@ -256,6 +256,8 @@ export interface SourcePlugin {
    * A theme plugin needs no `endpoints`; the engine supplies them.
    */
   theme?: "madara" | "json";
+  /** Present on Madara sources; see MadaraOverride. */
+  madara?: MadaraOverride;
   /**
    * What this source returns.
    *  - `manga`  — comics/graphic novels, read in the page reader

@@ -8,7 +8,8 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Puzzle, Download, Trash2, RefreshCw, Plus, ExternalLink, ShieldAlert, Loader2, Check } from "lucide-react";
+import { Puzzle, Download, Trash2, RefreshCw, Plus, ExternalLink, ShieldAlert, Loader2, Check, Info } from "lucide-react";
+import { SourceDetail } from "./SourceDetailSheet";
 import toast from "react-hot-toast";
 import {
   DEFAULT_REPO,
@@ -33,6 +34,7 @@ export default function SourcePluginsHub() {
   const [repoInput, setRepoInput] = useState("");
   const [repos, setRepos] = useState<string[]>([]);
   const [installed, setInstalled] = useState<SourcePlugin[]>([]);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,6 +65,14 @@ export default function SourcePluginsHub() {
     setError(failed.length ? failed.join(" · ") : null);
     setLoading(false);
   }, []);
+
+  // Escape closes the detail sheet, matching every other overlay in the app.
+  useEffect(() => {
+    if (!detailId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setDetailId(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailId]);
 
   useEffect(() => {
     load();
@@ -133,6 +143,7 @@ export default function SourcePluginsHub() {
 
   const visible = entries.filter((e) => isSourceVisible(e.plugin) || e.installed);
   const gated = entries.filter((e) => e.gated && !e.installed && !isSourceVisible(e.plugin));
+  const detailEntry = detailId ? entries.find((e) => e.plugin.id === detailId) : undefined;
 
   return (
     <div className="space-y-6">
@@ -218,121 +229,82 @@ export default function SourcePluginsHub() {
         <div className="flex items-center justify-center gap-2 py-12 text-xs uppercase tracking-widest text-kindle-text-muted">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading sources
         </div>
-      ) : visible.length === 0 ? (
+      ) : visible.length === 0 && gated.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-kindle-border px-4 py-10 text-center text-xs text-kindle-text-muted">
           No sources found in the configured repositories.
         </p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {visible.map((entry) => {
-            const { plugin, installed: isInstalled } = entry;
-            const allowed = isSourceVisible(plugin);
-            return (
-              <div
-                key={plugin.id}
-                className="flex flex-col gap-2 rounded-2xl border border-kindle-border bg-kindle-card p-4"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 shrink-0 rounded-xl border border-kindle-border bg-kindle-bg overflow-hidden flex items-center justify-center">
-                    {plugin.icon ? (
-                      <img src={plugin.icon} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <Puzzle className="w-5 h-5 text-kindle-text-muted" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold text-kindle-text leading-tight line-clamp-2">
-                      {plugin.name}
-                    </p>
-                    <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">
-                      {plugin.lang}
-                    </p>
-                  </div>
-                </div>
+        <>
+          {visible.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {visible.map((entry) => {
+                const { plugin, installed: isInstalled } = entry;
+                const allowed = isSourceVisible(plugin);
+                return (
+                  <SourceCard
+                    key={plugin.id}
+                    entry={entry}
+                    installed={isInstalled}
+                    allowed={allowed}
+                    busy={installingId === plugin.id}
+                    onOpen={() => setDetailId(plugin.id)}
+                    onInstall={() => handleInstall(entry)}
+                    onUninstall={() => handleUninstall(plugin)}
+                    onToggleAllow={() => handleToggleAllow(plugin)}
+                  />
+                );
+              })}
+            </div>
+          )}
 
-                {plugin.gen2?.homeUrl && (
-                  <a
-                    href={plugin.gen2.homeUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] font-mono text-kindle-text-muted/70 hover:text-kindle-accent truncate"
-                  >
-                    {plugin.gen2.homeUrl.replace(/^https?:\/\//, "")}
-                  </a>
-                )}
-
-                <div className="mt-auto flex items-center gap-1.5 pt-1">
-                  {isInstalled ? (
-                    <>
-                      <button
-                        onClick={() => handleUninstall(plugin)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-red-500 hover:border-red-500/40 transition"
-                      >
-                        <Trash2 className="w-3 h-3" /> Remove
-                      </button>
-                      {allowed ? (
-                        <span className="ml-auto inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-600">
-                          <Check className="w-3 h-3" /> Active
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handleToggleAllow(plugin)}
-                          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-amber-500/40 px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-amber-600 hover:bg-amber-500/10 transition"
-                        >
-                          <ShieldAlert className="w-3 h-3" /> Enable
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => handleInstall(entry)}
-                      disabled={installingId === plugin.id}
-                      className="inline-flex items-center gap-1 rounded-lg bg-kindle-text px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-bg hover:opacity-90 transition disabled:opacity-50"
-                    >
-                      <Download className="w-3 h-3" />
-                      {installingId === plugin.id ? "Installing…" : "Install"}
-                    </button>
-                  )}
-                </div>
+          {/* Restricted sources are full cards, not a footnote row. Burying
+              them as plain buttons made them look like ordinary sources while
+              hiding the one fact that matters about them. */}
+          {gated.length > 0 && (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                <h3 className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
+                  {gated.length} restricted source{gated.length === 1 ? "" : "s"}
+                </h3>
               </div>
-            );
-          })}
-        </div>
+              <p className="text-[11px] text-kindle-text-muted leading-relaxed">
+                These point at shadow libraries or carry adult content. Nothing is
+                fetched until you install and switch one on, and the choice is
+                remembered per source.
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {gated.map((entry) => (
+                  <SourceCard
+                    key={entry.plugin.id}
+                    entry={entry}
+                    installed={false}
+                    allowed={false}
+                    restricted
+                    busy={installingId === entry.plugin.id}
+                    onOpen={() => setDetailId(entry.plugin.id)}
+                    onInstall={() => handleInstall(entry)}
+                    onUninstall={() => handleUninstall(entry.plugin)}
+                    onToggleAllow={() => handleToggleAllow(entry.plugin)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
-      {/* Gated sources — visible but off until the user chooses. */}
-      {gated.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 sm:p-5 space-y-3">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-amber-700">
-              {gated.length} restricted source{gated.length === 1 ? "" : "s"}
-            </h3>
-          </div>
-          <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-            These point at shadow libraries or carry adult content. Nothing is fetched
-            until you install and switch one on, and the choice is remembered per source.
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {gated.map((entry) => {
-              const { plugin } = entry;
-              return (
-              <div
-                key={plugin.id}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-kindle-border bg-kindle-card px-3 py-1.5"
-              >
-                <span className="text-[10px] font-bold text-kindle-text">{plugin.name}</span>
-                <button
-                  onClick={() => handleInstall(entry)}
-                  className="text-[9px] font-bold uppercase tracking-widest text-kindle-accent hover:opacity-70"
-                >
-                  {installingId === plugin.id ? "Installing…" : "Install"}
-                </button>
-              </div>
-              );
-            })}
-          </div>
-        </div>
+      {detailEntry && (
+        <SourceDetail
+          plugin={detailEntry.plugin}
+          installed={detailEntry.installed}
+          active={isSourceVisible(detailEntry.plugin)}
+          busy={installingId === detailEntry.plugin.id}
+          onInstall={() => handleInstall(detailEntry)}
+          onUninstall={() => handleUninstall(detailEntry.plugin)}
+          onToggleAllow={() => handleToggleAllow(detailEntry.plugin)}
+          onClose={() => setDetailId(null)}
+        />
       )}
 
       {installed.length > 0 && (
@@ -341,6 +313,147 @@ export default function SourcePluginsHub() {
           {installed.filter((p) => isSourceVisible(p)).length} active
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * One source card.
+ *
+ * A restricted source uses the same card as any other but carries a visible
+ * label and an amber edge. Burying them in a separate strip of plain buttons
+ * made a shadow library look exactly like Open Library.
+ */
+function SourceCard({
+  entry,
+  installed,
+  allowed,
+  restricted,
+  busy,
+  onOpen,
+  onInstall,
+  onUninstall,
+  onToggleAllow,
+}: {
+  entry: RepoEntry;
+  installed: boolean;
+  allowed: boolean;
+  restricted?: boolean;
+  busy?: boolean;
+  onOpen: () => void;
+  onInstall: () => void;
+  onUninstall: () => void;
+  onToggleAllow: () => void;
+}) {
+  const { plugin } = entry;
+  const gated = restricted ?? (plugin.piracy || plugin.nsfw);
+  const host = (plugin.gen2?.homeUrl || plugin.baseUrl || "").replace(
+    /^https?:\/\//,
+    ""
+  );
+
+  return (
+    <div
+      className={`flex flex-col gap-2 rounded-2xl border p-4 transition ${
+        gated
+          ? "border-amber-500/40 bg-amber-500/5"
+          : "border-kindle-border bg-kindle-card"
+      }`}
+    >
+      <button
+        onClick={onOpen}
+        className="text-left w-full"
+        aria-label={`${plugin.name} details`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 shrink-0 rounded-xl border border-kindle-border bg-kindle-bg overflow-hidden flex items-center justify-center">
+            {plugin.icon ? (
+              <img
+                src={plugin.icon}
+                alt=""
+                className="w-full h-full object-cover"
+                loading="lazy"
+                onError={(e) => {
+                  const img = e.currentTarget;
+                  img.style.display = "none";
+                  img.nextElementSibling?.classList.remove("hidden");
+                }}
+              />
+            ) : null}
+            <Puzzle
+              className={`w-5 h-5 text-kindle-text-muted ${plugin.icon ? "hidden" : ""}`}
+            />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-kindle-text leading-tight line-clamp-2">
+              {plugin.name}
+            </p>
+            <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">
+              {plugin.lang}
+            </p>
+            {gated && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-amber-700">
+                <ShieldAlert className="w-2.5 h-2.5" />
+                {plugin.piracy ? "Shadow library" : "Adult"}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {host && (
+          <p className="mt-2 text-[10px] font-mono text-kindle-text-muted/70 truncate">
+            {host}
+          </p>
+        )}
+      </button>
+
+      <div className="mt-auto flex items-center gap-1.5 pt-1">
+        {installed ? (
+          <>
+            <button
+              onClick={onUninstall}
+              className="inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-red-500 hover:border-red-500/40 transition"
+            >
+              <Trash2 className="w-3 h-3" /> Remove
+            </button>
+            {allowed ? (
+              <span className="ml-auto inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-600">
+                <Check className="w-3 h-3" /> Active
+              </span>
+            ) : (
+              <button
+                onClick={onToggleAllow}
+                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-amber-500/40 px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-amber-600 hover:bg-amber-500/10 transition"
+              >
+                <ShieldAlert className="w-3 h-3" /> Enable
+              </button>
+            )}
+          </>
+        ) : (
+          <button
+            onClick={onInstall}
+            disabled={busy}
+            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest transition disabled:opacity-50 ${
+              gated
+                ? "bg-amber-600 text-white hover:opacity-90"
+                : "bg-kindle-text text-kindle-bg hover:opacity-90"
+            }`}
+          >
+            <Download className="w-3 h-3" />
+            {busy ? "Installing…" : "Install"}
+          </button>
+        )}
+
+        <button
+          onClick={onOpen}
+          aria-label={`About ${plugin.name}`}
+          title="Details"
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-accent transition"
+        >
+          <Info className="w-3 h-3" /> Details
+        </button>
+      </div>
     </div>
   );
 }

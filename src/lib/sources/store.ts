@@ -180,6 +180,10 @@ export async function fetchRegistry(
         nsfw,
         piracy,
         baseUrl: src.homeUrl || "",
+        // The registry carries the icon so the list renders real logos before
+        // anything is installed. Dropping this is why every card used to show
+        // the same puzzle-piece placeholder.
+        icon: ext.resources?.iconUrl || undefined,
         gen2: {
           packageName: ext.packageName,
           versionName: ext.versionName,
