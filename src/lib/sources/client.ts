@@ -238,7 +238,7 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     async search(query, page = 1, filters = {}) {
       if (madara) return madara.search(query, page);
 
-      const ep = plugin.endpoints.search;
+      const ep = plugin.endpoints?.search;
       if (!ep) return { mangas: [], hasNextPage: false };
 
       // Fold filter values into the url template. A `select` filter with key
@@ -298,8 +298,10 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     },
 
     async chapters(manga: Manga) {
-      const ep = plugin.endpoints.chapters;
+      // Theme first: a themed source has no `endpoints` object at all, so
+      // touching plugin.endpoints.chapters above the branch throws.
       if (madara) return madara.chapters(manga);
+      const ep = plugin.endpoints?.chapters;
       if (!ep) return [];
 
       const url = buildUrl(ep.url, plugin, { mangaUrl: manga.url });
