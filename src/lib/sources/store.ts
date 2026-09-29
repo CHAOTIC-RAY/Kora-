@@ -12,7 +12,7 @@
  * index.json listing extensions, each with one or more sources.
  */
 
-import type { RegistryIndex, SourcePlugin } from "./types";
+import type { RegistryIndex, SourcePlugin, PluginManifest } from "./types";
 import { isNsfwExtension } from "./types";
 
 const LS_PLUGINS = "kora.sourcePlugins.v1";
@@ -48,6 +48,61 @@ function writeJSON(key: string, value: unknown): void {
 /** Every plugin the user has installed, whether or not it is enabled. */
 export function getInstalledPlugins(): SourcePlugin[] {
   return readJSON<SourcePlugin[]>(LS_PLUGINS, []);
+}
+
+// ── Plugins ───────────────────────────────────────────────────────────
+// Sources stay in their own store so an existing install keeps working.
+// Everything that is not a source (themes, integrations, tools) lives here
+// as a manifest, so the hub can list every kind of plugin from one place.
+
+const LS_EXT = "kora.plugins.v1";
+
+/** Every non-source plugin the user has installed. */
+export function getInstalledExtensions(): PluginManifest[] {
+  return readJSON<PluginManifest[]>(LS_EXT, []);
+}
+
+export function getAllInstalled(): PluginManifest[] {
+  // Sources are plugins too; a manifest without a payload is a source.
+  return [
+    ...getInstalledPlugins().map(
+      (s): PluginManifest => ({
+        id: s.id,
+        name: s.name,
+        version: String(s.version ?? "0"),
+        category: "source",
+        icon: s.icon,
+        piracy: s.piracy,
+        nsfw: s.nsfw,
+        source: s,
+      })
+    ),
+    ...getInstalledExtensions(),
+  ];
+}
+
+export function isExtensionInstalled(id: string): boolean {
+  return getInstalledExtensions().some((p) => p.id === id);
+}
+
+/**
+ * Install a non-source plugin.
+ *
+ * Returns false when the id is already present, so a double click cannot
+ * register the same manifest twice.
+ */
+export function installExtension(manifest: PluginManifest): boolean {
+  if (!manifest?.id || manifest.category === "source") return false;
+  if (isExtensionInstalled(manifest.id)) return false;
+  writeJSON(LS_EXT, [...getInstalledExtensions(), manifest]);
+  return true;
+}
+
+export function uninstallExtension(id: string): void {
+  writeJSON(
+    LS_EXT,
+    getInstalledExtensions().filter((p) => p.id !== id)
+  );
 }
 
 /** Repos to offer in the manager. The default can be removed but not lost. */

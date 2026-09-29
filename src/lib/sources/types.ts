@@ -274,6 +274,52 @@ export interface SourcePlugin {
   endpoints: SourceEndpoints;
 }
 
+/**
+ * What a plugin *does*.
+ *
+ * A source is only one kind of plugin. Kora also takes themes (which restyle
+ * the reader) and integrations (which move a library in and out of another
+ * app), so `category` decides how the hub renders and what the runtime
+ * expects to find on the definition.
+ *
+ * A `source` carries `baseUrl` + `endpoints`/`theme` and is fetchable. The
+ * others carry configuration for their own runtime and are not — which is
+ * why `endpoints` is optional here rather than required.
+ */
+export type PluginCategory = "source" | "theme" | "integration" | "tool";
+
+/** Integrations a plugin can bridge to, for display and permission copy. */
+export type IntegrationTarget = "kindle" | "calibre";
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  category: PluginCategory;
+  /** Author or maintainer, shown on the detail sheet. */
+  author?: string;
+  description?: string;
+  icon?: string;
+  website?: string;
+  /** Legal flag, as on a source: true points at a site with no clear right. */
+  piracy?: boolean;
+  nsfw?: boolean;
+  /** Only for `integration`: which external app this bridges to. */
+  target?: IntegrationTarget;
+  /** Only for `theme`: the theme token set id it applies. */
+  themeId?: string;
+  /**
+   * What the plugin needs before it runs. The hub uses this to show an
+   * honest prerequisite instead of failing at first use.
+   *  - `permission` — needs an explicit user grant
+   *  - `device`     — needs the native app
+   *  - `network`    — needs a reachable remote
+   */
+  requires?: ("permission" | "device" | "network")[];
+  /** Source-only payload; see SourcePlugin. */
+  source?: SourcePlugin;
+}
+
 export type MangaStatus = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface Manga {
