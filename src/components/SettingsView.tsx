@@ -26,7 +26,6 @@ const skinIcons: Record<string, React.ComponentType<{ className?: string }>> = {
 
 import { toast } from "react-hot-toast";
 import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE, PRIMARY_READER_THEME_KEYS, resolveReaderTheme } from "../lib/readerThemes";
-import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
 import { APP_SKINS, DEFAULT_APP_SKIN } from "../lib/appSkin";
 import {
   loadNewsReaderPrefs,
@@ -311,8 +310,6 @@ function SettingsView({
     }));
   };
 
-  const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
-  const [allEntries, setAllEntries] = useState<DictionaryEntry[]>([]);
   const [showLiveLogs, setShowLiveLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState(() => logger.getLogs());
   const [apkAutoUpdate, setApkAutoUpdate] = useState(() => isApkAutoUpdateEnabled());
@@ -351,7 +348,6 @@ function SettingsView({
   const [showScrabble, setShowScrabble] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const [showP2p, setShowP2p] = useState<boolean>(false);
-  const [showDictionary, setShowDictionary] = useState<boolean>(false);
   const [showClipper, setShowClipper] = useState<boolean>(false);
   const [showFolderWatch, setShowFolderWatch] = useState<boolean>(false);
   const [showClearLibrary, setShowClearLibrary] = useState<boolean>(false);
@@ -369,7 +365,6 @@ function SettingsView({
       showScrabble ||
       showInsights ||
       showP2p ||
-      showDictionary ||
       showClipper ||
       showFolderWatch ||
       showReadAloud ||
@@ -384,7 +379,6 @@ function SettingsView({
     showScrabble,
     showInsights,
     showP2p,
-    showDictionary,
     showClipper,
     showFolderWatch,
     showReadAloud,
@@ -536,12 +530,6 @@ function SettingsView({
       setUploading(false);
     }
   };
-  const [dictSearch, setDictSearch] = useState<string>("");
-  const [showAddWordForm, setShowAddWordForm] = useState<boolean>(false);
-  const [newWord, setNewWord] = useState<string>("");
-  const [newDef, setNewDef] = useState<string>("");
-  const [newPos, setNewPos] = useState<string>("noun");
-  const [newEx, setNewEx] = useState<string>("");
 
   // Download directory settings states
   const [realDirHandle, setRealDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
@@ -621,15 +609,8 @@ function SettingsView({
   const [newVirtualExt, setNewVirtualExt] = useState<"epub" | "pdf">("epub");
 
   useEffect(() => {
-    if (!isActive && !showDictionary) return;
-    async function loadDict() {
-      const entries = await getAllDictionaryEntries();
-      setAllEntries(entries);
-      // Only show custom entries in settings, not the external dictionary
-      setDictEntries(entries.filter(e => e.isCustom));
-    }
-    void loadDict();
-    
+    if (!isActive) return;
+
     async function initDir() {
       if (isActive) {
         const handle = await getSavedDirectoryHandle();
@@ -638,7 +619,7 @@ function SettingsView({
       }
     }
     void initDir();
-  }, [isActive, showDictionary]);
+  }, [isActive]);
 
   const handleSelectRealDir = async () => {
     try {
@@ -757,44 +738,6 @@ function SettingsView({
     }
   };
 
-  const handleAddWord = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newWord.trim() || !newDef.trim()) return;
-    addDictionaryEntry({
-      word: newWord.trim(),
-      definition: newDef.trim(),
-      partOfSpeech: newPos,
-      example: newEx.trim() || undefined,
-      isCustom: true
-    });
-    const entries = await getAllDictionaryEntries();
-    setAllEntries(entries);
-    setDictEntries(entries.filter(e => e.isCustom));
-    setNewWord("");
-    setNewDef("");
-    setNewPos("noun");
-    setNewEx("");
-    setShowAddWordForm(false);
-  };
-
-  const handleSaveWordToPersonal = async (entry: DictionaryEntry) => {
-    addDictionaryEntry({
-      ...entry,
-      isCustom: true
-    });
-    const entries = await getAllDictionaryEntries();
-    setAllEntries(entries);
-    setDictEntries(entries.filter(e => e.isCustom));
-    toast.success(`"${entry.word}" saved to personal dictionary`);
-  };
-
-  const handleDeleteWord = async (word: string) => {
-    deleteDictionaryEntry(word);
-    const entries = await getAllDictionaryEntries();
-    setAllEntries(entries);
-    setDictEntries(entries.filter(e => e.isCustom));
-  };
-
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
     { id: "font-sans", label: "Sans" },
@@ -819,209 +762,6 @@ function SettingsView({
     { id: "max-w-2xl px-6", label: "Medium" },
     { id: "max-w-4xl px-8", label: "Wide" }
   ];
-  const renderPersonalDictionaryContent = () => (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between border-b border-kindle-border pb-3">
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-            <BookMarked className="w-4 h-4 text-kindle-text" />
-          </div>
-          <div>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Personal Dictionary</h3>
-            <p className="text-[10px] text-kindle-text-muted">Definitions used inside book readers</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowAddWordForm(!showAddWordForm)}
-          className="flex items-center gap-1 px-2.5 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-xl text-[9px] font-bold uppercase tracking-widest transition"
-        >
-          <Plus className="w-3 h-3" /> {showAddWordForm ? "Cancel" : "Add Word"}
-        </button>
-      </div>
-
-      {showAddWordForm && (
-        <form onSubmit={handleAddWord} className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3.5 animate-in slide-in-from-top duration-200">
-          <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Define Custom Word</h4>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Word</label>
-              <input
-                type="text"
-                required
-                value={newWord}
-                onChange={(e) => setNewWord(e.target.value)}
-                placeholder="e.g. Ephemeral"
-                className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Part of Speech</label>
-              <select
-                value={newPos}
-                onChange={(e) => setNewPos(e.target.value)}
-                className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
-              >
-                <option value="noun">Noun</option>
-                <option value="verb">Verb</option>
-                <option value="adjective">Adjective</option>
-                <option value="adverb">Adverb</option>
-                <option value="other">Other/Mix</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Definition</label>
-            <textarea
-              required
-              rows={2}
-              value={newDef}
-              onChange={(e) => setNewDef(e.target.value)}
-              placeholder="The meaning of the word..."
-              className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Example Usage (Optional)</label>
-            <input
-              type="text"
-              value={newEx}
-              onChange={(e) => setNewEx(e.target.value)}
-              placeholder="Sentence using the word..."
-              className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-2 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
-          >
-            Save Word Definition
-          </button>
-        </form>
-      )}
-
-      <div className="space-y-3">
-        <div className="relative">
-          <SearchIcon className="w-3.5 h-3.5 text-kindle-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search words in dictionary..."
-            value={dictSearch}
-            onChange={(e) => setDictSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs outline-none"
-          />
-        </div>
-
-        <div className="max-h-60 overflow-y-auto border border-kindle-border rounded-xl divide-y divide-kindle-border bg-kindle-bg scrollbar-hide">
-          {(() => {
-            const query = dictSearch.trim().toLowerCase();
-            let displayedEntries: DictionaryEntry[] = [];
-            
-            if (query === "") {
-              displayedEntries = dictEntries;
-            } else {
-              // Search the entire dictionary
-              const exactMatches: DictionaryEntry[] = [];
-              const startsWithMatches: DictionaryEntry[] = [];
-              const containsMatches: DictionaryEntry[] = [];
-              
-              const pool = allEntries.length > 0 ? allEntries : dictEntries;
-              
-              for (const entry of pool) {
-                const entryWord = entry.word.toLowerCase();
-                if (entryWord === query) {
-                  exactMatches.push(entry);
-                } else if (entryWord.startsWith(query)) {
-                  startsWithMatches.push(entry);
-                } else if (entryWord.includes(query)) {
-                  containsMatches.push(entry);
-                }
-              }
-              
-              displayedEntries = [...exactMatches, ...startsWithMatches, ...containsMatches].slice(0, 50);
-            }
-
-            if (displayedEntries.length === 0) {
-              return (
-                <div className="p-8 text-center text-xs text-kindle-text-muted italic flex flex-col items-center gap-2">
-                  <span>No words matching "{dictSearch}" in dictionary database.</span>
-                  {dictSearch.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewWord(dictSearch);
-                        setNewDef("");
-                        setNewEx("");
-                        setNewPos("noun");
-                        setShowAddWordForm(true);
-                      }}
-                      className="mt-1 px-3 py-1.5 bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent border border-kindle-accent/25 rounded-xl text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
-                    >
-                      Define "{dictSearch}" Custom
-                    </button>
-                  )}
-                </div>
-              );
-            }
-
-            return displayedEntries.map((entry) => (
-              <div key={entry.word} className="p-3.5 flex items-start justify-between gap-3 bg-kindle-card">
-                <div className="space-y-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold font-serif text-sm text-kindle-text">{entry.word}</span>
-                    {entry.partOfSpeech && (
-                      <span className="text-[8px] uppercase tracking-wider font-mono font-bold text-kindle-text-muted/70 bg-neutral-150 px-1 py-0.5 rounded">
-                        {entry.partOfSpeech}
-                      </span>
-                    )}
-                    {entry.isCustom ? (
-                      <span className="text-[7px] uppercase tracking-widest font-bold bg-kindle-accent/15 text-kindle-accent px-1.5 py-0.5 rounded-full">
-                        Personal
-                      </span>
-                    ) : (
-                      <span className="text-[7px] uppercase tracking-widest font-bold bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full">
-                        Oxford DB
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-kindle-text leading-relaxed font-sans">{entry.definition}</p>
-                  {entry.example && (
-                    <p className="text-[10px] italic text-kindle-text-muted font-sans font-medium">"{entry.example}"</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {entry.isCustom ? (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteWord(entry.word)}
-                      className="p-1.5 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                      title="Delete Definition"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveWordToPersonal(entry)}
-                      className="px-2 py-1 bg-kindle-bg hover:bg-kindle-accent/10 border border-kindle-border rounded-lg text-[9px] font-bold uppercase tracking-wider text-kindle-text hover:text-kindle-accent transition cursor-pointer flex items-center gap-1"
-                      title="Add to Personal Dictionary"
-                    >
-                      <Plus className="w-3 h-3 text-kindle-accent" /> Save
-                    </button>
-                  )}
-                </div>
-              </div>
-            ));
-          })()}
-        </div>
-      </div>
-    </div>
-  );
-
   const renderFolderWatchContent = () => (
     <div className="space-y-5">
       <p className="text-[11px] text-kindle-text-muted leading-relaxed">
@@ -1631,24 +1371,6 @@ function SettingsView({
                   <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Pacing & Moods</p>
                   <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
                     Track your words-per-minute, session intervals, and reader emotion trends.
-                  </p>
-                </div>
-              </button>
-
-              {/* Personal Dictionary Card */}
-              <button
-                type="button"
-                onClick={() => setShowDictionary(true)}
-                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-2xl p-4 text-left transition duration-300 flex flex-col gap-3 group cursor-pointer shadow-xs"
-              >
-                <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl w-fit group-hover:scale-105 transition-transform duration-300">
-                  <BookMarked className="w-4 h-4 text-kindle-accent" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Personal Dictionary</h4>
-                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Vocabulary Bank</p>
-                  <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
-                    Browse custom definitions and lookups saved during reading sessions.
                   </p>
                 </div>
               </button>
@@ -2659,15 +2381,6 @@ function SettingsView({
 
         {view === "settings" && (
         <>
-        {/* Personal Dictionary Section */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs">
-          {renderPersonalDictionaryContent()}
-        </section>
-        </>
-        )}
-
-        {view === "settings" && (
-        <>
         {showCloudImport && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
             <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
@@ -3221,21 +2934,6 @@ function SettingsView({
         books={(books as BookMetadata[]) || getLocalLibrary()}
       />
       <P2pTransferPanel open={showP2p} onClose={() => setShowP2p(false)} />
-
-      <FluidOverlay open={showDictionary} onClose={() => setShowDictionary(false)} variant="sheet" panelClassName="max-w-xl p-6">
-        <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
-          <div className="flex items-center gap-3">
-            <BookMarked className="w-5 h-5 text-kindle-text" />
-            <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Personal Dictionary</h3>
-          </div>
-          <button onClick={() => setShowDictionary(false)} className="p-1.5 hover:bg-neutral-100 rounded-lg">
-            <X className="w-5 h-5 text-kindle-text" />
-          </button>
-        </div>
-        <div className="max-h-[75vh] overflow-y-auto pr-1">
-          {renderPersonalDictionaryContent()}
-        </div>
-      </FluidOverlay>
 
       <FluidOverlay open={showClipper} onClose={() => setShowClipper(false)} variant="sheet" panelClassName="max-w-xl p-6">
         <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">

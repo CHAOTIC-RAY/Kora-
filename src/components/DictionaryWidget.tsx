@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, X, BookA } from "lucide-react";
-import { getAllDictionaryEntries, DictionaryEntry } from "../lib/dictionary";
+import { Search, X, BookA, Trash2 } from "lucide-react";
+import {
+  getAllDictionaryEntries,
+  addDictionaryEntry,
+  deleteDictionaryEntry,
+  DictionaryEntry,
+} from "../lib/dictionary";
 
 interface DictionaryWidgetProps {
   onClose?: () => void;
@@ -10,6 +15,35 @@ export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
   const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [query, setQuery] = useState("");
   const [ready, setReady] = useState(false);
+  const [draft, setDraft] = useState({ word: "", definition: "" });
+  const [saving, setSaving] = useState(false);
+
+  const refresh = () => {
+    getAllDictionaryEntries().then((all) => {
+      setEntries(all);
+      setReady(true);
+    });
+  };
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const word = draft.word.trim();
+    const definition = draft.definition.trim();
+    if (!word || !definition || saving) return;
+    setSaving(true);
+    try {
+      await addDictionaryEntry({ word, definition, isCustom: true });
+      setDraft({ word: "", definition: "" });
+      refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (word: string) => {
+    deleteDictionaryEntry(word);
+    refresh();
+  };
 
   useEffect(() => {
     let alive = true;
@@ -79,6 +113,34 @@ export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
         <p className="text-[10px] text-kindle-text-muted mt-2">
           {ready ? `${entries.length.toLocaleString()} entries loaded` : "Loading dictionary…"}
         </p>
+
+        {/* Add form — this panel is the only dictionary editor now that the
+            Settings copy is gone, so it needs to be able to add as well as
+            read. */}
+        <form
+          onSubmit={handleAdd}
+          className="mt-3 flex flex-wrap gap-2 items-start"
+        >
+          <input
+            value={draft.word}
+            onChange={(e) => setDraft((d) => ({ ...d, word: e.target.value }))}
+            placeholder="word"
+            className="w-28 bg-kindle-card border border-kindle-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-kindle-accent/50"
+          />
+          <input
+            value={draft.definition}
+            onChange={(e) => setDraft((d) => ({ ...d, definition: e.target.value }))}
+            placeholder="definition"
+            className="flex-1 min-w-[10rem] bg-kindle-card border border-kindle-border rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-kindle-accent/50"
+          />
+          <button
+            type="submit"
+            disabled={!draft.word.trim() || !draft.definition.trim() || saving}
+            className="px-3 py-1.5 rounded-lg bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest disabled:opacity-40 cursor-pointer"
+          >
+            {saving ? "Adding…" : "Add"}
+          </button>
+        </form>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
@@ -93,11 +155,23 @@ export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
               className="bg-kindle-card border border-kindle-border rounded-xl p-3 space-y-1"
             >
               <div className="flex items-baseline gap-2">
-                <span className="font-bold text-sm">{entry.word}</span>
+                <span className="font-bold text-sm flex-1">{entry.word}</span>
                 {entry.partOfSpeech && (
                   <span className="text-[10px] uppercase tracking-wider text-kindle-accent">
                     {entry.partOfSpeech}
                   </span>
+                )}
+                {/* Only words the reader added are removable; the bundled
+                    dictionary ships with the app. */}
+                {entry.isCustom && (
+                  <button
+                    type="button"
+                    onClick={() => void handleDelete(entry.word)}
+                    title={`Remove “${entry.word}”`}
+                    className="p-0.5 text-kindle-text-muted hover:text-red-500 transition cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 )}
               </div>
               <p className="text-xs text-kindle-text-muted leading-relaxed">

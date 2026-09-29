@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Swords, Trophy, Grid3X3, Search, Globe, BookA, RefreshCw, Crown, Sparkles, Check, ChevronRight } from "lucide-react";
+import { getAllDictionaryEntries, type DictionaryEntry } from "../lib/dictionary";
 
 // ── 1. LINGUIST GUARDIAN (2D Pokémon style battle arena) ──
 type SpriteKind = "guardian" | "rival" | "boss";
@@ -808,9 +809,31 @@ const LOCAL_DICT: Record<string, DictItem> = {
   }
 };
 
-export function SearchableDictionaryDemo() {
+/**
+ * Searchable dictionary card for the Workshop.
+ *
+ * Reads the user's real dictionary so the card is not a decorative sample.
+ * `LOCAL_DICT` remains as the empty-state illustration — a first-run reader
+ * has no saved words, and showing an empty box would read as broken.
+ */
+export function SearchableDictionaryDemo({ onOpenReal }: { onOpenReal?: () => void }) {
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState<DictItem>(LOCAL_DICT.kora);
+  const [entries, setEntries] = useState<DictionaryEntry[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    getAllDictionaryEntries()
+      .then((all) => {
+        if (alive) setEntries(all);
+      })
+      .catch(() => {
+        /* An empty dictionary is a normal state, not an error. */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -822,11 +845,26 @@ export function SearchableDictionaryDemo() {
       return;
     }
 
+    // Real entries win over the sample, so a word the reader saved is found.
+    const real = entries.find(
+      (e) =>
+        e.word.toLowerCase() === norm ||
+        e.word.toLowerCase().startsWith(norm)
+    );
+    if (real) {
+      setSearchResult({
+        word: real.word,
+        pos: real.partOfSpeech || "saved word",
+        def: real.definition || "Saved to your dictionary.",
+        ex: real.example || "",
+      });
+      return;
+    }
+
     const match = LOCAL_DICT[norm];
     if (match) {
       setSearchResult(match);
     } else {
-      // Find close match or fallback
       const keys = Object.keys(LOCAL_DICT);
       const closeKey = keys.find(k => k.startsWith(norm));
       if (closeKey) {
@@ -834,9 +872,11 @@ export function SearchableDictionaryDemo() {
       } else {
         setSearchResult({
           word: val,
-          pos: "offline search result",
-          def: "This word is not in our lightweight local preview cache. Try searching 'Kora', 'ephemeral', 'lucid', 'serene', 'somber', or 'sovereign'!",
-          ex: "You can expand dictionary assets inside the main Kora Companion's database."
+          pos: "not found",
+          def: entries.length
+            ? `No match in your ${entries.length} saved word${entries.length === 1 ? "" : "s"}.`
+            : "No match in your dictionary yet. Add words to look them up here and in the reader.",
+          ex: onOpenReal ? "" : "",
         });
       }
     }
@@ -896,9 +936,22 @@ export function SearchableDictionaryDemo() {
         </AnimatePresence>
       </div>
 
-      {/* Tips panel */}
-      <div className="text-[8px] text-kindle-text-muted text-left pt-1 border-t border-kindle-border">
-        💡 Local preview loaded with core vocabulary words.
+      {/* Footer — reflects real state, and is the way into the editor. */}
+      <div className="text-[8px] text-kindle-text-muted text-left pt-2 border-t border-kindle-border flex items-center gap-2">
+        <span className="flex-1">
+          {entries.length
+            ? `${entries.length} saved word${entries.length === 1 ? "" : "s"} · searchable offline`
+            : "Sample vocabulary — add your own words to search them here."}
+        </span>
+        {onOpenReal && (
+          <button
+            type="button"
+            onClick={onOpenReal}
+            className="inline-flex items-center gap-0.5 font-bold uppercase tracking-widest text-kindle-accent hover:opacity-70 transition cursor-pointer"
+          >
+            Manage <ChevronRight className="w-2.5 h-2.5" />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -1085,6 +1085,13 @@ export default function InstallView() {
   const [showWordSearchDemo, setShowWordSearchDemo] = useState(false);
   const [showWikipediaDemo, setShowWikipediaDemo] = useState(false);
   const [showDictionaryDemo, setShowDictionaryDemo] = useState(false);
+
+  /**
+   * The Workshop card used to be a hardcoded 7-word sample. It now hands off
+   * to the real dictionary, so the sample is only ever a preview and the
+   * actual entries stay reachable from exactly one place.
+   */
+  const openRealDictionary = React.useCallback(() => setShowDictionaryDemo(true), []);
   const [showLinguistGuardianDemo, setShowLinguistGuardianDemo] = useState(false);
 
   // Hide the sticky top nav once the closing notebook fills the screen.
@@ -2748,7 +2755,7 @@ export default function InstallView() {
                   </div>
 
                   <div className="mt-2 w-full">
-                    <SearchableDictionaryDemo />
+                    <SearchableDictionaryDemo onOpenReal={openRealDictionary} />
                   </div>
                 </div>
               </Reveal>
