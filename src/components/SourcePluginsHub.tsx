@@ -101,6 +101,9 @@ export default function SourcePluginsHub() {
       const def = await fetchPluginDefinition(e.installUrl);
       if (!def) throw new Error("empty response");
       installPlugin(def);
+      // Installing is the opt-in. A separate Enable step meant a source
+      // could sit installed but invisible, with no chip in Discover.
+      if (def.piracy || def.nsfw) setSourceOptIn(def.id, true);
       setInstalled(getInstalledPlugins());
       toast.success(`${def.name} installed`, { id: "src-install" });
     } catch (err) {
@@ -410,26 +413,16 @@ function SourceCard({
 
       <div className="mt-auto flex items-center gap-1.5 pt-1">
         {installed ? (
-          <>
-            <button
-              onClick={onUninstall}
-              className="inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-red-500 hover:border-red-500/40 transition"
-            >
-              <Trash2 className="w-3 h-3" /> Remove
-            </button>
-            {allowed ? (
-              <span className="ml-auto inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest text-emerald-600">
-                <Check className="w-3 h-3" /> Active
-              </span>
-            ) : (
-              <button
-                onClick={onToggleAllow}
-                className="ml-auto inline-flex items-center gap-1 rounded-lg border border-amber-500/40 px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-amber-600 hover:bg-amber-500/10 transition"
-              >
-                <ShieldAlert className="w-3 h-3" /> Enable
-              </button>
-            )}
-          </>
+          /* No enable/disable toggle: installing a source opts you in, and
+             the only way to take it back out is Remove. A second control
+             that could switch a source off without uninstalling was pure
+             duplication. */
+          <button
+            onClick={onUninstall}
+            className="ml-auto inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-red-500 hover:border-red-500/40 transition"
+          >
+            <Trash2 className="w-3 h-3" /> Remove
+          </button>
         ) : (
           <button
             onClick={onInstall}

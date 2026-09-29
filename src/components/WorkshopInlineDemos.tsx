@@ -759,56 +759,16 @@ interface DictItem {
 }
 
 const LOCAL_DICT: Record<string, DictItem> = {
+  // The landing page is a showcase, so the only word that belongs here is
+  // Kora itself. The other sample words were invented marketing filler and
+  // read as real entries to anyone who typed them in.
   kora: {
     word: "Kora",
     pos: "proper noun",
     def: "The ultimate offline-first e-ink optimized reading companion, engineered to restore your digital sovereignty, focus, and eye health.",
     ex: "She uploaded a library of classic classics onto her Kora reader for deep evening offline reading."
-  },
-  ephemeral: {
-    word: "ephemeral",
-    pos: "adjective",
-    def: "Lasting for a very short time; transient; fleeting.",
-    ex: "Digital popups are ephemeral distraction, while unbleached paper pages offer lasting focus."
-  },
-  lucid: {
-    word: "lucid",
-    pos: "adjective",
-    def: "Expressed clearly; easy to understand; completely rational.",
-    ex: "A lucid typesetting engine layout helps students process complex literature faster."
-  },
-  serene: {
-    word: "serene",
-    pos: "adjective",
-    def: "Calm, peaceful, and completely untroubled.",
-    ex: "The unbleached Natural Paper theme creates a serene landscape for late night relaxation."
-  },
-  somber: {
-    word: "somber",
-    pos: "adjective",
-    def: "Dark, gloomy, or serious in tone.",
-    ex: "The Dusk Twilight theme is designed with soft dark palettes appropriate for somber bedtime reviews."
-  },
-  sovereign: {
-    word: "sovereign",
-    pos: "noun / adjective",
-    def: "Possessing supreme, independent power and authority. Self-governing.",
-    ex: "Kora enables a sovereign offline repository for books without tracking scripts."
-  },
-  nuance: {
-    word: "nuance",
-    pos: "noun",
-    def: "A subtle difference or shade of meaning, expression, or color.",
-    ex: "High-contrast displays miss the organic wood-grain nuance of high-density simulated ink."
-  },
-  chaos: {
-    word: "Chaos Studio",
-    pos: "noun",
-    def: "An independent open-source creative group crafting highly functional digital sanctuaries.",
-    ex: "Chaos Studio built Kora to liberate readers from cloud telemetry tracking."
   }
 };
-
 /**
  * Searchable dictionary card for the Workshop.
  *
@@ -876,7 +836,7 @@ export function SearchableDictionaryDemo({ onOpenReal }: { onOpenReal?: () => vo
           def: entries.length
             ? `No match in your ${entries.length} saved word${entries.length === 1 ? "" : "s"}.`
             : "No match in your dictionary yet. Add words to look them up here and in the reader.",
-          ex: onOpenReal ? "" : "",
+          ex: "",
         });
       }
     }
@@ -895,7 +855,7 @@ export function SearchableDictionaryDemo({ onOpenReal }: { onOpenReal?: () => vo
           <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-kindle-text-muted" />
           <input 
             type="text" 
-            placeholder="Search word (e.g., ephemeral, lucid, serene...)"
+            placeholder="Search your dictionary (e.g. kora…)"
             value={query}
             onChange={handleSearch}
             className="w-full bg-kindle-card border border-kindle-border rounded-lg pl-8.5 pr-4 py-1.5 text-[10px] text-kindle-text placeholder-kindle-text-muted focus:outline-none focus:border-purple-500/50 transition-colors"

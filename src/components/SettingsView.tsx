@@ -2981,7 +2981,7 @@ function SettingsView({
             </button>
           </div>
           <div className="max-h-[75vh] overflow-y-auto pr-1">
-            <DictionaryWidget onClose={() => setShowDictionary(false)} />
+            <DictionaryWidget bare onClose={() => setShowDictionary(false)} />
           </div>
         </FluidOverlay>
       )}

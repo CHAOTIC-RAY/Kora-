@@ -9,6 +9,7 @@ import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { getDiscoverablePlugins } from "../lib/sources/store";
+import { createSourceClient } from "../lib/sources/client";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
@@ -318,6 +319,13 @@ function DiscoverView({
     { id: string; name: string; icon?: string }[]
   >([]);
 
+  /**
+   * True while the feed is showing one source's own catalogue rather than
+   * search results. The header reads differently in the two cases, because
+   * a user who tapped a chip is browsing, not searching.
+   */
+  const [pluginFeedMode, setPluginFeedMode] = useState(false);
+
   const refreshPluginChips = useCallback(() => {
     try {
       setPluginChips(
@@ -329,6 +337,49 @@ function DiscoverView({
       );
     } catch {
       setPluginChips([]);
+    }
+  }, []);
+
+  /**
+   * Load a source's own catalogue into the feed.
+   *
+   * Used when a chip is tapped with an empty search box: a blank search
+   * returns nothing, so the useful action is the site's own popular/latest
+   * listing — the books are then downloadable into the library like any
+   * other result.
+   */
+  const browseSource = useCallback(async (sourceId: string) => {
+    const plugin = getDiscoverablePlugins().find((p) => p.id === sourceId);
+    if (!plugin) return;
+    setLoading(true);
+    setPluginFeedMode(true);
+    setSearchMode(false);
+    setIsAdvancedSearch(false);
+    setQuery("");
+    try {
+      const client = createSourceClient(plugin);
+      const page = await client.popular(1);
+      const items = (page.mangas || []).map((m) => ({
+        title: m.title,
+        author: m.author || "Unknown",
+        source: plugin.name,
+        cover: m.thumbnailUrl || "",
+        description: m.description || "",
+        sourceId: m.url,
+        pluginId: plugin.id,
+        kind: "manga",
+      }));
+      setResults(items);
+      setTotalResults(items.length);
+      setSearchMeta({});
+      if (items.length === 0) {
+        toast("No listings returned by this source", { icon: "📭" });
+      }
+    } catch {
+      toast(`Could not reach ${plugin.name}`, { icon: "⚠️" });
+      setResults([]);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -2172,6 +2223,48 @@ function DiscoverView({
       const source = sourceOverride || activeSource;
       const signal = createSearchSignal();
 
+      // A chip-scoped search must hit only that source. Folding it into the
+      // default engines would mix in results the user explicitly filtered
+      // out, so the plugin path takes over entirely while a chip is active.
+      if (source !== "all") {
+        const plugin = getDiscoverablePlugins().find((p) => p.id === source);
+        if (plugin) {
+          setPluginFeedMode(false);
+          setSearchMode(true);
+          setLoading(true);
+          try {
+            const client = createSourceClient(plugin);
+            const found = term.trim()
+              ? await client.search(term, 1)
+              : await client.popular(1);
+            const items = (found.mangas || []).map((m) => ({
+              title: m.title,
+              author: m.author || "Unknown",
+              source: plugin.name,
+              cover: m.thumbnailUrl || "",
+              description: m.description || "",
+              sourceId: m.url,
+              pluginId: plugin.id,
+              kind: "manga",
+            }));
+            setResults(items);
+            setTotalResults(items.length);
+            setSearchMeta({});
+            if (items.length === 0) {
+              toast(`No results in ${plugin.name} for “${term}”`, { icon: "🔍" });
+            }
+          } catch {
+            toast(`Could not search ${plugin.name}`, { icon: "⚠️" });
+            setResults([]);
+          } finally {
+            setLoading(false);
+          }
+          return;
+        }
+      } else {
+        setPluginFeedMode(false);
+      }
+
       let mappedBooks: any[];
       let totalCount: number;
       let more: boolean;
@@ -3228,46 +3321,6 @@ function DiscoverView({
           )}
 
           <div className="flex flex-col gap-3">
-            {/* Installed source chips.
-                A source is invisible once installed unless there is a chip
-                here — the user had no way back to it from the search box. */}
-            {pluginChips.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1.5" data-guide="discover-source-chips">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted/60 mr-0.5">
-                  Sources
-                </span>
-                {pluginChips.map((c) => {
-                  const on = activeSource === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      title={`Search only ${c.name}`}
-                      onClick={() => setActiveSource(on ? "all" : c.id)}
-                      className={`px-2.5 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap max-w-[190px] ${
-                        on
-                          ? "bg-kindle-accent text-white border-kindle-accent"
-                          : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
-                      }`}
-                    >
-                      {c.icon ? (
-                        <img
-                          src={c.icon}
-                          alt=""
-                          className="w-3 h-3 rounded-full object-cover shrink-0"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                          }}
-                        />
-                      ) : (
-                        <Puzzle className="w-3 h-3 shrink-0" />
-                      )}
-                      <span className="truncate">{c.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
             <form onSubmit={handleSearch} className="relative group w-full" data-guide="discover-search">
               <Search className="w-5 h-5 text-kindle-text-muted absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-kindle-accent group-hover:text-kindle-accent/70 transition pointer-events-none z-10" />
               <input
@@ -3345,6 +3398,67 @@ function DiscoverView({
                   <Database className="w-3 h-3" />
                   Advanced Search
                 </button>
+
+                {/* Installed source chips, laid out after the toolbar and
+                    scrolled right-to-left so the newest plugin sits closest
+                    to the buttons. Each chip filters search to that source;
+                    with none active, search runs every source plus the
+                    default engines. */}
+                {pluginChips.length > 0 && (
+                  <div
+                    dir="rtl"
+                    data-guide="discover-source-chips"
+                    className="flex items-center gap-1.5 overflow-x-auto scrollbar-none max-w-full flex-1 min-w-0 pb-0.5"
+                  >
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted/50 shrink-0 pl-1">
+                      Sources
+                    </span>
+                    {pluginChips.map((c) => {
+                      const on = activeSource === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          title={
+                            on
+                              ? `Show every source again`
+                              : `${c.name}: browse its full catalogue, or search only it`
+                          }
+                          onClick={() => {
+                            // With no query, clicking a chip browses that
+                            // source's own catalogue instead of searching a
+                            // blank string, which would return nothing.
+                            if (on) {
+                              setActiveSource("all");
+                            } else {
+                              setActiveSource(c.id);
+                              if (!query.trim()) browseSource(c.id);
+                            }
+                          }}
+                          className={`px-2.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap max-w-[170px] shrink-0 ${
+                            on
+                              ? "bg-kindle-accent text-white border-kindle-accent"
+                              : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
+                          }`}
+                        >
+                          {c.icon ? (
+                            <img
+                              src={c.icon}
+                              alt=""
+                              className="w-3 h-3 rounded-full object-cover shrink-0"
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <Puzzle className="w-3 h-3 shrink-0" />
+                          )}
+                          <span className="truncate">{c.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
             </div>
 
             {/* Source & Topic Filters - Positioned directly under search bar */}
@@ -3499,12 +3613,17 @@ function DiscoverView({
         </section>
       )}
 
-      {/* Search Results */}
-      {searchMode && !isAudiobookSearch && (
+      {/* Search Results — also covers browsing a source's own catalogue,
+          which renders into the same grid with the same download action. */}
+      {(searchMode || pluginFeedMode) && !isAudiobookSearch && (
         <section className="space-y-6" data-guide="discover-results">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-lexend font-bold">
-              {loading ? "Searching archives…" : `Results for "${query}"`}
+              {loading
+                ? "Searching archives…"
+                : pluginFeedMode
+                  ? `Browsing ${pluginChips.find((c) => c.id === activeSource)?.name ?? "source"}`
+                  : `Results for "${query}"`}
             </h3>
             <button
               onClick={clearSearch}

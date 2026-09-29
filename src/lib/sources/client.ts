@@ -252,9 +252,11 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     },
 
     async details(manga: Manga) {
-      const ep = plugin.endpoints.details;
-      const out: Manga = { ...manga };
+      // Madara first: a theme source has no `endpoints` at all, so reading
+      // plugin.endpoints.details above the theme branch would throw.
       if (madara) return madara.details(manga) as Promise<Manga>;
+      const ep = plugin.endpoints?.details;
+      const out: Manga = { ...manga };
       if (!ep) return out;
 
       const url = buildUrl(ep.url, plugin, { mangaUrl: manga.url });

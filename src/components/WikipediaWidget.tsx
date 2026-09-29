@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Globe,
   Search,
@@ -76,6 +76,9 @@ const POPULAR_TOPICS = [
 export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, initialArticle }: WikipediaWidgetProps) {
   const [lang, setLang] = useState("en");
   const [query, setQuery] = useState("");
+  // Monotonic request id + debounce timer for live search.
+  const searchSeq = useRef(0);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeArticle, setActiveArticle] = useState<WikiArticleSummary | null>(null);
@@ -166,12 +169,41 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
     }
   };
 
+  // Live search as the user types, debounced so a full query costs one
+  // request instead of one per keypress. Submitting the form still works.
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const term = query.trim();
+    if (term.length < 2) {
+      searchSeq.current++;
+      setSearchResults([]);
+      setIsSearching(false);
+      if (!term) setActiveTab("featured");
+      return;
+    }
+    searchTimer.current = setTimeout(() => {
+      void handleSearch(undefined, term);
+    }, 320);
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
+    // handleSearch reads `lang` too, so re-run when the language changes.
+  }, [query, lang]);
+
   // Perform search query using Wikipedia API
+  /**
+   * Live search, debounced.
+   *
+   * Typing straight into the API fired a request per keystroke and let a
+   * slow response overwrite a newer one, so results flickered between
+   * queries. Only the newest request is allowed to write state.
+   */
   const handleSearch = async (e?: React.FormEvent, searchQuery?: string) => {
     if (e) e.preventDefault();
     const searchTerm = searchQuery || query;
     if (!searchTerm.trim()) return;
 
+    const seq = ++searchSeq.current;
     setIsSearching(true);
     setActiveTab("search");
     try {
@@ -180,12 +212,14 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
       )}&utf8=&format=json&origin=*&srlimit=10`;
       const res = await fetch(url);
       const data = await res.json();
+      if (seq !== searchSeq.current) return; // a newer search won
       if (data?.query?.search) {
         setSearchResults(data.query.search);
       } else {
         setSearchResults([]);
       }
     } catch (err) {
+      if (seq !== searchSeq.current) return;
       toast.error("Failed to search Wikipedia. Check network connection.");
       console.error(err);
     } fonting: {

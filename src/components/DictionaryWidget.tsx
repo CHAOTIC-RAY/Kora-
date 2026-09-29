@@ -9,11 +9,20 @@ import {
 
 interface DictionaryWidgetProps {
   onClose?: () => void;
+  /**
+   * Drop the internal header and frame. Used when the widget is already
+   * inside a titled sheet — otherwise the title and close button appear
+   * twice, once nested inside the other.
+   */
+  bare?: boolean;
 }
 
-export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
+export default function DictionaryWidget({ onClose, bare = false }: DictionaryWidgetProps) {
   const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [query, setQuery] = useState("");
+  // Debounced: filtering 7.8k entries on every keystroke is what makes a
+  // long definition feel laggy to type into.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [ready, setReady] = useState(false);
   const [draft, setDraft] = useState({ word: "", definition: "" });
   const [saving, setSaving] = useState(false);
@@ -57,8 +66,13 @@ export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
     };
   }, []);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 160);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const results = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = debouncedQuery.trim().toLowerCase();
     if (!q) return entries.slice(0, 12);
     return entries
       .filter(
@@ -67,30 +81,34 @@ export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
           (e.definition || "").toLowerCase().includes(q)
       )
       .slice(0, 40);
-  }, [query, entries]);
+  }, [debouncedQuery, entries]);
 
   const decode = (s: string) =>
     s.replace(/&#\d+;/g, (m) => String.fromCodePoint(parseInt(m.slice(2, -1), 10)));
 
   return (
-    <div className="flex flex-col h-full w-full bg-kindle-bg text-kindle-text">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-kindle-border">
-        <div className="flex items-center gap-2">
-          <BookA className="w-4 h-4 text-kindle-accent" />
-          <span className="text-sm font-bold">Searchable Dictionary</span>
+    <div className="flex flex-col h-full w-full text-kindle-text">
+      {/* Header only when unframed: a titled sheet already provides one,
+          and two stacked headers is the nested-box the user reported. */}
+      {!bare && (
+        <div className="flex items-center justify-between px-4 py-3 border-b border-kindle-border">
+          <div className="flex items-center gap-2">
+            <BookA className="w-4 h-4 text-kindle-accent" />
+            <span className="text-sm font-bold">Searchable Dictionary</span>
+          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 text-kindle-text-muted hover:text-kindle-text cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 text-kindle-text-muted hover:text-kindle-text cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-      </div>
+      )}
 
-      <div className="px-4 py-3 border-b border-kindle-border">
+      <div className={`${bare ? "pt-0" : ""} px-4 py-3 border-b border-kindle-border`}>
         <div className="flex items-center gap-2 bg-kindle-card border border-kindle-border rounded-xl px-3 py-2">
           <Search className="w-4 h-4 text-kindle-text-muted" />
           <input
