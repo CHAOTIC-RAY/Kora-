@@ -19,7 +19,7 @@
 
 import type { Chapter, JsonListing, JsonRule, Manga, Page, SourcePlugin } from "./types";
 
-type Json = any;
+export type Json = any;
 
 /**
  * Resolve a path against a decoded JSON value.

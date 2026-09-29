@@ -17,6 +17,8 @@
 
 import * as cheerio from "cheerio";
 import { load } from "cheerio";
+import { createJsonClient } from "./jsonClient";
+import type { Json } from "./jsonClient";
 import {
   absUrl,
   expandTemplate,
@@ -227,16 +229,43 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     return parseListing(res.body, res.finalUrl || url, endpoint.mangas, plugin, endpoint.nextPage);
   }
 
+  /**
+   * JSON-API sources run through their own runtime.
+   *
+   * This branch was missing entirely: the JSON client existed and was
+   * tested, but nothing ever constructed one, so every `api: "json"` source
+   * (Open Library, Gutenberg) silently returned zero results. It is built
+   * lazily so HTML sources pay nothing for it.
+   */
+  const json =
+    plugin.api === "json" && plugin.endpoints?.json
+      ? createJsonClient(plugin, (url) =>
+          relayFetch(url, {
+            referer: plugin.baseUrl,
+            headers: plugin.headers,
+          }).then((r) => (r.ok ? (JSON.parse(r.body || "{}") as Json) : {}))
+        )
+      : null;
+
   return {
     plugin,
 
     popular: (page = 1) =>
-      madara ? madara.popular(page) : fetchListing(plugin.endpoints.popular, page),
+      madara
+        ? madara.popular(page)
+        : json
+          ? json.popular(page)
+          : fetchListing(plugin.endpoints?.popular, page),
     latest: (page = 1) =>
-      madara ? madara.latest(page) : fetchListing(plugin.endpoints.latest, page),
+      madara
+        ? madara.latest(page)
+        : json
+          ? json.latest(page)
+          : fetchListing(plugin.endpoints?.latest, page),
 
     async search(query, page = 1, filters = {}) {
       if (madara) return madara.search(query, page);
+      if (json) return json.search(query, page);
 
       const ep = plugin.endpoints?.search;
       if (!ep) return { mangas: [], hasNextPage: false };
@@ -252,9 +281,10 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
     },
 
     async details(manga: Manga) {
-      // Madara first: a theme source has no `endpoints` at all, so reading
+      // Theme first: a theme source has no `endpoints` at all, so reading
       // plugin.endpoints.details above the theme branch would throw.
       if (madara) return madara.details(manga) as Promise<Manga>;
+      if (json) return json.details(manga) as Promise<Manga>;
       const ep = plugin.endpoints?.details;
       const out: Manga = { ...manga };
       if (!ep) return out;
