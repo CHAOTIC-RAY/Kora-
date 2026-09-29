@@ -71,6 +71,7 @@ import OnlineScrabbleGame from "./OnlineScrabbleGame";
 import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
+import DictionaryWidget from "./DictionaryWidget";
 import { isNativeAndroid } from "../lib/capacitorNative";
 import { gameViewVariant } from "../lib/canHover";
 import {
@@ -350,6 +351,7 @@ function SettingsView({
   const [showP2p, setShowP2p] = useState<boolean>(false);
   const [showClipper, setShowClipper] = useState<boolean>(false);
   const [showFolderWatch, setShowFolderWatch] = useState<boolean>(false);
+  const [showDictionary, setShowDictionary] = useState<boolean>(false);
   const [showClearLibrary, setShowClearLibrary] = useState<boolean>(false);
   const [clearingLibrary, setClearingLibrary] = useState<boolean>(false);
   const [showReadAloud, setShowReadAloud] = useState<boolean>(false);
@@ -1371,6 +1373,26 @@ function SettingsView({
                   <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Pacing & Moods</p>
                   <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
                     Track your words-per-minute, session intervals, and reader emotion trends.
+                  </p>
+                </div>
+              </button>
+
+              {/* Personal Dictionary Card — Workshop only.
+                  The real editor lives here; it is not reachable from
+                  Settings, and the landing page card is just a preview. */}
+              <button
+                type="button"
+                onClick={() => setShowDictionary(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/35 rounded-2xl p-4 text-left transition duration-300 flex flex-col gap-3 group cursor-pointer shadow-xs"
+              >
+                <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-text rounded-xl w-fit group-hover:scale-105 transition-transform duration-300">
+                  <BookMarked className="w-4 h-4 text-kindle-accent" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Personal Dictionary</h4>
+                  <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Vocabulary Bank</p>
+                  <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
+                    Add, edit and delete the words you save while reading.
                   </p>
                 </div>
               </button>
@@ -2934,6 +2956,35 @@ function SettingsView({
         books={(books as BookMetadata[]) || getLocalLibrary()}
       />
       <P2pTransferPanel open={showP2p} onClose={() => setShowP2p(false)} />
+
+      {/* Personal Dictionary — the one editor, opened from the Workshop card.
+          Uses the same component as the landing page preview so add/edit/
+          delete behave identically wherever the user opens it. */}
+      {showDictionary && (
+        <FluidOverlay
+          open={showDictionary}
+          onClose={() => setShowDictionary(false)}
+          variant="sheet"
+          panelClassName="max-w-xl p-6"
+        >
+          <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
+            <div className="flex items-center gap-3">
+              <BookMarked className="w-5 h-5 text-kindle-text" />
+              <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Personal Dictionary</h3>
+            </div>
+            <button
+              onClick={() => setShowDictionary(false)}
+              className="p-1.5 hover:bg-neutral-100 rounded-lg"
+              aria-label="Close dictionary"
+            >
+              <X className="w-5 h-5 text-kindle-text" />
+            </button>
+          </div>
+          <div className="max-h-[75vh] overflow-y-auto pr-1">
+            <DictionaryWidget onClose={() => setShowDictionary(false)} />
+          </div>
+        </FluidOverlay>
+      )}
 
       <FluidOverlay open={showClipper} onClose={() => setShowClipper(false)} variant="sheet" panelClassName="max-w-xl p-6">
         <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
