@@ -18,6 +18,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { X, BookOpen, Download, Check, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { createSourceClient } from "../lib/sources/client";
 import { getInstalledPlugins } from "../lib/sources/store";
+import ComicReader from "./ComicReader";
 import type { Chapter, Manga, MangaStatus, SourcePlugin } from "../lib/sources/types";
 
 interface ComicDetailViewProps {
@@ -194,71 +195,34 @@ export default function ComicDetailView({
     }
   };
 
-  // Keyboard paging, the way a reader is expected to behave.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") {
-        setOpen((o) => (o && o.index < o.pages.length - 1 ? { ...o, index: o.index + 1 } : o));
-      } else if (e.key === "ArrowLeft") {
-        setOpen((o) => (o && o.index > 0 ? { ...o, index: o.index - 1 } : o));
-      } else if (e.key === "Escape") {
-        setOpen(null);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
   if (!book) return null;
 
   // Pager takes over the whole screen while a chapter is open.
   if (open) {
     return (
-      <div className="fixed inset-0 z-[10000] bg-black flex flex-col">
-        <div className="flex items-center justify-between px-4 py-2 text-kindle-text/80 shrink-0">
-          <button
-            onClick={() => setOpen(null)}
-            className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest hover:text-white cursor-pointer"
-          >
-            <X className="w-4 h-4" /> Back
-          </button>
-          <span className="text-[10px] font-mono">
-            {open.index + 1} / {open.pages.length}
-          </span>
-        </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <img
-            src={open.pages[open.index]}
-            alt={`${open.chapter.name} page ${open.index + 1}`}
-            className="w-full h-full object-contain select-none"
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3 px-4 py-3 shrink-0">
-          <button
-            onClick={() => setOpen((o) => (o && o.index > 0 ? { ...o, index: o.index - 1 } : o))}
-            disabled={open.index === 0}
-            className="px-3 py-2 rounded-lg border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 cursor-pointer"
-          >
-            Prev
-          </button>
-          <div className="flex-1 h-1 rounded-full bg-white/15 overflow-hidden">
-            <div
-              className="h-full bg-white/70"
-              style={{ width: `${((open.index + 1) / open.pages.length) * 100}%` }}
-            />
-          </div>
-          <button
-            onClick={() =>
-              setOpen((o) => (o && o.index < o.pages.length - 1 ? { ...o, index: o.index + 1 } : o))
-            }
-            disabled={open.index === open.pages.length - 1}
-            className="px-3 py-2 rounded-lg border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-widest disabled:opacity-30 cursor-pointer"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      <ComicReader
+        pages={open.pages.map((url) => ({ url }))}
+        chapter={{
+          url: open.chapter.url,
+          name: open.chapter.name,
+          number: chapterNumber(open.chapter) ?? undefined,
+        }}
+        chapters={ordered.map((c) => ({
+          url: c.url,
+          name: c.name,
+          number: chapterNumber(c) ?? undefined,
+        }))}
+        seriesTitle={book.title}
+        rtl
+        onClose={() => setOpen(null)}
+        onChapterChange={(next) => {
+          // The reader offers "next chapter" as a shortcut, so it has to
+          // load for real. Wired to the same path as tapping a row;
+          // without this the control was decorative.
+          const match = ordered.find((c) => c.url === next.url);
+          if (match) void openChapter(match);
+        }}
+      />
     );
   }
 
