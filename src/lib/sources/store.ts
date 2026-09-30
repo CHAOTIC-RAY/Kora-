@@ -130,8 +130,38 @@ export function uninstallExtension(id: string): void {
   );
 }
 
+/**
+ * Repository URLs that shipped in a build and must not survive it.
+ *
+ * A test registry was left in the configured list during development. The
+ * file was deleted, but the entry lives in each device's localStorage, so
+ * every install that ran that build kept requesting a path that no longer
+ * exists. The server's SPA fallback answers with index.html, and the hub
+ * reported it as a raw parser error:
+ *
+ *   /data/test-registry.json — Unexpected token '<', "<!doctype "... is not valid JSON
+ *
+ * Deleting the file cannot fix this — only the stored entry can. So it is
+ * purged here, on read, which covers phones and browsers that will never
+ * run a build where the file exists again.
+ */
+const RETIRED_REPOS = [/\/data\/test-registry\.json/i];
+
+/** Drop retired entries from storage. Safe to call on every read. */
+function purgeRetiredRepos(): void {
+  let changed = false;
+  const kept = readJSON<string[]>(LS_REPOS, []).filter((url) => {
+    if (typeof url !== "string") return false;
+    const dead = RETIRED_REPOS.some((re) => re.test(url));
+    if (dead) changed = true;
+    return !dead;
+  });
+  if (changed) writeJSON(LS_REPOS, kept);
+}
+
 /** Repos to offer in the manager. The default can be removed but not lost. */
 export function getRepos(): string[] {
+  purgeRetiredRepos();
   const custom = readJSON<string[]>(LS_REPOS, []);
   return Array.from(new Set([DEFAULT_REPO, ...custom]));
 }
