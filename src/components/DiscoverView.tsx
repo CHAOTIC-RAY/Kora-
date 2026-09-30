@@ -2094,7 +2094,7 @@ function DiscoverView({
     if (cached && cached.length > 0) return cached;
 
     try {
-      const res = await fetch(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
+      const res = await fetchWithRetry(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
       if (!res.ok) throw new Error("Failed to load NetGalley category");
       const data = await res.json();
       const results = data.results || [];
@@ -2117,8 +2117,22 @@ function DiscoverView({
     }
   }
 
+  async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, attempts = 2): Promise<Response> {
+    let lastErr: any;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const res = await fetch(input, init);
+        if (res.ok) return res;
+        lastErr = new Error(`HTTP ${res.status}`);
+      } catch (err: any) {
+        lastErr = err;
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+      }
+    }
+    throw lastErr || new Error('fetch failed');
+  }
+
   async function handleCategoryClick(category: any) {
-    setLoadingCategory(true);
     setViewingCategory(category);
     setSearchMode(false);
     setCategoryPreviousDate(null);

@@ -3987,9 +3987,14 @@ export default {
           headers: resHeaders
         });
       } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        console.error("[proxy-file] request failed", err);
+        return new Response(JSON.stringify({ error: "Proxy download failed. Please try again later." }), {
+          status: 502,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Retry-After": "10"
+          }
         });
       }
     }
