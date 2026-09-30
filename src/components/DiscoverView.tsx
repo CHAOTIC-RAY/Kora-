@@ -335,6 +335,9 @@ function DiscoverView({
    * a user who tapped a chip is browsing, not searching.
    */
   const [pluginFeedMode, setPluginFeedMode] = useState(false);
+  // True once a source browse has walked every page the site offers, so the
+  // footer can say so instead of inviting a scroll that will fetch nothing.
+  const [pluginFeedExhausted, setPluginFeedExhausted] = useState(false);
 
   const refreshPluginChips = useCallback(() => {
     try {
@@ -363,26 +366,66 @@ function DiscoverView({
     if (!plugin) return;
     setLoading(true);
     setPluginFeedMode(true);
+    setPluginFeedExhausted(false);
     setSearchMode(false);
     setIsAdvancedSearch(false);
     setQuery("");
     try {
       const client = createSourceClient(plugin);
-      const page = await client.popular(1);
-      const items = (page.mangas || []).map((m) => ({
-        title: m.title,
-        author: m.author || "Unknown",
-        source: plugin.name,
-        cover: m.thumbnailUrl || "",
-        description: m.description || "",
-        sourceId: m.url,
-        pluginId: plugin.id,
-        kind: "manga",
-      }));
-      setResults(items);
-      setTotalResults(items.length);
+      // Walk several pages rather than stopping at the first. The old code
+      // fetched page 1 and declared "no more results in this archive"
+      // unconditionally, which is how a browsable source looked empty
+      // after twelve titles.
+      //
+      // Pages are fetched one at a time and the grid is repainted after
+      // each, so the first screenful appears in about a second instead of
+      // the user staring at a spinner while six round-trips finish.
+      const seen = new Set<string>();
+      const all: any[] = [];
+      const MAX_PAGES = 6;
+      const toItems = (list: any[]) =>
+        list.map((m) => ({
+          title: m.title,
+          // Left unset when the source publishes no author. Printing
+          // "Unknown" asserted a lookup failed, when the truth is the site
+          // simply does not list one on its cards — MangaReadOrg does, the
+          // other two do not.
+          author: m.author || "",
+          source: plugin.name,
+          cover: m.thumbnailUrl || "",
+          description: m.description || "",
+          sourceId: m.url,
+          pluginId: plugin.id,
+          kind: "manga",
+        }));
+
+      let reachedLastPage = false;
+      for (let p = 1; p <= MAX_PAGES; p++) {
+        const page = await client.popular(p);
+        const fresh = (page.mangas || []).filter((m) => {
+          const key = m.url || (m as unknown as { id?: string }).id;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        all.push(...fresh);
+        // A page that adds nothing new is the last page, whatever the
+        // source's own next-page signal says.
+        if (!page.hasNextPage || fresh.length === 0) {
+          reachedLastPage = true;
+          break;
+        }
+        if (p < MAX_PAGES) {
+          setResults(toItems(all));
+          setTotalResults(all.length);
+          setLoading(false);
+        }
+      }
+      setResults(toItems(all));
+      setTotalResults(all.length);
       setSearchMeta({});
-      if (items.length === 0) {
+      setPluginFeedExhausted(reachedLastPage || all.length > 0);
+      if (all.length === 0) {
         toast("No listings returned by this source", { icon: "📭" });
       }
     } catch {
@@ -3844,6 +3887,25 @@ function DiscoverView({
                   <Loader2 className="w-6 h-6 text-kindle-accent animate-spin" />
                   <p className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted animate-pulse">
                     Loading more results...
+                  </p>
+                </div>
+              ) : pluginFeedMode && !pluginFeedExhausted ? (
+                // More pages are still being fetched, so a scroll would not
+                // load anything new. Say what is happening instead.
+                <div className="py-6 text-center flex flex-col items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-kindle-accent animate-spin" />
+                  <p className="text-[10px] text-kindle-text-muted font-semibold uppercase tracking-widest">
+                    Loading more of this archive&hellip; {results.length} so far
+                  </p>
+                </div>
+              ) : pluginFeedMode ? (
+                // Browse already walked every page the source offers, so
+                // there is nothing left to scroll for. Saying "no more
+                // results" here used to imply the source was exhausted,
+                // when in truth only page 1 had ever been requested.
+                <div className="py-6 text-center">
+                  <p className="text-[10px] text-kindle-text-muted font-semibold uppercase tracking-widest">
+                    End of this archive&rsquo;s listing &middot; {results.length} titles
                   </p>
                 </div>
               ) : hasMore ? (

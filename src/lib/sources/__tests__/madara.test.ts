@@ -78,7 +78,12 @@ ok("root-relative href resolved", listing.mangas[1]?.url === "https://example.te
 ok("title from anchor title attr", listing.mangas[0]?.title === "Alpha Series", listing.mangas[0]?.title);
 ok("entities decoded", listing.mangas[1]?.title === "Beta & Friends", listing.mangas[1]?.title);
 ok("cover from data-src", listing.mangas[0]?.thumbnailUrl?.includes("alpha-175x238"), listing.mangas[0]?.thumbnailUrl);
-ok("hasNextPage from next link", listing.hasNextPage === true);
+// A short fixture page is the last page: the site keeps paginating while a
+// page comes back full. Real listings hold 12, so the threshold sits below
+// that. This is not derived from a `next` anchor because Madara themes
+// frequently render pagination as a bare <ul> with no link classes, and
+// trusting their markup made every browsable source read as exhausted.
+ok("a short page is the last page", listing.hasNextPage === false);
 
 /* details */
 const det = await client.details(listing.mangas[0]);

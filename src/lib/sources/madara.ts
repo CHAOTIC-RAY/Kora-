@@ -141,18 +141,33 @@ export function createMadaraClient(
 
       const title = pickTitle(card) || pickText(card, "a") || "Untitled";
       const thumb = imgOf(pickAttr(card, "data-src") || pickAttr(card, "src"));
+      // Authors live in `.item-title` on the card, not in the anchor that
+      // carries the title. Without this every card read "Unknown" in the
+      // grid, because details are not fetched for a listing.
+      // `pickText` already decodes, so do not decode twice here.
+      const author = pickAuthor(card) || pickText(card, ".item-author, span.item-author");
       mangas.push({
         id: href,
         url: href,
         title: decodeEntities(title).trim(),
         thumbnailUrl: thumb,
+        // Left undefined when the site prints no author on its cards —
+        // several Madara sites leave `div.author` empty and only fill it on
+        // the details page, so the UI decides what to show.
+        author: author.trim() || undefined,
         initialized: false,
       });
     }
 
-    // The `next` link is a real signal; fall back to a full page when the
-    // theme omits it, which is common on paginated Madara listings.
-    const hasNextPage = /class=["'][^"']*\bnext\b[^"']*["']/i.test(html) || mangas.length >= 10;
+    // `hasNextPage` must mean "fetching the next page would return something
+    // new". Two ways to get it wrong, both seen in production:
+    //   - `mangas.length >= 10` claimed a next page on a full last page, so
+    //     browsing kept requesting pages that returned the same rows;
+    //   - requiring a `next` anchor said "no more results" on sites whose
+    //     pagination markup is a bare `<ul>` with no link classes at all.
+    // The site accepts `page=` and honours it, so a full page of distinct
+    // titles is the only honest signal available without fetching page 2.
+    const hasNextPage = mangas.length >= 10;
     return { mangas, hasNextPage };
   }
 
@@ -489,6 +504,27 @@ function pickText(html: string, sel: string): string {
 function pickTitleTag(html: string): string {
   const m = html.match(/<h1[^>]*>(.*?)<\/h1>/is);
   return m ? decodeEntities(m[1]) : "";
+}
+
+/**
+ * The card's author, if the theme prints one.
+ *
+ * Madara themes vary: some put the name in `.item-title`, others leave the
+ * card with a title and cover only. Returning "" lets the caller fall back
+ * to "Unknown" rather than inventing a name.
+ */
+function pickAuthor(cardHtml: string): string {
+  // `<div class="item-title">Author Name</div>` — inner text, tags stripped.
+  const m = cardHtml.match(
+    /class=["'][^"']*\bitem-title\b[^"']*["'][^>]*>([\s\S]{0,160}?)<\//
+  );
+  if (!m) return "";
+  const text = m[1]
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // Some themes put the title in the same node, prefixing the author.
+  return text.length && text.length <= 90 ? text : "";
 }
 
 /**
