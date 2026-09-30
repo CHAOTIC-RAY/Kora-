@@ -82,6 +82,10 @@ import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
 import DictionaryWidget from "./DictionaryWidget";
+// Download Control lives in the SETTINGS branch of this file only. It drives
+// the live download queue App owns — see the call site for why.
+import DownloadControlSection from "./DownloadControlSection";
+import type { DownloadEntry } from "../lib/downloadControl";
 import { isNativeAndroid } from "../lib/capacitorNative";
 import { gameViewVariant } from "../lib/canHover";
 import {
@@ -162,6 +166,19 @@ interface SettingsViewProps {
   /** When false (hidden keep-alive tab), skip heavy IDB/dir init until first activation. */
   isActive?: boolean;
   onModalToggle?: (isOpen: boolean) => void;
+
+  /**
+   * Download Control (Settings branch only). `downloads` is the live queue
+   * owned by App — Settings renders it, it does not keep its own copy, so the
+   * two surfaces can never disagree about what is in flight.
+   */
+  downloads?: DownloadEntry[];
+  onCancelDownload?: (downloadId: string) => void;
+  onRetryDownload?: (dl: DownloadEntry | string) => void;
+  onDismissDownload?: (downloadId: string) => void;
+  onDownloadsChange?: (downloads: DownloadEntry[]) => void;
+  /** Whether the service worker controls the page (needed for background downloads). */
+  swControllerReady?: boolean;
 
   /** Feature toggles section */
   newsTabEnabled?: boolean;
@@ -269,6 +286,15 @@ function SettingsView({
   onChangeGettingStartedBookEnabled,
   loungeGuidesEnabled = true,
   onChangeLoungeGuidesEnabled,
+  // Download Control. Declared on SettingsViewProps but never destructured,
+  // so the JSX below referenced six names that were not in scope and the
+  // file did not compile — the section was built but never reachable.
+  downloads,
+  onCancelDownload,
+  onRetryDownload,
+  onDismissDownload,
+  onDownloadsChange,
+  swControllerReady,
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -2619,6 +2645,24 @@ function SettingsView({
             </p>
           </div>
         </section>
+
+        {/* ── Download Control ──────────────────────────────────────────
+            SETTINGS BRANCH ONLY (`view === "settings"`). The Workshop branch
+            (`view === "tools"`) that follows must NOT grow this section — it
+            already carries its own storage affordances, and a download queue
+            control surface belongs with the account/storage settings.
+
+            It reads the live queue App owns (`globalDownloads`) and drives the
+            same cancel/retry callbacks the Library grid uses, so it controls
+            the real transfers rather than a copy of the list. */}
+        <DownloadControlSection
+          downloads={downloads ?? []}
+          onCancel={onCancelDownload}
+          onRetry={onRetryDownload}
+          onDismiss={onDismissDownload}
+          onSetDownloads={onDownloadsChange}
+          serviceWorkerReady={swControllerReady}
+        />
         </>
         )}
 

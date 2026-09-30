@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-09-30T07:11:08.939Z",
+  "generatedAt": "2026-09-30T07:19:42.851Z",
   "results": [
     {
       "id": "kora-integration-calibre",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/integrations/calibre.json",
       "name": "Calibre",
-      "checkedAt": "2026-09-30T07:10:49.768Z",
+      "checkedAt": "2026-09-30T07:19:24.434Z",
       "verdict": "not-applicable",
       "stage": "category",
       "detail": "integration"
@@ -14,7 +14,7 @@
       "id": "kora-integration-kindle",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/integrations/send-to-kindle.json",
       "name": "Send to Kindle",
-      "checkedAt": "2026-09-30T07:10:49.769Z",
+      "checkedAt": "2026-09-30T07:19:24.435Z",
       "verdict": "not-applicable",
       "stage": "category",
       "detail": "integration"
@@ -23,7 +23,7 @@
       "id": "kora-legal-gutenberg",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/legal/gutenberg.json",
       "name": "Project Gutenberg",
-      "checkedAt": "2026-09-30T07:10:49.769Z",
+      "checkedAt": "2026-09-30T07:19:24.435Z",
       "verdict": "not-applicable",
       "stage": "kind",
       "detail": "api source"
@@ -32,7 +32,7 @@
       "id": "kora-legal-internet-archive",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/legal/internet-archive.json",
       "name": "Internet Archive (Texts)",
-      "checkedAt": "2026-09-30T07:10:49.769Z",
+      "checkedAt": "2026-09-30T07:19:24.436Z",
       "verdict": "not-applicable",
       "stage": "kind",
       "detail": "api source"
@@ -41,7 +41,7 @@
       "id": "4503604002548978580",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/manga/mangaread-org.json",
       "name": "MangaReadOrg",
-      "checkedAt": "2026-09-30T07:10:49.770Z",
+      "checkedAt": "2026-09-30T07:19:24.436Z",
       "verdict": "readable",
       "stage": "ok",
       "detail": "54 pages in \"Chapter 3862\", image/gif"
@@ -50,7 +50,7 @@
       "id": "4503604003186470944",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/manga/mangazin.json",
       "name": "MangaZin",
-      "checkedAt": "2026-09-30T07:10:53.704Z",
+      "checkedAt": "2026-09-30T07:19:29.097Z",
       "verdict": "unreadable",
       "stage": "panels",
       "detail": "panel not served for 3 chapter(s)"
@@ -59,7 +59,7 @@
       "id": "kora-manga-manhuahot",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/manga/manhuahot.json",
       "name": "ManhwaHot",
-      "checkedAt": "2026-09-30T07:10:55.544Z",
+      "checkedAt": "2026-09-30T07:19:31.117Z",
       "verdict": "readable",
       "stage": "ok",
       "detail": "8 pages in \"Chap 412\", image/jpeg"
@@ -68,7 +68,7 @@
       "id": "4503604002226619223",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/manga/manhuaplus.json",
       "name": "ManhuaPlus",
-      "checkedAt": "2026-09-30T07:10:59.202Z",
+      "checkedAt": "2026-09-30T07:19:34.531Z",
       "verdict": "readable",
       "stage": "ok",
       "detail": "12 pages in \"Chapter 3862\", image/jpeg"
@@ -77,7 +77,7 @@
       "id": "4503604002575350979",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/manga/manhuaus.json",
       "name": "Manhuaus",
-      "checkedAt": "2026-09-30T07:11:02.472Z",
+      "checkedAt": "2026-09-30T07:19:38.036Z",
       "verdict": "unreadable",
       "stage": "panels",
       "detail": "panel not served for 3 chapter(s)"
@@ -86,7 +86,7 @@
       "id": "kora-manga-s2read",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/manga/s2read.json",
       "name": "S2Read",
-      "checkedAt": "2026-09-30T07:11:06.417Z",
+      "checkedAt": "2026-09-30T07:19:40.806Z",
       "verdict": "readable",
       "stage": "ok",
       "detail": "11 pages in \"Chapter 168\", image/jpeg"
@@ -95,7 +95,7 @@
       "id": "kora-theme-copper-night",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/themes/copper-night.json",
       "name": "Copper Night",
-      "checkedAt": "2026-09-30T07:11:08.938Z",
+      "checkedAt": "2026-09-30T07:19:42.851Z",
       "verdict": "not-applicable",
       "stage": "category",
       "detail": "theme"
@@ -104,7 +104,7 @@
       "id": "kora-theme-mint-terminal",
       "file": "D:/Wafig/Hermes/Kora-Sources/sources/themes/mint-terminal.json",
       "name": "Mint Terminal",
-      "checkedAt": "2026-09-30T07:11:08.939Z",
+      "checkedAt": "2026-09-30T07:19:42.851Z",
       "verdict": "not-applicable",
       "stage": "category",
       "detail": "theme"

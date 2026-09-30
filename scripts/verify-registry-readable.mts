@@ -20,7 +20,7 @@
  * an unreadable source cannot be published.
  */
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createMadaraClient } from "../src/lib/sources/madara";
@@ -29,8 +29,16 @@ import type { SourcePlugin } from "../src/lib/sources/types";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
-const SOURCES = join("D:/Wafig/Hermes/Kora-Sources", "sources");
-const OUT = join(ROOT, "sources-readable.json");
+
+/**
+ * Where the registry definitions live. Configurable, because the sibling app
+ * checkout is the only place this script can reach and a hardcoded absolute
+ * path (D:/Wafig/Hermes/Kora-Sources) works on exactly one machine and fails
+ * on CI. Kora-Sources' scripts/verify-readable.mjs sets this and is the
+ * supported entry point; a bare run defaults to a sibling ../Kora-Sources.
+ */
+const SOURCES = resolve(process.env.KORA_SOURCES_DIR || join(ROOT, "..", "Kora-Sources", "sources"));
+const OUT = process.env.KORA_READABLE_OUT || join(ROOT, "sources-readable.json");
 
 const argv = process.argv.slice(2);
 const WRITE = argv.includes("--write");

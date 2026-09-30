@@ -17,3 +17,4 @@ tmp/
 .env.local
 .env.*.local
 
+croc_wasm.bin

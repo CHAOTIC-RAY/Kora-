@@ -1265,8 +1265,15 @@ export default function App() {
     [removeDownloadEntry]
   );
 
-  const retryFailedDownload = useCallback((download: { id: string } | string) => {
-    const downloadId = typeof download === "string" ? download : download.id;
+  const retryFailedDownload = useCallback((download: { id?: string } | string) => {
+    // `DownloadEntry.id` is optional, so a caller can legitimately hand us
+    // an entry with no id. Fail loudly rather than looking up `undefined`
+    // and silently doing nothing.
+    const downloadId = typeof download === "string" ? download : download?.id;
+    if (!downloadId) {
+      console.warn("[downloads] retry called without a download id; ignoring");
+      return;
+    }
     let fallback = swDownloadFallbackRef.current.get(downloadId);
     if (!fallback) {
       try {
@@ -3676,6 +3683,12 @@ export default function App() {
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={handleShowOnboarding}
             onModalToggle={setAnyModalOpen}
+            downloads={globalDownloads}
+            onCancelDownload={cancelBackgroundDownload}
+            onDismissDownload={dismissDownload}
+            onRetryDownload={retryFailedDownload}
+            onDownloadsChange={setGlobalDownloads}
+            swControllerReady={!!("serviceWorker" in navigator) && !!navigator.serviceWorker?.controller}
           />
           </Suspense>
                   </div>
