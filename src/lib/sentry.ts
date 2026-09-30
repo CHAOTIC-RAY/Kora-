@@ -17,17 +17,24 @@ export function initSentry() {
 
   const dsn = import.meta.env.VITE_SENTRY_DSN;
   if (!dsn) {
-    // No Sentry DSN configured for this build (e.g. a fresh checkout or an
-    // APK/web build that didn't pass VITE_SENTRY_DSN at build time). Skip
-    // Sentry entirely rather than calling Sentry.init with a placeholder DSN,
-    // which would log "Invalid Sentry Dsn" on every load.
+    // Sentry is inert without a DSN. This used to be a silent `return`,
+    // which meant a build that forgot the env var shipped with error
+    // reporting quietly switched off and nothing said so — including every
+    // production build, because VITE_SENTRY_DSN is not set by wrangler.toml
+    // or package.json and must be passed at build time.
+    //
+    // The ErrorBoundary in main.tsx tells the user "a report has been sent
+    // to the team". That sentence is a lie when this branch runs, so say so
+    // once, loudly, in the console rather than letting it read as working.
+    console.warn(
+      "[sentry] VITE_SENTRY_DSN is not set — error reporting is DISABLED for " +
+        "this build. Pass VITE_SENTRY_DSN=... at build time to enable it."
+    );
     return;
   }
 
   Sentry.init({
-    dsn:
-      import.meta.env.VITE_SENTRY_DSN ||
-      "https://448617...7f6c@o4511839938150400.ingest.de.sentry.io/4511839944376400",
+    dsn,
 
     integrations: [
       Sentry.browserTracingIntegration(),

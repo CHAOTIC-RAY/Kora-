@@ -14,6 +14,25 @@ import { Bug } from "lucide-react";
 // Initialize Sentry as early as possible so boot-time errors are captured.
 initSentry();
 
+/**
+ * Did this crash come from a dynamically imported chunk that would not load?
+ *
+ * Vite fingerprints each lazy chunk (`BookReaderEPUB-CxGeMh_t.js`). If the
+ * page was open across a deploy, the old filename 404s and the import
+ * throws "Failed to fetch dynamically imported module". `resetError` cannot
+ * recover from that — React re-renders the same broken `import()` promise —
+ * so the only real remedy is a reload that picks up the new index.
+ */
+function isChunkLoadError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? `${error.message} ${(error as Error & { cause?: unknown }).cause ?? ""}`
+      : String(error);
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(
+    message
+  );
+}
+
 initAndroidGestureNavigation();
 initIosTouchGuards();
 
@@ -75,15 +94,30 @@ if ("serviceWorker" in navigator) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Sentry.ErrorBoundary
-      fallback={({ resetError }) => (
+      fallback={({ resetError, error }) => (
         <div className="min-h-screen bg-kindle-bg text-kindle-text flex flex-col items-center justify-center p-4">
           <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
           <p className="text-sm text-kindle-text-muted mb-4">
-            Kora encountered an unexpected error. A report has been sent to the team.
+            {/* Do not promise a report that was never sent. A build without
+                VITE_SENTRY_DSN has Sentry inert, and telling the user we
+                received their error is worse than saying nothing. */}
+            {import.meta.env.VITE_SENTRY_DSN
+              ? "Kora encountered an unexpected error. A report has been sent to the team."
+              : "Kora encountered an unexpected error. This build has error reporting turned off."}
           </p>
+          {/* A lazily-loaded chunk that fails to import is almost always a
+              stale page: the app was open across a deploy, so the hashed
+              filename it asked for no longer exists. Reloading once fetches
+              the new index and the new chunk. Without this the reader is a
+              dead end and the only option is a manual refresh. */}
+          {isChunkLoadError(error) && (
+            <p className="text-xs text-kindle-text-muted mb-4 max-w-sm text-center">
+              A part of the app did not load. Reloading usually fixes this.
+            </p>
+          )}
           <div className="flex items-center gap-3">
             <button
-              onClick={resetError}
+              onClick={() => (isChunkLoadError(error) ? window.location.reload() : resetError())}
               className="px-4 py-2 bg-kindle-accent text-white rounded-xl text-sm font-bold"
             >
               Reload
