@@ -1,36 +1,34 @@
 /**
- * The Discover plugin hub.
+ * The Discover plugin hub — the ONLY plugin hub in the app.
  *
  * This is a mount point, not an implementation. It renders the shared
- * `PluginBrowser` filtered to the `source` category, which is the only
- * category that belongs in Discover:
+ * `PluginBrowser` with `hubCategories()`, i.e. every category, because this is
+ * where plugins are installed, enabled, disabled and removed. If the hub
+ * filtered itself down to sources, an integration or a theme could never be
+ * installed from anywhere.
  *
- *  - Discover is where content comes from, so it shows sources;
- *  - integrations (Calibre sync, Send to Kindle) live in Workshop;
- *  - themes live in Settings.
+ * Once a non-source plugin IS installed, it stops being a hub entry and
+ * becomes a tile: `PluginBentoTiles` in Workshop shows one bento card per
+ * installed integration / theme / tool, and tapping the card opens that
+ * plugin's own panel. The two never overlap — the hub lists what you can
+ * install, Workshop lists what you have.
  *
- * That mapping is `surfaceForCategory` in `lib/sources/store.ts` and it is
- * asserted in `__tests__/pluginPlacement.test.ts`. This file stays a named
- * component because Discover imports it by name, and because a sub-tab whose
- * label is "Plugins" should not silently read as "every kind of plugin".
- *
- * All behaviour — install, remove, the Details sheet, custom GitHub
- * registries, the error banner, icons, and the piracy/adult gating for
- * restricted sources — now lives in PluginBrowser and is shared by all three
- * surfaces rather than forked per tab. Themes and integrations were never
- * behind the opt-in, and they still are not: only sources are gated.
+ * That split is the placement rule in `lib/sources/store.ts` and it is asserted
+ * in `__tests__/pluginPlacement.test.ts`. Themes and integrations were never
+ * behind the piracy/adult opt-in, and they still are not: only sources are
+ * gated, in either surface.
  */
 
 import React from "react";
 import PluginBrowser from "./PluginBrowser";
-import { categoriesForSurface } from "../lib/sources/store";
+import { hubCategories } from "../lib/sources/store";
 
 export default function SourcePluginsHub() {
   return (
     <PluginBrowser
-      categories={categoriesForSurface("discover")}
+      categories={hubCategories()}
       badge="Discover"
-      intro="Source plugins are rules for reading a site. Install one and it joins your Discover feed alongside your books."
+      intro="Plugins extend Kora. Source rules are how you read a site; integrations and themes are things you already own, wired in here. Install, pause or remove any of them."
     />
   );
 }

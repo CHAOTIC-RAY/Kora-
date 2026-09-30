@@ -220,27 +220,53 @@ export function hasOptedInAnything(): boolean {
 export type PluginSurface = "discover" | "workshop" | "settings";
 
 /**
- * Placement rule:
- *   source      -> discover    (the feed it feeds)
- *   integration -> workshop    (bridges to another app; configured in-app)
- *   theme       -> settings    (recolours the app, next to the built-in swatches)
+ * The ONE surface the plugin browser is mounted on.
+ *
+ * Installing, enabling, disabling and removing a plugin happens in exactly one
+ * place, and that place is Discover. A second copy of the hub elsewhere is not
+ * a convenience: it is two answers to "is this installed?", and they drift.
+ */
+export const HUB_SURFACE: PluginSurface = "discover";
+
+/**
+ * The category filter the hub renders.
+ *
+ * Every category, deliberately. The hub is where plugins are managed, so it has
+ * to be able to manage all of them — filtering it down to sources would mean an
+ * integration could never be installed from anywhere.
+ */
+export function hubCategories(): PluginCategory[] {
+  return Object.keys(SURFACE_BY_CATEGORY) as PluginCategory[];
+}
+
+/**
+ * Placement rule for an INSTALLED plugin — where its own surface lives, once it
+ * is on the device:
+ *   source      -> discover    (it joins the feed it feeds; no panel of its own)
+ *   integration -> workshop    (a bento tile that opens the integration's panel)
+ *   theme       -> workshop    (a non-source plugin, same rule as integrations)
  *   tool        -> workshop    (an in-app utility, same place as integrations)
+ *
+ * Settings stays a legal surface but owns no plugin category. Choosing the
+ * active BUILT-IN theme is a setting; a theme *plugin* is a non-source plugin
+ * and belongs in the Workshop grid beside every other installed plugin.
  */
 const SURFACE_BY_CATEGORY: Record<PluginCategory, PluginSurface> = {
   source: "discover",
   integration: "workshop",
-  theme: "settings",
+  theme: "workshop",
   tool: "workshop",
 };
 
-/** The tab a plugin category belongs to. Unknown categories fall back to
- *  Workshop, which shows everything except sources — the conservative choice,
- *  because a miscategorised plugin must not surface where content lives. */
+/** The surface an installed plugin of this category belongs to. Unknown
+ *  categories fall back to Workshop, which is where every non-source plugin
+ *  goes — the conservative choice, because a miscategorised plugin must not
+ *  surface where content lives. */
 export function surfaceForCategory(category: PluginCategory): PluginSurface {
   return SURFACE_BY_CATEGORY[category] ?? "workshop";
 }
 
-/** The category filter a surface passes to the shared plugin browser. */
+/** The categories whose installed tiles live on a surface. */
 export function categoriesForSurface(surface: PluginSurface): PluginCategory[] {
   return (Object.keys(SURFACE_BY_CATEGORY) as PluginCategory[]).filter(
     (c) => SURFACE_BY_CATEGORY[c] === surface

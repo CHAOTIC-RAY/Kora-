@@ -1,15 +1,24 @@
 /**
  * Category-placement tests.
  *
- * The rule under test: a plugin's category decides which tab it is reachable
- * from, and only sources are ever behind the piracy/adult opt-in.
+ * The rule under test has two halves, and they are different rules:
+ *
+ *  1. THE HUB is one surface — Discover. Installing, enabling, disabling and
+ *     removing a plugin happens there and nowhere else, and the hub can list
+ *     every category so nothing is uninstallable.
+ *  2. An INSTALLED non-source plugin surfaces as a tile on its own surface —
+ *     Workshop for every non-source category, Discover for sources. A theme is
+ *     a non-source plugin, so it is a Workshop tile, not a Settings list.
+ *
+ * Plus the invariant that outlived both: only sources are ever behind the
+ * piracy/adult opt-in.
  *
  * Regression: integration and theme plugins used to render in the Discover
- * plugin hub alongside sources. A theme in Discover read as somewhere to
- * install content, and an integration next to sources read as one more place
- * books come from. These assertions are what stop that from coming back by
- * accident — the mapping is data in `store.ts` precisely so it can be pinned
- * down here without rendering a single component.
+ * plugin hub alongside sources, and later the hub itself was duplicated into
+ * Workshop and Settings. A theme in Discover read as somewhere to install
+ * content; two hubs meant two answers to "is this installed?". These assertions
+ * are what stop any of that coming back — the mapping is data in `store.ts`
+ * precisely so it can be pinned down here without rendering a single component.
  */
 
 let pass = 0;
@@ -25,7 +34,9 @@ function check(name: string, cond: boolean, got?: unknown) {
 }
 
 import {
+  HUB_SURFACE,
   categoriesForSurface,
+  hubCategories,
   isEntryGated,
   isGatedCategory,
   surfaceForCategory,
@@ -35,41 +46,70 @@ import {
 import type { PluginCategory } from "../types";
 
 const ALL: PluginCategory[] = ["source", "theme", "integration", "tool"];
+const SURFACES: PluginSurface[] = ["discover", "workshop", "settings"];
 
-// ── Where each category lives ─────────────────────────────────────────────
+// ── The hub lives in Discover, and only in Discover ───────────────────────
+check("the hub surface is Discover", HUB_SURFACE === "discover", HUB_SURFACE);
+
+// The hub is where plugins are managed. If it could not list a category, that
+// category could never be installed from anywhere in the app.
+const hub = hubCategories();
+for (const c of ALL) {
+  check(`the hub can list ${c}`, hub.includes(c), hub);
+}
 check(
-  "sources live in Discover",
+  "the hub lists every category",
+  ALL.every((c) => hub.includes(c)) && hub.length === ALL.length,
+  hub
+);
+
+// A hub on any other surface is the bug this file exists to prevent. Discover
+// owns the hub; Workshop and Settings render no PluginBrowser at all.
+check(
+  "only Discover is a hub surface",
+  SURFACES.filter((s) => s === HUB_SURFACE).length === 1 &&
+    HUB_SURFACE === "discover",
+  HUB_SURFACE
+);
+check("Workshop does not host a hub", HUB_SURFACE !== "workshop", HUB_SURFACE);
+check("Settings does not host a hub", HUB_SURFACE !== "settings", HUB_SURFACE);
+
+// ── Where each installed category lives ──────────────────────────────────
+check(
+  "installed sources surface in Discover",
   surfaceForCategory("source") === "discover",
   surfaceForCategory("source")
 );
 check(
-  "integrations live in Workshop",
+  "installed integrations surface in Workshop",
   surfaceForCategory("integration") === "workshop",
   surfaceForCategory("integration")
 );
+// A theme plugin is a non-source plugin. The user asked for installed
+// non-source plugins as bento tiles in Workshop, which includes themes.
 check(
-  "themes live in Settings",
-  surfaceForCategory("theme") === "settings",
+  "installed themes surface in Workshop",
+  surfaceForCategory("theme") === "workshop",
   surfaceForCategory("theme")
 );
 check(
-  "tools live in Workshop",
+  "installed tools surface in Workshop",
   surfaceForCategory("tool") === "workshop",
   surfaceForCategory("tool")
 );
 
-// The user-visible ask, stated in the one form the test can check directly:
-// Calibre sync and Send to Kindle are integrations, so they are in Workshop.
+// The user-visible ask, in the one form the test can check directly: Calibre
+// sync and Send to Kindle are integrations, so they are Workshop tiles.
 check(
-  "Calibre sync is an integration plugin",
+  "Calibre sync is an installed Workshop tile",
   surfaceForCategory("integration") === "workshop"
 );
 check(
-  "Send to Kindle is an integration plugin",
+  "Send to Kindle is an installed Workshop tile",
   surfaceForCategory("integration") === "workshop"
 );
 
-// ── Each surface's own filter ──────────────────────────────────────────────
+// ── Each surface's own filter ────────────────────────────────────────────
 const discover = categoriesForSurface("discover");
 const workshop = categoriesForSurface("workshop");
 const settings = categoriesForSurface("settings");
@@ -82,28 +122,23 @@ check(
   discover
 );
 
+// Workshop owns every non-source category, and nothing else: the tile grid is
+// for things you USE, and a source has no panel to open.
 check(
   "Workshop lists integrations",
   workshop.includes("integration"),
   workshop
 );
+check("Workshop lists themes", workshop.includes("theme"), workshop);
+check("Workshop lists tools", workshop.includes("tool"), workshop);
 check("Workshop does not list sources", !workshop.includes("source"), workshop);
-check("Workshop does not list themes", !workshop.includes("theme"), workshop);
 
-check("Settings lists themes", settings.includes("theme"), settings);
-check(
-  "Settings does not list sources",
-  !settings.includes("source"),
-  settings
-);
-check(
-  "Settings does not list integrations",
-  !settings.includes("integration"),
-  settings
-);
+// Settings owns no plugin category at all now. The built-in theme swatches
+// stay — choosing the active BUILT-IN theme is a setting — but the theme
+// plugin list/hub is gone from here.
+check("Settings lists no plugin category", settings.length === 0, settings);
 
-// ── No category is orphaned, and none is double-listed ────────────────────
-const SURFACES: PluginSurface[] = ["discover", "workshop", "settings"];
+// ── No category is orphaned, and none is double-listed ───────────────────
 for (const c of ALL) {
   const places = SURFACES.filter((s) => categoriesForSurface(s).includes(c));
   check(
@@ -126,6 +161,17 @@ check(
   "no category is listed by two surfaces",
   new Set([...discover, ...workshop, ...settings]).size ===
     discover.length + workshop.length + settings.length
+);
+
+// The non-source categories are exactly the Workshop tiles. This is the
+// invariant the bento grid in PluginBentoTiles filters on.
+const NON_SOURCE: PluginCategory[] = ["theme", "integration", "tool"];
+check(
+  "Workshop tiles are exactly the non-source categories",
+  NON_SOURCE.every((c) => workshop.includes(c)) &&
+    !workshop.includes("source") &&
+    workshop.length === NON_SOURCE.length,
+  workshop
 );
 
 // ── Gating applies to sources and to nothing else ──────────────────────────
@@ -191,6 +237,27 @@ check(
   ) === false,
   isEntryGated(
     entry({ category: "integration", plugin: { ...entry({}).plugin, nsfw: true } })
+  )
+);
+
+// A theme is ungated whether it lived in Settings (where it used to) or in the
+// Workshop tile grid (where it lives now). Moving a surface must never be a
+// way to launder a restricted manifest into view.
+check(
+  "an installed theme tile is still not gated",
+  isEntryGated(
+    entry({
+      installed: true,
+      category: "theme",
+      plugin: { ...entry({}).plugin, piracy: true, nsfw: true },
+    })
+  ) === false,
+  isEntryGated(
+    entry({
+      installed: true,
+      category: "theme",
+      plugin: { ...entry({}).plugin, piracy: true, nsfw: true },
+    })
   )
 );
 

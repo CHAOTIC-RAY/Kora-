@@ -1,27 +1,31 @@
 /**
- * PluginBrowser — the one plugin list, rendered with a category filter.
+ * PluginBrowser — the one plugin list, the one place plugins are managed.
  *
- * Plugins are data, and there are three kinds of them, and each kind belongs
- * in a different place in the app:
+ * Plugins are data, and there are several kinds of them:
  *
- *  - a **source** is rules for scraping a site, and lives in Discover, next to
- *    the feed it feeds. It is the ONLY category gated behind the
- *    piracy/adult opt-in;
- *  - a **theme** is a CSS token set that repaints the app, and lives in
- *    Settings, next to the built-in theme swatches it overrides;
- *  - an **integration** bridges to another app (Calibre, Send to Kindle) and is
- *    configured in-app, so it lives in Workshop.
+ *  - a **source** is rules for scraping a site, and joins the Discover feed
+ *    it feeds. It is the ONLY category gated behind the piracy/adult opt-in;
+ *  - a **theme** is a CSS token set that repaints the app;
+ *  - an **integration** bridges to another app (Calibre, Send to Kindle);
+ *  - a **tool** is any other in-app utility.
  *
- * All three share one install pipeline, one registry list, one Details sheet
- * and one set of cards, so they share one component. The placement rule lives
- * in `store.ts` (`surfaceForCategory` / `categoriesForSurface`) and is
- * asserted by `__tests__/pluginPlacement.test.ts` — this file only renders
- * whatever categories it is handed.
+ * All of them share one install pipeline, one registry list, one Details sheet
+ * and one set of cards, so they share one component.
  *
- * SourcePluginsHub (Discover) delegates here with
- * `categoriesForSurface("discover")`; Workshop and Settings each render it with
- * their own filter, read from the same rule. Nothing is duplicated, and
- * nothing is reachable from two places at once.
+ * WHERE it renders: exactly once, in Discover, via `SourcePluginsHub`. It
+ * renders `hubCategories()` — every category — because this is where a plugin
+ * is installed, enabled, disabled and removed, and a hub that could only see
+ * sources would leave integrations and themes uninstallable from anywhere.
+ * Two hubs would be two answers to "is this installed?".
+ *
+ * The complement lives in Workshop: `PluginBentoTiles` renders one bento tile
+ * per INSTALLED non-source plugin, and the tile is what opens the plugin's
+ * panel. Hub = what you can install. Workshop = what you have.
+ *
+ * Both sides read the same placement rule in `store.ts` (`surfaceForCategory` /
+ * `categoriesForSurface` / `HUB_SURFACE`), asserted by
+ * `__tests__/pluginPlacement.test.ts`, so this file only renders whatever
+ * categories it is handed.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -104,8 +108,6 @@ export default function PluginBrowser({
   /** Installed themes + integrations, held separately from sources. */
   const [extensions, setExtensions] = useState<PluginManifest[]>([]);
   const [activeThemeId, setActiveThemeId] = useState<string | null>(() => getActiveThemePluginId());
-  /** Which settings panel is open, keyed by integration target. */
-  const [settingsFor, setSettingsFor] = useState<IntegrationTarget | null>(null);
 
   // App.tsx owns `displayTheme`; the browser re-dispatches its change event when
   // a theme plugin is applied so that effect re-runs. Read through a ref so the
@@ -570,27 +572,13 @@ export default function PluginBrowser({
                       entry={entry}
                       manifest={manifest}
                       installed={entry.installed}
-                      settingsOpen={settingsFor === manifest.target}
                       busy={installingId === entry.plugin.id}
                       onInstall={() => handleInstallExtension(entry)}
                       onUninstall={() => handleUninstallExtension(manifest)}
-                      onToggleSettings={() =>
-                        setSettingsFor((cur) => (cur === manifest.target ? null : manifest.target))
-                      }
                     />
                   );
                 })}
               </div>
-
-              {settingsFor && (
-                <div className="rounded-2xl border border-kindle-border bg-kindle-card/50 p-4 sm:p-5">
-                  {settingsFor === "calibre" ? (
-                    <CalibreSettingsPanel />
-                  ) : (
-                    <KindleSettingsPanel />
-                  )}
-                </div>
-              )}
             </PluginGroup>
           )}
 
@@ -801,25 +789,26 @@ export function ThemeCard({
  * place of a working action. It still installs — the settings surface and the
  * honest explanation are the deliverable — but it never shows a control that
  * would imply an upload is possible.
+ *
+ * The hub does not mount Calibre/Kindle settings any more. An installed
+ * integration becomes a tile in the Workshop grid, and that tile is where its
+ * panel opens — so the button here says exactly that, rather than opening a
+ * second copy of the panel next to a list of things you cannot use yet.
  */
 export function IntegrationCard({
   entry,
   manifest,
   installed,
-  settingsOpen,
   busy,
   onInstall,
   onUninstall,
-  onToggleSettings,
 }: {
   entry: RepoEntry;
   manifest: PluginManifest;
   installed: boolean;
-  settingsOpen: boolean;
   busy?: boolean;
   onInstall: () => void;
   onUninstall: () => void;
-  onToggleSettings: () => void;
 }) {
   const unavailable = manifest.availability === "unavailable";
   const icon = entry.plugin.icon || manifest.icon;
@@ -874,12 +863,9 @@ export function IntegrationCard({
             <Download className="w-3 h-3" /> {busy ? "Installing…" : "Install"}
           </button>
         ) : (
-          <button
-            onClick={onToggleSettings}
-            className="inline-flex items-center gap-1 rounded-lg bg-kindle-text px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-bg hover:opacity-90 transition"
-          >
-            <Sliders className="w-3 h-3" /> {settingsOpen ? "Hide settings" : "Settings"}
-          </button>
+          <p className="inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+            <Sliders className="w-3 h-3" /> Open in Workshop
+          </p>
         )}
 
         {installed && (

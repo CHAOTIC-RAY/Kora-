@@ -67,8 +67,9 @@ import {
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
-import PluginBrowser from "./PluginBrowser";
-import { categoriesForSurface } from "../lib/sources/store";
+// The plugin HUB is not here — it lives in Discover (SourcePluginsHub). What is
+// here is the other half: one bento tile per installed non-source plugin.
+import PluginBentoTiles from "./PluginBentoTiles";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
 import P2pTransferPanel from "./P2pTransferPanel";
@@ -1170,24 +1171,6 @@ function SettingsView({
                   })}
                 </div>
 
-                {/* THEME PLUGINS — SETTINGS BRANCH (`view === "settings"`).
-                    Sits directly under the built-in theme swatches because a
-                    theme plugin is the same kind of thing: a palette you pick
-                    here and it repaints the app. Verified by the surrounding
-                    guards — the block above is inside this branch's first
-                    `{view === "settings" && (<>` and the Workshop block ends
-                    above. Sources stay in Discover; integrations are in the
-                    Workshop branch. Selecting a theme here applies it through
-                    themeRuntime and clears it via the banner above; nothing
-                    here is a pirate or adult content gate, themes never are. */}
-                <div className="mt-1">
-                  <PluginBrowser
-                    categories={categoriesForSurface("settings")}
-                    badge="Themes"
-                    intro="Theme plugins are palettes. Pick one and it repaints the app; switch back to a built-in theme at any time."
-                  />
-                </div>
-
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">App Skin Chrome</h4>
@@ -1859,32 +1842,18 @@ function SettingsView({
             </div>
           </section>
 
-          {/* INTEGRATION PLUGINS — WORKSHOP BRANCH (the "tools" view).
+          {/* INSTALLED-PLUGIN TILES — WORKSHOP BRANCH (the "tools" view).
               This is the end of the tools block: the settings branch opens
-              immediately below this one, at the Storage Mode card. Calibre sync
-              and Send to Kindle are integration-category plugins: an
-              integration is something you configure inside this app, so it
-              belongs in Workshop and not in Discover beside the sources. The
-              filter comes from the placement rule in lib/sources/store.ts
-              rather than a hand-written list, so this surface and the tests
-              can never disagree. Sources stay in Discover; themes are in the
-              Settings branch further down. */}
-          <section className="space-y-3">
-            <div className="flex flex-col gap-0.5 border-b border-kindle-border pb-2">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-kindle-accent animate-pulse" />
-                Integrations
-              </h3>
-              <p className="text-[10px] text-kindle-text-muted">
-                Send books to an app you already use. Credentials stay on this device.
-              </p>
-            </div>
-            <PluginBrowser
-              categories={categoriesForSurface("workshop")}
-              badge="Workshop"
-              intro="Connect Kora to another app on your device — Calibre, or Amazon Kindle. These plugins are settings, not content sources: they bridge to software you already trust."
-            />
-          </section>
+              immediately below this one, at the Storage Mode card.
+
+              There is deliberately NO plugin hub here. Install, enable, disable
+              and remove all happen in the one hub in Discover, because two hubs
+              are two answers to "is this installed?". What belongs in Workshop
+              is the thing you USE once installed: a tile per non-source plugin,
+              styled like the built-in tool cards above, opening that plugin's
+              own panel. The filter comes from `surfaceForCategory` in
+              lib/sources/store.ts, the same rule the placement tests assert. */}
+          <PluginBentoTiles onModalToggle={onModalToggle} />
 
         </div>
         )}
