@@ -1,6 +1,12 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { isSoundEffectsEnabled } from "../lib/featureToggles";
+import {
+  advanceTurnTimer,
+  createTurnTimerState,
+  resetTurnTimer,
+  type TurnTimerState,
+} from "../lib/turnTimer";
 import {
   Trophy,
   Flame,
@@ -32,7 +38,13 @@ import {
   HelpCircle,
   AlertTriangle,
   Maximize2,
-  Minimize2
+  Minimize2,
+  ChevronLeft,
+  ArrowLeft,
+  Target,
+  Lock,
+  Timer,
+  Settings2
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -155,6 +167,88 @@ export interface MatchHistoryEntry {
   winnerScore: number;
   players: { name: string; score: number; rank: number }[];
   durationMinutes: number;
+  /** Parallel to `players` — lets the round log resolve player ids to names. */
+  playerIds?: string[];
+  /** Per-round log. Drives the nested Round History sub-tab. */
+  rounds?: RoundScore[];
+  /** How many rounds this match played (0 for archives predating the log). */
+  roundsPlayed?: number;
+}
+
+/** The six setup steps, in the order the wizard walks them. */
+const WIZARD_STEPS = [
+  { id: "preset", title: "Game Preset", hint: "Pick the ruleset" },
+  { id: "rules", title: "Verify Rules", hint: "Win condition & target" },
+  { id: "timer", title: "Turn Timer", hint: "On or off" },
+  { id: "mode", title: "Competition Mode", hint: "Scored or casual" },
+  { id: "roster", title: "Roster", hint: "Names & handicaps" },
+  { id: "launch", title: "Start Game", hint: "Review & launch" },
+] as const;
+
+/**
+ * Modal confirmation. Used by the two destructive wizard paths: swapping the
+ * preset (discards step 2-5 edits) and leaving the arena mid-match.
+ */
+function ConfirmDialog({
+  title,
+  body,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  tone = "default",
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  body: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  tone?: "default" | "danger";
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label="Dismiss"
+        onClick={onCancel}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-default"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="relative w-full max-w-sm bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3 shadow-2xl"
+      >
+        <h3 className="text-sm font-bold text-kindle-text flex items-center gap-2">
+          {tone === "danger" && <ShieldAlert className="w-4 h-4 text-yellow-500 shrink-0" />}
+          {title}
+        </h3>
+        <div className="text-[11px] text-kindle-text-muted leading-relaxed">{body}</div>
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="min-h-11 px-4 py-2.5 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-bold text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className={`min-h-11 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              tone === "danger"
+                ? "bg-yellow-500/20 border border-yellow-500/40 text-yellow-500"
+                : "bg-kindle-text text-kindle-bg"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface GameScoreTrackerProps {
@@ -205,6 +299,14 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const [turnTimerSeconds, setTurnTimerSeconds] = useState<number>(60);
   const [timeRemaining, setTimeRemaining] = useState<number>(60);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
+  /** Whether the turn clock runs at all (setup wizard, step 3). */
+  const [turnTimerEnabled, setTurnTimerEnabled] = useState<boolean>(true);
+  /**
+   * Authoritative turn-clock state. A ref rather than render state: the timer
+   * interval reads and writes it, and the `expired` latch is what stops the
+   * expiry toast from re-firing on every subsequent tick.
+   */
+  const turnTimerRef = useRef<TurnTimerState>(createTurnTimerState(turnTimerSeconds));
 
   // Round Input Buffer
   const [roundScoresBuffer, setRoundScoresBuffer] = useState<Record<string, number>>({});
@@ -212,6 +314,20 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
   // Navigation Tabs inside Tracker
   const [activeTab, setActiveTab] = useState<"game" | "history" | "tournament">("game");
+
+  // ---- Setup wizard navigation (replaces the one long scrolling form) ----
+  const [wizardStep, setWizardStep] = useState<number>(0);
+  /** True once the user has hand-edited a step 2-5 value. */
+  const [setupTouched, setSetupTouched] = useState<boolean>(false);
+  /** Preset switch waiting on a "this discards your edits" confirmation. */
+  const [pendingPreset, setPendingPreset] = useState<GamePreset | null>(null);
+  /** Wizard shown over a running match (the match itself is left untouched). */
+  const [viewingSetup, setViewingSetup] = useState<boolean>(false);
+  const [showEditSetupConfirm, setShowEditSetupConfirm] = useState<boolean>(false);
+
+  // ---- Nested history sub-tabs: Match History > Round History ----
+  const [historySubTab, setHistorySubTab] = useState<"matches" | "rounds">("matches");
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
 
   // View: popup (centered, less overwhelming) or fullscreen takeover.
   // On mobile the tracker always takes the full screen (no room to float a popup).
@@ -240,7 +356,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Load preset specs when preset changes
-  const handleSelectPreset = (preset: GamePreset) => {
+  const applyPreset = (preset: GamePreset) => {
     setSelectedPreset(preset);
     setWinCondition(preset.winCondition);
     setTargetScore(preset.targetScore);
@@ -253,37 +369,85 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     }
     if (preset.turnTimerSeconds) {
       setTurnTimerSeconds(preset.turnTimerSeconds);
-      setTimeRemaining(preset.turnTimerSeconds);
+      armTurnClock(preset.turnTimerSeconds);
     }
+    setSetupTouched(false);
+  };
+
+  /**
+   * The one destructive wizard action: swapping the preset replaces the win
+   * condition, target, timer and categories. If the user has already edited
+   * those in steps 2-5, confirm before throwing the edits away.
+   */
+  const handleSelectPreset = (preset: GamePreset) => {
+    if (preset.id === selectedPreset.id) return;
+    if (setupTouched) {
+      setPendingPreset(preset);
+      return;
+    }
+    applyPreset(preset);
+  };
+
+  const confirmPresetSwap = () => {
+    if (pendingPreset) applyPreset(pendingPreset);
+    setPendingPreset(null);
+  };
+
+  /**
+   * Arm the turn clock. This is the single place the clock (re)starts, and it
+   * always clears the expiry latch so the next turn can report its own expiry
+   * exactly once.
+   */
+  const armTurnClock = (seconds?: number) => {
+    const next = resetTurnTimer(seconds ?? turnTimerSeconds);
+    turnTimerRef.current = next;
+    setTimeRemaining(next.remaining);
   };
 
   // Turn Timer Effect in Competition Mode
+  //
+  // Expiry is an EVENT, not a per-tick condition. The previous version tested
+  // `timeRemaining <= 1` inside the interval and returned 0; the interval was
+  // never cleared, so the very next tick re-satisfied the condition and fired
+  // "Turn Time Expired!" once per second for the rest of the match. Now the
+  // clock state carries an `expired` latch, the pure `advanceTurnTimer` is a
+  // no-op once it is set, and the interval is cleared on expiry.
   useEffect(() => {
-    let timer: any;
-    if (matchActive && competitionMode && isTimerRunning) {
-      timer = setInterval(() => {
-        setTimeRemaining((prev) => {
-          if (prev <= 1) {
-            playBeepSound(600, 0.2);
-            toast("⌛ Turn Time Expired!", { icon: "⏱️" });
-            return 0;
-          }
-          if (prev <= 5 && soundEnabled) {
-            playBeepSound(400, 0.05);
-          }
-          return prev - 1;
-        });
+    if (!(matchActive && competitionMode && turnTimerEnabled && isTimerRunning)) return;
 
-        // Add 1s to current active player's time spent
+    const timer = setInterval(() => {
+      const { state, events } = advanceTurnTimer(turnTimerRef.current);
+      turnTimerRef.current = state;
+      setTimeRemaining(state.remaining);
+
+      for (const ev of events) {
+        if (ev === "countdown" && soundEnabled) playBeepSound(400, 0.05);
+        if (ev === "expired") {
+          if (soundEnabled) playBeepSound(600, 0.2);
+          toast("⌛ Turn Time Expired!", { icon: "⏱️" });
+        }
+      }
+
+      // A normal second of clock time is logged against the active player.
+      if (events.includes("tick")) {
         setPlayers((prev) =>
           prev.map((p, idx) =>
             idx === activePlayerIndex ? { ...p, totalTimeSeconds: p.totalTimeSeconds + 1 } : p
           )
         );
-      }, 1000);
-    }
+      }
+
+      // Expiry ends this turn's clock. Turn rotation is unchanged — the
+      // player's "Next Player Turn" tap, or the next round submission, moves
+      // on; the match is not touched here.
+      if (events.includes("expired")) {
+        clearInterval(timer);
+        setIsTimerRunning(false);
+      }
+    }, 1000);
+
     return () => clearInterval(timer);
-  }, [matchActive, competitionMode, isTimerRunning, activePlayerIndex, soundEnabled]);
+  }, [matchActive, competitionMode, turnTimerEnabled, isTimerRunning, activePlayerIndex, soundEnabled]);
 
   // Play Web Audio Synth Beep
   const playBeepSound = (freq = 440, duration = 0.1) => {
@@ -402,7 +566,13 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     setMatchEndTime(null);
     setMatchActive(true);
     setTimeRemaining(turnTimerSeconds);
-    setIsTimerRunning(competitionMode);
+    armTurnClock();
+    setIsTimerRunning(competitionMode && turnTimerEnabled);
+    setViewingSetup(false);
+    setWizardStep(0);
+    setSetupTouched(false);
+    setHistorySubTab("matches");
+    setSelectedMatchId(null);
     toast.success(`Match Started: ${selectedPreset.name} ${competitionMode ? "🏆 Competition Mode" : "🎲 Casual"}`);
   };
 
@@ -465,7 +635,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     setRounds(nextRounds);
     setRoundScoresBuffer({});
     setRoundCategoryBuffer({});
-    setTimeRemaining(turnTimerSeconds);
+    armTurnClock();
     playBeepSound(800, 0.15);
     toast.success(`Round ${roundNumber} Recorded!`);
 
@@ -498,7 +668,12 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
         score: getPlayerTotal(p.id),
         rank: idx + 1
       })),
-      durationMinutes: duration
+      durationMinutes: duration,
+      // Store the round log with the archive so the nested Round History
+      // sub-tab reads from this one store — no second data model.
+      playerIds: ranked.map((p) => p.id),
+      rounds: [...rounds],
+      roundsPlayed: rounds.length
     };
 
     const nextHistory = [historyEntry, ...matchHistory];
@@ -577,6 +752,63 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     });
     setActiveTab("tournament");
     toast.success("Tournament Bracket Generated!");
+  };
+
+  // Setup Wizard Navigation
+  const markTouched = useCallback(() => setSetupTouched(true), []);
+
+  const goToStep = useCallback((next: number) => {
+    const clamped = Math.max(0, Math.min(WIZARD_STEPS.length - 1, next));
+    setWizardStep(clamped);
+    setActiveTab("game");
+  }, []);
+
+  /** Leaving the wizard mid-match keeps the match exactly as it is. */
+  const returnToMatch = () => {
+    setViewingSetup(false);
+    setActiveTab("game");
+  };
+
+  const requestEditSetup = () => {
+    if (matchActive) {
+      setShowEditSetupConfirm(true);
+      return;
+    }
+    setViewingSetup(true);
+  };
+
+  // History derivation — the live match is shaped like an archive entry so a
+  // running match and a finished one render through the same list.
+  const historyEntries = useMemo(() => {
+    const live: MatchHistoryEntry | null = matchActive
+      ? {
+          id: "__live__",
+          gameName: selectedPreset.name,
+          date: "In progress",
+          competitionMode,
+          winnerName: getRankedPlayers()[0]?.name || "—",
+          winnerScore: getRankedPlayers()[0] ? getPlayerTotal(getRankedPlayers()[0].id) : 0,
+          players: getRankedPlayers().map((p, idx) => ({
+            name: p.name,
+            score: getPlayerTotal(p.id),
+            rank: idx + 1,
+          })),
+          durationMinutes: matchStartTime
+            ? Math.max(1, Math.round((Date.now() - matchStartTime) / 60000))
+            : 1,
+          playerIds: players.map((p) => p.id),
+          rounds: [...rounds],
+          roundsPlayed: rounds.length,
+        }
+      : null;
+    return live ? [live, ...matchHistory] : matchHistory;
+  }, [matchActive, matchHistory, players, rounds, selectedPreset.name, competitionMode, matchStartTime]);
+
+  const selectedMatch = historyEntries.find((m) => m.id === selectedMatchId) || null;
+
+  const openMatchRounds = (id: string) => {
+    setSelectedMatchId(id);
+    setHistorySubTab("rounds");
   };
 
   if (!open) return null;
@@ -706,316 +938,566 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
         <div className="p-6 overflow-y-auto space-y-6 flex-1 pb-32 sm:pb-6">
           {activeTab === "game" && (
             <>
-              {/* Setup / Configuration Panel when match is NOT active */}
-              {!matchActive ? (
-                <div className="space-y-6">
-                  {/* Preset Selector */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                        <Dices className="w-4 h-4 text-kindle-accent" /> Select Game Preset
-                      </h4>
+              {/* Setup / Configuration Wizard when match is NOT active (or when
+                  the user explicitly edits setup mid-match) */}
+              {!matchActive || viewingSetup ? (
+                <div className="space-y-5 max-w-3xl mx-auto">
+
+                  {/* Live-match banner: the wizard never destroys a running match. */}
+                  {matchActive && (
+                    <div className="flex items-center justify-between gap-3 p-3 bg-kindle-card border border-emerald-500/30 rounded-2xl">
+                      <span className="text-[10px] text-kindle-text-muted flex items-center gap-1.5 min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                        <span className="truncate">Match in progress — editing setup won&apos;t end it.</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={returnToMatch}
+                        className="shrink-0 px-3 py-1.5 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold cursor-pointer"
+                      >
+                        Back to Match
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ---- Step indicator ---- */}
+                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                        Step {wizardStep + 1} of {WIZARD_STEPS.length}
+                      </span>
+                      <span className="text-[9px] text-kindle-text-muted truncate">{WIZARD_STEPS[wizardStep].hint}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {GAME_PRESETS.map((preset) => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => handleSelectPreset(preset)}
-                          className={`p-3.5 rounded-2xl border text-left transition duration-200 cursor-pointer flex flex-col justify-between space-y-2 ${
-                            selectedPreset.id === preset.id
-                              ? "bg-kindle-card border-kindle-accent ring-1 ring-kindle-accent/40 shadow-xs"
-                              : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted/40"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-2xl">{preset.iconName}</span>
-                            <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-kindle-bg border border-kindle-border text-kindle-text-muted">
-                              {preset.type}
-                            </span>
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-bold text-kindle-text truncate">{preset.name}</h5>
-                            <p className="text-[9px] text-kindle-text-muted line-clamp-2 mt-0.5">{preset.description}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Competition Mode Toggle Card - Premium, spacious, and extremely mobile-friendly */}
-                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition duration-200 hover:border-kindle-border/80">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className={`p-2.5 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
-                        competitionMode 
-                          ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" 
-                          : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
-                      }`}>
-                        <Swords className="w-5 h-5" />
-                      </div>
-                      <div className="space-y-0.5 text-left">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-xs sm:text-sm font-bold text-kindle-text">Competition Mode</h4>
-                          {competitionMode && (
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20 animate-pulse">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] sm:text-[11px] text-kindle-text-muted leading-snug">
-                          Locks round scores, enforces time limits, tracks blitz speed bonuses, and records tournament placements.
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <button
-                      type="button"
-                      onClick={() => setCompetitionMode(!competitionMode)}
-                      className={`w-12 h-6 rounded-full p-0.5 transition-colors duration-200 cursor-pointer focus:outline-none flex items-center shrink-0 ${
-                        competitionMode ? "bg-[#e0533c]" : "bg-neutral-800"
-                      }`}
-                    >
-                      <motion.div
-                        layout
-                        className="w-5 h-5 rounded-full bg-white shadow-md"
-                        animate={{ x: competitionMode ? 24 : 0 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Mode Settings & Competition Toggles */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Win Condition Box */}
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block">
-                        Win Condition & Target
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setWinCondition("highest")}
-                          className={`py-1.5 text-xs font-bold rounded-xl border transition ${
-                            winCondition === "highest"
-                              ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
-                              : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
-                          }`}
-                        >
-                          Highest Wins
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setWinCondition("lowest")}
-                          className={`py-1.5 text-xs font-bold rounded-xl border transition ${
-                            winCondition === "lowest"
-                              ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
-                              : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
-                          }`}
-                        >
-                          Lowest Wins
-                        </button>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-kindle-border">
-                        <span className="text-xs font-bold text-kindle-text">Target Points:</span>
-                        <input
-                          type="number"
-                          value={targetScore || ""}
-                          onChange={(e) => setTargetScore(e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                          placeholder="No Limit"
-                          className="w-24 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono text-center font-bold text-kindle-text focus:outline-none focus:border-kindle-accent"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Turn Clock / Competition Settings */}
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block flex items-center justify-between">
-                        <span>Turn Timer (Seconds)</span>
-                        <Clock className="w-3.5 h-3.5 text-kindle-accent" />
-                      </label>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {[30, 60, 90, 120].map((sec) => (
+                    {/* Tappable progress rail — a phone tap target, not just a bar. */}
+                    <div className="flex items-center gap-1.5" role="tablist" aria-label="Setup steps">
+                      {WIZARD_STEPS.map((s, i) => {
+                        const done = i < wizardStep;
+                        const current = i === wizardStep;
+                        const skipped = s.id === "roster" && !competitionMode;
+                        return (
                           <button
-                            key={sec}
+                            key={s.id}
                             type="button"
-                            onClick={() => {
-                              setTurnTimerSeconds(sec);
-                              setTimeRemaining(sec);
-                            }}
-                            className={`py-1.5 text-xs font-mono font-bold rounded-xl border transition ${
-                              turnTimerSeconds === sec
-                                ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                                : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
-                            }`}
-                          >
-                            {sec}s
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[9px] text-kindle-text-muted pt-1">
-                        In Competition Mode, players receive time alarms and speed bonuses.
-                      </p>
+                            role="tab"
+                            aria-selected={current}
+                            aria-label={`Step ${i + 1}: ${s.title}`}
+                            data-testid={`wizard-step-${i}`}
+                            onClick={() => goToStep(i)}
+                            className={`h-1.5 flex-1 rounded-full transition cursor-pointer ${
+                              current ? "bg-kindle-accent" : done ? "bg-kindle-text/40" : "bg-kindle-border"
+                            } ${skipped && !current ? "opacity-40" : ""}`}
+                          />
+                        );
+                      })}
                     </div>
 
-                    {/* Category Scoring Toggle (compact when off) */}
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">
-                          Multi-Category Matrix
-                        </label>
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <h4 className="text-sm font-bold text-kindle-text flex items-center gap-2 min-w-0">
+                        <Sparkles className="w-4 h-4 text-kindle-accent shrink-0" />
+                        <span className="truncate">{WIZARD_STEPS[wizardStep].title}</span>
+                      </h4>
+                      {wizardStep > 0 && (
                         <button
                           type="button"
-                          onClick={() => setEnableCategories(!enableCategories)}
-                          className={`w-9 h-5 rounded-full p-0.5 transition ${
-                            enableCategories ? "bg-kindle-accent" : "bg-kindle-border"
-                          }`}
+                          onClick={() => goToStep(wizardStep - 1)}
+                          className="shrink-0 flex items-center gap-1 text-[10px] text-kindle-text-muted hover:text-kindle-text cursor-pointer"
                         >
-                          <div
-                            className={`w-4 h-4 rounded-full bg-black transform transition ${
-                              enableCategories ? "translate-x-4" : "translate-x-0"
-                            }`}
-                          />
+                          <ChevronLeft className="w-3.5 h-3.5" /> Back
                         </button>
-                      </div>
-
-                      {enableCategories && (
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                            {categories.map((cat, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 bg-kindle-bg border border-kindle-border rounded-lg text-[9px] font-bold text-kindle-text flex items-center gap-1"
-                              >
-                                {cat}
-                                <button
-                                  type="button"
-                                  onClick={() => setCategories(categories.filter((_, i) => i !== idx))}
-                                  className="text-kindle-text-muted hover:text-red-400"
-                                >
-                                  ×
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={customCategoryInput}
-                              onChange={(e) => setCustomCategoryInput(e.target.value)}
-                              placeholder="Add custom category..."
-                              className="flex-1 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (customCategoryInput.trim()) {
-                                  setCategories([...categories, customCategoryInput.trim()]);
-                                  setCustomCategoryInput("");
-                                }
-                              }}
-                              className="px-2 py-1 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Player Roster Builder */}
-                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-kindle-border pb-3 gap-3">
-                      <div>
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                          <Users className="w-4 h-4 text-kindle-accent" /> Competitor Roster ({players.length} Players)
-                        </h4>
-                        <p className="text-[10px] text-kindle-text-muted">Add players and optional handicap adjustments before launching match.</p>
+                  {/* ---- Step panel ---- */}
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={wizardStep}
+                      initial={{ opacity: 0, x: 16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -16 }}
+                      transition={{ duration: 0.15 }}
+                      className="space-y-5"
+                    >
+                  {/* STEP 1 — Select game preset */}
+                  {wizardStep === 0 && (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {GAME_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => handleSelectPreset(preset)}
+                            data-testid={`preset-${preset.id}`}
+                            className={`p-3.5 rounded-2xl border text-left transition duration-200 cursor-pointer flex flex-col justify-between space-y-2 min-h-[104px] ${
+                              selectedPreset.id === preset.id
+                                ? "bg-kindle-card border-kindle-accent ring-1 ring-kindle-accent/40 shadow-xs"
+                                : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted/40"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-2xl">{preset.iconName}</span>
+                              <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-kindle-bg border border-kindle-border text-kindle-text-muted">
+                                {preset.type}
+                              </span>
+                            </div>
+                            <div>
+                              <h5 className="text-xs font-bold text-kindle-text truncate">{preset.name}</h5>
+                              <p className="text-[9px] text-kindle-text-muted line-clamp-2 mt-0.5">{preset.description}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      {setupTouched && (
+                        <p className="text-[10px] text-kindle-text-muted flex items-center gap-1.5">
+                          <ShieldAlert className="w-3.5 h-3.5 text-kindle-accent shrink-0" />
+                          You&apos;ve edited the setup. Changing preset will ask before discarding those edits.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* STEP 2 — Verify win condition, target and target points */}
+                  {wizardStep === 1 && (
+                    <div className="space-y-4">
+                      <div className="p-4 bg-kindle-card border border-kindle-border rounded-2xl space-y-4">
+                        <div className="flex items-center justify-between gap-2 border-b border-kindle-border pb-3">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
+                            <Target className="w-4 h-4 text-kindle-accent" /> Win Condition
+                          </h4>
+                          <span className={`text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${
+                            winCondition === selectedPreset.winCondition
+                              ? "bg-kindle-accent/10 text-kindle-accent border border-kindle-accent/20"
+                              : "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"
+                          }`}>
+                            {winCondition === selectedPreset.winCondition ? "From preset" : "Edited"}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setWinCondition("highest"); markTouched(); }}
+                            data-testid="win-highest"
+                            className={`py-2.5 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                              winCondition === "highest"
+                                ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
+                                : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
+                            }`}
+                          >
+                            Highest Wins
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setWinCondition("lowest"); markTouched(); }}
+                            data-testid="win-lowest"
+                            className={`py-2.5 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                              winCondition === "lowest"
+                                ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
+                                : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
+                            }`}
+                          >
+                            Lowest Wins
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 pt-2 border-t border-kindle-border">
+                          <span className="text-xs font-bold text-kindle-text">Target Points:</span>
+                          <input
+                            type="number"
+                            value={targetScore ?? ""}
+                            data-testid="target-score"
+                            onChange={(e) => { setTargetScore(e.target.value ? parseInt(e.target.value, 10) : undefined); markTouched(); }}
+                            placeholder="No Limit"
+                            className="w-24 px-2 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono text-center font-bold text-kindle-text focus:outline-none focus:border-kindle-accent"
+                          />
+                        </div>
+                        <p className="text-[9px] text-kindle-text-muted leading-snug">
+                          {selectedPreset.name} suggests {winCondition === "highest" ? "highest" : "lowest"} score
+                          {selectedPreset.targetScore ? ` at ${selectedPreset.targetScore} points` : " with no target limit"}.
+                          Confirm or correct it here.
+                        </p>
                       </div>
 
-                      <div className="flex items-center gap-2 w-full md:w-auto">
-                        <input
-                          type="text"
-                          value={newPlayerName}
-                          onChange={(e) => setNewPlayerName(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
-                          placeholder="New competitor name..."
-                          className="flex-1 md:flex-none px-3 py-1.5 bg-kindle-bg border border-kindle-border rounded-xl text-xs text-kindle-text focus:outline-none focus:border-kindle-accent"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddPlayer}
-                          className="px-4 py-1.5 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold hover:bg-opacity-90 transition cursor-pointer flex items-center gap-1 shrink-0"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Add
-                        </button>
+                      {/* Categories come from the preset but stay editable on this step. */}
+                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                            Multi-Category Matrix
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => { setEnableCategories(!enableCategories); markTouched(); }}
+                            data-testid="toggle-categories"
+                            role="switch"
+                            aria-checked={enableCategories}
+                            aria-label="Toggle multi-category matrix"
+                            className={`w-9 h-5 rounded-full p-0.5 transition cursor-pointer ${enableCategories ? "bg-kindle-accent" : "bg-kindle-border"}`}
+                          >
+                            <div className={`w-4 h-4 rounded-full bg-black transform transition ${enableCategories ? "translate-x-4" : "translate-x-0"}`} />
+                          </button>
+                        </div>
+
+                        {enableCategories && (
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                              {categories.map((cat, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-kindle-bg border border-kindle-border rounded-lg text-[9px] font-bold text-kindle-text flex items-center gap-1">
+                                  {cat}
+                                  <button
+                                    type="button"
+                                    onClick={() => { setCategories(categories.filter((_, i) => i !== idx)); markTouched(); }}
+                                    className="text-kindle-text-muted hover:text-red-400 cursor-pointer"
+                                    aria-label={`Remove ${cat}`}
+                                  >×</button>
+                                </span>
+                              ))}
+                            </div>
+                            <div className="flex gap-1">
+                              <input
+                                type="text"
+                                value={customCategoryInput}
+                                onChange={(e) => setCustomCategoryInput(e.target.value)}
+                                placeholder="Add custom category..."
+                                aria-label="Custom category name"
+                                className="flex-1 min-w-0 px-2 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (customCategoryInput.trim()) {
+                                    setCategories([...categories, customCategoryInput.trim()]);
+                                    setCustomCategoryInput("");
+                                    markTouched();
+                                  }
+                                }}
+                                className="shrink-0 px-3 py-2 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold cursor-pointer"
+                                aria-label="Add category"
+                              >+</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
+                  )}
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {players.map((p, idx) => (
-                        <div
-                          key={p.id}
-                          className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between gap-3 shadow-xs"
+                  {/* STEP 3 — Turn timer: enable or disable */}
+                  {wizardStep === 2 && (
+                    <div className="space-y-4">
+                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`p-2.5 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
+                            turnTimerEnabled ? "bg-kindle-accent/10 border-kindle-accent/30 text-kindle-accent" : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
+                          }`}>
+                            <Timer className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-0.5 text-left">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs sm:text-sm font-bold text-kindle-text">Turn Timer</h4>
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest ${
+                                turnTimerEnabled ? "bg-kindle-accent/10 text-kindle-accent border border-kindle-accent/20" : "bg-kindle-border/50 text-kindle-text-muted"
+                              }`}>
+                                {turnTimerEnabled ? "On" : "Off"}
+                              </span>
+                            </div>
+                            <p className="text-[10px] sm:text-[11px] text-kindle-text-muted leading-snug">
+                              Counts down each player&apos;s turn. On expiry it beeps once and stops the clock.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setTurnTimerEnabled(!turnTimerEnabled)}
+                          data-testid="toggle-timer"
+                          role="switch"
+                          aria-checked={turnTimerEnabled}
+                          aria-label="Toggle turn timer"
+                          className={`w-12 h-6 rounded-full p-0.5 transition-colors duration-200 cursor-pointer focus:outline-none flex items-center shrink-0 ${
+                            turnTimerEnabled ? "bg-kindle-accent" : "bg-neutral-800"
+                          }`}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white/20"
-                              style={{ backgroundColor: p.color }}
-                            />
-                            <span className="text-xs font-bold text-kindle-text truncate">{p.name}</span>
+                          <motion.div
+                            layout
+                            className="w-5 h-5 rounded-full bg-white shadow-md"
+                            animate={{ x: turnTimerEnabled ? 24 : 0 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        </button>
+                      </div>
+
+                      {turnTimerEnabled ? (
+                        <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block flex items-center justify-between">
+                            <span>Turn Timer (Seconds)</span>
+                            <Clock className="w-3.5 h-3.5 text-kindle-accent" />
+                          </label>
+                          <div className="grid grid-cols-4 gap-1.5">
+                            {[30, 60, 90, 120].map((sec) => (
+                              <button
+                                key={sec}
+                                type="button"
+                                onClick={() => { setTurnTimerSeconds(sec); armTurnClock(sec); }}
+                                data-testid={`timer-${sec}`}
+                                className={`py-2.5 text-xs font-mono font-bold rounded-xl border transition cursor-pointer ${
+                                  turnTimerSeconds === sec
+                                    ? "bg-kindle-text text-kindle-bg border-kindle-text"
+                                    : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
+                                }`}
+                              >
+                                {sec}s
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[9px] text-kindle-text-muted pt-1">
+                            Only runs when Competition Mode is on (step 4).
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-kindle-text-muted bg-kindle-card border border-dashed border-kindle-border rounded-2xl p-4">
+                          Timer off — turns are unlimited and no expiry alerts will appear.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* STEP 4 — Competition mode: enable or disable */}
+                  {wizardStep === 3 && (
+                    <div className="space-y-3">
+                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`p-2.5 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
+                            competitionMode ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
+                          }`}>
+                            <Swords className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-0.5 text-left">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-xs sm:text-sm font-bold text-kindle-text">Competition Mode</h4>
+                              {competitionMode && (
+                                <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20">
+                                  Active
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] sm:text-[11px] text-kindle-text-muted leading-snug">
+                              Locks round scores, enforces time limits, tracks blitz speed bonuses, and records tournament placements.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setCompetitionMode(!competitionMode)}
+                          data-testid="toggle-competition"
+                          role="switch"
+                          aria-checked={competitionMode}
+                          aria-label="Toggle competition mode"
+                          className={`w-12 h-6 rounded-full p-0.5 transition-colors duration-200 cursor-pointer focus:outline-none flex items-center shrink-0 ${
+                            competitionMode ? "bg-[#e0533c]" : "bg-neutral-800"
+                          }`}
+                        >
+                          <motion.div
+                            layout
+                            className="w-5 h-5 rounded-full bg-white shadow-md"
+                            animate={{ x: competitionMode ? 24 : 0 }}
+                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                          />
+                        </button>
+                      </div>
+                      <p className="text-[9px] text-kindle-text-muted flex items-start gap-1.5">
+                        <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        {competitionMode
+                          ? "On: the turn clock runs and scores are locked per round."
+                          : "Off: the turn clock is skipped and step 5 (Roster) becomes optional — you can still name players for the scoreboard."}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* STEP 5 — Competition roster */}
+                  {wizardStep === 4 && (
+                    <div className="space-y-3">
+                      {!competitionMode && (
+                        <div className="p-3 bg-kindle-card border border-dashed border-kindle-border rounded-2xl flex items-start gap-2">
+                          <Lock className="w-3.5 h-3.5 text-kindle-text-muted shrink-0 mt-0.5" />
+                          <p className="text-[10px] text-kindle-text-muted">
+                            Competition Mode is off, so handicaps and colours are skipped. Naming players is optional.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-kindle-border pb-3 gap-3">
+                          <div>
+                            <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
+                              <Users className="w-4 h-4 text-kindle-accent" /> Competitor Roster ({players.length} Players)
+                            </h4>
+                            <p className="text-[10px] text-kindle-text-muted">Add players and optional handicap adjustments before launching match.</p>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            {/* Handicap Input */}
-                            <div className="flex items-center gap-1 text-[10px] text-kindle-text-muted">
-                              <span>Hdcp:</span>
-                              <input
-                                type="number"
-                                value={p.handicap || 0}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value, 10) || 0;
-                                  setPlayers(players.map((pl) => (pl.id === p.id ? { ...pl, handicap: val } : pl)));
-                                }}
-                                className="w-10 px-1 py-0.5 bg-kindle-card border border-kindle-border rounded font-mono text-center text-kindle-text"
-                              />
-                            </div>
-
+                          <div className="flex items-center gap-2 w-full md:w-auto">
+                            <input
+                              type="text"
+                              value={newPlayerName}
+                              onChange={(e) => setNewPlayerName(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
+                              placeholder="New competitor name..."
+                              aria-label="New competitor name"
+                              className="flex-1 md:flex-none min-w-0 px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs text-kindle-text focus:outline-none focus:border-kindle-accent"
+                            />
                             <button
                               type="button"
-                              onClick={() => handleRemovePlayer(p.id)}
-                              className="p-1 text-kindle-text-muted hover:text-red-400 transition cursor-pointer"
-                              title="Remove Competitor"
+                              onClick={handleAddPlayer}
+                              data-testid="add-player"
+                              className="shrink-0 px-4 py-2 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold hover:bg-opacity-90 transition cursor-pointer flex items-center gap-1"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Plus className="w-3.5 h-3.5" /> Add
                             </button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
 
-                  {/* Launch Match Button */}
-                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="text-[10px] text-kindle-text-muted flex items-center gap-1.5">
-                      <ShieldAlert className="w-4 h-4 text-kindle-accent shrink-0" />
-                      <span>In Competition Mode, scores are locked per round and turn times are logged.</span>
-                    </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {players.map((p) => (
+                            <div
+                              key={p.id}
+                              className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between gap-3 shadow-xs"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white/20" style={{ backgroundColor: p.color }} />
+                                <input
+                                  type="text"
+                                  value={p.name}
+                                  onChange={(e) => {
+                                    setPlayers(players.map((pl) => (pl.id === p.id ? { ...pl, name: e.target.value } : pl)));
+                                    markTouched();
+                                  }}
+                                  data-testid={`player-name-${p.id}`}
+                                  aria-label={`Name for player ${p.id}`}
+                                  className="min-w-0 flex-1 bg-transparent border border-transparent focus:border-kindle-border focus:outline-none rounded px-1 py-0.5 text-xs font-bold text-kindle-text"
+                                />
+                              </div>
 
-                    <button
-                      type="button"
-                      onClick={handleStartMatch}
-                      className="w-full sm:w-auto px-8 py-3.5 bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 active:scale-98 transition shadow-lg flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Play className="w-4 h-4 fill-current" /> Launch Arena Match
-                    </button>
-                  </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-1 text-[10px] text-kindle-text-muted">
+                                  <span>Hdcp:</span>
+                                  <input
+                                    type="number"
+                                    value={p.handicap || 0}
+                                    onChange={(e) => {
+                                      const val = parseInt(e.target.value, 10) || 0;
+                                      setPlayers(players.map((pl) => (pl.id === p.id ? { ...pl, handicap: val } : pl)));
+                                      markTouched();
+                                    }}
+                                    data-testid={`handicap-${p.id}`}
+                                    aria-label={`Handicap for player ${p.id}`}
+                                    className="w-10 px-1 py-1 bg-kindle-card border border-kindle-border rounded font-mono text-center text-kindle-text"
+                                  />
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePlayer(p.id)}
+                                  data-testid={`remove-player-${p.id}`}
+                                  className="p-1 text-kindle-text-muted hover:text-red-400 transition cursor-pointer"
+                                  title="Remove Competitor"
+                                  aria-label={`Remove player ${p.id}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STEP 6 — Review and launch */}
+                  {wizardStep === 5 && (
+                    <div className="space-y-4">
+                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">Match Review</h4>
+                        {[
+                          { label: "Game", value: `${selectedPreset.iconName} ${selectedPreset.name}` },
+                          { label: "Win condition", value: winCondition === "highest" ? "Highest score wins" : "Lowest score wins" },
+                          { label: "Target points", value: targetScore ? `${targetScore} points` : "No limit" },
+                          { label: "Turn timer", value: !turnTimerEnabled ? "Off" : !competitionMode ? "Off (needs competition mode)" : `${turnTimerSeconds}s per turn` },
+                          { label: "Competition mode", value: competitionMode ? "On — scores locked per round" : "Off — casual" },
+                          { label: "Categories", value: enableCategories && categories.length ? categories.join(", ") : "Single score per round" },
+                          { label: "Roster", value: `${players.length} player${players.length === 1 ? "" : "s"}: ${players.map((p) => p.name || "—").join(", ")}` },
+                        ].map((row) => (
+                          <div key={row.label} className="flex items-start justify-between gap-3 py-1.5 border-b border-kindle-border/60 last:border-0">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted shrink-0">{row.label}</span>
+                            <span className="text-[11px] font-bold text-kindle-text text-right break-words">{row.value}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleStartMatch}
+                        data-testid="start-game"
+                        className="w-full px-8 py-4 bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 active:scale-98 transition shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <Play className="w-4 h-4 fill-current" /> Start Game
+                      </button>
+                    </div>
+                  )}
+                    </motion.div>
+                  </AnimatePresence>
+
+                  {/* Footer nav: steps 1-5 advance; step 6 launches from its own button. */}
+                  {wizardStep < WIZARD_STEPS.length - 1 && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => goToStep(wizardStep - 1)}
+                        disabled={wizardStep === 0}
+                        data-testid="wizard-back"
+                        className="shrink-0 min-h-12 px-4 py-3 bg-kindle-card border border-kindle-border rounded-2xl text-xs font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1"
+                      >
+                        <ChevronLeft className="w-4 h-4" /> Back
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => goToStep(wizardStep + 1)}
+                        data-testid="wizard-next"
+                        className="flex-1 min-h-12 px-6 py-3.5 bg-kindle-accent text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 active:scale-98 transition shadow flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        Next: {WIZARD_STEPS[wizardStep + 1].title} <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 /* Active Match Arena */
                 <div className="space-y-6 animate-in fade-in duration-300">
+                  {/* Mid-match "Edit setup" — confirms first, never ends the match. */}
+                  <div className="flex items-center justify-between gap-3 p-3 bg-kindle-card border border-kindle-border rounded-2xl">
+                    <span className="text-[10px] text-kindle-text-muted flex items-center gap-1.5 min-w-0">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                      <span className="truncate">
+                        {selectedPreset.iconName} {selectedPreset.name} • Round {rounds.length + 1}
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("history")}
+                        data-testid="goto-history"
+                        className="min-h-11 px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <History className="w-3.5 h-3.5" /> History
+                      </button>
+                      <button
+                        type="button"
+                        onClick={requestEditSetup}
+                        data-testid="edit-setup"
+                        className="min-h-11 px-3 py-2 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold cursor-pointer hover:bg-opacity-90 transition flex items-center gap-1.5"
+                      >
+                        <Settings2 className="w-3.5 h-3.5" /> Edit setup
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Top Live Scoreboard Podium Banner */}
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                     {/* Leaderboard Ranks (7 cols) */}
@@ -1320,65 +1802,208 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
             </>
           )}
 
-          {/* Match History Tab */}
+          {/* Match History Tab — nested sub-tabs: MATCH HISTORY > ROUND HISTORY */}
           {activeTab === "history" && (
             <div className="space-y-4 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between border-b border-kindle-border pb-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                  <History className="w-4 h-4 text-kindle-accent" /> Saved Match Archives
-                </h4>
-                {matchHistory.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMatchHistory([]);
-                      localStorage.removeItem("kora_game_score_history");
-                      toast("History cleared", { icon: "🧹" });
-                    }}
-                    className="text-[10px] text-red-400 hover:underline cursor-pointer"
-                  >
-                    Clear History
-                  </button>
-                )}
+              {/* Sub-tab bar. Round History stays disabled until a match is picked. */}
+              <div className="flex items-center gap-1 p-1 bg-kindle-card border border-kindle-border rounded-2xl">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={historySubTab === "matches"}
+                  onClick={() => setHistorySubTab("matches")}
+                  data-testid="subtab-matches"
+                  className={`flex-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    historySubTab === "matches"
+                      ? "bg-kindle-text text-kindle-bg shadow-sm"
+                      : "text-kindle-text-muted hover:text-kindle-text"
+                  }`}
+                >
+                  <Trophy className="w-3.5 h-3.5" /> Match History
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={historySubTab === "rounds"}
+                  onClick={() => setHistorySubTab("rounds")}
+                  disabled={!selectedMatch}
+                  data-testid="subtab-rounds"
+                  className={`flex-1 px-3 py-2 text-[10px] font-bold uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    historySubTab === "rounds"
+                      ? "bg-kindle-text text-kindle-bg shadow-sm"
+                      : "text-kindle-text-muted hover:text-kindle-text"
+                  }`}
+                  title={selectedMatch ? undefined : "Pick a match first"}
+                >
+                  <History className="w-3.5 h-3.5" /> Round History
+                </button>
               </div>
 
-              {matchHistory.length === 0 ? (
-                <div className="py-12 text-center text-kindle-text-muted space-y-2">
-                  <Trophy className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
-                  <p className="text-xs">No completed matches recorded yet.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {matchHistory.map((m) => (
-                    <div
-                      key={m.id}
-                      className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3 shadow-xs"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted block">
-                            {m.date} • {m.durationMinutes}m
-                          </span>
-                          <h5 className="text-xs font-bold text-kindle-text">{m.gameName}</h5>
-                        </div>
-                        <span className="px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 text-[9px] font-bold flex items-center gap-1">
-                          👑 {m.winnerName} ({m.winnerScore} pts)
-                        </span>
-                      </div>
+              {historySubTab === "matches" && (
+                <>
+                  <div className="flex items-center justify-between border-b border-kindle-border pb-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
+                      <History className="w-4 h-4 text-kindle-accent" /> Saved Match Archives
+                    </h4>
+                    {matchHistory.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMatchHistory([]);
+                          setSelectedMatchId(null);
+                          localStorage.removeItem("kora_game_score_history");
+                          toast("History cleared", { icon: "🧹" });
+                        }}
+                        className="text-[10px] text-red-400 hover:underline cursor-pointer"
+                      >
+                        Clear History
+                      </button>
+                    )}
+                  </div>
 
-                      <div className="space-y-1 pt-2 border-t border-kindle-border">
-                        {m.players.map((pl) => (
-                          <div key={pl.name} className="flex items-center justify-between text-[11px]">
-                            <span className="text-kindle-text-muted">
-                              #{pl.rank} {pl.name}
-                            </span>
-                            <span className="font-mono font-bold text-kindle-text">{pl.score} pts</span>
-                          </div>
-                        ))}
-                      </div>
+                  {historyEntries.length === 0 ? (
+                    <div className="py-12 text-center text-kindle-text-muted space-y-2">
+                      <Trophy className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
+                      <p className="text-xs">No completed matches recorded yet.</p>
                     </div>
-                  ))}
-                </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {historyEntries.map((m) => {
+                        const isLive = m.id === "__live__";
+                        return (
+                          <div
+                            key={m.id}
+                            className={`bg-kindle-card border rounded-2xl p-4 space-y-3 shadow-xs ${
+                              isLive ? "border-emerald-500/30" : "border-kindle-border"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted block">
+                                  {m.date} • {m.durationMinutes}m
+                                </span>
+                                <h5 className="text-xs font-bold text-kindle-text truncate">
+                                  {isLive && <span className="text-emerald-500 mr-1">●</span>}
+                                  {m.gameName}
+                                </h5>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded border text-[9px] font-bold flex items-center gap-1 shrink-0 ${
+                                isLive
+                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                  : "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"
+                              }`}>
+                                {isLive ? "In progress" : `👑 ${m.winnerName} (${m.winnerScore})`}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1 pt-2 border-t border-kindle-border">
+                              {m.players.map((pl) => (
+                                <div key={pl.name} className="flex items-center justify-between gap-2 text-[11px]">
+                                  <span className="text-kindle-text-muted truncate">
+                                    #{pl.rank} {pl.name}
+                                  </span>
+                                  <span className="font-mono font-bold text-kindle-text shrink-0">{pl.score} pts</span>
+                                </div>
+                              ))}
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 pt-1">
+                              <span className="text-[9px] text-kindle-text-muted">
+                                {m.roundsPlayed ?? m.rounds?.length ?? 0} rounds
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => openMatchRounds(m.id)}
+                                data-testid={`open-rounds-${m.id}`}
+                                className="px-3 py-2 min-h-11 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer flex items-center gap-1 shrink-0"
+                              >
+                                Round History <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {historySubTab === "rounds" && selectedMatch && (
+                <>
+                  {/* Breadcrumb back to the outer sub-tab. */}
+                  <div className="flex items-center justify-between gap-2 bg-kindle-card border border-kindle-border rounded-2xl p-3">
+                    <button
+                      type="button"
+                      onClick={() => setHistorySubTab("matches")}
+                      data-testid="back-to-matches"
+                      className="min-h-11 px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" /> Matches
+                    </button>
+                    <span className="text-[10px] font-bold text-kindle-text text-right min-w-0 truncate">
+                      {selectedMatch.gameName} • {selectedMatch.date}
+                    </span>
+                  </div>
+
+                  {(!selectedMatch.rounds || selectedMatch.rounds.length === 0) ? (
+                    <div className="py-12 text-center text-kindle-text-muted space-y-2 bg-kindle-card border border-kindle-border rounded-2xl">
+                      <History className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
+                      <p className="text-xs font-bold text-kindle-text">No rounds recorded</p>
+                      <p className="text-[10px]">
+                        {selectedMatch.id === "__live__"
+                          ? "This match is still in play — submit a round to start the log."
+                          : "This match ended before any round was logged."}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {selectedMatch.rounds.map((r) => {
+                        const rTotals: Record<string, number> = {};
+                        for (const pl of selectedMatch.players) rTotals[pl.name] = 0;
+                        selectedMatch.rounds
+                          .slice(0, r.roundNumber)
+                          .forEach((rr) => {
+                            (selectedMatch.playerIds || selectedMatch.players.map((p) => p.name)).forEach((pid, i) => {
+                              const name = selectedMatch.players[i]?.name || pid;
+                              rTotals[name] = (rTotals[name] || 0) + (rr.playerScores[pid] || 0);
+                            });
+                          });
+                        const ids = selectedMatch.playerIds || selectedMatch.players.map((p) => p.name);
+
+                        return (
+                          <div
+                            key={r.roundNumber}
+                            className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-2"
+                          >
+                            <div className="flex items-center justify-between border-b border-kindle-border pb-2">
+                              <span className="text-xs font-bold uppercase tracking-wider text-kindle-text">
+                                Round {r.roundNumber}
+                              </span>
+                              <span className="text-[9px] text-kindle-text-muted">
+                                {new Date(r.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              {selectedMatch.players.map((pl, i) => {
+                                const gained = r.playerScores[ids[i]] || 0;
+                                return (
+                                  <div key={pl.name} className="flex items-center justify-between gap-2 text-[11px]">
+                                    <span className="text-kindle-text-muted truncate">{pl.name}</span>
+                                    <span className="font-mono shrink-0">
+                                      <span className="text-kindle-text">+{gained}</span>
+                                      <span className="text-kindle-text-muted"> → {rTotals[pl.name] || 0}</span>
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -1484,6 +2109,38 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
           )}
         </div>
       </motion.div>
+        {/* Confirmations */}
+        {pendingPreset && (
+          <ConfirmDialog
+            title="Discard setup edits?"
+            confirmLabel="Apply preset"
+            cancelLabel="Keep my edits"
+            tone="danger"
+            body={(
+              <>
+                Switching to <strong className="text-kindle-text">{pendingPreset.name}</strong> replaces the win
+                condition, target, timer and categories you set in steps 2-5. Player names and handicaps are kept.
+              </>
+            )}
+            onConfirm={confirmPresetSwap}
+            onCancel={() => setPendingPreset(null)}
+          />
+        )}
+
+        {showEditSetupConfirm && (
+          <ConfirmDialog
+            title="Edit setup during a live match?"
+            confirmLabel="Edit setup"
+            cancelLabel="Back to match"
+            body="Your scores, rounds and clock are kept exactly as they are — the match is not ended. The turn clock will be paused while you are in the wizard."
+            onConfirm={() => {
+              setShowEditSetupConfirm(false);
+              setIsTimerRunning(false);
+              setViewingSetup(true);
+            }}
+            onCancel={() => setShowEditSetupConfirm(false)}
+          />
+        )}
     </div>
   );
 }
