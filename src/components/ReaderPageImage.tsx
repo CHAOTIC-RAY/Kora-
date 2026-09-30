@@ -11,6 +11,17 @@
  * allocating 8MB. The sizing maths lives in `readerImage.ts` and is unit
  * tested; this file is only the part that touches the DOM.
  *
+ * Where the bytes come from:
+ *
+ *   Manga CDNs hotlink-protect. A direct request to mangaread.org or
+ *   cdn-2.mangazin.org is refused by the origin regardless of CORS, and
+ *   `createImageBitmap` is stricter still, so it rejects where the `<img>`
+ *   probe sometimes succeeds. Same-origin through the Worker's
+ *   `/api/proxy-image` is immune to all of it, so a decode failure on the
+ *   direct URL means "this host needs the proxy" rather than "this page is
+ *   dead" — which is the difference between a working chapter and an
+ *   unavailable card on every page of it.
+ *
  * Three rendering paths, in order of preference:
  *
  *   1. Canvas, bounded decode. The normal case, and the only one that
@@ -60,6 +71,15 @@ function canDecodeResized(): boolean {
   );
 }
 
+/**
+ * Same-origin relay through the Worker. Returns null off-browser so the
+ * effect can skip straight to reporting rather than building `/api/...`.
+ */
+function proxyUrlFor(url: string): string | null {
+  if (typeof window === "undefined") return null;
+  return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+}
+
 type Status = "loading" | "ready" | "error";
 
 export function ReaderPageImage({
@@ -95,6 +115,17 @@ export function ReaderPageImage({
     attempt: 0,
   });
   const attempt = retry.url === url ? retry.attempt : 0;
+  /**
+   * Whether this page is being served through the Worker, also tagged with
+   * its URL for the same reason as `retry`: turning this off on a page
+   * change has to happen during render, not in an effect, or flipping it
+   * true after a decode failure would immediately flip it back and loop.
+   */
+  const [proxied, setProxied] = useState<{ url: string; on: boolean }>({
+    url: "",
+    on: false,
+  });
+  const useProxy = proxied.url === url && proxied.on;
   const [message, setMessage] = useState("");
 
   // A new page is a new image: reset before decoding, never after, or the
@@ -110,10 +141,12 @@ export function ReaderPageImage({
       return;
     }
 
+    const proxy = proxyUrlFor(url);
+    const base = useProxy && proxy ? proxy : url;
     const bust =
       attempt > 0
-        ? `${url}${url.includes("?") ? "&" : "?"}kora_retry=${attempt}`
-        : url;
+        ? `${base}${base.includes("?") ? "&" : "?"}kora_retry=${attempt}`
+        : base;
 
     // No bounded decode available: fall back to a plain `<img>`, which is
     // what this component did before it existed. Unbounded in memory, but
@@ -132,6 +165,33 @@ export function ReaderPageImage({
     const vh = el?.clientHeight || (typeof window !== "undefined" ? window.innerHeight : 768);
     const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
     const box = viewportDecodeBox({ viewportWidth: vw, viewportHeight: vh, devicePixelRatio: dpr });
+
+    const giveUp = () => {
+      if (!alive) return;
+      logger.warn("[reader] page unavailable", { url, pageLabel, useProxy });
+      setStatus("error");
+      setMessage(
+        "This page failed to load. The image may be missing or the source may be down."
+      );
+      onFailure?.(url);
+    };
+
+    /**
+     * One escape forward. Direct host refused → go same-origin through the
+     * Worker. Already proxied → nothing left to try, so report it.
+     */
+    const escalateOrGiveUp = () => {
+      if (!alive) return;
+      if (!useProxy && proxy) {
+        logger.info("[reader] direct load refused, retrying through proxy-image", {
+          url,
+          pageLabel,
+        });
+        setProxied({ url, on: true });
+        return;
+      }
+      giveUp();
+    };
 
     // Two stages, and the order matters.
     //
@@ -214,14 +274,17 @@ export function ReaderPageImage({
           bmp.close?.();
         })
         .catch(() => {
+          // A decode rejection is not proof the bytes are bad: hotlink
+          // protection and strict CORS make the decoder fail on images the
+          // page could still render through the Worker. Escalate rather
+          // than condemning the page.
           if (!alive) return;
-          // Bounded decode failed. Almost always the image is genuinely
-          // broken or gone — so report it rather than silently retrying at
-          // full resolution, which is the decode that kills the tab.
-          logger.warn("[reader] bounded decode failed", { url, pageLabel });
-          setStatus("error");
-          setMessage("This page could not be loaded.");
-          onFailure?.(url);
+          logger.warn("[reader] bounded decode failed", {
+            url,
+            pageLabel,
+            useProxy,
+          });
+          escalateOrGiveUp();
         });
     };
 
@@ -230,9 +293,8 @@ export function ReaderPageImage({
       const nh = probe.naturalHeight;
       if (!nw || !nh) {
         if (alive) {
-          setStatus("error");
-          setMessage("This image reported no size.");
-          onFailure?.(url);
+          logger.warn("[reader] image reported no size", { url, pageLabel, useProxy });
+          escalateOrGiveUp();
         }
         return;
       }
@@ -240,33 +302,7 @@ export function ReaderPageImage({
     };
     probe.onerror = () => {
       if (!alive) return;
-      const proxied =
-        typeof window !== "undefined"
-          ? `/api/proxy-image?url=${encodeURIComponent(url)}`
-          : null;
-      if (!proxied || attempt > 0) {
-        logger.warn("[reader] page load failed", { url, pageLabel, attempt });
-        setStatus("error");
-        setMessage("This page failed to load. The image may be missing or the source may be down.");
-        onFailure?.(url);
-        return;
-      }
-      logger.info("[reader] retrying page through proxy-image", { url, pageLabel });
-      const retryProbe = new Image();
-      retryProbe.decoding = "async";
-      retryProbe.onload = () => {
-        if (!alive) return;
-        setMode("img");
-        setStatus("ready");
-      };
-      retryProbe.onerror = () => {
-        if (!alive) return;
-        logger.warn("[reader] proxy-image retry failed", { url, pageLabel });
-        setStatus("error");
-        setMessage("This page failed to load. The image may be missing or the source may be down.");
-        onFailure?.(url);
-      };
-      retryProbe.src = proxied;
+      escalateOrGiveUp();
     };
     probe.src = bust;
 
@@ -280,12 +316,26 @@ export function ReaderPageImage({
       probe.onerror = null;
       probe.removeAttribute("src");
     };
-  }, [url, attempt, onFailure]);
+  }, [url, attempt, useProxy, onFailure]);
 
   const fail = (e: React.SyntheticEvent) => {
     e.stopPropagation();
+    // The `<img>` surface can fail where the probe succeeded — a different
+    // request, a different cache state. Same escalation, not a dead page.
+    const proxy = proxyUrlFor(url);
+    if (!useProxy && proxy) {
+      logger.info("[reader] <img> load refused, retrying through proxy-image", {
+        url,
+        pageLabel,
+      });
+      setStatus("loading");
+      setProxied({ url, on: true });
+      return;
+    }
     setStatus("error");
-    setMessage("This page failed to load. The image may be missing or the source may be down.");
+    setMessage(
+      "This page failed to load. The image may be missing or the source may be down."
+    );
     onFailure?.(url);
   };
 
@@ -294,6 +344,18 @@ export function ReaderPageImage({
     : undefined;
 
   const surfaceClass = webtoon ? "w-full select-none" : "max-w-full max-h-full object-contain";
+
+  /**
+   * The `<img>` surface has to render the *same* source the decode used,
+   * retry-busted the same way. Rendering the bare `url` here was how a
+   * manual Retry silently re-requested the cached failure.
+   */
+  const imgProxy = proxyUrlFor(url);
+  const imgBase = useProxy && imgProxy ? imgProxy : url;
+  const imgSrc =
+    attempt > 0
+      ? `${imgBase}${imgBase.includes("?") ? "&" : "?"}kora_retry=${attempt}`
+      : imgBase;
 
   if (status === "error") {
     return (
@@ -348,7 +410,7 @@ export function ReaderPageImage({
   if (mode === "img") {
     return (
       <img
-        src={url}
+        src={imgSrc}
         alt={alt}
         onError={fail}
         draggable={false}
