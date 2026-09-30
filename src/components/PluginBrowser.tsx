@@ -74,6 +74,7 @@ import {
   syncThemePluginMarker,
   validateThemeTokens,
 } from "../lib/sources/themeRuntime";
+import { pluginDisplayName } from "../lib/sources/koboKindleSender";
 import type {
   IntegrationTarget,
   PluginCategory,
@@ -91,12 +92,50 @@ export interface PluginBrowserProps {
   badge?: string;
   /** Sentence under the header explaining what this surface is for. */
   intro?: string;
+  /**
+   * Navigate to the Workshop tab, where installed plugins get their panels.
+   *
+   * Optional on purpose. When it is missing this component still navigates,
+   * via the `kora-deeplink` event App.tsx already listens for — that is a real
+   * route to Workshop, not a fallback that pretends. The prop exists so a host
+   * that can switch tabs directly can skip the event round-trip.
+   */
+  onOpenInWorkshop?: () => void;
+}
+
+/**
+ * Go to the Workshop tab.
+ *
+ * The app routes tabs through `window.dispatchEvent(new CustomEvent(
+ * "kora-deeplink", { detail: { search: "?go=tools" } }))` — App.tsx's existing
+ * `onDeepLink` handler maps `go=tools` to the Workshop tab, and that path is
+ * already used by the native Android deep links. So this navigates without the
+ * host having to thread a callback down two components.
+ *
+ * Returns whether a route was actually taken, so a caller can tell the user
+ * when there is nothing to navigate to rather than swallowing the tap.
+ */
+export function openWorkshop(onOpenInWorkshop?: () => void): boolean {
+  if (onOpenInWorkshop) {
+    onOpenInWorkshop();
+    return true;
+  }
+  if (typeof window === "undefined") return false;
+  try {
+    window.dispatchEvent(
+      new CustomEvent("kora-deeplink", { detail: { search: "?go=tools" } })
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export default function PluginBrowser({
   categories,
   badge = "Plugins",
   intro,
+  onOpenInWorkshop,
 }: PluginBrowserProps) {
   const [entries, setEntries] = useState<RepoEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,6 +208,20 @@ export default function PluginBrowser({
   }, [load]);
 
   const [installingId, setInstallingId] = useState<string | null>(null);
+
+  /**
+   * Send the user to the Workshop tab, where this plugin's panel lives.
+   *
+   * This used to be a static `<p>` reading "Open in Workshop" — a label with no
+   * handler, which is why the button "didn't work". It is a real `<button>`
+   * now, and if no route exists at all the user is told so instead of the tap
+   * being swallowed.
+   */
+  const handleOpenInWorkshop = useCallback(() => {
+    if (!openWorkshop(onOpenInWorkshop)) {
+      toast.error("Couldn't open Workshop. Use the bottom tab bar to get there.");
+    }
+  }, [onOpenInWorkshop]);
 
   /**
    * Installing is two steps: the registry entry is only metadata, so the real
@@ -575,6 +628,7 @@ export default function PluginBrowser({
                       busy={installingId === entry.plugin.id}
                       onInstall={() => handleInstallExtension(entry)}
                       onUninstall={() => handleUninstallExtension(manifest)}
+                      onOpenInWorkshop={handleOpenInWorkshop}
                     />
                   );
                 })}
@@ -802,6 +856,7 @@ export function IntegrationCard({
   busy,
   onInstall,
   onUninstall,
+  onOpenInWorkshop,
 }: {
   entry: RepoEntry;
   manifest: PluginManifest;
@@ -809,9 +864,11 @@ export function IntegrationCard({
   busy?: boolean;
   onInstall: () => void;
   onUninstall: () => void;
+  onOpenInWorkshop?: () => void;
 }) {
   const unavailable = manifest.availability === "unavailable";
   const icon = entry.plugin.icon || manifest.icon;
+  const label = pluginDisplayName(manifest);
   return (
     <div
       className={`flex flex-col gap-2 rounded-2xl border p-4 transition ${
@@ -830,10 +887,10 @@ export function IntegrationCard({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold text-kindle-text leading-tight line-clamp-2">
-            {manifest.name}
+            {label}
           </p>
           <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">
-            {manifest.target === "calibre" ? "Calibre library" : "Amazon Kindle"}
+            {manifest.target === "calibre" ? "Calibre library" : "Kobo / Kindle"}
           </p>
           {unavailable && (
             <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-amber-700">
@@ -863,9 +920,15 @@ export function IntegrationCard({
             <Download className="w-3 h-3" /> {busy ? "Installing…" : "Install"}
           </button>
         ) : (
-          <p className="inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+          /* A real button, with a real handler. This was a static <p>, which is
+             why "Open in Workshop" did nothing when tapped. */
+          <button
+            type="button"
+            onClick={() => onOpenInWorkshop?.()}
+            className="inline-flex items-center gap-1 rounded-lg border border-kindle-border px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-text hover:border-kindle-accent hover:text-kindle-accent transition"
+          >
             <Sliders className="w-3 h-3" /> Open in Workshop
-          </p>
+          </button>
         )}
 
         {installed && (

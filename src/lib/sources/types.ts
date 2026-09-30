@@ -289,7 +289,7 @@ export interface SourcePlugin {
 export type PluginCategory = "source" | "theme" | "integration" | "tool";
 
 /** Integrations a plugin can bridge to, for display and permission copy. */
-export type IntegrationTarget = "kindle" | "calibre";
+export type IntegrationTarget = "kindle" | "calibre" | "croc";
 
 /**
  * A theme plugin's palette.

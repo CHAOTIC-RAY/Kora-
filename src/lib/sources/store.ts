@@ -374,7 +374,21 @@ export async function fetchRegistry(
   const res = await fetch(repoUrl, { signal });
   if (!res.ok) throw new Error(`Registry request failed (${res.status})`);
 
-  const index = (await res.json()) as RegistryIndex;
+  let index: RegistryIndex | undefined;
+  try {
+    index = (await res.json()) as RegistryIndex;
+  } catch (raw) {
+    const responseText = (await res.clone().text()).slice(0, 4096);
+    const looksLikeHtml = /^\s*<!doctype\s+html/i.test(responseText) || /^\s*<html[\s>]/i.test(responseText) || /^\s*<head[\s>]/i.test(responseText) || /^\s*<body[\s>]/i.test(responseText);
+    if (looksLikeHtml || raw instanceof SyntaxError) {
+      throw new Error(
+        looksLikeHtml
+          ? "That URL did not return plugin data — it returned a web page. The repository may be wrong or no longer exists."
+          : `That URL did not return valid plugin data (${raw instanceof Error ? raw.message : raw}). The repository may be wrong or no longer exists.`
+      );
+    }
+    throw raw instanceof Error ? raw : new Error(String(raw));
+  }
   const list = index?.extensionList?.extensions;
   if (!Array.isArray(list)) throw new Error("Malformed registry: no extensionList");
 

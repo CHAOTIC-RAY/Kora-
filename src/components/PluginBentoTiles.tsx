@@ -19,6 +19,15 @@
  * Sources are excluded by that rule: a source joins the Discover feed, it has
  * no panel to open.
  *
+ * THEMES ARE NOT HERE, by product decision. They used to render in this grid
+ * and were removed: a theme is chosen once in the plugin hub and then just *is*
+ * the app's look, so a second copy of it in Workshop read as a duplicate rather
+ * than an action. `WORKSHOP_TILE_CATEGORIES` below is the explicit filter, and
+ * it is deliberately narrower than "every non-source category" — do not
+ * "restore consistency" by making this equal `surfaceForCategory` again. Themes
+ * stay visible in the plugin hub (Discover), where they are installed, applied
+ * and removed; that surface still lists every category on purpose.
+ *
  * A plugin with no dedicated panel yet opens its detail sheet instead of
  * nothing, so every tile is honest about what tapping it will do.
  */
@@ -37,31 +46,45 @@ import {
 import toast from "react-hot-toast";
 import FluidOverlay from "./FluidOverlay";
 import CalibreSettingsPanel from "./CalibreSettingsPanel";
+import CrocPanel from "./CrocPanel";
 import KindleSettingsPanel from "./KindleSettingsPanel";
 import {
   getInstalledExtensions,
   isExtensionInstalled,
-  surfaceForCategory,
 } from "../lib/sources/store";
-import {
-  applyActiveThemePlugin,
-  getActiveThemePluginId,
-  setActiveThemePluginId,
-  syncThemePluginMarker,
-} from "../lib/sources/themeRuntime";
-import type { PluginManifest } from "../lib/sources/types";
+import { pluginDisplayName } from "../lib/sources/koboKindleSender";
+import type { PluginCategory, PluginManifest } from "../lib/sources/types";
 
-/** A tile can only be opened by something. `calibre` / `kindle` get their real
- *  settings panels; a theme gets apply/stop; anything else falls back to the
- *  detail sheet below. `null` would mean "dead tile", so it does not exist. */
-type PanelKind = "calibre" | "kindle" | "theme" | "detail";
+/**
+ * Which categories get a tile in the Workshop grid.
+ *
+ * Integrations and tools only. Themes are managed in the plugin hub (Discover)
+ * — see the header for why they are not repeated here. This is deliberately a
+ * narrower list than `categoriesForSurface("workshop")`; `surfaceForCategory`
+ * still maps `theme -> workshop` because that mapping is the placement
+ * contract asserted in `__tests__/pluginPlacement.test.ts`, and that file is
+ * owned by another change. The grid filter is local and does not move that
+ * mapping.
+ */
+export const WORKSHOP_TILE_CATEGORIES: readonly PluginCategory[] = ["integration", "tool"];
+
+/** Whether this manifest gets a Workshop tile. Pure, so it is directly testable. */
+export function isWorkshopTile(manifest: Pick<PluginManifest, "category">): boolean {
+  return WORKSHOP_TILE_CATEGORIES.includes(manifest.category);
+}
+
+/** A tile can only be opened by something. `calibre` / `kindle` / `croc` get their
+ *  real settings panels; anything else falls back to the detail sheet below.
+ *  `null` would mean "dead tile", so it does not exist. No `theme` kind: theme
+ *  tiles no longer render here at all (see `WORKSHOP_TILE_CATEGORIES`). */
+type PanelKind = "calibre" | "kindle" | "croc" | "detail";
 
 function panelFor(manifest: PluginManifest): PanelKind {
   if (manifest.category === "integration") {
     if (manifest.target === "calibre") return "calibre";
     if (manifest.target === "kindle") return "kindle";
+    if (manifest.target === "croc") return "croc";
   }
-  if (manifest.category === "theme") return "theme";
   return "detail";
 }
 
@@ -117,7 +140,7 @@ function PluginBentoCard({
       <div className="space-y-2 min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
           <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-kindle-accent transition">
-            {manifest.name}
+            {pluginDisplayName(manifest)}
           </h4>
         </div>
         <p className="text-[10px] text-kindle-text-muted leading-relaxed">
@@ -125,7 +148,7 @@ function PluginBentoCard({
             `An installed ${CATEGORY_LABEL[manifest.category] ?? "plugin"}.`}
         </p>
         <div className="text-[9px] font-bold uppercase tracking-wider text-kindle-accent flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
-          {panelFor(manifest) === "detail" ? "View details →" : `Launch ${manifest.name} →`}
+          {panelFor(manifest) === "detail" ? "View details →" : `Launch ${pluginDisplayName(manifest)} →`}
         </div>
       </div>
     </button>
@@ -158,7 +181,7 @@ function PluginDetailSheet({
           </div>
           <div className="min-w-0">
             <h3 className="font-lexend font-bold text-sm uppercase tracking-wider truncate">
-              {manifest.name}
+              {pluginDisplayName(manifest)}
             </h3>
             <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">
               {CATEGORY_LABEL[manifest.category] ?? "Plugin"} · v{manifest.version}
@@ -214,117 +237,18 @@ function PluginDetailSheet({
   );
 }
 
-/** Apply / stop a theme plugin. Same runtime the hub uses, so there is one
- *  definition of what "active theme plugin" means. */
-function ThemePluginPanel({
-  manifest,
-  onClose,
-}: {
-  manifest: PluginManifest;
-  onClose: () => void;
-}) {
-  // Seeded from the store, and only ever written by the two buttons below —
-  // which are the only two things in the app that change it. The store stays
-  // the source of the initial answer, so a stale local read is impossible:
-  // there is nothing else to drift it.
-  const [active, setActive] = useState(
-    () => getActiveThemePluginId() === manifest.themeId
-  );
-  const isActive = active;
-  // Same key App.tsx writes, and the same read-through-a-ref trick
-  // PluginBrowser uses, so applying a theme here tells App.tsx's theme effect
-  // to re-run exactly as it does from the hub.
-  const displayTheme = (() => {
-    try {
-      return localStorage.getItem("kora_display_theme") || "theme-light-white";
-    } catch {
-      return "theme-light-white";
-    }
-  })();
-
-  const apply = () => {
-    setActiveThemePluginId(manifest.themeId ?? null);
-    const applied = applyActiveThemePlugin(document);
-    syncThemePluginMarker(applied.applied);
-    window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: displayTheme }));
-    if (applied.error) toast.error(applied.error);
-    else toast.success(`${manifest.name} applied`);
-    setActive(applied.applied === manifest.themeId);
-  };
-
-  const stop = () => {
-    setActiveThemePluginId(null);
-    applyActiveThemePlugin(document);
-    syncThemePluginMarker(null);
-    window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: displayTheme }));
-    setActive(false);
-  };
-
-  return (
-    <FluidOverlay open onClose={onClose} variant="sheet" panelClassName="max-w-xl p-6">
-      <div className="flex items-center justify-between gap-3 border-b border-kindle-border pb-3 mb-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-accent rounded-xl shrink-0">
-            <Palette className="w-5 h-5" />
-          </div>
-          <h3 className="font-lexend font-bold text-sm uppercase tracking-wider truncate">
-            {manifest.name}
-          </h3>
-        </div>
-        <button onClick={onClose} className="p-1.5 hover:bg-kindle-bg rounded-lg shrink-0" aria-label="Close">
-          <X className="w-5 h-5 text-kindle-text" />
-        </button>
-      </div>
-
-      <div className="space-y-4">
-        <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-          {manifest.description || "A theme plugin. Applying it repaints the app with this palette."}
-        </p>
-        {isActive && (
-          <p className="text-[10px] font-bold uppercase tracking-widest text-kindle-accent">
-            Active now
-          </p>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={apply}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-kindle-accent px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-kindle-bg hover:opacity-90 transition"
-          >
-            <Palette className="w-3.5 h-3.5" /> {isActive ? "Re-apply" : "Apply theme"}
-          </button>
-          {isActive && (
-            <button
-              type="button"
-              onClick={stop}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-kindle-border px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text transition"
-            >
-              Stop using
-            </button>
-          )}
-        </div>
-        <p className="text-[10px] text-kindle-text-muted leading-relaxed">
-          To install or remove theme plugins, use the Plugins hub in Discover.
-        </p>
-      </div>
-    </FluidOverlay>
-  );
-}
-
 /**
  * The installed plugins that belong on this grid.
  *
- * Read through one function so the rule lives in exactly one place: the filter
- * is the placement rule from `lib/sources/store.ts`, not a hand-written list,
- * so this grid and the placement tests cannot disagree. Sources are excluded
- * twice over — the category check, and `surfaceForCategory` never returns
- * "workshop" for a source — because a source joins the Discover feed and has no
- * panel to open, so a tile for one would be a dead tile.
+ * Read through one function so the rule lives in exactly one place.
+ * `surfaceForCategory` alone is NOT the rule any more: it still maps
+ * `theme -> workshop`, which is the placement contract asserted in
+ * `__tests__/pluginPlacement.test.ts` (another change owns that file), so this
+ * grid narrows it with `WORKSHOP_TILE_CATEGORIES` instead of moving it. Themes
+ * live in the plugin hub; integrations and tools live here.
  */
 function readInstalled(): PluginManifest[] {
-  return getInstalledExtensions().filter(
-    (m) => m.category !== "source" && surfaceForCategory(m.category) === "workshop"
-  );
+  return getInstalledExtensions().filter(isWorkshopTile);
 }
 
 /**
@@ -410,7 +334,7 @@ export default function PluginBentoTiles({
                 <BookOpen className="w-5 h-5" />
               </div>
               <h3 className="font-lexend font-bold text-sm uppercase tracking-wider truncate">
-                {open.name}
+                {pluginDisplayName(open)}
               </h3>
             </div>
             <button onClick={() => setOpenId(null)} className="p-1.5 hover:bg-kindle-bg rounded-lg shrink-0" aria-label="Close">
@@ -431,7 +355,7 @@ export default function PluginBentoTiles({
                 <BookOpen className="w-5 h-5" />
               </div>
               <h3 className="font-lexend font-bold text-sm uppercase tracking-wider truncate">
-                {open.name}
+                {pluginDisplayName(open)}
               </h3>
             </div>
             <button onClick={() => setOpenId(null)} className="p-1.5 hover:bg-kindle-bg rounded-lg shrink-0" aria-label="Close">
@@ -444,8 +368,25 @@ export default function PluginBentoTiles({
         </FluidOverlay>
       )}
 
-      {open && panelFor(open) === "theme" && (
-        <ThemePluginPanel manifest={open} onClose={() => setOpenId(null)} />
+      {open && panelFor(open) === "croc" && (
+        <FluidOverlay open onClose={() => setOpenId(null)} variant="sheet" panelClassName="max-w-2xl p-6">
+          <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 bg-kindle-bg border border-kindle-border text-kindle-accent rounded-xl shrink-0">
+                <Plug className="w-5 h-5" />
+              </div>
+              <h3 className="font-lexend font-bold text-sm uppercase tracking-wider truncate">
+                {pluginDisplayName(open)}
+              </h3>
+            </div>
+            <button onClick={() => setOpenId(null)} className="p-1.5 hover:bg-kindle-bg rounded-lg shrink-0" aria-label="Close">
+              <X className="w-5 h-5 text-kindle-text" />
+            </button>
+          </div>
+          <div className="max-h-[75vh] overflow-y-auto pr-1">
+            <CrocPanel />
+          </div>
+        </FluidOverlay>
       )}
 
       {open && panelFor(open) === "detail" && (
