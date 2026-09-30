@@ -12,8 +12,16 @@
  * index.json listing extensions, each with one or more sources.
  */
 
-import type { RegistryIndex, SourcePlugin, PluginManifest } from "./types";
+import type {
+  IntegrationTarget,
+  PluginCategory,
+  PluginManifest,
+  RegistryIndex,
+  SourcePlugin,
+  ThemeTokens,
+} from "./types";
 import { isNsfwExtension } from "./types";
+import { validateThemeTokens } from "./themeRuntime";
 
 const LS_PLUGINS = "kora.sourcePlugins.v1";
 const LS_REPOS = "kora.sourceRepos.v1";
@@ -90,10 +98,27 @@ export function isExtensionInstalled(id: string): boolean {
  *
  * Returns false when the id is already present, so a double click cannot
  * register the same manifest twice.
+ *
+ * The `category === "source"` rejection is deliberate, not a bug: sources have
+ * their own store (`installPlugin`) and their own validation, which requires
+ * endpoints. Letting a source through here would register a manifest with
+ * nothing fetchable behind it.
+ *
+ * Non-source manifests are validated per category — a theme with unusable
+ * tokens or an integration with no target is rejected here rather than
+ * failing later, in a place the user cannot connect back to the install.
  */
 export function installExtension(manifest: PluginManifest): boolean {
   if (!manifest?.id || manifest.category === "source") return false;
   if (isExtensionInstalled(manifest.id)) return false;
+
+  if (manifest.category === "theme") {
+    if (!manifest.themeId) return false;
+    const { error } = validateThemeTokens(manifest.tokens);
+    if (error) return false;
+  }
+  if (manifest.category === "integration" && !manifest.target) return false;
+
   writeJSON(LS_EXT, [...getInstalledExtensions(), manifest]);
   return true;
 }
@@ -180,6 +205,66 @@ export function hasOptedInAnything(): boolean {
   return optedIn().length > 0;
 }
 
+/* ── Placement: which surface a plugin category belongs to ─────────────── */
+
+/**
+ * The three places a plugin can live, named after the app surfaces.
+ *
+ * A plugin of the wrong category showing up in the wrong tab is not a layout
+ * nit — it is a trust problem. A theme that appears in Discover reads as a
+ * place to install content, and an integration that appears next to sources
+ * reads as one more place books come from, when it is really a bridge to an
+ * app the user already trusts. So the mapping is data, not layout, and it
+ * lives here where the tests can assert it without rendering anything.
+ */
+export type PluginSurface = "discover" | "workshop" | "settings";
+
+/**
+ * Placement rule:
+ *   source      -> discover    (the feed it feeds)
+ *   integration -> workshop    (bridges to another app; configured in-app)
+ *   theme       -> settings    (recolours the app, next to the built-in swatches)
+ *   tool        -> workshop    (an in-app utility, same place as integrations)
+ */
+const SURFACE_BY_CATEGORY: Record<PluginCategory, PluginSurface> = {
+  source: "discover",
+  integration: "workshop",
+  theme: "settings",
+  tool: "workshop",
+};
+
+/** The tab a plugin category belongs to. Unknown categories fall back to
+ *  Workshop, which shows everything except sources — the conservative choice,
+ *  because a miscategorised plugin must not surface where content lives. */
+export function surfaceForCategory(category: PluginCategory): PluginSurface {
+  return SURFACE_BY_CATEGORY[category] ?? "workshop";
+}
+
+/** The category filter a surface passes to the shared plugin browser. */
+export function categoriesForSurface(surface: PluginSurface): PluginCategory[] {
+  return (Object.keys(SURFACE_BY_CATEGORY) as PluginCategory[]).filter(
+    (c) => SURFACE_BY_CATEGORY[c] === surface
+  );
+}
+
+/**
+ * Only sources are ever behind the piracy/adult opt-in.
+ *
+ * The opt-in is a statement about where books come from. A colour scheme or a
+ * bridge to the user's own Calibre server has no bearing on that, so gating
+ * them would be both wrong and, worse, a lever for pressuring the user into
+ * opting in. Themes and integrations stay visible to everyone.
+ */
+export function isGatedCategory(category: PluginCategory): boolean {
+  return category === "source";
+}
+
+/** Gating is per-source opt-in, and only sources ever consult it. */
+export function isEntryGated(entry: RepoEntry): boolean {
+  if (!isGatedCategory(entry.category)) return false;
+  return entry.plugin.piracy === true || entry.plugin.nsfw === true;
+}
+
 /* ── Registry fetching ─────────────────────────────────────────────────── */
 
 export interface RepoEntry {
@@ -197,6 +282,17 @@ export interface RepoEntry {
    * install that would install an empty plugin.
    */
   installUrl: string;
+  /**
+   * Which kind of plugin this is. The hub groups on this, and it decides both
+   * which store the plugin lands in and whether the piracy opt-in applies.
+   */
+  category: PluginCategory;
+  /**
+   * Non-source payload straight from the index, so the hub can render a theme
+   * swatch or an integration's status without downloading the plugin file.
+   * Only the fields relevant to `category` are populated.
+   */
+  manifest?: PluginManifest;
 }
 
 function absolutise(baseUrl: string, u: string | undefined): string {
@@ -208,9 +304,12 @@ function absolutise(baseUrl: string, u: string | undefined): string {
 /**
  * Fetch a registry index and flatten it into installable plugins.
  *
- * The index lists *extensions*, each holding one or more sources. Kora's
- * plugin unit is the source, not the extension, so one extension yields
- * several entries — the same way Tachiyomi shows a multi-source extension.
+ * The index lists *extensions*, each holding one or more plugins. Kora's
+ * plugin unit is the entry, not the extension, so one extension yields several
+ * entries — the same way Tachiyomi shows a multi-source extension.
+ *
+ * Every entry carries its `category`, because the hub groups on it and the
+ * piracy opt-in applies to sources only.
  */
 export async function fetchRegistry(
   repoUrl: string,
@@ -223,7 +322,8 @@ export async function fetchRegistry(
   const list = index?.extensionList?.extensions;
   if (!Array.isArray(list)) throw new Error("Malformed registry: no extensionList");
 
-  const installed = new Set(getInstalledPlugins().map((p) => p.id));
+  const installedSources = new Set(getInstalledPlugins().map((p) => p.id));
+  const installedExtensions = new Set(getInstalledExtensions().map((p) => p.id));
   const out: RepoEntry[] = [];
 
   for (const ext of list) {
@@ -238,6 +338,14 @@ export async function fetchRegistry(
       // is gated and the user decides.
       const piracy = (src as { piracy?: boolean }).piracy === true;
 
+      // A registry that predates the category field describes sources, so
+      // defaulting to "source" keeps every existing index working untouched.
+      const rawCategory = (src as { category?: unknown }).category;
+      const category: PluginCategory = isPluginCategory(rawCategory) ? rawCategory : "source";
+
+      const icon = ext.resources?.iconUrl || undefined;
+      const installUrl = (ext.resources?.apkUrl as string | undefined) || "";
+
       const plugin: SourcePlugin = {
         id,
         name: src.name,
@@ -245,11 +353,14 @@ export async function fetchRegistry(
         version: 1,
         nsfw,
         piracy,
+        // A theme or integration has no site to fetch from. Leaving baseUrl
+        // empty is honest here; only a source ever needs it, and the install
+        // path is the only thing that reads it.
         baseUrl: src.homeUrl || "",
         // The registry carries the icon so the list renders real logos before
         // anything is installed. Dropping this is why every card used to show
         // the same puzzle-piece placeholder.
-        icon: ext.resources?.iconUrl || undefined,
+        icon,
         gen2: {
           packageName: ext.packageName,
           versionName: ext.versionName,
@@ -259,15 +370,96 @@ export async function fetchRegistry(
         endpoints: {},
       };
 
+      // Only sources are gated behind the piracy opt-in. A theme or a legal
+      // library integration has nothing to do with that choice, and hiding it
+      // behind a warning about shadow libraries would be both wrong and a
+      // good way to make the user opt in unnecessarily.
+      const gated = category === "source" && (piracy || nsfw);
+
       out.push({
         plugin,
-        installed: installed.has(id),
-        gated: piracy || nsfw,
-        installUrl: (ext.resources?.apkUrl as string | undefined) || "",
+        installed:
+          category === "source" ? installedSources.has(id) : installedExtensions.has(id),
+        gated,
+        installUrl,
+        category,
+        manifest:
+          category === "source"
+            ? undefined
+            : {
+                id,
+                name: src.name,
+                version: ext.versionName || "1.0.0",
+                category,
+                author: (src as { author?: string }).author,
+                description: (src as { description?: string }).description,
+                icon,
+                website: src.homeUrl,
+                target: (src as { target?: IntegrationTarget }).target,
+                themeId: (src as { themeId?: string }).themeId,
+                tokens: (src as { tokens?: ThemeTokens }).tokens,
+                dark: (src as { dark?: boolean }).dark,
+                availability: (src as { availability?: PluginManifest["availability"] }).availability,
+                availabilityNote: (src as { availabilityNote?: string }).availabilityNote,
+                requires: (src as { requires?: PluginManifest["requires"] }).requires,
+              },
       });
     }
   }
   return out;
+}
+
+/** Narrow an unknown value from a registry to a real category. */
+export function isPluginCategory(value: unknown): value is PluginCategory {
+  return (
+    value === "source" || value === "theme" || value === "integration" || value === "tool"
+  );
+}
+
+/**
+ * Fetch and validate a NON-source plugin definition (a theme or an integration).
+ *
+ * Separate from `fetchPluginDefinition` because the validity rules are
+ * genuinely different: a source is fetchable if it has endpoints or a theme
+ * engine, whereas a theme needs usable tokens and an integration needs a
+ * target. Validating one with the other's rules would be wrong in both
+ * directions.
+ */
+export async function fetchExtensionDefinition(
+  installUrl: string
+): Promise<PluginManifest | null> {
+  if (!installUrl) return null;
+  const res = await fetch(installUrl);
+  if (!res.ok) throw new Error(`Plugin download failed (${res.status})`);
+  const manifest = (await res.json()) as PluginManifest;
+  if (!manifest || typeof manifest !== "object") return null;
+  if (!manifest.id || !manifest.name) {
+    throw new Error("Malformed plugin: missing id or name");
+  }
+  const category: PluginCategory = isPluginCategory(manifest.category)
+    ? manifest.category
+    : "source";
+  if (category === "source") {
+    throw new Error("Use the source installer for a source plugin");
+  }
+  if (category === "theme") {
+    if (!manifest.themeId) {
+      throw new Error("Malformed theme: missing themeId");
+    }
+    const { error } = validateThemeTokens(manifest.tokens);
+    if (error) throw new Error(`Malformed theme: ${error}`);
+  }
+  if (category === "integration" && !manifest.target) {
+    throw new Error("Malformed integration: missing target");
+  }
+  // JSON gives us a number when the definition wrote `"version": 1`. The
+  // manifest type says string, and a number here would compare unequal to a
+  // stored "1" — so coerce rather than let the type lie.
+  const version =
+    manifest.version === undefined || manifest.version === null
+      ? "1.0.0"
+      : String(manifest.version);
+  return { ...manifest, category, version };
 }
 
 /**

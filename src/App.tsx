@@ -69,6 +69,11 @@ import {
 } from "./lib/swBridge";
 import { applySelectedFeedSources, DEFAULT_FEED_SUBSCRIPTIONS } from "./lib/feedStorage";
 import { getTimeOfDayAutoTheme } from "./lib/readerThemes";
+import {
+  applyActiveThemePlugin,
+  resolveActiveThemePlugin,
+  syncThemePluginMarker,
+} from "./lib/sources/themeRuntime";
 import Quote from "./components/Quote";
 const FeedView = lazy(() => importWithRetry(() => import("./components/FeedView")));
 import DownloadBookBtn from "./components/DownloadBookBtn";
@@ -753,6 +758,12 @@ export default function App() {
   });
 
   const [appSkin, setAppSkin] = useState<AppSkinId>(() => readStoredAppSkin());
+
+  // The active theme *plugin*, if any. Null means the user is on a built-in
+  // theme. Read by the UI so it can show which theme is in effect, and kept in
+  // state (rather than read from storage inline) so the component re-renders
+  // when it changes.
+  const [pluginThemeId, setPluginThemeId] = useState<string | null>(() => null);
 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     return localStorage.getItem("kora_onboarding_completed") !== "true";
@@ -1936,6 +1947,30 @@ export default function App() {
       // so a manually-selected light theme never inherits a darkened background.
       document.body.classList.remove("dark");
     }
+    // A theme *plugin* overrides the built-in palette. It is applied after the
+    // class swap above because it writes the same custom properties those
+    // classes set — so it has to come last to win, and it has to re-run on
+    // every theme change so switching back to a built-in theme clears it.
+    const pluginTheme = isInstallView ? null : resolveActiveThemePlugin();
+    const applyResult = applyActiveThemePlugin(document);
+    syncThemePluginMarker(pluginTheme?.themeId ?? null);
+    setPluginThemeId(applyResult.applied);
+
+    // A plugin theme declares its own dark/light mode. When one is active it
+    // owns the `dark` class too, so the Tailwind `dark:` variants and the
+    // native status bar match the palette instead of the last built-in theme
+    // the user happened to pick.
+    if (pluginTheme) {
+      if (pluginTheme.dark) {
+        classes.push("dark");
+        document.documentElement.classList.add("dark");
+        document.body.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+        document.body.classList.remove("dark");
+      }
+    }
+
     document.body.className = Array.from(new Set(classes.filter(Boolean))).join(" ");
     document.documentElement.dataset.skin = activeSkin;
   }, [displayTheme, appSkin, window.location.pathname]);
@@ -3459,6 +3494,7 @@ export default function App() {
             onSearchTrigger={handleSearchDiscover}
             onImportLocalBook={handleBookAdded}
             onBookUpdated={handleBookUpdated}
+            onOpenSeriesGroup={setOpenSeriesGroup}
           />
           </Suspense>
                   </div>

@@ -291,6 +291,25 @@ export type PluginCategory = "source" | "theme" | "integration" | "tool";
 /** Integrations a plugin can bridge to, for display and permission copy. */
 export type IntegrationTarget = "kindle" | "calibre";
 
+/**
+ * A theme plugin's palette.
+ *
+ * These map 1:1 onto the CSS custom properties `index.css` already declares
+ * (`--theme-bg` … `--toast-bg`), so a theme plugin writes the same variables a
+ * built-in `.theme-*` class would. `toastBg` is optional; the rest are not,
+ * because a theme missing them is a broken theme, not a partial one.
+ */
+export interface ThemeTokens {
+  bg: string;
+  text: string;
+  textMuted: string;
+  border: string;
+  accent: string;
+  card: string;
+  /** Toast surface tint. Falls back to the built-in value when omitted. */
+  toastBg?: string;
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -308,6 +327,25 @@ export interface PluginManifest {
   target?: IntegrationTarget;
   /** Only for `theme`: the theme token set id it applies. */
   themeId?: string;
+  /** Only for `theme`: the palette to write. See ThemeTokens. */
+  tokens?: ThemeTokens;
+  /**
+   * Only for `theme`: whether this theme is a dark scheme.
+   *
+   * Kora drives Tailwind's `dark:` variant and the system status bar off this
+   * one flag, so a theme has to declare it or the app will render dark
+   * surfaces with light-mode components.
+   */
+  dark?: boolean;
+  /**
+   * Honest status for an integration that is not yet functional.
+   *
+   * `unavailable` means the plugin cannot work as shipped. The UI says so
+   * plainly instead of offering an install that silently does nothing.
+   */
+  availability?: "ready" | "unavailable";
+  /** Why it is unavailable, or what the user must supply. Shown verbatim. */
+  availabilityNote?: string;
   /**
    * What the plugin needs before it runs. The hub uses this to show an
    * honest prerequisite instead of failing at first use.

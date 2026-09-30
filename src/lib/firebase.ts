@@ -154,6 +154,20 @@ export interface BookMetadata {
   coverUrl?: string;
   downloadUrl?: string;
   md5?: string; // catalog identity for cross-device re-fetch (never store file bytes in Firebase)
+
+  /* ---- download queue state ----
+   * The library grid renders a transient card for a download that is in
+   * flight or has failed, so the queue is merged into the book list it
+   * renders. These were read by LibraryManager without ever being declared
+   * here, which left the file uncompilable. */
+  /** Marks this entry as a queue row rather than a saved book. */
+  isDownloadingCard?: boolean;
+  /** "queued" | "downloading" | "done" | "error", as the queue reports it. */
+  downloadStatus?: string;
+  /** The live queue entry backing this card, for progress and retry. */
+  activeDownload?: unknown;
+  /** Kept visibly greyed in the grid until the user retries. */
+  failedDownload?: boolean;
   source?: string;
   tags: string[];
   status: "to-read" | "reading" | "completed";

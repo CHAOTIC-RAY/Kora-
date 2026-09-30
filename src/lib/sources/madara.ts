@@ -182,7 +182,7 @@ export function createMadaraClient(
     if (!html) return manga;
 
     const out = { ...manga };
-    const t = pickText(html, sel.detailsTitle) || pickTitleTag(html);
+    const t = saneTitle(pickDescendantText(html, sel.detailsTitle) || pickTitleTag(html));
     if (t) out.title = t;
     // Author/artist/description are all `div.<label>-content` or a nested
     // `summary__content`, several of which occur per page. `pickText` takes the
@@ -195,12 +195,29 @@ export function createMadaraClient(
     if (a) out.author = a;
     const art = pickAnchorText(html, sel.detailsArtist);
     if (art) out.artist = art;
-    const desc = pickText(html, sel.detailsDescription) || pickLabelled(html, "Description");
+
+    // The synopsis. `containerHtml` on the description selector is used only
+    // as a fallback: its whole inner HTML is what gets cleaned, and a scraper
+    // page's leading `<h2>`/`<h3>` survive tag-stripping as a run-on prefix.
+    // Preferring the first real paragraph removes the SEO furniture at the
+    // source and keeps the plot prose intact.
+    const descScope = containerHtml(html, sel.detailsDescription);
+    const descRaw = pickFirstParagraph(descScope) || pickLabelled(html, "Description") || decodeEntities(descScope);
+    const desc = cleanSynopsis(descRaw);
     if (desc) out.description = desc;
+
     const st = pickLabelled(html, "Status");
     if (st) out.status = statusFrom(st);
-    const th = imgOf(pickAttr(html, "src"));
+
+    // The cover. Scoped to the summary image block, `data-src` first: the
+    // page-wide first `src` belongs to a `<script>` tag and renders blank.
+    const coverScope = classTokenHtml(html, classOf(sel.detailsThumbnail)) || containerHtml(html, sel.detailsThumbnail);
+    const th = imgOf(pickImageUrl(coverScope) || pickMetaImage(html));
     if (th) out.thumbnailUrl = th;
+
+    const genres = pickGenres(html);
+    if (genres.length) out.genres = genres;
+
     out.initialized = true;
     return out;
   }
@@ -314,6 +331,28 @@ function escapeRe(s: string): string {
 function classOf(sel: string): string {
   const m = sel.match(/\.([\w-]+)/);
   return m ? m[1] : sel;
+}
+
+/**
+ * Index of the first `class="… cls …"` attribute, or -1.
+ *
+ * Attribute context only, never a bare substring. Madara themes inline ~18KB
+ * of theme CSS, and a plain `indexOf("post-title")` lands inside a selector
+ * list like `body.manga-page .profile-manga .post-title h1` — which is how a
+ * real element's class can resolve to a stylesheet.
+ */
+function indexOfClassToken(html: string, cls: string): number {
+  const re = new RegExp(`class\\s*=\\s*["'][^"']*\\b${escapeRe(cls)}\\b[^"']*["']`, "i");
+  const m = html.match(re);
+  return m?.index ?? -1;
+}
+
+/** Inner HTML of the first element carrying `cls` in its class attribute. */
+function classTokenHtml(html: string, cls: string): string {
+  if (!cls || cls === "body") return "";
+  const at = indexOfClassToken(html, cls);
+  if (at < 0) return "";
+  return containerHtmlAt(html, cls, at);
 }
 
 function decodeEntities(s: string): string {
@@ -450,8 +489,24 @@ function pickLabelled(html: string, label: string): string {
 /** Bounded inner HTML of the element carrying `sel`'s class. */
 function containerHtml(html: string, sel: string): string {
   const cls = classOf(sel);
-  const idx = html.indexOf(cls);
+  // A selector with a class must be located in attribute context. A bare
+  // `indexOf` finds the same word inside the theme's inlined CSS first, which
+  // is how `div.post-title h1` resolved to 18KB of a stylesheet. A bare tag
+  // selector ("a", "span") has no class to look for, so it keeps the
+  // substring search.
+  const idx = /[.#]/.test(sel) ? indexOfClassToken(html, cls) : html.indexOf(cls);
   if (idx < 0) return "";
+  return containerHtmlAt(html, sel, idx);
+}
+
+/**
+ * `containerHtml` with the element's class-token position supplied.
+ *
+ * The walk is identical; only the starting point differs, so a caller that has
+ * already located a real `class="…"` occurrence can reuse it without the
+ * substring lookup that can land inside inlined CSS.
+ */
+function containerHtmlAt(html: string, sel: string, idx: number): string {
   const start = html.lastIndexOf("<", idx);
   if (start < 0) return "";
 
@@ -500,10 +555,167 @@ function pickText(html: string, sel: string): string {
   return inner ? decodeEntities(inner) : "";
 }
 
+/**
+ * Text of a selector's descendant, e.g. `div.post-title h1` -> the `<h1>`.
+ *
+ * `containerHtml` stops at the ancestor carrying the class, which is right for
+ * a single-tag selector but wrong for a descendant: `div.post-title` also
+ * contains the theme's badge span, so reading the whole block prefixed the
+ * title with "HOT" on every hot series.
+ */
+function pickDescendantText(html: string, sel: string): string {
+  const parts = sel.trim().split(/\s+/);
+  const tag = parts.length > 1 ? parts[parts.length - 1] : "";
+  if (!/^[a-z][\w-]*$/i.test(tag)) return pickText(html, sel);
+  const inner = containerHtml(html, parts[0]);
+  if (!inner) return "";
+  const m = inner.match(new RegExp(`<${escapeRe(tag)}\\b[^>]*>([\\s\\S]*?)</${escapeRe(tag)}>`, "i"));
+  return m ? decodeEntities(m[1]) : decodeEntities(inner);
+}
+
 /** The <h1> text, used when a theme puts the title elsewhere. */
 function pickTitleTag(html: string): string {
   const m = html.match(/<h1[^>]*>(.*?)<\/h1>/is);
   return m ? decodeEntities(m[1]) : "";
+}
+
+/**
+ * A cover url is an image, not an asset.
+ *
+ * Madara detail pages lazy-load the real cover into `data-src` and leave
+ * `src` pointing at a grey placeholder. Scanning the page for the first
+ * `src` attribute at all therefore returns whatever the theme loaded first —
+ * on one site that was `jquery.min.js`, and the cover rendered as a blank
+ * grey box. Rejecting known non-image extensions is the guard that matters.
+ */
+function isImageUrl(v: string): boolean {
+  if (!v) return false;
+  if (/\.(?:js|mjs|css|json|php|html?|xml|txt|ico|woff2?|ttf|eot|mp4|webm)(\?|#|$)/i.test(v)) return false;
+  return true;
+}
+
+const IMG_LAZY_ATTRS = ["data-src", "data-lazy-src", "data-original", "data-srcset", "src"];
+
+/** The best real image url on the first `<img>` inside `scope`. */
+function pickImageUrl(scope: string): string {
+  const tag = scope.match(/<img\b[^>]*>/i)?.[0];
+  if (!tag) return "";
+  for (const attr of IMG_LAZY_ATTRS) {
+    const raw = attrOf(tag, attr);
+    if (!raw) continue;
+    // `srcset` is a width-descriptor list; its first entry is the largest.
+    const url = attr === "data-srcset" ? raw.split(",")[0].trim().split(/\s+/)[0] || "" : raw;
+    if (isImageUrl(url)) return url;
+  }
+  return "";
+}
+
+/** Meta `og:image` / `twitter:image` — the last resort for a cover. */
+function pickMetaImage(html: string): string {
+  for (const name of ["og:image", "twitter:image", "twitter:image:src"]) {
+    const m =
+      html.match(new RegExp(`<meta[^>]*(?:property|name)\\s*=\\s*["']${name}["'][^>]*content\\s*=\\s*["']([^"']+)["']`, "i")) ||
+      html.match(new RegExp(`<meta[^>]*content\\s*=\\s*["']([^"']+)["'][^>]*(?:property|name)\\s*=\\s*["']${name}["']`, "i"));
+    if (m?.[1] && isImageUrl(m[1])) return m[1];
+  }
+  return "";
+}
+
+/**
+ * The synopsis paragraph, ignoring the SEO furniture wrapped around it.
+ *
+ * Madara scrapers emit `Read X Novel – X Manhua Online Free At ZINMANGA.NET`
+ * as an `<h2>`, `The summary of the comic X:` as an `<h3>`, and sometimes a
+ * bare `Read Manga X at example.com` line of its own — the plot is in a
+ * `<p>`, but not always the *first* one. Each candidate is cleaned and the
+ * first one with real substance left wins, so a promo line that survives
+ * tag-stripping cannot become the synopsis.
+ */
+const MIN_SYNOPSIS = 40;
+
+function pickFirstParagraph(html: string): string {
+  for (const b of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const raw = decodeEntities(b[1]).replace(/\s+/g, " ").trim();
+    if (raw.length < MIN_SYNOPSIS) continue;
+    const cleaned = cleanSynopsis(raw);
+    // A candidate that was mostly boilerplate is not a synopsis.
+    if (cleaned.length < MIN_SYNOPSIS) continue;
+    if (cleaned.length < raw.length * 0.5) continue;
+    return cleaned;
+  }
+  return "";
+}
+
+/**
+ * Boilerplate scraper sites staple on around a synopsis.
+ *
+ * Phrase-based, not site-based, so the rules hold across the family. The
+ * headings are removed before the text is flattened, but a site that inlines
+ * its blurb as bare text reaches the same rules.
+ */
+const SEO_PREFIXES: RegExp[] = [
+  /^read\s+[^.!?\n]{0,160}?\b(?:novel|manhua|manga|comic|book)\b[^.!?\n]{0,80}?\bonline\s+free\s+at\b[^.!?\n]*/i,
+  /^read\s+[^.!?\n]{0,160}?\bonline\s+free\b[^.!?\n]*/i,
+  // `Read Manga Return of the Mount Hua Sect at s2read.com` — a site promo
+  // standing alone as its own paragraph.
+  /^read\s+[^.!?\n]{0,160}?\b(?:novel|manhua|manga|comic|book|manhwa)\b[^.!?\n]{0,80}?\bat\s+\S+[.!?]?\s*$/i,
+  /[^.!?\n]{0,120}?\bis\s+also\s+known\s+as\s*:?/gi,
+  /the\s+summary\s+of\s+the\s+(?:comic|manga|manhua|novel|book)\b[^:\n]{0,120}\s*:/gi,
+  /the\s+(?:comic|manga|manhua|novel|book)\b[^.\n]{0,80}?\bbelongs\s+to\s+the\s+genre\s*:?/gi,
+  /[^.!?\n]{0,120}?\bplease\s+(?:don'?t|do\s+not)\s+[^\n]{0,200}/gi,
+  /^\s*(?:genres?|tags?)\s*:?\s*$/i,
+];
+
+function cleanSynopsis(raw: string): string {
+  if (!raw) return "";
+  let text = raw;
+  for (const re of SEO_PREFIXES) text = text.replace(re, " ");
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A title is a short human string.
+ *
+ * Anything longer, or containing CSS punctuation, came from a stylesheet or a
+ * JSON blob rather than from the page's title element — measured at 18,836
+ * characters of theme CSS on a real detail page. Rejecting it lets the caller
+ * fall back to the `<h1>` instead of shipping a stylesheet as a manga name.
+ */
+const MAX_TITLE = 200;
+
+/** Characters that only ever appear in CSS or JSON, never in a title. */
+const CSS_PUNCTUATION = new RegExp(`[{};]|/\\*|\\*/|@media|!important|\\bpx\\b|:root`, "i");
+
+function saneTitle(raw: string): string {
+  const t = (raw || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > MAX_TITLE) return "";
+  if (CSS_PUNCTUATION.test(t)) return "";
+  return t;
+}
+
+/**
+ * Genre names from a Madara detail page.
+ *
+ * The family renders them as `div.genres-content a` inside a
+ * `post-content_item` headed `Genre(s)`; a few themes drop one level and put
+ * the links straight in `div.summary-content`. Only `/manga-genre/` and
+ * `/manga-tag/` taxonomy links are counted, so the site-wide genre menu in
+ * the header and footer cannot be mistaken for this series' genres.
+ */
+function pickGenres(html: string): string[] {
+  for (const cls of ["genres-content", "summary-content"]) {
+    const scope = classTokenHtml(html, cls);
+    if (!scope) continue;
+    const out: string[] = [];
+    for (const a of scope.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+      if (!/\/manga-(?:genre|tag)\//i.test(a[1])) continue;
+      const name = decodeEntities(a[2]).replace(/\s+/g, " ").trim();
+      if (!name || name.length > 40) continue;
+      if (!out.some((g) => g.toLowerCase() === name.toLowerCase())) out.push(name);
+    }
+    if (out.length) return out;
+  }
+  return [];
 }
 
 /**

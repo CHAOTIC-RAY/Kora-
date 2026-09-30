@@ -110,6 +110,129 @@ ok("cdn thumbnail dropped", !pgs.some((p) => /thumbnail/.test(p.image)));
 ok("extensionless cdn panel kept", pgs[0]?.image.includes("chapter_abc_001deadbeef"), pgs[0]?.image);
 ok("pages indexed in order", pgs[0]?.index === 0 && pgs[1]?.index === 1);
 
+/* ------------------------------------------------------------------
+ * Real scraper-site detail page, captured verbatim from mangazin.org.
+ *
+ * Every field below was wrong on this page and each defect is a distinct
+ * failure mode, so the fixture carries the whole trap: ~18KB of inlined theme
+ * CSS that mentions `.post-title` before the real element does, a `<script>`
+ * whose `src` is the first `src` attribute in the document, SEO headings
+ * wrapped around the plot, and a `Genre(s)` row.
+ * ------------------------------------------------------------------ */
+const CSS_NOISE = `<style>.c-blog__heading.style-2 i {
+  background: -webkit-linear-gradient(left, #f680e0 40%, #f680e0 100%);
+  background: linear-gradient(left, #f680e0 40%, #f680e0 100%);
+} body.manga-page .profile-manga .post-title h1, .genres_wrap .genres ul li a:hover { color: #333; }</style>`;
+
+const SCRAPER_DETAILS = `<!DOCTYPE html><html><head>
+${CSS_NOISE}
+<script src="https://mangazin.test/wp-includes/js/jquery/jquery.min.js?ver=3.7.1"></script>
+<meta property="og:image" content="https://mangazin.test/wp-content/uploads/2019/11/post_7030_image.jpg" />
+</head><body>
+  <div class="post-title"><span class="manga-title-badges hot">HOT</span> <h1> Beauty and the Beasts </h1></div>
+  <div class="tab-summary">
+    <div class="summary_image"><a href="https://mangazin.test/manga/beauty-and-the-beasts/">
+      <img width="193" height="278" data-src="https://mangazin.test/wp-content/uploads/2019/11/post_7030_image-193x278.jpg"
+           src="https://mangazin.test/wp-content/themes/madara/images/dflazy.jpg" alt="Beauty and the Beasts"/></a></div>
+    <div class="summary_content"><div class="post-content">
+      <div class="post-content_item"><div class="summary-heading"><span class="h5">Author(s)</span></div>
+        <div class="author-content"><a href="/manga-artist/china-reading/">CHINA READING</a></div></div>
+      <div class="post-content_item"><div class="summary-heading"><span class="h5">Genre(s)</span></div>
+        <div class="summary-content"><div class="genres-content">
+          <a href="https://mangazin.test/manga-genre/ecchi/" rel="tag">Ecchi</a>,
+          <a href="https://mangazin.test/manga-genre/fantasy/" rel="tag">Fantasy</a>,
+          <a href="https://mangazin.test/manga-genre/harem/" rel="tag">Harem</a>
+        </div></div></div>
+    </div></div>
+  </div>
+  <div class="description-summary"><div class="summary__content">
+    <h2>Read Beauty and the Beasts Novel &#8211; Beauty and the Beasts Manhua Online Free At <a href="https://mangazin.test/manga-tag/zinmanga.net/">ZINMANGA.NET</a></h2>
+    <h3>The summary of the comic Beauty and the Beasts:</h3>
+    <p>As soon as she fell into the world of beastmen, a leopard forcibly took her back to his home. Indeed, Bai Jingjing is at a complete and utter loss.</p>
+    <h3>&#8220;Beauty and the Beasts&#8221; is also known as:</h3>
+    <p>Carefree Beast Life / GO WILD: Kemonohito no Koi wa Yasei-teki</p>
+  </div></div>
+  <ul><li class="wp-manga-chapter"><a href="https://mangazin.test/manga/beauty-and-the-beasts/chapter-1/">Chapter 1</a></li></ul>
+</body></html>`;
+
+const scraper = createMadaraClient(
+  { ...PLUGIN, baseUrl: "https://mangazin.test" } as unknown as SourcePlugin,
+  async () => SCRAPER_DETAILS
+);
+const sd = await scraper.details({
+  url: "https://mangazin.test/manga/beauty-and-the-beasts/",
+  title: "stale listing title",
+} as any);
+
+// (b) The title. `div.post-title` appears in the inlined CSS ~200 bytes
+// before the real element, and the theme's HOT badge sits beside the <h1>.
+ok("title is not the inlined stylesheet", !(sd.title || "").includes("linear-gradient"), sd.title);
+ok("title has sane length", (sd.title || "").length < 100, sd.title);
+ok("title badge stripped", sd.title === "Beauty and the Beasts", sd.title);
+
+// (a) The cover. The first `src` in this document is jquery.min.js; the real
+// cover is the lazy `data-src` on the summary image.
+ok("cover is not a script url", !/\.(js|css|json|php)(\?|#|$)/i.test(sd.thumbnailUrl || ""), sd.thumbnailUrl);
+ok("cover is not the lazy placeholder", !/dflazy/.test(sd.thumbnailUrl || ""), sd.thumbnailUrl);
+ok("cover from data-src", (sd.thumbnailUrl || "").includes("post_7030_image"), sd.thumbnailUrl);
+
+// (c) The synopsis. Only the plot paragraph should survive.
+ok("SEO 'Read … Online Free At' prefix stripped", !/ZINMANGA/i.test(sd.description || ""), sd.description);
+ok("'summary of the comic' heading stripped", !/summary of the comic/i.test(sd.description || ""), sd.description);
+ok("'also known as' heading stripped", !/also known as/i.test(sd.description || ""), sd.description);
+ok("synopsis keeps the real prose", (sd.description || "").startsWith("As soon as she fell into the world of beastmen"), sd.description);
+ok("synopsis drops the alternate-title list", !/Carefree Beast Life/.test(sd.description || ""), sd.description);
+
+// (d) Genres.
+ok("genres parsed", (sd.genres || []).length === 3, sd.genres);
+ok("genre names, not urls", sd.genres?.[0] === "Ecchi" && sd.genres?.[2] === "Harem", sd.genres);
+
+/* A detail page with no cover block at all must still resolve one, so the
+   cover is never a blank box just because the theme moved its markup. */
+const NO_IMAGE_BLOCK = SCRAPER_DETAILS.replace(
+  /<div class="summary_image">[\s\S]*?<\/div>/,
+  '<div class="summary_image"><span>no cover here</span></div>'
+);
+const noCover = createMadaraClient(
+  { ...PLUGIN, baseUrl: "https://mangazin.test" } as unknown as SourcePlugin,
+  async () => NO_IMAGE_BLOCK
+);
+const nc = await noCover.details({ url: "https://mangazin.test/manga/beauty-and-the-beasts/", title: "x" } as any);
+ok("cover falls back to og:image", (nc.thumbnailUrl || "").includes("post_7030_image.jpg"), nc.thumbnailUrl);
+
+/* A site with no genre row must return an empty list, not the header menu's
+   links — the nav lists every genre the site has, for every series. */
+const NO_GENRES = SCRAPER_DETAILS
+  .replace(/<div class="post-content_item"><div class="summary-heading"><span class="h5">Genre\(s\)<\/span>[\s\S]*?<\/div><\/div>\s*<\/div>/, "</div>")
+  .replace("</body>", '<nav><a href="https://mangazin.test/manga-genre/ecchi/">Ecchi</a><a href="https://mangazin.test/manga-genre/fantasy/">Fantasy</a></nav></body>');
+const noGenres = createMadaraClient(
+  { ...PLUGIN, baseUrl: "https://mangazin.test" } as unknown as SourcePlugin,
+  async () => NO_GENRES
+);
+const ng = await noGenres.details({ url: "https://mangazin.test/manga/beauty-and-the-beasts/", title: "x" } as any);
+ok("no genre row -> no genres, nav links ignored", (ng.genres || []).length === 0, ng.genres);
+
+/* A page whose FIRST <p> is a site promo and whose real plot is the second —
+   s2read prints `Read Manga X at s2read.com` as its own paragraph. Taking the
+   first paragraph verbatim made the synopsis read "Read Manga … at s2read.com". */
+const PROMO_FIRST = `<body>
+  <div class="post-title"><h1>Return of the Mount Hua Sect</h1></div>
+  <div class="summary_image"><img data-src="https://s2read.test/x.jpg" src="https://s2read.test/dflazy.jpg"></div>
+  <div class="description-summary"><div class="summary__content show-more">
+    <h1><a href="/manga/return-of-the-mount-hua-sect/">Return of the Mount Hua Sect</a></h1>
+    <p>Read Manga Return of the Mount Hua Sect at <strong>s2read.com</strong></p>
+    <p>Chung Myung, the 13th Disciple of the Mount Hua Sect, defeated Chun Ma, who has brought destruction onto the world. He is reborn after 100 years in the body of a child.</p>
+    <ul><li>Return of the Flowery Mountain Sect</li></ul>
+  </div></div></body>`;
+const promo = createMadaraClient(
+  { ...PLUGIN, baseUrl: "https://s2read.test" } as unknown as SourcePlugin,
+  async () => PROMO_FIRST
+);
+const pd = await promo.details({ url: "https://s2read.test/manga/return-of-the-mount-hua-sect/", title: "x" } as any);
+ok("promo paragraph not used as the synopsis", !/s2read\.com/.test(pd.description || ""), pd.description);
+ok("second paragraph used as the synopsis", (pd.description || "").startsWith("Chung Myung, the 13th Disciple"), pd.description);
+ok("promo-page cover still resolves", (pd.thumbnailUrl || "").includes("/x.jpg"), pd.thumbnailUrl);
+
 /* resilience: a dead page must not throw */
 const dead = createMadaraClient(PLUGIN, async () => { throw new Error("502"); });
 ok("dead listing -> empty, no throw", (await dead.popular(1)).mangas.length === 0);

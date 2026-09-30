@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { User } from "firebase/auth";
 import {
   Moon, Sun, Monitor,
@@ -26,6 +26,13 @@ const skinIcons: Record<string, React.ComponentType<{ className?: string }>> = {
 
 import { toast } from "react-hot-toast";
 import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE, PRIMARY_READER_THEME_KEYS, resolveReaderTheme } from "../lib/readerThemes";
+import {
+  applyActiveThemePlugin,
+  getActiveThemePluginId,
+  getInstalledThemePlugins,
+  setActiveThemePluginId,
+  syncThemePluginMarker,
+} from "../lib/sources/themeRuntime";
 import { APP_SKINS, DEFAULT_APP_SKIN } from "../lib/appSkin";
 import {
   loadNewsReaderPrefs,
@@ -60,6 +67,8 @@ import {
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
+import PluginBrowser from "./PluginBrowser";
+import { categoriesForSurface } from "../lib/sources/store";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
 import P2pTransferPanel from "./P2pTransferPanel";
@@ -275,6 +284,29 @@ function SettingsView({
     tts: false,
     about: false,
   });
+
+  // The active theme plugin, read straight from the runtime rather than through
+  // a prop: this is the one place that needs to *clear* it, and the runtime
+  // already owns the apply/clear logic that App.tsx listens to.
+  const [activePluginThemeId, setActivePluginThemeId] = useState<string | null>(
+    () => getActiveThemePluginId()
+  );
+  const activePluginThemeName = useMemo(() => {
+    if (!activePluginThemeId) return null;
+    return (
+      getInstalledThemePlugins().find((t) => t.themeId === activePluginThemeId)?.name ??
+      null
+    );
+  }, [activePluginThemeId]);
+
+  const onClearPluginTheme = useCallback(() => {
+    setActiveThemePluginId(null);
+    applyActiveThemePlugin(document);
+    syncThemePluginMarker(null);
+    setActivePluginThemeId(null);
+    // App.tsx owns the `dark` class, so tell it to re-run its theme effect.
+    window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: displayTheme }));
+  }, [displayTheme]);
 
   const [newsReaderPrefs, setNewsReaderPrefs] = useState<NewsReaderPrefs>(() => loadNewsReaderPrefs());
   const setNRP = (patch: Partial<NewsReaderPrefs>) => {
@@ -1082,7 +1114,27 @@ function SettingsView({
                     <Toggle on={autoDisplayTheme} onClick={() => onChangeAutoDisplayTheme(!autoDisplayTheme)} />
                   </div>
                 </div>
-                
+
+                {/* A theme plugin paints over whichever built-in theme is
+                    selected, so the user needs to know the swatches below are
+                    not what they are currently looking at — and be able to get
+                    back to a built-in theme from here. */}
+                {activePluginThemeName && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-kindle-accent/40 bg-kindle-accent/5 px-3 py-2">
+                    <p className="text-xs text-kindle-text">
+                      Theme plugin active:{" "}
+                      <span className="font-semibold">{activePluginThemeName}</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onClearPluginTheme}
+                      className="rounded-lg border border-kindle-border px-2.5 py-1 text-[11px] text-kindle-text"
+                    >
+                      Use a built-in theme
+                    </button>
+                  </div>
+                )}
+
                 <div className={`grid grid-cols-3 sm:grid-cols-4 gap-2 ${autoDisplayTheme ? 'opacity-50 pointer-events-none' : ''}`}>
                   {PRIMARY_READER_THEME_KEYS.concat(["light", "green", "dark"]).map((tKey) => {
                     const th = resolveReaderTheme(tKey);
@@ -1116,6 +1168,24 @@ function SettingsView({
                       </button>
                     );
                   })}
+                </div>
+
+                {/* THEME PLUGINS — SETTINGS BRANCH (`view === "settings"`).
+                    Sits directly under the built-in theme swatches because a
+                    theme plugin is the same kind of thing: a palette you pick
+                    here and it repaints the app. Verified by the surrounding
+                    guards — the block above is inside this branch's first
+                    `{view === "settings" && (<>` and the Workshop block ends
+                    above. Sources stay in Discover; integrations are in the
+                    Workshop branch. Selecting a theme here applies it through
+                    themeRuntime and clears it via the banner above; nothing
+                    here is a pirate or adult content gate, themes never are. */}
+                <div className="mt-1">
+                  <PluginBrowser
+                    categories={categoriesForSurface("settings")}
+                    badge="Themes"
+                    intro="Theme plugins are palettes. Pick one and it repaints the app; switch back to a built-in theme at any time."
+                  />
                 </div>
 
                 <div className="space-y-3">
@@ -1787,6 +1857,33 @@ function SettingsView({
                 </button>
               </div>
             </div>
+          </section>
+
+          {/* INTEGRATION PLUGINS — WORKSHOP BRANCH (the "tools" view).
+              This is the end of the tools block: the settings branch opens
+              immediately below this one, at the Storage Mode card. Calibre sync
+              and Send to Kindle are integration-category plugins: an
+              integration is something you configure inside this app, so it
+              belongs in Workshop and not in Discover beside the sources. The
+              filter comes from the placement rule in lib/sources/store.ts
+              rather than a hand-written list, so this surface and the tests
+              can never disagree. Sources stay in Discover; themes are in the
+              Settings branch further down. */}
+          <section className="space-y-3">
+            <div className="flex flex-col gap-0.5 border-b border-kindle-border pb-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-kindle-text flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-kindle-accent animate-pulse" />
+                Integrations
+              </h3>
+              <p className="text-[10px] text-kindle-text-muted">
+                Send books to an app you already use. Credentials stay on this device.
+              </p>
+            </div>
+            <PluginBrowser
+              categories={categoriesForSurface("workshop")}
+              badge="Workshop"
+              intro="Connect Kora to another app on your device — Calibre, or Amazon Kindle. These plugins are settings, not content sources: they bridge to software you already trust."
+            />
           </section>
 
         </div>

@@ -22,6 +22,14 @@ import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiob
 import { buildEpubFromText } from "../lib/epubTools";
 import { resolveApiUrl, isNativeApp } from "../lib/capacitorNative";
 import { buildBookDeepLink } from "../lib/bookShare";
+import {
+  buildLibraryTiles,
+  readGroupingPreference,
+  sortLibraryTiles,
+  writeGroupingPreference,
+  type LibraryTile,
+} from "../lib/libraryGrouping";
+import type { LibraryGroup } from "../lib/seriesHelper";
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
@@ -687,6 +695,12 @@ interface LibraryManagerProps {
   onOpenAnnotations?: () => void;
   onBookUpdated?: (book: BookMetadata) => void;
   onImportLocalBook?: (book: BookMetadata) => void;
+  /**
+   * Opens a series detail screen for a grouped library tile. Falls back to
+   * onBookSelected on the representative volume, which the app already
+   * routes to the same series screen, so the prop is optional.
+   */
+  onOpenSeriesGroup?: (group: LibraryGroup) => void;
 }
 
 function calculateStreak(stats: Record<string, { minutes: number }>): number {
@@ -746,6 +760,7 @@ function LibraryManager({
   onOpenAnnotations,
   onBookUpdated,
   onImportLocalBook,
+  onOpenSeriesGroup,
 }: LibraryManagerProps) {
   // Add Book Modal States
   const [showAddBookOptions, setShowAddBookOptions] = useState<boolean>(false);
@@ -762,6 +777,19 @@ function LibraryManager({
   const [filterTag, setFilterTag] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "book" | "audiobook">("all");
   const [sortBy, setSortBy] = useState<string>("dateAdded");
+  /**
+   * Collapse multi-volume series into one tile. On by default: a shelf of
+   * thirty near-identical "One Piece Volume N" covers is unusable, and the
+   * toolbar toggle can always go back to every volume.
+   */
+  const [groupBySeries, setGroupBySeries] = useState<boolean>(() =>
+    readGroupingPreference()
+  );
+  const toggleGroupBySeries = () =>
+    setGroupBySeries((prev) => {
+      writeGroupingPreference(!prev);
+      return !prev;
+    });
   const [walkthroughHidden, setWalkthroughHidden] = useState(() => isWalkthroughBookHidden());
   const [walkthroughAdvancedMenu, setWalkthroughAdvancedMenu] = useState(() =>
     isWalkthroughAdvancedMenuEnabled()
@@ -1364,9 +1392,24 @@ function LibraryManager({
       )
     : finalRenderedBooks;
 
-  const renderedWithDownloads = downloadingBooks.length
-    ? [...downloadingBooks, ...booksWithoutActiveDownloads]
-    : finalRenderedBooks;
+  // In-flight downloads are synthetic stubs with no series fields, so they
+  // always render as plain tiles and never join a group.
+  const renderedWithDownloads: LibraryTile[] = downloadingBooks.length
+    ? [
+        ...downloadingBooks.map((book) => ({
+          kind: "book" as const,
+          key: `d:${book.id}`,
+          book: book as BookMetadata,
+        })),
+        ...sortLibraryTiles(
+          buildLibraryTiles(booksWithoutActiveDownloads, groupBySeries),
+          sortBy
+        ),
+      ]
+    : sortLibraryTiles(
+        buildLibraryTiles(booksWithoutActiveDownloads, groupBySeries),
+        sortBy
+      );
 
   // Reading Stats
   const totalBooks = books.length;
@@ -1523,6 +1566,31 @@ function LibraryManager({
                 <option value="title">Sort: Title</option>
               </select>
 
+              {/* Grouped vs every volume. Saving a 30-volume manga one volume
+                  at a time used to bury the rest of the shelf under 30
+                  near-identical covers; grouping puts it back to one tile. */}
+              <button
+                type="button"
+                onClick={toggleGroupBySeries}
+                aria-pressed={groupBySeries}
+                title={
+                  groupBySeries
+                    ? "One tile per series. Switch to showing every volume."
+                    : "Every volume on its own tile. Switch to grouped by series."
+                }
+                className={`px-2.5 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1 ${
+                  groupBySeries
+                    ? "bg-kindle-text text-kindle-bg border-transparent shadow-sm"
+                    : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text hover:text-kindle-text"
+                }`}
+              >
+                <BookMarked className="w-3 h-3" />
+                <span className="hidden sm:inline">
+                  {groupBySeries ? "Grouped by series" : "Every volume"}
+                </span>
+                <span className="sm:hidden">{groupBySeries ? "Grouped" : "Volumes"}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setFilterType((prev) => (prev === "book" ? "all" : "book"))}
@@ -1569,7 +1637,136 @@ function LibraryManager({
           </div>
         ) : (
           <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-5">
-            {renderedWithDownloads.map((book) => {
+            {renderedWithDownloads.map((tile) => {
+              // A group stands for several volumes, so it gets a compact tile:
+              // series cover, series name, a "N VOLS" badge and one progress
+              // line. Tapping opens the series screen; long-press still opens
+              // the per-book options sheet on the representative volume so
+              // download/share/remove stay reachable from a grouped shelf.
+              if (tile.kind === "series") {
+                const group = tile.group;
+                const cachedCount = group.volumes.filter((v) =>
+                  cachedBookIds.has(v.id)
+                ).length;
+                const allCached = cachedCount === group.total;
+                const badge =
+                  group.total > 1 ? `${group.total} VOLS` : group.title;
+                const seriesPercent = Math.round(group.fraction * 100);
+                return (
+                  <div
+                    key={tile.key}
+                    data-guide="library-series-tile"
+                    style={{ contentVisibility: "auto", containIntrinsicSize: "auto 280px" }}
+                    onTouchStart={(e) => !isManageMode && startLongPress(group.representative, e)}
+                    onTouchEnd={isManageMode ? undefined : endLongPress}
+                    onTouchMove={isManageMode ? undefined : handleTouchMove}
+                    onMouseDown={(e) => {
+                      if (!isManageMode && e.button === 0) startLongPress(group.representative, e);
+                    }}
+                    onMouseUp={isManageMode ? undefined : endLongPress}
+                    onMouseLeave={isManageMode ? undefined : endLongPress}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (isNativeApp() || isManageMode) return;
+                      setLongPressedBook(group.representative);
+                    }}
+                    onClick={(e) => {
+                      if (isManageMode) {
+                        // Selecting a group selects every volume in it, so bulk
+                        // tag/delete acts on the whole series.
+                        setSelectedBookIds((prev) => {
+                          const next = new Set(prev);
+                          const everySelected = group.volumes.every((v) => next.has(v.id));
+                          for (const v of group.volumes) {
+                            if (everySelected) next.delete(v.id);
+                            else next.add(v.id);
+                          }
+                          return next;
+                        });
+                        return;
+                      }
+                      if (isLongPressedRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        isLongPressedRef.current = false;
+                        return;
+                      }
+                      if (onOpenSeriesGroup) onOpenSeriesGroup(group);
+                      // Fallback path: the app already routes a multi-volume
+                      // book to the same series screen.
+                      else onBookSelected(group.representative);
+                    }}
+                    className="kindle-card w-full min-w-0 min-h-[220px] overflow-hidden flex flex-col cursor-pointer transition duration-300 select-none group/card"
+                  >
+                    <div className="relative w-full aspect-[2/3] bg-neutral-100 dark:bg-neutral-900 overflow-hidden border-b border-kindle-border">
+                      <img
+                        src={resolveCoverImageSrc(group.representative.coverUrl)}
+                        alt={group.title}
+                        loading="lazy"
+                        className={`w-full h-full object-cover transition duration-500 group-hover/card:scale-105 ${!allCached || (grayscaleCovers && !hideCovers) ? "opacity-75 grayscale" : ""}`}
+                      />
+                      {isManageMode && (
+                        <span
+                          className={`absolute top-2 left-2 w-5 h-5 rounded-md border-2 flex items-center justify-center ${
+                            group.volumes.every((v) => selectedBookIds.has(v.id))
+                              ? "bg-kindle-text border-kindle-text"
+                              : "bg-white/80 border-kindle-text/40"
+                          }`}
+                        >
+                          {group.volumes.every((v) => selectedBookIds.has(v.id)) && (
+                            <Check className="w-3 h-3 text-kindle-bg" strokeWidth={3} />
+                          )}
+                        </span>
+                      )}
+                      <div className="absolute top-2 right-2">
+                        <span
+                          className="px-2 py-1 rounded-lg bg-neutral-900/85 text-white text-[8px] font-bold uppercase tracking-wider shadow-sm backdrop-blur-sm"
+                          title={
+                            group.total > 1
+                              ? `${group.total} volumes in this series`
+                              : group.title
+                          }
+                        >
+                          {badge}
+                        </span>
+                      </div>
+                      {!allCached && (
+                        <span
+                          className="absolute top-9 right-2 px-2 py-1 rounded-lg bg-red-500 text-white text-[8px] font-bold uppercase tracking-wider shadow-sm"
+                          title={`${cachedCount} of ${group.total} volumes on this device`}
+                        >
+                          {group.total - cachedCount} P2P
+                        </span>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 flex h-1 bg-neutral-200 dark:bg-neutral-800">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            group.completed === group.total
+                              ? "bg-emerald-600 dark:bg-emerald-500"
+                              : "bg-kindle-text"
+                          }`}
+                          style={{ width: `${seriesPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="p-1.5 md:p-3">
+                      <h4 className="font-sans text-xs md:text-sm font-bold text-kindle-text truncate mb-1">
+                        {group.title}
+                      </h4>
+                      <div className="flex items-center justify-between gap-2 text-[9px] font-semibold text-kindle-text-muted">
+                        <span className="truncate">
+                          {group.completed}/{group.total} read
+                        </span>
+                        <span className="text-kindle-accent font-bold shrink-0">
+                          {seriesPercent}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const book = tile.book;
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
               const isDownloadingCard = !!book.isDownloadingCard;

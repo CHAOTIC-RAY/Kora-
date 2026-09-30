@@ -265,6 +265,18 @@ export interface LibraryGroup {
 }
 
 /**
+ * The owning source/plugin for a book, as a grouping scope.
+ *
+ * Two different plugins can both publish a "Volume 1" of the same name, and
+ * merging those hides real books, so the source is part of the group key
+ * whenever the entry records one. `source` is where Kora stores the owning
+ * source name for entries saved out of a source plugin.
+ */
+function sourceScope(book: BookMetadata): string {
+  return normalizeSeriesKey(book.source || "");
+}
+
+/**
  * Collapse the library into one row per series.
  *
  * A series only groups when there is genuinely more than one volume —
@@ -303,8 +315,31 @@ export function buildLibraryGroups(library: BookMetadata[]): LibraryGroup[] {
     buckets.get(key)!.push(book);
   }
 
-  const groups: LibraryGroup[] = [];
+  // Two plugins can both own a "Volume 1" of the same name. Merging those
+  // hides real books, so a name bucket that carries more than one distinct
+  // source is split by source first. A bucket where every book agrees on the
+  // source — or where some books carry none — stays whole, because splitting
+  // a real series apart is worse than the rare duplicate name.
+  const scopedBuckets = new Map<string, BookMetadata[]>();
   for (const [key, books] of buckets) {
+    const distinctSources = new Set(books.map(sourceScope).filter(Boolean));
+    if (!key.startsWith("s:") || distinctSources.size <= 1) {
+      scopedBuckets.set(key, books);
+      continue;
+    }
+    const bySource = new Map<string, BookMetadata[]>();
+    for (const b of books) {
+      const scope = sourceScope(b);
+      if (!bySource.has(scope)) bySource.set(scope, []);
+      bySource.get(scope)!.push(b);
+    }
+    for (const [scope, scoped] of bySource) {
+      scopedBuckets.set(`${key}|${scope}`, scoped);
+    }
+  }
+
+  const groups: LibraryGroup[] = [];
+  for (const [key, books] of scopedBuckets) {
     const volumes = [...books].sort((a, b) => {
       const na = parseSeriesNumber(a.seriesNumber);
       const nb = parseSeriesNumber(b.seriesNumber);

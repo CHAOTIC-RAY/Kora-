@@ -3334,9 +3334,6 @@ function DiscoverView({
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>
-              <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono">
-                Explore global archives or browse trending best sellers.
-              </p>
             </div>
             {!searchMode && !viewingCategory && (
               <button
@@ -3403,7 +3400,12 @@ function DiscoverView({
               </div>
             </form>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Mode chips, then source chips on their own line.
+                These used to share one wrapping row, which on a phone put
+                the source list beside the buttons and wrapped it into an
+                unreadable stack. Sources now always sit below. */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -3451,18 +3453,19 @@ function DiscoverView({
                   <Database className="w-3 h-3" />
                   Advanced Search
                 </button>
+              </div>
 
-                {/* Installed source chips, laid out after the toolbar and
-                    scrolled right-to-left so the newest plugin sits closest
-                    to the buttons. Each chip filters search to that source;
-                    with none active, search runs every source plus the
-                    default engines. */}
-                {pluginChips.length > 0 && (
-                  <div
-                    dir="rtl"
-                    data-guide="discover-source-chips"
-                    className="flex items-center gap-1.5 overflow-x-auto scrollbar-none max-w-full flex-1 min-w-0 pb-0.5"
-                  >
+              {/* Installed source chips, laid out after the toolbar and
+                  scrolled right-to-left so the newest plugin sits closest
+                  to the buttons. Each chip filters search to that source;
+                  with none active, search runs every source plus the
+                  default engines. */}
+              {pluginChips.length > 0 && (
+                <div
+                  dir="rtl"
+                  data-guide="discover-source-chips"
+                  className="flex items-center gap-1.5 overflow-x-auto scrollbar-none max-w-full w-full pb-0.5"
+                >
                     {pluginChips.map((c) => {
                       const on = activeSource === c.id;
                       return (

@@ -42,6 +42,9 @@ import {
   tapAction as resolveTap,
   canAct,
 } from "../lib/readingDirection";
+import { PreloadQueue } from "../lib/preloadQueue";
+import { useBackButton } from "../lib/useBackButton";
+import ReaderPageImage from "./ReaderPageImage";
 
 export interface ReaderPage {
   /** Absolute page image URL. */
@@ -71,6 +74,8 @@ export interface ComicReaderProps {
   webtoon?: boolean;
   onIndexChange?: (index: number) => void;
   onChapterChange?: (chapter: ReaderChapter) => void;
+  /** A page image failed to load. The reader stays open; this is a notice. */
+  onPageError?: (url: string) => void;
   onClose: () => void;
   /** Shown top-left; the reader must not know about series state. */
   seriesTitle?: string;
@@ -93,6 +98,7 @@ export function ComicReader({
   webtoon = false,
   onIndexChange,
   onChapterChange,
+  onPageError,
   onClose,
   seriesTitle,
 }: ComicReaderProps) {
@@ -107,11 +113,16 @@ export function ComicReader({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showSlider, setShowSlider] = useState(false);
-  const [fitWidth, setFitWidth] = useState(true);
 
   // Preloaded image cache, keyed by URL. Kept outside state because it is
   // a side effect, and touching it must not re-render the reader.
-  const preloaded = useRef<Set<string>>(new Set());
+  //
+  // This is a bounded LRU, not a Set. The previous Set only ever grew:
+  // nothing evicted, and the `Image` created for each page kept its decoded
+  // bitmap alive for as long as the reader was mounted, so reading a long
+  // series grew the cache without limit until the tab was killed. The queue
+  // also remembers failures so a 404 is not re-requested on every turn.
+  const preloaded = useRef<PreloadQueue>(new PreloadQueue({ capacity: 8 }));
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const total = pages.length;
@@ -152,6 +163,31 @@ export function ComicReader({
    */
   const shown = displayedPage({ rtl, total, index: clamped });
 
+  /**
+   * Called when a page definitively failed. Records the failure so the
+   * preload loop stops re-requesting it on every turn, and reports upward
+   * so the detail view can drop its stored resume point for a page that
+   * cannot be shown.
+   */
+  const onPageFailure = useCallback(
+    (url: string) => {
+      preloaded.current.markFailed(url);
+      onPageError?.(url);
+    },
+    [onPageError]
+  );
+
+  /**
+   * The user asked to retry a failed page. Clearing the recorded failure
+   * matters: it is what lets this page preload normally again, and what
+   * stops a transient network blip from barring a page for the rest of the
+   * session. The decode itself is re-run by the page component against a
+   * cache-busted URL.
+   */
+  const onPageRetry = useCallback((url: string) => {
+    preloaded.current.clearFailure(url);
+  }, []);
+
   // Neighbour preloading. A comic page is a big image; decoding it on the
   // turn is what makes paging feel like it stutters.
   useEffect(() => {
@@ -160,12 +196,27 @@ export function ComicReader({
       const i = clamped + d * ahead;
       if (i < 0 || i >= total) continue;
       const url = pages[i]?.url;
-      if (!url || preloaded.current.has(url)) continue;
+      // `shouldPreload` is false for a page already cached and for one that
+      // has already failed, which is what stops a dead CDN being hammered.
+      if (!url || !preloaded.current.shouldPreload(url)) continue;
       preloaded.current.add(url);
       const img = new Image();
+      img.onerror = () => preloaded.current.markFailed(url);
       img.src = url;
     }
   }, [clamped, total, pages, rtl]);
+
+  // Release every retained bitmap when the reader goes away. Without this
+  // the decoded pages outlive the component and the next reader starts cold.
+  useEffect(() => {
+    const queue = preloaded.current;
+    return () => queue.clear();
+  }, []);
+
+  // The phone's Back button must close the reader rather than navigating the
+  // whole app away and losing your place mid-chapter. A synthetic history
+  // entry is pushed while the reader is open and popped when it closes.
+  useBackButton(onClose, true);
 
   // Keyboard. Arrows follow the reading direction, Escape closes, and the
   // Home/End keys jump to a chapter edge.
@@ -258,7 +309,6 @@ export function ComicReader({
       if (!pinch.current.startDist) return;
       const next = Math.min(4, Math.max(1, (pinch.current.startZoom * d) / pinch.current.startDist));
       setZoom(next);
-      setFitWidth(next <= 1.05);
       return;
     }
 
@@ -308,6 +358,32 @@ export function ComicReader({
   };
 
   /**
+   * Abandon whatever gesture is in flight.
+   *
+   * Covers `pointercancel` (the browser or OS took the pointer — a system
+   * edge-swipe, a notification, a scroll it decided to own) and
+   * `lostpointercapture` (the element lost capture, which fires without a
+   * preceding `pointerup` when a capture is released abnormally).
+   *
+   * Every piece of gesture state has to be dropped. Leaving `drag.active`
+   * true means the *next* `pointerdown`-less `pointermove` is measured
+   * against the interrupted drag's start point, so the page turns by some
+   * random distance. Leaving the pinch latched means every subsequent
+   * one-finger move is read as a two-finger zoom and the page grows without
+   * the reader touching it. And `suppressClick` must be cleared too: a
+   * cancelled gesture produces no click to suppress, so a stale `true` here
+   * silently eats the reader's *next* deliberate tap.
+   */
+  const abortGesture = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current.active = false;
+    drag.current.active = false;
+    drag.current.axis = "none";
+    suppressClick.current = false;
+    lastTap.current = 0;
+  };
+
+  /**
    * Double-tap to zoom.
    *
    * React's `onDoubleClick` cannot be used here. Chrome only synthesises a
@@ -327,7 +403,6 @@ export function ComicReader({
     if (zoom > 1.05) {
       setZoom(1);
       setPan({ x: 0, y: 0 });
-      setFitWidth(true);
       return;
     }
     const rect = containerRef.current?.getBoundingClientRect();
@@ -336,7 +411,6 @@ export function ComicReader({
     const cx = clientX - rect.left - rect.width / 2;
     const cy = clientY - rect.top - rect.height / 2;
     setZoom(next);
-    setFitWidth(false);
     setPan({ x: -cx * (next - 1) * 0.5, y: -cy * (next - 1) * 0.5 });
   };
   const onClickCapture = (e: React.MouseEvent) => {
@@ -454,7 +528,14 @@ export function ComicReader({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        // A cancelled gesture is NOT a completed one. Reusing `onPointerUp`
+        // here made an interrupted drag — a notification, a system edge
+        // swipe, the browser taking over the scroll — evaluate its movement
+        // and turn the page, then leave `drag.active` true and the pinch
+        // state latched so the *next* drag started from a stale baseline.
+        // Abort instead: drop every piece of gesture state.
+        onPointerCancel={abortGesture}
+        onLostPointerCapture={abortGesture}
         onClickCapture={onClickCapture}
         className={`flex-1 min-h-0 overflow-hidden ${
           webtoon ? "overflow-y-auto overscroll-contain" : "flex items-center justify-center"
@@ -466,24 +547,29 @@ export function ComicReader({
         style={{ touchAction: zoom > 1.05 ? "none" : webtoon ? "pan-y" : "none" }}
       >
         {webtoon ? (
-          <img
-            src={pages[clamped]?.url}
+          <ReaderPageImage
+            url={pages[clamped]?.url || ""}
             alt={`${label} page ${shown}`}
-            className="w-full select-none"
-            draggable={false}
+            pageLabel={`${shown} / ${total}`}
+            webtoon
+            onFailure={onPageFailure}
+            onRetry={onPageRetry}
+            onSkip={forward}
+            onClose={onClose}
           />
         ) : (
-          <img
-            src={pages[clamped]?.url}
+          <ReaderPageImage
+            url={pages[clamped]?.url || ""}
             alt={`${label} page ${shown}`}
-            draggable={false}
-            className="max-w-full max-h-full object-contain"
-            style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-              transformOrigin: "center center",
-              width: fitWidth ? undefined : undefined,
-              touchAction: "none",
-            }}
+            pageLabel={`${shown} / ${total}`}
+            // The zoom/pan transform rides on whichever surface is active,
+            // so switching from `<img>` to a bounded canvas does not drop
+            // the reader out of their zoom level.
+            transform={{ x: pan.x, y: pan.y, scale: zoom }}
+            onFailure={onPageFailure}
+            onRetry={onPageRetry}
+            onSkip={forward}
+            onClose={onClose}
           />
         )}
       </div>

@@ -18,6 +18,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { X, BookOpen, Download, Check, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { createSourceClient } from "../lib/sources/client";
 import { getInstalledPlugins } from "../lib/sources/store";
+import { loadProgress, saveProgress, resumePage, type ComicProgressMap } from "../lib/comicProgress";
+import { indexForDisplayed, displayedPage } from "../lib/readingDirection";
 import ComicReader from "./ComicReader";
 import type { Chapter, Manga, MangaStatus, SourcePlugin } from "../lib/sources/types";
 
@@ -61,7 +63,11 @@ function chapterKey(pluginId: string, url: string) {
   return `${pluginId}:${url}`;
 }
 
-/** "Chapter 12.5" → "12.5", "Ch. 3" → "3", anything else → null. */
+/** Reading direction, declared once so the reader and the resume maths agree. */
+const READER_RTL = true;
+
+/**
+ * "Chapter 12.5" → "12.5", "Ch. 3" → "3", anything else → null. */
 function chapterNumber(ch: Chapter): number | null {
   const m = (ch.name || "").match(/(\d+(?:\.\d+)?)/);
   return m ? Number(m[1]) : null;
@@ -81,6 +87,25 @@ export default function ComicDetailView({
   const [readChapters, setReadChapters] = useState<Set<string>>(new Set());
   const [busyChapter, setBusyChapter] = useState<string | null>(null);
   const [open, setOpen] = useState<OpenChapter | null>(null);
+  /**
+   * Stored read positions, keyed `pluginId:url`.
+   *
+   * The `progress` prop already had this shape, but nothing ever passed it,
+   * so the resume path was dead: reopening a half-read chapter started on
+   * page 1 every time. It is read from the same store on mount and updated
+   * as the reader reports pages, so the resume survives a reload rather
+   * than just a remount. A `progress` prop, when supplied, still wins —
+   * a parent that tracks position itself is more authoritative than disk.
+   */
+  const [stored, setStored] = useState<ComicProgressMap>({});
+  useEffect(() => {
+    setStored(loadProgress());
+  }, []);
+
+  const effectiveProgress = useMemo<ComicProgressMap>(
+    () => ({ ...stored, ...progress }),
+    [stored, progress]
+  );
 
   const pluginId = book?.pluginId as string | undefined;
   const seriesUrl = book?.sourceId as string | undefined;
@@ -187,7 +212,16 @@ export default function ComicDetailView({
         return;
       }
       setReadChapters((prev) => new Set(prev).add(chapterKey(plugin.id, ch.url)));
-      setOpen({ chapter: ch, manga, pages: pages.map((p) => p.image), index: 0 });
+      // Resume where the reader left off. The stored position is a
+      // *displayed* page number, and the reader's initialIndex is a source
+      // array index, which in a right-to-left book is the mirror — so the
+      // conversion has to go through the direction rules, not through
+      // arithmetic here, or the chapter reopens on the wrong side.
+      const key = chapterKey(plugin.id, ch.url);
+      const page = resumePage(effectiveProgress, key, pages.length);
+      const startIndex =
+        page > 0 ? indexForDisplayed({ rtl: READER_RTL, total: pages.length, page }) : 0;
+      setOpen({ chapter: ch, manga, pages: pages.map((p) => p.image), index: startIndex });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not open that chapter");
     } finally {
@@ -213,7 +247,28 @@ export default function ComicDetailView({
           number: chapterNumber(c) ?? undefined,
         }))}
         seriesTitle={book.title}
-        rtl
+        rtl={READER_RTL}
+        initialIndex={open.index}
+        onIndexChange={(i) => {
+          // Persist every page turn so closing the reader — by the close
+          // button, the hardware Back, or a chapter change — leaves a
+          // resumable position behind. The reader reports a source array
+          // index; what gets stored is the displayed page, because that is
+          // the only form `resumePage` and the chapter-list badge agree on.
+          if (!plugin) return;
+          const key = chapterKey(plugin.id, open.chapter.url);
+          const entry = {
+            chapterIndex: ordered.findIndex((c) => c.url === open.chapter.url),
+            pageNumber: displayedPage({
+              rtl: READER_RTL,
+              total: open.pages.length,
+              index: i,
+            }),
+            totalPages: open.pages.length,
+          };
+          saveProgress(key, entry);
+          setStored((prev) => ({ ...prev, [key]: entry }));
+        }}
         onClose={() => setOpen(null)}
         onChapterChange={(next) => {
           // The reader offers "next chapter" as a shortcut, so it has to
@@ -241,15 +296,22 @@ export default function ComicDetailView({
         <div className="p-6 md:p-8 space-y-5">
           {/* 1. INFO_BOX — cover, title, author, status, progress */}
           <div className="flex gap-4 pr-10">
-            {book.coverUrl ? (
-              <img
-                src={book.coverUrl}
-                alt=""
-                className="w-24 sm:w-28 h-36 sm:h-44 object-cover rounded-xl border border-kindle-border shrink-0"
-              />
-            ) : (
-              <div className="w-24 sm:w-28 h-36 sm:h-44 rounded-xl border border-kindle-border bg-kindle-bg shrink-0" />
-            )}
+            {(() => {
+              // The listing card's `coverUrl` is whatever the search result
+              // carried, which for a source that lazy-loads covers is often a
+              // placeholder or missing. `details()` resolves the real image,
+              // so prefer that and fall back to the card.
+              const cover = manga?.thumbnailUrl || book.coverUrl;
+              return cover ? (
+                <img
+                  src={cover}
+                  alt=""
+                  className="w-24 sm:w-28 h-36 sm:h-44 object-cover rounded-xl border border-kindle-border shrink-0"
+                />
+              ) : (
+                <div className="w-24 sm:w-28 h-36 sm:h-44 rounded-xl border border-kindle-border bg-kindle-bg shrink-0" />
+              );
+            })()}
             <div className="min-w-0 flex-1">
               <h3 className="text-xl sm:text-2xl font-lexend font-bold leading-tight text-kindle-text">
                 {book.title}
@@ -276,11 +338,70 @@ export default function ComicDetailView({
             </div>
           </div>
 
-          {book.description && (
-            <p className="text-xs text-kindle-text-muted leading-relaxed line-clamp-4">
-              {manga?.description || book.description}
-            </p>
+          {/* Guarded on the merged value, never on `book.description` alone.
+              `book` is the search result the user tapped, and a search result
+              carries no synopsis — the description arrives from `details()`
+              onto `manga`. Testing `book` alone therefore hid the entire
+              section for every source that parses one correctly, which is
+              why the sheet showed no synopsis at all. */}
+          {(manga?.description || book.description) && (
+            <div>
+              <h4 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                Synopsis
+              </h4>
+              <p className="comic-detail-synopsis text-xs text-kindle-text-muted leading-relaxed whitespace-pre-wrap">
+                {manga?.description || book.description}
+              </p>
+            </div>
           )}
+
+          {(manga?.genres?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {manga!.genres!.map((g) => (
+                <span
+                  key={g}
+                  className="px-2 py-0.5 rounded-full border border-kindle-border text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted"
+                >
+                  {g}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Start/Resume. The chapter list is below, but it is capped at 38vh
+              and sorted newest-first, so on a 700-chapter series the first
+              chapter the user wants is far off-screen. This is the one action
+              that has to work without scrolling. */}
+          {(() => {
+            // Resume target: the chapter furthest along that actually has a
+            // stored position, else the oldest chapter (the natural entry
+            // point). Scanned by chapter order rather than "first match" so a
+            // user who read out of order still lands where they were.
+            const target =
+              [...ordered]
+                .reverse()
+                .find((c) => effectiveProgress[chapterKey(plugin?.id || "", c.url)]) || ordered[ordered.length - 1];
+            if (!target) return null;
+            const key = chapterKey(plugin?.id || "", target.url);
+            const at = effectiveProgress[key];
+            const resuming = Boolean(at);
+            return (
+              <button
+                onClick={() => void openChapter(target)}
+                disabled={busyChapter === target.url}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-kindle-accent text-white text-[10px] font-bold uppercase tracking-widest hover:opacity-90 transition disabled:opacity-50 cursor-pointer"
+              >
+                {busyChapter === target.url ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <BookOpen className="w-3.5 h-3.5" />
+                )}
+                {resuming
+                  ? `Continue · ${target.name || `Chapter ${chapterNumber(target) ?? ""}`} p${at.pageNumber}`
+                  : "Start reading"}
+              </button>
+            );
+          })()}
 
           {onAddToLibrary && manga && (
             <button
@@ -323,7 +444,7 @@ export default function ComicDetailView({
                 const key = chapterKey(plugin?.id || "", ch.url);
                 const read = readChapters.has(key);
                 const num = chapterNumber(ch);
-                const prog = progress[key];
+                const prog = effectiveProgress[key];
                 const busy = busyChapter === ch.url;
                 return (
                   <li key={ch.url}>
