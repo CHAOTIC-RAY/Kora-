@@ -217,7 +217,14 @@ export function ComicReader({
     Math.hypot(a.x - b.x, a.y - b.y);
 
   const onPointerDown = (e: React.PointerEvent) => {
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    // Capture only for a mouse. Capturing a *touch* pointer redirects the
+    // rest of the stream to the capturing element, and Chrome then drops
+    // the intermediate moves — the gesture arrives as a single jump with no
+    // `pointerup`, so the swipe never completes. Touch already routes to
+    // this element, so it needs no help.
+    if (e.pointerType === "mouse") {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = [...pointers.current.values()];
     if (pts.length === 2) {
@@ -452,6 +459,11 @@ export function ComicReader({
         className={`flex-1 min-h-0 overflow-hidden ${
           webtoon ? "overflow-y-auto overscroll-contain" : "flex items-center justify-center"
         }`}
+        // Without this the browser claims the horizontal drag for its own
+        // panning, delivers a single pointermove and then stops — the swipe
+        // silently never completes. `none` is required on the element that
+        // owns the gesture, not just on the image inside it.
+        style={{ touchAction: zoom > 1.05 ? "none" : webtoon ? "pan-y" : "none" }}
       >
         {webtoon ? (
           <img
