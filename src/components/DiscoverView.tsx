@@ -9,6 +9,7 @@ import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { getDiscoverablePlugins } from "../lib/sources/store";
+import ComicDetailView from "./ComicDetailView";
 import { createSourceClient } from "../lib/sources/client";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -318,6 +319,15 @@ function DiscoverView({
   const [pluginChips, setPluginChips] = useState<
     { id: string; name: string; icon?: string }[]
   >([]);
+
+  /**
+   * The series whose comic detail view is open, or null.
+   *
+   * Separate from `selectedBook`, which drives the *ebook* download sheet.
+   * A plugin result is a series to be read, not a file to be downloaded, so
+   * it must not share that modal.
+   */
+  const [comicBook, setComicBook] = useState<any | null>(null);
 
   /**
    * True while the feed is showing one source's own catalogue rather than
@@ -3659,7 +3669,14 @@ function DiscoverView({
                       : "border-transparent hover:bg-kindle-card/50"
                   }`}
                   onClick={() => {
-                    if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
+                    // A result from an installed source plugin is a series,
+                    // not a downloadable file. It gets its own detail view
+                    // with the chapter list — sending it to the ebook sheet
+                    // offered an EPUB download and Rave mirrors for a title
+                    // that is read chapter by chapter from its source site.
+                    if (book.pluginId) {
+                      setComicBook(book);
+                    } else if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
                       openBookDetail(book);
                     } else {
                       handleGetDownloadLinks(book);
@@ -4308,6 +4325,18 @@ function DiscoverView({
         </div>
       )}
       </div>
+
+      {/* Comic/manga detail — for results from an installed source plugin.
+          Rendered instead of the ebook download sheet above, which offers an
+          EPUB and Rave mirrors and is meaningless for a chaptered series. */}
+      {comicBook &&
+        ReactDOM.createPortal(
+          <ComicDetailView
+            book={comicBook}
+            onClose={() => setComicBook(null)}
+          />,
+          document.body
+        )}
 
       {/* Download Modal - Simplified Download Link Selector */}
       {selectedBook && ReactDOM.createPortal(
