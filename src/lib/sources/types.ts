@@ -246,6 +246,17 @@ export interface SourcePlugin {
    * the user's, not a default.
    */
   piracy?: boolean;
+  /**
+   * What kind of plugin this definition is.
+   *
+   * A single install store holds sources, themes and integrations together
+   * (see `PluginCategory`), so a loaded definition needs to say which it is.
+   * Optional for backwards compatibility with older definitions that predate
+   * the category split; treat a missing value as "not a source", which is
+   * the safe direction — a wrongly-listed source is a smaller harm than a
+   * theme presented as somewhere to browse books.
+   */
+  category?: PluginCategory;
   baseUrl: string;
   headers?: Record<string, string>;
   /** Bot-wall hint. `cloudflare` routes through the Worker relay. */

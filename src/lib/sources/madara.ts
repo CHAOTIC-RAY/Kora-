@@ -23,6 +23,7 @@ import type {
   Page,
   SourcePlugin,
 } from "./types";
+import { pickThumbUrl, resolveThumbUrl } from "./thumbUrl";
 
 /** Keiyoushi's Madara defaults, verbatim. */
 export const MADARA_SELECTORS: Required<MadaraSelectors> = {
@@ -140,7 +141,10 @@ export function createMadaraClient(
       if (!/\/manga\/|\/serie\/|\/comic\//i.test(href)) continue;
 
       const title = pickTitle(card) || pickText(card, "a") || "Untitled";
-      const thumb = imgOf(pickAttr(card, "data-src") || pickAttr(card, "src"));
+      // Prefer the lazy attribute, but reject the theme's placeholder and
+      // resolve relative/protocol-relative URLs: a card that renders a grey
+      // spacer here looks exactly like the blank-cover bug it is.
+      const thumb = pickThumbUrl(card, root);
       // Authors live in `.item-title` on the card, not in the anchor that
       // carries the title. Without this every card read "Unknown" in the
       // grid, because details are not fetched for a listing.
@@ -212,7 +216,7 @@ export function createMadaraClient(
     // The cover. Scoped to the summary image block, `data-src` first: the
     // page-wide first `src` belongs to a `<script>` tag and renders blank.
     const coverScope = classTokenHtml(html, classOf(sel.detailsThumbnail)) || containerHtml(html, sel.detailsThumbnail);
-    const th = imgOf(pickImageUrl(coverScope) || pickMetaImage(html));
+    const th = pickThumbUrl(coverScope, root) || imgOf(pickMetaImage(html));
     if (th) out.thumbnailUrl = th;
 
     const genres = pickGenres(html);

@@ -209,14 +209,47 @@ export function isPluginEnabled(id: string): boolean {
 const optedIn = (): string[] => readJSON<string[]>(LS_OPTED_IN, []);
 
 /**
+ * Is this plugin a *book source*?
+ *
+ * The install store holds every kind of plugin — themes (Copper Night, Mint
+ * Terminal) and integrations (Calibre, Send to Kobo/Kindle, croc) live
+ * alongside manga sources. Discover's source chips are a list of places to
+ * browse books, so a theme or an integration must not appear there.
+ *
+ * The test is INVERTED on purpose, and that is the load-bearing detail: a
+ * real source definition (e.g. Kora-Sources/sources/manga/s2read.json)
+ * carries no `category` field at all — it declares `kind`, `theme`,
+ * `baseUrl` and `endpoints`, and the *registry index* is what tags it
+ * `category: "source"`. So `category === "source"` matches nothing that is
+ * actually installed, and would have emptied the chip row entirely. Only a
+ * non-source category is a reliable signal that a plugin is the wrong kind
+ * of thing here, so that is the only thing we exclude.
+ *
+ * This is deliberately a SEPARATE predicate from `isSourceVisible`, which is
+ * the piracy/NSFW opt-in gate and is also used by PluginBrowser to decide
+ * what to show in the hub. Folding the category check into that one would
+ * change the hub's opt-in behaviour as a side effect, so the two rules stay
+ * independent and each is tested on its own.
+ */
+export function isSourcePlugin(plugin: SourcePlugin): boolean {
+  // A null/undefined plugin is not a source. Guarded explicitly because
+  // `plugin?.category` reads as null-safe but the cast below is not.
+  if (!plugin || typeof plugin !== "object") return false;
+  const category = (plugin as { category?: string }).category;
+  // No category at all: a source definition, the overwhelmingly common case.
+  if (category === undefined || category === null || category === "") return true;
+  return category === "source";
+}
+
+/**
  * Sources that should be offered as chips in Discover.
  *
- * Installing and the piracy opt-in are the only two gates: an installed
- * source the user has not accepted is not discoverable, and one they have
- * accepted is. There is no separate "enabled" flag to check.
+ * Three gates, in this order: it must be a source at all (a theme is not a
+ * source, however it was installed), it must be installed, and it must not
+ * be piracy/NSFW without an explicit opt-in.
  */
 export function getDiscoverablePlugins(): SourcePlugin[] {
-  return getInstalledPlugins().filter(isSourceVisible);
+  return getInstalledPlugins().filter((p) => isSourcePlugin(p) && isSourceVisible(p));
 }
 
 export function isSourceVisible(plugin: SourcePlugin): boolean {

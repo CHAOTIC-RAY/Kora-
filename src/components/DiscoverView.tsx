@@ -29,6 +29,7 @@ import {
   getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import { classifyDownloadLink } from "../lib/downloadLinkKind";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
@@ -321,6 +322,20 @@ function DiscoverView({
   >([]);
 
   /**
+   * The source currently being browsed, or null.
+   *
+   * Resolved as a value rather than an inline `find(...)?.name ?? "source"`,
+   * because that fallback is what produced a header reading "Browsing
+   * source" with no name once the chip was deselected. Every surface that
+   * mentions the active source reads this, so the row cannot render at all
+   * unless there is a real plugin behind it.
+   */
+  const activeSourceName = useMemo(
+    () => (activeSource === "all" ? null : pluginChips.find((c) => c.id === activeSource)?.name || null),
+    [activeSource, pluginChips]
+  );
+
+  /**
    * The series whose comic detail view is open, or null.
    *
    * Separate from `selectedBook`, which drives the *ebook* download sheet.
@@ -392,7 +407,12 @@ function DiscoverView({
           // other two do not.
           author: m.author || "",
           source: plugin.name,
-          cover: m.thumbnailUrl || "",
+          // `coverUrl`, not `cover`: every card renders `book.coverUrl`, and
+          // `cover` is not a field any of them read. Naming it `cover` left
+          // every plugin cover undefined, so the grid rendered no <img> at
+          // all — the covers only reappeared on the detail screen, which
+          // fetches its own cover from `details()`.
+          coverUrl: m.thumbnailUrl || "",
           description: m.description || "",
           sourceId: m.url,
           pluginId: plugin.id,
@@ -2294,7 +2314,8 @@ function DiscoverView({
               title: m.title,
               author: m.author || "Unknown",
               source: plugin.name,
-              cover: m.thumbnailUrl || "",
+              // See the note in the plugin feed: cards read `coverUrl`.
+              coverUrl: m.thumbnailUrl || "",
               description: m.description || "",
               sourceId: m.url,
               pluginId: plugin.id,
@@ -2516,6 +2537,12 @@ function DiscoverView({
   function clearSearch() {
     abortActiveSearch();
     setSearchMode(false);
+    // The source feed has to be closed with the source, not just the
+    // selection. Resetting only `activeSource` left `pluginFeedMode` true,
+    // so the header kept reading "Browsing <source>" — and, once the chip
+    // was deselected, with no chip left to name it.
+    setPluginFeedMode(false);
+    setPluginFeedExhausted(false);
     setViewingCategory(null);
     setCategoryBooks([]);
     setResults([]);
@@ -3400,12 +3427,14 @@ function DiscoverView({
               </div>
             </form>
 
-            {/* Mode chips, then source chips on their own line.
-                These used to share one wrapping row, which on a phone put
-                the source list beside the buttons and wrapped it into an
-                unreadable stack. Sources now always sit below. */}
+            {/* Mode chips and source chips, all on ONE line.
+                These were two stacked rows, which on desktop left a wide
+                empty gap between "Advanced Search" on the left and the
+                sources pushed to the right. One `flex-nowrap` scroller keeps
+                them together at any width: inline and gap-free on desktop,
+                horizontally scrollable on a phone so nothing wraps. */}
             <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none max-w-full w-full pb-0.5 flex-nowrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -3415,7 +3444,7 @@ function DiscoverView({
                       openAudiobookLibrary();
                     }
                   }}
-                  className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                     audiobookLibraryMode
                       ? "bg-kindle-text text-kindle-bg border-kindle-text"
                       : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:border-kindle-accent/50"
@@ -3453,65 +3482,66 @@ function DiscoverView({
                   <Database className="w-3 h-3" />
                   Advanced Search
                 </button>
-              </div>
 
-              {/* Installed source chips, laid out after the toolbar and
-                  scrolled right-to-left so the newest plugin sits closest
-                  to the buttons. Each chip filters search to that source;
-                  with none active, search runs every source plus the
-                  default engines. */}
-              {pluginChips.length > 0 && (
-                <div
-                  dir="rtl"
-                  data-guide="discover-source-chips"
-                  className="flex items-center gap-1.5 overflow-x-auto scrollbar-none max-w-full w-full pb-0.5"
-                >
-                    {pluginChips.map((c) => {
-                      const on = activeSource === c.id;
-                      return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          title={
-                            on
-                              ? `Show every source again`
-                              : `${c.name}: browse its full catalogue, or search only it`
+                {/* Installed source chips, in the SAME scroller as the mode
+                    chips above. Only `category === "source"` plugins get
+                    here — a theme or an integration is not a place to browse
+                    books, and `dir="rtl"` orders them so the newest sits
+                    next to the buttons while still scrolling LTR. */}
+                {pluginChips.length > 0 &&
+                  pluginChips.map((c) => {
+                    const on = activeSource === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        title={
+                          on
+                            ? `Show every source again`
+                            : `${c.name}: browse its full catalogue, or search only it`
+                        }
+                        onClick={() => {
+                          // With no query, clicking a chip browses that
+                          // source's own catalogue instead of searching a
+                          // blank string, which would return nothing.
+                          if (on) {
+                            // Deselecting closes the source feed entirely;
+                            // leaving it open showed a nameless header.
+                            setActiveSource("all");
+                            setPluginFeedMode(false);
+                            setPluginFeedExhausted(false);
+                            setSearchMode(false);
+                            setResults([]);
+                            setError(null);
+                            prefetchCache.current.clear();
+                          } else {
+                            setActiveSource(c.id);
+                            if (!query.trim()) browseSource(c.id);
                           }
-                          onClick={() => {
-                            // With no query, clicking a chip browses that
-                            // source's own catalogue instead of searching a
-                            // blank string, which would return nothing.
-                            if (on) {
-                              setActiveSource("all");
-                            } else {
-                              setActiveSource(c.id);
-                              if (!query.trim()) browseSource(c.id);
-                            }
-                          }}
-                          className={`px-2.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap max-w-[170px] shrink-0 ${
-                            on
-                              ? "bg-kindle-accent text-white border-kindle-accent"
-                              : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
-                          }`}
-                        >
-                          {c.icon ? (
-                            <img
-                              src={c.icon}
-                              alt=""
-                              className="w-3 h-3 rounded-full object-cover shrink-0"
-                              onError={(e) => {
-                                e.currentTarget.style.display = "none";
-                              }}
-                            />
-                          ) : (
-                            <Puzzle className="w-3 h-3 shrink-0" />
-                          )}
-                          <span className="truncate">{c.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                        }}
+                        className={`px-2.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap max-w-[170px] shrink-0 ${
+                          on
+                            ? "bg-kindle-accent text-white border-kindle-accent"
+                            : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
+                        }`}
+                      >
+                        {c.icon ? (
+                          <img
+                            src={c.icon}
+                            alt=""
+                            className="w-3 h-3 rounded-full object-cover shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <Puzzle className="w-3 h-3 shrink-0" />
+                        )}
+                        <span className="truncate">{c.name}</span>
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
 
             {/* Source & Topic Filters - Positioned directly under search bar */}
@@ -3670,21 +3700,27 @@ function DiscoverView({
           which renders into the same grid with the same download action. */}
       {(searchMode || pluginFeedMode) && !isAudiobookSearch && (
         <section className="space-y-6" data-guide="discover-results">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-lexend font-bold">
-              {loading
-                ? "Searching archives…"
-                : pluginFeedMode
-                  ? `Browsing ${pluginChips.find((c) => c.id === activeSource)?.name ?? "source"}`
-                  : `Results for "${query}"`}
-            </h3>
-            <button
-              onClick={clearSearch}
-              className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition flex items-center gap-1"
-            >
-              <X className="w-3 h-3" /> Clear
-            </button>
-          </div>
+          {/* The source header + Clear only exist while a source is really
+              selected. Gating on the resolved name (not on
+              `activeSource !== "all"`, and not on `pluginFeedMode`) is what
+              stops a nameless "Browsing source" row surviving a deselect. */}
+          {(activeSourceName || !pluginFeedMode) && (
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-lexend font-bold">
+                {loading
+                  ? "Searching archives…"
+                  : activeSourceName
+                    ? `Browsing ${activeSourceName}`
+                    : `Results for "${query}"`}
+              </h3>
+              <button
+                onClick={clearSearch}
+                className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition flex items-center gap-1"
+              >
+                <X className="w-3 h-3" /> Clear
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <div className="py-24 flex flex-col items-center justify-center">
@@ -3789,29 +3825,14 @@ function DiscoverView({
                         <span style={{color:'#d4af37'}}>★</span> NYT
                       </div>
                     )}
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
-                      <div className="bg-kindle-bg text-kindle-text p-3.5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition duration-500">
-                        <Download className="w-5 h-5" />
-                      </div>
-                    </div>
+                    {/* No hover overlay here on purpose. A download icon that
+                        only appears on hover is unreachable on touch — this
+                        app is a PWA used on a phone — and it duplicated the
+                        card's own tap action, which already routes to the
+                        detail view or the download sheet. */}
                   </div>
                   <div className="space-y-0.5 pr-1">
-                    <div className="flex items-start justify-between gap-1">
-                      <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void shareBookLink(book);
-                        }}
-                        className="shrink-0 p-1 rounded-full text-kindle-text-muted hover:text-kindle-accent hover:bg-kindle-accent/10 transition"
-                        title="Share this book"
-                        aria-label={`Share ${book.title}`}
-                      >
-                        <Share2 className="w-3 h-3" />
-                      </button>
-                    </div>
+                    <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
                     {book.topic && (
                       <p className="text-[8px] text-kindle-accent font-bold uppercase tracking-wider mt-1 truncate">
                         {book.topic}
@@ -4523,28 +4544,36 @@ function DiscoverView({
                   ) : (
                     <div className="space-y-1.5">
                       {mirrors.map((m, i) => {
-                        const isMobilismReal = m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"));
+                        // One classification drives the title, the badge and
+                        // the subtext, so they cannot contradict each other.
+                        const link = classifyDownloadLink(m);
                         return (
                           <div
                             key={i}
                             onClick={() => handleMirrorClick(m)}
                             className={`w-full p-3 rounded-xl border transition text-left group flex items-center justify-between cursor-pointer ${
-                              m.isDirect 
-                                ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card" 
+                              link.isDirect
+                                ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card"
                                 : "border-kindle-border/60 hover:border-amber-500/40 bg-kindle-bg/40 hover:bg-kindle-card/60"
                             }`}
                           >
                             <div className="overflow-hidden flex-1 min-w-0 pr-2">
                               <div className="flex items-center gap-2">
-                                <p className="text-sm font-bold font-sans truncate pr-2">{m.label}</p>
-                                {m.isDirect ? (
-                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
-                                ) : (
-                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">External</span>
-                                )}
+                                <p className="text-sm font-bold font-sans truncate pr-2">{link.title}</p>
+                                <span
+                                  className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider shrink-0 ${
+                                    link.tone === "emerald"
+                                      ? "text-emerald-600 bg-emerald-500/10"
+                                      : link.tone === "slate"
+                                        ? "text-kindle-text-muted bg-kindle-border/30"
+                                        : "text-amber-600 bg-amber-500/10"
+                                  }`}
+                                >
+                                  {link.badge}
+                                </span>
                               </div>
                               <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5 opacity-60">
-                                {isMobilismReal ? "Mobilism Forum link (requires external browser login)" : m.url}
+                                {link.subtext}
                               </p>
                             </div>
 
@@ -4693,6 +4722,9 @@ function DiscoverView({
                         Download Book
                       </button>
 
+                      {/* Share lives in the DETAIL view only. The grid cards
+                          have no share affordance: sharing is a deliberate
+                          action on one book, not a per-row control. */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -4704,7 +4736,7 @@ function DiscoverView({
                         <Share2 className="w-4 h-4" />
                         Share Book
                       </button>
-                      
+
                       <div className="hidden md:block mt-8 space-y-8">
                         <section>
                           <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-4 border-b border-kindle-border pb-2">Quick Stats</h4>
@@ -4986,24 +5018,37 @@ function DiscoverView({
                                 ) : (
                                   <div className="space-y-2">
                                     {featuredMirrors.map((m, i) => {
-                                      const isMobilismReal = m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"));
+                                      // Same helper as the sheet above, so the
+                                      // two surfaces cannot drift apart.
+                                      const link = classifyDownloadLink(m);
                                       return (
                                         <div
                                           key={i}
                                           onClick={() => handleMirrorClick(m)}
                                           className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
-                                            m.isDirect 
-                                              ? "border-kindle-border hover:border-emerald-500/40 hover:bg-emerald-500/5 bg-kindle-bg shadow-sm" 
+                                            link.isDirect
+                                              ? "border-kindle-border hover:border-emerald-500/40 hover:bg-emerald-500/5 bg-kindle-bg shadow-sm"
                                               : "border-kindle-border hover:border-amber-500/40 hover:bg-amber-500/5 bg-kindle-bg shadow-sm"
                                           }`}
                                         >
                                           <div className="min-w-0 flex-1 pr-4">
                                             <div className="flex items-center gap-2 mb-1">
-                                              <span className={`w-1.5 h-1.5 rounded-full ${m.isDirect ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                              <p className="text-sm font-bold text-kindle-text group-hover:text-kindle-accent transition-colors">{m.label}</p>
+                                              <span className={`w-1.5 h-1.5 rounded-full ${link.isDirect ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                              <p className="text-sm font-bold text-kindle-text group-hover:text-kindle-accent transition-colors">{link.title}</p>
+                                              <span
+                                                className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider shrink-0 ${
+                                                  link.tone === "emerald"
+                                                    ? "text-emerald-600 bg-emerald-500/10"
+                                                    : link.tone === "slate"
+                                                      ? "text-kindle-text-muted bg-kindle-border/30"
+                                                      : "text-amber-600 bg-amber-500/10"
+                                                }`}
+                                              >
+                                                {link.badge}
+                                              </span>
                                             </div>
                                             <p className="text-[10px] text-kindle-text-muted/60 truncate font-mono">
-                                              {isMobilismReal ? "Mobilism Forum link (requires external browser login)" : m.url}
+                                              {link.subtext}
                                             </p>
                                           </div>
                                           <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
