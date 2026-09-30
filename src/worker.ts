@@ -3,6 +3,15 @@ import * as cheerio from "cheerio";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import {
+  RELAY_PAGE_PATH,
+  handleRelayRequest,
+  renderEreaderPage,
+  type RelayDeps,
+  type RelayEnv,
+} from "./lib/relay/handler";
+import { IpRateLimiter } from "./lib/relay/rateLimit";
+import { resolveRelayStore, type RelayStore } from "./lib/relay/store";
+import {
   POPULAR_AUDIOBOOKS,
   mapPopularAudiobooks,
   parseAudiobookDetailHtml,
@@ -394,8 +403,43 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
   return mapped;
 }
 
+/**
+ * Relay dependencies, memoised per isolate.
+ *
+ * The store is chosen from the R2 binding ONCE per isolate and reused, because
+ * constructing a new wrapper per request is pointless and because the in-memory
+ * fallback must be the SAME map across requests within an isolate or it is not
+ * a store at all. Across isolates it still is not durable — which is exactly
+ * why `/api/relay/status` reports `storage: "memory"` so the gap is visible
+ * from a phone instead of only in a deploy log.
+ */
+const relayByIsolate = new WeakMap<RelayEnv, RelayDeps>();
+function relayDeps(env: RelayEnv): RelayDeps {
+  const cached = relayByIsolate.get(env);
+  if (cached) return cached;
+  let store: RelayStore;
+  try {
+    store = resolveRelayStore(env);
+  } catch {
+    store = resolveRelayStore({});
+  }
+  if (store.kind === "memory") {
+    console.warn("[Relay] RELAY_BUCKET binding is absent — using per-isolate memory storage. Uploads will not survive a request boundary. See wrangler.toml.");
+  }
+  const deps: RelayDeps = { store, limiter: new IpRateLimiter() };
+  relayByIsolate.set(env, deps);
+  return deps;
+}
+
 export interface Env {
   BROWSER: any;
+  /**
+   * Kora's own e-reader relay storage. Declared in wrangler.toml as
+   * `[[r2_buckets]]` with binding RELAY_BUCKET. If this is missing the relay
+   * falls back to a per-isolate in-memory store, which does NOT survive a
+   * request boundary — see `src/lib/relay/store.ts` and the status endpoint.
+   */
+  RELAY_BUCKET?: any;
   APP_CHANNEL?: string;
   NYT_API_KEY?: string;
   GOOGLE_BOOKS_API_KEY?: string;
@@ -4077,6 +4121,42 @@ export default {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }
+    }
+
+    // 14. Kora's own e-reader relay — replaces send.djazz.se entirely.
+    //     No third party sees a filename, a code, or a byte. The store is
+    //     resolved per request from the R2 binding, and every session and
+    //     stored file is deleted on first download or at its TTL, whichever
+    //     comes first.
+    if (path === "/api/relay" || path.startsWith("/api/relay/")) {
+      try {
+        const response = await handleRelayRequest(request, env as any, relayDeps(env));
+        if (response) return response;
+      } catch (err: any) {
+        // Deliberately vague and content-free: this endpoint handles books.
+        console.error("[Relay] request failed", err?.name || "Error");
+        return new Response(JSON.stringify({ error: "The relay had a problem. Try again." }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+        });
+      }
+    }
+
+    // The e-reader page. Served from the Worker rather than the SPA so it stays
+    // a single small document with no framework, no bundle and no second
+    // request — the constraint is Kindle's and Kobo's browsers, not ours.
+    if (path === RELAY_PAGE_PATH || path === RELAY_PAGE_PATH + "/") {
+      return new Response(renderEreaderPage(url.origin), {
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+          // The page is self-contained by design; nothing should load.
+          "Content-Security-Policy":
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src " +
+            url.origin,
+        },
+      });
     }
 
     return new Response("Not Found", { status: 404 });

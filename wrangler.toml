@@ -8,11 +8,31 @@ workers_dev = true
 directory = "./dist"
 # Serve index.html for client routes like /share (Web Share Target).
 not_found_handling = "single-page-application"
-# Only API hits the Worker first; everything else is static/SPA.
-run_worker_first = ["/api/*"]
+# API hits the Worker first; so does /send, which is the e-reader page. It MUST
+# reach the Worker rather than the SPA: the device browsers it targets are old
+# enough that booting the React bundle to display a 4-character code is both
+# slow and a good way to hit a syntax error. Everything else is static/SPA.
+run_worker_first = ["/api/*", "/send"]
 
 [browser]
 binding = "BROWSER"
+
+# ── Kora's own e-reader relay storage ─────────────────────────────────────────
+# R2 is required, not optional. The relay stores EPUBs (up to 50 MB) and KV
+# cannot: its value cap is 25 MB and its eventual consistency makes the
+# upload-then-pull flow race with itself.
+#
+# ONE-TIME SETUP (these buckets do not exist yet):
+#   npx wrangler r2 bucket create kora-relay
+#   npx wrangler r2 bucket create kora-relay-beta        # for the beta env
+#
+# Until that is done the Worker logs a warning and /api/relay/status reports
+# {"storage":"memory"} — uploads will not survive a request boundary.
+[[r2_buckets]]
+binding = "RELAY_BUCKET"
+bucket_name = "kora-relay"
+# Uncomment for a dev bucket so `wrangler dev` never touches production data:
+# preview_bucket_name = "kora-relay-dev"
 
 # Public production Worker (deploy from `main` with deploy:prod).
 [env.production]
@@ -22,6 +42,10 @@ vars = { APP_CHANNEL = "production" }
 [env.production.browser]
 binding = "BROWSER"
 
+[[env.production.r2_buckets]]
+binding = "RELAY_BUCKET"
+bucket_name = "kora-relay"
+
 # Beta sandbox Worker (deploy from `beta` with deploy:beta).
 [env.beta]
 name = "kora-beta"
@@ -29,4 +53,8 @@ vars = { APP_CHANNEL = "beta" }
 
 [env.beta.browser]
 binding = "BROWSER"
+
+[[env.beta.r2_buckets]]
+binding = "RELAY_BUCKET"
+bucket_name = "kora-relay-beta"
 

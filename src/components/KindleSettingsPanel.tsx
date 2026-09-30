@@ -1,46 +1,57 @@
 /**
  * Send to Kobo/Kindle — the panel behind the Workshop tile.
  *
- * What changed and why. This used to download the book and open Amazon's page,
- * which the user reported as "send to kindle just downloads the book". That was
- * not a bug in the download; it was the whole implementation. Amazon offers no
- * third-party upload API (see `koboKindleSender.ts`), so the panel now offers
- * the senders that genuinely upload, plus Amazon's official page kept as an
- * explicitly-labelled alternative.
+ * The primary route is now Kora's OWN relay. It used to be send.djazz.se, a
+ * third party that stood between a reader and their own library: every book
+ * passed through a server that is not ours, under a retention policy that is
+ * not ours, with an uptime that is not ours. The relay in `src/lib/relay/`
+ * replaces it and runs in Kora's Worker — the book goes from this page to the
+ * device and is deleted the moment the device takes it.
  *
- * The routes are shown as what they are, side by side:
+ * There are two routes now, not three:
  *
- *  1. SEND TO KOBO/KINDLE via send.djazz.se — a real multipart upload from this
- *     page. No account in Kora, no credential. Needs the 4-character code the
- *     device's own browser displays.
- *  2. KINDLEDROP (kdrop.me) — opens their page for the user to drop the file in.
- *     Cannot be automated: the site is behind a Cloudflare Turnstile human check
- *     and its `api.kdrop.me` host does not resolve. Stated in the UI, not hidden.
- *  3. AMAZON'S SEND TO KINDLE — the official page, kept as an alternative, and
- *     still the right answer on Android where the system's own Send to Kindle
- *     app is one tap away.
+ *  1. SEND VIA KORA'S RELAY (primary) — open `/send` on the e-reader, read the
+ *     4-character code off the screen, type it here, send. Nothing is stored on
+ *     this computer, and no third party sees the file.
+ *  2. AMAZON'S SEND TO KINDLE (official, kept as asked) — the alternative that
+ *     needs no Kora page at all. On Android it opens the system share sheet; on
+ *     desktop it saves the file and opens Amazon's page. Labelled as the
+ *     alternative it is, and it says out loud when it saved locally.
  *
- * No route ever silently degrades into another: every button says which path it
- * takes and the result toast names the path that actually ran. A cancelled
- * share is reported as cancelled — never as a failure, never as success — per
- * the convention at the top of `koboKindleSender.ts`.
+ * KindleDrop was REMOVED rather than kept as manual-only. `api.kdrop.me` does
+ * not resolve and the site is behind a Turnstile human check, so it could only
+ * ever be a manual "go open this page yourself" route — a worse version of the
+ * Amazon route that also happened to be a third-party dependency the user asked
+ * to be rid of. Carrying it forward would have preserved a dependency for no
+ * capability. The test file asserts its absence.
+ *
+ * WHY THE PROGRESS BAR AND THE CANCEL BUTTON. A 40 MB EPUB over a phone
+ * connection is the case where "still nothing" and "it broke" look identical
+ * without a byte count, and the case where a user taps Send twice. So: real
+ * progress, and a cancel that reports a cancellation rather than a failure.
+ *
+ * NO ROUTE DEGRADES. Every button names the path it takes, and every result
+ * toast names the path that actually ran. `report()` refuses to render a
+ * success without a `method` — that is the whole anti-"it just downloaded the
+ * book" mechanism, kept from the previous version of this file.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   AMAZON_SEND_URL,
   EREADER_ACCEPT,
   EREADER_KEY_LENGTH,
   EREADER_URL,
-  KDROP_URL,
   KOBO_KINDLE_LABEL,
+  KINDLE_NATIVE_EXTENSIONS,
+  isKindleNativeExtension,
   normalizeEreaderKey,
-  openManualSender,
   shareOrDownloadForAmazon,
   uploadToEreader,
   type EreaderResult,
 } from "../lib/sources/koboKindleSender";
+import { fetchRelayStatus } from "../lib/sources/koraRelaySender";
 import { listCachedBookIds, getBookFile } from "../db/indexedDB";
 
 interface CachedBook {
@@ -93,11 +104,25 @@ async function readCachedBlob(bookId: string) {
   return { blob: rec.blob, fileName: rec.fileName, extension: rec.extension };
 }
 
-/** One toast per result, so the route that ran is always named. */
+/**
+ * One toast per result, so the route that ran is always named.
+ *
+ * A success with no `method` is refused: that combination is what produced the
+ * "send to kindle just downloads the book" report, and the check lives here
+ * rather than in the panel's callers so a new call site cannot forget it.
+ */
 function report(result: EreaderResult) {
   if (result.cancelled) {
     // The user changed their mind. Not an error, and not a success.
     toast(result.reason, { icon: "🚫" });
+    return;
+  }
+  if (result.ok && !result.method) {
+    // Defensive, and worth the lines: an unnamed success is the bug class.
+    console.error("[Kora/Ereader] a success came back without a method", result);
+    toast.error(
+      "That send finished but I cannot say which path it took. Nothing was assumed to have been delivered."
+    );
     return;
   }
   if (result.ok) {
@@ -111,31 +136,58 @@ export default function KindleSettingsPanel() {
   const { books, loading, failed } = useCachedBooks();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rawKey, setRawKey] = useState("");
-  const [kepubify, setKepubify] = useState(true);
-  const [kindlegen, setKindlegen] = useState(false);
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
+  const [storage, setStorage] = useState<"r2" | "memory" | "unknown">("unknown");
+  // A ref, not state: an AbortSignal must not cause a re-render, and the cancel
+  // button needs the live handle while the upload is in flight.
+  const abortRef = useRef<AbortController | null>(null);
 
   // Normalised live so the button can be disabled before the tap, rather than
   // failing after it. A short code is the normal state, not an error.
   const key = useMemo(() => normalizeEreaderKey(rawKey), [rawKey]);
-  const keyLooksShort = rawKey.trim().length > 0 && !key;
+  const keyLooksWrong = rawKey.trim().length > 0 && !key;
+
+  // Which storage answered. Shown because "the relay is on memory" is a
+  // deployment mistake, and finding that out from a failed send is worse than
+  // being told at the top of the panel.
+  useEffect(() => {
+    let live = true;
+    void fetchRelayStatus().then((s) => {
+      if (!live) return;
+      setStorage(s.ok && s.storage === "r2" ? "r2" : s.ok && s.storage === "memory" ? "memory" : "unknown");
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const sendPage = useMemo(() => {
+    if (typeof window === "undefined") return EREADER_URL;
+    return `${window.location.origin}${EREADER_URL}`;
+  }, []);
 
   async function handleUpload(book: CachedBook) {
+    const controller = new AbortController();
+    abortRef.current = controller;
     setBusyId(book.id);
+    setProgress(null);
     try {
       const result = await uploadToEreader(book.id, {
         key: rawKey,
         title: book.id,
         extension: book.extension,
-        kepubify,
-        kindlegen,
         getCachedFile: readCachedBlob,
+        abortSignal: controller.signal,
+        onProgress: (loaded, total) => setProgress({ loaded, total }),
       });
       report(result);
     } catch (err) {
       console.error("[Kora/Ereader] upload failed", err);
       toast.error("Could not start the upload.");
     } finally {
+      abortRef.current = null;
       setBusyId(null);
+      setProgress(null);
     }
   }
 
@@ -164,123 +216,129 @@ export default function KindleSettingsPanel() {
     }
   }
 
+  const pct =
+    progress && progress.total > 0 ? Math.min(100, Math.round((progress.loaded / progress.total) * 100)) : 0;
+
   return (
     <div className="space-y-4 rounded-xl border border-kindle-border p-4">
       <header>
         <h3 className="font-semibold text-kindle-text">{KOBO_KINDLE_LABEL}</h3>
         <p className="mt-0.5 text-xs text-kindle-text-muted">
-          Actually uploads a book to your Kobo or Kindle. No account, no API key.
+          Sends a book straight to your Kobo or Kindle through Kora&apos;s own server. No
+          account, no API key, no third party.
         </p>
       </header>
 
-      {/* ── Route 1: the real upload ───────────────────────────────────── */}
+      {storage === "memory" && (
+        <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+          The relay is running on temporary in-memory storage, so sends may not survive
+          long enough to arrive. The Cloudflare R2 bucket needs creating — see
+          <code className="mx-1">wrangler.toml</code>.
+        </p>
+      )}
+
+      {/* ── Route 1: the real upload, via Kora's own relay ─────────────── */}
       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
-        <p className="text-xs font-medium text-emerald-400">1. Upload straight to your device</p>
+        <p className="text-xs font-medium text-emerald-400">1. Send via Kora&apos;s relay</p>
         <p className="mt-2 text-xs leading-relaxed text-kindle-text-muted">
-          Kora uploads the file to{" "}
-          <a
-            href={EREADER_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-kindle-text"
-          >
-            send.djazz.se
-          </a>
-          , which hands it to your Kobo or Kindle. The device shows a{" "}
-          {EREADER_KEY_LENGTH}-character code in its own browser — type that code here
-          and the book goes straight across, with nothing saved to your computer first.
+          Open Kora&apos;s Send page in your e-reader&apos;s own browser. It shows a{" "}
+          {EREADER_KEY_LENGTH}-character code and waits there. Type that code below and the
+          book goes straight across to the device — it is never saved on this computer, and
+          it is deleted from the server the moment the device takes it.
         </p>
 
         <ol className="mt-2 space-y-1 text-[11px] leading-relaxed text-kindle-text-muted/90">
-          <li>1. On the e-reader, open its browser and go to send.djazz.se.</li>
-          <li>
-            2. It displays a {EREADER_KEY_LENGTH}-character code — put it below.
-          </li>
-          <li>3. Tap Send on the book you want.</li>
+          <li>1. On the e-reader, open its browser and go to the Send page.</li>
+          <li>2. It displays a {EREADER_KEY_LENGTH}-character code — put it below.</li>
+          <li>3. Tap Send on the book you want. Leave the device on that page.</li>
         </ol>
 
-        <label className="mt-3 block">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-            Device code
-          </span>
-          <input
-            value={rawKey}
-            onChange={(e) => setRawKey(e.target.value.slice(0, 8))}
-            placeholder="ABCD"
-            autoComplete="off"
-            autoCapitalize="characters"
-            spellCheck={false}
-            aria-label={`${EREADER_KEY_LENGTH}-character code shown on your device`}
-            className="mt-1 w-full rounded-lg border border-kindle-border bg-kindle-bg px-2.5 py-2 font-mono text-sm uppercase tracking-[0.3em] text-kindle-text placeholder:text-kindle-text-muted/50 focus:border-kindle-accent focus:outline-none"
-          />
-        </label>
-        {keyLooksShort && (
-          <p className="mt-1 text-[10px] text-amber-500">
-            That needs to be exactly {EREADER_KEY_LENGTH} characters.
-          </p>
+        <div className="mt-3 flex items-start gap-3">
+          {/*
+            A hand-rolled QR encoder was removed here rather than shipped. Its
+            decoder tests still failed 13 assertions, including on the relay's
+            own ASCII URLs — a QR that scans to the wrong link is far worse than
+            no QR, because the user has no way to tell. The URL is shown as
+            selectable text next to this instead: typeable by hand on an
+            e-reader, and the link itself is still one tap to open.
+          */}
+          <div className="min-w-0 flex-1">
+            <label className="block">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                Device code
+              </span>
+              <input
+                value={rawKey}
+                onChange={(e) => setRawKey(e.target.value.slice(0, 8))}
+                placeholder="A7K2"
+                autoComplete="off"
+                autoCapitalize="characters"
+                inputMode="text"
+                spellCheck={false}
+                aria-label={`${EREADER_KEY_LENGTH}-character code shown on your e-reader`}
+                className="mt-1 w-full rounded-lg border border-kindle-border bg-kindle-bg px-2.5 py-2 font-mono text-sm uppercase tracking-[0.3em] text-kindle-text placeholder:text-kindle-text-muted/50 focus:border-kindle-accent focus:outline-none"
+              />
+            </label>
+            {keyLooksWrong && (
+              <p className="mt-1 text-[10px] text-amber-500">
+                Exactly {EREADER_KEY_LENGTH} characters, letters and digits only.
+              </p>
+            )}
+            <p className="mt-1 text-[10px] text-kindle-text-muted/70">
+              Codes skip the letters O, I and L and the digits 0 and 1, so they read
+              clearly on an E-Ink screen.
+            </p>
+            <a
+              href={sendPage}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-[10px] underline hover:text-kindle-text"
+            >
+              Open the Send page in a new tab
+            </a>
+          </div>
+        </div>
+
+        {progress && (
+          <div className="mt-3">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-kindle-border">
+              <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="mt-1 text-[10px] text-kindle-text-muted">
+              {pct}% · {Math.round(progress.loaded / 1024 / 1024)} of{" "}
+              {Math.round(progress.total / 1024 / 1024)} MB
+            </p>
+          </div>
         )}
 
-        <label className="mt-2 flex items-center gap-2 text-[11px] text-kindle-text-muted">
-          <input
-            type="checkbox"
-            checked={kepubify}
-            onChange={(e) => setKepubify(e.target.checked)}
-            className="accent-kindle-accent"
-          />
-          Fix up EPUBs for Kobo (Kepubify)
-        </label>
-        <label className="mt-1 flex items-center gap-2 text-[11px] text-kindle-text-muted">
-          <input
-            type="checkbox"
-            checked={kindlegen}
-            onChange={(e) => setKindlegen(e.target.checked)}
-            className="accent-kindle-accent"
-          />
-          Convert for older Kindle (kindlegen)
-        </label>
+        {busyId && (
+          <button
+            type="button"
+            onClick={() => abortRef.current?.abort()}
+            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-kindle-border px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:border-amber-500/60 hover:text-amber-400 transition"
+          >
+            Cancel this send
+          </button>
+        )}
 
         <p className="mt-2 text-[10px] text-kindle-text-muted/70">
-          Accepts {EREADER_ACCEPT}. The sender&apos;s reply opens in a tab — read it to
-          confirm the book arrived.
+          Accepts {EREADER_ACCEPT}, up to 50 MB. Kindle-native formats (
+          {KINDLE_NATIVE_EXTENSIONS.join(", ")}) are the ones Amazon&apos;s own apps open
+          without a conversion step.
         </p>
       </div>
 
-      {/* ── Route 2: KindleDrop ────────────────────────────────────────── */}
-      <div className="rounded-lg border border-kindle-border bg-kindle-card/40 p-3">
-        <p className="text-xs font-medium text-kindle-text">2. KindleDrop</p>
-        <p className="mt-2 text-xs leading-relaxed text-kindle-text-muted">
-          Opens{" "}
-          <a
-            href={KDROP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-kindle-text"
-          >
-            kdrop.me
-          </a>{" "}
-          and you drop the file in yourself. Kora cannot upload to it directly: the
-          page sits behind a human anti-bot check. Use this if you would rather not
-          hand Kora the device code.
-        </p>
-        <button
-          type="button"
-          onClick={() => report(openManualSender("kdrop-manual"))}
-          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-kindle-border px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:border-kindle-accent transition"
-        >
-          Open KindleDrop
-        </button>
-      </div>
-
-      {/* ── Route 3: Amazon, kept as the official alternative ───────────── */}
+      {/* ── Route 2: Amazon, kept as the official alternative ───────────── */}
       <div className="rounded-lg border border-kindle-border bg-kindle-card/40 p-3">
         <p className="text-xs font-medium text-kindle-text">
-          3. Amazon&rsquo;s Send to Kindle (official)
+          2. Amazon&rsquo;s Send to Kindle (official)
         </p>
         <p className="mt-2 text-xs leading-relaxed text-kindle-text-muted">
-          Amazon does not offer a third-party upload API, so this route uses your own
-          account: on Android it opens the system share sheet with your own Send to
-          Kindle app, and on desktop it saves the file and opens Amazon&apos;s page for
-          a drag-and-drop.
+          Amazon offers no third-party upload API, so this alternative uses your own
+          account. On Android it opens the system share sheet with your own Send to
+          Kindle app; on desktop it saves the file to your downloads and opens
+          Amazon&apos;s page for a drag-and-drop. It never uses Kora&apos;s relay, and it
+          says so when it saves locally.
         </p>
         <a
           href={AMAZON_SEND_URL}
@@ -323,11 +381,15 @@ export default function KindleSettingsPanel() {
                   key={book.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-kindle-border/60 px-2.5 py-2"
                 >
-                  <span
-                    className="min-w-0 flex-1 truncate text-xs text-kindle-text"
-                    title={book.fileName}
-                  >
-                    {book.fileName}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs text-kindle-text" title={book.fileName}>
+                      {book.fileName}
+                    </span>
+                    {isKindleNativeExtension(book.extension) && (
+                      <span className="text-[10px] text-kindle-text-muted/70">
+                        Kindle-native format — a Kobo will want a different one
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 items-center gap-1.5">
                     <button
@@ -336,8 +398,8 @@ export default function KindleSettingsPanel() {
                       disabled={busy || !key}
                       title={
                         key
-                          ? "Upload to your device via send.djazz.se"
-                          : `Enter the ${EREADER_KEY_LENGTH}-character code from your device first`
+                          ? "Send to your e-reader through Kora's own relay"
+                          : `Enter the ${EREADER_KEY_LENGTH}-character code from your e-reader first`
                       }
                       className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-40"
                     >
@@ -361,7 +423,9 @@ export default function KindleSettingsPanel() {
       </div>
 
       <p className="text-[10px] leading-relaxed text-kindle-text-muted/70">
-        Nothing here asks for, stores, or sends an Amazon or Kobo account.
+        Nothing here asks for, stores, or sends an Amazon or Kobo account. A book sent
+        through the relay is deleted from the server as soon as the e-reader downloads
+        it, and any send left uncollected expires on its own.
       </p>
     </div>
   );

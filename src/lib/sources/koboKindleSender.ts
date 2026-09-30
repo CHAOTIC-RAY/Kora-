@@ -1,94 +1,121 @@
 /**
- * Send to Kobo/Kindle — the real browser upload.
+ * Send to Kobo/Kindle — the browser-facing side of the sender.
  *
- * WHAT THIS IS. There is no Amazon-side API a third-party app can use to push a
- * book to a device: KDP's Personal Document Service needs an Amazon-approved
- * developer account, and Amazon issues those tokens to nobody else. The old
- * version of this plugin therefore did the only thing it could — save the file
- * and call it a day, which is exactly the "it just downloads the book" bug.
+ * WHAT THIS USED TO BE, AND WHY IT IS NOT ANY MORE. This module shipped with
+ * three routes: a real upload to send.djazz.se, a manual open of kdrop.me, and
+ * a manual open of Amazon's Send to Kindle. djazz is gone. kdrop is gone. Both
+ * are gone because the ask was to stop leaning on somebody else's server for a
+ * feature people use weekly — a reader's library passing through an unrelated
+ * third party's disk, under their retention policy and their uptime, is a
+ * dependency Kora should not have. Kora's own Worker now does the job:
  *
- * WHAT ACTUALLY WORKS. Two browser-based senders do the real upload on the
- * user's behalf, with no account in Kora and no credential of any kind. Both
- * were read directly off the wire before this module was written; the
- * contract below is theirs, not a guess:
+ *   1. On the e-reader, open <origin>/send. The page shows a 4-character code
+ *      and waits.
+ *   2. Here, type that code and send. The file goes to Kora's Worker.
+ *   3. The device page notices, downloads, and the Worker deletes the file the
+ *      moment it is taken.
  *
- * 1. send.djazz.se ("Send to Ereader" by Daniel Jansén, MIT). A plain HTML
- *    form, read from the live page:
- *      <form action="./upload" method="post" enctype="multipart/form-data">
- *        <input name="key"  maxlength="4" required>   <- the 4-char code the
- *                                                          device's own browser
- *                                                          displays
- *        <input name="file" type="file" required
- *               accept=".txt,.epub,.mobi,.pdf,.cbz,.cbr">
- *        <input name="url">                           <- fetch-by-URL instead
- *        <input type="checkbox" name="kepubify">      <- Kobo EPUB fixups
- *        <input type="checkbox" name="kindlegen">     <- Kindle conversion
- *        <input type="checkbox" name="pdfcropmargins">
- *        <input type="checkbox" name="transliteration">
- *    POST https://send.djazz.se/upload  ->  text/plain reply. A bad key comes
- *    back as HTTP 400 with the body "Unknown key ABCD" (verified live).
+ * The relay's endpoints, TTLs, rate limits and filename sanitisation live in
+ * `src/lib/relay/`. Its HTTP client is `koraRelaySender.ts`, kept separate so
+ * this module stays free of network code — which is also what lets the
+ * structural test at the bottom of koboKindleSender.test.ts assert that no
+ * `fetch(` appears here at all.
  *
- * 2. kdrop.me (KindleDrop). NOT used for programmatic upload. Its page carries
- *    a Cloudflare Turnstile widget (`<div id="cf-turnstile">`, the client chunk
- *    references `turnstile` / `cf-turnstile-response`), which is a human
- *    anti-bot challenge. Its CSP allow-lists `https://api.kdrop.me`, but that
- *    host does not resolve in DNS (NXDOMAIN against 8.8.8.8), so there is no
- *    reachable POST contract to call even ignoring the challenge. So kdrop is
- *    offered the only honest way: open their upload page and let the user drop
- *    the file in. No endpoint is invented for it.
+ * WHAT IS STILL HERE AND WHY. Amazon's own Send to Kindle page is kept, as
+ * asked. It is a genuinely different thing rather than a leftover: it is the
+ * route that works when the device cannot run Kora's page — no code, no
+ * polling, just Amazon's own import. It stays labelled as the alternative and
+ * is never a fallback; see `shareOrDownloadForAmazon`, a separate exported
+ * call precisely so that no code path can quietly turn into it.
  *
- * WHY A FORM AND NOT fetch(). `send.djazz.se` returns no
- * `Access-Control-Allow-Origin` header — neither on the OPTIONS preflight nor
- * on the POST — so a cross-origin `fetch`/XHR upload is blocked by the browser
- * and would fail in front of the user. A native form POST is a top-level
- * navigation and is not subject to CORS, so it genuinely uploads from the
- * page. This is also why the reply lands in a tab the user can read: we cannot
- * read the response from here, and the code says so rather than claiming a
- * success it cannot observe.
+ * WHAT WENT WITH kdrop. `api.kdrop.me` does not resolve (NXDOMAIN against
+ * 8.8.8.8) and the site is behind a Cloudflare Turnstile human check, so there
+ * was never a POST contract to call — it could only ever be a manual "go open
+ * this page yourself" route, i.e. a worse version of the Amazon route with a
+ * worse reputation. Keeping it would have kept a third-party dependency alive
+ * for zero capability.
  *
- * CANCELLATION. Dismissing the share sheet, clearing the device code, or
- * closing the tab before it loads is the user changing their mind. That is
- * reported as `cancelled`, never as `ok` and never as a failure toast. Same
- * convention as the OS share path in `kindleClient.ts`.
+ * CANCELLATION. An empty or malformed code, an aborted upload, or a dismissed
+ * share sheet is the user changing their mind. That is reported as
+ * `cancelled`, never as `ok` and never as a failure toast. Same convention as
+ * the OS share path in `kindleClient.ts`.
  *
  * NO CREDENTIALS. Nothing here reads, stores, or sends an account, key, or
- * token. The `key` field below is the 4-character code the *device* shows the
- * user, which is a pairing code for one upload, not a secret.
+ * token. The 4-character code is a pairing code for one transfer between two
+ * devices the user is holding, not a secret — the relay's actual authorisation
+ * is a 128-bit secret that never leaves the e-reader page.
  */
 
 import type { PluginManifest } from "./types";
+import {
+  normalizeDeviceCode,
+  sendToDeviceViaRelay,
+  type SendToDeviceResult,
+} from "./koraRelaySender";
 
-/** The sender that does a real upload. Field names read off the live form. */
-export const EREADER_URL = "https://send.djazz.se/";
-export const EREADER_UPLOAD_ENDPOINT = "https://send.djazz.se/upload";
+// ── Kora's own relay ────────────────────────────────────────────────────────
 
-/** KindleDrop. Manual upload only — Turnstile-gated, see the header. */
-export const KDROP_URL = "https://kdrop.me/";
+/** The e-reader page. Same-origin, so the path is the whole URL. */
+export const EREADER_URL = "/send";
+export const EREADER_UPLOAD_ENDPOINT = "/api/relay/upload";
+export const EREADER_REGISTER_ENDPOINT = "/api/relay/register";
+export const EREADER_STATUS_ENDPOINT = "/api/relay/status";
+
+/** Alias, so callers written against the newer name resolve. */
+export const RELAY_PAGE_URL = EREADER_URL;
 
 /** Amazon's own page. Kept as the official alternative, per the ask. */
 export const AMAZON_SEND_URL = "https://www.amazon.com/sendtokindle";
 
-/** Exactly what the live form's `accept` attribute lists. */
-export const EREADER_ACCEPT = ".txt,.epub,.mobi,.pdf,.cbz,.cbr";
-export const EREADER_EXTENSIONS = [".txt", ".epub", ".mobi", ".pdf", ".cbz", ".cbr"];
+/**
+ * kdrop.me. NOT a route any more. Retained as an exported constant so the
+ * removal is visible in one place rather than as an absence nobody can grep
+ * for. Nothing in this file opens it, and `koboKindleSender.test.ts` asserts
+ * that.
+ */
+export const KDROP_URL = "https://kdrop.me/";
 
-/** The sender's own field names, so nothing is spelled from memory. */
+/**
+ * What the relay will carry. Wider than djazz's form was, on purpose: this is
+ * now OUR list, and the formats a Kora library actually holds include the
+ * Amazon-native ones djazz would have refused (.azw3, .azw) plus Kindle's
+ * .kfx. Refusing to send a Kindle a .azw3 would be refusing to do the job, so
+ * they are accepted; `KINDLE_NATIVE_EXTENSIONS` lets the panel still say which
+ * device each format suits.
+ */
+export const EREADER_ACCEPT = ".epub,.mobi,.azw3,.azw,.kfx,.pdf,.txt,.cbz,.cbr";
+export const EREADER_EXTENSIONS = [
+  ".epub",
+  ".mobi",
+  ".azw3",
+  ".azw",
+  ".kfx",
+  ".pdf",
+  ".txt",
+  ".cbz",
+  ".cbr",
+];
+
+/** Amazon-native formats, called out so the panel can label them. */
+export const KINDLE_NATIVE_EXTENSIONS = [".azw3", ".azw", ".kfx", ".mobi"];
+
+/**
+ * The relay's multipart fields. A `code` and a `file`.
+ *
+ * djazz's conversion checkboxes (kepubify, kindlegen, pdfcropmargins,
+ * transliteration) were conversions performed on djazz's server. There is no
+ * equivalent here, so they are accepted as arguments and ignored rather than
+ * posted as fields that do nothing.
+ */
 export const EREADER_FIELDS = {
-  key: "key",
+  code: "code",
   file: "file",
-  url: "url",
-  /** Kobo-side Kepubify fixups (metadata + cover sizing). */
-  kepubify: "kepubify",
-  /** Kindle-side conversion via kindlegen. */
-  kindlegen: "kindlegen",
-  pdfCropMargins: "pdfcropmargins",
-  transliteration: "transliteration",
 } as const;
 
 /** The pairing code the device shows is exactly four characters. */
 export const EREADER_KEY_LENGTH = 4;
 
-export type EreaderRoute = "djazz-upload" | "kdrop-manual" | "amazon-manual";
+export type EreaderRoute = "kora-relay" | "amazon-manual";
 
 export interface EreaderResult {
   ok: boolean;
@@ -97,6 +124,8 @@ export interface EreaderResult {
   reason: string;
   /** The user's own decision, not a failure. */
   cancelled?: boolean;
+  /** Which path actually ran. Never omitted on a success. */
+  method?: "kora-relay" | "local-download" | "share-sheet";
 }
 
 export interface EreaderDeps {
@@ -106,6 +135,17 @@ export interface EreaderDeps {
   getCachedFile?: (bookId: string) => Promise<CachedFileLike | null>;
   createObjectUrl?: (blob: Blob) => string;
   revokeObjectUrl?: (url: string) => void;
+  /**
+   * The relay HTTP call, injectable.
+   *
+   * The real one is a same-origin XHR with real byte progress; the seam exists
+   * so this module can be exercised in plain Node, and so a test can prove the
+   * cancellation contract without a network stack.
+   */
+  sendViaRelay?: typeof sendToDeviceViaRelay;
+  /** Cancellation handle for the in-flight upload. */
+  abortSignal?: AbortSignal;
+  onProgress?: (loaded: number, total: number) => void;
 }
 
 export interface CachedFileLike {
@@ -148,31 +188,38 @@ interface EreaderNavigatorLike {
 /**
  * Normalise the 4-character device code.
  *
- * Uppercased and stripped of separators, because it is typed by hand off a
- * small e-ink screen and people paste it with a space in it. Anything that is
- * not exactly four letters/digits afterwards is rejected rather than sent —
- * the sender answers 400 "Unknown key" and the user is left guessing which of
- * the two halves was wrong.
+ * Delegates to the relay's own normaliser, which is authoritative: it enforces
+ * the 31-character alphabet (no 0/O, no 1/I/L, no lowercase after folding). A
+ * code containing an ambiguous glyph is rejected rather than sent, because a
+ * silently "corrected" code on an unauthenticated fetch endpoint is a code
+ * that means something other than what the user believes they typed.
+ *
+ * Kept under its old name because the panel, the tests and the plugin all call
+ * it; the behaviour is the relay's, not this module's.
  */
 export function normalizeEreaderKey(raw: string | null | undefined): string | null {
-  if (typeof raw !== "string") return null;
-  const cleaned = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return cleaned.length === EREADER_KEY_LENGTH ? cleaned : null;
+  return normalizeDeviceCode(raw ?? "");
 }
 
-/** Whether the sender would accept this file type at all. */
+/** Whether the relay will carry this file type at all. */
 export function isEreaderAcceptedExtension(ext: string | undefined | null): boolean {
   const e = (ext || "").trim().toLowerCase().replace(/^\./, "");
   return EREADER_EXTENSIONS.includes(`.${e}`);
 }
 
+export function isKindleNativeExtension(ext: string | undefined | null): boolean {
+  const e = (ext || "").trim().toLowerCase().replace(/^\./, "");
+  return KINDLE_NATIVE_EXTENSIONS.includes(`.${e}`);
+}
+
 /**
- * The exact multipart field set the sender's form would post.
+ * The exact multipart field set the relay's upload takes.
  *
  * Pure and exported so the contract is assertable without a DOM — this is the
- * thing that would silently rot if it were buried inside a submit handler.
- * Unchecked boxes are omitted entirely, which is what an unchecked
- * `<input type="checkbox">` posts (nothing), so the sender's defaults win.
+ * thing that would silently rot if it were buried inside an upload handler.
+ * The conversion flags are accepted for call-site compatibility and produce
+ * nothing: they were djazz server-side conversions, and posting a field the
+ * server ignores would be a lie in the form.
  */
 export function buildEreaderUploadFields(opts: {
   key: string;
@@ -183,11 +230,7 @@ export function buildEreaderUploadFields(opts: {
 }): Record<string, string> {
   const fields: Record<string, string> = {};
   const key = normalizeEreaderKey(opts.key);
-  if (key) fields[EREADER_FIELDS.key] = key;
-  if (opts.kepubify) fields[EREADER_FIELDS.kepubify] = "on";
-  if (opts.kindlegen) fields[EREADER_FIELDS.kindlegen] = "on";
-  if (opts.pdfCropMargins) fields[EREADER_FIELDS.pdfCropMargins] = "on";
-  if (opts.transliteration) fields[EREADER_FIELDS.transliteration] = "on";
+  if (key) fields[EREADER_FIELDS.code] = key;
   return fields;
 }
 
@@ -222,10 +265,8 @@ export function pluginDisplayName(manifest: Pick<PluginManifest, "name" | "categ
 /** One line describing where each route actually sends the file. */
 export function describeEreaderRoute(route: EreaderRoute): string {
   switch (route) {
-    case "djazz-upload":
-      return "Uploads straight to your device through send.djazz.se.";
-    case "kdrop-manual":
-      return "Opens KindleDrop — you drop the file in yourself.";
+    case "kora-relay":
+      return "Uploads straight to your device through Kora's own relay. Nothing goes to a third party.";
     case "amazon-manual":
       return "Opens Amazon's own Send to Kindle page.";
   }
@@ -239,18 +280,39 @@ function resolve<T>(override: T | undefined, fallback: T | undefined): T | undef
   return override !== undefined ? override : fallback;
 }
 
+/** Map a relay result onto the panel's result shape, without inventing success. */
+function fromRelayResult(result: SendToDeviceResult, fileName: string, code: string): EreaderResult {
+  if (result.status === "cancelled") {
+    return {
+      ok: false,
+      cancelled: true,
+      route: "kora-relay",
+      reason: "Upload cancelled. Nothing was sent.",
+    };
+  }
+  if (result.status === "error") {
+    return { ok: false, route: "kora-relay", reason: result.error };
+  }
+  return {
+    ok: true,
+    route: "kora-relay",
+    method: result.method,
+    reason: `Sent ${result.fileName || fileName} to your e-reader using code ${code}. ${result.message}`,
+  };
+}
+
 /**
- * Upload a cached book to the device via send.djazz.se.
+ * Upload a cached book to the device through Kora's own relay.
  *
- * Builds the sender's own multipart form in the page and submits it. The file
- * is attached by assigning a `File` onto a file input through a
- * `DataTransfer`, which is the only way to put bytes into a form input
- * programmatically; engines without it are told so plainly rather than
- * silently downloading instead.
+ * The flow is: the device sits on `<origin>/send` showing a 4-character code;
+ * the user types it here; the bytes go to Kora's Worker tagged with that code;
+ * the device page polls, downloads, and the Worker deletes the file. No tab
+ * opens and no third party is involved, which is the whole improvement over the
+ * form POST this used to build.
  *
- * The response goes to a new tab. That is deliberate: it is the sender's own
- * plain-text answer ("Uploaded", or "Unknown key ABCD"), and it is visible
- * rather than swallowed.
+ * The contract preserved from the sender it replaces: `ok: true` means the file
+ * is in the device's waiting slot, a cancellation is never a success, and no
+ * path here degrades to a local download.
  */
 export async function uploadToEreader(
   bookId: string,
@@ -258,36 +320,32 @@ export async function uploadToEreader(
     key: string;
     title?: string;
     extension?: string;
+    /** Accepted and ignored — djazz's server-side conversions have no equivalent. */
     kepubify?: boolean;
     kindlegen?: boolean;
     pdfCropMargins?: boolean;
     transliteration?: boolean;
   } & EreaderDeps
 ): Promise<EreaderResult> {
-  const { key, title, extension, kepubify, kindlegen, pdfCropMargins, transliteration, ...deps } = opts;
+  const { key, title, extension, abortSignal, onProgress, ...deps } = opts;
 
-  const key_ = normalizeEreaderKey(key);
-  if (!key_) {
+  const code = normalizeEreaderKey(key);
+  if (!code) {
     // An empty or malformed code is the user not having got to the device yet.
     return {
       ok: false,
       cancelled: true,
-      route: "djazz-upload",
-      reason: `No device code yet. Open send.djazz.se in your Kobo/Kindle's browser and enter the ${EREADER_KEY_LENGTH}-character code it shows.`,
+      route: "kora-relay",
+      reason: `No device code yet. Open Kora's Send page in your Kobo/Kindle's browser and enter the ${EREADER_KEY_LENGTH}-character code it shows.`,
     };
   }
 
-  const doc = resolve(
-    deps.document,
-    typeof document === "undefined" ? undefined : (document as unknown as EreaderDocumentLike)
-  );
   const getCachedFile = deps.getCachedFile;
-
   if (!getCachedFile) {
     return {
       ok: false,
-      route: "djazz-upload",
-      reason: "This build has no book cache wired up, so there is no file to upload.",
+      route: "kora-relay",
+      reason: "This build has no book cache wired up, so there is no file to send.",
     };
   }
 
@@ -297,7 +355,7 @@ export async function uploadToEreader(
   } catch (err) {
     return {
       ok: false,
-      route: "djazz-upload",
+      route: "kora-relay",
       reason: `Could not read the cached book: ${(err as Error)?.message ?? String(err)}`,
     };
   }
@@ -305,7 +363,7 @@ export async function uploadToEreader(
   if (!cached || !cached.blob) {
     return {
       ok: false,
-      route: "djazz-upload",
+      route: "kora-relay",
       reason: "This book isn't downloaded on this device yet. Download it first, then send it.",
     };
   }
@@ -314,86 +372,22 @@ export async function uploadToEreader(
   if (!isEreaderAcceptedExtension(ext)) {
     return {
       ok: false,
-      route: "djazz-upload",
-      reason: `The sender takes ${EREADER_ACCEPT} — this one is .${ext || "?"}.`,
-    };
-  }
-
-  if (!doc?.createElement) {
-    return {
-      ok: false,
-      route: "djazz-upload",
-      reason: "This browser cannot build the upload form.",
+      route: "kora-relay",
+      reason: `The relay takes ${EREADER_ACCEPT} — this one is .${ext || "?"}.`,
     };
   }
 
   const fileName = (title ? `${sanitizeFileName(title)}.${ext}` : cached.fileName) || `book.${ext}`;
-  const file = new File([cached.blob], fileName, { type: mimeFor(ext) });
 
-  // A form can only be submitted with a real File in a file input.
-  const DataTransferCtor = typeof DataTransfer !== "undefined" ? DataTransfer : undefined;
-  if (!DataTransferCtor) {
-    return {
-      ok: false,
-      route: "djazz-upload",
-      reason:
-        "This browser can't attach a file to a form without a picker, so the upload can't be prepared. Use KindleDrop or Amazon below instead.",
-    };
-  }
-
-  const fields = buildEreaderUploadFields({ key: key_, kepubify, kindlegen, pdfCropMargins, transliteration });
-
+  const send = resolve(deps.sendViaRelay, sendToDeviceViaRelay);
   try {
-    const form = doc.createElement("form");
-    form.method = "POST";
-    form.action = EREADER_UPLOAD_ENDPOINT;
-    form.enctype = "multipart/form-data";
-    form.target = "_blank";
-    if (form.setAttribute) {
-      form.setAttribute("accept-charset", "UTF-8");
-      form.setAttribute("rel", "noopener");
-    }
-    if (form.style) form.style.display = "none";
-
-    for (const [name, value] of Object.entries(fields)) {
-      const input = doc.createElement("input");
-      input.type = "hidden";
-      input.name = name;
-      input.value = value;
-      form.appendChild?.(input);
-    }
-
-    const fileInput = doc.createElement("input");
-    fileInput.type = "file";
-    fileInput.name = EREADER_FIELDS.file;
-    fileInput.accept = EREADER_ACCEPT;
-    const dt = new DataTransferCtor();
-    dt.items.add(file);
-    fileInput.files = dt.files;
-    form.appendChild?.(fileInput);
-
-    doc.body?.appendChild(form);
-    if (typeof form.submit !== "function") {
-      form.remove?.();
-      return {
-        ok: false,
-        route: "djazz-upload",
-        reason: "This browser refused to submit the upload form.",
-      };
-    }
-    form.submit();
-    form.remove?.();
-
-    return {
-      ok: true,
-      route: "djazz-upload",
-      reason: `Sent ${fileName} to send.djazz.se using code ${key_}. A tab opened with the sender's reply — read it to confirm the book landed on your device.`,
-    };
+    const result = await send(cached.blob, fileName, code, abortSignal, onProgress);
+    return fromRelayResult(result, fileName, code);
   } catch (err) {
     return {
       ok: false,
-      route: "djazz-upload",
-      reason: `Could not start the upload: ${(err as Error)?.message ?? String(err)}`,
+      route: "kora-relay",
+      reason: `Could not reach the relay: ${(err as Error)?.message ?? String(err)}`,
     };
   }
 }
@@ -454,6 +448,7 @@ export async function shareOrDownloadForAmazon(
         return {
           ok: true,
           route: "amazon-manual",
+          method: "share-sheet",
           fileName,
           reason: `Opened the share sheet with ${fileName} — pick your own Kindle app there.`,
         };
@@ -513,17 +508,19 @@ export async function shareOrDownloadForAmazon(
   return {
     ok: true,
     route: "amazon-manual",
+    // Said out loud, because this IS a local download: the user must be told
+    // rather than discovering it when the file turns up in Downloads.
+    method: "local-download",
     fileName,
-    reason: `Saved ${fileName} and opened Amazon's Send to Kindle page — drag the file onto it to finish.`,
+    reason: `Saved ${fileName} to your downloads and opened Amazon's Send to Kindle page — drag the file onto it to finish. This path did not use Kora's relay.`,
   };
 }
 
 /** Open a manual-upload page. Never presented as an upload that happened. */
-export function openManualSender(route: "kdrop-manual" | "amazon-manual", openUrl?: (url: string) => void): EreaderResult {
-  const url = route === "kdrop-manual" ? KDROP_URL : AMAZON_SEND_URL;
+export function openManualSender(route: "amazon-manual", openUrl?: (url: string) => void): EreaderResult {
   const open = resolve(openUrl, defaultOpenUrl);
   try {
-    open(url);
+    open(AMAZON_SEND_URL);
   } catch (err) {
     return {
       ok: false,
@@ -534,10 +531,7 @@ export function openManualSender(route: "kdrop-manual" | "amazon-manual", openUr
   return {
     ok: true,
     route,
-    reason:
-      route === "kdrop-manual"
-        ? "Opened KindleDrop. It asks for the file itself — drop it in there; Kora cannot upload to it, because its page is behind a human anti-bot check."
-        : "Opened Amazon's Send to Kindle page. Drop the downloaded file onto it to finish.",
+    reason: "Opened Amazon's Send to Kindle page. Drop the downloaded file onto it to finish.",
   };
 }
 
@@ -551,6 +545,9 @@ const MIMES: Record<string, string> = {
   txt: "text/plain",
   epub: "application/epub+zip",
   mobi: "application/x-mobipocket-ebook",
+  azw3: "application/vnd.amazon.ebook",
+  azw: "application/vnd.amazon.ebook",
+  kfx: "application/vnd.amazon.ebook",
   pdf: "application/pdf",
   cbz: "application/vnd.comicbook+zip",
   cbr: "application/vnd.comicbook-rar",
