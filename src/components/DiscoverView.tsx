@@ -3420,9 +3420,6 @@ function DiscoverView({
                     data-guide="discover-source-chips"
                     className="flex items-center gap-1.5 overflow-x-auto scrollbar-none max-w-full flex-1 min-w-0 pb-0.5"
                   >
-                    <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted/50 shrink-0 pl-1">
-                      Sources
-                    </span>
                     {pluginChips.map((c) => {
                       const on = activeSource === c.id;
                       return (
