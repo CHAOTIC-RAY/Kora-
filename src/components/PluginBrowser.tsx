@@ -759,7 +759,7 @@ export function ThemeCard({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold text-kindle-text leading-tight line-clamp-2">
-            {manifest.name}
+            {pluginDisplayName(manifest)}
           </p>
           <p className="text-[9px] uppercase tracking-widest text-kindle-text-muted">
             {manifest.dark ? "Dark" : "Light"} theme

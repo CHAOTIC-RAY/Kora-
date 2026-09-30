@@ -274,17 +274,20 @@ export function hubCategories(): PluginCategory[] {
  * is on the device:
  *   source      -> discover    (it joins the feed it feeds; no panel of its own)
  *   integration -> workshop    (a bento tile that opens the integration's panel)
- *   theme       -> workshop    (a non-source plugin, same rule as integrations)
+ *   theme       -> settings    (a theme is a preference, not a utility)
  *   tool        -> workshop    (an in-app utility, same place as integrations)
  *
- * Settings stays a legal surface but owns no plugin category. Choosing the
- * active BUILT-IN theme is a setting; a theme *plugin* is a non-source plugin
- * and belongs in the Workshop grid beside every other installed plugin.
+ * Themes used to be placed in Workshop on the argument that they are
+ * "non-source plugins like integrations". That was wrong: choosing the
+ * active theme is a Settings concern, and burying themes in the Workshop
+ * grid made installed themes look like utilities you can launch. The
+ * Workshop grid filters independently, so a theme can no longer appear
+ * there even if a stale entry says otherwise.
  */
 const SURFACE_BY_CATEGORY: Record<PluginCategory, PluginSurface> = {
   source: "discover",
   integration: "workshop",
-  theme: "workshop",
+  theme: "settings",
   tool: "workshop",
 };
 

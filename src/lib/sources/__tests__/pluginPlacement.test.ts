@@ -85,11 +85,18 @@ check(
   surfaceForCategory("integration") === "workshop",
   surfaceForCategory("integration")
 );
-// A theme plugin is a non-source plugin. The user asked for installed
-// non-source plugins as bento tiles in Workshop, which includes themes.
+// A theme is a preference, not a utility. Themes used to be placed in
+// Workshop on the reasoning that they are "non-source plugins like
+// integrations", but the user asked for themes to live in Settings —
+// burying them in the Workshop grid made them read as things you launch.
 check(
-  "installed themes surface in Workshop",
-  surfaceForCategory("theme") === "workshop",
+  "installed themes surface in Settings, not Workshop",
+  surfaceForCategory("theme") === "settings",
+  surfaceForCategory("theme")
+);
+check(
+  "a theme never surfaces in Workshop",
+  surfaceForCategory("theme") !== "workshop",
   surfaceForCategory("theme")
 );
 check(
@@ -129,14 +136,19 @@ check(
   workshop.includes("integration"),
   workshop
 );
-check("Workshop lists themes", workshop.includes("theme"), workshop);
+// Themes are NOT Workshop tiles. The user asked for them removed from the
+// Workshop bento and visible only in the plugin hub and Settings.
+check("Workshop does not list themes", !workshop.includes("theme"), workshop);
 check("Workshop lists tools", workshop.includes("tool"), workshop);
 check("Workshop does not list sources", !workshop.includes("source"), workshop);
 
-// Settings owns no plugin category at all now. The built-in theme swatches
-// stay — choosing the active BUILT-IN theme is a setting — but the theme
-// plugin list/hub is gone from here.
-check("Settings lists no plugin category", settings.length === 0, settings);
+// Settings owns the theme category now.
+check("Settings lists themes", settings.includes("theme"), settings);
+check(
+  "Settings lists nothing but themes",
+  settings.every((c) => c === "theme"),
+  settings
+);
 
 // ── No category is orphaned, and none is double-listed ───────────────────
 for (const c of ALL) {
@@ -163,14 +175,16 @@ check(
     discover.length + workshop.length + settings.length
 );
 
-// The non-source categories are exactly the Workshop tiles. This is the
-// invariant the bento grid in PluginBentoTiles filters on.
-const NON_SOURCE: PluginCategory[] = ["theme", "integration", "tool"];
+// The Workshop tiles are exactly the launchable non-source categories. A
+// theme is not launchable, so it is deliberately excluded — the grid in
+// PluginBentoTiles filters on this same set.
+const WORKSHOP_TILES: PluginCategory[] = ["integration", "tool"];
 check(
-  "Workshop tiles are exactly the non-source categories",
-  NON_SOURCE.every((c) => workshop.includes(c)) &&
+  "Workshop tiles are exactly the launchable non-source categories",
+  WORKSHOP_TILES.every((c) => workshop.includes(c)) &&
     !workshop.includes("source") &&
-    workshop.length === NON_SOURCE.length,
+    !workshop.includes("theme") &&
+    workshop.length === WORKSHOP_TILES.length,
   workshop
 );
 

@@ -129,12 +129,14 @@ check("the integration keeps its target", integration?.manifest?.target === "cal
 check("the integration is not gated", integration?.gated === false, integration?.gated);
 
 // And the complementary invariant: the Workshop tile filter, which is
-// categoriesForSurface("workshop"), is exactly the non-source set the bento
-// grid renders.
+// categoriesForSurface("workshop"), is exactly the launchable non-source set
+// the bento grid renders. Themes are excluded — they are a preference owned
+// by Settings, not something you launch from a tile.
 const workshop = categoriesForSurface("workshop");
 check(
-  "the Workshop tile filter covers every category the hub admits as non-source",
-  ["theme", "integration", "tool"].every((c) => workshop.includes(c as PluginCategory)),
+  "the Workshop tile filter covers every launchable non-source category",
+  ["integration", "tool"].every((c) => workshop.includes(c as PluginCategory)) &&
+    !workshop.includes("theme"),
   workshop
 );
 
