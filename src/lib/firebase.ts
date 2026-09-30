@@ -424,10 +424,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
   if (isRecoverableFirestoreError(error)) {
     console.warn("Firestore Error (recoverable): ", JSON.stringify(errInfo));
+    console.warn("[Firestore-read] path=", path, "code=", (error as any)?.code, "message=", (error as any)?.message);
     return;
   }
 
   console.error("Firestore Error: ", JSON.stringify(errInfo));
+  console.error("[Firestore-read] path=", path, "code=", (error as any)?.code, "message=", (error as any)?.message);
   disableFirebase();
   throw new Error(JSON.stringify(errInfo));
 }
@@ -841,6 +843,9 @@ export async function getCommunityBooks(genreFilter?: string): Promise<Community
       });
     } catch (err) {
       console.warn("Failed to fetch community books from Firestore:", err);
+      if (typeof console !== "undefined") {
+        console.warn("[Firestore-read] path=communityBooks code=", (err as any)?.code, "message=", (err as any)?.message);
+      }
     }
   }
 

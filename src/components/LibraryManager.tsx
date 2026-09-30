@@ -30,6 +30,7 @@ import {
   type LibraryTile,
 } from "../lib/libraryGrouping";
 import type { LibraryGroup } from "../lib/seriesHelper";
+import { logger } from "../lib/logger";
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
@@ -374,7 +375,7 @@ function LibraryDownloadOverlay({
                 <span>Retry</span>
               </button>
             )}
-            {onManualDownload && download.downloadUrl && (
+            {onManualDownload && download.downloadUrl ? (
               <button
                 type="button"
                 onClick={(e) => {
@@ -387,7 +388,20 @@ function LibraryDownloadOverlay({
                 <Globe className="w-3 h-3" />
                 <span>Open in browser</span>
               </button>
-            )}
+            ) : download.downloadUrl ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  window.open(download.downloadUrl, '_blank', 'noopener');
+                }}
+                className="mt-2.5 px-3 py-1 rounded-full bg-kindle-accent/70 hover:bg-kindle-accent text-kindle-bg text-[9px] font-bold uppercase tracking-wider shadow-md active:scale-95 transition flex items-center gap-1"
+              >
+                <Globe className="w-3 h-3" />
+                <span>Open in browser</span>
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -1068,6 +1082,7 @@ function LibraryManager({
       localStorage.setItem("kora_nyt_recommendations", JSON.stringify(recs));
     } catch (err: any) {
       console.error("Failed to load recommendations:", err);
+      logger.error("[library] recommendations load failed", { error: err?.message || String(err) });
       setRecommendationError(err.message || "Could not load recommendations");
     } finally {
       setLoadingRecommendations(false);

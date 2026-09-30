@@ -42,6 +42,7 @@ import { isFeedItemWithinRetention } from "../lib/feedNormalize";
 import { getItemThumbnail, markFeedImageBroken, prefetchFeedPreviews } from "../lib/feedPreview";
 import { briefPayloadFromFeeds, syncAndroidHomeWidgets } from "../lib/androidWidgets";
 import { textDirection } from "../lib/textDirection";
+import { logger } from "../lib/logger";
 import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
 import TodayNewsBriefCard from "./TodayNewsBriefCard";
@@ -451,7 +452,9 @@ function FeedView({
       );
       void enrichFeedItems(merged);
     } catch (error) {
+      const err = error instanceof Error ? error.message : String(error);
       console.error("Feed refresh failed:", error);
+      logger.error("[feed] refresh failed", { error: err });
       setRefreshError("Feed refresh failed. Check your connection and try again.");
     } finally {
       setRefreshing(false);

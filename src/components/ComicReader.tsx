@@ -45,6 +45,7 @@ import {
 import { PreloadQueue } from "../lib/preloadQueue";
 import { useBackButton } from "../lib/useBackButton";
 import ReaderPageImage from "./ReaderPageImage";
+import { logger } from "../lib/logger";
 
 export interface ReaderPage {
   /** Absolute page image URL. */
@@ -201,10 +202,13 @@ export function ComicReader({
       if (!url || !preloaded.current.shouldPreload(url)) continue;
       preloaded.current.add(url);
       const img = new Image();
-      img.onerror = () => preloaded.current.markFailed(url);
+      img.onerror = () => {
+        preloaded.current.markFailed(url);
+        logger.warn("[reader] preload failed", { chapter: chapter.name, page: i + 1, total, url });
+      };
       img.src = url;
     }
-  }, [clamped, total, pages, rtl]);
+  }, [clamped, total, pages, rtl, chapter.name]);
 
   // Release every retained bitmap when the reader goes away. Without this
   // the decoded pages outlive the component and the next reader starts cold.
@@ -217,6 +221,10 @@ export function ComicReader({
   // whole app away and losing your place mid-chapter. A synthetic history
   // entry is pushed while the reader is open and popped when it closes.
   useBackButton(onClose, true);
+
+  useEffect(() => {
+    logger.info("[reader] chapter opened", { chapter: chapter.name, totalPages: total, index: clamped });
+  }, [chapter.name, total, clamped]);
 
   // Keyboard. Arrows follow the reading direction, Escape closes, and the
   // Home/End keys jump to a chapter edge.

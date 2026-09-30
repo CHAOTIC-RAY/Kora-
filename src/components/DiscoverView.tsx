@@ -2004,6 +2004,7 @@ function DiscoverView({
       return { books: enrichedBooks, previousDate };
     } catch (err) {
       console.error("Failed to fetch NYT category:", err);
+      logger.error("[discover] nyt category fetch failed", { error: (err as Error)?.message || String(err) });
       return { books: [], previousDate: null };
     }
   }
@@ -2032,6 +2033,7 @@ function DiscoverView({
       }));
     } catch (err) {
       console.error("Failed to fetch audiobook category:", err);
+      logger.error("[discover] audiobook category fetch failed", { error: (err as Error)?.message || String(err) });
       return [];
     }
   }
@@ -2084,6 +2086,7 @@ function DiscoverView({
       return mappedBooks;
     } catch (err) {
       console.error("Failed to fetch Goodreads category:", err);
+      logger.error("[discover] goodreads category fetch failed", { query, error: (err as Error)?.message || String(err) });
       return [];
     }
   }
@@ -2113,6 +2116,7 @@ function DiscoverView({
       return mapped;
     } catch (err) {
       console.error("NetGalley category fetch error:", err);
+      logger.error("[discover] netgalley category fetch failed", { category: category?.query || category?.id, error: (err as Error)?.message || String(err) });
       return [];
     }
   }
@@ -2159,6 +2163,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("Failed to load category:", err);
+      logger.error("[discover] category load failed", { source: viewingCategory?.source, query: viewingCategory?.query, error: err?.message || String(err) });
       setError(`Failed to load category: ${err.message}`);
     } finally {
       setLoadingCategory(false);
@@ -4431,6 +4436,10 @@ function DiscoverView({
           <ComicDetailView
             book={comicBook}
             onClose={() => setComicBook(null)}
+            onAddToLibrary={(manga) => {
+              // TODO: replace with real library add flow
+              toast.success(`Added "${manga.title}" to library`);
+            }}
           />,
           document.body
         )}

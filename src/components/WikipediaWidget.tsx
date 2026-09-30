@@ -26,6 +26,7 @@ import {
 import { toast } from "react-hot-toast";
 import { storeBookFile } from "../db/indexedDB";
 import { syncBookToCloud, BookMetadata } from "../lib/firebase";
+import { logger } from "../lib/logger";
 
 export interface WikiArticleSummary {
   pageid?: number;
@@ -164,6 +165,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
       }
     } catch (err) {
       console.error("Failed to fetch random Wikipedia article", err);
+      logger.error("[wiki] random article fetch failed", { lang, error: (err as Error)?.message || String(err) });
     } finally {
       setIsLoadingFeatured(false);
     }

@@ -13,6 +13,7 @@ import {
 import { toast } from "react-hot-toast";
 import { storeBookFile } from "../db/indexedDB";
 import { syncBookToCloud, BookMetadata } from "../lib/firebase";
+import { logger } from "../lib/logger";
 
 export interface WikiRandomArticle {
   pageid?: number;
@@ -88,6 +89,7 @@ export default function LoungeWikiWidget({
       onArticleLoaded?.(article);
     } catch (err) {
       console.error("Failed to fetch random Wikipedia article", err);
+      logger.error("[wiki] random article fetch failed", { lang: selectedLang, error: (err as Error)?.message || String(err) });
     } finally {
       setLoading(false);
     }

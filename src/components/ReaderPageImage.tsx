@@ -25,6 +25,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { computeDecodeSize, viewportDecodeBox } from "../lib/readerImage";
+import { logger } from "../lib/logger";
 
 export interface ReaderPageImageProps {
   url: string;
@@ -217,6 +218,7 @@ export function ReaderPageImage({
           // Bounded decode failed. Almost always the image is genuinely
           // broken or gone — so report it rather than silently retrying at
           // full resolution, which is the decode that kills the tab.
+          logger.warn("[reader] bounded decode failed", { url, pageLabel });
           setStatus("error");
           setMessage("This page could not be loaded.");
           onFailure?.(url);
@@ -238,9 +240,33 @@ export function ReaderPageImage({
     };
     probe.onerror = () => {
       if (!alive) return;
-      setStatus("error");
-      setMessage("This page failed to load. The image may be missing or the source may be down.");
-      onFailure?.(url);
+      const proxied =
+        typeof window !== "undefined"
+          ? `/api/proxy-image?url=${encodeURIComponent(url)}`
+          : null;
+      if (!proxied || attempt > 0) {
+        logger.warn("[reader] page load failed", { url, pageLabel, attempt });
+        setStatus("error");
+        setMessage("This page failed to load. The image may be missing or the source may be down.");
+        onFailure?.(url);
+        return;
+      }
+      logger.info("[reader] retrying page through proxy-image", { url, pageLabel });
+      const retryProbe = new Image();
+      retryProbe.decoding = "async";
+      retryProbe.onload = () => {
+        if (!alive) return;
+        setMode("img");
+        setStatus("ready");
+      };
+      retryProbe.onerror = () => {
+        if (!alive) return;
+        logger.warn("[reader] proxy-image retry failed", { url, pageLabel });
+        setStatus("error");
+        setMessage("This page failed to load. The image may be missing or the source may be down.");
+        onFailure?.(url);
+      };
+      retryProbe.src = proxied;
     };
     probe.src = bust;
 
