@@ -39,7 +39,7 @@ function check(name: string, cond: boolean, got?: unknown) {
 
 // ── A registry shaped like the live one, plus one unreadable source ────────
 const INDEX = {
-  name: "Kora Sources",
+  name: "Kora Plugins",
   badgeLabel: "KORA",
   extensionList: {
     extensions: [

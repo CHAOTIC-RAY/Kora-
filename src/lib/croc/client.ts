@@ -50,7 +50,7 @@
  *
  * Licence note: croc itself is MIT (Copyright (c) 2017-2025 Zack Scholl), its
  * wordlist is CC BY 4.0, and the vendored Tailcat/Tailscale is BSD-3-Clause.
- * Kora authored this plugin, not croc. See the NOTICE in Kora-Sources.
+ * Kora authored this plugin, not croc. See the NOTICE in Kora Plugins.
  */
 
 /**

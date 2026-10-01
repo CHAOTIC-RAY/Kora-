@@ -52,6 +52,12 @@ function parse(output) {
     /(\d+)\s+pass(?:ed)?\b[^\n]*?(\d+)\s+fail(?:ed)?\b/i,
     // vitest: "Tests  42 passed | 1 failed"
     /Tests\s+(\d+)\s+passed\b[^\n]*?(?:(\d+)\s+failed)?/i,
+    // node:test: "ℹ pass 25" and "ℹ fail 0" are printed as SEPARATE lines, so
+    // the combined pattern above cannot match them. The leading glyph is a
+    // real character (U+2139), NOT whitespace, so it is matched as `.*?`.
+    // Without this, a file written with `node:test` is silently counted as 0
+    // passing tests — a green total that is quietly wrong, worse than a red one.
+    /^\s*(?:[^\w\s]\s*)?pass\s+(\d+)\s*$/im,
     // TAP: "1..42" with "# fail 0"
     /^1\.\.(\d+)$/m,
   ];
@@ -59,8 +65,17 @@ function parse(output) {
     const m = output.match(re);
     if (!m) continue;
     const passed = parseInt(m[1], 10);
-    const failed = m[2] !== undefined ? parseInt(m[2], 10) : 0;
-    return { passed, failed };
+    if (re.source.includes("fail[") === false && re.source.includes("fail(?:ed)")) {
+      // Combined single-line form: pass and fail are both in the match.
+      const failed = m[2] !== undefined ? parseInt(m[2], 10) : 0;
+      return { passed, failed };
+    }
+    if (re.source.includes("pass\\s+(\\d+)")) {
+      // node:test form: the failure count is on its own line.
+      const fm = output.match(/^\s*(?:[^\w\s]\s*)?fail\s+(\d+)\s*$/im);
+      return { passed, failed: fm ? parseInt(fm[1], 10) : 0 };
+    }
+    return { passed, failed: 0 };
   }
   return { passed: 0, failed: 0 };
 }

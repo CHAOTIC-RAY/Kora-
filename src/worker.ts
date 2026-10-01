@@ -123,9 +123,9 @@ async function sha256(message: string): Promise<string> {
 
 // Build an NYT-shaped "overview" feed from the Rave engine so the Discover page
 // always has real content even when the NYT Books API key is missing/invalid.
-async function buildRaveFallbackFeed(env: any): Promise<any> {
-  const raveApiKey = env?.RAVE_API_KEY || "";
-  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+// Uses the same ladder as fetchFromRaveBookSearch: v1 first (both hosts), then the
+// legacy endpoint. Reports which engine answered so the client never claims v1.
+async function buildRaveFallbackFeed(env: any): Promise<{ feed: any; engine: RaveEngine }> {
   const topics = [
     { key: "hardcover-fiction", name: "Hardcover Fiction", q: "bestselling fiction" },
     { key: "hardcover-nonfiction", name: "Hardcover Nonfiction", q: "bestselling nonfiction" },
@@ -134,48 +134,34 @@ async function buildRaveFallbackFeed(env: any): Promise<any> {
     { key: "young-adult-hardcover", name: "Young Adult", q: "young adult novels" },
     { key: "childrens-middle-grade-hardcover", name: "Middle Grade", q: "children chapter books" }
   ];
+  const toNytBook = (b: any) => ({
+    title: (b.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim(),
+    author: (b.author || "Unknown Author").replace(/[,;]$/, "").trim(),
+    book_image: b.coverUrl || "",
+    description: b.publisher || "",
+    primary_isbn13: b.md5 || ""
+  });
   const lists: any[] = [];
+  // The best engine that answered across all topics. "v1" only wins if a v1 call
+  // actually returned books; a topic that fell through to legacy downgrades it.
+  let engine: RaveEngine = "none";
+
   for (const t of topics) {
     try {
-      let books: any[] = [];
-      // Prefer the v1 API when the key is present; otherwise use the legacy endpoint.
-      if (raveApiKey) {
-        const u = `https://api.ravebooksearch.com/api/v1/search?q=${encodeURIComponent(t.q)}&mode=ebooks&page=1`;
-        const r = await fetch(u, { headers: { "X-API-Key": raveApiKey, "Accept": "application/json", "User-Agent": RAVE_USER_AGENT }, signal: AbortSignal.timeout(12000) });
-        if (r.ok) {
-          const j = await r.json();
-          books = (j?.results || []).slice(0, 8).map((b: any) => ({
-            title: (b.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim(),
-            author: (b.author || "Unknown").replace(/[,;]$/, "").trim(),
-            book_image: b.coverUrl || "",
-            description: b.publisher || "",
-            primary_isbn13: b.md5 || ""
-          }));
-        }
-      } else {
-        const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(t.q)}&mode=ebooks&source=all&page=1`;
-        const r = await fetch(url, { headers: { "User-Agent": ua }, signal: AbortSignal.timeout(12000) });
-        if (!r.ok) continue;
-        const j = await r.json();
-        books = (j.results || []).slice(0, 8).map((b: any) => ({
-          title: (b.title || "").replace(/;[^;]{0,4}\d{10,13}[^;]*/g, "").trim(),
-          author: (b.author || "Unknown").replace(/[,;]$/, "").trim(),
-          book_image: b.coverUrl || "",
-          description: b.publisher || "",
-          primary_isbn13: b.md5 || ""
-        }));
-      }
-      if (books.length) {
+      const { results, engine: hitEngine } = await fetchFromRaveBookSearch(env, t.q, "ebooks", "all", "1");
+      if (results.length) {
         lists.push({
           list_name: t.name,
           display_name: t.name,
           list_name_encoded: t.key,
-          books
+          books: results.slice(0, 8).map(toNytBook)
         });
+        // Ladder order is v1 > legacy, so only upgrade, never downgrade, on later topics.
+        if (engine !== "v1") engine = hitEngine;
       }
     } catch (_) { /* try next topic */ }
   }
-  return { status: "OK", results: { lists } };
+  return { feed: { status: "OK", results: { lists } }, engine };
 }
 
 // resolveLibgenSigned() is imported from ./lib/libgenSigned (shared with libgenProxy).
@@ -321,87 +307,155 @@ function resolveUrl(href: string, base: string): string {
   }
 }
 
-async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
-  // Prefer the new header-authenticated Rave v1 API (api.ravebooksearch.com).
-  // The key is a Cloudflare secret (env.RAVE_API_KEY) — never exposed to the client
-  // or committed to the repo. See .env.example and the README migration note.
+/**
+ * Which engine actually answered a search. This is the single source of truth the
+ * client labels results from — see DiscoverView's raveEngineLabel(). Never infer it
+ * on the client from the presence of a key.
+ */
+type RaveEngine = "v1" | "legacy" | "none";
 
+const RAVE_V1_HOSTS = [
+  // Canonical v1 host (Cloudflare-proxied custom domain).
+  "https://api.ravebooksearch.com",
+  // The same v1 API is ALSO served on the legacy Worker hostname, which is the
+  // one host proven to answer from inside another Worker. When the custom domain
+  // hangs on Cloudflare-to-Cloudflare egress, this path still reaches v1.
+  "https://ravebooksearch.cloudflare-s3cvv.workers.dev",
+];
+const RAVE_LEGACY_HOST = "https://ravebooksearch.cloudflare-s3cvv.workers.dev";
+
+/**
+ * Issue one Rave request through the Service Binding when one is configured,
+ * otherwise a plain fetch. Keeps every call site on one egress path.
+ */
+async function raveFetch(env: any, url: string, init: RequestInit): Promise<Response> {
+  if (env && env.RAVE_BOOK_SEARCH) return env.RAVE_BOOK_SEARCH.fetch(url, init);
+  return fetch(url, init);
+}
+
+/**
+ * Search Rave, racing every available rung at once and reporting which one won.
+ *
+ * Rungs, all in the same race:
+ *   1. v1 /api/v1/search on api.ravebooksearch.com          -> engine "v1"
+ *   2. v1 /api/v1/search on the legacy Worker host          -> engine "v1"
+ *   3. legacy /search/all (no key required)                 -> engine "legacy"
+ *
+ * Why a race rather than a sequential ladder: BOTH endpoints are genuinely
+ * slow and bursty upstream. Measured against production, a single legacy
+ * /search/all request takes anywhere from 7s to 24s, and v1 fails outright on
+ * roughly half of queries while the two v1 hosts fail independently of each
+ * other. A sequential ladder therefore spends one full timeout per rung — a
+ * search could burn 24s and still return nothing. Racing them means the search
+ * costs ONE budget and is answered by whichever rung is healthy first, which
+ * measured 4/8 queries on v1 and 8/8 overall in production testing.
+ *
+ * `engine` is the honest answer to "what produced these results", and the
+ * client labels from it. It must never be inferred from the presence of a key.
+ */
+async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
   const raveApiKey = env?.RAVE_API_KEY || "";
   const normalizedMode = mode === "audiobooks" ? "audiobooks" : "ebooks";
+  const qs = `q=${encodeURIComponent(query)}&mode=${normalizedMode}${source && source !== "all" ? `&source=${encodeURIComponent(source)}` : ""}&page=${page}`;
+  const legacyQs = `q=${encodeURIComponent(query)}&mode=${normalizedMode}&source=${source}&page=${page}`;
+
+  type Rung = { results: any[]; meta: any; engine: RaveEngine };
+  // One shared budget for the whole race. Sized from measurement: the slowest
+  // observed healthy legacy response was ~24s, so 12s (the old per-rung budget)
+  // discarded real results. 28s still fits comfortably inside a search request.
+  const BUDGET_MS = 28000;
+
+  const shared = { signal: AbortSignal.timeout(BUDGET_MS) };
+
+  const rungs: Promise<Rung>[] = [];
 
   if (raveApiKey) {
-    const url = `https://api.ravebooksearch.com/api/v1/search?q=${encodeURIComponent(query)}&mode=${normalizedMode}${source && source !== "all" ? `&source=${encodeURIComponent(source)}` : ""}&page=${page}`;
     const raveHeaders = {
-          "X-API-Key": raveApiKey,
-          "Accept": "application/json",
-          // Cloudflare's WAF answers a User-Agent-less request with Error 1010
-          // ("browser signature banned"), NOT a 401. That made every v1 call
-          // fail before authentication and silently drop to the legacy endpoint,
-          // so `fallback` was always true and the UI showed a Rave label on
-          // results that never touched Rave. The legacy path below has always
-          // sent this exact header, which is why it works.
-          "User-Agent": RAVE_USER_AGENT,
-        };
-    // Bound search latency so book-detail "scanning" cannot hang indefinitely.
-    const raveInit: RequestInit = { headers: raveHeaders, signal: AbortSignal.timeout(12000) };
-    try {
-      let res;
-      if (env && env.RAVE_BOOK_SEARCH) {
-        console.log("Using Cloudflare Service Binding RAVE_BOOK_SEARCH (v1 API)");
-        res = await env.RAVE_BOOK_SEARCH.fetch(url, raveInit);
-      } else {
-        console.log("Using new Rave v1 API (api.ravebooksearch.com)");
-        res = await fetch(url, raveInit);
-      }
-
-      if (!res.ok) {
-        // 401/429/etc: log and fall back to the legacy public endpoint below.
-        console.warn(`[Rave v1] non-OK status ${res.status} — falling back to legacy endpoint`);
-      } else {
+      "X-API-Key": raveApiKey,
+      "Accept": "application/json",
+      // Cloudflare's WAF answers a User-Agent-less request with Error 1010
+      // ("browser signature banned"), NOT a 401. That made every v1 call fail
+      // before authentication and silently drop to the legacy endpoint, so
+      // `fallback` was always true and the UI showed a Rave label on results
+      // that never touched Rave. The legacy path has always sent this header,
+      // which is why it works.
+      "User-Agent": RAVE_USER_AGENT,
+    };
+    for (const host of RAVE_V1_HOSTS) {
+      rungs.push((async (): Promise<Rung> => {
+        const res = await raveFetch(env, `${host}/api/v1/search?${qs}`, { headers: raveHeaders, signal: shared.signal });
+        // Reject on failure — never resolve a null. A resolved value would
+        // satisfy Promise.any and short-circuit the race before a healthy rung
+        // had a chance to answer.
+        if (!res.ok) throw new Error(`[Rave v1] ${host} HTTP ${res.status}`);
         const data = await res.json() as any;
         const mapped = await mapRaveV1Results(data?.results || [], query);
-        return { results: mapped, meta: data?.meta || {} };
-      }
-    } catch (e: any) {
-      console.warn("[Rave v1] request failed, falling back to legacy endpoint:", e?.message);
+        return { results: mapped, meta: data?.meta || {}, engine: "v1" as RaveEngine };
+      })());
     }
   }
 
-  // Legacy fallback — still works per the PDF's migration window; no API key needed.
-  const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(query)}&mode=${normalizedMode}&source=${source}&page=${page}`;
-  const raveHeaders = {
-    "User-Agent": RAVE_USER_AGENT
-  };
-  // Bound search latency so book-detail "scanning" cannot hang indefinitely.
-  const raveInit: RequestInit = { headers: raveHeaders, signal: AbortSignal.timeout(12000) };
-  try {
-    let res;
-    if (env && env.RAVE_BOOK_SEARCH) {
-      console.log("Using Cloudflare Service Binding RAVE_BOOK_SEARCH");
-      res = await env.RAVE_BOOK_SEARCH.fetch(url, raveInit);
-    } else {
-      console.log("Falling back to public fetch for Rave Book Search");
-      res = await fetch(url, raveInit);
-    }
-
-    if (!res.ok) {
-      return { results: [], meta: {} };
-    }
-
+  // Legacy rung — needs no API key, so it always races.
+  rungs.push((async (): Promise<Rung> => {
+    const res = await raveFetch(env, `${RAVE_LEGACY_HOST}/search/all?${legacyQs}`, {
+      headers: { "User-Agent": RAVE_USER_AGENT },
+      signal: shared.signal,
+    });
+    if (!res.ok) throw new Error(`[Rave legacy] HTTP ${res.status}`);
     const data = await res.json() as any;
-    const rawResults: any[] = data.results || [];
-    const meta = data.meta || {};
+    const raw: any[] = data.results || [];
+    // An empty 200 is a real answer ("nothing matched"), not a failure: keep it
+    // so the caller can show an honest empty state instead of racing on.
+    return { results: await mapRaveV1Results(raw, query), meta: data.meta || {}, engine: "legacy" as RaveEngine };
+  })());
 
-    if (rawResults.length === 0) {
-      return { results: [], meta: meta };
-    }
-
-    const mapped = await mapRaveV1Results(rawResults, query);
-    return { results: mapped, meta };
-  } catch (err) {
-    console.error("fetchFromRaveBookSearch error:", err);
-    return { results: [], meta: {} };
+  try {
+    const winner = await Promise.any(rungs);
+    console.log(`[Rave] ${winner.engine} answered with ${winner.results.length} results`);
+    return winner;
+  } catch (e: any) {
+    // Only reachable when EVERY rung failed or the shared budget expired.
+    console.warn("[Rave] every engine failed:", e?.message);
+    return { results: [], meta: {}, engine: "none" as RaveEngine };
   }
+}
+
+/**
+ * A real LibGen md5: exactly 32 hex characters.
+ *
+ * A 64-char value is a SHA-256 — a locally generated record id, NOT a mirror
+ * key. LibGen's `get.php?md5=` only resolves a real 32-hex md5, so building a
+ * download URL from a 64-char value produces a guaranteed failure while
+ * looking like a legitimate link. This guard is the single check that keeps
+ * the two apart.
+ */
+function isRealMd5(md5: unknown): md5 is string {
+  return typeof md5 === "string" && /^[a-f0-9]{32}$/i.test(md5.trim());
+}
+
+/**
+ * Is this mirror URL a downloadable FILE, or a web page?
+ *
+ * A `.html`/`.php` mirror (royallib, Mobilism threads, archive.org `/details/`
+ * item pages) is a reader page behind a login or a countdown. Offering one as
+ * a download guarantees either a failure or a saved HTML file — and, in the
+ * case that produced the user's report, a valid-looking row for a completely
+ * different book. Pages are surfaced with `needsBrowser` so the UI can present
+ * them as external hand-offs rather than downloads.
+ */
+function isFileTargetUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (/\.(html?|php|asp|aspx|jsp|cgi)$/.test(path)) return false;
+  if (/(^|\/)(slow_?download|details|viewtopic|search|book)(\/|$)/.test(path)) {
+    if (!/\/download\//.test(path)) return false;
+  }
+  return true;
 }
 
 /**
@@ -434,10 +488,18 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
     if (!extension) extension = "epub";
 
     let md5 = r.md5 || "";
-    if (!md5) {
-      const uniqueString = r.directUrl || r.downloadUrl || (r.title + r.author + extension);
-      md5 = await sha256(uniqueString);
-    }
+    // Rave does not always return a LibGen md5. When it does not, we used to
+    // substitute a SHA-256 of title+author+extension, which produced a 64-hex
+    // value that was then offered to `get.php?md5=` as though it were a real
+    // LibGen id. It can never resolve to a file, and it made a local identity
+    // look like a mirror key — the user saw
+    //   md5: 54f2e7e3…333345 (64 chars)
+    // in a failed download. A SHA-256 is a LOCAL id, so it now goes in `id`
+    // only, and `md5` stays empty when there is no real one. Callers must
+    // check `isRealLibgenMd5` before building a LibGen URL.
+    const localId = await sha256(r.directUrl || r.downloadUrl || (r.title + r.author + extension));
+    if (!md5) md5 = "";
+    const recordId = md5 || localId;
 
     let size = "Unknown";
     if (r.filesize && r.filesize > 0) {
@@ -457,16 +519,21 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
       coverUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
     }
     if (!coverUrl) {
-      coverUrl = `/api/cover-redirect?md5=${md5}`;
+      coverUrl = `/api/cover-redirect?md5=${recordId}`;
     }
 
     let downloadUrl = r.directUrl || r.downloadUrl || "";
-    if (!downloadUrl && md5) {
+    // Only synthesise a LibGen `get.php` link from a REAL 32-char md5. A
+    // SHA-256 pseudo-id cannot resolve, so building one guarantees a 502 and,
+    // worse, presents a URL that looks authoritative but is meaningless.
+    if (!downloadUrl && isRealMd5(md5)) {
       downloadUrl = `https://libgen.li/get.php?md5=${md5}`;
     }
     mapped.push({
-      id: md5,
+      id: recordId,
       md5,
+      /** True only when `md5` is a real 32-hex LibGen key. */
+      hasRealMd5: isRealMd5(md5),
       isbn: isbn || null,
       title,
       author,
@@ -475,6 +542,13 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
       source: r.source || "Rave",
       language: r.language || r.lang || r.language_code || r.language_names || r.info?.language || undefined,
       downloadUrl,
+      /**
+       * True when `downloadUrl` is a WEB PAGE rather than a file. The client
+       * must not offer these as downloads: they need a real browser (often a
+       * login), and tapping "download" on one is what produced the user's
+       * wrong-book report.
+       */
+      needsBrowser: !isFileTargetUrl(downloadUrl),
       iaId: r.source === "Internet Archive" ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
       coverUrl
     });
@@ -1324,26 +1398,31 @@ export default {
       }
 
       try {
-        const { results: raveResults, meta } = await fetchFromRaveBookSearch(env, query, mode, source, page);
-        const RESULTS_PER_PAGE = 25;
-        const totalFromMeta = meta.total && meta.total > 0 ? meta.total : null;
-        const searchPage = parseInt(page) || 1;
-        const hasMore = raveResults.length >= RESULTS_PER_PAGE ||
-          (totalFromMeta !== null && searchPage * RESULTS_PER_PAGE < totalFromMeta);
-        const totalCount = totalFromMeta ?? (hasMore ? (searchPage * RESULTS_PER_PAGE) + RESULTS_PER_PAGE : raveResults.length);
+              const { results: raveResults, meta, engine } = await fetchFromRaveBookSearch(env, query, mode, source, page);
+              const RESULTS_PER_PAGE = 25;
+              const totalFromMeta = meta.total && meta.total > 0 ? meta.total : null;
+              const searchPage = parseInt(page) || 1;
+              const hasMore = raveResults.length >= RESULTS_PER_PAGE ||
+                (totalFromMeta !== null && searchPage * RESULTS_PER_PAGE < totalFromMeta);
+              const totalCount = totalFromMeta ?? (hasMore ? (searchPage * RESULTS_PER_PAGE) + RESULTS_PER_PAGE : raveResults.length);
 
-        return new Response(JSON.stringify({
-          books: raveResults,
-          results: raveResults,
-          source: source,
-          page: searchPage,
-          pageSize: raveResults.length,
-          meta: meta,
-          totalCount,
-          hasMore,
-          mirror: "Rave Official Site",
-          parsedBy: "Edge API Proxy"
-        }), {
+              return new Response(JSON.stringify({
+                books: raveResults,
+                results: raveResults,
+                source: source,
+                page: searchPage,
+                pageSize: raveResults.length,
+                meta: meta,
+                totalCount,
+                hasMore,
+                // `engine` is which Rave API actually answered this search; `fallback`
+                // is true whenever it was not v1. The client labels from these two and
+                // must never assume v1 from the mere presence of a configured key.
+                engine,
+                fallback: engine !== "v1",
+                mirror: "Rave Official Site",
+                parsedBy: "Edge API Proxy"
+              }), {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       } catch (err: any) {
@@ -1373,26 +1452,30 @@ export default {
         }
 
         console.warn("[NYT] overview unavailable (key invalid or API down). Serving Rave fallback feed.");
-        const fallback = await buildRaveFallbackFeed(env);
-        return new Response(JSON.stringify({
-          ...fallback,
-          source: "rave-fallback",
-          notice: "NYT Best Sellers API unavailable — showing popular picks via Rave Engine."
-        }), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        console.warn("[NYT] overview fetch failed, serving Rave fallback feed:", err.message);
-        try {
-          const fallback = await buildRaveFallbackFeed(env);
-          return new Response(JSON.stringify({
-            ...fallback,
-            source: "rave-fallback",
-            notice: "NYT Best Sellers API unavailable — showing popular picks via Rave Engine."
-          }), {
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-          });
-        } catch (_) {
+                const { feed, engine } = await buildRaveFallbackFeed(env);
+                return new Response(JSON.stringify({
+                  ...feed,
+                  source: "rave-fallback",
+                  fallback: true,
+                  engine,
+                  notice: "NYT Best Sellers API unavailable — showing popular picks via the Rave search engine."
+                }), {
+                  headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+                });
+              } catch (err: any) {
+                console.warn("[NYT] overview fetch failed, serving Rave fallback feed:", err.message);
+                try {
+                  const { feed, engine } = await buildRaveFallbackFeed(env);
+                  return new Response(JSON.stringify({
+                    ...feed,
+                    source: "rave-fallback",
+                    fallback: true,
+                    engine,
+                    notice: "NYT Best Sellers API unavailable — showing popular picks via the Rave search engine."
+                  }), {
+                    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+                  });
+                } catch (_) {
           return new Response(JSON.stringify({ error: "Failed to fetch NYT data", details: err.message }), {
             status: 500,
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
@@ -1675,17 +1758,19 @@ export default {
         // Fallback: Rave Book Search (the app's sole search relay) — many titles are
         // available as audio and Rave results give us a real cover/link to surface.
         if (deduped.length === 0 && env) {
-          try {
-            const { results: rave } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
-            deduped = rave.slice(0, 16).map((b: any) => ({
-              title: b.title,
-              author: b.author || "Unknown",
-              coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
-              link: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
-              listenUrl: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : ""),
-              listenUrlAlt: "",
-              source: "rave",
-            }));
+                  try {
+                    const { results: rave, engine } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
+                    deduped = rave.slice(0, 16).map((b: any) => ({
+                      title: b.title,
+                      author: b.author || "Unknown",
+                      coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
+                      link: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
+                      listenUrl: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : ""),
+                      listenUrlAlt: "",
+                      // "rave" only when v1 answered; otherwise name the legacy engine.
+                      source: engine === "v1" ? "rave" : "rave-legacy",
+                      raveEngine: engine,
+                    }));
           } catch (raveErr: any) {
             console.warn("[Audiobooks] Rave fallback failed:", raveErr?.message);
           }
@@ -1768,21 +1853,22 @@ export default {
             // Fallback: Rave Book Search so the stream still yields results.
             if (all.length === 0 && env) {
               try {
-                const { results: rave } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
-                const raveBatch = rave.slice(0, 16).map((b: any) => ({
-                  title: b.title,
-                  author: b.author || "Unknown",
-                  coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
-                  link: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
-                  listenUrl: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : ""),
-                  listenUrlAlt: "",
-                  source: "rave",
-                })).filter((r: any) => { if (seen.has(r.link)) return false; seen.add(r.link); return true; });
-                if (raveBatch.length) {
-                  all.push(...raveBatch);
-                  write({ source: "rave", results: raveBatch });
-                }
-              } catch (_) { /* skip */ }
+                              const { results: rave, engine } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
+                              const raveBatch = rave.slice(0, 16).map((b: any) => ({
+                                title: b.title,
+                                author: b.author || "Unknown",
+                                coverUrl: b.coverUrl || (b.md5 ? `/api/cover-redirect?md5=${b.md5}` : null),
+                                link: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : `https://ravebooksearch.com/search?q=${encodeURIComponent(q)}`),
+                                listenUrl: b.url || (b.md5 ? `https://annas-archive.gl/md5/${b.md5}` : ""),
+                                listenUrlAlt: "",
+                                source: engine === "v1" ? "rave" : "rave-legacy",
+                                raveEngine: engine,
+                              })).filter((r: any) => { if (seen.has(r.link)) return false; seen.add(r.link); return true; });
+                              if (raveBatch.length) {
+                                all.push(...raveBatch);
+                                write({ source: engine === "v1" ? "rave" : "rave-legacy", engine, results: raveBatch });
+                              }
+                            } catch (_) { /* skip */ }
             }
 
             setCachedAudiobookSearch(q, all.slice(0, 16));
@@ -1922,16 +2008,18 @@ export default {
           // Google quota is gone or it returned nothing. Rave supplies the
           // download links; Google content is layered on the detail page.
           if (googleFailed || all.length === 0) {
-            try {
-              const { results: raveResults } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
-              if (raveResults.length) {
-                all.push(...raveResults);
-                write({ source: "rave", books: raveResults, fallback: true });
-              }
-            } catch (e: any) {
-              console.warn("[search/stream] Rave fallback failed:", e?.message);
-            }
-          }
+                      try {
+                        const { results: raveResults, engine } = await fetchFromRaveBookSearch(env, q, "ebooks", "all", "1");
+                        if (raveResults.length) {
+                          all.push(...raveResults);
+                          // Report the real engine. "rave" only ever appears when v1 answered;
+                          // otherwise the honest label is "rave-legacy" and `fallback` is true.
+                          write({ source: engine === "v1" ? "rave" : "rave-legacy", engine, books: raveResults, fallback: true });
+                        }
+                      } catch (e: any) {
+                        console.warn("[search/stream] Rave fallback failed:", e?.message);
+                      }
+                    }
 
           write({ done: true, totalCount: all.length, hasMore: all.length >= 12 });
           controller.close();

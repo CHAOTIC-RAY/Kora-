@@ -91,6 +91,28 @@ import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog }
 import { mergeReadingProgress } from "./lib/progressMerge";
 import { toast, Toaster } from "react-hot-toast";
 import { logger } from "./lib/logger";
+import { judgeMirrorDownload } from "./lib/mirrorOutcome";
+import { hostOf, recordMirrorOutcome } from "./lib/mirrorReliability";
+import { isRealLibgenMd5, isFileUrl } from "./lib/bookIdentity";
+
+/**
+ * Concatenate streamed chunks into one contiguous Uint8Array.
+ *
+ * The download loop accumulates `Uint8Array` chunks as they arrive; the
+ * validator needs the whole file (the EPUB title lives in the central
+ * directory at the END of the zip, so a prefix would decide nothing).
+ */
+function toBytes(chunks: Uint8Array[]): Uint8Array {
+  let total = 0;
+  for (const c of chunks) total += c.length;
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, LogIn, Mail,
@@ -1397,6 +1419,37 @@ export default function App() {
   }
 
   // Background download handler
+  /**
+   * Record a service-worker download outcome into the local reliability ledger.
+   *
+   * The SW runs outside the page, so it cannot reach this store directly. It
+   * does, however, know which mirror URL it actually fetched and whether the
+   * transfer completed — and `swDownloadFallbackRef` holds the mirror list it
+   * was given, so the host can be identified here. Without this, the default
+   * download path recorded nothing at all and every mirror stayed unmeasured.
+   *
+   * The SW does not validate content, so a completion is recorded as a
+   * transport-level success; the foreground path (which does read the bytes)
+   * is what catches wrong books. `interrupted` is deliberately not counted.
+   */
+  function recordSwOutcome(
+    data: { type: string; downloadId?: string; error?: string },
+    fallback?: { book: any; mirrors: any[]; variant: any }
+  ) {
+    try {
+      const first = fallback?.mirrors?.[0];
+      const url = typeof first === "string" ? first : first?.url;
+      if (!url) return;
+      if (data.type === "download-complete") {
+        recordMirrorOutcome(url, "real-book");
+      } else if (data.error && data.error !== "Cancelled") {
+        recordMirrorOutcome(url, "unreachable");
+      }
+    } catch (e) {
+      /* Reporting must never break a download. */
+    }
+  }
+
   async function startBackgroundDownload(
     book: any,
     mirrors: any | any[],
@@ -1749,6 +1802,33 @@ export default function App() {
 
         let fileBlob = new Blob(chunks);
         const id = variant.md5 || Math.random().toString(36).substring(7);
+
+        // ── Validate what actually arrived, and score the mirror ──────────
+        // A file is saved only after it is shown to BE the requested book.
+        // This is the gate that stops a mirror from silently handing over a
+        // different book: the bytes are read, the container is checked, and
+        // the embedded title is compared with what the user asked for. A
+        // wrong book throws and the loop moves to the next mirror, having
+        // recorded a FAILED attempt for this host — which is what makes the
+        // reliability number on the sheet mean something.
+        const judged = await judgeMirrorDownload({
+          mirrorUrl: mirror.url,
+          bytes: toBytes(chunks),
+          requestedTitle: book.title,
+          claimedExtension: fileExtension,
+          sawHtmlContentType: /text\/html/i.test(contentType || ""),
+        });
+        if (!judged.ok) {
+          // A wrong book is worse than no book: do not save it.
+          throw new Error(
+            judged.mismatched
+              ? `This mirror served a different book. ${judged.detail}`
+              : judged.detail
+          );
+        }
+        logger.info(
+          `Mirror ${hostOf(mirror.url) || "?"} verified for "${book.title}": ${judged.detail}`
+        );
 
         // Check if downloading using normal discovery search (non-advanced Google Book based search)
         const isGoogleBookSearch = book.isGoogleBook || book.source === "google";
@@ -2135,7 +2215,13 @@ export default function App() {
       } else if (data.type === "download-complete") {
         clearSwDownloadWatchdog(data.downloadId);
         swMadeProgressRef.current.delete(data.downloadId);
+        const swFallback = swDownloadFallbackRef.current.get(data.downloadId);
         swDownloadFallbackRef.current.delete(data.downloadId);
+        // The SW wrote the file to IndexedDB without checking it was the
+        // requested book, and it reported no outcome at all — so the reliability
+        // ledger stayed empty for every download that took the SW path (which
+        // is the default). Record a real attempt here.
+        recordSwOutcome(data, swFallback);
         await ingestDownloadRef.current(data.downloadId, data.title, data.size);
       } else if (data.type === "audiobook-track-complete") {
         handleAudiobookSwMessage(data);
@@ -2164,6 +2250,10 @@ export default function App() {
         const fallback = swDownloadFallbackRef.current.get(data.downloadId);
         if (fallback) {
           swDownloadFallbackRef.current.delete(data.downloadId);
+          // The SW exhausted this mirror. Count it as a failed attempt for the
+          // host that failed, so a persistently dead mirror sinks in the sheet
+          // instead of being retried first forever.
+          recordSwOutcome({ type: "download-error", downloadId: data.downloadId, error: data.error }, fallback);
           logger.warn(
             `SW download failed (${data.error}); retrying ${fallback.mirrors.length} mirror(s) in foreground`
           );

@@ -123,6 +123,12 @@ export interface LibarchivePage {
 
 export type LibarchiveFailure =
   | "password"
+  /**
+   * The archive is encrypted AND the bundled libarchive has no crypto library
+   * compiled in, so the passphrase cannot help. Distinct from "password"
+   * precisely so the UI can say so instead of prompting forever.
+   */
+  | "no-crypto"
   | "split"
   | "too-large"
   | "damaged"
@@ -145,7 +151,12 @@ export class LibarchiveError extends Error {
 export function describeLibarchiveFailure(f: LibarchiveFailure): string {
   switch (f) {
     case "password":
-      return "This archive is password-protected. Kora cannot open encrypted comics.";
+      return "This archive is password-protected. Enter its password to open it.";
+    case "no-crypto":
+      return (
+        "This archive is encrypted, and the bundled archive decoder has no decryption " +
+        "support, so Kora cannot open it even with the correct password."
+      );
     case "split":
       return "This is only part of a multi-volume archive. Kora cannot join the volumes, so it will not open it.";
     case "too-large":
@@ -235,6 +246,162 @@ export function detectSplitArchive(bytes: Uint8Array, claimedName?: string | nul
   // its name is treated as single-volume, which is the overwhelmingly common
   // case and the safe assumption.
   return false;
+}
+
+/**
+ * A named, ordered set of archive files that make up one logical archive.
+ *
+ * Produced by {@link collectVolumes}. `first` is the leading volume — for a
+ * split set that is the only file that can be handed to libarchive on its
+ * own, and it is also the file whose name identifies the whole set.
+ */
+export interface VolumeSet {
+  /** Base name of the archive, e.g. "comic.7z" for comic.7z.001/.002/.003. */
+  baseName: string;
+  /** Volumes in the order they must be concatenated. */
+  parts: Array<{ name: string; bytes: Uint8Array }>;
+  /** True when more than one file was supplied. */
+  isSplit: boolean;
+}
+
+/** Volume-number patterns Kora recognises, and how to read the number. */
+const VOLUME_PATTERNS: Array<{ re: RegExp; num: (m: RegExpExecArray) => number }> = [
+  // comic.7z.001 / comic.cb7.002  (7-Zip's `-v` naming)
+  //
+  // The archive extension is KEPT in the base name, not stripped. That matters:
+  // `openArchiveVolumes` passes the base name to `openArchive` as the claimed
+  // filename, and the format detector reads that string to decide it is a 7z.
+  // A base of "comic" would be detected as "unknown format" and the joined
+  // archive would then be refused.
+  { re: /^(.+\.(?:7z|cb7|zip|cbz))\.(\d{3,})$/i, num: (m) => parseInt(m[2], 10) },
+  // comic.part01.rar / comic.part002.rar
+  { re: /^(.+)\.part(\d+)\.(rar|cbr|7z|cb7)$/i, num: (m) => parseInt(m[2], 10) },
+  // comic.rar.r01 (RAR's own volume naming)
+  { re: /^(.+\.(?:rar|cbr))\.r(\d{2})$/i, num: (m) => parseInt(m[2], 10) },
+  // comic.001 — extension-less, so the base is whatever precedes the number
+  { re: /^(.+)\.(\d{3})$/i, num: (m) => parseInt(m[2], 10) },
+];
+
+/**
+ * Group supplied files into volume sets.
+ *
+ * Kora cannot read a multi-volume archive from one volume, but it CAN read
+ * the concatenation: libarchive is handed the joined byte stream and sees a
+ * complete single-file archive. Verified against a real 3-volume 7z set —
+ * the first volume alone yields zero entries, and all three joined yield the
+ * full comic.
+ *
+ * Files that do not match any volume pattern are returned as their own
+ * single-file set, so a plain `.cbr` passes straight through.
+ *
+ * Missing volumes are NOT silently tolerated: see
+ * {@link missingVolumes}, because the failure mode of a short join is
+ * scrambled pages, which reads as "Kora is broken" rather than "you are
+ * missing a file".
+ */
+export function collectVolumes(
+  files: ReadonlyArray<{ name: string; bytes: Uint8Array }>
+): VolumeSet[] {
+  const byBase = new Map<string, Array<{ name: string; bytes: Uint8Array; num: number }>>();
+  const loose: Array<{ name: string; bytes: Uint8Array }> = [];
+
+  for (const f of files) {
+    let matched = false;
+    for (const { re, num } of VOLUME_PATTERNS) {
+      const m = re.exec(f.name);
+      if (!m) continue;
+      // Require a real base name so "001" on its own is not treated as a set.
+      const base = m[1];
+      if (!base) break;
+      const list = byBase.get(base) ?? [];
+      list.push({ name: f.name, bytes: f.bytes, num: num(m) });
+      byBase.set(base, list);
+      matched = true;
+      break;
+    }
+    if (!matched) loose.push({ name: f.name, bytes: f.bytes });
+  }
+
+  const sets: VolumeSet[] = [];
+  for (const [baseName, list] of byBase) {
+    list.sort((a, b) => a.num - b.num);
+    sets.push({
+      baseName,
+      parts: list.map((p) => ({ name: p.name, bytes: p.bytes })),
+      isSplit: list.length > 1,
+    });
+  }
+  for (const f of loose) {
+    sets.push({ baseName: f.name, parts: [f], isSplit: false });
+  }
+  return sets;
+}
+
+/**
+ * Which volume numbers a set is missing, given the highest number seen.
+ *
+ * Returns [] when the set is contiguous from 1. Used to refuse a split archive
+ * with a specific list ("part 2 of comic.7z is missing") instead of letting
+ * libarchive produce a partial, scrambled result.
+ *
+ * Heuristic, and honestly so: it assumes volumes are numbered from 1
+ * contiguously, which is how both 7-Zip `-v` and RAR name them. It can be
+ * fooled by a user who supplies volumes 1 and 3 of a four-volume set — the
+ * join will fail, and it will fail with libarchive's own truncation message,
+ * which is still a refusal rather than scrambled pages.
+ */
+export function missingVolumes(parts: ReadonlyArray<{ name: string }>): number[] {
+  const nums = new Set<number>();
+  let max = 0;
+  for (const p of parts) {
+    for (const { re, num } of VOLUME_PATTERNS) {
+      const m = re.exec(p.name);
+      if (!m) continue;
+      const n = num(m);
+      nums.add(n);
+      if (n > max) max = n;
+      break;
+    }
+  }
+  const missing: number[] = [];
+  for (let i = 1; i <= max; i++) if (!nums.has(i)) missing.push(i);
+  return missing;
+}
+
+/**
+ * Concatenate a volume set into one buffer for libarchive.
+ *
+ * Rejects up front if any volume is missing, and enforces the same total-size
+ * ceiling as a single file so a huge set cannot bypass the memory guard.
+ */
+export function joinVolumes(set: VolumeSet): Uint8Array {
+  const missing = missingVolumes(set.parts);
+  if (missing.length > 0) {
+    throw new LibarchiveError(
+      "split",
+      `Multi-volume archive "${set.baseName}" is incomplete: missing volume${
+        missing.length > 1 ? "s" : ""
+      } ${missing.map((n) => String(n).padStart(3, "0")).join(", ")} of ${set.parts.length + missing.length}.`,
+      `missing:${missing.join(",")}`
+    );
+  }
+
+  let total = 0;
+  for (const p of set.parts) total += p.bytes.length;
+  if (total > MAX_ARCHIVE_BYTES) {
+    throw new LibarchiveError(
+      "too-large",
+      `Joined archive is ${total} bytes; the ceiling is ${MAX_ARCHIVE_BYTES}.`
+    );
+  }
+
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const p of set.parts) {
+    out.set(p.bytes, at);
+    at += p.bytes.length;
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------ module loading */
@@ -362,6 +529,16 @@ async function loadLibarchive(): Promise<LibarchiveWasm> {
 /** Classify a libarchive error string into an honest failure kind. */
 function classifyMessage(msg: string): LibarchiveFailure {
   const m = msg.toLowerCase();
+  // libarchive itself reports that this build has no crypto compiled in. This
+  // is NOT a wrong password and MUST NOT be reported as one, because the only
+  // response to "wrong password" is to ask again, forever. Distinguishing it
+  // is what stops an encrypted archive becoming an infinite password prompt.
+  if (m.includes("lack of crypto") || m.includes("crypto library")) return "no-crypto";
+  // libarchive emits this for a 7z whose CONTENT is AES-encrypted. It is
+  // distinct from "passphrase required": supplying the right password does not
+  // change it, so reporting it as "password" would send the user back to the
+  // prompt forever with a password that can never work.
+  if (/encrypted.*(not supported|currently not)/.test(m)) return "no-crypto";
   if (m.includes("encrypt") || m.includes("passphrase") || m.includes("password")) return "password";
   if (m.includes("truncated") || m.includes("damaged") || m.includes("unexpected end") || m.includes("decompression failed")) {
     return "damaged";
@@ -383,14 +560,21 @@ function toInt8(bytes: Uint8Array): Int8Array {
  */
 export async function extractLibarchivePages(
   bytes: Uint8Array,
-  claimedName?: string | null
+  claimedName?: string | null,
+  passphrase?: string | null
 ): Promise<{ pages: LibarchivePage[]; data: Map<string, Uint8Array>; rejectedEntries: number }> {
   if (bytes.length === 0) throw new LibarchiveError("damaged", "The archive is empty.");
   if (bytes.length > MAX_ARCHIVE_BYTES) {
     throw new LibarchiveError("too-large", `Archive is ${bytes.length} bytes; the ceiling is ${MAX_ARCHIVE_BYTES}.`);
   }
+  // A first volume handed to us on its own is refused. When the caller has
+  // every volume it should have already concatenated them (see joinVolumes),
+  // so reaching this means the set really is incomplete.
   if (detectSplitArchive(bytes, claimedName)) {
-    throw new LibarchiveError("split", "Multi-volume archive detected from its header or filename.");
+    throw new LibarchiveError(
+      "split",
+      "This is only the first volume of a multi-volume archive. Select all the parts (.001, .002, …) together and Kora will join them."
+    );
   }
 
   const mod = await loadLibarchive();
@@ -421,6 +605,9 @@ export async function extractLibarchivePages(
     }
     mod.read_support_filter_all(archivePtr);
     mod.read_support_format_all(archivePtr);
+    // The passphrase MUST be registered before the archive is opened —
+    // libarchive reads it during open, not lazily on first read.
+    if (passphrase) mod.read_add_passphrase(archivePtr, passphrase);
     mod.read_open_memory(archivePtr, inPtr, input.length);
   } catch (e) {
     heap._free(inPtr);
@@ -505,6 +692,8 @@ export async function extractLibarchivePages(
   let rejectedEntries = 0;
   let sawEncrypted = false;
   let sawTruncation = false;
+  /** libarchive's own explanation for the encryption, if it gave one. */
+  let cryptoReason: string | null = null;
 
   // The path guard. Imported here rather than at module scope so the security
   // dependency is explicit at the point of use, and so a future change to the
@@ -534,10 +723,24 @@ export async function extractLibarchivePages(
         entry.skipData();
         continue;
       }
-      if (entry.encrypted) {
+      if (entry.encrypted && !passphrase) {
+        // No passphrase was offered, so this is the "ask the user" case. The
+        // flag alone is enough: prompting is the right response to
+        // `entry_is_encrypted` with nothing supplied.
+        //
+        // libarchive's REASON is deliberately not read here. It is only
+        // available from the failed `read_data` call, not from `error_string`
+        // (measured: empty at this point), so the honest thing is to try the
+        // read below and let its error speak — which only happens once a
+        // passphrase exists to try.
         sawEncrypted = true;
         entry.skipData();
         continue;
+      }
+      if (entry.encrypted) {
+        // A passphrase WAS supplied, so fall through and actually attempt the
+        // extraction. Either it works, or libarchive tells us why it cannot.
+        sawEncrypted = true;
       }
       if (entry.size > MAX_ENTRY_BYTES || total + entry.size > MAX_TOTAL_BYTES) {
         throw new LibarchiveError(
@@ -550,13 +753,22 @@ export async function extractLibarchivePages(
       try {
         out = entry.readData() ?? new Int8Array(0);
       } catch (e) {
+        const msg = e instanceof LibarchiveError ? e.message : String((e as Error)?.message || e);
+        const kind = e instanceof LibarchiveError ? e.failure : classifyMessage(msg);
+        if (kind === "password" || kind === "no-crypto") {
+          // This is the message worth reporting: whether the passphrase was
+          // wrong or whether this build cannot decrypt at all. Stop walking —
+          // no other entry will open.
+          sawEncrypted = true;
+          if (!cryptoReason) cryptoReason = msg;
+          break;
+        }
         if (e instanceof LibarchiveError) {
           if (e.failure === "damaged") sawTruncation = true;
           throw e;
         }
-        const msg = String((e as Error)?.message || e);
         sawTruncation = true;
-        throw new LibarchiveError(classifyMessage(msg), msg);
+        throw new LibarchiveError(kind, msg);
       }
       if (out.length !== entry.size) {
         // Declared size disagreed with what actually decompressed.
@@ -575,6 +787,13 @@ export async function extractLibarchivePages(
   }
 
   if (sawEncrypted) {
+    // Prefer libarchive's own words. "The file content is encrypted, but
+    // currently not supported" and "Decryption is unsupported due to lack of
+    // crypto library" are both far more useful than a generic sentence, and
+    // the second one is the only thing that stops an endless password prompt.
+    if (cryptoReason) {
+      throw new LibarchiveError(classifyMessage(cryptoReason), cryptoReason);
+    }
     throw new LibarchiveError("password", "One or more entries are encrypted.");
   }
   if (sawTruncation) {

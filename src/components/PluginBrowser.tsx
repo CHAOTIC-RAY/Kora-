@@ -84,6 +84,7 @@ import type {
   PluginManifest,
   SourcePlugin,
 } from "../lib/sources/types";
+import TrustRepoModal, { isKoraDefaultRepoUrl } from "./TrustRepoModal";
 
 export interface PluginBrowserProps {
   /**
@@ -144,6 +145,8 @@ export default function PluginBrowser({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [repoInput, setRepoInput] = useState("");
+  /** A third-party registry URL awaiting trust confirmation, or null. */
+  const [pendingRepo, setPendingRepo] = useState<string | null>(null);
   const [repos, setRepos] = useState<string[]>([]);
   const [installed, setInstalled] = useState<SourcePlugin[]>([]);
   const [detailId, setDetailId] = useState<string | null>(null);
@@ -348,17 +351,45 @@ export default function PluginBrowser({
     );
   };
 
+  /**
+   * Adding a registry is a TRUST decision, so it is confirmed rather than
+   * immediate. `pendingRepo` holds the URL awaiting confirmation; the modal
+   * calls `confirmRepo` below to actually add it.
+   *
+   * Kora's own registry is exempt: it ships with the app, is trusted by the
+   * fact that Kora was installed, and prompting about it every session would
+   * only train people to click through the dialog that matters.
+   */
   const handleAddRepo = () => {
     const url = repoInput.trim();
     if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error("That does not look like a repository URL", { id: "src-repo" });
+      return;
+    }
+    if (isKoraDefaultRepoUrl(url)) {
+      addRepo(url);
+      setRepoInput("");
+      toast.success("Repository added", { id: "src-repo" });
+      load();
+      return;
+    }
+    setPendingRepo(url);
+  };
+
+  /** Called by the trust modal once the user has acknowledged the host. */
+  const confirmRepo = useCallback((url: string) => {
     if (!addRepo(url)) {
       toast.error("That does not look like a repository URL", { id: "src-repo" });
       return;
     }
+    setPendingRepo(null);
     setRepoInput("");
-    toast.success("Repository added", { id: "src-repo" });
+    toast.success("Repository added — only install plugins you trust", { id: "src-repo" });
     load();
-  };
+  }, [load]);
+
+  const cancelRepo = useCallback(() => setPendingRepo(null), []);
 
   const handleToggleAllow = (p: SourcePlugin) => {
     const allow = !isSourceVisible(p);
@@ -454,7 +485,7 @@ export default function PluginBrowser({
       {/* Repositories */}
       <div className="rounded-2xl border border-kindle-border bg-kindle-card/40 p-4 sm:p-5 space-y-3">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-          Repositories
+          Kora Plugins registry
         </h3>
         <div className="space-y-1.5">
           {repos.map((r) => (
@@ -487,7 +518,7 @@ export default function PluginBrowser({
             value={repoInput}
             onChange={(e) => setRepoInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAddRepo()}
-            placeholder="https://github.com/you/kora-sources"
+            placeholder="https://github.com/you/kora-plugins"
             className="min-w-0 flex-1 rounded-xl border border-kindle-border bg-kindle-bg px-3 py-2 text-[11px] font-mono text-kindle-text placeholder:text-kindle-text-muted/50 focus:border-kindle-accent/50 outline-none"
           />
           <button
@@ -498,6 +529,11 @@ export default function PluginBrowser({
           </button>
         </div>
       </div>
+
+      {/* The trust gate for a third-party registry. Rendered unconditionally
+          (it returns null when nothing is pending) so it keeps its own
+          lifecycle rather than being torn down and rebuilt on each keystroke. */}
+      <TrustRepoModal url={pendingRepo} onConfirm={confirmRepo} onCancel={cancelRepo} />
 
       {error && (
         <p className="rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-3 text-xs text-red-600">

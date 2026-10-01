@@ -403,7 +403,7 @@ export default function CrocPanel({ onClose }: { onClose?: () => void }) {
         <p className="text-[10px] leading-relaxed text-kindle-text-muted">
           This plugin is by Kora. croc is MIT (Copyright (c) 2017-2025 Zack Scholl) and includes
           the EFF Short Wordlist #1 under CC BY 4.0 and vendored Tailcat under BSD-3-Clause.
-          Kora vendors none of croc&apos;s code. Full notices are in the Kora-Sources repository.
+          Kora vendors none of croc&apos;s code. Full notices are in the Kora Plugins repository.
         </p>
         <a
           href="https://github.com/schollz/croc"

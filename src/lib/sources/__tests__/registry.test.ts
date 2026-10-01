@@ -1,7 +1,7 @@
 /**
  * Registry parsing for the non-source categories.
  *
- * The index fixture is the real shape produced by Kora-Sources'
+ * The index fixture is the real shape produced by Kora-Plugins'
  * `scripts/build-index.mjs`, including one entry per category.
  */
 
@@ -26,7 +26,7 @@ function check(name: string, cond: boolean, got?: unknown) {
 }
 
 const INDEX = {
-  name: "Kora Sources",
+  name: "Kora Plugins",
   badgeLabel: "KORA",
   extensionList: {
     extensions: [

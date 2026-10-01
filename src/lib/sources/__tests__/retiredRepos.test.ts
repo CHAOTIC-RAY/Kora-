@@ -26,7 +26,7 @@ const fakeStorage = {
 };
 (globalThis as { localStorage?: unknown }).localStorage = fakeStorage;
 
-const { getRepos, addRepo } = await import("../store");
+const { getRepos, addRepo, DEFAULT_REPO } = await import("../store");
 
 let pass = 0;
 let fail = 0;
@@ -54,7 +54,10 @@ check(
 );
 check(
   "the default registry is still offered",
-  afterDead.some((r) => /Kora-Sources/i.test(r)),
+  // The default is now the Kora-Plugins registry. This assertion is a canary:
+  // if DEFAULT_REPO were ever emptied or left pointing at a retired URL, the
+  // plugin hub would load ZERO plugins for every user with no visible error.
+  afterDead.includes(DEFAULT_REPO),
   afterDead
 );
 check(

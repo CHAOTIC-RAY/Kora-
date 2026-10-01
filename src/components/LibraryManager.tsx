@@ -2983,13 +2983,22 @@ function LibraryManager({
                   : "Upload EPUB, PDF, or comic archives (CBZ/ZIP) from your device."}
               </p>
               {/* The format rules, in the place the file is actually chosen.
-                                The RAR/7z half is a claim about the format layer's current
-                                capability, not a promise about the future: when a decoder
-                                lands, `unsupportedReason` stops naming them and so does
-                                this text, because both read the same function. */}
+                                Wording is tied to what the format layer can actually do, and
+                                it says the interesting part rather than the reassuring part:
+
+                                  - Split archives (comic.7z.001, .002, …) now OPEN. Select every
+                                    part together and Kora joins them; a missing part is named.
+                                  - Password-protected archives are DETECTED and the prompt appears,
+                                    but the bundled libarchive has no decryption support, so an
+                                    encrypted archive still cannot be opened. Saying so is the
+                                    honest version; promising a password box that silently fails
+                                    would not be.
+                              */}
                             <p className="text-[9px] leading-relaxed text-kindle-text-muted/70 mt-1">
-                              CBZ and ZIP comics open straight in the reader. RAR/CBR and 7z/CB7 open too — they are decoded by
-                              a bundled libarchive. Encrypted and multi-volume archives are refused, with the reason shown.
+                              CBZ, ZIP, RAR/CBR and 7z/CB7 all open — RAR and 7z are decoded by a bundled
+                              libarchive. Split archives open too: select every part (.001, .002, …)
+                              together and Kora joins them, naming any part that is missing. Password-protected
+                              archives are detected but cannot be decrypted by this build.
                             </p>
               {localImportError && (
                 <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-400 mt-1.5 flex items-start gap-1.5">

@@ -48,7 +48,21 @@ import {
   extractLibarchivePages,
   LibarchiveError,
   describeLibarchiveFailure,
+  collectVolumes,
+  joinVolumes,
 } from "./libarchiveReader";
+
+// The volume helpers are re-exported so the comic layer has a single import
+// for the whole container story, and so `missingVolumes`/`detectSplitArchive`
+// can be unit-tested without reaching past this module's public surface.
+export {
+  collectVolumes,
+  joinVolumes,
+  detectSplitArchive,
+  describeLibarchiveFailure,
+  LibarchiveError,
+} from "./libarchiveReader";
+export type { VolumeSet, LibarchiveFailure } from "./libarchiveReader";
 
 export interface ArchivePage {
   /** Object URL for the inflated image. Revoke it via {@link releaseArchive}. */
@@ -110,6 +124,22 @@ export type OpenArchiveResult =
       status: "empty";
       detection: Detection;
       message: string;
+    }
+  | {
+      /**
+       * The archive is encrypted and no passphrase was supplied yet.
+       *
+       * A distinct status rather than an error because the correct next action
+       * is a question, not a refusal: show the password prompt and call
+       * `openArchive` again with {@link ArchiveOpenOptions.passphrase}.
+       *
+       * It appears at most once per attempt. If the supplied passphrase still
+       * fails, the result is a `rejected` (wrong password) or `unsupported`
+       * (this build has no decryption), never another `needs-password`.
+       */
+      status: "needs-password";
+      detection: Detection;
+      message: string;
     };
 
 /** ZIP-based formats. These go through the fast, WASM-free path below. */
@@ -135,14 +165,101 @@ const LIBARCHIVE_BACKED = new Set(["cbr", "cb7"]);
  */
 export const EAGER_PAGES = 6;
 
+/** Extra inputs {@link openArchive} needs beyond the bytes and the filename. */
+export interface ArchiveOpenOptions {
+  /**
+   * Password for an encrypted RAR/7z, if the user has already been asked for
+   * one. Never persisted — see `PasswordPromptModal` for why.
+   */
+  passphrase?: string | null;
+}
+
+/**
+ * Open an archive that may be split across several files.
+ *
+ * The multi-volume case is handled HERE rather than in `openArchive` because
+ * joining is only meaningful when the user selected more than one file — the
+ * single-file signature cannot express "and here are the other two parts".
+ *
+ * Behaviour, in order:
+ *   1. Group the selected files into volume sets ({@link collectVolumes}).
+ *   2. If more than one set was selected, refuse: two different comics at
+ *      once is not something to guess about.
+ *   3. Concatenate the set ({@link joinVolumes}), which REFUSES if any volume
+ *      is missing and names the ones that are.
+ *   4. Open the joined bytes as an ordinary archive.
+ *
+ * Passing a single file behaves exactly like `openArchive`, so callers can use
+ * this unconditionally.
+ *
+ * Verified against a real three-volume 7z comic: the first volume alone
+ * extracts nothing, and the three joined extract every page.
+ */
+export async function openArchiveVolumes(
+  files: ReadonlyArray<{ name: string; bytes: Uint8Array }>,
+  options?: ArchiveOpenOptions
+): Promise<OpenArchiveResult> {
+  if (files.length === 0) {
+    return {
+      status: "rejected",
+      detection: detectFormat(new Uint8Array(0), null),
+      message: "No file was selected.",
+    };
+  }
+
+  if (files.length === 1) {
+    return openArchive(files[0].bytes, files[0].name, options);
+  }
+
+  const sets = collectVolumes(files);
+  if (sets.length > 1) {
+    return {
+      status: "rejected",
+      detection: detectFormat(files[0].bytes, files[0].name),
+      message: `That selection looks like more than one archive (${sets
+        .map((s) => s.baseName)
+        .join(", ")}). Select the parts of a single archive together.`,
+    };
+  }
+
+  const set = sets[0];
+  let joined: Uint8Array;
+  try {
+    joined = joinVolumes(set);
+  } catch (e) {
+    if (e instanceof LibarchiveError) {
+      return {
+        status: e.failure === "too-large" ? "unsupported" : "rejected",
+        detection: detectFormat(files[0].bytes, files[0].name),
+        message: e.message,
+      };
+    }
+    throw e;
+  }
+
+  // The claimed name is the BASE name (`comic.7z`), not a volume name: the
+  // split detector would otherwise see a `.001` suffix and refuse a perfectly
+  // complete set.
+  return openArchive(joined, set.baseName, options);
+}
+
 /**
  * Open archive bytes for reading.
  *
  * Never throws for a bad file: a rejection, an unsupported container and an
  * archive with no images are all *results*, because every one of them is a
  * state the user can be told about. Only a genuine bug throws.
+ *
+ * A password-protected archive comes back as `needs-password` when no
+ * {@link ArchiveOpenOptions.passphrase} was given, so the caller can prompt
+ * and retry. Passing a wrong password returns a refusal instead of asking
+ * again, which is what keeps the prompt from looping.
  */
-export async function openArchive(bytes: Uint8Array, claimed?: string | null): Promise<OpenArchiveResult> {
+export async function openArchive(
+  bytes: Uint8Array,
+  claimed?: string | null,
+  options?: ArchiveOpenOptions
+): Promise<OpenArchiveResult> {
   const detection = detectFormat(bytes, claimed);
 
   if (detection.rejected) {
@@ -160,7 +277,7 @@ export async function openArchive(bytes: Uint8Array, claimed?: string | null): P
       // the promise is adopted by the caller's `await`. Both entry points into
       // this module await `openArchive`, so no caller can observe a pending
       // handle or an unresolved result union.
-      return openLibarchiveBacked(bytes, detection, claimed);
+      return openLibarchiveBacked(bytes, detection, claimed, options?.passphrase ?? null);
     }
 
   if (!INFLATABLE.has(detection.format)) {
@@ -277,13 +394,25 @@ export async function openArchive(bytes: Uint8Array, claimed?: string | null): P
   async function openLibarchiveBacked(
     bytes: Uint8Array,
     detection: Detection,
-    claimed?: string | null
+    claimed?: string | null,
+    passphrase?: string | null
   ): Promise<OpenArchiveResult> {
     let extracted: Awaited<ReturnType<typeof extractLibarchivePages>>;
     try {
-      extracted = await extractLibarchivePages(bytes, claimed);
+      extracted = await extractLibarchivePages(bytes, claimed, passphrase);
     } catch (e) {
       if (e instanceof LibarchiveError) {
+        // An encrypted archive the caller has not yet supplied a password for
+        // is a QUESTION, not a refusal. Returning "needs-password" lets the UI
+        // ask once; the "no-crypto" case below is what stops that becoming an
+        // infinite loop when the passphrase could never have worked.
+        if (e.failure === "password" && !passphrase) {
+          return {
+            status: "needs-password",
+            detection,
+            message: describeLibarchiveFailure(e.failure),
+          };
+        }
         // `describeLibarchiveFailure` gives the user-facing sentence for
         // password / split / too-large / damaged / no-pages. The distinction
         // that matters for the result union: "we cannot read this" (unsupported)

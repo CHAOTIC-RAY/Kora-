@@ -472,8 +472,10 @@ export default function ComicDetailView({
             );
           })()}
 
-          {/* The format rules live on the Workshop upload card now; this
-              screen no longer repeats them. */}
+          {/* Format rules live on the Workshop upload card (LibraryManager),
+              where the file is actually chosen. This screen reads chapters over
+              the network and never touches a local archive, so repeating them
+              here would describe a decision the user has not made yet. */}
 
           {onAddToLibrary && manga && (
             <button

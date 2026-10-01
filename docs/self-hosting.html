@@ -26,6 +26,7 @@
       <a href="./index.html">Overview</a>
       <a href="./features.html">Features</a>
       <a href="./self-hosting.html" aria-current="page">Self-hosting</a>
+      <a href="./architecture.html" data-optional>Architecture</a>
       <a href="./plugins.html">Plugins</a>
     </nav>
     <button class="icon-btn" id="theme" type="button">Night</button>
@@ -43,6 +44,7 @@
       <li><a href="#config">Configuration</a></li>
       <li><a href="#bindings">R2 and KV</a></li>
       <li><a href="#secrets">API keys</a></li>
+      <li><a href="#fallbacks">Without a key</a></li>
       <li><a href="#deploy">Deploy the Worker</a></li>
       <li><a href="#rules">Firestore rules</a></li>
       <li><a href="#apk">Build the APK</a></li>
@@ -196,17 +198,89 @@ npx wrangler r2 bucket create kora-relay-beta</code></pre><button class="copy" t
     <section id="secrets">
       <h2><a class="anchor" href="#secrets">#</a>API keys</h2>
       <p>
-        Book-search keys are Cloudflare secrets, not environment variables. They
-        are read by the Worker only, and are never compiled into the bundle.
+        The book-search key is optional. Kora searches without one — see
+        <a href="#fallbacks">the fallback chain</a> for what you get. Setting it
+        is a Cloudflare secret, not an environment variable: the Worker reads it
+        and it is never compiled into the bundle.
       </p>
       <div class="term"><pre><code>npx wrangler secret put RAVE_API_KEY</code></pre><button class="copy" type="button">Copy</button></div>
       <p>
-        The key is sent in an <code>X-API-Key</code> header and must stay
-        server-side. Without it the Worker falls back to the older public
-        endpoint, which is slower and rate-limited.
+        Wrangler prompts for the value and stores it encrypted. It is sent in an
+        <code>X-API-Key</code> header and must stay server-side: anything
+        prefixed <code>VITE_</code> ends up in the public bundle.
       </p>
       <p>For local development, put secrets in <code>.dev.vars</code> (gitignored):</p>
       <div class="term"><pre><code>RAVE_API_KEY=your-key-here</code></pre><button class="copy" type="button">Copy</button></div>
+    </section>
+
+    <section id="fallbacks">
+      <h2><a class="anchor" href="#fallbacks">#</a>What works without a key</h2>
+      <p>
+        Kora runs with no Rave key at all. Search, discovery and downloads all
+        work; the only thing you lose is access to the key-authenticated v1
+        endpoint. The chain, in the order a search tries it:
+      </p>
+      <ol class="steps">
+        <li>
+          <strong>Rave v1</strong> — <code>/api/v1/search</code>, requires the
+          key. Tried first, on the canonical host and then on the legacy Worker
+          host. The two are raced against each other, so a host that is not
+          answering does not delay the search.
+        </li>
+        <li>
+          <strong>Rave legacy</strong> — <code>/search/all</code>. Needs no key,
+          aggregates the same set of mirrors. This is what serves search on a
+          keyless install.
+        </li>
+        <li>
+          <strong>LibGen</strong> — resolved through signed CDN links, which
+          expire and are re-minted per request by racing mirrors.
+        </li>
+        <li>
+          <strong>Internet Archive</strong> — direct items, surfaced as their own
+          mirror.
+        </li>
+        <li>
+          <strong>Anna's Archive</strong>, <strong>LibreTexts</strong> and
+          <strong>Open Library</strong> — reached through the source endpoints
+          and the Worker proxy.
+        </li>
+        <li>
+          <strong>Project Gutenberg</strong> — reachable as a
+          <code>source=all</code> mirror, so public-domain titles appear
+          alongside everything else.
+        </li>
+      </ol>
+      <div class="note">
+        <p class="note-t">The response tells you which one answered</p>
+        <p>
+          Every search response carries an <code>engine</code> field —
+          <code>"v1"</code>, <code>"legacy"</code> or <code>"none"</code> — plus
+          <code>fallback</code>, which is true whenever the engine is not
+          <code>v1</code>. The UI labels results from that field rather than
+          assuming v1, so a keyless install shows neutral wording
+          ("Open Catalog Mirror") instead of claiming a Rave result it never
+          fetched. Check it yourself:
+        </p>
+        <div class="term"><pre><code>curl "https://your-worker.workers.dev/api/annas-archive/search?q=dune&amp;source=all&amp;page=1"</code></pre><button class="copy" type="button">Copy</button></div>
+      </div>
+      <div class="note warn">
+        <p class="note-t">The v1 endpoint is unreliable, not dependable</p>
+        <p>
+          v1 is genuinely slower and fails outright on roughly half of queries;
+          the legacy endpoint's own response time has been measured anywhere from
+          7 to 24 seconds. That is why the three rungs race against a single
+          shared 28-second budget instead of running in sequence — a sequential
+          ladder can spend every timeout and still return nothing. In a
+          ten-query sample against the deployed Worker, v1 answered six and the
+          legacy endpoint answered the rest.
+        </p>
+        <p>
+          Plan for the legacy path being the one that usually serves you. Do not
+          describe a keyless or v1-backed install as "search always hits v1" —
+          that has not been true in measurement.
+        </p>
+      </div>
     </section>
 
     <section id="deploy">
@@ -334,14 +408,19 @@ firebase deploy --only firestore:rules</code></pre><button class="copy" type="bu
             </tr>
             <tr>
               <td>Book search slow or rate-limited</td>
-              <td><code>RAVE_API_KEY</code> is not set, so the Worker is on the
-              fallback endpoint. Set it as a secret.</td>
+              <td>Check the <code>engine</code> field in the response. On the
+              legacy endpoint a slow response is upstream behaviour, not a
+              misconfiguration — measured between 7s and 24s. A key widens the
+              chance of the faster v1 rung answering, but does not remove the
+              legacy path.</td>
             </tr>
             <tr>
               <td>Book search returns nothing at all</td>
-              <td>The key is present but in the wrong place. It must be a
-              Worker secret, not a <code>VITE_</code> variable — anything
-              prefixed <code>VITE_</code> is compiled into the public bundle.</td>
+              <td><code>engine</code> is <code>"none"</code>, meaning every rung
+              failed. Both Rave endpoints are bursty upstream, so retry. If the
+              key is present, confirm it is a Worker secret and not a
+              <code>VITE_</code> variable — anything prefixed
+              <code>VITE_</code> is compiled into the public bundle.</td>
             </tr>
           </tbody>
         </table>
@@ -368,6 +447,7 @@ firebase deploy --only firestore:rules</code></pre><button class="copy" type="bu
       <li><a href="#config">Configuration</a></li>
       <li><a href="#bindings">R2 and KV</a></li>
       <li><a href="#secrets">API keys</a></li>
+      <li><a href="#fallbacks">Without a key</a></li>
       <li><a href="#deploy">Deploy the Worker</a></li>
       <li><a href="#rules">Firestore rules</a></li>
       <li><a href="#apk">Build the APK</a></li>

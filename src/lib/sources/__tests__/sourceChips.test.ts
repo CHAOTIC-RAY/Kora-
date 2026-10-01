@@ -45,7 +45,7 @@ const p = (id: string, name: string, category: string | undefined, extra: Partia
   ({ id, name, category, piracy: false, nsfw: false, baseUrl: "https://x.test", lang: "en", version: 1, ...extra }) as P;
 
 // A REAL source definition carries no `category` at all — that is the shape
-// Kora-Sources actually publishes, and the regression this test guards.
+// Kora-Plugins actually publishes, and the regression this test guards.
 const REAL_SOURCE = p("kora-manga-s2read", "S2Read", undefined, { piracy: true, theme: "madara" });
 const REAL_SOURCE2 = p("kora-legal-gutenberg", "Project Gutenberg", undefined);
 const REAL_PIRACY = p("4503604002548978580", "MangaReadOrg", undefined, { piracy: true });
@@ -78,7 +78,7 @@ check("a piracy-flagged theme is still not a source", isSourcePlugin(PIRACY_THEM
 
 /* -------------------- the shape real source definitions actually have ----- */
 
-// These four are the regression that matters most. Kora-Sources publishes
+// These four are the regression that matters most. Kora-Plugins publishes
 // source definitions with NO `category` key — the registry index tags them,
 // the definition itself does not. A `category === "source"` check would have
 // emptied the whole chip row in production while passing every other test.

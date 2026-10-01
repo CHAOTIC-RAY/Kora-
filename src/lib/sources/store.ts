@@ -27,8 +27,27 @@ const LS_PLUGINS = "kora.sourcePlugins.v1";
 const LS_REPOS = "kora.sourceRepos.v1";
 const LS_OPTED_IN = "kora.sourceOptsIn.v1";
 
-/** The registry Kora ships with. */
-export const DEFAULT_REPO = "https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Sources/main/index.json";
+/**
+ * The registry Kora ships with.
+ *
+ * THE SINGLE MOST DANGEROUS STRING IN THE APP. Every existing user has this
+ * value baked into `localStorage` under `kora.sourceRepos.v1`, so changing it
+ * does not update them — it ADDS a second entry and leaves the old one. The
+ * migration is `RETIRED_REPOS` below, which strips the pre-rename URL on read.
+ * If the new URL is wrong, the plugin hub silently loads ZERO plugins for
+ * everyone, with no error the user can act on.
+ *
+ * Renamed from Kora-Sources -> Kora-Plugins. The raw URL only resolves once
+ * the repository is actually renamed in GitHub settings (GitHub redirects the
+ * old path, but raw.githubusercontent follows the redirect only after the
+ * rename exists). Verified 2026-10-01: the new URL returned 404 while the old
+ * one returned 200, so this constant is correct in code but NOT yet live.
+ */
+export const DEFAULT_REPO = "https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Plugins/main/index.json";
+
+/** The registry URL this app used before the Kora-Plugins rename. */
+export const LEGACY_DEFAULT_REPO =
+  "https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Sources/main/index.json";
 
 function readJSON<T>(key: string, fallback: T): T {
   try {
@@ -145,7 +164,20 @@ export function uninstallExtension(id: string): void {
  * purged here, on read, which covers phones and browsers that will never
  * run a build where the file exists again.
  */
-const RETIRED_REPOS = [/\/data\/test-registry\.json/i];
+const RETIRED_REPOS = [
+  /\/data\/test-registry\.json/i,
+  // Pre-rename registry URL. Every existing user has this exact string in
+  // `kora.sourceRepos.v1`, and `DEFAULT_REPO` changing does not update it, so
+  // without this the app would try to load a registry that has been renamed
+  // out from under it.
+  //
+  // The pattern is deliberately NARROW: it matches the old repo name on the
+  // official CHAOTIC-RAY owner, and explicitly NOT `Kora-Plugins`. A broad
+  // `/Kora-Sources/` would also delete a genuine third-party registry that
+  // merely shares the word, and a pattern loose enough to catch the new name
+  // would delete the app's own default on every read and zero the plugin hub.
+  /raw\.githubusercontent\.com\/CHAOTIC-RAY\/Kora-Sources\//i,
+];
 
 /** Drop retired entries from storage. Safe to call on every read. */
 function purgeRetiredRepos(): void {
@@ -217,7 +249,7 @@ const optedIn = (): string[] => readJSON<string[]>(LS_OPTED_IN, []);
  * browse books, so a theme or an integration must not appear there.
  *
  * The test is INVERTED on purpose, and that is the load-bearing detail: a
- * real source definition (e.g. Kora-Sources/sources/manga/s2read.json)
+ * real source definition (e.g. Kora-Plugins/sources/manga/s2read.json)
  * carries no `category` field at all — it declares `kind`, `theme`,
  * `baseUrl` and `endpoints`, and the *registry index* is what tags it
  * `category: "source"`. So `category === "source"` matches nothing that is

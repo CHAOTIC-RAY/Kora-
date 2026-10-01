@@ -39,6 +39,14 @@ import {
   type MirrorHealthSnapshot,
 } from "../lib/mirrorHealthClient";
 import { detectFormat } from "../lib/formats/detect";
+import { isFileUrl } from "../lib/bookIdentity";
+import {
+  hostOf,
+  orderByReliability,
+  reliabilityForUrl,
+  type ReliabilityEntry,
+} from "../lib/mirrorReliability";
+import { judgeMirrorDownload } from "../lib/mirrorOutcome";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
@@ -282,6 +290,10 @@ function DiscoverView({
   // Opening book B while book A's requests are still in flight must not let A's
   // slower response overwrite B's title/overview/editions/mirrors.
   const detailFetchGen = React.useRef(0);
+  // Which Rave API last answered a search, exactly as the Worker reported it
+  // ("v1" | "legacy" | "none"). Rave branding is rendered only when this is
+  // "v1"; see raveEngineLabel() and buildInstantMirrors().
+  const lastRaveEngineRef = React.useRef<string>("none");
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
@@ -646,81 +658,96 @@ function DiscoverView({
     return l.slice(0, 3).toUpperCase();
   }
 
-  /** Instant mirrors from known md5 / directUrl — shown before the API finishes. */
-  function buildInstantMirrors(variant: any): any[] {
-    if (!variant) return [];
-    const links: any[] = [];
-    const directUrl = variant.downloadUrl || "";
-    if (directUrl && /get\.php\?md5=.+&key=/i.test(directUrl)) {
-      links.push({
-        label: "Rave Direct (LibGen CDN)",
-        url: directUrl,
-        isDirect: true,
-        sourceId: "rave"
-      });
-    } else if (directUrl && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
-      const isMobilismUrl = directUrl.toLowerCase().includes("mobilism.org") || directUrl.toLowerCase().includes("mobilism");
-      if (isMobilismUrl) {
+  /**
+     * Instant mirrors from known md5 / directUrl — shown before the API finishes.
+     *
+     * `engine` is the Worker's own signal of which Rave API actually produced the
+     * search these variants came from ("v1" | "legacy" | "none"). Rave branding is
+     * only ever rendered when that is "v1" — never inferred from the URL shape or
+     * from a configured key.
+     */
+    function raveEngineLabel(engine: string | undefined | null, opts: { isSearch?: boolean } = {}) {
+      if (engine === "v1") return opts.isSearch ? "Search Rave for this book" : "Rave Direct Download";
+      if (engine === "legacy") return opts.isSearch ? "Search open catalogs for this book" : "Open Catalog Mirror";
+      // engine unknown or "none": neutral wording, no Rave claim at all.
+      return opts.isSearch ? "Search open catalogs" : "Open Catalog Mirror";
+    }
+
+    function buildInstantMirrors(variant: any): any[] {
+      if (!variant) return [];
+      const links: any[] = [];
+      const directUrl = variant.downloadUrl || "";
+      const engine = variant.raveEngine || lastRaveEngineRef.current;
+      if (directUrl && /get\.php\?md5=.+&key=/i.test(directUrl)) {
         links.push({
-          label: "Mobilism Forum Mirror",
-          url: directUrl,
-          isDirect: false,
-          sourceId: variant.sourceId || "rave"
-        });
-      } else {
-        links.push({
-          label: "Direct Download",
+          label: engine === "v1" ? "Rave Direct (LibGen CDN)" : "LibGen CDN Direct",
           url: directUrl,
           isDirect: true,
-          sourceId: variant.sourceId || "rave"
+          sourceId: "rave"
+        });
+      } else if (directUrl && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
+        const isMobilismUrl = directUrl.toLowerCase().includes("mobilism.org") || directUrl.toLowerCase().includes("mobilism");
+        if (isMobilismUrl) {
+          links.push({
+            label: "Mobilism Forum Mirror",
+            url: directUrl,
+            isDirect: false,
+            sourceId: variant.sourceId || "rave"
+          });
+        } else {
+          links.push({
+            label: "Direct Download",
+            url: directUrl,
+            isDirect: true,
+            sourceId: variant.sourceId || "rave"
+          });
+        }
+      }
+      const md5 = (variant.md5 || "").toLowerCase();
+      if (/^[a-f0-9]{32}$/.test(md5)) {
+        links.push({
+          label: "Libgen Mirror (libgen.li)",
+          url: `https://libgen.li/get.php?md5=${md5}`,
+          isDirect: true,
+          sourceId: "libgen"
         });
       }
+      if (variant.iaId) {
+        links.push({
+          label: "Internet Archive",
+          url: `https://archive.org/details/${variant.iaId}`,
+          isDirect: false,
+          sourceId: "ia"
+        });
+      }
+      // Last resort: hand off to Rave, the engine that already aggregates every
+      // source, carrying the book so the search actually lands on it. Replaces
+      // the old "Anna's Archive" entry, which linked an unscoped homepage and
+      // surfaced above the real mirrors.
+      //
+      // Only ever one Rave row: the Worker can also return a Rave search link for
+      // the same variant, so pushing this unconditionally produced a duplicate
+      // pair (one with the query, one bare). Anything already on the list that
+      // resolves to Rave is skipped.
+      const alreadyHasRave = links.some(
+        (l) => l.sourceId === "rave" || /ravebooksearch\.com/i.test(l.url || "")
+      );
+      if (!alreadyHasRave) {
+        const searchText = [variant.title, variant.author].filter(Boolean).join(" ").trim();
+        links.push({
+          label: searchText ? raveEngineLabel(engine, { isSearch: true }) : raveEngineLabel(engine, { isSearch: true }),
+          url: searchText
+            ? `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText)}`
+            : "https://ravebooksearch.com",
+          isDirect: false,
+          // A search hand-off is not a file. `isSearch` hides the download
+          // affordance so it reads as "go and look" rather than "fetch this".
+          isSearch: true,
+          sourceId: "rave"
+        });
+      }
+      return links;
     }
-    const md5 = (variant.md5 || "").toLowerCase();
-    if (/^[a-f0-9]{32}$/.test(md5)) {
-      links.push({
-        label: "Libgen Mirror (libgen.li)",
-        url: `https://libgen.li/get.php?md5=${md5}`,
-        isDirect: true,
-        sourceId: "libgen"
-      });
-    }
-    if (variant.iaId) {
-      links.push({
-        label: "Internet Archive",
-        url: `https://archive.org/details/${variant.iaId}`,
-        isDirect: false,
-        sourceId: "ia"
-      });
-    }
-    // Last resort: hand off to Rave, the engine that already aggregates every
-    // source, carrying the book so the search actually lands on it. Replaces
-    // the old "Anna's Archive" entry, which linked an unscoped homepage and
-    // surfaced above the real mirrors.
-    //
-    // Only ever one Rave row: the Worker can also return a Rave search link for
-    // the same variant, so pushing this unconditionally produced a duplicate
-    // pair (one with the query, one bare). Anything already on the list that
-    // resolves to Rave is skipped.
-    const alreadyHasRave = links.some(
-      (l) => l.sourceId === "rave" || /ravebooksearch\.com/i.test(l.url || "")
-    );
-    if (!alreadyHasRave) {
-      const searchText = [variant.title, variant.author].filter(Boolean).join(" ").trim();
-      links.push({
-        label: searchText ? "Search Rave for this book" : "Search Rave",
-        url: searchText
-          ? `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText)}`
-          : "https://ravebooksearch.com",
-        isDirect: false,
-        // A search hand-off is not a file. `isSearch` hides the download
-        // affordance so it reads as "go and look" rather than "fetch this".
-        isSearch: true,
-        sourceId: "rave"
-      });
-    }
-    return links;
-  }
 
   /** Race fast archive sources; fall back to full "all" search with a hard timeout. */
   async function searchDownloadVariants(query: string): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
@@ -854,21 +881,50 @@ function DiscoverView({
       const sourceId = (m.sourceId || "").toLowerCase();
 
       const isRave = sourceId === "rave" || label.includes("rave") || url.includes("rave");
-      const isLibgen = sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis");
-      const isLibretext = label.includes("libretext") || url.includes("libretext");
+            const isLibgen = sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis");
+            const isLibretext = label.includes("libretext") || url.includes("libretext");
+            const isMobilism = url.includes("mobilism");
+            // A LibGen / LibreTexts / Mobilism mirror did not come from Rave, whatever
+            // `sourceId` says — the Worker tags every Rave result "rave" regardless of
+            // which upstream mirror served it. Branding follows the `engine` signal only.
+            const engine: string = m.raveEngine || lastRaveEngineRef.current;
+            const isRaveSearchHandoff = /ravebooksearch\.com/i.test(m.url || "");
 
-      const direct = isRave || isLibgen || isLibretext;
-      
-      let newLabel = m.label;
-      if (isLibretext && !label.includes("direct") && !label.includes("libretexts")) {
-        newLabel = "LibreTexts Direct Download";
-      } else if (isRave && !label.includes("direct") && !label.includes("rave")) {
-        newLabel = "Rave Direct Download";
-      } else if (isLibgen && !label.includes("libgen")) {
-        newLabel = "Libgen Mirror (libgen.li)";
-      } else if (url.includes("mobilism.org") || url.includes("mobilism")) {
-        newLabel = "Mobilism Forum Mirror";
-      }
+            // Direct = a byte-serving link, not a lookup. A mirror whose host we can
+            // identify is direct whatever the engine said; a bare "Direct Download"
+            // only counts when Rave actually produced it.
+            //
+            // A URL that is a WEB PAGE is never a direct download. A `.html`
+            // or `.php` mirror (royallib, mobilism threads, archive.org
+            // /details/ pages) sits behind a login or a countdown, and tapping
+            // "download" on it yields a web page, not a book. Marking these
+            // direct is what let the app offer the wrong book as a download.
+            const isFileTarget = isFileUrl(m.url);
+            const direct =
+              isFileTarget && (isLibgen || isLibretext || (isRave && engine === "v1"));
+
+            // Order matters: identify the concrete mirror FIRST. Branching on Rave
+            // first let a Mobilism or LibreTexts link fall into the Rave branch and be
+            // relabelled "Rave Direct Download", because those arms sat further down
+            // an else-if chain that had already been matched.
+            let newLabel = m.label;
+            if (isLibretext && !label.includes("direct") && !label.includes("libretexts")) {
+              newLabel = "LibreTexts Direct Download";
+            } else if (isMobilism && !label.includes("mobilism")) {
+              newLabel = "Mobilism Forum Mirror";
+            } else if (isLibgen && !label.includes("libgen")) {
+              newLabel = "Libgen Mirror (libgen.li)";
+            } else if (isRaveSearchHandoff) {
+              // A search hand-off links to Rave's own site, so it is the one case where
+              // the Rave name belongs in the label — and only when v1 produced it.
+              newLabel = raveEngineLabel(engine, { isSearch: true });
+            } else if (isRave && !isLibgen && !isLibretext && !isMobilism && engine === "v1"
+                       && !label.includes("rave") && !label.includes("direct")) {
+              newLabel = raveEngineLabel(engine);
+            } else if (isRave && engine !== "v1" && !label.includes("rave")) {
+              // Fallback-sourced and unidentifiable: never assert a Rave direct download.
+              newLabel = raveEngineLabel(engine);
+            }
 
       return {
         ...m,
@@ -2079,14 +2135,20 @@ function DiscoverView({
       { signal: AbortSignal.timeout(14000) }
     );
     if (!res.ok) throw new Error(`Search failed with status: ${res.status}`);
-    const data = await res.json();
-    const books = (data.books || data.results || []).map((b: any) => ({
-      ...b,
-      sourceId: b.sourceId || "rave",
-      coverUrl: b.coverUrl || b.image?.url || null,
-    }));
-    return { books, totalCount: data.totalCount || 0, hasMore: !!data.hasMore };
-  }
+        const data = await res.json();
+        // The Worker reports which Rave API actually answered. Record it as the
+        // single source of truth for Rave labelling — never infer v1 from a
+        // configured key or from the URL shape of a returned mirror.
+        const engine: string = data.engine || (data.fallback ? "legacy" : "none");
+        lastRaveEngineRef.current = engine;
+        const books = (data.books || data.results || []).map((b: any) => ({
+          ...b,
+          sourceId: b.sourceId || "rave",
+          raveEngine: engine,
+          coverUrl: b.coverUrl || b.image?.url || null,
+        }));
+        return { books, totalCount: data.totalCount || 0, hasMore: !!data.hasMore };
+      }
 
   async function fetchNYTCategory(listName: string, date: string = "current"): Promise<{ books: any[]; previousDate: string | null }> {
     const cacheKey = `nyt_list_opt_${listName}_${date}`;
@@ -3001,11 +3063,29 @@ function DiscoverView({
               if (errText && errText.length < 200) errMsg = errText;
             } catch (e2) {}
           }
+          // Count the dead attempt. Throttling is excluded from the score: it
+          // measures load, not the mirror's honesty.
+          void judgeMirrorDownload({
+            mirrorUrl: mirror.url,
+            bytes: null,
+            requestedTitle: book.title,
+            transportFailure:
+              response.status === 429 || response.status === 503 ? "rate-limited" : "unreachable",
+          });
           throw new Error(errMsg);
         }
 
         const contentType = response.headers.get("content-type") || "";
         if (contentType.includes("text/html")) {
+          // Record the attempt: this host answered with a web page, which is a
+          // mirror failure and must drag its score down.
+          await judgeMirrorDownload({
+            mirrorUrl: mirror.url,
+            bytes: null,
+            requestedTitle: book.title,
+            transportFailure: null,
+            sawHtmlContentType: true,
+          });
           throw new Error("The server returned a webpage instead of the book file. Please try another mirror.");
         }
 
@@ -3351,6 +3431,25 @@ function DiscoverView({
           const buf = new Uint8Array(await fileBlob.slice(0, 65536).arrayBuffer());
           reportOutcomeForDownload(typeof mirror === "string" ? mirror : mirror.url, buf);
         } catch (e) { /* reporting is best-effort */ }
+      }
+
+      // Identity gate: refuse to import a valid file of the WRONG book.
+      // The mirror list is built from a loose search, so a row can belong to a
+      // different title than the one on screen. Reading the embedded title is
+      // the only way to know. A wrong book is not saved, and the host is
+      // recorded as having failed rather than merely "not matched".
+      const judged = await judgeMirrorDownload({
+        mirrorUrl: mirrorUrl,
+        bytes: new Uint8Array(await fileBlob.arrayBuffer()),
+        requestedTitle: book.title,
+        claimedExtension: fileExtension,
+      });
+      if (!judged.ok) {
+        throw new Error(
+          judged.mismatched
+            ? `This mirror served a different book. ${judged.detail}`
+            : judged.detail
+        );
       }
 
       // Check if downloading using normal discovery search (non-advanced Google Book based search)
@@ -4764,25 +4863,21 @@ function DiscoverView({
                         because validation is advisory and the user must
                         always be able to try a mirror themselves.
                       */}
-                      {orderMirrorsByHealth(mirrors, (m: any) => {
-                        const url = typeof m === "string" ? m : m?.url;
-                        const host = (() => {
-                          try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
-                        })();
-                        const entry = host ? mirrorHealth.byHost.get(host) : undefined;
-                        return entry?.percent ?? null;
-                      }).map((m, i) => {
+                      {orderByReliability(mirrors, (m: any) =>
+                        typeof m === "string" ? m : m?.url
+                      ).map((m, i) => {
                         // One classification drives the title, the badge and
                         // the subtext, so they cannot contradict each other.
                         const link = classifyDownloadLink(m);
-                        const healthHost = (() => {
-                          try {
-                            const url = typeof m === "string" ? m : m?.url;
-                            return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-                          } catch { return ""; }
-                        })();
-                        const health = healthHost ? mirrorHealth.byHost.get(healthHost) : undefined;
-                        const tone = reliabilityTone(health?.percent ?? null);
+                        // The percentage shown is this device's OWN measured
+                        // history for this host — not a server aggregate that
+                        // resets with the Worker's in-memory store. A host with
+                        // no attempts reads "Not measured"; it never reads 0%
+                        // and never reads 100%.
+                        const rel: ReliabilityEntry | null = reliabilityForUrl(
+                          typeof m === "string" ? m : m?.url
+                        );
+                        const tone = reliabilityTone(rel?.percent ?? null);
                         return (
                           <div
                             key={i}
@@ -4819,7 +4914,7 @@ function DiscoverView({
                                 more. An unverified mirror says so outright.
                               */}
                               <p className="text-[9px] text-kindle-text-muted font-sans mt-0.5">
-                                {health?.reason || "Unverified — no download history for this mirror yet."}
+                                {rel?.reason || "Not measured yet — no download attempt from this mirror on this device."}
                               </p>
                             </div>
 
@@ -4831,10 +4926,10 @@ function DiscoverView({
                                 fully clickable.
                               */}
                               <span
-                                title={health?.reason || "No measured history yet"}
+                                title={rel?.reason || "No measured history yet"}
                                 className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider shrink-0 ${tone.text} ${tone.bg}`}
                               >
-                                {health?.badge || "Unverified"}
+                                {rel?.badge || "Not measured"}
                               </span>
 
                               {/* Always show Open in New Tab button for all mirrors */}

@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Architecture — Kora</title>
+<meta name="description" content="How Kora's backend fits together: the Cloudflare Worker request routing, the image and file proxy endpoints, the SSRF guard, the R2 relay, Firebase Auth and Firestore, the plugin system, the search engine ladder, and proxy-by-default image routing.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./kora-docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./index.html">
+      <img src="./favicon.svg" width="30" height="30" alt="" aria-hidden="true">
+      <span class="brand-txt">
+        <span class="brand-name">Kora</span>
+        <span class="brand-sub">Architecture</span>
+      </span>
+    </a>
+    <span class="top-sp"></span>
+    <nav class="top-links" aria-label="Pages">
+      <a href="./index.html">Overview</a>
+      <a href="./features.html">Features</a>
+      <a href="./self-hosting.html">Self-hosting</a>
+      <a href="./architecture.html" data-optional>Architecture</a>
+      <a href="./plugins.html">Plugins</a>
+    </nav>
+    <button class="icon-btn" id="theme" type="button">Night</button>
+    <button class="icon-btn nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="side" id="nav" aria-label="Sections">
+    <p class="side-h">Architecture</p>
+    <ol>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./features.html">Features</a></li>
+      <li><a href="#worker" aria-current="page">Worker routing</a></li>
+      <li><a href="#images">Image and file proxies</a></li>
+      <li><a href="#ssrf">SSRF guard</a></li>
+      <li><a href="#relay">R2 relay and KV</a></li>
+      <li><a href="#firebase">Firebase</a></li>
+      <li><a href="#plugins">Plugin system</a></li>
+      <li><a href="#search">Search engines</a></li>
+      <li><a href="#client">Client routing</a></li>
+    </ol>
+  </nav>
+
+  <main id="main">
+    <div class="hero">
+      <p class="eyebrow">Architecture</p>
+      <h1>Backend</h1>
+      <p class="lede">
+        Three pieces do the network and storage work: a Cloudflare Worker that
+        owns every outbound request, Firebase for accounts and user data, and a
+        plugin system that decides what content exists. This page covers what
+        each piece actually does, and where the boundaries are.
+      </p>
+      <ul class="chips">
+        <li class="chip">Cloudflare Worker</li>
+        <li class="chip">R2 + KV</li>
+        <li class="chip">Firebase Auth</li>
+        <li class="chip">Firestore</li>
+        <li class="chip">Two plugin runtimes</li>
+      </ul>
+    </div>
+
+    <section id="worker">
+      <h2>Worker request routing</h2>
+      <p>
+        One Worker serves both the API and the built client. In
+        <code>wrangler.toml</code>, static assets come from
+        <code>./dist</code> with
+        <code>not_found_handling = "single-page-application"</code>, so unknown
+        paths fall back to <code>index.html</code> and client routes such as
+        <code>/share</code> resolve.
+      </p>
+      <p>
+        The Worker itself is only reached first for two prefixes, set by
+        <code>run_worker_first = ["/api/*", "/send"]</code>:
+      </p>
+      <ol class="steps">
+        <li><code>/api/*</code> — the whole API surface.</li>
+        <li>
+          <code>/send</code> — the e-reader pairing page. It is in the list
+          because the device browsers it targets are old enough that booting
+          the React bundle to render a short code is slow and a reliable way to
+          hit a syntax error.
+        </li>
+      </ol>
+      <p>
+        Everything else is served as a static asset or falls through to the SPA.
+        Inside the Worker, <code>fetch()</code> reads the URL once, handles
+        <code>OPTIONS</code> as a CORS preflight returning the caller's origin
+        plus <code>Access-Control-Allow-Headers: Content-Type, Authorization,
+        X-API-Key, X-Requested-With</code>, then matches
+        <code>path</code> against a sequence of literal string comparisons.
+      </p>
+      <div class="note">
+        <p class="note-t">Route matching is literal, not pattern-based</p>
+        <p>
+          Endpoints are compared as exact strings such as
+          <code>path === "/api/proxy-image"</code>, with a few explicit
+          <code>startsWith</code> checks for families like
+          <code>/api/relay/</code>. There is no router library, so a new
+          endpoint is one <code>if</code> block and the order of blocks is the
+          order of precedence.
+        </p>
+      </div>
+    </section>
+
+    <section id="images">
+      <h2>Image and file endpoints</h2>
+      <p>Three endpoints exist because a browser on a consumer network cannot reliably reach an archive host directly.</p>
+
+      <div class="feat">
+        <h3 class="feat-h"><code>/api/proxy-image</code></h3>
+        <p>
+          Takes a <code>url</code> query parameter and streams the bytes back as
+          an image. It rejects <code>data:</code> and <code>blob:</code> targets,
+          then applies the shared SSRF guard, then fetches with a browser
+          <code>User-Agent</code>, an image <code>Accept</code> header and a
+          <code>Referer</code> derived from the target origin. The response is
+          cached with <code>Cache-Control: public, max-age=86400</code>.
+        </p>
+        <p>
+          Any <code>https</code> host is allowed. An earlier per-host allow-list
+          caused every book cover to return 403 in the Android build because the
+          mainstream cover CDNs were not on it, while news thumbnails — served by
+          a separate allow-any endpoint — kept working. The range checks moved
+          into the shared guard instead.
+        </p>
+      </div>
+
+      <div class="feat">
+        <h3 class="feat-h"><code>/api/proxy-file</code></h3>
+        <p>
+          Fetches book files, and is the download path for both the detail sheet
+          and the mirrors list. It accepts <code>GET</code>, <code>HEAD</code>
+          and <code>POST</code>, taking the target from either the
+          <code>url</code> parameter or a <code>download_url</code> JSON body,
+          then normalising it with <code>normalizeMediaUrl</code>.
+        </p>
+        <p>
+          Audio is a distinct path. When the request asks for audio — an
+          <code>audio=1</code> parameter, an <code>audio/*</code> Accept header,
+          or an audio-looking URL — it streams with <code>Range</code> support
+          and races several <code>Referer</code> values, because audiobook hosts
+          reject requests that do not look like they came from their own page.
+        </p>
+      </div>
+
+      <div class="feat">
+        <h3 class="feat-h"><code>/api/source-fetch</code></h3>
+        <p>
+          The HTML and JSON relay used by source plugins. It takes
+          <code>u</code> for the target and an optional <code>r</code> for a
+          <code>Referer</code>, requires an <code>http:</code> or
+          <code>https:</code> scheme, applies a 20-second abort, and returns the
+          upstream status, body and final URL as JSON rather than as a proxied
+          response. Returning the body as data lets the client parse it, which a
+          raw byte stream would not.
+        </p>
+        <div class="note warn">
+          <p class="note-t">This endpoint does not use the shared SSRF guard</p>
+          <p>
+            Unlike <code>/api/proxy-image</code>,
+            <code>/api/source-fetch</code> carries its own four-host blocklist
+            (<code>169.254.169.254</code>,
+            <code>metadata.google.internal</code>, <code>localhost</code>,
+            <code>127.0.0.1</code>) inline. That is weaker than
+            <code>assertSafeFetchTarget</code>, which range-checks private IPv4
+            and IPv6 ranges. Treat this as a known gap, not as equivalent
+            protection.
+          </p>
+        </div>
+      </div>
+
+      <div class="note">
+        <p class="note-t">Why relay images at all</p>
+        <p>
+          Two separate failures, and both are still current. Manga and book CDNs
+          enforce hotlink protection, and <code>createImageBitmap</code> is
+          stricter than an <code>&lt;img&gt;</code> element, so a direct load
+          fails where the element might have limped through. Separately, a DNS
+          filter on some consumer networks answers
+          <code>manhuaplus.com</code> and
+          <code>cdn.manhuaplus.com</code> with a Fortinet
+          "Fortiguard SDNS Blocked Page" certificate, so the browser refuses the
+          handshake with <code>net::ERR_CERT_AUTHORITY_INVALID</code>. Nothing is
+          wrong with the site and nothing is wrong with the selectors — the
+          interception sits between the browser and the origin, and Cloudflare's
+          DNS is not behind that filter.
+        </p>
+      </div>
+    </section>
+
+    <section id="ssrf">
+      <h2>SSRF guard</h2>
+      <p>
+        Any unauthenticated endpoint that fetches a caller-supplied URL can be
+        aimed at the internal network, where it can read a cloud metadata
+        service for credentials. <code>src/lib/ssrfGuard.ts</code> is the shared
+        guard, and it is layered:
+      </p>
+      <ol class="steps">
+        <li>
+          Scheme must be <code>http</code> or <code>https</code> — no
+          <code>file:</code>, <code>gopher:</code> or <code>data:</code>.
+        </li>
+        <li>
+          Literal IP hosts are range-checked for both IPv4 and IPv6, covering
+          loopback, RFC1918, link-local and CGNAT ranges.
+        </li>
+        <li>Obvious internal names are refused.</li>
+        <li>
+          Redirects are not re-validated by hostname, because
+          <code>fetch</code> follows them internally. Callers that must be
+          strict use <code>redirect: "manual"</code> and validate each hop — the
+          mirror probe does exactly this.
+        </li>
+      </ol>
+      <p>
+        It replaced an earlier denylist of four hostnames. That list read as
+        protection while passing <code>10.0.0.1</code>,
+        <code>192.168.1.1</code>, <code>172.16.0.1</code>,
+        <code>[::1]</code>, <code>0.0.0.0</code> and the whole
+        <code>127.0.0.0/8</code> block. <code>assertSafeFetchTarget</code> is
+        shared by <code>/api/proxy-image</code> and the mirror-probe endpoint
+        specifically so the newer endpoint cannot be more permissive than the
+        proxy beside it.
+      </p>
+    </section>
+
+    <section id="relay">
+      <h2>R2 relay and KV</h2>
+      <div class="feat">
+        <h3 class="feat-h">R2 — the e-reader relay</h3>
+        <p>
+          <code>/api/relay</code> and <code>/api/relay/*</code> store files
+          briefly so two devices can meet without either of them holding the
+          whole file. R2 is required rather than optional: the relay stores EPUBs
+          up to 50 MB, and KV cannot, because its value cap is 25 MB and its
+          eventual consistency makes an upload-then-pull flow race with itself.
+        </p>
+        <p>
+          If the <code>RELAY_BUCKET</code> binding is absent the Worker logs a
+          warning and falls back to per-isolate memory, and
+          <code>/api/relay/status</code> reports
+          <code>{"storage":"memory"}</code> — uploads then do not survive a
+          request boundary.
+        </p>
+      </div>
+      <div class="feat">
+        <h3 class="feat-h">KV — mirror health</h3>
+        <p>
+          The <code>MIRROR_HEALTH</code> namespace is declared in
+          <code>wrangler.toml</code> for production and shared with the default
+          environment. The intended design is a <code>KvMirrorStore</code>
+          backing recent mirror successes and failures so dead mirrors are tried
+          last.
+        </p>
+        <div class="note warn">
+          <p class="note-t">KV is not wired up yet</p>
+          <p>
+            <code>resolveMirrorStore</code> in
+            <code>src/lib/mirrorHealthStore.ts</code> still returns in-memory
+            per-isolate storage; the line that would return a
+            <code>KvMirrorStore</code> is a <code>TODO(KV)</code>. The binding
+            exists and its id is populated, so enabling it is a matter of
+            implementing that store, not of provisioning anything.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="firebase">
+      <h2>Firebase</h2>
+      <p>
+        Firebase supplies accounts and user data. Authentication is
+        <code>signInAnonymously</code> plus the account surfaces behind
+        <strong>Sign in</strong>; per-user data lives under
+        <code>users/&lt;uid&gt;/…</code> and is readable and writable only by
+        that uid.
+      </p>
+
+      <h3>The deployed rules do not match the committed rules</h3>
+      <p>
+        <code>firestore.rules</code> is the intended shape.
+        <code>firestore.rules.proposed</code> is the shape that matches what is
+        actually deployed, and the two differ in a way that has a visible
+        symptom.
+      </p>
+      <p>Firestore separates <code>get</code> from <code>list</code>:</p>
+      <div class="tw">
+        <table>
+          <caption class="sr">Observed Firestore operations against the deployed rules</caption>
+          <thead><tr><th>Operation</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET users/&lt;own uid&gt;/library/&lt;id&gt;</code></td><td>200 — a single document read works</td></tr>
+            <tr><td><code>LIST users/&lt;own uid&gt;/library</code></td><td>403 PERMISSION_DENIED</td></tr>
+            <tr><td><code>LIST communityBooks</code></td><td>403 PERMISSION_DENIED</td></tr>
+            <tr><td><code>GET communityBooks/&lt;id&gt;</code></td><td>200</td></tr>
+            <tr><td><code>PATCH users/&lt;own uid&gt;/library/&lt;id&gt;</code></td><td>200 — writes work</td></tr>
+            <tr><td><code>LIST publicBooks</code></td><td>403, though <code>firestore.rules</code> says <code>allow read: if true</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The library is read with a query rather than a document read, so every
+        library load is rejected while writes still succeed. That is why a saved
+        book appears to save and then is not there. The fix is
+        <code>allow list</code>, which <code>firestore.rules.proposed</code>
+        spells out for every path in use.
+      </p>
+      <div class="note">
+        <p class="note-t">Applying the rules is manual</p>
+        <p>
+          There is no deploy pipeline for rules in the repository, so
+          <code>firestore.rules.proposed</code> has to be pasted into Firebase
+          console under <strong>Firestore → Rules → Edit</strong>. Running
+          <code>npm run test:rules</code> checks a rules file against the
+          project's expected allow and deny behaviour, but it does not publish
+          anything.
+        </p>
+      </div>
+      <p>
+        The room collections — <code>blipRooms</code>,
+        <code>p2pRooms</code>, <code>battleRooms</code>,
+        <code>scrabbleRooms</code> — are deliberately world-writable within a
+        tight shape, because they hold only SDP and ICE signalling for anonymous
+        WebRTC sessions and the room id is the capability. They are unrelated to
+        the library problem.
+      </p>
+    </section>
+
+    <section id="plugins">
+      <h2>Plugin system</h2>
+      <p>
+        A plugin adds a source, integration, tool or theme without changing the
+        app. The registry index defaults to
+        <code>https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Sources/main/index.json</code>,
+        and additional repositories can be added as plain URLs.
+      </p>
+
+      <h3>Two runtimes</h3>
+      <div class="tw">
+        <table>
+          <caption class="sr">The two plugin runtimes</caption>
+          <thead><tr><th>Runtime</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>JSON definition</td>
+              <td>
+                Declarative rules mapping a source's endpoints to results, with
+                URL templates and paging parameters. The injected
+                <code>fetcher</code> makes it testable offline.
+              </td>
+            </tr>
+            <tr>
+              <td>Madara</td>
+              <td>
+                A client for WordPress sites running the Madara theme, detected
+                by the <code>theme: "madara"</code> field. Provides
+                <code>popular</code>, <code>latest</code>, <code>search</code>,
+                <code>details</code>, <code>chapters</code> and
+                <code>pages</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Install flow and trust gating</h3>
+      <ol class="steps">
+        <li>The registry index is fetched and its extensions listed.</li>
+        <li>
+          Extension metadata is parsed with a positional
+          <code>versionCode</code> split: <code>"106004"</code> with
+          <code>extensionLib: "1.6"</code> is libVersion 1.6 and extension code
+          4. Parsing it as an integer loses that split.
+        </li>
+        <li>Installing records the manifest and its sources in local storage.</li>
+        <li>
+          Readability is judged before an entry is offered, so a source with
+          nothing fetchable behind it is surfaced as such instead of being
+          presented as working.
+        </li>
+      </ol>
+      <div class="note warn">
+        <p class="note-t">There is no signature enforcement</p>
+        <p>
+          <code>RegistryIndex</code> carries an optional <code>signingKey</code>,
+          the SHA-256 of a signing certificate, but it is not verified against a
+          certificate. A user-added repository is treated as self-trusted by
+          explicit product decision, and adding one is a plain URL submission with
+          no confirmation dialog and no first-party allow-list. The sandbox is
+          the point: a source plugin is limited to what a plain <code>fetch</code>
+          could do, so a source cannot exceed the reach of the network it already
+          has.
+        </p>
+      </div>
+    </section>
+
+    <section id="search">
+      <h2>Search engines</h2>
+      <p>
+        Book search is served by the Rave search engine. Several other engines
+        exist alongside it and each reports itself honestly.
+      </p>
+      <div class="tw">
+        <table>
+          <caption class="sr">Search engines and what each one covers</caption>
+          <thead><tr><th>Engine</th><th>Covers</th></tr></thead>
+          <tbody>
+            <tr><td>Rave v1 <code>/api/v1/search</code></td><td>The primary index when a key is configured and the host answers</td></tr>
+            <tr><td>Rave legacy <code>/search/all</code></td><td>The same aggregator over many mirrors; needs no key</td></tr>
+            <tr><td>Google Books</td><td>Covers, publishers and descriptions; falls back to Open Library when the daily quota is gone</td></tr>
+            <tr><td>Open Library</td><td>Descriptions and metadata, including when Google Books has no blurb</td></tr>
+            <tr><td>Internet Archive</td><td>Direct items surfaced as their own mirror</td></tr>
+            <tr><td>LibGen mirrors</td><td>Resolved through signed CDN links, which expire and are re-minted per request</td></tr>
+            <tr><td>LibreTexts</td><td>Open textbook mirrors</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The engine ladder</h3>
+      <p>
+        A search races three rungs at once and reports which one won, in an
+        <code>engine</code> field:
+      </p>
+      <ol class="steps">
+        <li><code>v1</code> on <code>api.ravebooksearch.com</code> → <code>engine: "v1"</code></li>
+        <li><code>v1</code> on the legacy Worker host → <code>engine: "v1"</code></li>
+        <li>legacy <code>/search/all</code>, no key required → <code>engine: "legacy"</code></li>
+      </ol>
+      <p>
+        Every response also carries <code>fallback</code>, true whenever
+        <code>engine</code> is not <code>v1</code>.
+      </p>
+
+      <h3>Why a race and not a sequence</h3>
+      <p>
+        Both endpoints are genuinely slow and bursty upstream. A single legacy
+        <code>/search/all</code> request has been measured anywhere from 7 to 24
+        seconds, and v1 fails outright on roughly half of queries while its two
+        hosts fail independently of each other. A sequential ladder spends one
+        full timeout per rung, so a search could burn 24 seconds and still return
+        nothing. Racing means one shared budget — currently 28 seconds, sized
+        from the slowest healthy response observed — and the search is answered by
+        whichever rung is healthy first.
+      </p>
+      <div class="note">
+        <p class="note-t">Measured in production</p>
+        <p>
+          Across a ten-query sample against the deployed Worker, nine returned
+          real books and one failed every rung. v1 answered six of the ten, on
+          either host, and the legacy endpoint answered the rest. The failure is
+          upstream burstiness rather than a broken rung: the query that failed all
+          three returned 80 results from v1 on each of three immediate retries.
+        </p>
+      </div>
+      <p>
+        The same <code>User-Agent</code> constant is used on every call site.
+        Cloudflare's WAF answers a request without one with Error 1010,
+        "browser signature banned", which is not a 401 — so a missing header made
+        every v1 call fail before authentication and silently drop to the legacy
+        endpoint, which is why <code>fallback</code> used to be permanently true.
+      </p>
+      <p>
+        A Service Binding named <code>RAVE_BOOK_SEARCH</code> is supported and
+        used when present. <code>wrangler.toml</code> does not declare one, so
+        requests currently go out as ordinary fetches.
+      </p>
+
+      <h3>Mirror validation</h3>
+      <p>
+        Signed LibGen links carry a <code>key</code> that expires, so a fresh one
+        is minted per request by racing multiple mirrors. Mirror health is
+        intended to be recorded in KV so dead mirrors sort last; as noted above,
+        that store is still in-memory.
+      </p>
+    </section>
+
+    <section id="client">
+      <h2>Client image routing</h2>
+      <p>
+        A remote image is fetched through the Worker by default, never straight
+        from the browser. <code>resolveCoverImageSrc</code> in
+        <code>src/lib/coverImage.ts</code> passes <code>data:</code>,
+        <code>blob:</code> and already-local paths straight through and routes
+        everything else through <code>/api/proxy-image</code>. Reader pages use
+        the same decision, so a book's cover and a comic's pages cannot disagree
+        about whether to relay.
+      </p>
+      <p>
+        Proxy-first rather than direct-first is deliberate. On a blocked host
+        every direct attempt is doomed, so a direct-first fallback spends a failed
+        TLS handshake per image before retrying, and the fallback quietly becomes
+        the normal path with extra latency. The proxy costs a Worker invocation,
+        so it is scoped to remote <code>http(s)</code> URLs only; bundled assets
+        and anything already pointing at the Worker are left alone. Re-proxying a
+        Worker URL would produce a self-referential request the proxy rejects with
+        403, so that check runs first.
+      </p>
+    </section>
+
+    <a class="edit" href="https://github.com/CHAOTIC-RAY/Kora-/edit/main/docs/architecture.html">Edit this page on GitHub</a>
+
+    <div class="foot">
+      <p>
+        Kora is a personal project. What you can reach depends on your own
+        network, your own Firebase project and the rights to the material.
+      </p>
+    </div>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-h">On this page</p>
+    <ol>
+      <li><a href="#worker">Worker routing</a></li>
+      <li><a href="#images">Image and file proxies</a></li>
+      <li><a href="#ssrf">SSRF guard</a></li>
+      <li><a href="#relay">R2 relay and KV</a></li>
+      <li><a href="#firebase">Firebase</a></li>
+      <li><a href="#plugins">Plugin system</a></li>
+      <li><a href="#search">Search engines</a></li>
+      <li><a href="#client">Client routing</a></li>
+    </ol>
+    <p class="toc-h" style="margin-top:1.4rem">Elsewhere</p>
+    <ol>
+      <li><a href="./index.html">Overview</a></li>
+      <li><a href="./features.html">Features</a></li>
+      <li><a href="./self-hosting.html">Run it yourself</a></li>
+      <li><a href="./plugins.html">Build a plugin</a></li>
+    </ol>
+  </aside>
+
+</div>
+
+<script src="./kora-docs.js"></script>
+</body>
+</html>
