@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { proxyUrlForMirror } from "../lib/downloadProxy";
 import { storeBookFile } from "../db/indexedDB";
 import { syncBookToCloud, BookMetadata } from "../lib/firebase";
 import { inferBookTags } from "../lib/tagsHelper";
@@ -203,7 +204,7 @@ export default function InAppBrowser({ userId, onBookAdded, grayscaleCovers, ini
 
     try {
       // 1. Fetch file through our proxy to bypass CORS
-      const downloadProxyUrl = `/api/proxy-file?url=${encodeURIComponent(proxyUrl)}`;
+      const downloadProxyUrl = proxyUrlForMirror(proxyUrl);
       const response = await fetch(downloadProxyUrl);
       if (!response.ok) {
         let errMsg = `Server returned HTTP ${response.status} during book retrieval.`;

@@ -12,6 +12,7 @@ import { getDiscoverablePlugins, isUnreadableSource } from "../lib/sources/store
 import ComicDetailView from "./ComicDetailView";
 import { createSourceClient } from "../lib/sources/client";
 import { resolveBookFileUrl } from "../lib/sources/bookFile";
+import { proxyUrlForMirror } from "../lib/downloadProxy";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
@@ -3055,7 +3056,9 @@ function DiscoverView({
           error: null 
         });
 
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        // Already-proxied mirror URLs must not be wrapped again — see
+        // proxyUrlForMirror for what a proxy-of-a-proxy costs.
+        const proxyUrl = proxyUrlForMirror(mirror.url);
         const response = await fetch(proxyUrl);
         if (!response.ok) {
           let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
@@ -3343,7 +3346,7 @@ function DiscoverView({
         });
       } else {
         const mirrorUrl = typeof mirror === "string" ? mirror : mirror.url;
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirrorUrl)}`;
+        const proxyUrl = proxyUrlForMirror(mirrorUrl);
         setDownloadProgress({ step: "downloading", percent: 30, error: null });
         response = await fetch(proxyUrl);
       }

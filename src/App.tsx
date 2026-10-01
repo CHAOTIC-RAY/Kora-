@@ -94,6 +94,7 @@ import { logger } from "./lib/logger";
 import { judgeMirrorDownload } from "./lib/mirrorOutcome";
 import { hostOf, recordMirrorOutcome } from "./lib/mirrorReliability";
 import { isRealLibgenMd5, isFileUrl } from "./lib/bookIdentity";
+import { proxyUrlForMirror } from "./lib/downloadProxy";
 
 /**
  * Concatenate streamed chunks into one contiguous Uint8Array.
@@ -1197,6 +1198,18 @@ export default function App() {
   >(new Map());
   /** Download IDs that have received real SW byte progress (not just "Starting…"). */
   const swMadeProgressRef = useRef<Set<string>>(new Set());
+  /**
+   * Mirror URLs already burned for a download, per download id.
+   *
+   * The watchdog below retries in the foreground, and the manual Retry button
+   * does the same. Both used to hand `startBackgroundDownload` the *full*
+   * mirror list again, so a throttled host was re-tried first every time —
+   * a loop rather than a ladder. The 2026-10-01 log shows exactly that:
+   * `Mirror 1/10` appearing four times for "HOLLOW BONES" while libgen.li sat
+   * rate-limited at 0 bytes. Recording what has been tried lets each retry
+   * resume at the next untried host instead.
+   */
+  const triedMirrorsRef = useRef<Map<string, Set<string>>>(new Map());
   const swWatchdogTimersRef = useRef<Map<string, number>>(new Map());
 
   const removeDownloadEntry = useCallback((downloadId: string) => {
@@ -1390,6 +1403,31 @@ export default function App() {
     }
   }
 
+  /**
+   * Mirrors for a retry, minus the ones already burned for this download.
+   *
+   * Returns the untouched list when everything has been tried, rather than an
+   * empty array: re-trying the full ladder is a reasonable last resort, and
+   * an empty list would surface as "No valid download mirrors available",
+   * which is both wrong and a dead end for the user.
+   */
+  function untriedMirrors(downloadId: string, mirrors: any[]) {
+    const tried = triedMirrorsRef.current.get(downloadId);
+    if (!tried || tried.size === 0) return mirrors;
+    const fresh = mirrors.filter((m) => !tried.has(m?.url));
+    return fresh.length > 0 ? fresh : mirrors;
+  }
+
+  function markMirrorTried(downloadId: string, url: string) {
+    if (!url) return;
+    let set = triedMirrorsRef.current.get(downloadId);
+    if (!set) {
+      set = new Set<string>();
+      triedMirrorsRef.current.set(downloadId, set);
+    }
+    set.add(url);
+  }
+
   function armSwDownloadWatchdog(downloadId: string) {
     clearSwDownloadWatchdog(downloadId);
     const timer = window.setTimeout(() => {
@@ -1410,7 +1448,10 @@ export default function App() {
         /* ignore */
       }
       toast.loading(`Retrying ${fallback.book.title}…`, { id: downloadId });
-      void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
+      // Skip the hosts this download already failed on, so the retry advances
+      // down the ladder instead of re-hitting a throttled mirror 1.
+      const nextMirrors = untriedMirrors(downloadId, fallback.mirrors);
+      void startBackgroundDownload(fallback.book, nextMirrors, fallback.variant, {
         reuseDownloadId: downloadId,
         skipServiceWorker: true,
       });
@@ -1511,7 +1552,7 @@ export default function App() {
           try { await Notification.requestPermission(); } catch (e) {}
         }
         const proxyUrls = mirrorList.map(
-          (m) => `/api/proxy-file?url=${encodeURIComponent(m.url)}`
+          (m) => proxyUrlForMirror(m.url)
         );
         const proxyUrl = proxyUrls[0];
         const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
@@ -1574,7 +1615,7 @@ export default function App() {
           return updated;
         });
 
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        const proxyUrl = proxyUrlForMirror(mirror.url);
         const abortController = new AbortController();
         foregroundDownloadAborts.current.set(downloadId, abortController);
 

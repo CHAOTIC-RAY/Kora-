@@ -4124,10 +4124,34 @@ export default {
         const contentType = response.headers.get("content-type") || "application/octet-stream";
         if (contentType.toLowerCase().includes("text/html")) {
           const text = await response.clone().text();
-          if (text.includes("Cloudflare") || text.includes("captcha")) {
-            throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare protection. Please try a different direct mirror (like libgen.li or IPFS).");
+          // Detect an actual interstitial, not merely a page that MENTIONS
+          // Cloudflare. The previous test was `text.includes("Cloudflare")`,
+          // which matched almost every real site: the footer of any
+          // Cloudflare-fronted page links to cloudflare.com. That made a plain
+          // 200 HTML page report "blocked by CAPTCHA", and — worse — it
+          // misreported genuine upstream failures, because a CDN 429/5xx error
+          // page mentions Cloudflare too. Users saw "try a different mirror"
+          // for what was actually a rate limit.
+          //
+          // An interstitial is identified by its title/heading, not by prose.
+          const isChallengePage =
+            /<title>\s*(just a moment|attention required|attention needed|checking your browser|please wait)/i.test(text) ||
+            /<h1[^>]*>\s*(just a moment|attention required|checking your browser)/i.test(text) ||
+            /\b(cf-|challenge-platform|__cf_chl_|cf_chl_opt|captcha-delivery)/i.test(text) ||
+            /g-recaptcha|h-captcha/i.test(text);
+
+          if (isChallengePage) {
+            throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare challenge page. Please try a different direct mirror (like libgen.li or IPFS).");
           }
-          throw new Error("This mirror URL returned an HTML webpage instead of a binary book file. This usually happens when the mirror requires manual verification (like resolving a CAPTCHA), wait countdowns, or the link has expired.");
+          // Not a challenge — so this URL simply is not a file. Say that, and
+          // pass the real reason through, so a 429 does not read as "expired
+          // link" and send the user hunting for a mirror that would not help.
+          const hint = response.status === 429
+            ? "The mirror is rate-limiting requests right now (HTTP 429). Waiting a moment and retrying the same mirror is more likely to work than switching."
+            : response.status >= 500
+              ? `The mirror itself is failing (HTTP ${response.status}). This is not the link's fault; retry shortly.`
+              : "This URL returned an HTML webpage instead of a book file, so it is probably a landing page, an ad page, or an expired link rather than the file.";
+          throw new Error(`This mirror did not serve a file. ${hint}`);
         }
 
         const resHeaders = new Headers(response.headers);
