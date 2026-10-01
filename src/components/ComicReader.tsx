@@ -472,14 +472,25 @@ export function ComicReader({
   else setChromeVisible((v) => !v);
   };
 
-  // Step to the adjacent chapter, for the arrows in the page label.
-  const stepChapter = (dir: 1 | -1) => {
-  if (!chapters.length) return;
+  /**
+   * Step to the adjacent chapter, for the arrows in the page label.
+   *
+   * `dir` is in READING order, not array order. The `chapters` array arrives
+   * newest-first (the `ordered` sort in ComicDetailView), so reading
+   * "next" is a step of -1 and reading "previous" is +1. Folding that
+   * inversion in here means the call sites can be labelled honestly —
+   * `stepChapter("next")` really is the next chapter — instead of every
+   * button having to remember which way the list happens to be sorted,
+   * which is how the two labels came to be swapped in the first place.
+   */
+  const stepChapter = (dir: "next" | "prev") => {
+  if (!chapters.length) return false;
   const pos = chapters.findIndex((c) => c.url === chapter.url);
-  if (pos < 0) return;
-  const next = chapters[pos + dir];
-  if (!next) return;
+  if (pos < 0) return false;
+  const next = chapters[pos + (dir === "prev" ? 1 : -1)];
+  if (!next) return false;
   onChapterChange?.(next);
+  return true;
   };
 
   const label = chapter.number ? `Chapter ${chapter.number}` : chapter.name;
@@ -598,6 +609,10 @@ export function ComicReader({
   alt={`${label} page ${shown}`}
   pageLabel={`${shown} / ${total}`}
   webtoon
+  // The same transform the paged branch gets. It used to be omitted
+  // here, so pinch-to-zoom and pan silently did nothing on a webtoon
+  // — the zoom state changed, the pixels did not.
+  transform={{ x: pan.x, y: pan.y, scale: zoom }}
   onFailure={onPageFailure}
   onRetry={onPageRetry}
   onSkip={forward}
@@ -680,14 +695,21 @@ export function ComicReader({
   {/* step between chapters without leaving the reader */}
   {chapters.length > 1 && (
   <div className="flex items-center justify-between gap-2 px-3 pb-3">
+  {/*
+  The chapter list arrives newest-first (see the `ordered` sort in
+  ComicDetailView), so a HIGHER index is the NEWER chapter — the
+  reverse of what the array offsets suggest. `stepChapter` takes the
+  direction in reading order so these labels stay honest; the
+  inversion lives in one place instead of being re-guessed per button.
+  */}
   <button
-  onClick={() => stepChapter(1)}
+  onClick={() => stepChapter("prev")}
   className="text-[9px] font-bold uppercase tracking-widest text-white/50 hover:text-white/90 cursor-pointer"
   >
   ← Prev chapter
   </button>
   <button
-  onClick={() => stepChapter(-1)}
+  onClick={() => stepChapter("next")}
   className="text-[9px] font-bold uppercase tracking-widest text-white/50 hover:text-white/90 cursor-pointer"
   >
   Next chapter →
