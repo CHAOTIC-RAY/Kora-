@@ -64,10 +64,17 @@ import {
 } from "../lib/gamePresets";
 import {
   buildHistorySurface,
+  buildWizardRail,
+  COMPETITION_STEP_SKIP_MESSAGE,
   deriveBracket,
+  deriveCompetitionField,
+  regenerateCompetitionField,
   resolveRoundSource,
   sanitizeStoredBracket,
   shouldShowTournament,
+  wizardStepIndicator,
+  WIZARD_STEPS,
+  type CompetitionField,
 } from "../lib/trackerSurfaces";
 
 export { GAME_PRESETS };
@@ -123,15 +130,13 @@ export interface MatchHistoryEntry {
   roundsPlayed?: number;
 }
 
-/** The six setup steps, in the order the wizard walks them. */
-const WIZARD_STEPS = [
-  { id: "preset", title: "Game Preset", hint: "Pick the ruleset" },
-  { id: "rules", title: "Verify Rules", hint: "Win condition & target" },
-  { id: "timer", title: "Turn Timer", hint: "On or off" },
-  { id: "mode", title: "Competition Mode", hint: "Scored or casual" },
-  { id: "roster", title: "Roster", hint: "Names & handicaps" },
-  { id: "launch", title: "Start Game", hint: "Review & launch" },
-] as const;
+/**
+ * The six setup steps live in `trackerSurfaces` as pure data so the rail, the
+ * "skipped" marking and the tests can all read one list. See `WIZARD_STEPS`
+ * there: step 3 carries the turn timer AND the competition-mode toggle, step 4
+ * is the general roster, step 5 verifies the seeded competition field and is
+ * marked skipped (not removed) when competition mode is off.
+ */
 
 /**
  * Modal confirmation. Used by the two destructive wizard paths: swapping the
@@ -272,7 +277,17 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const [activeTab, setActiveTab] = useState<"game" | "history" | "tournament">("game");
 
   // ---- Setup wizard navigation (replaces the one long scrolling form) ----
-  const [wizardStep, setWizardStep] = useState<number>(0);
+    const [wizardStep, setWizardStep] = useState<number>(0);
+      /**
+       * Seed behind the competition field drawn on wizard step 5.
+       *
+       * Held as state rather than a bare `Math.random()` per render so the field is
+       * stable while the user reads it, and so Regenerate can redraw deliberately
+       * instead of the field reshuffling on every re-render.
+       */
+      const [competitionSeed, setCompetitionSeed] = useState<number>(1);
+      /** Feedback from the last Regenerate click — what changed, or why nothing did. */
+      const [fieldNote, setFieldNote] = useState<string | null>(null);
   /** True once the user has hand-edited a step 2-5 value. */
   const [setupTouched, setSetupTouched] = useState<boolean>(false);
   /** Preset switch waiting on a "this discards your edits" confirmation. */
@@ -788,10 +803,62 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   }, [competitionMode, activeTab]);
 
   const goToStep = useCallback((next: number) => {
-    const clamped = Math.max(0, Math.min(WIZARD_STEPS.length - 1, next));
-    setWizardStep(clamped);
-    setActiveTab("game");
-  }, []);
+      const clamped = Math.max(0, Math.min(WIZARD_STEPS.length - 1, next));
+      setWizardStep(clamped);
+      setActiveTab("game");
+    }, []);
+
+    /**
+     * The progress rail. Always six entries: the competition roster step is
+     * MARKED skipped when competition mode is off, never removed, so "step 5"
+     * still means the same thing in either mode.
+     */
+    const wizardRail = useMemo(() => buildWizardRail(wizardStep, competitionMode), [wizardStep, competitionMode]);
+    const stepIndicator = wizardStepIndicator(wizardStep, competitionMode);
+
+    /**
+     * The seeded competition field for wizard step 5.
+     *
+     * A pure derivation from (roster, teams, seed) — the same inputs always give
+     * the same field, so the verification step shows a stable field and
+     * Regenerate has something real to change. An unusable roster comes back as
+     * `{ ok: false, reason }` and the panel says why instead of drawing a field
+     * from nothing.
+     */
+    const competitionSides = useMemo(
+      () => teamsForMatch.map((t) => ({ id: t.id, label: t.label, size: t.size })),
+      [teamsForMatch]
+    );
+
+    const competitionFieldResult = useMemo(
+      () => deriveCompetitionField(players.map((p) => p.name), competitionSeed, competitionSides),
+      [players, competitionSeed, competitionSides]
+    );
+
+    const competitionField: CompetitionField | null = competitionFieldResult.field;
+
+    /**
+     * Regenerate: redraw the seeded field and report what actually changed.
+     *
+     * It advances the seed until the draw genuinely differs, so the button can
+     * never land on an identical field and claim success. With a field too small
+     * to redraw (two players) it says so, and with an unusable roster it reports
+     * the roster problem instead of regenerating anything.
+     */
+    const handleRegenerateField = () => {
+          const result = regenerateCompetitionField(
+            players.map((p) => p.name),
+            competitionSides,
+            competitionSeed
+          );
+          if (!result.ok) {
+                      setFieldNote(result.reason);
+                      return;
+                    }
+                    if (!result.field) return;
+                    setCompetitionSeed(result.field.seed);
+          setFieldNote(result.note);
+        };
 
   /** Leaving the wizard mid-match keeps the match exactly as it is. */
   const returnToMatch = () => {
@@ -924,6 +991,64 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const openMatchRounds = (id: string) => {
     setSelectedMatchId(id);
     setHistorySubTab("rounds");
+  };
+
+  const renderRoundLog = (m: MatchHistoryEntry) => {
+    if (!m.rounds || m.rounds.length === 0) {
+      return (
+        <div className="py-12 text-center text-kindle-text-muted space-y-2 bg-kindle-card border border-kindle-border rounded-2xl">
+          <History className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
+          <p className="text-xs font-bold text-kindle-text">No rounds recorded</p>
+          <p className="text-[10px]">
+            {m.id === "__live__"
+              ? "This match is still in play — submit a round to start the log."
+              : "This match ended before any round was logged."}
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-3">
+        {m.rounds.map((r) => {
+          const rTotals: Record<string, number> = {};
+          for (const pl of m.players) rTotals[pl.name] = 0;
+          m.rounds
+            .slice(0, r.roundNumber)
+            .forEach((rr) => {
+              (m.playerIds || m.players.map((p) => p.name)).forEach((pid, i) => {
+                const name = m.players[i]?.name || pid;
+                rTotals[name] = (rTotals[name] || 0) + (rr.playerScores[pid] || 0);
+              });
+            });
+          const ids = m.playerIds || m.players.map((p) => p.name);
+
+          return (
+            <div key={r.roundNumber} className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between border-b border-kindle-border pb-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-kindle-text">Round {r.roundNumber}</span>
+                <span className="text-[9px] text-kindle-text-muted">
+                  {new Date(r.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <div className="space-y-1">
+                {m.players.map((pl, i) => {
+                  const gained = r.playerScores[ids[i]] || 0;
+                  return (
+                    <div key={pl.name} className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="text-kindle-text-muted truncate">{pl.name}</span>
+                      <span className="font-mono shrink-0">
+                        <span className="text-kindle-text">+{gained}</span>
+                        <span className="text-kindle-text-muted"> → {rTotals[pl.name] || 0}</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   if (!open) return null;
@@ -1083,52 +1208,65 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
                   {/* ---- Step indicator ---- */}
                   <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-                        Step {wizardStep + 1} of {WIZARD_STEPS.length}
-                      </span>
-                      <span className="text-[9px] text-kindle-text-muted truncate">{WIZARD_STEPS[wizardStep].hint}</span>
-                    </div>
+                                      <div className="flex items-baseline justify-between gap-3">
+                                        <span
+                                          className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted"
+                                          data-testid="wizard-step-indicator"
+                                        >
+                                          {stepIndicator}
+                                        </span>
+                                        <span className="text-[9px] text-kindle-text-muted truncate">{WIZARD_STEPS[wizardStep].hint}</span>
+                                      </div>
 
-                    {/* Tappable progress rail — a phone tap target, not just a bar. */}
-                    <div className="flex items-center gap-1.5" role="tablist" aria-label="Setup steps">
-                      {WIZARD_STEPS.map((s, i) => {
-                        const done = i < wizardStep;
-                        const current = i === wizardStep;
-                        const skipped = s.id === "roster" && !competitionMode;
-                        return (
-                          <button
-                            key={s.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={current}
-                            aria-label={`Step ${i + 1}: ${s.title}`}
-                            data-testid={`wizard-step-${i}`}
-                            onClick={() => goToStep(i)}
-                            className={`h-1.5 flex-1 rounded-full transition cursor-pointer ${
-                              current ? "bg-kindle-accent" : done ? "bg-kindle-text/40" : "bg-kindle-border"
-                            } ${skipped && !current ? "opacity-40" : ""}`}
-                          />
-                        );
-                      })}
-                    </div>
+                                      {/* Tappable progress rail — a phone tap target, not just a bar.
+                                          Always six segments: the conditional step is dimmed and
+                                          labelled, never dropped, so the numbering cannot jump. */}
+                                      <div className="flex items-center gap-1.5" role="tablist" aria-label="Setup steps">
+                                        {wizardRail.map((s) => {
+                                          const current = s.state === "current";
+                                          return (
+                                            <button
+                                              key={s.id}
+                                              type="button"
+                                              role="tab"
+                                              aria-selected={current}
+                                              aria-label={s.label}
+                                              title={s.label}
+                                              data-testid={`wizard-step-${s.index}`}
+                                              data-step-state={s.state}
+                                              onClick={() => goToStep(s.index)}
+                                              className={`h-1.5 flex-1 rounded-full transition cursor-pointer ${
+                                                current ? "bg-kindle-accent" : s.state === "done" ? "bg-kindle-text/40" : "bg-kindle-border"
+                                              } ${s.skipped && !current ? "opacity-40" : ""}`}
+                                            />
+                                          );
+                                        })}
+                                      </div>
 
-                    <div className="flex items-center justify-between gap-2 pt-1">
-                      <h4 className="text-sm font-bold text-kindle-text flex items-center gap-2 min-w-0">
-                        <Sparkles className="w-4 h-4 text-kindle-accent shrink-0" />
-                        <span className="truncate">{WIZARD_STEPS[wizardStep].title}</span>
-                      </h4>
-                      {wizardStep > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => goToStep(wizardStep - 1)}
-                          className="shrink-0 flex items-center gap-1 text-[10px] text-kindle-text-muted hover:text-kindle-text cursor-pointer"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5" /> Back
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                                      <div className="flex items-center justify-between gap-2 pt-1">
+                                        <h4 className="text-sm font-bold text-kindle-text flex items-center gap-2 min-w-0">
+                                          <Sparkles className="w-4 h-4 text-kindle-accent shrink-0" />
+                                          <span className="truncate">{WIZARD_STEPS[wizardStep].title}</span>
+                                          {wizardRail[wizardStep]?.skipped && (
+                                            <span
+                                              className="shrink-0 px-2 py-0.5 rounded-lg bg-kindle-bg border border-kindle-border text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted"
+                                              data-testid="step-skipped-badge"
+                                            >
+                                              Skipped — competition mode off
+                                            </span>
+                                          )}
+                                        </h4>
+                                        {wizardStep > 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => goToStep(wizardStep - 1)}
+                                            className="shrink-0 flex items-center gap-1 text-[10px] text-kindle-text-muted hover:text-kindle-text cursor-pointer"
+                                          >
+                                            <ChevronLeft className="w-3.5 h-3.5" /> Back
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
 
                   {/* ---- Step panel ---- */}
                   <AnimatePresence mode="wait">
@@ -1419,77 +1557,75 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                             ))}
                           </div>
                           <p className="text-[9px] text-kindle-text-muted pt-1">
-                            Only runs when Competition Mode is on (step 4).
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-[10px] text-kindle-text-muted bg-kindle-card border border-dashed border-kindle-border rounded-2xl p-4">
-                          Timer off — turns are unlimited and no expiry alerts will appear.
-                        </p>
-                      )}
-                    </div>
-                  )}
+                                                      Only runs when Competition Mode is on (toggle below).
+                                                    </p>
+                                                  </div>
+                                                ) : (
+                                                  <p className="text-[10px] text-kindle-text-muted bg-kindle-card border border-dashed border-kindle-border rounded-2xl p-4">
+                                                    Timer off — turns are unlimited and no expiry alerts will appear.
+                                                  </p>
+                                                )}
 
-                  {/* STEP 4 — Competition mode: enable or disable */}
-                  {wizardStep === 3 && (
-                    <div className="space-y-3">
-                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div className="flex items-start gap-3 min-w-0">
-                          <div className={`p-2.5 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
-                            competitionMode ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
-                          }`}>
-                            <Swords className="w-5 h-5" />
-                          </div>
-                          <div className="space-y-0.5 text-left">
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-xs sm:text-sm font-bold text-kindle-text">Competition Mode</h4>
-                              {competitionMode && (
-                                <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20">
-                                  Active
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[10px] sm:text-[11px] text-kindle-text-muted leading-snug">
-                              Locks round scores, enforces time limits, tracks blitz speed bonuses, and records tournament placements.
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setCompetitionMode(!competitionMode)}
-                          data-testid="toggle-competition"
-                          role="switch"
-                          aria-checked={competitionMode}
-                          aria-label="Toggle competition mode"
-                          className={`w-12 h-6 rounded-full p-0.5 transition-colors duration-200 cursor-pointer focus:outline-none flex items-center shrink-0 ${
-                            competitionMode ? "bg-[#e0533c]" : "bg-neutral-800"
-                          }`}
-                        >
-                          <motion.div
-                            layout
-                            className="w-5 h-5 rounded-full bg-white shadow-md"
-                            animate={{ x: competitionMode ? 24 : 0 }}
-                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                          />
-                        </button>
-                      </div>
-                      <p className="text-[9px] text-kindle-text-muted flex items-start gap-1.5">
-                        <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        {competitionMode
-                          ? "On: the turn clock runs and scores are locked per round."
-                          : "Off: the turn clock is skipped and step 5 (Roster) becomes optional — you can still name players for the scoreboard."}
-                      </p>
-                    </div>
-                  )}
+                                                {/* Competition mode lives on THIS step: the clock and the
+                                                    mode it depends on are decided together, and step 5's
+                                                    conditional verification follows from this one toggle. */}
+                                                <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                                                  <div className="flex items-start gap-3 min-w-0">
+                                                    <div className={`p-2.5 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
+                                                      competitionMode ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
+                                                    }`}>
+                                                      <Swords className="w-5 h-5" />
+                                                    </div>
+                                                    <div className="space-y-0.5 text-left">
+                                                      <div className="flex items-center gap-2">
+                                                        <h4 className="text-xs sm:text-sm font-bold text-kindle-text">Competition Mode</h4>
+                                                        {competitionMode && (
+                                                          <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20">
+                                                            Active
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      <p className="text-[10px] sm:text-[11px] text-kindle-text-muted leading-snug">
+                                                        Locks round scores, enforces time limits, tracks blitz speed bonuses, and records tournament placements.
+                                                      </p>
+                                                    </div>
+                                                  </div>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => { setCompetitionMode(!competitionMode); markTouched(); }}
+                                                    data-testid="toggle-competition"
+                                                    role="switch"
+                                                    aria-checked={competitionMode}
+                                                    aria-label="Toggle competition mode"
+                                                    className={`w-12 h-6 rounded-full p-0.5 transition-colors duration-200 cursor-pointer focus:outline-none flex items-center shrink-0 ${
+                                                      competitionMode ? "bg-[#e0533c]" : "bg-neutral-800"
+                                                    }`}
+                                                  >
+                                                    <motion.div
+                                                      layout
+                                                      className="w-5 h-5 rounded-full bg-white shadow-md"
+                                                      animate={{ x: competitionMode ? 24 : 0 }}
+                                                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                                    />
+                                                  </button>
+                                                </div>
+                                                <p className="text-[9px] text-kindle-text-muted flex items-start gap-1.5" data-testid="competition-mode-note">
+                                                  <Lock className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                                  {competitionMode
+                                                    ? "On: the turn clock runs, scores are locked per round, and step 5 verifies the competition roster."
+                                                    : "Off: the turn clock is skipped, step 5 is marked skipped, and naming players stays optional for the scoreboard."}
+                                                </p>
+                                              </div>
+                                            )}
 
-                  {/* STEP 5 — Competition roster */}
-                  {wizardStep === 4 && (
-                    <div className="space-y-3">
-                      {!competitionMode && (
-                        <div className="p-3 bg-kindle-card border border-dashed border-kindle-border rounded-2xl flex items-start gap-2">
-                          <Lock className="w-3.5 h-3.5 text-kindle-text-muted shrink-0 mt-0.5" />
-                          <p className="text-[10px] text-kindle-text-muted">
-                            Competition Mode is off, so handicaps and colours are skipped. Naming players is optional.
+                                            {/* STEP 4 — Roster: names, handicaps, teams */}
+                                            {wizardStep === 3 && (
+                                              <div className="space-y-3">
+                                                {!competitionMode && (
+                                                  <div className="p-3 bg-kindle-card border border-dashed border-kindle-border rounded-2xl flex items-start gap-2">
+                                                    <Lock className="w-3.5 h-3.5 text-kindle-text-muted shrink-0 mt-0.5" />
+                                                    <p className="text-[10px] text-kindle-text-muted">
+                                                      Competition Mode is off, so handicaps and colours are skipped. Naming players is optional.
                           </p>
                         </div>
                       )}
@@ -1638,28 +1774,154 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                     </div>
                   )}
 
-                  {/* STEP 6 — Review and launch */}
-                  {wizardStep === 5 && (
-                    <div className="space-y-4">
-                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">Match Review</h4>
-                        {[
-                          { label: "Game", value: `${selectedPreset.iconName} ${selectedPreset.name}` },
-                          { label: "Win condition", value: winCondition === "highest" ? "Highest score wins" : "Lowest score wins" },
-                          { label: "Target points", value: targetScore ? `${targetScore} points` : "No limit" },
-                          { label: "Turn timer", value: !turnTimerEnabled ? "Off" : !competitionMode ? "Off (needs competition mode)" : `${turnTimerSeconds}s per turn` },
-                          { label: "Competition mode", value: competitionMode ? "On — scores locked per round" : "Off — casual" },
-                          { label: "Categories", value: enableCategories && categories.length ? categories.join(", ") : "Single score per round" },
-                          { label: "Roster", value: `${players.length} player${players.length === 1 ? "" : "s"}: ${players.map((p) => p.name || "—").join(", ")}` },
-                          ...(teamGame
-                            ? [{
-                                label: "Teams",
-                                value: teamsForMatch
-                                  .map((t) => `${t.label}: ${players.filter((p) => p.teamId === t.id).map((p) => p.name || "—").join(", ") || "none"}`)
-                                  .join("  ·  "),
-                              }]
-                            : []),
-                        ].map((row) => (
+                  {/* STEP 5 — Competition roster: verify the seeded field.
+                                        Only reachable when competition mode is on; with it off the
+                                        panel still renders, but as an explanation of the skip
+                                        rather than a vanishing step. */}
+                                    {wizardStep === 4 && (
+                                      <div className="space-y-3">
+                                        {!competitionMode ? (
+                                          <div
+                                            className="p-4 bg-kindle-card border border-dashed border-kindle-border rounded-2xl flex items-start gap-2"
+                                            data-testid="competition-step-skipped"
+                                          >
+                                            <Lock className="w-4 h-4 text-kindle-text-muted shrink-0 mt-0.5" />
+                                            <div className="space-y-2">
+                                              <p className="text-[11px] font-bold text-kindle-text">{COMPETITION_STEP_SKIP_MESSAGE}</p>
+                                              <p className="text-[10px] text-kindle-text-muted">
+                                                The step keeps its number so the rail does not jump. Nothing below is needed for a casual match.
+                                              </p>
+                                              <button
+                                                type="button"
+                                                onClick={() => goToStep(2)}
+                                                className="text-[10px] font-bold text-kindle-accent hover:underline cursor-pointer"
+                                              >
+                                                Go to step 3 to turn competition mode on
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : !competitionField ? (
+                                          /* Roster empty or too small to draw a field from. Say so
+                                             plainly — a regenerate button here would be a lie. */
+                                          <div
+                                            className="p-4 bg-kindle-card border border-[#e0533c]/30 rounded-2xl flex items-start gap-2"
+                                            data-testid="competition-field-error"
+                                            role="alert"
+                                          >
+                                            <AlertTriangle className="w-4 h-4 text-[#e0533c] shrink-0 mt-0.5" />
+                                            <div className="space-y-2">
+                                              <p className="text-[11px] font-bold text-kindle-text">Cannot draw a competition field</p>
+                                                                          <p className="text-[10px] text-kindle-text-muted">
+                                                                            {competitionFieldResult.ok ? "The roster could not be turned into a field." : competitionFieldResult.reason}
+                                                                          </p>
+                                              <button
+                                                type="button"
+                                                onClick={() => goToStep(3)}
+                                                className="text-[10px] font-bold text-kindle-accent hover:underline cursor-pointer"
+                                              >
+                                                Back to step 4 to fix the roster
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                              <div className="space-y-0.5">
+                                                <h4 className="text-xs font-bold text-kindle-text">Seeded Field</h4>
+                                                <p className="text-[10px] text-kindle-text-muted">
+                                                  Seed {competitionField.seed} · {competitionField.order.length} players. Check the draw and the sides before starting.
+                                                </p>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={handleRegenerateField}
+                                                data-testid="regenerate-field"
+                                                className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer"
+                                              >
+                                                <RotateCcw className="w-3.5 h-3.5" /> Regenerate
+                                              </button>
+                                            </div>
+
+                                            {fieldNote && (
+                                              <p
+                                                className="p-3 bg-kindle-accent/10 border border-kindle-accent/20 rounded-2xl text-[10px] text-kindle-text"
+                                                data-testid="regenerate-note"
+                                                role="status"
+                                              >
+                                                {fieldNote}
+                                              </p>
+                                            )}
+
+                                            <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-2">
+                                              <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Seeding Order</h5>
+                                              <ol className="space-y-1" data-testid="seeding-order">
+                                                {competitionField.order.map((name, i) => {
+                                                  const side = competitionField.allocation.find((a) => a.players.includes(name));
+                                                  return (
+                                                    <li key={`${name}-${i}`} className="flex items-center justify-between gap-3 text-[11px]">
+                                                      <span className="font-mono text-kindle-text-muted">{i + 1}.</span>
+                                                      <span className="font-bold text-kindle-text flex-1 truncate">{name}</span>
+                                                      <span className="text-[10px] text-kindle-text-muted truncate">{side?.label ?? "—"}</span>
+                                                    </li>
+                                                  );
+                                                })}
+                                              </ol>
+                                            </div>
+
+                                            {competitionField.allocation.length > 1 && (
+                                              <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-2">
+                                                <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Sides</h5>
+                                                {competitionField.allocation.map((a) => (
+                                                  <div key={a.sideId} className="flex items-center justify-between gap-3 text-[11px]">
+                                                    <span className="font-bold text-kindle-text">{a.label}</span>
+                                                    <span className="text-kindle-text-muted truncate">{a.players.join(", ") || "empty"}</span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+
+                                            {competitionField.pairings.length > 0 && (
+                                              <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-2">
+                                                <h5 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Opening Pairings</h5>
+                                                {competitionField.pairings.map((p, i) => (
+                                                  <div key={i} className="text-[11px] text-kindle-text">
+                                                    <span className="font-mono text-kindle-text-muted">M{i + 1}</span>{" "}
+                                                    <span className="font-bold">{p.p1}</span>
+                                                    {p.p2 ? <> vs <span className="font-bold">{p.p2}</span></> : <span className="text-kindle-text-muted"> vs bye</span>}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* STEP 6 — Review and launch */}
+                                    {wizardStep === 5 && (
+                                      <div className="space-y-4">
+                                        <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3">
+                                          <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text">Match Review</h4>
+                                          {[
+                                            { label: "Game", value: `${selectedPreset.iconName} ${selectedPreset.name}` },
+                                            { label: "Win condition", value: winCondition === "highest" ? "Highest score wins" : "Lowest score wins" },
+                                            { label: "Target points", value: targetScore ? `${targetScore} points` : "No limit" },
+                                            { label: "Turn timer", value: !turnTimerEnabled ? "Off" : !competitionMode ? "Off (needs competition mode)" : `${turnTimerSeconds}s per turn` },
+                                            { label: "Competition mode", value: competitionMode ? "On — scores locked per round" : "Off — casual" },
+                                            { label: "Categories", value: enableCategories && categories.length ? categories.join(", ") : "Single score per round" },
+                                            { label: "Roster", value: `${players.length} player${players.length === 1 ? "" : "s"}: ${players.map((p) => p.name || "—").join(", ")}` },
+                                            ...(teamGame
+                                              ? [{
+                                                  label: "Teams",
+                                                  value: teamsForMatch
+                                                    .map((t) => `${t.label}: ${players.filter((p) => p.teamId === t.id).map((p) => p.name || "—").join(", ") || "none"}`)
+                                                    .join("  ·  "),
+                                                }]
+                                              : []),
+                                            ...(competitionMode && competitionField
+                                              ? [{ label: "Competition field", value: `Seed ${competitionField.seed}: ${competitionField.order.join(" → ")}` }]
+                                              : []),
+                                          ].map((row) => (
                           <div key={row.label} className="flex items-start justify-between gap-3 py-1.5 border-b border-kindle-border/60 last:border-0">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted shrink-0">{row.label}</span>
                             <span className="text-[11px] font-bold text-kindle-text text-right break-words">{row.value}</span>
@@ -2150,10 +2412,31 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
             </>
           )}
 
-          {/* Match History Tab — nested sub-tabs: MATCH HISTORY > ROUND HISTORY */}
-          {activeTab === "history" && (
-            <div className="space-y-4 animate-in fade-in duration-200">
-              {/* Sub-tab bar. Round History stays disabled until a match is picked. */}
+          {/* Match History Tab — nested sub-tabs: MATCH HISTORY > ROUND HISTORY.
+                        While a match is live the whole tab collapses to THAT match's
+                        round history: no sub-tabs, no archive list, no other matches.
+                        `buildHistorySurface` decides that (archives need competition mode
+                        AND no live match); this is where it is rendered. */}
+                    {activeTab === "history" && (
+                      <div className="space-y-4 animate-in fade-in duration-200">
+                        {liveMatch ? (
+                          /* Live: only this match's rounds. `resolveRoundSource` pins the
+                             source to the live match, so nothing else can appear here. */
+                          <div className="space-y-3" data-testid="live-history-only">
+                            <div className="flex items-center justify-between gap-2 bg-kindle-card border border-kindle-border rounded-2xl p-3">
+                              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-kindle-text min-w-0">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                                <span className="truncate">Round History — live match</span>
+                              </span>
+                              <span className="text-[10px] text-kindle-text-muted shrink-0">
+                                {liveMatch.rounds?.length ?? 0} round{(liveMatch.rounds?.length ?? 0) === 1 ? "" : "s"}
+                              </span>
+                            </div>
+                            {renderRoundLog(liveMatch)}
+                          </div>
+                        ) : (
+                          <>
+                        {/* Sub-tab bar. Round History stays disabled until a match is picked. */}
               <div className="flex items-center gap-1 p-1 bg-kindle-card border border-kindle-border rounded-2xl">
                 <button
                   type="button"
@@ -2347,68 +2630,13 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                     </span>
                   </div>
 
-                  {(!selectedMatch.rounds || selectedMatch.rounds.length === 0) ? (
-                    <div className="py-12 text-center text-kindle-text-muted space-y-2 bg-kindle-card border border-kindle-border rounded-2xl">
-                      <History className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
-                      <p className="text-xs font-bold text-kindle-text">No rounds recorded</p>
-                      <p className="text-[10px]">
-                        {selectedMatch.id === "__live__"
-                          ? "This match is still in play — submit a round to start the log."
-                          : "This match ended before any round was logged."}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {selectedMatch.rounds.map((r) => {
-                        const rTotals: Record<string, number> = {};
-                        for (const pl of selectedMatch.players) rTotals[pl.name] = 0;
-                        selectedMatch.rounds
-                          .slice(0, r.roundNumber)
-                          .forEach((rr) => {
-                            (selectedMatch.playerIds || selectedMatch.players.map((p) => p.name)).forEach((pid, i) => {
-                              const name = selectedMatch.players[i]?.name || pid;
-                              rTotals[name] = (rTotals[name] || 0) + (rr.playerScores[pid] || 0);
-                            });
-                          });
-                        const ids = selectedMatch.playerIds || selectedMatch.players.map((p) => p.name);
-
-                        return (
-                          <div
-                            key={r.roundNumber}
-                            className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-2"
-                          >
-                            <div className="flex items-center justify-between border-b border-kindle-border pb-2">
-                              <span className="text-xs font-bold uppercase tracking-wider text-kindle-text">
-                                Round {r.roundNumber}
-                              </span>
-                              <span className="text-[9px] text-kindle-text-muted">
-                                {new Date(r.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                              </span>
-                            </div>
-
-                            <div className="space-y-1">
-                              {selectedMatch.players.map((pl, i) => {
-                                const gained = r.playerScores[ids[i]] || 0;
-                                return (
-                                  <div key={pl.name} className="flex items-center justify-between gap-2 text-[11px]">
-                                    <span className="text-kindle-text-muted truncate">{pl.name}</span>
-                                    <span className="font-mono shrink-0">
-                                      <span className="text-kindle-text">+{gained}</span>
-                                      <span className="text-kindle-text-muted"> → {rTotals[pl.name] || 0}</span>
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
+                  {renderRoundLog(selectedMatch)}
+                                  </>
+                                )}
+                                  </>
+                                )}
+                              </div>
+                            )}
 
           {/* Tournament Elimination Bracket Tab */}
           {activeTab === "tournament" && (

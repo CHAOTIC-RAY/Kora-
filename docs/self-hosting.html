@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Run it yourself — Kora</title>
+<meta name="description" content="Deploy your own Kora instance: prerequisites, Wrangler commands, environment variables, R2 and KV bindings, Firestore rules, the APK workflow, and troubleshooting.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./kora-docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./index.html">
+      <img src="./favicon.svg" width="30" height="30" alt="" aria-hidden="true">
+      <span class="brand-txt">
+        <span class="brand-name">Kora</span>
+        <span class="brand-sub">Self-hosting</span>
+      </span>
+    </a>
+    <span class="top-sp"></span>
+    <nav class="top-links" aria-label="Pages">
+      <a href="./index.html">Overview</a>
+      <a href="./features.html">Features</a>
+      <a href="./self-hosting.html" aria-current="page">Self-hosting</a>
+      <a href="./plugins.html">Plugins</a>
+    </nav>
+    <button class="icon-btn" id="theme" type="button">Night</button>
+    <button class="icon-btn nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="side" id="nav" aria-label="Sections">
+    <p class="side-h">Run it yourself</p>
+    <ol>
+      <li><a href="#what">What you are deploying</a></li>
+      <li><a href="#prereqs">Prerequisites</a></li>
+      <li><a href="#config">Configuration</a></li>
+      <li><a href="#bindings">R2 and KV</a></li>
+      <li><a href="#secrets">API keys</a></li>
+      <li><a href="#deploy">Deploy the Worker</a></li>
+      <li><a href="#rules">Firestore rules</a></li>
+      <li><a href="#apk">Build the APK</a></li>
+      <li><a href="#troubleshoot">Troubleshooting</a></li>
+    </ol>
+  </nav>
+
+  <main id="main">
+    <div class="hero">
+      <p class="eyebrow">Run it yourself</p>
+      <h1>Deploy your own instance</h1>
+      <p class="lede">
+        A Kora deployment is a static bundle plus a Cloudflare Worker in front of
+        it, with a Firebase project providing sign-in and storage. This page
+        covers the whole path, in the order you need to do it.
+      </p>
+    </div>
+
+    <section id="what">
+      <h2><a class="anchor" href="#what">#</a>What you are deploying</h2>
+      <div class="tw">
+        <table>
+          <caption class="sr">Deployment components</caption>
+          <thead><tr><th>Piece</th><th>What it does</th><th>Runs on</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Web app</td>
+              <td>The reader UI, bundled by Vite</td>
+              <td>Cloudflare static assets, served by the Worker</td>
+            </tr>
+            <tr>
+              <td>Worker</td>
+              <td>Search and book APIs, source proxying, the device-to-device relay</td>
+              <td>Cloudflare Workers</td>
+            </tr>
+            <tr>
+              <td>Relay storage</td>
+              <td>Holds transferred files until they are pulled once</td>
+              <td>Cloudflare R2 (required)</td>
+            </tr>
+            <tr>
+              <td>Mirror health</td>
+              <td>Reliability scores for download mirrors</td>
+              <td>Cloudflare KV</td>
+            </tr>
+            <tr>
+              <td>Accounts and data</td>
+              <td>Sign-in, library, reading progress</td>
+              <td>Firebase Auth + Firestore</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="prereqs">
+      <h2><a class="anchor" href="#prereqs">#</a>Prerequisites</h2>
+      <ul>
+        <li><strong>Node.js 22</strong> — the version CI builds with.</li>
+        <li><strong>A Cloudflare account</strong>, for the Worker, R2 and KV.</li>
+        <li><strong>A Firebase project</strong>, for Auth and Firestore.</li>
+        <li><strong>The Firebase CLI</strong> (<code>npm i -g firebase-tools</code>) to deploy the security rules.</li>
+        <li>For APK builds only: <strong>JDK 21</strong> and the Android SDK.</li>
+      </ul>
+      <p>Get the code:</p>
+      <div class="term"><pre><code>git clone https://github.com/CHAOTIC-RAY/Kora-.git
+cd Kora-
+npm install
+cp .env.example .env</code></pre><button class="copy" type="button">Copy</button></div>
+    </section>
+
+    <section id="config">
+      <h2><a class="anchor" href="#config">#</a>Configuration</h2>
+      <p>
+        Build-time settings live in <code>.env</code>. These are read by Vite
+        when the bundle is built, and are compiled into the client — they are
+        not secrets.
+      </p>
+      <div class="tw">
+        <table>
+          <caption class="sr">Environment variables</caption>
+          <thead><tr><th>Variable</th><th>Required</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code>VITE_API_BASE_URL</code></td>
+              <td>Yes</td>
+              <td>Origin the app sends API requests to. Your Worker's
+              <code>workers.dev</code> URL, or your custom domain. The APK
+              forwards <code>/api/*</code> here.</td>
+            </tr>
+            <tr>
+              <td><code>VITE_APP_CHANNEL</code></td>
+              <td>Yes</td>
+              <td><code>production</code> or <code>beta</code>. Controls the
+              beta badge and which feature set is offered.</td>
+            </tr>
+            <tr>
+              <td><code>VITE_SENTRY_DSN</code></td>
+              <td>No</td>
+              <td>Error reporting. Leave empty to disable it. A Sentry DSN is
+              not a secret — Sentry inlines it into every client bundle by
+              design.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A working <code>.env</code>:</p>
+      <div class="term"><pre><code>VITE_APP_CHANNEL=production
+VITE_API_BASE_URL=https://kora.example.workers.dev
+VITE_SENTRY_DSN=</code></pre><button class="copy" type="button">Copy</button></div>
+      <div class="note">
+        <p class="note-t">Note</p>
+        <p>
+          If <code>VITE_SENTRY_DSN</code> is unset, error reporting is silently
+          off — nothing warns you. This has been the cause of a build appearing
+          healthy while reporting nothing.
+        </p>
+      </div>
+    </section>
+
+    <section id="bindings">
+      <h2><a class="anchor" href="#bindings">#</a>R2 and KV</h2>
+
+      <h3>R2 — required</h3>
+      <p>
+        The device-to-device relay stores files in R2. Without it the Worker
+        falls back to per-isolate memory, which does not survive a request, so
+        uploads appear to succeed and then vanish.
+      </p>
+      <div class="term"><pre><code>npx wrangler r2 bucket create kora-relay
+npx wrangler r2 bucket create kora-relay-beta</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        The binding is already declared in <code>wrangler.toml</code> as
+        <code>RELAY_BUCKET</code>. Keep the bucket names matching, or update the
+        <code>bucket_name</code> values to your own.
+      </p>
+      <p>
+        KV is used for mirror reliability scores. It is optional — mirrors
+        report as unverified without it rather than failing.
+      </p>
+
+      <h3>KV — optional</h3>
+      <div class="term"><pre><code>npx wrangler kv namespace create MIRROR_HEALTH</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        Paste the returned namespace id into <code>wrangler.toml</code> as the
+        <code>id</code> for the <code>MIRROR_HEALTH</code> binding, replacing the
+        value committed there.
+      </p>
+    </section>
+
+    <section id="secrets">
+      <h2><a class="anchor" href="#secrets">#</a>API keys</h2>
+      <p>
+        Book-search keys are Cloudflare secrets, not environment variables. They
+        are read by the Worker only, and are never compiled into the bundle.
+      </p>
+      <div class="term"><pre><code>npx wrangler secret put RAVE_API_KEY</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        The key is sent in an <code>X-API-Key</code> header and must stay
+        server-side. Without it the Worker falls back to the older public
+        endpoint, which is slower and rate-limited.
+      </p>
+      <p>For local development, put secrets in <code>.dev.vars</code> (gitignored):</p>
+      <div class="term"><pre><code>RAVE_API_KEY=your-key-here</code></pre><button class="copy" type="button">Copy</button></div>
+    </section>
+
+    <section id="deploy">
+      <h2><a class="anchor" href="#deploy">#</a>Deploy the Worker</h2>
+      <p>Build and deploy production:</p>
+      <div class="term"><pre><code>npm run deploy:prod</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>Or step by step, which is what the script does:</p>
+      <div class="term"><pre><code>npm run build:data     # splits the dictionary bundle
+npx vite build         # builds the client into dist/
+npx wrangler deploy --env production</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>For a beta Worker on its own domain:</p>
+      <div class="term"><pre><code>npm run deploy:beta</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>Run it locally against the real Worker runtime:</p>
+      <div class="term"><pre><code>npm run cf-dev</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        <code>wrangler.toml</code> serves the SPA from <code>dist/</code> and
+        routes <code>/api/*</code> and <code>/send</code> through the Worker
+        first. <code>/send</code> goes Worker-first because it has to work on old
+        device browsers, and loading the whole bundle to display a 4-character
+        code is slow and fragile on those.
+      </p>
+    </section>
+
+    <section id="rules">
+      <h2><a class="anchor" href="#rules">#</a>Firestore rules</h2>
+      <p>
+        Security rules are not deployed by the build. Deploy them explicitly,
+        or the app will run against whatever rules were last published:
+      </p>
+      <div class="term"><pre><code>firebase deploy --only firestore:rules</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        Log in first with <code>firebase login</code>, and make sure
+        <code>firebase use</code> points at your project.
+      </p>
+
+      <div class="note warn">
+        <p class="note-t">Known gap: library queries are denied</p>
+        <p>
+          The rules currently deployed to the upstream project grant
+          <code>get</code> but not <code>list</code>. Reading one document by id
+          succeeds; <em>querying a collection is denied</em>. Loading the
+          library therefore fails with a permission error.
+        </p>
+        <p>
+          A corrected rules file is committed as
+          <code>firestore.rules.proposed</code>. To apply it:
+        </p>
+      </div>
+      <div class="term"><pre><code>cp firestore.rules.proposed firestore.rules
+firebase deploy --only firestore:rules</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        Check the rules behave before deploying them:
+      </p>
+      <div class="term"><pre><code>node scripts/test-firestore-rules.mjs</code></pre><button class="copy" type="button">Copy</button></div>
+    </section>
+
+    <section id="apk">
+      <h2><a class="anchor" href="#apk">#</a>Build the APK</h2>
+      <p>
+        The Android build is assembled by GitHub Actions, not by hand. Pushing
+        to <code>main</code> or <code>beta</code> with a change under
+        <code>android/</code>, <code>src/</code>, <code>public/</code>,
+        <code>index.html</code>, <code>vite.config.ts</code>,
+        <code>capacitor.config.ts</code> or the package files triggers it.
+      </p>
+      <p>To enable it on your fork:</p>
+      <ol class="steps">
+        <li>Create a repository secret <code>KORA_UPLOAD_KEYSTORE_BASE64</code> containing your upload keystore, base64-encoded.</li>
+        <li>Add <code>KORA_KEYSTORE_PASSWORD</code>, <code>KORA_KEY_ALIAS</code> and <code>KORA_KEY_PASSWORD</code> as secrets too.</li>
+        <li>Optionally set a repository variable <code>VITE_API_BASE_URL</code> so the APK points at your Worker. It falls back to the upstream URL if unset.</li>
+        <li>Push to <code>main</code>, or run the <em>Build Android APK</em> workflow manually.</li>
+      </ol>
+      <p>
+        The keystore committed at <code>android/app/keystore/kora-ci.jks</code> is
+        intentionally invalid, and the Gradle config refuses to fall back to it.
+        A release build fails rather than signing with a throwaway key.
+      </p>
+      <p>Building an APK locally, if you need to:</p>
+      <div class="term"><pre><code>npm run apk:release</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        Version numbers come from the build, not from a file you edit:
+        <code>1.0.&lt;build number&gt;</code>, and the Android version code is
+        the build number itself.
+      </p>
+    </section>
+
+    <section id="troubleshoot">
+      <h2><a class="anchor" href="#troubleshoot">#</a>Troubleshooting</h2>
+
+      <div class="tw">
+        <table>
+          <caption class="sr">Common deployment problems</caption>
+          <thead><tr><th>Symptom</th><th>Cause and fix</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Relay upload succeeds, file never arrives</td>
+              <td>The <code>RELAY_BUCKET</code> binding is missing, so the Worker
+              is using in-memory storage. Check the Worker log for
+              <code>RELAY_BUCKET binding is absent</code>, and
+              <code>GET /api/relay/status</code> — it reports
+              <code>{"storage":"memory"}</code> instead of <code>r2</code>.
+              Create the bucket and redeploy.</td>
+            </tr>
+            <tr>
+              <td>Library empty, console shows a permission error</td>
+              <td>The deployed rules lack <code>list</code>. Deploy
+              <code>firestore.rules.proposed</code> as shown in
+              <a href="#rules">Firestore rules</a>.</td>
+            </tr>
+            <tr>
+              <td>All mirrors show UNVERIFIED</td>
+              <td>The <code>MIRROR_HEALTH</code> KV namespace id is wrong or the
+              binding is absent. This is not fatal — mirrors stay clickable, they
+              just have no reliability data.</td>
+            </tr>
+            <tr>
+              <td>No errors reported in Sentry</td>
+              <td><code>VITE_SENTRY_DSN</code> was empty at build time. It has to
+              be set in the environment the build ran in, and the client rebuilt.</td>
+            </tr>
+            <tr>
+              <td>APK talks to the upstream server</td>
+              <td><code>VITE_API_BASE_URL</code> was not set for the build. Set
+              the repository variable and rebuild.</td>
+            </tr>
+            <tr>
+              <td>Book search slow or rate-limited</td>
+              <td><code>RAVE_API_KEY</code> is not set, so the Worker is on the
+              fallback endpoint. Set it as a secret.</td>
+            </tr>
+            <tr>
+              <td>Book search returns nothing at all</td>
+              <td>The key is present but in the wrong place. It must be a
+              Worker secret, not a <code>VITE_</code> variable — anything
+              prefixed <code>VITE_</code> is compiled into the public bundle.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <a class="nextlink" href="./plugins.html">Next: Build a plugin &rarr;</a>
+    <a class="edit" href="https://github.com/CHAOTIC-RAY/Kora-/edit/main/docs/self-hosting.html">Edit this page on GitHub</a>
+
+    <div class="foot">
+      <p>
+        Commands on this page are the ones the repository's own scripts run. If
+        one fails, that is worth reporting as an
+        <a href="https://github.com/CHAOTIC-RAY/Kora-/issues">issue</a>.
+      </p>
+    </div>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-h">On this page</p>
+    <ol>
+      <li><a href="#what">What you are deploying</a></li>
+      <li><a href="#prereqs">Prerequisites</a></li>
+      <li><a href="#config">Configuration</a></li>
+      <li><a href="#bindings">R2 and KV</a></li>
+      <li><a href="#secrets">API keys</a></li>
+      <li><a href="#deploy">Deploy the Worker</a></li>
+      <li><a href="#rules">Firestore rules</a></li>
+      <li><a href="#apk">Build the APK</a></li>
+      <li><a href="#troubleshoot">Troubleshooting</a></li>
+    </ol>
+  </aside>
+
+</div>
+
+<script src="./kora-docs.js"></script>
+</body>
+</html>

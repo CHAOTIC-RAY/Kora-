@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Features — Kora</title>
+<meta name="description" content="What Kora does: reading formats, the comic reader, the library, Discover, plugins, sending to an e-reader, Workshop tools, themes and the Android build.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./kora-docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./index.html">
+      <img src="./favicon.svg" width="30" height="30" alt="" aria-hidden="true">
+      <span class="brand-txt">
+        <span class="brand-name">Kora</span>
+        <span class="brand-sub">Features</span>
+      </span>
+    </a>
+    <span class="top-sp"></span>
+    <nav class="top-links" aria-label="Pages">
+      <a href="./index.html">Overview</a>
+      <a href="./features.html" aria-current="page">Features</a>
+      <a href="./self-hosting.html">Self-hosting</a>
+      <a href="./plugins.html">Plugins</a>
+    </nav>
+    <button class="icon-btn" id="theme" type="button">Night</button>
+    <button class="icon-btn nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="side" id="nav" aria-label="Sections">
+    <p class="side-h">Features</p>
+    <ol>
+      <li><a href="#reading">Reading</a></li>
+      <li><a href="#comics">Comic reader</a></li>
+      <li><a href="#formats">Supported formats</a></li>
+      <li><a href="#library">Library</a></li>
+      <li><a href="#discover">Discover</a></li>
+      <li><a href="#plugins">Plugins</a></li>
+      <li><a href="#sending">Send to a device</a></li>
+      <li><a href="#workshop">Workshop</a></li>
+      <li><a href="#themes">Themes</a></li>
+      <li><a href="#downloads">Download control</a></li>
+      <li><a href="#android">Android</a></li>
+      <li><a href="#notsupported">Not supported yet</a></li>
+    </ol>
+  </nav>
+
+  <main id="main">
+    <div class="hero">
+      <p class="eyebrow">Features</p>
+      <h1>What Kora does</h1>
+      <p class="lede">
+        Kora is a reading and news app with a plugin system at its centre. You
+        install sources to get content, integrations to reach things you already
+        own, tools for small jobs, and themes to change how it looks. This page
+        covers what you can do once it is installed, and where each thing lives.
+      </p>
+    </div>
+
+    <section id="reading">
+      <h2><a class="anchor" href="#reading">#</a>Reading</h2>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Book reader</h3>
+          <span class="where">Open a book from Library</span>
+        </div>
+        <p>
+          EBooks open in a paginated reader with adjustable text size, line
+          spacing and margins. Reading position is saved per book and restored
+          when you reopen it.
+        </p>
+        <p class="nt"><b>Not included</b> DRM-protected books cannot be opened. Kindle purchases are not supported.</p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>PDF reader</h3>
+          <span class="where">Open a PDF from Library</span>
+        </div>
+        <p>
+          PDFs open in a dedicated reader rather than the book reader, and
+          support page navigation, zoom and text search.
+        </p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>News feed reader</h3>
+          <span class="where">Read tab</span>
+        </div>
+        <p>
+          A scrolling feed of articles with a full-screen reader. Each entry
+          shows its publication time next to the new/read badge. Feeds are
+          managed from the same surface via <em>Manage Feeds &amp; Sources</em>.
+        </p>
+        <p class="nt"><b>Note</b> The Read tab can be turned off in Settings.</p>
+      </div>
+    </section>
+
+    <section id="comics">
+      <h2><a class="anchor" href="#comics">#</a>Comic reader</h2>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Swipe, tap and zoom</h3>
+          <span class="where">Open a series or chapter</span>
+        </div>
+        <p>
+          Swipe to turn pages in reading order, tap the screen edges to show
+          controls, double-tap to zoom on the point you tapped, pinch to zoom
+          and drag to pan while zoomed. Pages ahead of the current one are
+          prefetched so a turn does not wait on the network, and you can step to
+          the next or previous chapter without leaving the reader.
+        </p>
+        <p class="nt"><b>Not included</b> There is no page-thumbnail scrubber; navigation is by swipe, tap zones or chapter stepping.</p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Reading direction</h3>
+          <span class="where">Series settings</span>
+        </div>
+        <p>
+          Manga defaults to right-to-left. A right-to-left book opens on its
+          last page and pages forward towards the start of the volume, which is
+          the opposite of what a left-to-right book does. Set it per series if
+          the default is wrong for a title.
+        </p>
+      </div>
+    </section>
+
+    <section id="formats">
+      <h2><a class="anchor" href="#formats">#</a>Supported formats</h2>
+      <p>
+        Kora identifies a file by its contents, not its extension. A download
+        named <code>.epub</code> that is actually an HTML login page is rejected
+        and reported as a bad mirror rather than sent to the reader.
+      </p>
+      <div class="tw">
+        <table>
+          <caption class="sr">Format support</caption>
+          <thead><tr><th>Format</th><th>Extensions</th><th>Opens in</th></tr></thead>
+          <tbody>
+            <tr><td>EPUB</td><td><code>.epub</code></td><td>Book reader</td></tr>
+            <tr><td>Comic archive (ZIP)</td><td><code>.cbz</code>, <code>.zip</code></td><td>Comic reader</td></tr>
+            <tr><td>Comic archive (RAR)</td><td><code>.cbr</code></td><td class="no">Not yet</td></tr>
+            <tr><td>Comic archive (7z)</td><td><code>.cb7</code></td><td class="no">Not yet</td></tr>
+            <tr><td>PDF</td><td><code>.pdf</code></td><td>PDF reader</td></tr>
+            <tr><td>Plain text</td><td><code>.txt</code></td><td>Book reader</td></tr>
+            <tr><td>Single image</td><td><code>.jpg</code>, <code>.png</code>, <code>.webp</code>, <code>.gif</code>, <code>.avif</code>, <code>.bmp</code></td><td>Comic reader, one page</td></tr>
+            <tr><td>Kindle / MOBI</td><td><code>.mobi</code>, <code>.azw3</code></td><td class="no">Not yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note warn">
+        <p class="note-t">Not supported yet</p>
+        <p>
+          <strong>RAR and 7z comic archives</strong> (<code>.cbr</code>,
+          <code>.cb7</code>) are detected with certainty and cannot be opened
+          yet. A CBR is a RAR, so identifying it is not the problem —
+          decompression is, and that needs a decoder Kora does not currently
+          ship. The app says so rather than opening a blank page.
+        </p>
+        <p>
+          <strong>MOBI and AZW3</strong> are detected but have no reader. AZW3
+          is reported as MOBI because the two cannot be told apart from the
+          file's header alone.
+        </p>
+        <p>
+          <strong>Password-protected</strong> and <strong>split</strong>
+          archives are refused up front rather than half-opened, because a
+          split archive extracts to nothing usable when only the first volume
+          arrives.
+        </p>
+      </div>
+    </section>
+
+    <section id="library">
+      <h2><a class="anchor" href="#library">#</a>Library</h2>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Series grouping</h3>
+          <span class="where">Library</span>
+        </div>
+        <p>
+          Multi-volume series collapse into a single tile by default, so a
+          30-volume set is one row rather than thirty. Open the group to pick a
+          volume. Turn grouping off to see every book individually.
+        </p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Metadata and covers</h3>
+          <span class="where">Book detail</span>
+        </div>
+        <p>
+          Edit title, author and series, and replace the cover with your own
+          image.
+        </p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Device sync</h3>
+          <span class="where">Settings &rsaquo; Devices</span>
+        </div>
+        <p>
+          Signed-in devices can be listed and signed out from the same panel.
+        </p>
+        <p class="nt">
+          <b>Not working yet</b>
+          Loading the library is currently blocked by a Firestore permissions
+          gap: the deployed rules allow reading a single document but not
+          querying a collection, so a library query is denied. See
+          <a href="./self-hosting.html#rules">deploying the Firestore rules</a>.
+        </p>
+      </div>
+    </section>
+
+    <section id="discover">
+      <h2><a class="anchor" href="#discover">#</a>Discover</h2>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Source chips</h3>
+          <span class="where">Discover</span>
+        </div>
+        <p>
+          Each installed source appears as a chip. Tap one to browse its
+          catalogue: popular titles, latest updates, and search.
+        </p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Plugin hub</h3>
+          <span class="where">Discover</span>
+        </div>
+        <p>
+          One screen lists everything the registry offers — sources, tools,
+          integrations and themes — with install and remove on each entry. This
+          is the only screen where plugins are managed.
+        </p>
+        <p class="nt">
+          <b>Not included</b> There is no second plugin list anywhere else in
+          the app. Installed plugins appear on their own surface once installed,
+          not in a second management list.
+        </p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Restricted sources</h3>
+          <span class="where">Discover</span>
+        </div>
+        <p>
+          A source marked <code>piracy</code> or <code>nsfw</code> is hidden
+          until you switch it on for that source specifically. The card is amber
+          and labelled <strong>Shadow library</strong> or <strong>Adult</strong>.
+          The choice is remembered on the device.
+        </p>
+        <p class="nt">
+          <b>Scope</b> Only sources are gated. Themes, integrations and tools
+          are never hidden behind this switch.
+        </p>
+      </div>
+    </section>
+
+    <section id="plugins">
+      <h2><a class="anchor" href="#plugins">#</a>Plugins</h2>
+      <p>
+        Four categories, and an installed plugin of each category shows up in a
+        different place:
+      </p>
+      <div class="tw">
+        <table>
+          <caption class="sr">Plugin categories and where they appear</caption>
+          <thead><tr><th>Category</th><th>What it is</th><th>Appears in</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Source</strong></td><td>Rules for reading a site — browsing, search, chapters and page images</td><td>Discover</td></tr>
+            <tr><td><strong>Integration</strong></td><td>A bridge to something you already own, such as a Calibre server</td><td>Workshop</td></tr>
+            <tr><td><strong>Tool</strong></td><td>A small utility that runs inside the app</td><td>Workshop</td></tr>
+            <tr><td><strong>Theme</strong></td><td>A colour scheme</td><td>Settings</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        To add a source: open <strong>Discover</strong>, install it from the hub,
+        then tap its chip. Installing a restricted source also grants its
+        per-source permission.
+      </p>
+      <p>
+        Writing your own is covered in
+        <a href="./plugins.html">Build a plugin</a>.
+      </p>
+    </section>
+
+    <section id="sending">
+      <h2><a class="anchor" href="#sending">#</a>Send to a device</h2>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Kora relay</h3>
+          <span class="where">Book &rsaquo; send</span>
+        </div>
+        <p>
+          Move a file to a Kobo, Kindle or another phone without a third-party
+          service. The sending device shows a 4-character code, the receiving
+          device types it in, and the file transfers directly. The file is
+          deleted as soon as it is pulled.
+        </p>
+        <p class="nt">
+          <b>Limits</b>
+          50 MB per file. Codes expire after 6 hours; files after 1 hour. Five
+          wrong code entries expire the code.
+        </p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Send to Kobo / Kindle</h3>
+          <span class="where">Book &rsaquo; send</span>
+        </div>
+        <p>
+          Amazon's official Send to Kindle page opens in a new tab; drag the file
+          onto their drop zone. Kobo transfers go through the Kora relay above.
+        </p>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>croc</h3>
+          <span class="where">Workshop &rsaquo; croc</span>
+        </div>
+        <p>
+          Run <code>croc send book.epub</code> on your computer and type the code
+          it prints into the Kora panel to receive the file.
+        </p>
+        <p class="nt">
+          <b>Not included</b> Receiving only. Kora cannot act as the sending
+          peer, because the browser build of croc is not published.
+        </p>
+      </div>
+    </section>
+
+    <section id="workshop">
+      <h2><a class="anchor" href="#workshop">#</a>Workshop</h2>
+      <p>
+        Utilities and integrations, as a grid of tiles. The first four ship with
+        the app; installed plugins appear beside them.
+      </p>
+      <div class="tw">
+        <table>
+          <caption class="sr">Workshop tools</caption>
+          <thead><tr><th>Tile</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Game Score Tracker</strong></td><td>Scores a tabletop match through a six-step setup wizard, with per-round history</td></tr>
+            <tr><td><strong>Personal Dictionary</strong></td><td>Look up and save words while reading; highlights definitions in the reader</td></tr>
+            <tr><td><strong>Crossword</strong></td><td>Crossword grid</td></tr>
+            <tr><td><strong>Word Search</strong></td><td>Word search grid</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Game Score Tracker setup</h3>
+          <span class="where">Workshop &rsaquo; Game Score Tracker</span>
+        </div>
+        <p>The wizard walks six steps:</p>
+        <ol>
+          <li><strong>Game Preset</strong> — pick the ruleset</li>
+          <li><strong>Verify Rules</strong> — win condition and target score</li>
+          <li><strong>Turn Timer</strong> — clock and competition mode</li>
+          <li><strong>Roster</strong> — names and handicaps</li>
+          <li><strong>Competition Roster</strong> — verify the seeded field</li>
+          <li><strong>Start Game</strong> — review and launch</li>
+        </ol>
+        <p class="nt">
+          <b>Note</b> With competition mode off, step 5 is marked skipped rather
+          than removed, so the numbering stays the same either way. Swapping the
+          preset asks first, because it discards manual edits to steps 2–5.
+        </p>
+      </div>
+    </section>
+
+    <section id="themes">
+      <h2><a class="anchor" href="#themes">#</a>Themes</h2>
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Installed themes</h3>
+          <span class="where">Settings</span>
+        </div>
+        <p>
+          Install a theme from the hub, then choose the active one in Settings.
+          A theme changes colours, contrast and surface styling across the app
+          including the readers.
+        </p>
+      </div>
+    </section>
+
+    <section id="downloads">
+      <h2><a class="anchor" href="#downloads">#</a>Download control</h2>
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Queue control</h3>
+          <span class="where">Settings &rsaquo; Download Control</span>
+        </div>
+        <p>
+          Shows active and finished downloads. Cancel, retry and dismiss items
+          individually, and set how many download at once with the concurrency
+          slider. A retry re-downloads and re-checks the file rather than
+          resuming a broken one.
+        </p>
+      </div>
+    </section>
+
+    <section id="android">
+      <h2><a class="anchor" href="#android">#</a>Android</h2>
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Signed APK</h3>
+          <span class="where">Releases</span>
+        </div>
+        <p>
+          Every push to <code>main</code> or <code>beta</code> that changes app
+          code builds a signed APK and publishes it as a release tagged
+          <code>apk-v1.0.&lt;build number&gt;</code>. Download the latest from
+          <a href="https://github.com/CHAOTIC-RAY/Kora-/releases?q=apk&amp;expanded=true">Releases</a>.
+        </p>
+        <p class="nt">
+          <b>Install</b> Allow installs from your browser or file manager when
+          Android prompts. The APK is not on the Play Store.
+        </p>
+      </div>
+    </section>
+
+    <section id="notsupported">
+      <h2><a class="anchor" href="#notsupported">#</a>Not supported yet</h2>
+      <p>Collected in one place. Each is also noted in the section it affects.</p>
+      <div class="tw">
+        <table>
+          <caption class="sr">Not supported yet</caption>
+          <thead><tr><th>Area</th><th>Not supported</th></tr></thead>
+          <tbody>
+            <tr><td>Formats</td><td>MOBI and AZW3 have no reader</td></tr>
+            <tr><td>Archives</td><td>RAR (<code>.cbr</code>) and 7z (<code>.cb7</code>) comic archives are detected but cannot be opened</td></tr>
+            <tr><td>Archives</td><td>Password-protected archives; split archives (<code>.part1.rar</code>, <code>.7z.001</code>)</td></tr>
+            <tr><td>Books</td><td>DRM-protected files</td></tr>
+            <tr><td>Library</td><td>Loading the library is blocked by a Firestore rules gap — <a href="./self-hosting.html#rules">see self-hosting</a></td></tr>
+            <tr><td>croc</td><td>Receiving only; cannot send from the app</td></tr>
+            <tr><td>Registries</td><td>Third-party registries load without a confirmation prompt</td></tr>
+            <tr><td>Interface</td><td>No command-line client and no public SDK</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <a class="nextlink" href="./self-hosting.html">Next: Run it yourself &rarr;</a>
+    <a class="edit" href="https://github.com/CHAOTIC-RAY/Kora-/edit/main/docs/features.html">Edit this page on GitHub</a>
+
+    <div class="foot">
+      <p>
+        Formats and limits above reflect the current build. If something here
+        does not match what you see, it is worth checking
+        <a href="https://github.com/CHAOTIC-RAY/Kora-/issues">Issues</a> —
+        either the app moved on or this page needs correcting.
+      </p>
+    </div>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-h">On this page</p>
+    <ol>
+      <li><a href="#reading">Reading</a></li>
+      <li><a href="#comics">Comic reader</a></li>
+      <li><a href="#formats">Supported formats</a></li>
+      <li><a href="#library">Library</a></li>
+      <li><a href="#discover">Discover</a></li>
+      <li><a href="#plugins">Plugins</a></li>
+      <li><a href="#sending">Send to a device</a></li>
+      <li><a href="#workshop">Workshop</a></li>
+      <li><a href="#themes">Themes</a></li>
+      <li><a href="#downloads">Download control</a></li>
+      <li><a href="#android">Android</a></li>
+      <li><a href="#notsupported">Not supported yet</a></li>
+    </ol>
+  </aside>
+
+</div>
+
+<script src="./kora-docs.js"></script>
+</body>
+</html>

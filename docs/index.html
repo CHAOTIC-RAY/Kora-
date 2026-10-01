@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kora — Documentation</title>
+<meta name="description" content="Kora is a personal reading and news app: a React PWA that installs on Android, with a Tachiyomi-style plugin system for sources, integrations, tools and themes.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="./kora-docs.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="./index.html">
+      <img src="./favicon.svg" width="30" height="30" alt="" aria-hidden="true">
+      <span class="brand-txt">
+        <span class="brand-name">Kora</span>
+        <span class="brand-sub">Documentation</span>
+      </span>
+    </a>
+    <span class="top-sp"></span>
+    <nav class="top-links" aria-label="Project">
+      <a data-optional href="https://github.com/CHAOTIC-RAY/Kora-">Repository</a>
+      <a data-optional href="https://github.com/CHAOTIC-RAY/Kora-/releases">Releases</a>
+    </nav>
+    <button class="icon-btn" id="theme" type="button">Night</button>
+    <button class="icon-btn nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="nav">Menu</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav class="side" id="nav" aria-label="Documentation pages">
+    <p class="side-h">Documentation</p>
+    <ol>
+      <li><a href="./index.html" aria-current="page">Overview</a></li>
+      <li><a href="./features.html">Features</a></li>
+      <li><a href="./self-hosting.html">Run it yourself</a></li>
+      <li><a href="./plugins.html">Build a plugin</a></li>
+    </ol>
+  </nav>
+
+  <main id="main">
+    <div class="hero">
+      <p class="eyebrow">Documentation</p>
+      <h1>Kora</h1>
+      <p class="lede">
+        Kora is a personal reading and news app. It runs in the browser as an
+        installable progressive web app and packages for Android, with a
+        Cloudflare Worker handling the network layer. What you can read, browse
+        and send comes from plugins — sources, integrations, tools and themes —
+        so the app you install is the one you configure.
+      </p>
+      <ul class="chips">
+        <li class="chip">React 19 + Vite</li>
+        <li class="chip">Android APK</li>
+        <li class="chip">Cloudflare Worker</li>
+        <li class="chip">Firebase Auth + Firestore</li>
+        <li class="chip">MIT licensed</li>
+      </ul>
+    </div>
+
+    <section id="docs">
+      <h2>Documentation</h2>
+      <div class="cards">
+        <li class="card">
+          <h3><a href="./features.html">Features</a></h3>
+          <p>What Kora does, organised by what you can do with it: reading, the library, Discover, sending to an e-reader, the Workshop tools, themes and the Android build.</p>
+        </li>
+        <li class="card">
+          <h3><a href="./self-hosting.html">Run it yourself</a></h3>
+          <p>Deploy your own instance: what you need, the exact Wrangler commands, environment variables, deploying the Firestore rules, building the APK, and troubleshooting.</p>
+        </li>
+        <li class="card">
+          <h3><a href="./plugins.html">Build a plugin</a></h3>
+          <p>Author a source, integration, tool or theme. The source definition format, the two runtimes and how to choose, the readability gate, and hosting your own registry.</p>
+        </li>
+      </div>
+    </section>
+
+    <section id="quick">
+      <h2>Quick start</h2>
+      <ol class="steps">
+        <li>Install the Android build from <a href="https://github.com/CHAOTIC-RAY/Kora-/releases?q=apk&amp;expanded=true">Releases</a>, or open the web app at <a href="https://kora.chaoticstudio.workers.dev">kora.chaoticstudio.workers.dev</a>.</li>
+        <li>Open <strong>Discover</strong> to reach the plugin hub, then install a source to get content.</li>
+        <li>Open a book to read it, then use <strong>Send to device</strong> to move it to an e-reader.</li>
+      </ol>
+      <p>Full detail for each step is in <a href="./features.html">Features</a>.</p>
+    </section>
+
+    <section id="repo">
+      <h2>Repository</h2>
+      <div class="tw">
+        <table>
+          <caption class="sr">Related links</caption>
+          <thead><tr><th>What</th><th>Where</th></tr></thead>
+          <tbody>
+            <tr><td>Application source</td><td><a href="https://github.com/CHAOTIC-RAY/Kora-">github.com/CHAOTIC-RAY/Kora-</a></td></tr>
+            <tr><td>Source registry</td><td><a href="https://github.com/CHAOTIC-RAY/Kora-Sources">github.com/CHAOTIC-RAY/Kora-Sources</a></td></tr>
+            <tr><td>Android builds</td><td><a href="https://github.com/CHAOTIC-RAY/Kora-/releases?q=apk&amp;expanded=true">Releases, filtered to <code>apk</code></a></td></tr>
+            <tr><td>Issue tracker</td><td><a href="https://github.com/CHAOTIC-RAY/Kora-/issues">Issues</a></td></tr>
+            <tr><td>Discussion</td><td><a href="https://github.com/CHAOTIC-RAY/Kora-/discussions">Discussions</a></td></tr>
+            <tr><td>Licence</td><td>MIT — <a href="https://github.com/CHAOTIC-RAY/Kora-/blob/main/LICENSE">LICENSE</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <a class="edit" href="https://github.com/CHAOTIC-RAY/Kora-/edit/main/docs/index.html">Edit this page on GitHub</a>
+
+    <div class="foot">
+      <p>
+        Kora is a personal project. Sources come from community registries, and
+        what you can reach through them depends on your own network and on the
+        rights to the material.
+      </p>
+    </div>
+  </main>
+
+  <aside class="toc" aria-label="On this page">
+    <p class="toc-h">On this page</p>
+    <ol>
+      <li><a href="#docs">Documentation</a></li>
+      <li><a href="#quick">Quick start</a></li>
+      <li><a href="#repo">Repository</a></li>
+    </ol>
+    <p class="toc-h" style="margin-top:1.4rem">Elsewhere</p>
+    <ol>
+      <li><a href="./features.html">Features</a></li>
+      <li><a href="./self-hosting.html">Run it yourself</a></li>
+      <li><a href="./plugins.html">Build a plugin</a></li>
+    </ol>
+  </aside>
+
+</div>
+
+<script src="./kora-docs.js"></script>
+</body>
+</html>

@@ -20,25 +20,35 @@
  *     truncated download should be rejected by that decision rather than by
  *     an exception thrown from deep inside a loader.
  *
- * What is NOT implemented, and is said so rather than faked:
+ * WHAT IS *NOT* IMPLEMENTED, and is said so rather than faked:
  *
- *   - **RAR/CBR.** RAR's compression (and especially RAR5's) is a
- *     non-trivial decoder. There is no small, well-maintained, already-shipped
- *     implementation in this project, and pulling one in for a format that
- *     is a minority of mirrors is not a trade this task should make silently.
- *     `openArchive` returns an explicit `unsupported` result and the UI says
- *     so in words.
- *   - **CB7.** Same answer, different format: 7z is a full container format
- *     with its own header, LZMA decoder and BCJ filters.
+ *   - **Password-protected archives.** RAR and 7z both support them; libarchive
+ *     exposes the encryption flag but this build cannot supply a passphrase, so
+ *     such a file is REFUSED with a clear message rather than half-opened.
+ *   - **Multi-volume / split archives.** `.part1.rar`, `.r00`, `.7z.001` and
+ *     friends are one comic split across files. Only the first volume arrives,
+ *     and it extracts to garbage. Detected from the header and the filename and
+ *     refused up front — see `detectSplitArchive`.
+ *   - **MOBI, PDF.** Genuinely different document models, not containers.
  *
- * Both are *detected with certainty* — `detect.ts` reads their magic bytes —
- * which is a different claim from "can open it", and the result type keeps
- * those two claims apart so nothing in the UI has to guess.
+ * Solid archives are NOT in this list, because they work. A solid `.cb7`
+ * (all pages in one compression stream) and a solid RAR5 archive both decode
+ * correctly through the same path, verified against real fixtures.
+ *
+ * Both RAR and 7z are *detected with certainty* — `detect.ts` reads their magic
+ * bytes — and are now actually readable through `libarchiveReader.ts`, which
+ * wraps libarchive-WASM (MIT, zero runtime deps). The ZIP path below is
+ * untouched: it is faster, needs no WASM, and stays the default for `.cbz`.
  */
 
 import { detectFormat, isReadableContainer, supportedForReading, unsupportedReason, type Detection } from "./detect";
 import { listZipEntries, readStoredEntry, ZipError, type ZipEntry } from "./zip";
 import { pageSortRule, sortPageNames } from "./pageOrder";
+import {
+  extractLibarchivePages,
+  LibarchiveError,
+  describeLibarchiveFailure,
+} from "./libarchiveReader";
 
 export interface ArchivePage {
   /** Object URL for the inflated image. Revoke it via {@link releaseArchive}. */
@@ -58,8 +68,19 @@ export interface ArchivePage {
  */
 export interface ArchiveHandle {
   urls: string[];
-  /** The parse, for pages past the eager head. */
-  archive?: LoadedArchive;
+  /**
+   * Where late pages come from, discriminated by container.
+   *
+   * Deliberately ONE field, not an optional `archive` for ZIP plus an optional
+   * `libarchive` for RAR/7z. Two optional fields would make the handle's key
+   * set differ per container, so a reader could branch on `handle.archive`
+   * being present — which is exactly the container leak this module exists to
+   * prevent. Here the shape is identical for every archive and only
+   * {@link loadArchivePageFromHandle} ever looks at `kind`.
+   */
+  source?:
+    | { kind: "zip"; archive: LoadedArchive }
+    | { kind: "libarchive"; data: Map<string, Uint8Array> };
   /** Every page name in reading order. */
   order?: string[];
   ok: boolean;
@@ -91,8 +112,18 @@ export type OpenArchiveResult =
       message: string;
     };
 
-/** Formats this module can actually inflate. Everything else is `unsupported`. */
+/** ZIP-based formats. These go through the fast, WASM-free path below. */
 const INFLATABLE = new Set(["cbz", "epub", "zip"]);
+
+/**
+ * Formats that need a real decoder, i.e. libarchive.
+ *
+ * Kept separate from {@link INFLATABLE} rather than folded into one set because
+ * the two paths have materially different costs: ZIP is parsed in-tree and
+ * inflates through JSZip, while RAR/7z load a ~600KB WASM module on first use.
+ * A `.cbz` must never pay that, so the two are never merged.
+ */
+const LIBARCHIVE_BACKED = new Set(["cbr", "cb7"]);
 
 /**
  * How many pages to inflate up front.
@@ -121,6 +152,16 @@ export async function openArchive(bytes: Uint8Array, claimed?: string | null): P
       message: detection.detail,
     };
   }
+
+  // RAR/CBR and 7z/CB7: one shared extraction path, results shaped exactly
+    // like the ZIP path below so the reader cannot tell the difference.
+    if (LIBARCHIVE_BACKED.has(detection.format)) {
+      // `openLibarchiveBacked` is async and this function is already async, so
+      // the promise is adopted by the caller's `await`. Both entry points into
+      // this module await `openArchive`, so no caller can observe a pending
+      // handle or an unresolved result union.
+      return openLibarchiveBacked(bytes, detection, claimed);
+    }
 
   if (!INFLATABLE.has(detection.format)) {
     return {
@@ -184,23 +225,229 @@ export async function openArchive(bytes: Uint8Array, claimed?: string | null): P
     }
 
     return {
-      status: "ok",
-      detection,
-      pages,
-      order,
-      handle: { urls, ok: true, archive: parsed, order: names },
-    };
+        status: "ok",
+        detection,
+        pages,
+        order,
+        handle: {
+          urls,
+          ok: true,
+          order: names,
+          source: { kind: "zip", archive: parsed },
+        },
+      };
+    }
+
+  /**
+   * Open a RAR/CBR or 7z/CB7 archive through libarchive.
+   *
+   * The contract with the rest of the app is that this is INVISIBLE. It returns
+   * the same {@link OpenArchiveResult} union, the same {@link ArchivePage}
+   * shape, the same `order` rule, and an {@link ArchiveHandle} whose `urls` are
+   * `blob:` URLs the ZIP path would have produced. A reader holding a CBR handle
+   * and a reader holding a CBZ handle have no way to tell them apart — which is
+   * the point: `openArchive` is the only place that knows about containers.
+   *
+   * Why the adapter, rather than teaching `extract` about RAR:
+   *
+   *   - **Traversal.** `extractLibarchivePages` runs `isSafeArchiveEntry` on
+   *     `entry.pathname` BEFORE the name is used as a map key, a blob label, or
+   *     a sort input. libarchive hands RAR/7z member names back verbatim, and
+   *     those containers are attacker-controlled by default, so the gate is the
+   *     load-bearing security property here (CVE-2023-43616 /
+   *     GHSA-8c8w-f7wp-2jr2 class). It is enforced at the point the name enters
+   *     the process, not here, so there is exactly one place to audit. Names
+   *     that fail it are counted and dropped, never rewritten.
+   *   - **Memory.** Every declared failure kind maps onto a *named refusal*,
+   *     never a partial page list. A split volume that yields 40 of 80 pages
+   *     would otherwise render as a scrambled book that looks like success.
+   *   - **Ownership.** `extractLibarchivePages` copies each page out of WASM
+   *     heap (`HEAP8.slice`) before returning, so the `data` map owns its bytes
+   *     independently of the reader. Blob URLs minted from it stay valid after
+   *     `reader.free()`, which is what makes `releaseArchive` sufficient.
+   *
+   * One honest asymmetry with the ZIP path: libarchive is a *single-pass*
+   * decoder — `read_next_entry` walks a forward-only cursor — so all pages are
+   * decompressed in one go and there is no re-read for a late page. The eager
+   * head is therefore minted the same way (so the reader's shape is identical),
+   * but every page's bytes are already resident in `data`. The handle keeps
+   * `data` so {@link loadArchivePageFromLibarchive} can mint the rest on demand
+   * rather than this function minting 200 object URLs at once.
+   */
+  async function openLibarchiveBacked(
+    bytes: Uint8Array,
+    detection: Detection,
+    claimed?: string | null
+  ): Promise<OpenArchiveResult> {
+    let extracted: Awaited<ReturnType<typeof extractLibarchivePages>>;
+    try {
+      extracted = await extractLibarchivePages(bytes, claimed);
+    } catch (e) {
+      if (e instanceof LibarchiveError) {
+        // `describeLibarchiveFailure` gives the user-facing sentence for
+        // password / split / too-large / damaged / no-pages. The distinction
+        // that matters for the result union: "we cannot read this" (unsupported)
+        // versus "this file is broken" (rejected) versus "there is nothing to
+        // read" (empty) is the same distinction the ZIP branch draws.
+        const status =
+          e.failure === "damaged"
+            ? "rejected"
+            : e.failure === "no-pages"
+              ? "empty"
+              : "unsupported";
+        return {
+          status,
+          detection,
+          message: describeLibarchiveFailure(e.failure),
+        };
+      }
+      // Anything that is not a LibarchiveError is a bug in the WASM glue, a
+      // missing asset, or an OOM inside the emulator. It is still a result, not
+      // a throw: the caller has a reader open and needs a sentence to show.
+      return {
+        status: "unsupported",
+        detection,
+        message:
+          "This archive could not be opened — the RAR/7z decoder failed to load on this device.",
+      };
+    }
+
+    // Same ordering the ZIP path applies, from the same functions, so a RAR with
+    // `1.jpg, 10.jpg, 2.jpg` reads in the same order a CBZ of the same names
+    // would.
+    const allNames = extracted.pages.map((p) => p.name);
+    const order = pageSortRule(allNames);
+    const names = sortPageNames(allNames);
+    if (!names.length) {
+      return {
+        status: "empty",
+        detection,
+        message: "This archive contains no readable image pages.",
+      };
+    }
+
+    const head = names.slice(0, EAGER_PAGES);
+    const pages: ArchivePage[] = [];
+    const urls: string[] = [];
+
+    try {
+      for (const name of head) {
+        const blob = await extractLibarchivePageBlob(extracted.data, name);
+        if (!blob) continue;
+        const url = URL.createObjectURL(blob);
+        urls.push(url);
+        pages.push({ url, name, size: blob.size });
+      }
+    } catch (e) {
+      // A URL minted before the throw is still a URL the document is holding.
+      // Revoking here is what keeps a mid-extraction failure from leaking the
+      // pages that did succeed — the same obligation `releaseArchive` exists
+      // to discharge on the success path.
+      for (const url of urls) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          /* a URL revoked twice is not an error worth surfacing */
+        }
+      }
+      urls.length = 0;
+      return {
+        status: "rejected",
+        detection,
+        message:
+          e instanceof LibarchiveError
+            ? describeLibarchiveFailure(e.failure)
+            : "This archive could not be opened.",
+      };
+    }
+
+    if (!pages.length) {
+      return {
+        status: "rejected",
+        detection,
+        message: "Every page in this archive failed to decompress. The download is likely incomplete.",
+      };
+    }
+
+    return {
+        status: "ok",
+        detection,
+        pages,
+        order,
+        handle: {
+          urls,
+          ok: true,
+          order: names,
+          source: { kind: "libarchive", data: extracted.data },
+        },
+      };
+    }
+
+  /**
+   * One already-decompressed page as a typed Blob.
+   *
+   * The bytes are owned by `data` (copied out of WASM heap at extraction time),
+   * so this only wraps them. Returns null only when the name is absent, which
+   * means the ordering and the extracted set disagreed — a real bug worth a null
+   * rather than an empty image.
+   */
+  async function extractLibarchivePageBlob(
+    data: Map<string, Uint8Array>,
+    name: string
+  ): Promise<Blob | null> {
+    const bytes = data.get(name);
+    if (!bytes) return null;
+    return new Blob([bytes], { type: mimeOf(name) });
   }
 
   /**
-   * A parsed archive, kept so pages past the eager head need no re-parse.
+   * Mint an object URL for a page past the eager head of a libarchive handle.
    *
-   * Deliberately NOT the JSZip instance alone. JSZip's async load is a second
-   * full parse of the file, and a page that is asked for late — which is most
-   * of them — must not pay for it again. Holding the raw bytes *and* the
-   * central directory means a stored member can be sliced out with no decoder
-   * at all, and a deflate member falls back to JSZip if the eager load failed.
+   * Returns null for an unknown name. As with the ZIP path, a late page that
+   * cannot be produced is null — never a blank page.
    */
+  function loadLibarchivePage(handle: ArchiveHandle, name: string): ArchivePage | null {
+    const source = handle.source;
+    if (!source || source.kind !== "libarchive") return null;
+    const bytes = source.data.get(name);
+    if (!bytes) return null;
+    const url = URL.createObjectURL(new Blob([bytes], { type: mimeOf(name) }));
+    // Tracked immediately: a URL the caller might not keep is still a URL the
+    // document holds until revoked, so it belongs to the handle either way.
+    trackUrl(handle, url);
+    return { url, name, size: bytes.byteLength };
+  }
+
+  /**
+   * Load one page from a handle, whichever container it came from.
+   *
+   * The single entry point a reader should use, so that "give me page N" is the
+   * whole contract and no caller has to know whether it is holding a CBZ or a
+   * CBR. The ZIP path goes through the in-tree inflater; the RAR/7z path wraps
+   * bytes libarchive already decompressed, because its reader is single-pass and
+   * offers no re-read.
+   */
+  export async function loadArchivePageFromHandle(
+    handle: ArchiveHandle,
+    name: string
+  ): Promise<ArchivePage | null> {
+    const source = handle.source;
+    if (!source) return null;
+    if (source.kind === "libarchive") return loadLibarchivePage(handle, name);
+    const page = await loadArchivePage(source.archive, name);
+    if (page) trackUrl(handle, page.url);
+    return page;
+  }
+
+    /**
+     * A parsed archive, kept so pages past the eager head need no re-parse.
+     *
+     * Deliberately NOT the JSZip instance alone. JSZip's async load is a second
+     * full parse of the file, and a page that is asked for late — which is most
+     * of them — must not pay for it again. Holding the raw bytes *and* the
+     * central directory means a stored member can be sliced out with no decoder
+     * at all, and a deflate member falls back to JSZip if the eager load failed.
+     */
   export interface LoadedArchive {
     bytes: Uint8Array;
     entries: Map<string, ZipEntry>;
@@ -259,7 +506,16 @@ export function releaseArchive(handle: ArchiveHandle | null | undefined): void {
     }
   }
   handle.urls.length = 0;
-}
+    // Drop the decompressed page bytes too. A RAR/7z handle holds every page of
+    // the book in this map — for a 200-page CBR that is the whole payload — so
+    // revoking the URLs without clearing it would leave the memory pinned for
+    // the life of the handle. Done last, because revoking must not be able to
+    // throw before the reference drop happens.
+    if (handle.source?.kind === "libarchive") {
+      handle.source.data.clear();
+    }
+    handle.source = undefined;
+  }
 
 /** Append to a handle so a late-loaded page is revoked with the rest. */
 export function trackUrl(handle: ArchiveHandle, url: string): void {

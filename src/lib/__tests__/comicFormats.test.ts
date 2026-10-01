@@ -295,9 +295,12 @@ eq("a php claim never matches html", claimMatchesFormat("php", "html"), false);
 console.log("\n-- detection is not reading --");
 
 ok("CBR is detected with certainty", detectFormat(RAR4).format === "cbr");
-ok("CBR is still not readable by us", supportedForReading(detectFormat(RAR4).format) === false);
+// CBR and CB7 ARE readable now — `openArchive` routes them to libarchive.
+// These two stubs are signature-only, so what they prove is that a CBR with no
+// archive behind it is refused with a sentence, not opened and not thrown.
+ok("CBR is readable — libarchive decodes it", supportedForReading(detectFormat(RAR4).format) === true);
 ok("CB7 is detected with certainty", detectFormat(SEVENZ).format === "cb7");
-ok("CB7 is still not readable by us", supportedForReading(detectFormat(SEVENZ).format) === false);
+ok("CB7 is readable — libarchive decodes it", supportedForReading(detectFormat(SEVENZ).format) === true);
 ok("CBZ IS readable", supportedForReading("cbz") === true);
 ok("EPUB IS readable", supportedForReading("epub") === true);
 ok("MOBI is honestly flagged as not readable", supportedForReading("mobi") === false);
@@ -535,14 +538,17 @@ const rejTrunc = await openArchive(TRUNCATED, "book.cbz");
 eq("openArchive refuses a truncated archive", rejTrunc.status, "rejected");
 ok("the truncation refusal says why", /damaged|incomplete/i.test((rejTrunc as { message: string }).message));
 
-const unsupCbr = await openArchive(RAR4, "book.cbr");
-eq("openArchive reports CBR as unsupported, not broken", unsupCbr.status, "unsupported");
-ok("the CBR message says the format by name", /RAR\/CBR/.test((unsupCbr as { message: string }).message));
-ok("the CBR message does not claim to be a reader bug", /not supported/i.test((unsupCbr as { message: string }).message));
+// RAR4 and 7z are decoded by libarchive now, so these two 8/10-byte signature
+// stubs no longer reach the "unsupported" branch — they are refused as the
+// empty containers they are. Real RAR/7z reading, including refusals, is
+// covered in `libarchiveComic.test.ts` against archives real libarchive parses.
+const stubCbr = await openArchive(RAR4, "book.cbr");
+eq("openArchive refuses a signature-only CBR", stubCbr.status, "empty");
+ok("and says why, in a sentence", (stubCbr as { message: string }).message.length > 10);
 
-const unsupCb7 = await openArchive(SEVENZ, "book.cb7");
-eq("openArchive reports CB7 as unsupported", unsupCb7.status, "unsupported");
-ok("the CB7 message says the format by name", /7z\/CB7/.test((unsupCb7 as { message: string }).message));
+const stubCb7 = await openArchive(SEVENZ, "book.cb7");
+eq("openArchive refuses a signature-only CB7", stubCb7.status, "empty");
+ok("and says why, in a sentence", (stubCb7 as { message: string }).message.length > 10);
 
 const unsupPdf = await openArchive(PDF, "book.pdf");
 eq("openArchive reports PDF as unsupported", unsupPdf.status, "unsupported");

@@ -21,3 +21,12 @@ tmp/
 .env.production
 
 croc_wasm.bin
+
+# Local APK output. Releases are the distribution channel (the android-apk
+# workflow publishes there); a copy sitting in the repo root is a 12 MB
+# duplicate that only ever goes stale.
+kora-android-release-*/
+
+# Agent scratch. Already ignored above for new files, but these were tracked
+# before the rule existed, so `git rm --cached` was needed to untrack them.
+# Keep the plans in .hermes/plans/ — they are the design record.

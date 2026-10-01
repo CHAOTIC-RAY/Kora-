@@ -41,6 +41,7 @@ import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden, setW
 import { canHydrateBook } from "./lib/crossDeviceSync";
 const BookReaderEPUB = lazy(() => importWithRetry(() => import("./components/BookReaderEPUB")));
 const BookReaderPDF = lazy(() => importWithRetry(() => import("./components/BookReaderPDF")));
+const BookReaderComic = lazy(() => importWithRetry(() => import("./components/BookReaderComic")));
 const BookReaderText = lazy(() => importWithRetry(() => import("./components/BookReaderText")));
 const CreateView = lazy(() => importWithRetry(() => import("./components/CreateView")));
 const AudiobookPlayer = lazy(() => importWithRetry(() => import("./components/AudiobookPlayer")));
@@ -3825,6 +3826,22 @@ export default function App() {
           />
         ) : activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
+            book={activeBook}
+            userId={user?.uid || ""}
+            onClose={dismissReader}
+            onProgressUpdate={(updatedBook) => {
+              setBooks(prev => {
+                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
+                saveLocalLibrary(merged);
+                return merged;
+              });
+              setLastReadBook(updatedBook);
+              localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
+              void syncBookToCloud(user?.uid || "", updatedBook);
+            }}
+          />
+        ) : ["cbz", "zip", "cbr", "cb7"].includes(activeBook.extension?.toLowerCase() || "") ? (
+          <BookReaderComic
             book={activeBook}
             userId={user?.uid || ""}
             onClose={dismissReader}

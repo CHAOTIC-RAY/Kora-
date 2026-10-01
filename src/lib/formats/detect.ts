@@ -380,22 +380,31 @@ export function isReadableContainer(f: DetectedFormat): boolean {
  * Whether Kora can actually READ this format today.
  *
  * Separate from detection on purpose, and the separation is the whole point
- * of this file existing: a CBR is detected with complete certainty and still
- * cannot be read, because RAR decompression is a heavy dependency nobody has
- * justified adding. Conflating "I know what this is" with "I can open this"
- * is how apps end up silently failing.
+ * of this file existing: a format can be detected with complete certainty and
+ * still be refused for a reason that has nothing to do with identifying it.
+ *
+ * `cbr` and `cb7` are readable because {@link openArchive} in `archive.ts`
+ * routes them to libarchive-wasm. That is a *capability* claim, so it is
+ * coupled to that file on purpose: if the WASM decoder is ever removed, this
+ * function is where the claim has to be withdrawn, and the UI copy below is
+ * written to read from it rather than asserting a format list of its own.
+ *
+ * The remaining formats here are detected with certainty and still cannot be
+ * read — a PDF is not a stack of image pages, and there is no MOBI renderer.
+ * Conflating "I know what this is" with "I can open this" is how apps end up
+ * silently failing, so those stay false.
  */
 export function supportedForReading(f: DetectedFormat): boolean {
-  return f === "epub" || f === "cbz" || f === "zip";
+  return f === "epub" || f === "cbz" || f === "zip" || f === "cbr" || f === "cb7";
 }
 
 /** The honest sentence to show for a format that is detected but not read. */
 export function unsupportedReason(f: DetectedFormat): string {
   switch (f) {
     case "cbr":
-      return "RAR/CBR archives are not supported yet — this source offers .cbr. Reading one needs a RAR decompressor, which is not something Kora ships.";
+      return "RAR/CBR archives need a RAR decoder, which did not load on this device.";
     case "cb7":
-      return "7z/CB7 archives are not supported yet — this source offers .cb7. Reading one needs a 7z decompressor, which is not something Kora ships.";
+      return "7z/CB7 archives need a 7z decoder, which did not load on this device.";
     case "pdf":
       return "PDF is detected but Kora's reader is built for image pages, not PDF documents.";
     case "mobi":

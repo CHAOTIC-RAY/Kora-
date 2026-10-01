@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "kora",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -28,7 +28,7 @@
     "test:rules": "node scripts/test-firestore-rules.mjs",
     "test:logic": "tsx scripts/test-app-logic.ts",
     "test:sources": "tsx src/lib/sources/__tests__/selector.test.ts && tsx src/lib/sources/__tests__/runtime.test.ts && tsx src/lib/sources/__tests__/jsonClient.test.ts && tsx src/lib/sources/__tests__/madara.test.ts",
-    "parse-dict": "tsx parse-stardict.ts",
+    "parse-dict": "tsx scripts/tools/parse-stardict.ts",
     "size": "vite build && node scripts/measure-bundle.mjs",
     "test:unit": "node scripts/run-all-tests.mjs"
   },
@@ -66,6 +66,7 @@
     "firebase": "^12.15.0",
     "jsdom": "^29.1.1",
     "jszip": "^3.10.1",
+    "libarchive-wasm": "^1.2.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "nodemailer": "^9.0.3",

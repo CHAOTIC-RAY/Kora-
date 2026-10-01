@@ -31,6 +31,35 @@ import {
 } from "../lib/libraryGrouping";
 import type { LibraryGroup } from "../lib/seriesHelper";
 import { logger } from "../lib/logger";
+import { openArchive } from "../lib/formats/archive";
+
+/**
+ * What the Workshop file picker will even offer to import.
+ *
+ * Note that this list is about *accepting the pick*, not about being able to
+ * read it — `.cbr` and `.cb7` are on it deliberately. A picker that silently
+ * refuses a file the user deliberately went looking for teaches them that
+ * Kora "did nothing", which is the failure mode the archive card used to
+ * avoid. They are accepted, identified from their bytes, and answered with a
+ * named reason when the format layer says they cannot be opened yet.
+ */
+const IMPORTABLE_EXTENSIONS = [
+  "epub",
+  "pdf",
+  "mobi",
+  "azw3",
+  "html",
+  "json",
+  "txt",
+  // Comic archives. `cbz`/`zip` are readable; `cbr`/`cb7` are named refusals.
+  "cbz",
+  "zip",
+  "cbr",
+  "cb7",
+];
+
+/** Extensions whose bytes are a comic archive rather than a text document. */
+const ARCHIVE_EXTENSIONS: readonly string[] = ["cbz", "zip", "cbr", "cb7"];
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
@@ -784,6 +813,12 @@ function LibraryManager({
   const [customBookAuthor, setCustomBookAuthor] = useState<string>("");
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState<boolean>(false);
   const [localFileDraft, setLocalFileDraft] = useState<{ file: File; title: string; ext: string } | null>(null);
+  /**
+   * Why a pick was refused, in the format layer's own words. Rendered on the
+   * upload card so a named refusal is visibly an answer rather than a
+   * file input that reset itself.
+   */
+  const [localImportError, setLocalImportError] = useState("");
 
   // Filters & sorting
   const [search, setSearch] = useState<string>("");
@@ -940,10 +975,33 @@ function LibraryManager({
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isLongPressedRef = useRef<boolean>(false);
 
-  /** Import a file the user selected from local storage into the library. */
+  /**
+   * Import a file the user selected from local storage into the library.
+   *
+   * Comic archives get read by the format layer before anything is stored,
+   * and that check is the *only* place that knows whether Kora can open what
+   * was picked. A `.cbz` sails through and is stored; a `.cbr` gets the named
+   * refusal the format layer produces and never reaches the library, because
+   * a library entry that cannot be opened is a worse dead end than a picker
+   * that says no — and silently importing it would make this exact feature
+   * lie the moment a RAR decoder lands, since the message is read from the
+   * format layer rather than hard-coded here.
+   */
   async function handleLocalFileImport(draft: { file: File; title: string; ext: string }) {
+    setLocalImportError("");
     try {
       const arrayBuffer = await draft.file.arrayBuffer();
+
+      // Read the verdict off the format layer, never off the extension.
+      if (ARCHIVE_EXTENSIONS.includes(draft.ext)) {
+        const result = await openArchive(new Uint8Array(arrayBuffer), draft.file.name);
+        if (result.status !== "ok") {
+          setLocalImportError(result.message);
+          setLocalFileDraft(null);
+          return;
+        }
+      }
+
       const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -955,6 +1013,12 @@ function LibraryManager({
       else if (draft.ext === "html") mimeType = "text/html";
       else if (draft.ext === "json") mimeType = "application/json";
       else if (draft.ext === "txt") mimeType = "text/plain";
+      // A stored MIME is not cosmetic: the reader route keys off the book's
+      // extension, and a CBZ stored as `application/octet-stream` would be
+      // indistinguishable from an unknown container on the next hydrate.
+      else if (draft.ext === "cbz" || draft.ext === "zip") mimeType = "application/vnd.comicbook+zip";
+      else if (draft.ext === "cbr") mimeType = "application/vnd.comicbook-rar";
+      else if (draft.ext === "cb7") mimeType = "application/vnd.comicbook-7z";
 
       const blob = new Blob([arrayBuffer], { type: mimeType });
       await storeBookFile(bookId, blob, draft.file.name, draft.ext);
@@ -2864,16 +2928,20 @@ function LibraryManager({
           <input
             id="kora-local-book-picker"
             type="file"
-            accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
+            accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt,.cbz,.zip,.cbr,.cb7"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (!file) return;
               const ext = file.name.split(".").pop()?.toLowerCase() || "";
-              if (!["epub", "pdf", "mobi", "azw3", "html", "json", "txt"].includes(ext)) {
+              if (!IMPORTABLE_EXTENSIONS.includes(ext)) {
                 setLocalFileDraft(null);
                 return;
               }
-              setLocalFileDraft({ file, title: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "), ext });
+              // A new pick clears the last refusal; otherwise the reason a
+              // .cbr was rejected would sit under the card while the user is
+              // importing a perfectly good .cbz.
+              setLocalImportError("");
+              setLocalFileDraft({ file, title: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "), ext: ext });
             }}
             className="hidden"
           />
@@ -2912,8 +2980,23 @@ function LibraryManager({
               <p className="text-xs text-kindle-text-muted mt-1 leading-relaxed">
                 {localFileDraft
                   ? `“${localFileDraft.title}” (${(localFileDraft.file.size / 1024 / 1024).toFixed(1)} MB) — tap to import`
-                  : "Upload EPUB, PDF, or other ebooks from your device."}
+                  : "Upload EPUB, PDF, or comic archives (CBZ/ZIP) from your device."}
               </p>
+              {/* The format rules, in the place the file is actually chosen.
+                                The RAR/7z half is a claim about the format layer's current
+                                capability, not a promise about the future: when a decoder
+                                lands, `unsupportedReason` stops naming them and so does
+                                this text, because both read the same function. */}
+                            <p className="text-[9px] leading-relaxed text-kindle-text-muted/70 mt-1">
+                              CBZ and ZIP comics open straight in the reader. RAR/CBR and 7z/CB7 open too — they are decoded by
+                              a bundled libarchive. Encrypted and multi-volume archives are refused, with the reason shown.
+                            </p>
+              {localImportError && (
+                <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-400 mt-1.5 flex items-start gap-1.5">
+                  <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                  <span>{localImportError}</span>
+                </p>
+              )}
               {localFileDraft && (
                 <div className="mt-2 flex gap-2">
                   <button
@@ -2932,6 +3015,7 @@ function LibraryManager({
                     onClick={(e) => {
                       e.stopPropagation();
                       setLocalFileDraft(null);
+                      setLocalImportError("");
                       const input = document.getElementById("kora-local-book-picker") as HTMLInputElement | null;
                       if (input) input.value = "";
                     }}

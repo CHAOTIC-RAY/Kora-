@@ -1,0 +1,62 @@
+name: Deploy documentation
+
+# The documentation is three static HTML pages sharing one stylesheet and one
+# small script, all under docs/. There is no build step and no dependency
+# install: the committed files are the artifact. That is deliberate. The pages
+# are served straight from the repository, so they cannot break when a CDN
+# changes, a typo can be reviewed without a toolchain, and a broken deploy is
+# impossible to produce by accident.
+#
+# Served from the `main` branch, `/docs` directory (GitHub's classic Pages
+# source). The .nojekyll file in docs/ stops Jekyll from eating paths, and
+# every asset reference is relative, so the same folder also works when opened
+# straight off disk.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  # Lets a maintainer re-run the deploy without pushing a no-op commit.
+  workflow_dispatch:
+
+# One deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let a deploy on main be blocked by a failing build on another branch.
+jobs:
+  deploy:
+    name: Publish docs to GitHub Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      # Records the Pages settings as build output, which is what
+      # upload-pages-artifact reads to package the site.
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      # No build command. docs/ is uploaded exactly as committed.
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

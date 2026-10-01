@@ -101,11 +101,6 @@ export default function ComicDetailView({
   const [readChapters, setReadChapters] = useState<Set<string>>(new Set());
   const [busyChapter, setBusyChapter] = useState<string | null>(null);
   const [open, setOpen] = useState<OpenChapter | null>(null);
-  /** An archive was just opened, and what it turned out to be. */
-  const [archiveNote, setArchiveNote] = useState("");
-  /** Reading a picked file off disk. */
-  const [archiveBusy, setArchiveBusy] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   /**
    * Stored read positions, keyed `pluginId:url`.
    *
@@ -257,45 +252,6 @@ export default function ComicDetailView({
     }
   };
 
-  /**
-   * Open a comic archive the user picked from disk.
-   *
-   * The whole point of `detectFormat`/`openArchive` lands here: the bytes are
-   * classified, and each outcome gets its own sentence. A CBZ opens. A CBR
-   * says RAR is not supported, in words, on screen — not a blank reader. An
-   * HTML or PHP error page says the *mirror* is broken, not "try again".
-   *
-   * The file is read once, into memory, and inspected there. Nothing here
-   * fetches, so it cannot add a subrequest against the Worker budget.
-   */
-  const openArchiveFile = useCallback(async (file: File) => {
-    setError("");
-    setArchiveBusy(true);
-    try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const result = await openArchive(bytes, file.name);
-      if (result.status === "ok") {
-        setArchiveNote(describeArchive(result.detection));
-        setOpen({
-          chapter: { url: `file://${file.name}`, name: file.name.replace(/\.[^.]+$/, "") } as Chapter,
-          manga: (manga || { id: file.name, title: file.name }) as Manga,
-          pages: result.pages.map((p) => p.url),
-          index: READER_RTL ? 0 : 0,
-          formatLabel: describeArchive(result.detection),
-          handle: result.handle,
-        });
-        return;
-      }
-      // rejected / unsupported / empty are all *explained*, not swallowed.
-      setArchiveNote("");
-      setError(result.message);
-    } catch (e) {
-      setArchiveNote("");
-      setError(e instanceof Error ? e.message : "That file could not be opened.");
-    } finally {
-      setArchiveBusy(false);
-    }
-  }, [manga]);
 
   if (!book) return null;
 
@@ -482,39 +438,8 @@ export default function ComicDetailView({
             );
           })()}
 
-          {/* Open a comic archive from disk. The picker accepts every
-              container we can *identify* — including the ones we cannot read —
-              because the useful answer to "I have a .cbr" is a clear sentence
-              saying CBR is not supported yet, not a file input that silently
-              refuses it. */}
-          <div className="border border-kindle-border rounded-xl p-3 space-y-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".cbz,.cbr,.cb7,.zip,.pdf,.epub,.mobi,.azw,.azw3,.rar,image/*"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (f) void openArchiveFile(f);
-              }}
-            />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={archiveBusy}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:border-kindle-accent/50 transition disabled:opacity-50 cursor-pointer"
-            >
-              {archiveBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
-              {archiveBusy ? "Reading archive…" : "Open a comic archive…"}
-            </button>
-            <p className="text-[9px] leading-relaxed text-kindle-text-muted/80">
-              CBZ and ZIP comics open straight in the reader. RAR/CBR and 7z/CB7 are identified but not
-              yet readable — Kora will tell you which one you have rather than failing quietly.
-            </p>
-            {archiveNote && (
-              <p className="text-[10px] text-kindle-accent font-mono">{archiveNote}</p>
-            )}
-          </div>
+          {/* The format rules live on the Workshop upload card now; this
+              screen no longer repeats them. */}
 
           {onAddToLibrary && manga && (
             <button
