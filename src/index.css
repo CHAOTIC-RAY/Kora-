@@ -677,9 +677,14 @@ mark.kora-hl-pink {
  * `--inset` by default); setting both keeps either lookup correct.
  */
 #sentry-feedback {
-  /* Lift clear of the floating nav / mini player stack. */
-  --actor-inset: auto auto var(--kora-mobile-nav-offset) auto;
-  --inset: auto auto var(--kora-mobile-nav-offset) auto;
+  /* Lift clear of the floating nav / mini player stack, but KEEP the
+     bottom-right anchor Sentry positions itself at.
+     This is `inset: auto <right> <bottom> auto`, so the right offset must be a
+     real length — writing `auto` there drops the right anchor entirely and the
+     button falls back to its static flow position, which measured as the
+     bottom-LEFT corner. Only the bottom is changed. */
+  --actor-inset: auto var(--page-margin) var(--kora-mobile-nav-offset) auto;
+  --inset: auto var(--page-margin) var(--kora-mobile-nav-offset) auto;
   /* Below Kora's modals (z-[999] is the highest sheet) but above app chrome
      (z-[220]), so it stays reachable without covering a dialog. */
   --z-index: 500;
@@ -696,14 +701,10 @@ mark.kora-hl-pink {
   --font-size: 13px;
 }
 
-/* The pill only needs an icon on narrow screens, same as Sentry's own default,
-   but the app's nav is dense enough that we keep the label from stealing the
-   mini player's tap target. */
-@media (max-width: 480px) {
-  #sentry-feedback {
-    --actor-inset: auto auto var(--kora-mobile-nav-offset) auto;
-  }
-}
+/* No narrow-screen override is needed. Sentry's own stylesheet already drops the
+   "Report a Bug" label below 600px, so the pill collapses to its icon and stays
+   out of the mini player's way on its own. An earlier draft repeated the inset
+   here for no reason and reintroduced the `auto` anchor bug. */
 
 html {
   scrollbar-gutter: stable;
