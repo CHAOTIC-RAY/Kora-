@@ -16,5 +16,8 @@ tmp/
 .env
 .env.local
 .env.*.local
+# Build-time config carrying the Sentry DSN. The DSN is public by nature (it is
+# inlined into every bundle), but it is still local build config, not source.
+.env.production
 
 croc_wasm.bin
