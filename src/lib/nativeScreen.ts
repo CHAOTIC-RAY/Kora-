@@ -60,9 +60,12 @@ export type BrightnessSupport = "none" | "filter" | "native";
 /** How brightness can actually be applied on this platform. */
 export function brightnessSupport(): BrightnessSupport {
   if (isNativeAndroid()) return "native";
-  // A CSS filter works everywhere, including native webview. Preferring it
-  // keeps one code path for the web build and the APK alike.
-  if (typeof document !== "undefined" && "filter" in document.body?.style) return "filter";
+  // `document.body?.style` guards the ACCESS but not the `in` operator, which
+  // still throws on `undefined`. Before <body> exists — during early parse, or
+  // on the bare platform this module must survive — this was a TypeError on a
+  // function that is supposed to be a pure capability probe.
+  const style = typeof document !== "undefined" ? document.body?.style : undefined;
+  if (style && "filter" in style) return "filter";
   return "none";
 }
 
@@ -105,7 +108,17 @@ export function clearBrightness(el: HTMLElement | null): void {
 
 let sentinel: WakeLockSentinelLike | null = null;
 let acquiring = false;
-/** Listeners attached to the current sentinel, so they can be detached. */
+/**
+ * Generation token, bumped by every release.
+ *
+ * `navigator.wakeLock.request` is a promise nobody can cancel, so a reader
+ * unmounted while the request is in flight used to end up holding a lock that
+ * no owner would ever release — verified: the lock resolved AFTER unmount and
+ * stayed held, with its `visibilitychange` listener still attached. The screen
+ * stayed on with the reader gone. Each acquire captures the generation it
+ * started under and self-releases if the generation moved on while it awaited.
+ */
+let generation = 0;
 let releaseHandler: (() => void) | null = null;
 let visibilityHandler: (() => void) | null = null;
 
@@ -117,9 +130,22 @@ async function acquireWakeLock(): Promise<void> {
   if (typeof n.wakeLock?.request !== "function") return;
 
   acquiring = true;
+  const mine = generation;
   try {
     const lock = await n.wakeLock.request("screen");
     if (!lock) return;
+
+    // Someone released while we were waiting. Hand the lock straight back
+    // rather than adopting a lock nobody is watching.
+    if (mine !== generation) {
+      try {
+        await lock.release();
+      } catch {
+        /* already gone */
+      }
+      return;
+    }
+
     sentinel = lock;
 
     // The browser releases the lock whenever the tab is backgrounded, and
@@ -160,6 +186,10 @@ export async function setKeepAwake(enabled: boolean): Promise<boolean> {
 }
 
 export async function releaseKeepAwake(): Promise<void> {
+  // Invalidate any in-flight acquire before touching anything else. Without
+  // this, a request that resolves a moment later adopts a lock nobody owns.
+  generation++;
+  acquiring = false;
   if (visibilityHandler && typeof document !== "undefined") {
     document.removeEventListener("visibilitychange", visibilityHandler);
     visibilityHandler = null;
@@ -196,7 +226,12 @@ export function isNativeCapable(): boolean {
  * that only shows up as a battery complaint weeks later.
  */
 export function createSleepTimer(minutes: number) {
-  const durationMs = Math.max(0, Math.round(minutes)) * 60_000;
+  // `Math.max(0, NaN)` is NaN, so a non-finite value produced a timer whose
+  // `expired()` compared NaN > 0 forever — a sleep timer that silently never
+  // fires. Treat it as disabled, which is the honest reading.
+  const n = Number(minutes);
+  const safe = Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+  const durationMs = safe * 60_000;
   const startedAt = Date.now();
   return {
     durationMs,

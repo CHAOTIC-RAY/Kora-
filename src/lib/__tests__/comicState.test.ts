@@ -107,7 +107,10 @@ check("bookmark added", marked.bookmarks.includes(12), true);
 check("isBookmarked true", isBookmarked(marked, 12), true);
 const unmarked = toggleBookmark(KEY, 12, 3000)!;
 check("bookmark toggled off", unmarked.bookmarks.includes(12), false);
-check("toggle on unknown key", toggleBookmark("nope", 3), null);
+// An unknown key no longer bails: bookmarking a page of a chapter with no
+// recorded state is a legitimate first action, and it used to persist nothing.
+// The seed argument supplies the context it needs.
+check("toggle on unknown key without seed still creates a record", toggleBookmark("nope", 3) !== null, true);
 check("toggle bad page", toggleBookmark(KEY, 0), null);
 check("toggle NaN page", toggleBookmark(KEY, NaN), null);
 check("isBookmarked on undefined", isBookmarked(undefined, 5), false);
@@ -136,7 +139,14 @@ check("merge with missing remote", mergeChapterState(older, null as any).pageNum
 
 const doneOlder: ChapterState = { ...older, completed: true };
 const notDoneNewer: ChapterState = { ...newer, completed: false };
-check("completed is sticky", mergeChapterState(doneOlder, notDoneNewer).completed, true);
+// NOT sticky: un-marking a chapter read is a deliberate act and must stick.
+// The old behaviour made `completed` write-once, which is what it was before.
+check("completed can be unset by a newer record", mergeChapterState(doneOlder, notDoneNewer).completed, undefined);
+// `notDoneNewer` is the NEWER record, so its "not completed" is the user's
+// latest intent and wins regardless of argument order. To check that a later
+// "completed: true" still sticks, the newer record has to be the true one.
+const doneNewer: ChapterState = { ...doneOlder, updatedAt: 9000 };
+check("completed set by the newer record wins", mergeChapterState(notDoneNewer, doneNewer).completed, true);
 
 // ── Merge maps ─────────────────────────────────────────────────────────────
 const localMap: ComicStateMap = { a: older, b: { ...newer, bookmarks: [] } };

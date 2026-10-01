@@ -159,9 +159,23 @@ export function saveSettings(settings: ReaderSettings): void {
   }
 }
 
-/** Merge a partial change into the stored settings and return the result. */
+/**
+ * Merge a partial change into the stored settings and return the result.
+ *
+ * Keys explicitly set to `undefined` are SKIPPED rather than spread. The naive
+ * `{ ...loadSettings(), ...patch }` lets an undefined override a real stored
+ * value, and `sanitizeSettings` then rejects it back to the default — so a
+ * component passing an optional or not-yet-loaded value silently reset the
+ * user's preference. Verified: a stored `fitMode: "width"` plus
+ * `{ fitMode: undefined }` came back as `"contain"`.
+ */
 export function updateSettings(patch: Partial<ReaderSettings>): ReaderSettings {
-  const next = sanitizeSettings({ ...loadSettings(), ...patch });
+  const current = loadSettings();
+  const defined: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v !== undefined) defined[k] = v;
+  }
+  const next = sanitizeSettings({ ...current, ...defined });
   saveSettings(next);
   return next;
 }
