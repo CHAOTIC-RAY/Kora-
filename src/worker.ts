@@ -4134,11 +4134,19 @@ export default {
           // for what was actually a rate limit.
           //
           // An interstitial is identified by its title/heading, not by prose.
+          //
+          // Deliberately NOT matching on `challenge-platform`: Cloudflare injects
+          // /cdn-cgi/challenge-platform/scripts/jsd/main.js (its JS-detection
+          // beacon) into ordinary 200 pages, so that token appears on healthy
+          // sites too. Only the tokens that exist solely while a challenge is
+          // being solved are safe here.
           const isChallengePage =
             /<title>\s*(just a moment|attention required|attention needed|checking your browser|please wait)/i.test(text) ||
             /<h1[^>]*>\s*(just a moment|attention required|checking your browser)/i.test(text) ||
-            /\b(cf-|challenge-platform|__cf_chl_|cf_chl_opt|captcha-delivery)/i.test(text) ||
-            /g-recaptcha|h-captcha/i.test(text);
+            // No trailing \b: `_` is a word character, so `\b__cf_chl_\b`
+            // requires a non-word char after the trailing underscore and never
+            // matches the real `window._cf_chl_opt` / `__cf_chl_tk` forms.
+            /(__cf_chl_|_cf_chl_opt|cf_chl_opt_|captcha-delivery|g-recaptcha|h-captcha)/i.test(text);
 
           if (isChallengePage) {
             throw new Error("This mirror is blocked by a CAPTCHA or Cloudflare challenge page. Please try a different direct mirror (like libgen.li or IPFS).");
