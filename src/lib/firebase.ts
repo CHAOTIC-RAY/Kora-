@@ -98,6 +98,22 @@ export function getFirestoreDb() {
   return db;
 }
 
+/**
+ * The signed-in user's uid, or "" when signed out / Firebase inactive.
+ *
+ * Callers that need a user id deep in the tree use this rather than threading
+ * one down as a prop through every intermediate component. It is read at call
+ * time, so it is correct even if sign-in happens after the component mounted.
+ */
+export function getCurrentUserId(): string {
+  if (!isRealFirebase) return "";
+  try {
+    return auth?.currentUser?.uid ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function isFirebaseActive(): boolean {
   return isRealFirebase;
 }

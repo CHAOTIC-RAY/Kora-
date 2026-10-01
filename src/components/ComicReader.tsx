@@ -40,6 +40,8 @@ import {
   getChapterState, toggleBookmark, isBookmarked, setChapterState,
   type ChapterState,
 } from "../lib/comicState";
+import { schedulePush, pullAndMerge, pushChapter } from "../lib/comicCloudSync";
+import { getCurrentUserId } from "../lib/firebase";
 import {
   applyBrightness, clearBrightness, setKeepAwake, releaseKeepAwake,
   keepAwakeSupported, createSleepTimer,
@@ -99,7 +101,13 @@ export interface ComicReaderProps {
    * (an archive with no plugin), so bookmark controls hide themselves.
    */
   stateKey?: string;
-  /** True when the parent wants positions pushed to the cloud. */
+  /**
+   * Whether position and bookmarks should also reach the cloud.
+   *
+   * Defaults to true, but only has an effect when a user is actually signed
+   * in — the reader resolves that itself rather than taking a userId, so it
+   * does not depend on every parent threading auth down to it.
+   */
   syncEnabled?: boolean;
   /**
    * What the pages actually ARE, decided from bytes by `detectFormat`.
@@ -138,7 +146,7 @@ export function ComicReader({
   onClose,
   seriesTitle,
   stateKey,
-  syncEnabled = false,
+  syncEnabled = true,
   formatLabel,
 }: ComicReaderProps) {
   // Where the chapter opens. A right-to-left manga opens on its *last* page
@@ -153,6 +161,11 @@ export function ComicReader({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showSlider, setShowSlider] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // Resolved here rather than passed in: the reader is opened from several
+  // places, and a prop that every one of them has to supply is a prop that
+  // will eventually be forgotten. Empty string means signed out, which turns
+  // every sync call into a no-op rather than an error.
+  const userId = syncEnabled ? getCurrentUserId() : "";
 
   const total = pages.length;
   const clamped = Math.min(Math.max(0, index), Math.max(0, total - 1));
@@ -192,10 +205,15 @@ export function ComicReader({
         { pageNumber: displayed, totalPages: total, chapterIndex: 0 },
         Date.now()
       );
-      if (next) setChapterStateLocal(next);
+      if (next) {
+        setChapterStateLocal(next);
+        // Debounced: a fast reader makes many of these and only the last one
+        // is worth a network write.
+        if (syncEnabled && userId) schedulePush(userId, stateKey);
+      }
       onIndexChange?.(indexForDisplayed({ rtl: readingRtl, total, page: displayed }));
     },
-    [stateKey, total, readingRtl, onIndexChange]
+    [stateKey, total, readingRtl, onIndexChange, syncEnabled, userId]
   );
 
   const toggleCurrentBookmark = useCallback(() => {
@@ -204,8 +222,13 @@ export function ComicReader({
       pageNumber: shown,
       totalPages: total,
     });
-    if (next) setChapterStateLocal(next);
-  }, [stateKey, shown, total]);
+    if (next) {
+      setChapterStateLocal(next);
+      // A bookmark is a deliberate, infrequent act — push it immediately
+      // rather than making the user wait out a debounce to see it elsewhere.
+      if (syncEnabled && userId) void pushChapter(userId, stateKey);
+    }
+  }, [stateKey, shown, total, syncEnabled, userId]);
 
   const currentBookmarked = isBookmarked(chapterState, shown);
 
@@ -274,6 +297,31 @@ export function ComicReader({
   const onPageRetry = useCallback((url: string) => {
   preloaded.current.clearFailure(url);
   }, []);
+
+  // ── Pull cloud state once on open ────────────────────────────────────────
+  // Merge, so a stale cloud copy cannot move the reader off the page they are
+  // actually on. A no-op when signed out.
+  useEffect(() => {
+    if (!syncEnabled || !userId) return;
+    let cancelled = false;
+    void pullAndMerge(userId).then((applied) => {
+      if (cancelled || !applied) return;
+      // Re-read local: the merge just wrote into it.
+      if (stateKey) setChapterStateLocal(getChapterState(stateKey));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [syncEnabled, userId, stateKey]);
+
+  // Flush the final position on unmount, so closing the reader mid-debounce
+  // does not leave the last few pages unwritten.
+  useEffect(() => {
+    if (!syncEnabled || !userId || !stateKey) return;
+    return () => {
+      void pushChapter(userId, stateKey);
+    };
+  }, [syncEnabled, userId, stateKey]);
 
   // ── Auto-hide the chrome after a period of inactivity ────────────────────
   // Without this the bars sit on top of every page forever, which is both an
