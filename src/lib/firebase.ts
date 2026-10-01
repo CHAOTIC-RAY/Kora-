@@ -85,6 +85,23 @@ function isRecoverableFirestoreError(error: unknown): boolean {
   ].includes(code);
 }
 
+/**
+ * Read-only accessors for the Firebase handles.
+ *
+ * `db` and `isRealFirebase` are module-private `let`s rather than constants —
+ * they are assigned once the SDK has initialised — so exporting the bindings
+ * would hand out a live reference that a caller could observe before it is
+ * ready. These getters read at call time instead, which is what every caller
+ * actually wants.
+ */
+export function getFirestoreDb() {
+  return db;
+}
+
+export function isFirebaseActive(): boolean {
+  return isRealFirebase;
+}
+
 function noteFirestoreSyncIssue(error: unknown, context: string) {
   if (isRecoverableFirestoreError(error)) {
     console.warn(`Firestore sync deferred (${context}):`, error);

@@ -448,6 +448,23 @@ export function isBookmarked(state: ChapterState | undefined, page: number): boo
   return state.bookmarks.includes(Math.round(page));
 }
 
+/**
+ * Merge a cloud snapshot into local state and persist it.
+ *
+ * The one supported way for outside code to land remote records. Exposed as a
+ * function rather than an exported `persistLocalState` so a caller cannot
+ * overwrite the whole local map wholesale — which is exactly how a stale cloud
+ * copy would move a reader to a page they are not on.
+ *
+ * Returns the number of remote records applied, or 0 if nothing was stored.
+ */
+export function mergeRemoteIntoLocal(remote: ComicStateMap): number {
+  const keys = Object.keys(remote || {});
+  if (keys.length === 0) return 0;
+  const merged = pruneLocalState(mergeStateMaps(loadLocalState(), remote));
+  return persistLocalState(merged) ? keys.length : 0;
+}
+
 /** Drop one chapter's state, or everything when no key is given. */
 export function clearChapterState(key?: string): void {
   if (!key) {
