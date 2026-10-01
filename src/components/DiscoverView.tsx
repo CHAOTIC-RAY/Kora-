@@ -30,6 +30,15 @@ import {
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { classifyDownloadLink } from "../lib/downloadLinkKind";
+import {
+  emptySnapshot,
+  fetchMirrorHealth,
+  orderMirrorsByHealth,
+  reliabilityTone,
+  reportMirrorOutcome,
+  type MirrorHealthSnapshot,
+} from "../lib/mirrorHealthClient";
+import { detectFormat } from "../lib/formats/detect";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
@@ -74,6 +83,13 @@ interface DiscoverViewProps {
   showFirstBookNudge?: boolean;
   onDismissFirstBookNudge?: () => void;
   onOpenCreateView?: () => void;
+  /**
+   * A saved series opened from the Library, carrying the plugin id and series
+   * path needed to rebuild it. Consumed once on mount so returning to
+   * Discover later does not re-open a series the user already closed.
+   */
+  initialComicBook?: any | null;
+  onInitialComicBookConsumed?: () => void;
 }
 
 async function injectMetadataIntoEpub(
@@ -232,6 +248,8 @@ function DiscoverView({
   showFirstBookNudge = false,
   onDismissFirstBookNudge,
   onOpenCreateView,
+  initialComicBook,
+  onInitialComicBookConsumed,
 }: DiscoverViewProps) {
   const getAudiobookCoverSrc = (coverUrl?: string | null) => resolveCoverImageSrc(coverUrl);
   const stripHtml = (html: string) => {
@@ -343,6 +361,16 @@ function DiscoverView({
    * it must not share that modal.
    */
   const [comicBook, setComicBook] = useState<any | null>(null);
+
+  // A series opened from the Library arrives as an entry rather than a
+  // search result. Seed it into the same slot a tapped result uses, then
+  // clear it upstream — otherwise the detail view re-opens every time the
+  // Library tab is visited.
+  useEffect(() => {
+    if (!initialComicBook) return;
+    setComicBook(initialComicBook);
+    onInitialComicBookConsumed?.();
+  }, [initialComicBook, onInitialComicBookConsumed]);
 
   /**
    * True while the feed is showing one source's own catalogue rather than
@@ -533,6 +561,15 @@ function DiscoverView({
   }>({ step: "idle", percent: 0, error: null });
   const [fetchingMirrors, setFetchingMirrors] = useState<boolean>(false);
   const [mirrors, setMirrors] = useState<any[]>([]);
+  /**
+   * Measured reliability per mirror host. Starts EMPTY (every mirror
+   * UNVERIFIED) and is filled asynchronously, so the sheet never blocks on it:
+   * the user can tap a mirror the instant it appears, and a failed check shows
+   * as "unverified" rather than being silently omitted or shown as healthy.
+   */
+  const [mirrorHealth, setMirrorHealth] = useState<MirrorHealthSnapshot>(() => emptySnapshot());
+  /** Epoch ms when the current mirror list changed; drives the one health fetch. */
+  const healthFetchKeyRef = useRef<string>("");
   const [mirrorError, setMirrorError] = useState<string | null>(null);
 
   // Detailed book explorer popup states
@@ -737,6 +774,62 @@ function DiscoverView({
       formatRank(a) - formatRank(b)
     );
     return variants;
+  }
+
+  /**
+   * Fetch mirror reliability ONCE per distinct mirror set.
+   *
+   * Deliberately one request for all hosts, and deliberately never awaited
+   * before the sheet renders: a probe must not be able to delay or block a
+   * download. `fetchMirrorHealth` dedupes in-flight calls and caches for
+   * HEALTH_CACHE_TTL_MS, so re-opening the sheet costs nothing.
+   */
+  useEffect(() => {
+    const urls = [...new Set((mirrors || [])
+      .map((m: any) => typeof m === "string" ? m : m?.url)
+      .filter((u: any) => typeof u === "string" && u.startsWith("http")))] as string[];
+    if (urls.length === 0) return;
+    const key = urls.slice().sort().join("|");
+    if (healthFetchKeyRef.current === key) return;
+    healthFetchKeyRef.current = key;
+    let cancelled = false;
+    fetchMirrorHealth(urls)
+      .then((snap) => { if (!cancelled) setMirrorHealth(snap); })
+      .catch(() => { if (!cancelled) setMirrorHealth(emptySnapshot("Mirror checks could not be reached.")); });
+    return () => { cancelled = true; };
+  }, [mirrors]);
+
+  /**
+   * Tell the Worker what this mirror ACTUALLY delivered.
+   *
+   * The verdict comes from the shared detector over the real bytes, which is
+   * the ground truth the ranking is built on — our own probe can only ever be a
+   * proxy for it. `host` + `verdict` is all that is sent: no title, filename,
+   * author, ISBN or size, because a reliability counter has no business
+   * recording what someone read.
+   *
+   * Best-effort: a failed report must never surface as a download error.
+   */
+  function reportOutcomeForDownload(mirrorUrl: string, bytes: Uint8Array | null, interrupted = false) {
+    if (!mirrorUrl) return;
+    if (interrupted) {
+      reportMirrorOutcome(mirrorUrl, "interrupted");
+      return;
+    }
+    if (!bytes || bytes.length === 0) {
+      reportMirrorOutcome(mirrorUrl, "empty");
+      return;
+    }
+    try {
+      const detection = detectFormat(bytes);
+      if (detection.rejected) {
+        reportMirrorOutcome(mirrorUrl, detection.format === "php-error" ? "php-error" : detection.format === "html" ? "html-page" : "corrupt");
+      } else {
+        reportMirrorOutcome(mirrorUrl, "real-book");
+      }
+    } catch (_) {
+      // No measurement -> no report. Never guess a verdict.
+    }
   }
 
   function sortMirrors(mirrors: any[]): any[] {
@@ -1600,6 +1693,71 @@ function DiscoverView({
     window.addEventListener("kora-audiobook-detail-updated", handler);
     return () => window.removeEventListener("kora-audiobook-detail-updated", handler);
   }, [selectedFeaturedBook, featuredAudiobookSource]);
+
+  /**
+   * The library entry for a series saved from a source plugin.
+   *
+   * This used to be a `toast.success` and nothing else — the button
+   * reported a save that never happened, which is worse than a visible
+   * failure because the user walks away believing their library has the
+   * series. Everything needed to reopen it is carried on the entry:
+   *
+   *   - `pluginId` + `sourceId`, which is what `ComicDetailView` uses to
+   *     rebuild the `Manga` and re-fetch details and chapters. Without them
+   *     the saved card is a dead end.
+   *   - `kind: "manga"`, so `handleOpenBook` routes it to the series detail
+   *     view instead of trying to open a file it does not have.
+   *
+   * The id is derived from the plugin and the series path, not the title:
+   * two different series can share a title, and re-saving the same one must
+   * update its existing entry rather than accumulate duplicates.
+   */
+  const buildMangaLibraryEntry = (manga: any, book: any): BookMetadata => {
+    const seriesPath = String(manga?.url || book?.sourceId || manga?.title || "unknown");
+    const slug = seriesPath
+      .replace(/^https?:\/\//i, "")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase()
+      .slice(0, 60);
+    return {
+      id: `manga-${manga?.sourceId || book?.pluginId || "src"}-${slug || "series"}`,
+      title: manga?.title || book?.title || "Untitled series",
+      author: manga?.author || book?.author || "Unknown",
+      coverUrl: manga?.thumbnailUrl || book?.coverUrl || undefined,
+      description: manga?.description || book?.description || undefined,
+      extension: "manga",
+      size: "",
+      source: "manga",
+      kind: "manga",
+      // Not in the declared BookMetadata shape — `ComicDetailView` reads
+      // both to rebuild the series, and without them a saved manga cannot
+      // be reopened. Declared in firebase.ts alongside the other fields.
+      pluginId: manga?.sourceId || book?.pluginId,
+      sourceId: seriesPath,
+      tags: ["manga", ...(manga?.genres || []).slice(0, 5)],
+      status: "to-read",
+      progress: { percent: 0, lastReadTime: Date.now() },
+      dateAdded: Date.now(),
+    } as BookMetadata;
+  };
+
+  const handleAddMangaToLibrary = async (manga: any) => {
+    const entry = buildMangaLibraryEntry(manga, comicBook);
+    try {
+      // Same order as the ebook and audiobook saves: persist, then tell the
+      // app. A throw here reaches the user as a real error rather than a
+      // success toast over a library that does not have the book.
+      await syncBookToCloud(userId, entry);
+      onBookAdded(entry);
+      toast.success(`Added "${entry.title}" to library`);
+    } catch (err) {
+      console.error("Failed to save manga to library:", err);
+      toast.error(
+        `Could not save "${entry.title}" to your library. Sign in and try again.`
+      );
+    }
+  };
 
   const buildAudiobookLibraryEntry = (book: any, tracks: any[]): BookMetadata => {
     const cardTitle = book.title;
@@ -3112,6 +3270,14 @@ function DiscoverView({
             if (errText && errText.length < 200) errMsg = errText;
           } catch (e2) {}
         }
+        // Throttling is a distinct outcome from a broken mirror; conflating
+        // the two would drag a healthy mirror's score down during a busy hour.
+        if (typeof mirror === "string" || mirror?.url) {
+          reportMirrorOutcome(
+            typeof mirror === "string" ? mirror : mirror.url,
+            response.status === 429 || response.status === 503 ? "rate-limited" : "unreachable"
+          );
+        }
         throw new Error(errMsg);
       }
 
@@ -3169,6 +3335,18 @@ function DiscoverView({
             fileExtension = bookFile.name.split('.').pop()?.toLowerCase() || "epub";
           }
         } catch (e) { /* ignore ZIP parse error */ }
+      }
+
+      // Report what this mirror ACTUALLY delivered, judged from the bytes we
+      // just received. This is the ground truth the mirror ranking is built on:
+      // our own probe only ever sees a head chunk from one server, whereas
+      // this is the whole file on the user's own connection. Fire-and-forget —
+      // a reporting failure must never fail the user's download.
+      if (typeof mirror === "string" || mirror?.url) {
+        try {
+          const buf = new Uint8Array(await fileBlob.slice(0, 65536).arrayBuffer());
+          reportOutcomeForDownload(typeof mirror === "string" ? mirror : mirror.url, buf);
+        } catch (e) { /* reporting is best-effort */ }
       }
 
       // Check if downloading using normal discovery search (non-advanced Google Book based search)
@@ -4436,10 +4614,7 @@ function DiscoverView({
           <ComicDetailView
             book={comicBook}
             onClose={() => setComicBook(null)}
-            onAddToLibrary={(manga) => {
-              // TODO: replace with real library add flow
-              toast.success(`Added "${manga.title}" to library`);
-            }}
+            onAddToLibrary={handleAddMangaToLibrary}
           />,
           document.body
         )}
@@ -4566,10 +4741,32 @@ function DiscoverView({
                     </div>
                   ) : (
                     <div className="space-y-1.5">
-                      {mirrors.map((m, i) => {
+                      {/*
+                        Best-first by MEASURED reliability. Unverified mirrors
+                        sort to the bottom rather than being hidden or shown
+                        as though they were fine — but they stay clickable,
+                        because validation is advisory and the user must
+                        always be able to try a mirror themselves.
+                      */}
+                      {orderMirrorsByHealth(mirrors, (m: any) => {
+                        const url = typeof m === "string" ? m : m?.url;
+                        const host = (() => {
+                          try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
+                        })();
+                        const entry = host ? mirrorHealth.byHost.get(host) : undefined;
+                        return entry?.percent ?? null;
+                      }).map((m, i) => {
                         // One classification drives the title, the badge and
                         // the subtext, so they cannot contradict each other.
                         const link = classifyDownloadLink(m);
+                        const healthHost = (() => {
+                          try {
+                            const url = typeof m === "string" ? m : m?.url;
+                            return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+                          } catch { return ""; }
+                        })();
+                        const health = healthHost ? mirrorHealth.byHost.get(healthHost) : undefined;
+                        const tone = reliabilityTone(health?.percent ?? null);
                         return (
                           <div
                             key={i}
@@ -4598,9 +4795,32 @@ function DiscoverView({
                               <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5 opacity-60">
                                 {link.subtext}
                               </p>
+                              {/*
+                                Provenance is shown, never just a bare number:
+                                a percentage the user cannot interrogate is a
+                                lie by omission. "Reliability" — it measures how
+                                often a mirror hands over a real file, nothing
+                                more. An unverified mirror says so outright.
+                              */}
+                              <p className="text-[9px] text-kindle-text-muted font-sans mt-0.5">
+                                {health?.reason || "Unverified — no download history for this mirror yet."}
+                              </p>
                             </div>
 
                             <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              {/*
+                                The badge is a claim about RELIABILITY, not about
+                                trust or accuracy, and it never replaces the
+                                download controls — an unverified mirror is
+                                fully clickable.
+                              */}
+                              <span
+                                title={health?.reason || "No measured history yet"}
+                                className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider shrink-0 ${tone.text} ${tone.bg}`}
+                              >
+                                {health?.badge || "Unverified"}
+                              </span>
+
                               {/* Always show Open in New Tab button for all mirrors */}
                               <button
                                 type="button"
@@ -4723,7 +4943,7 @@ function DiscoverView({
                   <div className="w-full md:w-64 shrink-0 flex flex-col items-center md:items-start">
                     <div className="w-full max-w-[240px] aspect-[2/3] rounded-xl overflow-hidden shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-black/5 relative group mb-6">
                       {selectedFeaturedBook.coverUrl ? (
-                        <img loading="lazy" decoding="async" src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
+                        <img loading="lazy" decoding="async" src={resolveCoverImageSrc(selectedFeaturedBook.coverUrl) || ""} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-kindle-text-muted">
                           <BookOpen className="w-12 h-12" />
@@ -5253,7 +5473,7 @@ function DiscoverView({
                                   handleSearch(`${book.title} ${book.author}`);
                                 }}>
                                   <div className="aspect-[2/3] rounded-lg shadow-sm overflow-hidden mb-2 bg-kindle-card border border-kindle-border group-hover:shadow-md transition-all group-hover:-translate-y-1">
-                                    {book.coverUrl && <img loading="lazy" decoding="async" src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
+                                    {book.coverUrl && <img loading="lazy" decoding="async" src={resolveCoverImageSrc(book.coverUrl) || ""} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
                                   </div>
                                   <p className="text-[10px] font-bold text-kindle-text line-clamp-2 leading-tight group-hover:text-kindle-accent transition-colors">{book.title}</p>
                                 </div>

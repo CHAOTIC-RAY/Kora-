@@ -48,100 +48,30 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
-export interface GamePreset {
-  id: string;
-  name: string;
-  type: "board" | "card" | "custom";
-  winCondition: "highest" | "lowest";
-  targetScore?: number;
-  maxRounds?: number;
-  categories?: string[];
-  turnTimerSeconds?: number;
-  description: string;
-  iconName: string;
-}
+import {
+  GAME_PRESETS,
+  addCategory,
+  categorySettingsForPreset,
+  computeTeamStandings,
+  getTeams,
+  instantWinConditions,
+  isTeamGame,
+  normalizeTeamAssignments,
+  resolveMatchGame,
+  type GamePreset,
+  type GameTeam,
+  type TeamStanding,
+} from "../lib/gamePresets";
+import {
+  buildHistorySurface,
+  deriveBracket,
+  resolveRoundSource,
+  sanitizeStoredBracket,
+  shouldShowTournament,
+} from "../lib/trackerSurfaces";
 
-export const GAME_PRESETS: GamePreset[] = [
-  {
-    id: "catan",
-    name: "Settlers of Catan",
-    type: "board",
-    winCondition: "highest",
-    targetScore: 10,
-    categories: ["Settlements/Cities", "Longest Road", "Largest Army", "Dev Victory Cards"],
-    turnTimerSeconds: 90,
-    description: "Race to 10 Victory Points through settlements, roads, knights, and developments.",
-    iconName: "🏝️"
-  },
-  {
-    id: "ticket-to-ride",
-    name: "Ticket to Ride",
-    type: "board",
-    winCondition: "highest",
-    categories: ["Route Points", "Completed Tickets", "Longest Continuous Path", "Unfinished Tickets Penalty"],
-    turnTimerSeconds: 60,
-    description: "Build railway routes across continents. Sum points from routes, tickets, and penalties.",
-    iconName: "🚂"
-  },
-  {
-    id: "carcassonne",
-    name: "Carcassonne",
-    type: "board",
-    winCondition: "highest",
-    categories: ["Knights & Castles", "Roads & Thieves", "Monasteries & Monks", "Farmers & Fields"],
-    turnTimerSeconds: 45,
-    description: "Tile-placement scoring for completed features and final farm evaluation.",
-    iconName: "🏰"
-  },
-  {
-    id: "7wonders",
-    name: "7 Wonders",
-    type: "board",
-    winCondition: "highest",
-    categories: ["Military Conflicts", "Treasury Gold", "Wonder Stages", "Civic Structures", "Scientific Symbols", "Commercial / Guilds"],
-    turnTimerSeconds: 60,
-    description: "Card drafting ancient civilization score matrix across 7 distinct categories.",
-    iconName: "🏛️"
-  },
-  {
-    id: "uno",
-    name: "Uno / Crazy Eights",
-    type: "card",
-    winCondition: "lowest",
-    targetScore: 500,
-    turnTimerSeconds: 30,
-    description: "Accumulate points from remaining hand cards. Lowest score wins (or race to 500 max limit).",
-    iconName: "🃏"
-  },
-  {
-    id: "hearts-spades",
-    name: "Hearts / Spades / Euchre",
-    type: "card",
-    winCondition: "lowest",
-    targetScore: 100,
-    turnTimerSeconds: 40,
-    description: "Trick-taking card game. Avoid taking penalty hearts/queen or hit target tricks.",
-    iconName: "♠️"
-  },
-  {
-    id: "scrabble",
-    name: "Scrabble / Boggle",
-    type: "board",
-    winCondition: "highest",
-    turnTimerSeconds: 120,
-    description: "Word building scores with letter tile multipliers and bingo bonuses.",
-    iconName: "🔤"
-  },
-  {
-    id: "custom",
-    name: "Custom Game Tracker",
-    type: "custom",
-    winCondition: "highest",
-    turnTimerSeconds: 60,
-    description: "Tailor custom player counts, win conditions, turn clocks, and custom categories.",
-    iconName: "🎲"
-  }
-];
+export { GAME_PRESETS };
+export type { GamePreset };
 
 export interface Player {
   id: string;
@@ -149,6 +79,13 @@ export interface Player {
   color: string;
   handicap?: number;
   totalTimeSeconds: number;
+  /**
+   * Which side this player is on, for team presets (Carrom's White, Hukum
+   * Thaas' Team 1, Dihaeh's Team 2...). Absent on individual games, and
+   * absent on matches saved before teams existed — both are normal, not
+   * errors.
+   */
+  teamId?: string;
 }
 
 export interface RoundScore {
@@ -161,6 +98,17 @@ export interface RoundScore {
 export interface MatchHistoryEntry {
   id: string;
   gameName: string;
+  /**
+   * The preset id this match was played under. Written from now on; older
+   * records only have `gameName`. History renders through `resolveMatchGame`,
+   * which falls back to the stored name when the preset has been removed, so
+   * a match saved against a retired preset still displays instead of throwing.
+   */
+  gameId?: string;
+  /** The sides in play, snapshotted at save time. */
+  teams?: { id: string; label: string }[];
+  /** Team roll-up, kept alongside the per-player breakdown, not instead of it. */
+  teamScores?: { id: string; label: string; total: number }[];
   date: string;
   competitionMode: boolean;
   winnerName: string;
@@ -273,8 +221,16 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const [competitionMode, setCompetitionMode] = useState<boolean>(true);
   const [winCondition, setWinCondition] = useState<"highest" | "lowest">("highest");
   const [targetScore, setTargetScore] = useState<number | undefined>(10);
-  const [enableCategories, setEnableCategories] = useState<boolean>(false);
-  const [categories, setCategories] = useState<string[]>([]);
+  // Seeded from the first preset's own declaration. Previously both started
+  // empty and were only filled by applyPreset, which only fires on a preset
+  // swap — so the initially-selected game's categories were never loaded and
+  // the matrix opened blank, forcing hand-typed names.
+  const [enableCategories, setEnableCategories] = useState<boolean>(
+    () => categorySettingsForPreset(GAME_PRESETS[0]).enabled
+  );
+  const [categories, setCategories] = useState<string[]>(
+    () => categorySettingsForPreset(GAME_PRESETS[0]).categories
+  );
   const [customCategoryInput, setCustomCategoryInput] = useState<string>("");
 
   // Players State
@@ -345,12 +301,31 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     }
   });
 
-  // Tournament Bracket State
-  const [tournamentBracket, setTournamentBracket] = useState<{
-    players: string[];
-    round1: { p1: string; p2: string; winner?: string }[];
-    finals: { p1: string; p2: string; winner?: string };
-  } | null>(null);
+  /**
+   * A bracket persisted by an older build, kept only so an existing stored
+   * value degrades instead of crashing. The bracket actually rendered is
+   * derived from the roster on every render (see `tournamentBracket`), so a
+   * stale blob can never contradict the current roster.
+   */
+  /**
+   * Manually picked winners, keyed `"r1-<matchIndex>"` / `"finals"`.
+   *
+   * The bracket itself is derived, so it cannot be the thing that stores a
+   * result — a `useMemo` value is recomputed from scratch and would discard
+   * the pick on the next roster change. Picks are therefore held separately
+   * and merged over the derived structure, which means re-deriving the bracket
+   * (adding a player, say) keeps whatever the user already decided.
+   */
+  const [bracketPicks, setBracketPicks] = useState<Record<string, string>>({});
+
+  const [storedBracket] = useState(() => {
+    try {
+      const saved = localStorage.getItem("kora_game_bracket");
+      return saved ? sanitizeStoredBracket(JSON.parse(saved)) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // Canvas Confetti Ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -360,13 +335,9 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     setSelectedPreset(preset);
     setWinCondition(preset.winCondition);
     setTargetScore(preset.targetScore);
-    if (preset.categories && preset.categories.length > 0) {
-      setCategories(preset.categories);
-      setEnableCategories(true);
-    } else {
-      setCategories([]);
-      setEnableCategories(false);
-    }
+    const catSettings = categorySettingsForPreset(preset);
+    setCategories(catSettings.categories);
+    setEnableCategories(catSettings.enabled);
     if (preset.turnTimerSeconds) {
       setTurnTimerSeconds(preset.turnTimerSeconds);
       armTurnClock(preset.turnTimerSeconds);
@@ -584,6 +555,58 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     return roundSum + handicap;
   };
 
+  // ---- Teams -------------------------------------------------------------
+  // Team games (Carrom's White/Black, Hukum Thaas and Dihaeh's Team 1/2) need a
+  // side total, because the side is what actually wins: two partners on
+  // opposing sides sharing one number records the wrong thing entirely. The
+  // per-player score is still computed and still kept — the roll-up is added to
+  // it, not substituted for it.
+  //
+  // These sit BELOW getPlayerTotal deliberately. `playerTotals` calls it, and a
+  // useMemo body runs during the first render, so declaring the memo above the
+  // function is a temporal-dead-zone crash at runtime — a failure tsc does not
+  // catch, and one the browser surfaced immediately.
+
+  /** The sides in play, or `[]` for an individual game. */
+  const teamsForMatch: GameTeam[] = useMemo(() => getTeams(selectedPreset), [selectedPreset]);
+
+  const teamGame = useMemo(() => isTeamGame(selectedPreset), [selectedPreset]);
+
+  /** Every player's total, keyed by player id — the input to the roll-up. */
+  const playerTotals: Record<string, number> = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const p of players) out[p.id] = getPlayerTotal(p.id);
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [players, rounds]);
+
+  /** Side totals, each still carrying its members' individual scores. */
+  const teamStandings: TeamStanding[] = useMemo(() => {
+    if (!teamGame) return [];
+    return computeTeamStandings(selectedPreset, players, playerTotals);
+  }, [teamGame, selectedPreset, players, playerTotals]);
+
+  /** Terminal conditions that end a round on something other than the score. */
+  const instantWins = useMemo(() => instantWinConditions(selectedPreset), [selectedPreset]);
+
+  /** The side currently on top — what an instant win would be credited to. */
+  const leadingTeamId = useMemo(() => {
+    if (!teamGame || teamStandings.length === 0) return undefined;
+    return [...teamStandings].sort((a, b) =>
+      winCondition === "highest" ? b.total - a.total : a.total - b.total
+    )[0].teamId;
+  }, [teamGame, teamStandings, winCondition]);
+
+  /** Total for one side, for the target check and the leaderboard. */
+  const getTeamTotal = (teamId: string): number =>
+    teamStandings.find((t) => t.teamId === teamId)?.total ?? 0;
+
+  /** The side a player belongs to, if any. */
+  const teamForPlayer = (playerId: string): GameTeam | undefined => {
+    const pl = players.find((x) => x.id === playerId);
+    return pl?.teamId ? teamsForMatch.find((t) => t.id === pl.teamId) : undefined;
+  };
+
   // Get Sorted Rankings
   const getRankedPlayers = () => {
     return [...players].sort((a, b) => {
@@ -653,15 +676,32 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const handleFinishMatch = (forcedWinner?: Player) => {
     const ranked = getRankedPlayers();
     const winner = forcedWinner || ranked[0];
-    const winnerScore = getPlayerTotal(winner.id);
+    if (!winner) {
+      toast.error("No players on the roster yet.");
+      return;
+    }
     const duration = matchStartTime ? Math.max(1, Math.round((Date.now() - matchStartTime) / 60000)) : 1;
+
+    /**
+     * A team match is won by the SIDE, not the individual. The recorded
+     * `winnerScore` is therefore the side's total, and the winning side is
+     * named — while the per-player list below keeps every individual score,
+     * so "who scored" survives alongside "who won".
+     */
+    const winningTeamId = winner.teamId;
+    const winnerScore = winningTeamId ? getTeamTotal(winningTeamId) : getPlayerTotal(winner.id);
 
     const historyEntry: MatchHistoryEntry = {
       id: "match_" + Date.now(),
       gameName: selectedPreset.name,
+      // Written from now on; older archives carry only the name and still
+      // render through resolveMatchGame.
+      gameId: selectedPreset.id,
+      teams: teamsForMatch.map((t) => ({ id: t.id, label: t.label })),
+      teamScores: teamStandings.map((t) => ({ id: t.teamId, label: t.label, total: t.total })),
       date: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
       competitionMode,
-      winnerName: winner.name,
+      winnerName: winningTeamId ? (teamsForMatch.find((t) => t.id === winningTeamId)?.label ?? winner.name) : winner.name,
       winnerScore,
       players: ranked.map((p, idx) => ({
         name: p.name,
@@ -735,27 +775,17 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     });
   };
 
-  // Setup Tournament Elimination Bracket
-  const handleGenerateTournament = () => {
-    const pNames = players.map((p) => p.name);
-    if (pNames.length < 4) {
-      toast.error("Tournament mode requires at least 4 players!");
-      return;
-    }
-    setTournamentBracket({
-      players: pNames,
-      round1: [
-        { p1: pNames[0], p2: pNames[1] },
-        { p1: pNames[2], p2: pNames[3] }
-      ],
-      finals: { p1: "Winner M1", p2: "Winner M2" }
-    });
-    setActiveTab("tournament");
-    toast.success("Tournament Bracket Generated!");
-  };
-
   // Setup Wizard Navigation
   const markTouched = useCallback(() => setSetupTouched(true), []);
+
+  /**
+   * Turning competition mode off retires the tournament surface. If the user
+   * was sitting on that tab it must not stay mounted pointing at a bracket
+   * that no longer exists, so the view falls back to the arena.
+   */
+  useEffect(() => {
+    if (!competitionMode && activeTab === "tournament") setActiveTab("game");
+  }, [competitionMode, activeTab]);
 
   const goToStep = useCallback((next: number) => {
     const clamped = Math.max(0, Math.min(WIZARD_STEPS.length - 1, next));
@@ -779,11 +809,65 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
   // History derivation — the live match is shaped like an archive entry so a
   // running match and a finished one render through the same list.
-  const historyEntries = useMemo(() => {
-    const live: MatchHistoryEntry | null = matchActive
+  /**
+   * The tournament bracket is DERIVED, never snapshotted.
+   *
+   * Ticking competition mode is the only thing that creates it and unticking
+   * is the only thing that removes it — there is no separate generate step.
+   * Because it recomputes from `players`, adding or removing a player during
+   * setup re-derives the pairings immediately. A stale bracket persisted by an
+   * older build is read into `storedBracket` and deliberately NOT rendered:
+   * it is only ever used to seed winners back onto a fresh derivation, so it
+   * can never disagree with the current roster.
+   */
+  const tournamentBracket = useMemo(() => {
+    const derived = deriveBracket(players.map((p) => p.name), competitionMode);
+    if (!derived) return null;
+
+    // Winners chosen earlier still apply, re-keyed onto the fresh pairings.
+    // A stale stored bracket is only ever read here — it is never rendered, so
+    // unticking competition mode cannot leave a phantom bracket on screen.
+    const picks: Record<string, string> = { ...bracketPicks };
+    if (storedBracket) {
+      storedBracket.round1.forEach((m, i) => {
+        if (m.winner && picks[`r1-${i}`] === undefined) picks[`r1-${i}`] = m.winner;
+      });
+      if (storedBracket.finals.winner && picks["finals"] === undefined) {
+        picks["finals"] = storedBracket.finals.winner;
+      }
+    }
+
+    const round1 = derived.round1.map((m, i) => ({ ...m, winner: picks[`r1-${i}`] }));
+    // Final entrants follow the semi-final picks once those are known.
+    const finals =
+      round1.length === 0
+        ? { ...derived.finals, winner: picks["finals"] }
+        : {
+            p1: picks["r1-0"] ?? derived.finals.p1,
+            p2: picks["r1-1"] ?? derived.finals.p2,
+            winner: picks["finals"],
+          };
+
+    return { players: derived.players, round1, finals };
+  }, [players, competitionMode, bracketPicks, storedBracket]);
+
+  /** Competition mode alone decides whether the tournament surface exists. */
+  const showTournament = shouldShowTournament(competitionMode);
+
+  /**
+   * The live match, as its own record.
+   *
+   * It used to be unshifted into the front of `matchHistory` under the id
+   * `__live__`, so a running match appeared as a card sitting alongside every
+   * past match and the round log could resolve to another match's rounds. It
+   * now lives in its own channel; archives are only ever past matches.
+   */
+  const liveMatch = useMemo<MatchHistoryEntry | null>(() =>
+    matchActive
       ? {
           id: "__live__",
           gameName: selectedPreset.name,
+          gameId: selectedPreset.id,
           date: "In progress",
           competitionMode,
           winnerName: getRankedPlayers()[0]?.name || "—",
@@ -799,12 +883,43 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
           playerIds: players.map((p) => p.id),
           rounds: [...rounds],
           roundsPlayed: rounds.length,
+          teams: teamsForMatch.map((t) => ({ id: t.id, label: t.label })),
+          teamScores: teamStandings.map((t) => ({ id: t.teamId, label: t.label, total: t.total })),
         }
-      : null;
-    return live ? [live, ...matchHistory] : matchHistory;
-  }, [matchActive, matchHistory, players, rounds, selectedPreset.name, competitionMode, matchStartTime]);
+      : null,
+    [matchActive, players, rounds, selectedPreset.name, selectedPreset.id, competitionMode,
+     matchStartTime, teamsForMatch, teamStandings]
+  );
 
-  const selectedMatch = historyEntries.find((m) => m.id === selectedMatchId) || null;
+  /**
+   * Which matches belong in the archive list, and whose rounds the history
+   * surface may read. Archives are gated on competition mode, so with it off
+   * there is no other-match list at all.
+   */
+  const historySurface = useMemo(
+    () =>
+      buildHistorySurface({
+        matchActive,
+        liveRounds: rounds,
+        archives: matchHistory.map((m) => ({ id: m.id, gameName: m.gameName })),
+        competitionMode,
+      }),
+    [matchActive, rounds, matchHistory, competitionMode]
+  );
+
+  /** Archived matches only — the live match is never in this list. */
+  const historyEntries = historySurface.showArchives ? matchHistory : [];
+
+  /** The match whose rounds the surface is showing: live first, else selected archive. */
+  const selectedMatch = useMemo<MatchHistoryEntry | null>(() => {
+    const src = resolveRoundSource(
+      { ...historySurface, archives: historyEntries },
+      selectedMatchId
+    );
+    if (!src) return null;
+    if (src.matchId === "__live__") return liveMatch;
+    return historyEntries.find((m) => m.id === src.matchId) ?? null;
+  }, [historySurface, historyEntries, selectedMatchId, liveMatch]);
 
   const openMatchRounds = (id: string) => {
     setSelectedMatchId(id);
@@ -910,17 +1025,23 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
             >
               <History className="w-3.5 h-3.5" /> Match History ({matchHistory.length})
             </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("tournament")}
-              className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                activeTab === "tournament"
-                  ? "bg-kindle-text text-kindle-bg shadow-sm"
-                  : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
-              }`}
-            >
-              <Trophy className="w-3.5 h-3.5 text-yellow-500" /> Tournament Bracket
-            </button>
+            {/* Competition mode owns the tournament surface. When it is off the
+                button is not rendered at all — not hidden by CSS, not disabled —
+                so there is no bracket tab to click into an empty state. */}
+            {showTournament && (
+              <button
+                type="button"
+                data-testid="tab-tournament"
+                onClick={() => setActiveTab("tournament")}
+                className={`px-3 py-1.5 rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === "tournament"
+                    ? "bg-kindle-text text-kindle-bg shadow-sm"
+                    : "text-kindle-text-muted hover:text-kindle-text hover:bg-kindle-card"
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5 text-yellow-500" /> Tournament Bracket
+              </button>
+            )}
           </div>
 
           {matchActive && (
@@ -1060,6 +1181,54 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                   {/* STEP 2 — Verify win condition, target and target points */}
                   {wizardStep === 1 && (
                     <div className="space-y-4">
+                      {/* ---- Special conditions, surfaced at pick time. ----
+                          Several of these games end on something a single
+                          number cannot express — Carrom's Queen cover, Dihaeh's
+                          Baga, Hukum Thaas's Koatey, Chess's checkmate. They
+                          are listed here so the rule is never silently lost,
+                          and the instant-win ones get a button once the match
+                          is running. */}
+                      {(selectedPreset.specialConditions?.length || selectedPreset.notes?.length) ? (
+                        <div
+                          className="p-4 bg-kindle-card border border-kindle-border rounded-2xl space-y-3"
+                          data-testid="special-conditions"
+                        >
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
+                            <ShieldAlert className="w-4 h-4 text-kindle-accent" /> Special Conditions
+                          </h4>
+                          <p className="text-[9px] text-kindle-text-muted">
+                            Rules this tracker records but cannot enforce. The side scores them; you call them.
+                          </p>
+
+                          {selectedPreset.specialConditions?.map((c) => (
+                            <div key={c.id} className="flex items-start gap-2 text-[11px]">
+                              <span
+                                className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider ${
+                                  c.kind === "instant_win"
+                                    ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                                    : c.kind === "penalty"
+                                      ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                                      : "bg-kindle-bg text-kindle-text-muted border border-kindle-border"
+                                }`}
+                              >
+                                {c.kind === "instant_win" ? "Instant win" : c.kind === "penalty" ? "Penalty" : "Rule"}
+                              </span>
+                              <span className="min-w-0">
+                                <strong className="text-kindle-text">{c.label}.</strong>{" "}
+                                <span className="text-kindle-text-muted">{c.detail}</span>
+                              </span>
+                            </div>
+                          ))}
+
+                          {selectedPreset.notes?.map((note) => (
+                            <p key={note} className="text-[10px] text-kindle-text-muted flex items-start gap-1.5">
+                              <span className="shrink-0">—</span>
+                              <span className="min-w-0">{note}</span>
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+
                       <div className="p-4 bg-kindle-card border border-kindle-border rounded-2xl space-y-4">
                         <div className="flex items-center justify-between gap-2 border-b border-kindle-border pb-3">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
@@ -1165,8 +1334,9 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (customCategoryInput.trim()) {
-                                    setCategories([...categories, customCategoryInput.trim()]);
+                                  const next = addCategory(categories, customCategoryInput);
+                                  if (next.length !== categories.length) {
+                                    setCategories(next);
                                     setCustomCategoryInput("");
                                     markTouched();
                                   }
@@ -1406,6 +1576,64 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                             </div>
                           ))}
                         </div>
+
+                        {/* ---- Team assignment ----
+                            Only rendered for team presets. A 4-player Carrom
+                            roster with no sides attached records the wrong
+                            thing: two partners on opposing sides sharing one
+                            number, and a win condition ("team to 7 tricks")
+                            that has nowhere to live. */}
+                        {teamGame && (
+                          <div className="pt-3 border-t border-kindle-border space-y-2" data-testid="team-assignment">
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block flex items-center justify-between">
+                              <span>Teams</span>
+                              <Users className="w-3.5 h-3.5 text-kindle-accent" />
+                            </label>
+                            <p className="text-[9px] text-kindle-text-muted">
+                              {selectedPreset.name} is played {selectedPreset.playerCount.label} — pick who is on
+                              which side. Scores roll up per team and the side total is what wins.
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                              {teamsForMatch.map((team) => (
+                                <div
+                                  key={team.id}
+                                  className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-2"
+                                  data-testid={`team-${team.id}`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20"
+                                      style={{ backgroundColor: team.color }}
+                                    />
+                                    <span className="text-[10px] font-bold text-kindle-text truncate">
+                                      {team.label}
+                                    </span>
+                                  </div>
+                                  {players.map((p) => (
+                                    <label
+                                      key={p.id}
+                                      className="flex items-center gap-2 text-[11px] text-kindle-text-muted cursor-pointer"
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`team-${team.id}`}
+                                        checked={p.teamId === team.id}
+                                        onChange={() => {
+                                          setPlayers(players.map((pl) => (pl.id === p.id ? { ...pl, teamId: team.id } : pl)));
+                                          markTouched();
+                                        }}
+                                        data-testid={`assign-${p.id}-${team.id}`}
+                                        aria-label={`Put ${p.name || p.id} on ${team.label}`}
+                                        className="accent-kindle-accent"
+                                      />
+                                      <span className="truncate">{p.name || `Player ${p.id}`}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1423,6 +1651,14 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           { label: "Competition mode", value: competitionMode ? "On — scores locked per round" : "Off — casual" },
                           { label: "Categories", value: enableCategories && categories.length ? categories.join(", ") : "Single score per round" },
                           { label: "Roster", value: `${players.length} player${players.length === 1 ? "" : "s"}: ${players.map((p) => p.name || "—").join(", ")}` },
+                          ...(teamGame
+                            ? [{
+                                label: "Teams",
+                                value: teamsForMatch
+                                  .map((t) => `${t.label}: ${players.filter((p) => p.teamId === t.id).map((p) => p.name || "—").join(", ") || "none"}`)
+                                  .join("  ·  "),
+                              }]
+                            : []),
                         ].map((row) => (
                           <div key={row.label} className="flex items-start justify-between gap-3 py-1.5 border-b border-kindle-border/60 last:border-0">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted shrink-0">{row.label}</span>
@@ -1497,6 +1733,70 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                       </button>
                     </div>
                   </div>
+
+                  {/* ---- Team totals ----
+                      Shown above the individual leaderboard, never instead of
+                      it. Both numbers matter: the side total decides the
+                      match, the member scores say who actually scored. */}
+                  {teamGame && teamStandings.length > 0 && (
+                    <div
+                      className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-3 shadow-xs"
+                      data-testid="team-standings"
+                    >
+                      <div className="flex items-center justify-between border-b border-kindle-border pb-2">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-kindle-accent" /> Team Totals
+                        </h4>
+                        <span className="text-[9px] font-mono text-kindle-text-muted">
+                          {selectedPreset.playerCount.label} • team of {teamsForMatch[0]?.size ?? 2}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {teamStandings.map((t) => {
+                          const targetHit = targetScore ? getTeamTotal(t.teamId) >= targetScore : false;
+                          return (
+                            <div
+                              key={t.teamId}
+                              className={`p-3 border rounded-xl space-y-2 ${
+                                targetHit ? "border-emerald-500/40 bg-emerald-500/5" : "border-kindle-border bg-kindle-bg"
+                              }`}
+                              data-testid={`team-total-${t.teamId}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2 text-[11px] font-bold text-kindle-text min-w-0">
+                                  <span
+                                    className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20"
+                                    style={{ backgroundColor: t.color }}
+                                  />
+                                  <span className="truncate">{t.label}</span>
+                                </span>
+                                <span className="font-mono font-bold text-kindle-text shrink-0" data-testid={`team-score-${t.teamId}`}>
+                                  {t.total}
+                                </span>
+                              </div>
+                              {/* The individual breakdown the total came from. */}
+                              <div className="space-y-0.5 pt-1 border-t border-kindle-border">
+                                {Object.entries(t.memberScores).map(([pid, score]) => {
+                                  const member = players.find((p) => p.id === pid);
+                                  return (
+                                    <div key={pid} className="flex items-center justify-between gap-2 text-[10px]">
+                                      <span className="text-kindle-text-muted truncate">
+                                        {member?.name || `Player ${pid}`}
+                                      </span>
+                                      <span className="font-mono text-kindle-text-muted">{score}</span>
+                                    </div>
+                                  );
+                                })}
+                                {t.memberIds.length === 0 && (
+                                  <span className="text-[10px] text-kindle-text-muted">No players assigned</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Top Live Scoreboard Podium Banner */}
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
@@ -1741,6 +2041,54 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                         </div>
                       )}
 
+                      {/* ---- Instant-win conditions ----
+                          Carrom's covered Queen, Hukum Thaas's Koatey, Dihaeh's
+                          Baga / Hukunbunye and Chess's checkmate all end a
+                          round regardless of the score. The tracker cannot
+                          detect any of them, so it offers the button: pick the
+                          condition, pick who achieved it, and the round ends
+                          with that winner recorded. */}
+                      {instantWins.length > 0 && (
+                        <div
+                          className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-2xl space-y-2"
+                          data-testid="instant-win-controls"
+                        >
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-emerald-500 block">
+                            Won by a special condition?
+                          </label>
+                          <div className="flex flex-wrap gap-1.5">
+                            {instantWins.map((c) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                title={c.detail}
+                                onClick={() => {
+                                  const champ =
+                                    teamGame
+                                      ? // A team instant win is credited to the side.
+                                        getRankedPlayers().find((p) => p.teamId === leadingTeamId)
+                                      : getRankedPlayers()[0];
+                                  if (!champ) {
+                                    toast.error("No players on the roster yet.");
+                                    return;
+                                  }
+                                  handleFinishMatch(champ);
+                                }}
+                                data-testid={`instant-win-${c.id}`}
+                                className="px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-[10px] font-bold text-emerald-500 transition cursor-pointer"
+                              >
+                                {c.label}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-[9px] text-kindle-text-muted">
+                            {teamGame
+                              ? "Ends the match immediately and records the leading side as the winner."
+                              : "Ends the match immediately and records the current leader as the winner."}
+                          </p>
+                        </div>
+                      )}
+
                       <div className="pt-2 flex items-center justify-between gap-4">
                         <button
                           type="button"
@@ -1841,7 +2189,52 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
               {historySubTab === "matches" && (
                 <>
-                  <div className="flex items-center justify-between border-b border-kindle-border pb-3">
+                  {/* ---- Live match: its own panel, its own rounds only. ----
+                      The running match is deliberately NOT one of the archive
+                      cards below. It used to be unshifted into that same list,
+                      which is what put a "In progress" card among every past
+                      match and let the round log resolve to the wrong match. */}
+                  {liveMatch && (
+                    <div
+                      className="border border-emerald-500/30 bg-kindle-card rounded-2xl p-4 space-y-3"
+                      data-testid="live-match-panel"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                          <span className="truncate">This Match&apos;s Rounds</span>
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => openMatchRounds(liveMatch.id)}
+                          data-testid="open-rounds-live"
+                          className="shrink-0 px-3 py-2 min-h-11 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] font-bold text-kindle-text hover:border-kindle-accent transition cursor-pointer flex items-center gap-1"
+                        >
+                          Round History <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-kindle-text-muted">
+                        {resolveMatchGame(liveMatch).name} — round {rounds.length + 1} in progress. Only this
+                        match&apos;s rounds are listed here; finished matches are kept under Archives.
+                      </p>
+                      {liveMatch.teamScores && liveMatch.teamScores.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {liveMatch.teamScores.map((t) => (
+                            <span
+                              key={t.id}
+                              className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] font-bold text-kindle-text"
+                            >
+                              {t.label}: {t.total}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Archives belong to competition mode. */}
+                  {historySurface.showArchives && (
+                  <div className="flex items-center justify-between border-b border-kindle-border pb-3 mt-2">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
                       <History className="w-4 h-4 text-kindle-accent" /> Saved Match Archives
                     </h4>
@@ -1860,22 +2253,24 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                       </button>
                     )}
                   </div>
+                  )}
 
                   {historyEntries.length === 0 ? (
                     <div className="py-12 text-center text-kindle-text-muted space-y-2">
                       <Trophy className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
-                      <p className="text-xs">No completed matches recorded yet.</p>
+                      <p className="text-xs">
+                        {!historySurface.showArchives
+                          ? "Match archives belong to competition mode — tick it in setup to keep a record of finished matches."
+                          : "No completed matches recorded yet."}
+                      </p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {historyEntries.map((m) => {
-                        const isLive = m.id === "__live__";
                         return (
                           <div
                             key={m.id}
-                            className={`bg-kindle-card border rounded-2xl p-4 space-y-3 shadow-xs ${
-                              isLive ? "border-emerald-500/30" : "border-kindle-border"
-                            }`}
+                            className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3 shadow-xs"
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
@@ -1883,16 +2278,11 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                                   {m.date} • {m.durationMinutes}m
                                 </span>
                                 <h5 className="text-xs font-bold text-kindle-text truncate">
-                                  {isLive && <span className="text-emerald-500 mr-1">●</span>}
-                                  {m.gameName}
+                                  {resolveMatchGame(m).name}
                                 </h5>
                               </div>
-                              <span className={`px-2 py-0.5 rounded border text-[9px] font-bold flex items-center gap-1 shrink-0 ${
-                                isLive
-                                  ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                                  : "bg-yellow-500/10 text-yellow-500 border border-yellow-500/20"
-                              }`}>
-                                {isLive ? "In progress" : `👑 ${m.winnerName} (${m.winnerScore})`}
+                              <span className="px-2 py-0.5 rounded border text-[9px] font-bold flex items-center gap-1 shrink-0 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20">
+                                👑 {m.winnerName} ({m.winnerScore})
                               </span>
                             </div>
 
@@ -1906,6 +2296,18 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                                 </div>
                               ))}
                             </div>
+
+                            {/* Team roll-up, kept beside the individual breakdown. */}
+                            {m.teamScores && m.teamScores.length > 0 && (
+                              <div className="space-y-1 pt-2 border-t border-kindle-border">
+                                {m.teamScores.map((t) => (
+                                  <div key={t.id} className="flex items-center justify-between gap-2 text-[11px] font-bold">
+                                    <span className="text-kindle-text-muted truncate">{t.label}</span>
+                                    <span className="font-mono text-kindle-text shrink-0">{t.total} pts</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
 
                             <div className="flex items-center justify-between gap-2 pt-1">
                               <span className="text-[9px] text-kindle-text-muted">
@@ -2016,16 +2418,10 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                   <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
                     <Trophy className="w-4 h-4 text-yellow-500" /> Tournament Elimination Bracket
                   </h4>
-                  <p className="text-[10px] text-kindle-text-muted">Knockout bracket competition generator for 4+ players.</p>
+                  <p className="text-[10px] text-kindle-text-muted">
+                    Built automatically from your roster while competition mode is on — no generate step.
+                  </p>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleGenerateTournament}
-                  className="px-3 py-1.5 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold cursor-pointer hover:bg-opacity-90 transition"
-                >
-                  Generate 4-Player Bracket
-                </button>
               </div>
 
               {tournamentBracket ? (
@@ -2045,11 +2441,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const updated = { ...tournamentBracket };
-                                  updated.round1[idx].winner = m.p1;
-                                  if (idx === 0) updated.finals.p1 = m.p1;
-                                  if (idx === 1) updated.finals.p2 = m.p1;
-                                  setTournamentBracket(updated);
+                                  setBracketPicks((prev) => ({ ...prev, [`r1-${idx}`]: m.p1 }));
                                 }}
                                 className="px-2 py-0.5 rounded bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent text-[9px] font-bold"
                               >
@@ -2061,11 +2453,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const updated = { ...tournamentBracket };
-                                  updated.round1[idx].winner = m.p2;
-                                  if (idx === 0) updated.finals.p1 = m.p2;
-                                  if (idx === 1) updated.finals.p2 = m.p2;
-                                  setTournamentBracket(updated);
+                                  setBracketPicks((prev) => ({ ...prev, [`r1-${idx}`]: m.p2 }));
                                 }}
                                 className="px-2 py-0.5 rounded bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent text-[9px] font-bold"
                               >
@@ -2088,12 +2476,18 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           <span className="text-xs font-bold text-kindle-text">Grand Finalists</span>
                         </div>
                         <div className="space-y-2 text-xs">
-                          <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
-                            <span className="font-bold text-kindle-text">{tournamentBracket.finals.p1}</span>
-                          </div>
-                          <div className="p-2 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between">
-                            <span className="font-bold text-kindle-text">{tournamentBracket.finals.p2}</span>
-                          </div>
+                          {(["p1", "p2"] as const).map((side) => (
+                            <div key={side} className="p-2 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between gap-2">
+                              <span className="font-bold text-kindle-text truncate">{tournamentBracket.finals[side]}</span>
+                              <button
+                                type="button"
+                                onClick={() => setBracketPicks((prev) => ({ ...prev, finals: tournamentBracket.finals[side] }))}
+                                className="shrink-0 px-2 py-0.5 rounded bg-yellow-500/15 hover:bg-yellow-500/25 text-yellow-500 text-[9px] font-bold cursor-pointer"
+                              >
+                                Win
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -2102,7 +2496,11 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
               ) : (
                 <div className="py-12 text-center text-kindle-text-muted space-y-2">
                   <Trophy className="w-8 h-8 mx-auto text-kindle-text-muted/40" />
-                  <p className="text-xs">Click 'Generate 4-Player Bracket' above to start a tournament!</p>
+                  <p className="text-xs">
+                    {players.length < 2
+                      ? "Name at least two players in the roster to build a bracket."
+                      : "Competition mode is on but no bracket yet — name your players in the roster step."}
+                  </p>
                 </div>
               )}
             </div>

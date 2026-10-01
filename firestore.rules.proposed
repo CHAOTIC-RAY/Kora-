@@ -1,0 +1,157 @@
+rules_version = '2';
+
+// Kora — Firestore security rules.
+//
+// WHY THIS FILE EXISTS SEPARATELY FROM firestore.rules
+// ----------------------------------------------------
+// firestore.rules in this repo is the intended shape. It is NOT what is
+// deployed, and the difference is the whole save-to-library bug.
+//
+// Verified against the live project (gen-lang-client-0018612871, database
+// ai-studio-kora-b5c4a350-c29d-4737-bfc6-2319e76d1c60) with a valid
+// anonymous-auth idToken:
+//
+//   GET    users/<own uid>/library/<id>      -> 200   (single doc read works)
+//   LIST   users/<own uid>/library          -> 403 PERMISSION_DENIED
+//   LIST   communityBooks                   -> 403 PERMISSION_DENIED
+//   GET    communityBooks/<id>              -> 200   (single doc read works)
+//   PATCH  users/<own uid>/library/<id>     -> 200   (writes work)
+//   LIST   publicBooks                      -> 403   (firestore.rules says
+//                                                       `allow read: if true`)
+//
+// Firestore separates `get` (single document by id) from `list` (a query).
+// The deployed rules grant `get` but not `list`. Kora reads its library with
+// `getDocs(collection(db, "users", uid, "library"))` — a query — so every
+// library load is rejected, and the saved book never reappears. Writes
+// succeed, which is why the symptom is "saved but not there".
+//
+// The fix is `allow list`, spelled out below. Everything Kora actually uses
+// is enumerated so this can be applied by hand in the Firebase console
+// (Firestore > Rules > Edit), which is the only way to apply it: there is no
+// deploy pipeline in this repo and no credentials here.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------------
+    // The user's own data. One block, everything under it.
+    //
+    // `list` is the operation that was missing. `read` is kept as a synonym
+    // so both the short form and any future explicit `get` are covered.
+    // ---------------------------------------------------------------------
+    match /users/{userId}/{document=**} {
+      allow get, list, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Convenience alias for the same paths, in case the console's rules
+    // were written against the old spelling and someone reads this as a
+    // diff. Harmless duplicate of the block above.
+    match /users/{userId} {
+      allow get, list, write: if request.auth != null && request.auth.uid == userId;
+
+      match /library/{bookId} {
+        allow get, list, write: if request.auth != null && request.auth.uid == userId;
+
+        // Highlights and chapter notes hang off each library entry.
+        match /highlights/{highlightId} {
+          allow get, list, write: if request.auth != null && request.auth.uid == userId;
+        }
+        match /notes/{noteId} {
+          allow get, list, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+
+      match /config/{docId} {
+        allow get, list, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Community stories: publicly readable, writable by a signed-in user.
+    //
+    // `list` matters here too — the Community Stories hub reads the whole
+    // collection with a query, and that query is what threw
+    // "Failed to fetch community books from Firestore: Missing or
+    // insufficient permissions" on every session.
+    // ---------------------------------------------------------------------
+    match /communityBooks/{bookId} {
+      allow get, list: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null
+                            && (resource == null || resource.data.authorId == request.auth.uid);
+
+      match /comments/{commentId} {
+        allow get, list: if true;
+        allow create, update, delete: if request.auth != null;
+      }
+      match /likes/{userId} {
+        allow get, list, write: if request.auth != null;
+      }
+    }
+
+    // Public book metadata used by discovery and search. Read-only to
+    // everyone; writes restricted to signed-in users.
+    match /publicBooks/{bookId} {
+      allow get, list: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ---------------------------------------------------------------------
+    // Ephemeral peer-to-peer rooms.
+    //
+    // These are signalling payloads with no user identity in them — the room
+    // id *is* the capability, and a transfer only lasts minutes. They are
+    // therefore intentionally world-writable within a tight shape. They are
+    // listed here for completeness so this file can replace whatever is
+    // deployed without dropping a feature; they are not involved in
+    // save-to-library.
+    // ---------------------------------------------------------------------
+
+    // Blip signaling only (SDP / ICE). Never stores file bytes.
+    match /blipRooms/{roomId} {
+      allow get, list, create, update, delete:
+        if roomId.size() >= 4 && roomId.size() <= 16;
+      match /{iceCol}/{iceId} {
+        allow get, list, create, update, delete:
+          if roomId.size() >= 4 && roomId.size() <= 16
+             && (iceCol == 'hostIce' || iceCol == 'guestIce');
+      }
+    }
+
+    // Ephemeral P2P signaling (renamed from Blip). Same shape.
+    match /p2pRooms/{roomId} {
+      allow get, list, create, update, delete:
+        if roomId.size() >= 4 && roomId.size() <= 16;
+      match /{iceCol}/{iceId} {
+        allow get, list, create, update, delete:
+          if roomId.size() >= 4 && roomId.size() <= 16
+             && (iceCol == 'hostIce' || iceCol == 'guestIce');
+      }
+    }
+
+    // Linguist Guardian P2P Clash — ephemeral battle rooms (co-op boss / 1v1).
+    match /battleRooms/{roomId} {
+      allow get, list, create, update, delete:
+        if roomId.size() == 6 && roomId.matches('[0-9]+');
+      match /{sub}/{subId} {
+        allow get, list, create, update, delete:
+          if roomId.size() == 6 && roomId.matches('[0-9]+');
+      }
+    }
+
+    // Online Scrabble — ephemeral rooms.
+    match /scrabbleRooms/{roomId} {
+      allow get, list, create, update, delete:
+        if roomId.size() == 6 && roomId.matches('[0-9]+');
+      match /{sub}/{subId} {
+        allow get, list, create, update, delete:
+          if roomId.size() == 6 && roomId.matches('[0-9]+');
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

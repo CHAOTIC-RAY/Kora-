@@ -1095,6 +1095,14 @@ export default function App() {
   const [loadingLibrary, setLoadingLibrary] = useState<boolean>(false);
   const [cachedBookIds, setCachedBookIds] = useState<Set<string>>(new Set());
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
+  /**
+   * A saved series opened from the Library. Seeded into DiscoverView so the
+   * series detail view can rebuild the Manga from the entry's plugin id and
+   * series path — a manga card in the library carries no file to open, so
+   * without this it could only ever be a dead end.
+   */
+  const [comicBookToOpen, setComicBookToOpen] = useState<any | null>(null);
+
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
   // Shared /book?id=..&t=..&a=.. deep link → open that book's detail view full screen.
   const [sharedBookId, setSharedBookId] = useState<string | null>(null);
@@ -3198,6 +3206,23 @@ export default function App() {
         setOpenSeriesGroup(group);
         return;
       }
+      // A saved series is not a file, so there is nothing for the paths
+      // below to open. It has to go back to the source it came from, which
+      // is what carries `pluginId` + `sourceId` for. Falling through used
+      // to send it into the ebook reader, which then reported a file it
+      // never had.
+      if (book.pluginId) {
+        setComicBookToOpen({
+          pluginId: book.pluginId,
+          sourceId: book.sourceId,
+          title: book.title,
+          author: book.author,
+          coverUrl: book.coverUrl,
+          description: book.description,
+        });
+        switchTab("discover");
+        return;
+      }
     }
 
     if (book.extension?.toLowerCase() === "audiobook") {
@@ -3554,6 +3579,8 @@ export default function App() {
             initialBookId={sharedBookId}
             initialBookQuery={sharedBookQuery}
             initialBookTitle={sharedBookTitle}
+            initialComicBook={comicBookToOpen}
+            onInitialComicBookConsumed={() => setComicBookToOpen(null)}
             initialBookAuthor={sharedBookAuthor}
             onClearInitialBookLink={handleClearSharedBookLink}
             onOpenCreateView={() => {

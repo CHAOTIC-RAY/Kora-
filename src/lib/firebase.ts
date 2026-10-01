@@ -193,6 +193,16 @@ export interface BookMetadata {
    * Absent means "book", so existing libraries need no migration.
    */
   kind?: "book" | "manga" | "comic";
+  /**
+   * For a saved series: the installed plugin it came from, and the path
+   * within that plugin's site.
+   *
+   * Both are required to reopen it — `ComicDetailView` rebuilds the `Manga`
+   * from these and re-fetches details and chapters. A manga entry saved
+   * without them is a card that cannot be opened.
+   */
+  pluginId?: string;
+  sourceId?: string;
   /** Audiobook-specific metadata (track URLs sync; audio blobs stay on-device) */
   audiobookTracks?: { index: number; title: string; src: string }[];
   audiobookSourceUrl?: string;

@@ -24,7 +24,15 @@ export function isNativeApp(): boolean {
 
 /** Production Worker / API origin for Capacitor builds (no trailing slash). */
 export function getApiBaseUrl(): string {
-  const fromEnv = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
+  // `import.meta.env` only exists under Vite. This module is also loaded by
+  // the plain-`tsx` test harness and by any non-Vite script, where it is
+  // `undefined` — and an unguarded property read there throws a TypeError
+  // that takes down whatever imported it, rather than falling back to the
+  // native-origin default below. Optional chaining makes "no Vite" mean
+  // "unset" instead of "crash".
+  const fromEnv = ((import.meta as any)?.env?.VITE_API_BASE_URL || "")
+    .trim()
+    .replace(/\/$/, "");
   if (fromEnv) return fromEnv;
   // Capacitor APK must never fall back to relative /api (that hits https://localhost).
   if (isNativeApp()) return "https://kora.chaoticstudio.workers.dev";

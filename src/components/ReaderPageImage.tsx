@@ -13,14 +13,24 @@
  *
  * Where the bytes come from:
  *
- *   Manga CDNs hotlink-protect. A direct request to mangaread.org or
- *   cdn-2.mangazin.org is refused by the origin regardless of CORS, and
- *   `createImageBitmap` is stricter still, so it rejects where the `<img>`
- *   probe sometimes succeeds. Same-origin through the Worker's
- *   `/api/proxy-image` is immune to all of it, so a decode failure on the
- *   direct URL means "this host needs the proxy" rather than "this page is
- *   dead" — which is the difference between a working chapter and an
- *   unavailable card on every page of it.
+ *   Plugin images — manga covers and manga pages — are fetched through the
+ *   Worker's `/api/proxy-image`, and that is the DEFAULT rather than a
+ *   fallback. Two things push it there. Manga CDNs hotlink-protect, so a
+ *   direct request to mangaread.org or cdn-2.mangazin.org is refused by the
+ *   origin regardless of CORS, and `createImageBitmap` is stricter still, so
+ *   it rejects where the `<img>` probe sometimes succeeds. And on a network
+ *   with a DNS filter in front of it, the browser never reaches the origin
+ *   at all — the answer comes back signed by a Fortiguard block page, and
+ *   the handshake fails with `ERR_CERT_AUTHORITY_INVALID`. Cloudflare's
+ *   resolver is not behind that filter, so the same URL relayed through the
+ *   Worker returns a real image.
+ *
+ *   The distinction this replaces: a decode failure on a *direct* URL used
+ *   to mean "this host needs the relay", which is the difference between a
+ *   working chapter and an unavailable card on every page of it. Now the
+ *   route is decided from the URL before any request is made, so there is no
+ *   doomed first attempt to classify — `pluginImage.ts` holds that decision
+ *   and `readerImage.ts` holds the sizing maths. This file is the DOM half.
  *
  * Three rendering paths, in order of preference:
  *
@@ -37,6 +47,26 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { computeDecodeSize, viewportDecodeBox } from "../lib/readerImage";
 import { logger } from "../lib/logger";
+import { resolvePluginImageSrc, shouldProxyImageUrl } from "../lib/pluginImage";
+
+/**
+ * The URL a plugin page is actually fetched from.
+ *
+ * Remote URLs go through the Worker from the very first attempt, not as a
+ * fallback. This used to be direct-first with an escalation on failure, which
+ * cost a doomed request per image: manga CDNs hotlink-refuse the direct
+ * fetch, and on a network whose DNS filter answers with a Fortiguard
+ * "Blocked Page" certificate the browser refuses the TLS handshake outright
+ * (`ERR_CERT_AUTHORITY_INVALID`) — so *every* direct attempt fails and the
+ * "fallback" had quietly become the normal path, with the wasted handshake
+ * added on top. Routing by default also means the probe and the decode agree
+ * with the `<img>` surface on the first frame rather than after a remount.
+ *
+ * Non-remote URLs (bundled assets, `data:`/`blob:`) are returned untouched.
+ */
+function routedImageUrl(url: string): string {
+  return resolvePluginImageSrc(url) ?? url;
+}
 
 export interface ReaderPageImageProps {
   url: string;
@@ -69,15 +99,6 @@ function canDecodeResized(): boolean {
     typeof createImageBitmap === "function" &&
     typeof HTMLCanvasElement !== "undefined"
   );
-}
-
-/**
- * Same-origin relay through the Worker. Returns null off-browser so the
- * effect can skip straight to reporting rather than building `/api/...`.
- */
-function proxyUrlFor(url: string): string | null {
-  if (typeof window === "undefined") return null;
-  return `/api/proxy-image?url=${encodeURIComponent(url)}`;
 }
 
 type Status = "loading" | "ready" | "error";
@@ -116,16 +137,19 @@ export function ReaderPageImage({
   });
   const attempt = retry.url === url ? retry.attempt : 0;
   /**
-   * Whether this page is being served through the Worker, also tagged with
-   * its URL for the same reason as `retry`: turning this off on a page
-   * change has to happen during render, not in an effect, or flipping it
-   * true after a decode failure would immediately flip it back and loop.
+   * Whether this page goes through the Worker. Derived, not stored: the route
+   * is a property of the URL, so it cannot get out of step with the page the
+   * way the old escalation flag did — a flag flipped on after a decode
+   * failure had to be reset during render to avoid an effect loop.
    */
-  const [proxied, setProxied] = useState<{ url: string; on: boolean }>({
-    url: "",
-    on: false,
-  });
-  const useProxy = proxied.url === url && proxied.on;
+  const useProxy = shouldProxyImageUrl(url);
+  /**
+   * The origin-form URL this page came from, for cache busting and logging.
+   * The relay keeps the original in its query string, so a retry has to bust
+   * the *proxied* URL — busting the bare URL would re-request the same
+   * cached failure behind a fresh-looking origin.
+   */
+  const fetchUrl = routedImageUrl(url);
   const [message, setMessage] = useState("");
 
   // A new page is a new image: reset before decoding, never after, or the
@@ -141,8 +165,7 @@ export function ReaderPageImage({
       return;
     }
 
-    const proxy = proxyUrlFor(url);
-    const base = useProxy && proxy ? proxy : url;
+    const base = fetchUrl;
     const bust =
       attempt > 0
         ? `${base}${base.includes("?") ? "&" : "?"}kora_retry=${attempt}`
@@ -177,18 +200,16 @@ export function ReaderPageImage({
     };
 
     /**
-     * One escape forward. Direct host refused → go same-origin through the
-     * Worker. Already proxied → nothing left to try, so report it.
+     * Nowhere left to escalate. A remote page is fetched through the Worker
+     * from the first attempt now, so a failure here is a failure at the
+     * origin or the relay — not a routing mistake — and reporting it
+     * immediately is what stops the reader re-requesting a dead page on
+     * every turn.
      */
     const escalateOrGiveUp = () => {
       if (!alive) return;
-      if (!useProxy && proxy) {
-        logger.info("[reader] direct load refused, retrying through proxy-image", {
-          url,
-          pageLabel,
-        });
-        setProxied({ url, on: true });
-        return;
+      if (useProxy) {
+        logger.warn("[reader] relay load failed", { url, pageLabel });
       }
       giveUp();
     };
@@ -321,17 +342,8 @@ export function ReaderPageImage({
   const fail = (e: React.SyntheticEvent) => {
     e.stopPropagation();
     // The `<img>` surface can fail where the probe succeeded — a different
-    // request, a different cache state. Same escalation, not a dead page.
-    const proxy = proxyUrlFor(url);
-    if (!useProxy && proxy) {
-      logger.info("[reader] <img> load refused, retrying through proxy-image", {
-        url,
-        pageLabel,
-      });
-      setStatus("loading");
-      setProxied({ url, on: true });
-      return;
-    }
+    // request, a different cache state. The route is fixed by the URL now,
+    // so there is no second attempt to make: this is a dead page.
     setStatus("error");
     setMessage(
       "This page failed to load. The image may be missing or the source may be down."
@@ -347,15 +359,15 @@ export function ReaderPageImage({
 
   /**
    * The `<img>` surface has to render the *same* source the decode used,
-   * retry-busted the same way. Rendering the bare `url` here was how a
-   * manual Retry silently re-requested the cached failure.
+   * routed the same way and retry-busted the same way. Rendering the bare
+   * `url` here was how a manual Retry silently re-requested the cached
+   * failure — and would have meant a direct fetch even when the decode
+   * succeeded through the relay.
    */
-  const imgProxy = proxyUrlFor(url);
-  const imgBase = useProxy && imgProxy ? imgProxy : url;
   const imgSrc =
     attempt > 0
-      ? `${imgBase}${imgBase.includes("?") ? "&" : "?"}kora_retry=${attempt}`
-      : imgBase;
+      ? `${fetchUrl}${fetchUrl.includes("?") ? "&" : "?"}kora_retry=${attempt}`
+      : fetchUrl;
 
   if (status === "error") {
     return (

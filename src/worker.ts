@@ -34,6 +34,23 @@ import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedIm
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
+import { assertSafeFetchTarget } from "./lib/ssrfGuard";
+import {
+  classifyContentBytes,
+  describeScore,
+  normalizeHost,
+  rankMirrors,
+  reliabilityBadge,
+  type MirrorVerdict,
+} from "./lib/mirrorHealth";
+import { probeMirrorUrl, MAX_REDIRECT_HOPS } from "./lib/mirrorProbe";
+import {
+  readOutcomePayload,
+  recordProbeOutcome,
+  recordUserOutcome,
+  resolveMirrorStore,
+  type IpAllowance,
+} from "./lib/mirrorHealthStore";
 import {
   getNetgalleyCoverUrl,
   searchNetgalleyCatalog,
@@ -42,6 +59,51 @@ import {
   fetchNetgalleyCategoryListings
 } from "./lib/netgalley";
 declare const HTMLRewriter: any;
+
+/* ──────────────────────── mirror-health endpoint support ───────────────── */
+
+/**
+ * Per-IP burst allowances for outcome reports, kept in the isolate.
+ *
+ * Ephemeral like the mirror store itself: a spammer who lands on a different
+ * isolate gets a fresh allowance. That weakens the cap in a targeted attack
+ * but keeps the cost of it low, and the counter that actually decides the
+ * ranking (the tally) is capped the same way. With KV available both should
+ * move together — see the KV TODO in mirrorHealthStore.ts.
+ */
+const mirrorIpAllowances = new Map<string, IpAllowance>();
+
+/** A cached probe verdict older than this is re-checked. */
+const PROBE_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Hosts we will probe in ONE invocation.
+ *
+ * 6 hosts x (MAX_REDIRECT_HOPS + 1) 6 hops = 36 subrequests worst case, inside
+ * Cloudflare's 50-per-invocation ceiling with headroom for KV reads and the
+ * request itself. Probing every mirror on every sheet open is what exhausted
+ * the limit and killed this Worker in production; the cap plus the TTL is what
+ * makes the feature survivable.
+ */
+const MAX_PROBES_PER_REQUEST = 6;
+
+const JSON_HEADERS = { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" };
+
+/**
+ * Best-effort client IP for the rate-limit key.
+ *
+ * Cloudflare always sets CF-Connecting-IP. The fallbacks exist for local
+ * testing and for a misconfigured route; neither can be relied on for security,
+ * which is exactly why the per-IP cap is a defence-in-depth measure and not the
+ * only one.
+ */
+function clientIp(request: Request): string {
+  return (
+    request.headers.get("CF-Connecting-IP") ||
+    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+    "unknown"
+  );
+}
 
 async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
@@ -4089,20 +4151,20 @@ export default {
       // Covers can legitimately come from any book-cover CDN. Mirroring the
       // news image endpoint (proxyFeedImage), we allow any https host and rely
       // on the upstream content-type / magic-byte check (below) to reject
-      // non-images. A short denylist blocks obvious non-cover targets so this
-      // isn't a fully open proxy. Previously a per-host ALLOWED_IMG list caused
-      // every book cover to 403 in the APK (NYT/featured + mainstream CDNs were
-      // missing) while news thumbnails (a different, allow-any endpoint) loaded.
-      const BLOCKED_IMG_HOSTS = /(^|\.)(localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.[0-9.]+|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9.]+|metadata\.google\.internal|kora\.chaoticstudio\.workers\.dev|chaoticstudio\.workers\.dev)$/i;
-      let parsed: URL;
-      try {
-        parsed = new URL(target);
-      } catch {
-        return new Response("Bad url", { status: 400 });
-      }
-      if (!/^https?:$/i.test(parsed.protocol) || !parsed.hostname || BLOCKED_IMG_HOSTS.test(parsed.hostname)) {
+      // non-images. A denylist blocks internal targets so this isn't a fully
+      // open proxy. Previously a per-host ALLOWED_IMG list caused every book
+      // cover to 403 in the APK (NYT/featured + mainstream CDNs were missing)
+      // while news thumbnails (a different, allow-any endpoint) loaded.
+      //
+      // The range checks now live in `assertSafeFetchTarget` and are shared
+      // with /api/mirror-check, which had to be at least as strict as this
+      // endpoint. The old local regex missed 127.0.0.0/8 beyond .0.0.1,
+      // 100.64/10, and every IPv6 form including [::1].
+      const guard = assertSafeFetchTarget(target);
+      if (!guard.ok || !guard.parsed) {
         return new Response("Host not allowed", { status: 403 });
       }
+      const parsed = guard.parsed;
       try {
         const upstream = await fetch(parsed.toString(), {
           headers: {
@@ -4128,7 +4190,143 @@ export default {
       }
     }
 
-    // 14. Kora's own e-reader relay — replaces send.djazz.se entirely.
+    // ── Mirror health ─────────────────────────────────────────────────────
+    //
+    // 14. POST /api/mirror-outcome — what a REAL user ended up with.
+    //
+    // PRIVACY: the body is reduced to `{host, verdict}` and nothing else by
+    // `readOutcomePayload`. No title, no author, no filename, no ISBN, no
+    // size, no user id — a title plus a mirror host plus a timestamp is a log
+    // of what a specific person read, and that is not something an anonymous
+    // reliability counter needs in order to work. Untrusted fields are dropped,
+    // not stored and not ignored politely.
+    if (path === "/api/mirror-outcome" && request.method === "POST") {
+      try {
+        const payload = readOutcomePayload(await request.json());
+        if (!payload) {
+          // 400, and never a fake success: the caller asked us to record
+          // something we cannot honestly record.
+          return new Response(JSON.stringify({ error: "Invalid outcome payload" }), {
+            status: 400,
+            headers: JSON_HEADERS,
+          });
+        }
+        const store = resolveMirrorStore(env);
+        const result = await recordUserOutcome(
+          store,
+          mirrorIpAllowances,
+          payload,
+          clientIp(request),
+          Date.now()
+        );
+        // 202 even when capped: the report was understood, and telling a
+        // hostile caller "you were rate limited" is a free oracle to tune
+        // against. The client's own UI never depends on this status.
+        return new Response(
+          JSON.stringify({ recorded: result.accepted, capped: result.capped }),
+          { status: 202, headers: JSON_HEADERS }
+        );
+      } catch (err: any) {
+        console.error("[mirror-outcome] failed", err?.name || "Error");
+        return new Response(JSON.stringify({ error: "Could not record outcome" }), {
+          status: 500,
+          headers: JSON_HEADERS,
+        });
+      }
+    }
+
+    // 15. GET /api/mirror-health?hosts=a,b,c — scores + provenance for a sheet.
+    //
+    // Read-only and cache-backed. It re-probes a host ONLY when the cached
+    // verdict is missing or older than PROBE_TTL_MS, and never more than
+    // MAX_PROBES_PER_REQUEST hosts per invocation, because Cloudflare allows
+    // 50 subrequests total and this Worker has already been killed by that
+    // limit in production. A host we choose not to probe is returned as
+    // UNVERIFIED, never as healthy.
+    if (path === "/api/mirror-health" && request.method === "GET") {
+      const store = resolveMirrorStore(env);
+      const raw = url.searchParams.get("hosts") || "";
+      const hosts = [...new Set(raw.split(",").map((h) => normalizeHost(h)).filter(Boolean))].slice(0, 20);
+      if (hosts.length === 0) {
+        return new Response(JSON.stringify({ mirrors: [], note: "No valid hosts requested." }), {
+          headers: JSON_HEADERS,
+        });
+      }
+
+      const now = Date.now();
+      const records = new Map<string, any>();
+      const stale: string[] = [];
+      for (const host of hosts) {
+        const rec = await store.get(host);
+        records.set(host, rec);
+        if (!rec?.lastProbeAt || now - rec.lastProbeAt > PROBE_TTL_MS) stale.push(host);
+      }
+
+      // SUBREQUEST BUDGET — stated explicitly because it is load-bearing.
+      //   Cloudflare ceiling: 50 subrequests per invocation.
+      //   Ceiling here:     MAX_PROBES_PER_REQUEST (6) hosts x
+      //                     (MAX_REDIRECT_HOPS + 1 = 6) hops = 36 worst case,
+      //                     which fits inside 50 with room for the KV reads.
+      //   Anything not probed stays UNVERIFIED rather than being dropped.
+      const toProbe = stale.slice(0, MAX_PROBES_PER_REQUEST);
+      const probeResults: Record<string, any> = {};
+      for (const host of toProbe) {
+        // The probe needs a URL, and the health cache only stores hosts. The
+        // client passes the URL alongside the host so the Worker can probe
+        // without inventing one; without it the host is simply left unverified.
+        const candidate = url.searchParams.get(`url:${host}`);
+        if (!candidate) continue;
+        const res = await probeMirrorUrl(candidate);
+        probeResults[host] = res;
+        if (res.verdict !== "unverified") {
+          await recordProbeOutcome(store, normalizeHost(res.finalUrl) || host, res.verdict, res.reason, now);
+          records.set(host, await store.get(host));
+        }
+      }
+
+      const ranked = rankMirrors(hosts, records as any, now);
+      const skipped = stale.length - toProbe.length;
+      return new Response(
+        JSON.stringify({
+          now,
+          mirrors: ranked.map((s) => ({
+            host: s.host,
+            percent: s.percent,
+            badge: reliabilityBadge(s),
+            basis: s.basis,
+            reason: describeScore(s),
+            userWeight: s.userWeight,
+            userGood: s.user.rawGood,
+            userBad: s.user.rawBad,
+            probeGood: s.probe.rawGood,
+            probeBad: s.probe.rawBad,
+            verified: s.percent !== null,
+          })),
+          probe: probeResults,
+          // Surfaced so the UI can say "could not check the rest" instead of
+          // silently showing a partial ranking as if it were complete.
+          skipped: Math.max(0, skipped),
+        }),
+        { headers: { ...JSON_HEADERS, "Cache-Control": "no-store" } }
+      );
+    }
+
+    // 16. GET /api/mirror-check?url=... — probe one mirror, on demand.
+    if (path === "/api/mirror-check" && request.method === "GET") {
+      const target = url.searchParams.get("url");
+      if (!target) {
+        return new Response(JSON.stringify({ error: "Missing url" }), { status: 400, headers: JSON_HEADERS });
+      }
+      const res = await probeMirrorUrl(target);
+      // A blocked target is a refusal, not a verdict: 403 so the client can
+      // tell "we refused to look" from "we looked and it was junk".
+      return new Response(JSON.stringify(res), {
+        status: res.probeError === "blocked" ? 403 : 200,
+        headers: { ...JSON_HEADERS, "Cache-Control": "no-store" },
+      });
+    }
+
+    // 15. Kora's own e-reader relay — replaces send.djazz.se entirely.
     //     No third party sees a filename, a code, or a byte. The store is
     //     resolved per request from the R2 binding, and every session and
     //     stored file is deleted on first download or at its TTL, whichever

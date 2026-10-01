@@ -13,6 +13,7 @@
 import React from "react";
 import { BookOpen, Check, Play, X, Layers, Clock } from "lucide-react";
 import FluidOverlay from "./FluidOverlay";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 import type { BookMetadata } from "../lib/firebase";
 import type { LibraryGroup } from "../lib/seriesHelper";
 import { parseSeriesNumber } from "../lib/seriesHelper";
@@ -72,7 +73,7 @@ export default function SeriesDetailView({
           {info.coverUrl && (
             <div className="absolute inset-0 overflow-hidden">
               <img
-                src={info.coverUrl}
+                src={resolveCoverImageSrc(info.coverUrl) || ""}
                 alt=""
                 className="w-full h-full object-cover opacity-20 blur-2xl scale-110"
               />
@@ -82,7 +83,7 @@ export default function SeriesDetailView({
           <div className="relative flex gap-4 p-5">
             {info.coverUrl && (
               <img
-                src={info.coverUrl}
+                src={resolveCoverImageSrc(info.coverUrl) || ""}
                 alt=""
                 className="w-24 h-32 object-cover rounded-lg shadow-lg shrink-0 border border-kindle-border"
               />

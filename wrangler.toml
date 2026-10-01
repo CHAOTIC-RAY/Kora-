@@ -28,6 +28,10 @@ binding = "BROWSER"
 #
 # Until that is done the Worker logs a warning and /api/relay/status reports
 # {"storage":"memory"} — uploads will not survive a request boundary.
+[[kv_namespaces]]
+binding = "MIRROR_HEALTH"
+id = "02352993e5a04eeb826a931e6f32a56c"
+
 [[r2_buckets]]
 binding = "RELAY_BUCKET"
 bucket_name = "kora-relay"
@@ -41,6 +45,10 @@ vars = { APP_CHANNEL = "production" }
 
 [env.production.browser]
 binding = "BROWSER"
+
+[[env.production.kv_namespaces]]
+binding = "MIRROR_HEALTH"
+id = "02352993e5a04eeb826a931e6f32a56c"
 
 [[env.production.r2_buckets]]
 binding = "RELAY_BUCKET"

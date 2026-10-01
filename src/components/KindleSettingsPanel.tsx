@@ -161,10 +161,48 @@ export default function KindleSettingsPanel() {
     };
   }, []);
 
+  // "idle" | "done" | "failed" — a distinct failed state exists so the
+  // button never claims "Copied" when the clipboard was actually blocked.
+  const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
+
   const sendPage = useMemo(() => {
     if (typeof window === "undefined") return EREADER_URL;
     return `${window.location.origin}${EREADER_URL}`;
   }, []);
+
+  async function copySendPage() {
+    // navigator.clipboard is unavailable on insecure origins and can be
+    // blocked inside the Capacitor WebView, and this app runs as an APK. A
+    // silent no-op here would look exactly like a broken button, so fall
+    // back to a hidden textarea + execCommand, and only report success when
+    // something actually reached the clipboard.
+    let ok = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(sendPage);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = sendPage;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+      } catch {
+        ok = false;
+      }
+    }
+    setCopied(ok ? "done" : "failed");
+    window.setTimeout(() => setCopied("idle"), 2000);
+  }
 
   async function handleUpload(book: CachedBook) {
     const controller = new AbortController();
@@ -288,16 +326,33 @@ export default function KindleSettingsPanel() {
               Codes skip the letters O, I and L and the digits 0 and 1, so they read
               clearly on an E-Ink screen.
             </p>
-            <a
-              href={sendPage}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-block text-[10px] underline hover:text-kindle-text"
-            >
-              Open the Send page in a new tab
-            </a>
-          </div>
-        </div>
+            {/* The URL is only reachable by following a link, so an e-reader
+                            browser or a second device cannot be sent there. Showing it as
+                            text with a copy button is what makes the step transferable:
+                            the user can paste it into a Kindle browser, a message, or a
+                            note, instead of having to open a tab they then cannot use. */}
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <code className="min-w-0 flex-1 truncate rounded-lg bg-kindle-bg border border-kindle-border px-2 py-1.5 font-mono text-[10px] text-kindle-text-muted">
+                            {sendPage}
+                          </code>
+                          <button
+                            type="button"
+                            onClick={() => copySendPage()}
+                            className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-kindle-text px-2 py-1.5 text-[9px] font-bold uppercase tracking-widest text-kindle-bg hover:opacity-90 transition"
+                          >
+                            {copied === "done" ? "Copied" : copied === "failed" ? "Copy failed" : "Copy link"}
+                          </button>
+                          <a
+                            href={sendPage}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 text-[10px] underline hover:text-kindle-text"
+                          >
+                            Open in new tab
+                          </a>
+                        </div>
+                      </div>
+                    </div>
 
         {progress && (
           <div className="mt-3">

@@ -14,12 +14,15 @@
  * chapter list here is flat and ordered, with volume boundaries shown when
  * the source's chapter numbers imply them.
  */
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X, BookOpen, Download, Check, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { createSourceClient } from "../lib/sources/client";
 import { getInstalledPlugins } from "../lib/sources/store";
 import { loadProgress, saveProgress, resumePage, type ComicProgressMap } from "../lib/comicProgress";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 import { indexForDisplayed, displayedPage } from "../lib/readingDirection";
+import { detectFormat, type Detection } from "../lib/formats/detect";
+import { openArchive, releaseArchive, describeArchive, type ArchiveHandle } from "../lib/formats/archive";
 import ComicReader from "./ComicReader";
 import type { Chapter, Manga, MangaStatus, SourcePlugin } from "../lib/sources/types";
 
@@ -38,6 +41,17 @@ interface OpenChapter {
   manga: Manga;
   pages: string[];
   index: number;
+  /**
+   * What the pages really are, from bytes.
+   *
+   * A Madara chapter is a list of CDN image URLs, which is a *known* shape and
+   * not a guess, so it is labelled honestly as remote images. An archive
+   * carries the real verdict from `detectFormat` instead, which is what puts
+   * "CBZ" in the reader's top bar next to a comic that came out of a ZIP.
+   */
+  formatLabel?: string;
+  /** Object URLs to revoke when this chapter closes. Undefined for CDN pages. */
+  handle?: ArchiveHandle | null;
 }
 
 const STATUS_LABELS: Record<number, { label: string; tone: string }> = {
@@ -87,6 +101,11 @@ export default function ComicDetailView({
   const [readChapters, setReadChapters] = useState<Set<string>>(new Set());
   const [busyChapter, setBusyChapter] = useState<string | null>(null);
   const [open, setOpen] = useState<OpenChapter | null>(null);
+  /** An archive was just opened, and what it turned out to be. */
+  const [archiveNote, setArchiveNote] = useState("");
+  /** Reading a picked file off disk. */
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   /**
    * Stored read positions, keyed `pluginId:url`.
    *
@@ -221,13 +240,62 @@ export default function ComicDetailView({
       const page = resumePage(effectiveProgress, key, pages.length);
       const startIndex =
         page > 0 ? indexForDisplayed({ rtl: READER_RTL, total: pages.length, page }) : 0;
-      setOpen({ chapter: ch, manga, pages: pages.map((p) => p.image), index: startIndex });
+      setOpen({
+        chapter: ch,
+        manga,
+        pages: pages.map((p) => p.image),
+        index: startIndex,
+        // These are CDN image URLs: a known shape, not a guess, so it is
+        // labelled as what it is instead of being left blank.
+        formatLabel: `${pages.length} image pages`,
+        handle: null,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not open that chapter");
     } finally {
       setBusyChapter(null);
     }
   };
+
+  /**
+   * Open a comic archive the user picked from disk.
+   *
+   * The whole point of `detectFormat`/`openArchive` lands here: the bytes are
+   * classified, and each outcome gets its own sentence. A CBZ opens. A CBR
+   * says RAR is not supported, in words, on screen — not a blank reader. An
+   * HTML or PHP error page says the *mirror* is broken, not "try again".
+   *
+   * The file is read once, into memory, and inspected there. Nothing here
+   * fetches, so it cannot add a subrequest against the Worker budget.
+   */
+  const openArchiveFile = useCallback(async (file: File) => {
+    setError("");
+    setArchiveBusy(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const result = await openArchive(bytes, file.name);
+      if (result.status === "ok") {
+        setArchiveNote(describeArchive(result.detection));
+        setOpen({
+          chapter: { url: `file://${file.name}`, name: file.name.replace(/\.[^.]+$/, "") } as Chapter,
+          manga: (manga || { id: file.name, title: file.name }) as Manga,
+          pages: result.pages.map((p) => p.url),
+          index: READER_RTL ? 0 : 0,
+          formatLabel: describeArchive(result.detection),
+          handle: result.handle,
+        });
+        return;
+      }
+      // rejected / unsupported / empty are all *explained*, not swallowed.
+      setArchiveNote("");
+      setError(result.message);
+    } catch (e) {
+      setArchiveNote("");
+      setError(e instanceof Error ? e.message : "That file could not be opened.");
+    } finally {
+      setArchiveBusy(false);
+    }
+  }, [manga]);
 
   if (!book) return null;
 
@@ -247,6 +315,7 @@ export default function ComicDetailView({
           number: chapterNumber(c) ?? undefined,
         }))}
         seriesTitle={book.title}
+        formatLabel={open.formatLabel}
         rtl={READER_RTL}
         initialIndex={open.index}
         onIndexChange={(i) => {
@@ -269,7 +338,14 @@ export default function ComicDetailView({
           saveProgress(key, entry);
           setStored((prev) => ({ ...prev, [key]: entry }));
         }}
-        onClose={() => setOpen(null)}
+        onClose={() => {
+          // Revoking on close, not on unmount. Object URLs are held by the
+          // document until explicitly revoked, so an archive opened ten times
+          // leaks every page of all ten — on a phone that is the OOM, not the
+          // slow read.
+          releaseArchive(open.handle);
+          setOpen(null);
+        }}
         onChapterChange={(next) => {
           // The reader offers "next chapter" as a shortcut, so it has to
           // load for real. Wired to the same path as tapping a row;
@@ -302,9 +378,12 @@ export default function ComicDetailView({
               // placeholder or missing. `details()` resolves the real image,
               // so prefer that and fall back to the card.
               const cover = manga?.thumbnailUrl || book.coverUrl;
+              // Resolved, not used raw: a source cover is a plugin image and
+              // hits the same hotlink wall and DNS filters as a page, so it
+              // takes the Worker relay like everything else from a source.
               return cover ? (
                 <img
-                  src={cover}
+                  src={resolveCoverImageSrc(cover) || ""}
                   alt=""
                   className="w-24 sm:w-28 h-36 sm:h-44 object-cover rounded-xl border border-kindle-border shrink-0"
                 />
@@ -402,6 +481,40 @@ export default function ComicDetailView({
               </button>
             );
           })()}
+
+          {/* Open a comic archive from disk. The picker accepts every
+              container we can *identify* — including the ones we cannot read —
+              because the useful answer to "I have a .cbr" is a clear sentence
+              saying CBR is not supported yet, not a file input that silently
+              refuses it. */}
+          <div className="border border-kindle-border rounded-xl p-3 space-y-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".cbz,.cbr,.cb7,.zip,.pdf,.epub,.mobi,.azw,.azw3,.rar,image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void openArchiveFile(f);
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={archiveBusy}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:border-kindle-accent/50 transition disabled:opacity-50 cursor-pointer"
+            >
+              {archiveBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+              {archiveBusy ? "Reading archive…" : "Open a comic archive…"}
+            </button>
+            <p className="text-[9px] leading-relaxed text-kindle-text-muted/80">
+              CBZ and ZIP comics open straight in the reader. RAR/CBR and 7z/CB7 are identified but not
+              yet readable — Kora will tell you which one you have rather than failing quietly.
+            </p>
+            {archiveNote && (
+              <p className="text-[10px] text-kindle-accent font-mono">{archiveNote}</p>
+            )}
+          </div>
 
           {onAddToLibrary && manga && (
             <button

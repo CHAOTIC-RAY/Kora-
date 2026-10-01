@@ -29,6 +29,7 @@ import {
   BookMetadata,
 } from "../lib/firebase";
 import { toast } from "react-hot-toast";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 
 interface CommunityStoriesHubProps {
   userId: string;
@@ -324,7 +325,7 @@ export default function CommunityStoriesHub({
                 >
                   {book.coverUrl && (
                     <img
-                      src={book.coverUrl}
+                      src={resolveCoverImageSrc(book.coverUrl) || ""}
                       alt={book.title}
                       className="absolute inset-0 w-full h-full object-cover z-0 opacity-80 group-hover:scale-105 transition duration-300"
                     />
@@ -449,7 +450,7 @@ export default function CommunityStoriesHub({
               >
                 {activeBook.coverUrl && (
                   <img
-                    src={activeBook.coverUrl}
+                    src={resolveCoverImageSrc(activeBook.coverUrl) || ""}
                     alt={activeBook.title}
                     className="absolute inset-0 w-full h-full object-cover"
                   />
