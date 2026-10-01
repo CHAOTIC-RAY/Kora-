@@ -230,6 +230,25 @@ export interface SourcePlugin {
   icon?: string;
   nsfw: boolean;
   /**
+   * Whether the registry has verified this source can serve a page image.
+   *
+   * `false` is a registry assertion that the source lists series and chapters
+   * but 404s on every panel. It exists because that failure is otherwise
+   * invisible: MangaZin passed every structural check (valid manifest, real
+   * icon, live listings, 661 chapters) and still served nothing, so a card
+   * that looks healthy is a card that wastes the user's time.
+   *
+   * Direction of the default matters. Absent means "not verified", NOT
+   * "broken" — an older or partial registry must not make working
+   * sources look dead. Read it through `isUnreadableSource()` in store.ts
+   * rather than comparing to `true`.
+   */
+  readable?: boolean;
+  /** Why the source is unreadable, or what the check found. Shown verbatim. */
+  readableNote?: string;
+  /** When the readability verdict was recorded, ISO-8601. Display only. */
+  readableCheckedAt?: string;
+  /**
    * Gen 2 provenance, so a plugin can be traced back to the upstream extension
    * it was ported from. `packageName` is the `eu.kanade.tachiyomi.extension.*`
    * / `keiyoushi.*` coordinate.

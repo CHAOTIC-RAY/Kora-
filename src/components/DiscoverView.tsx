@@ -8,7 +8,7 @@ import { filterDownloadableBooks } from "../lib/bookAvailability";
 import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { getDiscoverablePlugins } from "../lib/sources/store";
+import { getDiscoverablePlugins, isUnreadableSource } from "../lib/sources/store";
 import ComicDetailView from "./ComicDetailView";
 import { createSourceClient } from "../lib/sources/client";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
@@ -336,7 +336,7 @@ function DiscoverView({
    * whole point of that opt-in.
    */
   const [pluginChips, setPluginChips] = useState<
-    { id: string; name: string; icon?: string }[]
+    { id: string; name: string; icon?: string; unreadable: boolean }[]
   >([]);
 
   /**
@@ -389,6 +389,10 @@ function DiscoverView({
           id: p.id,
           name: p.name,
           icon: p.icon,
+          // Carried onto the chip so the source is marked BEFORE the user
+          // taps through to chapters that will 404. Finding out afterwards is
+          // what made this feel like the app was broken rather than honest.
+          unreadable: isUnreadableSource(p),
         }))
       );
     } catch {
@@ -3685,6 +3689,10 @@ function DiscoverView({
                     here — a theme or an integration is not a place to browse
                     books, and `dir="rtl"` orders them so the newest sits
                     next to the buttons while still scrolling LTR. */}
+                {/* An unreadable source is marked on its chip, in slate rather
+                    than amber: amber is the piracy/NSFW signal and this source
+                    may well be both, so it needs a colour of its own on the one
+                    control the user is about to tap. */}
                 {pluginChips.length > 0 &&
                   pluginChips.map((c) => {
                     const on = activeSource === c.id;
@@ -3693,10 +3701,13 @@ function DiscoverView({
                         key={c.id}
                         type="button"
                         title={
-                          on
-                            ? `Show every source again`
-                            : `${c.name}: browse its full catalogue, or search only it`
+                          c.unreadable
+                            ? `${c.name} serves no page images — its listings and chapter list work, but every panel 404s.`
+                            : on
+                              ? `Show every source again`
+                              : `${c.name}: browse its full catalogue, or search only it`
                         }
+                        data-unreadable={c.unreadable ? "true" : undefined}
                         onClick={() => {
                           // With no query, clicking a chip browses that
                           // source's own catalogue instead of searching a
@@ -3717,12 +3728,17 @@ function DiscoverView({
                           }
                         }}
                         className={`px-2.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap max-w-[170px] shrink-0 ${
-                          on
-                            ? "bg-kindle-accent text-white border-kindle-accent"
-                            : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
+                          c.unreadable
+                            ? "bg-slate-500/15 border-slate-500/50 text-slate-700 dark:text-slate-200 hover:border-slate-500"
+                            : on
+                              ? "bg-kindle-accent text-white border-kindle-accent"
+                              : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
                         }`}
                       >
-                        {c.icon ? (
+                        {c.unreadable && (
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                        )}
+                        {c.icon && !c.unreadable ? (
                           <img
                             src={c.icon}
                             alt=""

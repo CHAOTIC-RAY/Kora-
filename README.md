@@ -19,11 +19,13 @@
   <p align="center">
   <b>Open-source ebook reader + audiobook player + news aggregator with on-device text-to-speech.</b><br />
   Read EPUB/PDF/TXT · Listen with neural voices · Browse RSS feeds · Sync across devices · Works offline · PWA + Android.<br />
-  <a href="https://kora.chaoticstudio.workers.dev">🌐 Live Demo</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/wiki">📚 Docs</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/discussions">💬 Discussions</a>
+  <a href="https://kora.chaoticstudio.workers.dev">🌐 Live Demo</a> · <a href="https://chaotic-ray.github.io/Kora-/">📖 Documentation</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/discussions">💬 Discussions</a>
   </p>
 
   <h4>
     <a href="https://kora.chaoticstudio.workers.dev">Live Application</a>
+    <span> · </span>
+    <a href="https://chaotic-ray.github.io/Kora-/">Documentation</a>
     <span> · </span>
     <a href="https://github.com/CHAOTIC-RAY/Kora-/issues">Report Bug</a>
     <span> · </span>
@@ -54,6 +56,16 @@ Kora isn't just a reader—it's a **unified content consumption platform** built
 
 ### View Live
 Visit **[kora.chaoticstudio.workers.dev](https://kora.chaoticstudio.workers.dev)** — no installation needed.
+
+### Documentation
+Full documentation lives at **[chaotic-ray.github.io/Kora-/](https://chaotic-ray.github.io/Kora-/)**:
+
+| Page | Covers |
+|------|--------|
+| [Overview](https://chaotic-ray.github.io/Kora-/) | What Kora is, and the shape of the app |
+| [Features](https://chaotic-ray.github.io/Kora-/features.html) | Every surface, end to end |
+| [Self-Hosting](https://chaotic-ray.github.io/Kora-/self-hosting.html) | Run the Worker and assets yourself |
+| [Plugins](https://chaotic-ray.github.io/Kora-/plugins.html) | Writing and publishing a source |
 
 ### Run Locally
 ```bash
@@ -541,5 +553,5 @@ Written down so nobody has to rediscover them.
 
 <p align="center">
   <i>Your bookshelf, your narrator, and your morning paper. Unified.</i><br />
-  Built with ☕ and passion by <a href="https://github.com/CHAOTIC-RAY">CHAOTIC-RAY</a> · <a href="https://kora.chaoticstudio.workers.dev">Visit Kora →</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/issues/new?title=Report%20a%20bug">Report a bug →</a>
+  Built with ☕ and passion by <a href="https://github.com/CHAOTIC-RAY">CHAOTIC-RAY</a> · <a href="https://kora.chaoticstudio.workers.dev">Visit Kora →</a> · <a href="https://chaotic-ray.github.io/Kora-/">Documentation →</a> · <a href="https://github.com/CHAOTIC-RAY/Kora-/issues/new?title=Report%20a%20bug">Report a bug →</a>
 </p>

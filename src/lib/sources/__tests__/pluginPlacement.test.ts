@@ -209,6 +209,9 @@ const entry = (over: Partial<RepoEntry>): RepoEntry => ({
   },
   installed: false,
   gated: false,
+  // Not verified by this fixture. Absent-from-the-registry has to keep meaning
+  // "unknown", never "broken" — see isUnreadableSource.
+  readable: true,
   installUrl: "https://example.test/x.json",
   category: "source",
   ...over,

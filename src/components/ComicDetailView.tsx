@@ -17,7 +17,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { X, BookOpen, Download, Check, AlertTriangle, Loader2, ExternalLink } from "lucide-react";
 import { createSourceClient } from "../lib/sources/client";
-import { getInstalledPlugins } from "../lib/sources/store";
+import { getInstalledPlugins, isUnreadableSource, readableNoteFor } from "../lib/sources/store";
 import { loadProgress, saveProgress, resumePage, type ComicProgressMap } from "../lib/comicProgress";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { indexForDisplayed, displayedPage } from "../lib/readingDirection";
@@ -191,6 +191,18 @@ export default function ComicDetailView({
 
   const status: MangaStatus = (manga?.status ?? 0) as MangaStatus;
   const statusInfo = STATUS_LABELS[status] ?? STATUS_LABELS[0];
+
+  /**
+   * The registry says this source serves no page image.
+   *
+   * Said HERE, above the chapter list, because this screen is the last point
+   * before the user starts tapping chapters that will each 404. Real listings,
+   * a real synopsis and a real chapter count are exactly what made MangaZin
+   * read as a working source, so the warning has to sit in this screen and not
+   * only on the hub card the user passed three taps ago.
+   */
+  const sourceUnreadable = isUnreadableSource(plugin);
+  const sourceUnreadableNote = readableNoteFor(plugin);
 
   const ordered = useMemo(
     () =>
@@ -372,6 +384,28 @@ export default function ComicDetailView({
               </div>
             </div>
           </div>
+
+          {sourceUnreadable && (
+            <div
+              data-testid="comic-source-unreadable-notice"
+              className="rounded-xl border border-slate-500/40 bg-slate-500/10 px-4 py-3 space-y-1.5"
+            >
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-700 dark:text-slate-200">
+                No page images from this source
+              </p>
+              <p className="text-[11px] leading-relaxed text-kindle-text-muted">
+                Everything below is real — the synopsis, the chapter list, the
+                numbers. But this site does not serve its panels, so opening any
+                chapter will show a blank reader. There is nothing wrong with
+                this device or your connection; the source has no images to give.
+              </p>
+              {sourceUnreadableNote && (
+                <p className="text-[10px] font-mono text-kindle-text-muted/80">
+                  Registry note: {sourceUnreadableNote}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Guarded on the merged value, never on `book.description` alone.
               `book` is the search result the user tapped, and a search result

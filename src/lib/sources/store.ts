@@ -357,6 +357,54 @@ export function isEntryGated(entry: RepoEntry): boolean {
   return entry.plugin.piracy === true || entry.plugin.nsfw === true;
 }
 
+/**
+ * Does this source fail to serve a page image?
+ *
+ * The single place the "absent means readable" default lives, so the hub card,
+ * the detail sheet, the Discover chip and the series detail cannot drift apart
+ * and start disagreeing about the same source.
+ *
+ * The default direction is the load-bearing decision. A registry that predates
+ * the flag, or a partial one, omits `readable` on every entry — reading that
+ * as "broken" would paint every working source in the app as dead. So only an
+ * explicit `false` counts.
+ *
+ * Deliberately NOT the same test as {@link isEntryGated}: that is about
+ * legality, this is about function. A piracy source can serve images and a
+ * legal source can serve none, and conflating them would either hide a dead
+ * source or libel a working one.
+ */
+export function isUnreadableSource(
+  subject:
+    | { readable?: boolean }
+    | { readable?: boolean; plugin?: { readable?: boolean } }
+    | null
+    | undefined
+): boolean {
+  if (!subject || typeof subject !== "object") return false;
+  // A RepoEntry carries it at the top level; a bare SourcePlugin carries it
+  // directly, and both shapes must answer the same question. Either one
+  // saying `false` is enough: a `true` elsewhere cannot undo an explicit
+  // record that the panels 404, and erring toward "working" is the exact
+  // failure this exists to stop.
+  const own = (subject as { readable?: unknown }).readable;
+  if (own === false) return true;
+  const nested = (subject as { plugin?: { readable?: unknown } }).plugin?.readable;
+  return nested === false;
+}
+
+/** The registry note to show a user, or "" when nothing is recorded. */
+export function readableNoteFor(
+  subject:
+    | { readableNote?: string; plugin?: { readableNote?: string } }
+    | null
+    | undefined
+): string {
+  if (!subject || typeof subject !== "object") return "";
+  const note = subject.readableNote ?? subject.plugin?.readableNote;
+  return typeof note === "string" ? note.trim() : "";
+}
+
 /* ── Registry fetching ─────────────────────────────────────────────────── */
 
 export interface RepoEntry {
@@ -374,6 +422,27 @@ export interface RepoEntry {
    * install that would install an empty plugin.
    */
   installUrl: string;
+  /**
+   * The registry's readability verdict, carried onto the entry.
+   *
+   * WHY this exists: a source can list series and chapters perfectly and still
+   * 404 on every page image. That is MangaZin, and because the index never
+   * carried the flag, its hub card rendered as a normal healthy source. The
+   * user installed it, opened a series, and got a black rectangle with no
+   * error — no state on any screen admitted the source was dead.
+   *
+   * Carried on the entry rather than only on the manifest because the card, the
+   * detail sheet and the Discover chip all need it from the index, before any
+   * definition file has been downloaded.
+   *
+   * `true` means the registry verified images load. ABSENT means "never
+   * checked" and must be treated as readable — an older or partial registry
+   * is not evidence that a working source is broken. Use
+   * {@link isUnreadableSource}, which owns that default in one place.
+   */
+  readable: boolean;
+  /** The registry's own words about the verdict, shown to the user verbatim. */
+  readableNote?: string;
   /**
    * Which kind of plugin this is. The hub groups on this, and it decides both
    * which store the plugin lands in and whether the piracy opt-in applies.
@@ -444,6 +513,15 @@ export async function fetchRegistry(
       // is gated and the user decides.
       const piracy = (src as { piracy?: boolean }).piracy === true;
 
+      // Only an explicit `false` is a broken source. A registry with no
+      // `readable` field at all predates the verdict, and its sources are
+      // unverified rather than known-dead — reading the absence as failure
+      // would mark every source in an older registry as broken.
+      const rawReadable = (src as { readable?: unknown }).readable;
+      const readable = rawReadable !== false;
+      const rawNote = (src as { readableNote?: unknown }).readableNote;
+      const readableNote = typeof rawNote === "string" ? rawNote : undefined;
+
       // A registry that predates the category field describes sources, so
       // defaulting to "source" keeps every existing index working untouched.
       const rawCategory = (src as { category?: unknown }).category;
@@ -467,6 +545,11 @@ export async function fetchRegistry(
         // anything is installed. Dropping this is why every card used to show
         // the same puzzle-piece placeholder.
         icon,
+        // The verdict is also stamped onto the plugin object, so surfaces
+        // holding only a SourcePlugin (the Discover chip, ComicDetailView)
+        // can see it without re-fetching the registry.
+        readable,
+        ...(readableNote ? { readableNote } : {}),
         gen2: {
           packageName: ext.packageName,
           versionName: ext.versionName,
@@ -487,6 +570,8 @@ export async function fetchRegistry(
         installed:
           category === "source" ? installedSources.has(id) : installedExtensions.has(id),
         gated,
+        readable,
+        ...(readableNote ? { readableNote } : {}),
         installUrl,
         category,
         manifest:

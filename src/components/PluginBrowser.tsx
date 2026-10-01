@@ -44,6 +44,7 @@ import {
   Plug,
   Sliders,
   AlertTriangle,
+  ImageOff,
 } from "lucide-react";
 import { SourceDetail } from "./SourceDetailSheet";
 import CalibreSettingsPanel from "./CalibreSettingsPanel";
@@ -61,6 +62,8 @@ import {
   installPlugin,
   fetchPluginDefinition,
   isSourceVisible,
+  isUnreadableSource,
+  readableNoteFor,
   removeRepo,
   setSourceOptIn,
   uninstallExtension,
@@ -670,6 +673,8 @@ export default function PluginBrowser({
           installed={detailEntry.installed}
           active={isSourceVisible(detailEntry.plugin)}
           busy={installingId === detailEntry.plugin.id}
+          readable={isUnreadableSource(detailEntry)}
+          readableNote={readableNoteFor(detailEntry)}
           onInstall={() => handleInstall(detailEntry)}
           onUninstall={() => handleUninstall(detailEntry.plugin)}
           onToggleAllow={() => handleToggleAllow(detailEntry.plugin)}
@@ -978,13 +983,23 @@ export function SourceCard({
     /^https?:\/\//,
     ""
   );
+  // Two different bad states, deliberately two different colours. Amber means
+  // "you need to opt in for legal reasons" (Shadow library / Adult) — that
+  // source WORKS. Slate means "this source serves no page images" — it does
+  // not work. Sharing amber between them taught the eye that amber is a
+  // warning you can dismiss, which is exactly the wrong lesson for a source
+  // that will 404 on every chapter.
+  const unreadable = isUnreadableSource(entry);
+  const unreadableNote = readableNoteFor(entry);
 
   return (
     <div
       className={`flex flex-col gap-2 rounded-2xl border p-4 transition ${
         gated
           ? "border-amber-500/40 bg-amber-500/5"
-          : "border-kindle-border bg-kindle-card"
+          : unreadable
+            ? "border-slate-500/40 bg-slate-500/5"
+            : "border-kindle-border bg-kindle-card"
       }`}
     >
       <button
@@ -1023,6 +1038,25 @@ export function SourceCard({
               <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-amber-700">
                 <ShieldAlert className="w-2.5 h-2.5" />
                 {plugin.piracy ? "Shadow library" : "Adult"}
+              </span>
+            )}
+            {/* Badged, never hidden. The user may want to know this source
+                exists and what it does list — silently dropping it would be
+                its own lie, and hiding it with no reason given is worse than
+                saying "this one is broken". Slate, not amber: this is a dead
+                engine, not a legal choice. */}
+            {unreadable && (
+              <span
+                data-testid="source-unreadable-badge"
+                title={
+                  unreadableNote
+                    ? `Serves no page images — registry note: ${unreadableNote}`
+                    : "Serves no page images"
+                }
+                className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-500/60 bg-slate-500/15 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300"
+              >
+                <ImageOff className="w-2.5 h-2.5" />
+                Images unavailable
               </span>
             )}
           </div>

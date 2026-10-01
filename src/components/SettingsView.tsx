@@ -2880,6 +2880,21 @@ function SettingsView({
                 RaveSearch
               </a>
             </div>
+            {/* Documentation. Sits with the other About rows rather than in
+                its own panel: this is the screen a user lands on to find out
+                what the app is, and the docs are the long answer to that. */}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-kindle-text-muted">Documentation</span>
+              <a
+                href="https://chaotic-ray.github.io/Kora-/"
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold flex items-center gap-1.5 hover:text-kindle-accent transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Open Documentation
+              </a>
+            </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">GitHub</span>
               <a

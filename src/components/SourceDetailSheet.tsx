@@ -8,7 +8,7 @@
  * from a name in a list.
  */
 
-import { X, ExternalLink, ShieldAlert, Download, Check, Trash2, Puzzle, Globe, Info, Loader2 } from "lucide-react";
+import { X, ExternalLink, ShieldAlert, Download, Check, Trash2, Puzzle, Globe, Info, Loader2, ImageOff } from "lucide-react";
 import type { SourcePlugin } from "../lib/sources/types";
 
 export interface SourceDetailProps {
@@ -17,16 +17,37 @@ export interface SourceDetailProps {
   active: boolean;
   busy?: boolean;
   repoName?: string;
+  /**
+   * The registry says this source serves no page image. Defaults to reading it
+   * off `plugin`, so a caller that already knows the verdict does not have to
+   * pass it twice, and one that does not know it still gets the right answer.
+   */
+  readable?: boolean;
+  /** The registry's own words, quoted verbatim rather than paraphrased. */
+  readableNote?: string;
   onInstall: () => void;
   onUninstall: () => void;
   onToggleAllow: () => void;
   onClose: () => void;
 }
 
-/** Human summary of what a source reaches for, derived from its shape. */
-function capabilities(p: SourcePlugin): string[] {
+/**
+ * Human summary of what a source reaches for, derived from its shape.
+ *
+ * `unreadable` strips the page-image claim rather than leaving it standing.
+ * "Listing, details, chapters and page images" on a source that 404s on every
+ * panel is the exact sentence that made MangaZin look healthy, and this sheet
+ * is where a user reads before committing to an install.
+ */
+function capabilities(p: SourcePlugin, unreadable = false): string[] {
   const out: string[] = [];
-  if (p.theme === "madara") out.push("Listing, details, chapters and page images");
+  if (p.theme === "madara") {
+    out.push(
+      unreadable
+        ? "Listing, details, chapters (page images unavailable)"
+        : "Listing, details, chapters and page images"
+    );
+  }
   else if (p.api === "json") out.push("Search and details");
   else {
     if (p.endpoints?.popular) out.push("Browse a catalogue");
@@ -34,7 +55,9 @@ function capabilities(p: SourcePlugin): string[] {
     if (p.endpoints?.search) out.push("Search");
     if (p.endpoints?.details) out.push("Title details");
     if (p.endpoints?.chapters) out.push("Chapter list");
-    if (p.endpoints?.pages) out.push("Page images");
+    if (p.endpoints?.pages) {
+      out.push(unreadable ? "Page images (unavailable)" : "Page images");
+    }
   }
   return out.length ? out : ["Listing and search"];
 }
@@ -45,12 +68,18 @@ export function SourceDetail({
   active,
   busy,
   repoName,
+  readable: readableProp,
+  readableNote,
   onInstall,
   onUninstall,
   onToggleAllow,
   onClose,
 }: SourceDetailProps) {
   const restricted = plugin.piracy || plugin.nsfw;
+  // Explicit `false` and nothing else. An absent verdict means the registry
+  // never checked this source, which is not the same as checked-and-broken.
+  const unreadable = readableProp ?? plugin.readable === false;
+  const note = (readableNote ?? plugin.readableNote ?? "").trim();
   const host = (() => {
     const u = plugin.gen2?.homeUrl || plugin.baseUrl || "";
     return u.replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -143,6 +172,18 @@ export function SourceDetail({
                 <Check className="w-3 h-3" /> Open content
               </span>
             )}
+            {/* Slate, and placed next to the legal badges rather than in
+                their place: amber means "restricted but working", this means
+                "serves no images". A dead source must never inherit the
+                emerald "Open content" reading of fine. */}
+            {unreadable && (
+              <span
+                data-testid="source-detail-unreadable-badge"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-500/60 bg-slate-500/15 px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-300"
+              >
+                <ImageOff className="w-3 h-3" /> Images unavailable
+              </span>
+            )}
 
             {installed && (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-kindle-border px-2.5 py-1 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
@@ -171,13 +212,38 @@ export function SourceDetail({
             </p>
           )}
 
+          {/* The honest paragraph. This sheet is where a user decides whether
+              to install, so the one fact that decides whether the install is
+              worth anything has to be in prose, not a badge. */}
+          {unreadable && (
+            <div
+              data-testid="source-detail-unreadable-notice"
+              className="rounded-xl border border-slate-500/40 bg-slate-500/10 px-3.5 py-3 space-y-2"
+            >
+              <p className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                This source cannot serve page images.
+              </p>
+              <p className="text-[11px] leading-relaxed text-kindle-text-muted">
+                Its listings, series details and chapter list work, but every
+                panel returns a 404 — so opening any chapter shows a blank
+                reader rather than a page. Nothing in this app is misconfigured;
+                the site itself is not serving the images.
+              </p>
+              {note && (
+                <p className="text-[10px] leading-relaxed text-kindle-text-muted/80 font-mono">
+                  Registry note: {note}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* What it does */}
           <section>
             <h3 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted mb-2">
               <Info className="w-3.5 h-3.5" /> What it does
             </h3>
             <ul className="flex flex-wrap gap-1.5">
-              {capabilities(plugin).map((c) => (
+              {capabilities(plugin, unreadable).map((c) => (
                 <li
                   key={c}
                   className="rounded-lg border border-kindle-border bg-kindle-bg px-2.5 py-1 text-[10px] text-kindle-text-muted"
