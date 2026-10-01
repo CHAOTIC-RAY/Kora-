@@ -21,6 +21,8 @@ import { getInstalledPlugins, isUnreadableSource, readableNoteFor } from "../lib
 import { loadProgress, saveProgress, resumePage, type ComicProgressMap } from "../lib/comicProgress";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { indexForDisplayed, displayedPage } from "../lib/readingDirection";
+import { filterDecorativePages } from "../lib/pageAssets";
+import { logger } from "../lib/logger";
 import { detectFormat, type Detection } from "../lib/formats/detect";
 import { openArchive, releaseArchive, describeArchive, type ArchiveHandle } from "../lib/formats/archive";
 import ComicReader from "./ComicReader";
@@ -232,10 +234,22 @@ export default function ComicDetailView({
     setBusyChapter(ch.url);
     try {
       const c = createSourceClient(plugin);
-      const pages = await c.pages(ch, manga);
-      if (pages.length === 0) {
+      const scraped = await c.pages(ch, manga);
+      if (scraped.length === 0) {
         setError("That chapter returned no page images.");
         return;
+      }
+      // Some sources serve their reader pages from the same upload directory
+      // as the site's own reaction art, so a scrape picks up stickers and
+      // emoji alongside the comic. Those load as broken pages and bury the
+      // actual art. Filtered here rather than in the scraper so every source
+      // benefits, and so the scraper's raw output stays inspectable.
+      const pages = filterDecorativePages(scraped);
+      const hiddenCount = scraped.length - pages.length;
+      if (hiddenCount > 0) {
+        logger.info(
+          `[reader] hid ${hiddenCount} decorative asset(s) from "${ch.name}"`
+        );
       }
       setReadChapters((prev) => new Set(prev).add(chapterKey(plugin.id, ch.url)));
       // Resume where the reader left off. The stored position is a
