@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Grid3X3, Search, Swords, Gamepad2, Award } from "lucide-react";
+import { Grid3X3, Search, Swords, Gamepad2, Award, Flame } from "lucide-react";
 
-type GameId = "crossword" | "wordsearch" | "guardian" | "scrabble";
+type GameId = "crossword" | "wordsearch" | "guardian" | "scrabble" | "uno";
 
 interface GameSlide {
   id: GameId;
@@ -44,6 +44,14 @@ const SLIDES: GameSlide[] = [
     blurb: "Free-for-all word duels — local, online, or vs CPU. Last scholar standing.",
     icon: <Swords className="w-5 h-5" />,
     accent: "text-rose-500",
+  },
+  {
+    id: "uno",
+    title: "Kora Uno (P2P)",
+    tag: "Card Clash",
+    blurb: "Fast-paced color & action card battle. Connect over local Wi-Fi or challenge bots.",
+    icon: <Flame className="w-5 h-5" />,
+    accent: "text-rose-600",
   },
 ];
 

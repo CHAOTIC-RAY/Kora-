@@ -78,6 +78,7 @@ import WordSearchGame from "./WordSearchGame";
 import GameScoreTracker from "./GameScoreTracker";
 import LinguistGuardian from "./LinguistGuardian";
 import OnlineScrabbleGame from "./OnlineScrabbleGame";
+import UnoGame from "./UnoGame";
 import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
@@ -406,6 +407,7 @@ function SettingsView({
   const [showScoreTracker, setShowScoreTracker] = useState<boolean>(false);
   const [showGuardian, setShowGuardian] = useState<boolean>(false);
   const [showScrabble, setShowScrabble] = useState<boolean>(false);
+  const [showUno, setShowUno] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const [showP2p, setShowP2p] = useState<boolean>(false);
   const [showClipper, setShowClipper] = useState<boolean>(false);
@@ -424,6 +426,7 @@ function SettingsView({
       showScoreTracker ||
       showGuardian ||
       showScrabble ||
+      showUno ||
       showInsights ||
       showP2p ||
       showClipper ||
@@ -438,6 +441,7 @@ function SettingsView({
     showScoreTracker,
     showGuardian,
     showScrabble,
+    showUno,
     showInsights,
     showP2p,
     showClipper,
@@ -498,6 +502,7 @@ function SettingsView({
       else if (tool === "score-tracker" || tool === "scoretracker") setShowScoreTracker(true);
       else if (tool === "guardian" || tool === "linguist-guardian") setShowGuardian(true);
       else if (tool === "scrabble") setShowScrabble(true);
+      else if (tool === "uno" || tool === "kora-uno") setShowUno(true);
       else if (tool === "p2p") setShowP2p(true);
       else if (tool === "wikipedia" || tool === "wiki") setShowWikipedia(true);
     };
@@ -1402,6 +1407,28 @@ function SettingsView({
                   </p>
                   <div className="text-[9px] font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
                     Play Scrabble →
+                  </div>
+                </div>
+              </button>
+
+              {/* Kora Uno (P2P Wildcard Clash) */}
+              <button
+                type="button"
+                onClick={() => setShowUno(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-rose-500/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-rose-500 rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Flame className="w-6 h-6" />
+                </div>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-rose-500 transition">Kora Uno (P2P)</h4>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Fast-paced color &amp; number card clash. Play P2P over your local Wi-Fi or battle tactical bots offline.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Launch Clash →
                   </div>
                 </div>
               </button>
@@ -3075,6 +3102,7 @@ function SettingsView({
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
       <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} onOpenScores={() => setShowScoreTracker(true)} />
       <OnlineScrabbleGame open={showScrabble} onClose={() => setShowScrabble(false)} />
+      <UnoGame open={showUno} onClose={() => setShowUno(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <ReadingInsightsTool
         open={showInsights}
         onClose={() => setShowInsights(false)}

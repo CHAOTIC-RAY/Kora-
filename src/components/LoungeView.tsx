@@ -65,7 +65,7 @@ interface LoungeViewProps {
     content_urls?: { desktop: { page: string }; mobile: { page: string } };
     lang?: string;
   }) => void;
-  onPlayGame?: (game: "crossword" | "wordsearch" | "guardian" | "scrabble") => void;
+  onPlayGame?: (game: "crossword" | "wordsearch" | "guardian" | "scrabble" | "uno") => void;
   onRefreshLibrary?: () => void;
   onToggleAudiobookPlay?: () => void;
   onExpandAudiobook?: () => void;

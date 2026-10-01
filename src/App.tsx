@@ -2646,14 +2646,14 @@ export default function App() {
         }
         return true;
       }
-      if (go === "crossword" || go === "minigame" || go === "wordsearch" || go === "p2p") {
+      if (go === "crossword" || go === "minigame" || go === "wordsearch" || go === "p2p" || go === "uno") {
         switchTab("tools");
         window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent("kora-open-tool", {
               detail: {
                 tool:
-                  go === "wordsearch" ? "wordsearch" : go === "p2p" ? "p2p" : "crossword",
+                  go === "wordsearch" ? "wordsearch" : go === "p2p" ? "p2p" : go === "uno" ? "uno" : "crossword",
               },
             })
           );

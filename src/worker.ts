@@ -58,6 +58,15 @@ import {
   getNetgalleyCategories,
   fetchNetgalleyCategoryListings
 } from "./lib/netgalley";
+
+/**
+ * Shared by both Rave endpoints. Cloudflare returns Error 1010 (browser
+ * signature banned) to a User-Agent-less fetch, which is NOT a 401 — so a
+ * missing header silently forces the fallback path instead of erroring.
+ * Keep all call sites on this constant; do not inline a second copy.
+ */
+const RAVE_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
 declare const HTMLRewriter: any;
 
 /* ──────────────────────── mirror-health endpoint support ───────────────── */
@@ -132,7 +141,7 @@ async function buildRaveFallbackFeed(env: any): Promise<any> {
       // Prefer the v1 API when the key is present; otherwise use the legacy endpoint.
       if (raveApiKey) {
         const u = `https://api.ravebooksearch.com/api/v1/search?q=${encodeURIComponent(t.q)}&mode=ebooks&page=1`;
-        const r = await fetch(u, { headers: { "X-API-Key": raveApiKey, "Accept": "application/json" }, signal: AbortSignal.timeout(12000) });
+        const r = await fetch(u, { headers: { "X-API-Key": raveApiKey, "Accept": "application/json", "User-Agent": RAVE_USER_AGENT }, signal: AbortSignal.timeout(12000) });
         if (r.ok) {
           const j = await r.json();
           books = (j?.results || []).slice(0, 8).map((b: any) => ({
@@ -316,15 +325,23 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
   // Prefer the new header-authenticated Rave v1 API (api.ravebooksearch.com).
   // The key is a Cloudflare secret (env.RAVE_API_KEY) — never exposed to the client
   // or committed to the repo. See .env.example and the README migration note.
+
   const raveApiKey = env?.RAVE_API_KEY || "";
   const normalizedMode = mode === "audiobooks" ? "audiobooks" : "ebooks";
 
   if (raveApiKey) {
     const url = `https://api.ravebooksearch.com/api/v1/search?q=${encodeURIComponent(query)}&mode=${normalizedMode}${source && source !== "all" ? `&source=${encodeURIComponent(source)}` : ""}&page=${page}`;
     const raveHeaders = {
-      "X-API-Key": raveApiKey,
-      "Accept": "application/json"
-    };
+          "X-API-Key": raveApiKey,
+          "Accept": "application/json",
+          // Cloudflare's WAF answers a User-Agent-less request with Error 1010
+          // ("browser signature banned"), NOT a 401. That made every v1 call
+          // fail before authentication and silently drop to the legacy endpoint,
+          // so `fallback` was always true and the UI showed a Rave label on
+          // results that never touched Rave. The legacy path below has always
+          // sent this exact header, which is why it works.
+          "User-Agent": RAVE_USER_AGENT,
+        };
     // Bound search latency so book-detail "scanning" cannot hang indefinitely.
     const raveInit: RequestInit = { headers: raveHeaders, signal: AbortSignal.timeout(12000) };
     try {
@@ -353,7 +370,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
   // Legacy fallback — still works per the PDF's migration window; no API key needed.
   const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(query)}&mode=${normalizedMode}&source=${source}&page=${page}`;
   const raveHeaders = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    "User-Agent": RAVE_USER_AGENT
   };
   // Bound search latency so book-detail "scanning" cannot hang indefinitely.
   const raveInit: RequestInit = { headers: raveHeaders, signal: AbortSignal.timeout(12000) };
@@ -3468,7 +3485,7 @@ export default {
             const coverUrl = `https://${domain}/covers/${md5}.jpg`;
             const res = await fetch(coverUrl, {
               headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                "User-Agent": RAVE_USER_AGENT,
                 "Referer": `https://${domain}/`
               }
             });
@@ -3689,7 +3706,7 @@ export default {
               const attempt = await fetch(audioUrl, {
                 method: request.method === "HEAD" ? "HEAD" : "GET",
                 headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+                  "User-Agent": RAVE_USER_AGENT,
                   "Accept": "audio/mpeg,audio/*,*/*",
                   "Referer": referer,
                   ...(rangeHeader ? { Range: rangeHeader } : {}),
@@ -3821,7 +3838,7 @@ export default {
               try {
                 htmlRes = await fetch(targetUrl, {
                   headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                    "User-Agent": RAVE_USER_AGENT
                   },
                   redirect: "follow",
                   signal: AbortSignal.timeout(12000),
@@ -3832,7 +3849,7 @@ export default {
                   console.log(`Resolving Libgen landing page failed, retrying over HTTP: ${fallbackUrl}`);
                   htmlRes = await fetch(fallbackUrl, {
                     headers: {
-                      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                      "User-Agent": RAVE_USER_AGENT
                     },
                     signal: AbortSignal.timeout(12000),
                   });
@@ -3904,7 +3921,7 @@ export default {
             try {
               const resIpfs = await fetch(gatewayUrl, {
                 headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                  "User-Agent": RAVE_USER_AGENT
                 },
                 signal: controller.signal,
                 redirect: 'follow'
@@ -3960,7 +3977,7 @@ export default {
               const timeoutId = setTimeout(() => controller.abort(), 8000);
               const resOriginal = await fetch(targetUrl, {
                 headers: {
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+                  "User-Agent": RAVE_USER_AGENT
                 },
                 signal: controller.signal,
                 redirect: 'follow'
@@ -3976,7 +3993,7 @@ export default {
 
         if (!response) {
           const finalHeaders: Record<string, string> = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "User-Agent": RAVE_USER_AGENT,
             "Referer": "https://annas-archive.org/",
             "Accept": "application/octet-stream,application/epub+zip,application/pdf,*/*",
           };
@@ -4168,7 +4185,7 @@ export default {
       try {
         const upstream = await fetch(parsed.toString(), {
           headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "User-Agent": RAVE_USER_AGENT,
             "Accept": "image/avif,image/webp,image/png,image/jpeg,image/*,*/*",
             "Referer": `${parsed.protocol}//${parsed.hostname}/`
           },
@@ -4365,3 +4382,4 @@ export default {
     return new Response("Not Found", { status: 404 });
   }
 };
+
