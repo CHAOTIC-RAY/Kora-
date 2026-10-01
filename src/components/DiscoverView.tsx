@@ -13,6 +13,7 @@ import ComicDetailView from "./ComicDetailView";
 import { createSourceClient } from "../lib/sources/client";
 import { resolveBookFileUrl } from "../lib/sources/bookFile";
 import { proxyUrlForMirror } from "../lib/downloadProxy";
+import { classifyDownloadLink } from "../lib/downloadLinkKind";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
@@ -901,10 +902,6 @@ function DiscoverView({
             // /details/ pages) sits behind a login or a countdown, and tapping
             // "download" on it yields a web page, not a book. Marking these
             // direct is what let the app offer the wrong book as a download.
-            const isFileTarget = isFileUrl(m.url);
-            const direct =
-              isFileTarget && (isLibgen || isLibretext || (isRave && engine === "v1"));
-
             // Order matters: identify the concrete mirror FIRST. Branching on Rave
             // first let a Mobilism or LibreTexts link fall into the Rave branch and be
             // relabelled "Rave Direct Download", because those arms sat further down
@@ -928,10 +925,16 @@ function DiscoverView({
               newLabel = raveEngineLabel(engine);
             }
 
+      const classified = classifyDownloadLink({
+        url: m.url,
+        label: newLabel,
+        isDirect: m.isDirect,
+      });
+
       return {
         ...m,
         label: newLabel,
-        isDirect: direct
+        isDirect: classified.isDirect,
       };
     });
 

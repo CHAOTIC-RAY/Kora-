@@ -41,6 +41,29 @@ export interface ClassifiedLink {
 
 const u = (url?: string | null) => (url || "").trim().toLowerCase();
 
+/**
+ * If the Worker already returned a relative proxy URL, classify the inner
+ * upstream target — not the `/api/proxy-file` path itself.
+ */
+export function unwrapProxyUrl(url?: string | null): string {
+  const raw = (url || "").trim();
+  if (!raw) return raw;
+  const tryParse = (href: string) => {
+    try {
+      const u = new URL(href, "https://kora.invalid");
+      if (u.pathname === "/api/proxy-file" || u.pathname === "/api/proxy-file/") {
+        const inner = u.searchParams.get("url");
+        if (inner) return inner;
+      }
+    } catch {
+      /* ignore */
+    }
+    return href;
+  };
+  if (raw.startsWith("/api/proxy-file")) return tryParse(raw);
+  return tryParse(raw);
+}
+
 /** Signed file links that really do stream a file with no account. */
 const DIRECT_HOSTS = [
   "libgen.is",
@@ -65,7 +88,7 @@ const SEARCH_HOSTS = ["duckduckgo.com", "google.com", "bing.com", "search."];
 export function classifyDownloadLink(
   link: { url?: string | null; label?: string | null; isDirect?: boolean } | null | undefined
 ): ClassifiedLink {
-  const url = (link?.url || "").trim();
+  const url = unwrapProxyUrl(link?.url || "").trim();
   const lower = u(url);
   const host = (() => {
     const m = lower.match(/^https?:\/\/([^/?#]+)/);
