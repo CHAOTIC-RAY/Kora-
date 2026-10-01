@@ -298,6 +298,10 @@ export default function ComicDetailView({
         }))}
         seriesTitle={book.title}
         formatLabel={open.formatLabel}
+        // Key for bookmarks + position. The same identity comicProgress uses,
+        // so a position recorded by the old local store and one recorded by
+        // comicState land on the same chapter rather than two of them.
+        stateKey={plugin ? chapterKey(plugin.id, open.chapter.url) : undefined}
         rtl={READER_RTL}
         initialIndex={open.index}
         onIndexChange={(i) => {

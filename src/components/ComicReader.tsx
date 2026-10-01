@@ -31,7 +31,19 @@
  * and remember the page.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, X, List, Minus, Plus } from "lucide-react";
+import {
+  ChevronLeft, ChevronRight, X, List, Minus, Plus,
+  Bookmark, BookmarkCheck, Settings2, Sun, Moon,
+} from "lucide-react";
+import { loadSettings, updateSettings, effectiveDirection, type ReaderSettings } from "../lib/readerSettings";
+import {
+  getChapterState, toggleBookmark, isBookmarked, setChapterState,
+  type ChapterState,
+} from "../lib/comicState";
+import {
+  applyBrightness, clearBrightness, setKeepAwake, releaseKeepAwake,
+  keepAwakeSupported, createSleepTimer,
+} from "../lib/nativeScreen";
 import {
   initialIndex as firstPage,
   stepForward as nextIndex,
@@ -82,6 +94,14 @@ export interface ComicReaderProps {
   /** Shown top-left; the reader must not know about series state. */
   seriesTitle?: string;
   /**
+   * Stable identity for this chapter, used to key bookmarks and position.
+   * Absent means the reader is showing something that cannot be persisted
+   * (an archive with no plugin), so bookmark controls hide themselves.
+   */
+  stateKey?: string;
+  /** True when the parent wants positions pushed to the cloud. */
+  syncEnabled?: boolean;
+  /**
    * What the pages actually ARE, decided from bytes by `detectFormat`.
    *
    * A comic from a Madara CDN and the same comic unpacked from a CBZ are the
@@ -117,6 +137,8 @@ export function ComicReader({
   onPageError,
   onClose,
   seriesTitle,
+  stateKey,
+  syncEnabled = false,
   formatLabel,
 }: ComicReaderProps) {
   // Where the chapter opens. A right-to-left manga opens on its *last* page
@@ -130,6 +152,62 @@ export function ComicReader({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [showSlider, setShowSlider] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const total = pages.length;
+  const clamped = Math.min(Math.max(0, index), Math.max(0, total - 1));
+
+  /**
+   * The page as the reader experiences it.
+   *
+   * The page array is in source order, which for a right-to-left manga is
+   * the reverse of reading order, so the raw index would count backwards
+   * from the reader's point of view — showing "1 / 9" on the page you just
+   * opened and climbing to "9 / 9" as you read. Everything the user sees
+   * goes through this.
+   */
+  const shown = displayedPage({ rtl, total, index: clamped });
+
+  // ── Reader settings (local only — never synced) ─────────────────────────
+  // Read once on open rather than watched: settings changing mid-read is not
+  // a case worth re-rendering the reader for, and this keeps the module
+  // boundary obvious — nothing here writes anywhere but localStorage.
+  const [settings, setSettings] = useState<ReaderSettings>(() => loadSettings());
+
+  // ── Bookmarks and position (this chapter's stored state) ────────────────
+  const [chapterState, setChapterStateLocal] = useState<ChapterState | undefined>(() =>
+    stateKey ? getChapterState(stateKey) : undefined
+  );
+
+  // The user override wins over the source's declared direction, but only
+  // when explicitly set — see effectiveDirection.
+  const readingRtl = effectiveDirection(settings, rtl ? "rtl" : "ltr") === "rtl";
+
+  /** Persist the page turn locally and report it upward for cloud sync. */
+  const recordPosition = useCallback(
+    (displayed: number) => {
+      if (!stateKey) return;
+      const next = setChapterState(
+        stateKey,
+        { pageNumber: displayed, totalPages: total, chapterIndex: 0 },
+        Date.now()
+      );
+      if (next) setChapterStateLocal(next);
+      onIndexChange?.(indexForDisplayed({ rtl: readingRtl, total, page: displayed }));
+    },
+    [stateKey, total, readingRtl, onIndexChange]
+  );
+
+  const toggleCurrentBookmark = useCallback(() => {
+    if (!stateKey) return;
+    const next = toggleBookmark(stateKey, shown, Date.now(), {
+      pageNumber: shown,
+      totalPages: total,
+    });
+    if (next) setChapterStateLocal(next);
+  }, [stateKey, shown, total]);
+
+  const currentBookmarked = isBookmarked(chapterState, shown);
 
   // Preloaded image cache, keyed by URL. Kept outside state because it is
   // a side effect, and touching it must not re-render the reader.
@@ -142,8 +220,6 @@ export function ComicReader({
   const preloaded = useRef<PreloadQueue>(new PreloadQueue({ capacity: 8 }));
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const total = pages.length;
-  const clamped = Math.min(Math.max(0, index), Math.max(0, total - 1));
 
   const goTo = useCallback(
   (next: number) => {
@@ -151,9 +227,13 @@ export function ComicReader({
   setIndex(target);
   setZoom(1);
   setPan({ x: 0, y: 0 });
+  // Persist in READING order. The parent's `onIndexChange` takes a source
+  // array index, which in a right-to-left series is the mirror of the page the
+  // user is actually on, so this converts rather than forwarding the raw index.
+  recordPosition(displayedPage({ rtl: readingRtl, total, index: target }));
   onIndexChange?.(target);
   },
-  [total, onIndexChange]
+  [total, onIndexChange, recordPosition, readingRtl]
   );
 
   /**
@@ -169,16 +249,6 @@ export function ComicReader({
   [goTo, clamped, rtl, total]
   );
 
-  /**
-   * The page as the reader experiences it.
-   *
-   * The page array is in source order, which for a right-to-left manga is
-   * the reverse of reading order, so the raw index would count backwards
-   * from the reader's point of view — showing "1 / 9" on the page you just
-   * opened and climbing to "9 / 9" as you read. Everything the user sees
-   * goes through this.
-   */
-  const shown = displayedPage({ rtl, total, index: clamped });
 
   /**
    * Called when a page definitively failed. Records the failure so the
@@ -204,6 +274,59 @@ export function ComicReader({
   const onPageRetry = useCallback((url: string) => {
   preloaded.current.clearFailure(url);
   }, []);
+
+  // ── Auto-hide the chrome after a period of inactivity ────────────────────
+  // Without this the bars sit on top of every page forever, which is both an
+  // immersion loss and a battery cost on a phone. The timer is reset by every
+  // interaction that should count as "the reader is still here", and it is
+  // torn down on unmount so a closed reader cannot keep firing.
+  useEffect(() => {
+    if (!settings.autoHideSeconds || !chromeVisible || showSettings || showSlider) return;
+    const timer = window.setTimeout(() => setChromeVisible(false), settings.autoHideSeconds * 1000);
+    return () => window.clearTimeout(timer);
+  }, [settings.autoHideSeconds, chromeVisible, showSettings, showSlider, shown]);
+
+  // ── Hold the screen awake while a page is open ───────────────────────────
+  // Acquired on mount and released on unmount. The helper self-releases a lock
+  // that resolves after teardown, so a reader closed mid-request cannot leave
+  // the screen on with nothing to turn it off.
+  useEffect(() => {
+    if (!settings.keepAwake || !keepAwakeSupported()) return;
+    void setKeepAwake(true);
+    return () => {
+      void releaseKeepAwake();
+    };
+  }, [settings.keepAwake]);
+
+  // ── Sleep timer: hand the screen back when it runs out ───────────────────
+  const [sleepExpired, setSleepExpired] = useState(false);
+  useEffect(() => {
+    setSleepExpired(false);
+    if (!settings.sleepTimerMinutes) return;
+    const timer = createSleepTimer(settings.sleepTimerMinutes);
+    // Polled rather than scheduled so the deadline stays correct even if the
+    // tab is throttled in the background — a setTimeout that fires late is
+    // exactly the case where the user is asleep and the screen must go dark.
+    const interval = window.setInterval(() => {
+      if (timer.expired()) {
+        setSleepExpired(true);
+        onClose();
+      }
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [settings.sleepTimerMinutes, onClose]);
+
+  // ── Brightness ───────────────────────────────────────────────────────────
+  // Applied to this reader's own root only. Never to document.documentElement:
+  // a reader left open behind a route change would dim every screen after it.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (settings.brightnessMode === "manual") applyBrightness(el, settings.brightness);
+    else clearBrightness(el);
+    return () => clearBrightness(el);
+  }, [settings.brightnessMode, settings.brightness]);
 
   // Neighbour preloading. A comic page is a big image; decoding it on the
   // turn is what makes paging feel like it stutters.
@@ -515,7 +638,13 @@ export function ComicReader({
   }
 
   return (
-  <div className="fixed inset-0 z-[10000] bg-black flex flex-col select-none">
+  <div
+  ref={rootRef}
+  role="dialog"
+  aria-modal="true"
+  aria-label={seriesTitle ? `${seriesTitle} — ${label}` : "Reader"}
+  className="fixed inset-0 z-[10000] bg-black flex flex-col select-none"
+  >
   {/* top bar */}
   {chromeVisible && (
   <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between gap-3 px-3 py-2 bg-gradient-to-b from-black/85 to-transparent pointer-events-none">
@@ -552,13 +681,42 @@ export function ComicReader({
   )}
   </span>
   </div>
+  {/*
+  Bookmark and settings live in the top bar rather than the bottom one:
+  the bottom bar is hidden whenever the chrome auto-hides, and a control
+  that disappears mid-chapter is a control the user cannot find.
+  */}
+  <div className="pointer-events-auto flex items-center gap-1">
+  {stateKey && (
+  <button
+  onClick={toggleCurrentBookmark}
+  aria-label={currentBookmarked ? "Remove bookmark for this page" : "Bookmark this page"}
+  aria-pressed={currentBookmarked}
+  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  >
+  {currentBookmarked ? (
+  <BookmarkCheck className="w-4 h-4 text-amber-300" />
+  ) : (
+  <Bookmark className="w-4 h-4 text-white/80" />
+  )}
+  </button>
+  )}
+  <button
+  onClick={() => setShowSettings((v) => !v)}
+  aria-label="Reader settings"
+  aria-expanded={showSettings}
+  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  >
+  <Settings2 className="w-4 h-4 text-white/80" />
+  </button>
   <button
   onClick={() => setShowSlider((v) => !v)}
   aria-label="Page slider"
-  className="pointer-events-auto p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
   >
   <List className="w-4 h-4 text-white/80" />
   </button>
+  </div>
   </div>
   )}
 
@@ -572,10 +730,222 @@ export function ComicReader({
   max={total}
   value={shown}
   aria-label="Go to page"
-  onChange={(e) => goTo(indexForDisplayed({ rtl, total, page: Number(e.target.value) }))}
+  onChange={(e) => goTo(indexForDisplayed({ rtl: readingRtl, total, page: Number(e.target.value) }))}
   className="flex-1 accent-white"
   />
   <span className="text-[9px] font-mono text-white/60">{total}</span>
+  </div>
+  )}
+
+  {/*
+  Settings sheet.
+
+  Every control here writes through `updateSettings`, which persists
+  locally and returns the sanitized result. Deliberately NOT synced: a
+  brightness chosen for a dark train has no business following the reader
+  onto a tablet in daylight. Position and bookmarks are the things that
+  sync, and they are not here.
+  */}
+  {showSettings && (
+  <div
+  role="dialog"
+  aria-label="Reader settings"
+  className="absolute inset-x-0 bottom-0 z-30 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-black/95 backdrop-blur border-t border-white/10 px-4 py-4 space-y-4"
+  >
+  <div className="flex items-center justify-between">
+  <span className="text-[10px] font-bold uppercase tracking-widest text-white/90">
+  Reader settings
+  </span>
+  <button
+  onClick={() => setShowSettings(false)}
+  aria-label="Close settings"
+  className="p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+  >
+  <X className="w-4 h-4 text-white/70" />
+  </button>
+  </div>
+
+  {/* Reading direction */}
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Reading direction
+  </span>
+  <div className="flex gap-2">
+  {(["ltr", "rtl"] as const).map((d) => (
+  <button
+  key={d}
+  onClick={() => setSettings(updateSettings({ directionOverride: d }))}
+  aria-pressed={readingRtl === (d === "rtl")}
+  className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest cursor-pointer ${
+  readingRtl === (d === "rtl")
+  ? "bg-white text-black"
+  : "border border-white/20 text-white/80 hover:bg-white/10"
+  }`}
+  >
+  {d === "rtl" ? "Right to left" : "Left to right"}
+  </button>
+  ))}
+  </div>
+  <p className="mt-1.5 text-[9px] text-white/40">
+  Default follows the source. Override it here if you prefer the other.
+  </p>
+  </div>
+
+  {/* Fit mode */}
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Page fit
+  </span>
+  <div className="grid grid-cols-4 gap-1.5">
+  {(["contain", "width", "height", "original"] as const).map((m) => (
+  <button
+  key={m}
+  onClick={() => setSettings(updateSettings({ fitMode: m }))}
+  aria-pressed={settings.fitMode === m}
+  className={`px-2 py-2 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer ${
+  settings.fitMode === m
+  ? "bg-white text-black"
+  : "border border-white/20 text-white/80 hover:bg-white/10"
+  }`}
+  >
+  {m}
+  </button>
+  ))}
+  </div>
+  </div>
+
+  {/* Brightness */}
+  <div>
+  <span className="flex items-center justify-between text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Brightness
+  <button
+  onClick={() =>
+  setSettings(
+  updateSettings({
+  brightnessMode: settings.brightnessMode === "manual" ? "system" : "manual",
+  })
+  )
+  }
+  aria-pressed={settings.brightnessMode === "manual"}
+  className="pointer-events-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-white/20 text-[8px] text-white/70 hover:bg-white/10 cursor-pointer"
+  >
+  {settings.brightnessMode === "manual" ? (
+  <Moon className="w-3 h-3" />
+  ) : (
+  <Sun className="w-3 h-3" />
+  )}
+  {settings.brightnessMode === "manual" ? "manual" : "system"}
+  </button>
+  </span>
+  <input
+  type="range"
+  min={20}
+  max={100}
+  value={Math.round(settings.brightness * 100)}
+  disabled={settings.brightnessMode !== "manual"}
+  aria-label="Screen brightness"
+  onChange={(e) =>
+  setSettings(updateSettings({ brightness: Number(e.target.value) / 100 }))
+  }
+  className="w-full accent-white disabled:opacity-30"
+  />
+  <p className="mt-1 text-[9px] text-white/40">
+  Applies to the reader only, and only this device.
+  </p>
+  </div>
+
+  {/* Keep awake */}
+  <label className="flex items-center justify-between gap-3 cursor-pointer">
+  <span className="text-[9px] uppercase tracking-widest text-white/50">
+  Keep screen awake
+  </span>
+  <input
+  type="checkbox"
+  checked={settings.keepAwake}
+  disabled={!keepAwakeSupported()}
+  onChange={(e) => setSettings(updateSettings({ keepAwake: e.target.checked }))}
+  className="accent-white disabled:opacity-30"
+  />
+  </label>
+  {!keepAwakeSupported() && (
+  <p className="text-[9px] text-white/40">
+  This browser will not let a page hold the screen awake.
+  </p>
+  )}
+
+  {/* Auto-hide */}
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Hide controls after
+  </span>
+  <div className="flex gap-1.5">
+  {[0, 3, 5, 10].map((sec) => (
+  <button
+  key={sec}
+  onClick={() => setSettings(updateSettings({ autoHideSeconds: sec }))}
+  aria-pressed={settings.autoHideSeconds === sec}
+  className={`flex-1 px-2 py-1.5 rounded-lg text-[9px] font-bold uppercase cursor-pointer ${
+  settings.autoHideSeconds === sec
+  ? "bg-white text-black"
+  : "border border-white/20 text-white/80 hover:bg-white/10"
+  }`}
+  >
+  {sec === 0 ? "never" : `${sec}s`}
+  </button>
+  ))}
+  </div>
+  </div>
+
+  {/* Sleep timer */}
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Sleep timer
+  </span>
+  <div className="flex gap-1.5">
+  {[0, 5, 15, 30].map((min) => (
+  <button
+  key={min}
+  onClick={() => setSettings(updateSettings({ sleepTimerMinutes: min }))}
+  aria-pressed={settings.sleepTimerMinutes === min}
+  className={`flex-1 px-2 py-1.5 rounded-lg text-[9px] font-bold uppercase cursor-pointer ${
+  settings.sleepTimerMinutes === min
+  ? "bg-white text-black"
+  : "border border-white/20 text-white/80 hover:bg-white/10"
+  }`}
+  >
+  {min === 0 ? "off" : `${min}m`}
+  </button>
+  ))}
+  </div>
+  {sleepExpired && (
+  <p className="mt-1 text-[9px] text-white/50">Sleep timer ran out — reader closed.</p>
+  )}
+  </div>
+
+  {/* Bookmarks in this chapter */}
+  {stateKey && !!chapterState?.bookmarks.length && (
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Bookmarks in this chapter
+  </span>
+  <div className="flex flex-wrap gap-1.5">
+  {chapterState.bookmarks.map((p) => (
+  <button
+  key={p}
+  onClick={() => goTo(indexForDisplayed({ rtl: readingRtl, total, page: p }))}
+  className="px-2 py-1 rounded-lg border border-amber-400/40 text-amber-200 text-[9px] font-mono hover:bg-amber-400/10 cursor-pointer"
+  >
+  p{p}
+  </button>
+  ))}
+  </div>
+  </div>
+  )}
+
+  <p className="text-[9px] text-white/35 leading-relaxed">
+  These settings stay on this device. Your bookmarks and reading position
+  follow you to your other devices.
+  </p>
   </div>
   )}
 
