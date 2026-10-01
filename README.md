@@ -391,7 +391,7 @@ declare *"needs permission"* up front instead of failing on first use.
 
 ### Madara
 
-~248 of the Tachiyomi source list are WordPress sites running the **Madara**
+A large share of the known source list are WordPress sites running the **Madara**
 theme. One engine (`src/lib/sources/madara.ts`) covers them all, with a
 small per-site override block where a site deviates. A new Madara site is a
 JSON file, not a scraper.
@@ -533,7 +533,7 @@ Written down so nobody has to rediscover them.
   integration runtime exists. Nothing is stubbed to look like it works.
 
 - **Library cards do not yet collapse by series.** Multi-volume entries open
-  a Mihon-shaped detail view listing every volume, but the grid still shows
+  a detail view listing every volume, but the grid still shows
   each volume as its own card. `buildLibraryGroups()` in
   `src/lib/seriesHelper.ts` already produces the grouped shape.
 

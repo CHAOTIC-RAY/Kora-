@@ -130,7 +130,7 @@
         </table>
       </div>
       <p>
-        A large share of the Tachiyomi source list runs on Madara, so one port
+        A large share of the known source list runs on Madara, so one port
         covers a lot of sites. Check the site's HTML for Madara's characteristic
         markup before writing selectors by hand — hand-written selectors for a
         Madara site break when the site updates its theme.
@@ -243,7 +243,7 @@
       </p>
       <p>
         <code>gen2</code> is optional. Set it to record which upstream
-        Tachiyomi extension a port came from, so the source can be traced when
+        extension a port came from, so the source can be traced when
         the upstream site changes.
       </p>
     </section>
@@ -255,7 +255,7 @@
           <caption class="sr">Source definition fields</caption>
           <thead><tr><th>Field</th><th>Type</th><th>Purpose</th></tr></thead>
           <tbody>
-            <tr><td><code>id</code></td><td>string</td><td>Unique identifier. Must be a <strong>string</strong> — a 64-bit Tachiyomi id loses precision as a JSON number and collides with other sources.</td></tr>
+            <tr><td><code>id</code></td><td>string</td><td>Unique identifier. Must be a <strong>string</strong> — a 64-bit upstream id loses precision as a JSON number and collides with other sources.</td></tr>
             <tr><td><code>name</code></td><td>string</td><td>Shown on the chip and in the hub.</td></tr>
             <tr><td><code>lang</code></td><td>string</td><td>Language code, e.g. <code>"en"</code>.</td></tr>
             <tr><td><code>version</code></td><td>number</td><td>Bump when your selectors break. Cached pages are re-fetched when it changes.</td></tr>
