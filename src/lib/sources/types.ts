@@ -141,6 +141,8 @@ export interface SourceEndpoints {
     chapters?: JsonListing;
     /** Image page list. `{pageId}` is the chapter id, `{mangaId}` the series id. */
     pages?: JsonRule;
+    /** Direct file URL for a `kind: "book"` result. `{mangaId}` is the listing id. */
+    file?: JsonFileRule;
   };
 
   popular?: { url: string; nextPage?: string; mangas: ListingRule };
@@ -209,6 +211,18 @@ export interface JsonRule {
   image?: string;
   pageParam?: string;
   limit?: number;
+}
+
+/**
+ * How to build the direct file URL for a `kind: "book"` result.
+ *
+ * Declared, not hardcoded: LibreTexts returns a page id whose PDF sits at a
+ * fixed path under the plugin's host, and that shape belongs in the manifest
+ * with the rest of the endpoint contract. See `resolveBookFileUrl`.
+ */
+export interface JsonFileRule {
+  /** Path relative to the plugin's `baseUrl`, or an absolute URL. */
+  url: string;
 }
 
 export interface SourcePlugin {

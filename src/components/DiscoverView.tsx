@@ -11,6 +11,7 @@ import { inferBookTags } from "../lib/tagsHelper";
 import { getDiscoverablePlugins, isUnreadableSource } from "../lib/sources/store";
 import ComicDetailView from "./ComicDetailView";
 import { createSourceClient } from "../lib/sources/client";
+import { resolveBookFileUrl } from "../lib/sources/bookFile";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
@@ -2553,6 +2554,12 @@ function DiscoverView({
             const found = term.trim()
               ? await client.search(term, 1)
               : await client.popular(1);
+            // Honour the plugin's declared kind. This was hardcoded "manga",
+            // which silently mislabelled every book source: a `kind: "book"`
+            // plugin's results were routed to the chapter-by-chapter comic
+            // reader below, where they have no chapters and no pages, so the
+            // user got an empty series screen instead of a book.
+            const kind = plugin.kind === "book" ? "book" : "manga";
             const items = (found.mangas || []).map((m) => ({
               title: m.title,
               author: m.author || "Unknown",
@@ -2562,7 +2569,7 @@ function DiscoverView({
               description: m.description || "",
               sourceId: m.url,
               pluginId: plugin.id,
-              kind: "manga",
+              kind,
             }));
             setResults(items);
             setTotalResults(items.length);
@@ -4060,12 +4067,39 @@ function DiscoverView({
                       : "border-transparent hover:bg-kindle-card/50"
                   }`}
                   onClick={() => {
-                    // A result from an installed source plugin is a series,
-                    // not a downloadable file. It gets its own detail view
-                    // with the chapter list — sending it to the ebook sheet
-                    // offered an EPUB download and Rave mirrors for a title
-                    // that is read chapter by chapter from its source site.
-                    if (book.pluginId) {
+                    // A `kind: "book"` source plugin hands back a FILE, not a
+                    // series — LibreTexts returns a page id whose PDF is a
+                    // direct download. Route those to the ebook sheet with the
+                    // PDF already attached, so the user gets the download they
+                    // came for. Manga/mixed sources keep the chapter list.
+                    if (book.pluginId && book.kind === "book") {
+                      // Resolve the plugin's declared file path rather than
+                      // knowing anything about the source here. A plugin with
+                      // no `file` rule falls through to the plain book sheet,
+                      // which still offers the online copy.
+                      const plugin = getDiscoverablePlugins().find((p) => p.id === book.pluginId);
+                      const fileUrl = resolveBookFileUrl(plugin, String(book.sourceId ?? ""), book.title);
+                      openBookDetail({
+                        ...book,
+                        ...(fileUrl
+                          ? {
+                              downloadLinks: [
+                                {
+                                  url: fileUrl,
+                                  label: `${book.source || plugin?.name || "Source"} PDF`,
+                                  isDirect: true,
+                                  sourceId: book.pluginId,
+                                },
+                              ],
+                            }
+                          : {}),
+                      });
+                    } else if (book.pluginId) {
+                      // A result from an installed source plugin is a series,
+                      // not a downloadable file. It gets its own detail view
+                      // with the chapter list — sending it to the ebook sheet
+                      // offered an EPUB download and Rave mirrors for a title
+                      // that is read chapter by chapter from its source site.
                       setComicBook(book);
                     } else if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
                       openBookDetail(book);

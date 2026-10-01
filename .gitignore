@@ -30,3 +30,7 @@ kora-android-release-*/
 # Agent scratch. Already ignored above for new files, but these were tracked
 # before the rule existed, so `git rm --cached` was needed to untrack them.
 # Keep the plans in .hermes/plans/ — they are the design record.
+
+# Stray downloads from live-source verification (scripts/verify-*.mts)
+t.pdf
+*.pdf.part

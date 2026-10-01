@@ -20,7 +20,7 @@
  * an unreadable source cannot be published.
  */
 import { readdir, readFile, writeFile } from "node:fs/promises";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createMadaraClient } from "../src/lib/sources/madara";
@@ -206,7 +206,12 @@ for (const file of files) {
   }
   if (ONLY.length && !ONLY.some((o) => String(def.name).toLowerCase().includes(o.toLowerCase()))) continue;
 
-  const r = await verify(def, file.split(/[\\/]/).join("/"));
+  // Store the path relative to the sources root, not the absolute path it was
+  // read from. The output file is committed and shared, so an absolute path
+  // leaks the maintainer's machine layout (D:/Wafig/...) into the repo and makes
+  // the record meaningless to anyone else. The `id` is the real key anyway.
+  const rel = relative(SOURCES, file).split(/[\\/]/).join("/");
+  const r = await verify(def, rel);
   results.push(r);
   const tag =
     r.verdict === "readable" ? " ok " : r.verdict === "unreadable" ? "FAIL" : r.verdict === "unreachable" ? "warn" : "skip";

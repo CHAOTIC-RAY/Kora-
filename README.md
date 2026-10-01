@@ -258,7 +258,7 @@ kora/
 └── capacitor.config.ts     # Capacitor configuration
 ```
 
-Related repository: **[Kora-Sources](https://github.com/CHAOTIC-RAY/Kora-Sources)** —
+Related repository: **[Kora-Plugins](https://github.com/CHAOTIC-RAY/Kora-Plugins)** —
 the plugin registry. Source definitions live there, not here.
 
 ---
@@ -351,7 +351,7 @@ RAVE_API_KEY=your_rave_api_key
 Kora installs **plugins** from a registry, and a source is one category of
 plugin. Plugins live in a separate repository:
 
-**`CHAOTIC-RAY/Kora-Sources`** → <https://github.com/CHAOTIC-RAY/Kora-Sources>
+**`CHAOTIC-RAY/Kora-Plugins`** → <https://github.com/CHAOTIC-RAY/Kora-Plugins>
 
 The app reads the registry at install time, so **adding a source needs no
 app release** — publish a definition and it appears in the hub.

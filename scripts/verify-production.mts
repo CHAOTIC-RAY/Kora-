@@ -7,8 +7,16 @@
  */
 import { createSourceClient } from "../src/lib/sources/client";
 import type { SourcePlugin } from "../src/lib/sources/types";
-
-const REGISTRY = "https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Sources/main/index.json";
+/**
+ * Read the registry the APP reads, not a hardcoded sibling path.
+ *
+ * This used to hardcode `.../Kora-Sources/main/index.json`. After the repo was
+ * renamed to Kora-Plugins that URL still resolves (GitHub keeps renamed repos
+ * alive), so the check kept passing while validating the *old* registry against
+ * production — reporting on plugins the app no longer serves. Importing
+ * DEFAULT_REPO means this can never drift from the app again.
+ */
+import { DEFAULT_REPO as REGISTRY } from "../src/lib/sources/store";
 
 // The client fetches through a relative /api/ path, so point it at prod.
 const real = globalThis.fetch;
