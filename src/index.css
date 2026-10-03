@@ -657,55 +657,6 @@ mark.kora-hl-pink {
   --kora-mobile-nav-offset: calc(var(--kora-mobile-footer-stack) + 0.75rem);
 }
 
-/* ── Sentry feedback widget ──
- *
- * Sentry injects `<div id="sentry-feedback">` with a shadow root and styles its
- * own actor button `--inset: auto 0 0 auto` at `z-index: 100000`. Two real
- * problems that shipped to production:
- *
- *   1. It sat bottom-right, directly on top of Kora's floating mobile nav (and
- *      the mini audiobook player), so it covered the nav controls.
- *   2. z-index 100000 outranks every modal in the app — Kora's own sheets top
- *      out at z-[999] — so the button floated over open dialogs too.
- *
- * The widget is inside a shadow root, so page CSS cannot reach the button
- * directly. Custom properties DO cross the shadow boundary, so overriding them
- * on the host element is the supported lever. Both are declared here rather
- * than fought with `!important` on a selector that cannot match.
- *
- * `--actor-inset` is what `.widget__actor` actually reads (it points at
- * `--inset` by default); setting both keeps either lookup correct.
- */
-#sentry-feedback {
-  /* Lift clear of the floating nav / mini player stack, but KEEP the
-     bottom-right anchor Sentry positions itself at.
-     This is `inset: auto <right> <bottom> auto`, so the right offset must be a
-     real length — writing `auto` there drops the right anchor entirely and the
-     button falls back to its static flow position, which measured as the
-     bottom-LEFT corner. Only the bottom is changed. */
-  --actor-inset: auto var(--page-margin) var(--kora-mobile-nav-offset) auto;
-  --inset: auto var(--page-margin) var(--kora-mobile-nav-offset) auto;
-  /* Below Kora's modals (z-[999] is the highest sheet) but above app chrome
-     (z-[220]), so it stays reachable without covering a dialog. */
-  --z-index: 500;
-  /* Match Kora's own surface tokens so it doesn't read as a foreign purple pill
-     on top of a warm paper theme. `--color-kindle-*` are set per theme. Only
-     tokens that actually exist are referenced — a name with no definition
-     silently resolves to the fallback and the theme never follows. */
-  --actor-background: var(--color-kindle-card, #ffffff);
-  --actor-color: var(--color-kindle-text, #1c1917);
-  --actor-border: 1px solid var(--color-kindle-border, rgba(41, 35, 47, 0.13));
-  --actor-hover-background: var(--color-kindle-bg, #f5f5f4);
-  /* Smaller and less shouty than Sentry's default pill on a reading app. */
-  --page-margin: 0.75rem;
-  --font-size: 13px;
-}
-
-/* No narrow-screen override is needed. Sentry's own stylesheet already drops the
-   "Report a Bug" label below 600px, so the pill collapses to its icon and stays
-   out of the mini player's way on its own. An earlier draft repeated the inset
-   here for no reason and reintroduced the `auto` anchor bug. */
-
 html {
   scrollbar-gutter: stable;
   overscroll-behavior: none;

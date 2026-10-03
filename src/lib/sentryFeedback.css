@@ -1,0 +1,70 @@
+/**
+ * Sentry feedback widget — placement and theming.
+ *
+ * The widget renders `<div id="sentry-feedback">` on `document.body` with a
+ * closed-over `open` shadow root, so page CSS cannot select `.widget__actor`.
+ * Custom properties DO inherit into the shadow tree, which is the supported
+ * lever — that is what this file uses. The measured (JS) half of the placement
+ * lives in `sentry.ts`; this file is the static layer plus the no-JS fallback.
+ *
+ * Selector is `html body #sentry-feedback` rather than the bare id so it stays
+ * clear of any later one-line override, and so the placement rules live next to
+ * the measurement that feeds them instead of in the global sheet.
+ */
+
+html body #sentry-feedback {
+  /* Fallback placement when JS has not measured yet (and if it never runs):
+     Sentry's own bottom-right corner, nudged clear of the notch / home bar.
+     `.widget__actor` also carries `margin: var(--page-margin)`, so these insets
+     are the *extra* offset on top of that margin — see the arithmetic in
+     `placeFeedbackWidget`. */
+  --kora-feedback-bottom: var(--kora-safe-bottom);
+  --kora-feedback-right: var(--kora-safe-right);
+  --actor-inset: auto var(--kora-feedback-right) var(--kora-feedback-bottom) auto;
+
+  /* Reset to Sentry's own value. `--inset` is NOT actor-only: the dialog
+     stylesheet derives `--dialog-inset: var(--inset)` from it, so overriding
+     `--inset` here would also drag the feedback form away from centre. The
+     actor reads `--actor-inset`, which is set above. */
+  --inset: auto 0 0 auto;
+
+  /* Below every Kora sheet/modal (highest in the app is z-[9999]) so an open
+     dialog covers the button instead of the button floating over the dialog,
+     but well above the floating footer nav (z-50) and media dock (z-45). */
+  --z-index: 500;
+
+  /* Kora's own surface tokens instead of Sentry's purple, so the widget does
+     not read as foreign UI on the paper themes. Every name here is defined —
+     an undefined custom property would silently resolve to the fallback and
+     the theme would never follow. */
+  --page-margin: 0.75rem;
+  --font-size: 13px;
+
+  --background: var(--color-kindle-bg, #ffffff);
+  --foreground: var(--color-kindle-text, #1c1917);
+  --border: 1px solid var(--color-kindle-border, rgba(41, 35, 47, 0.13));
+  --box-shadow: 0 6px 24px rgba(0, 0, 0, 0.16);
+  --interactive-filter: brightness(0.96);
+
+  --actor-background: var(--color-kindle-card, #ffffff);
+  --actor-color: var(--color-kindle-text, #1c1917);
+  --actor-border: 1px solid var(--color-kindle-border, rgba(41, 35, 47, 0.13));
+  --actor-hover-background: var(--color-kindle-bg, #f5f5f4);
+  --actor-border-radius: 1.7em/50%;
+}
+
+/* Dark themes. Sentry is initialised with `colorScheme: "system"`, which emits
+   `:host { color-scheme: only dark }` under `prefers-color-scheme: dark`. Kora's
+   themes are chosen in-app and can disagree with the OS, which would render
+   dark form controls inside a light theme. These rules carry equal specificity
+   to the plain block above and win on source order, so `color-scheme` follows
+   the app instead of the OS. */
+html.dark body #sentry-feedback,
+body.dark #sentry-feedback {
+  color-scheme: dark;
+  --box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  --interactive-filter: brightness(1.3);
+}
+
+/* Sentry drops the "Report a Bug" label below 600px on its own, so the pill
+   collapses to its icon without a width override here. */
