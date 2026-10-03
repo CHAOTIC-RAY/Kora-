@@ -108,15 +108,21 @@ export function classifyDownloadLink(
   }
 
   // 2. A signed file link really is a direct download.
-  //    `get.php?md5=` is LibGen's file endpoint specifically; a bare
-  //    `libgen` search or book page is not a file.
-  const isSignedFile =
-    /\bget\.php\?[^#]*\bmd5=/i.test(url) ||
-    /\bmd5=[0-9a-f]{16,}/i.test(url) ||
-    (DIRECT_HOSTS.some((h) => host.includes(h)) &&
-      !SEARCH_HOSTS.some((h) => host.includes(h)) &&
-      /\.(epub|pdf|mobi|azw3?|djvu|cbz|cbr|zip)(\?|$)/i.test(url));
-  if (isSignedFile) {
+    //    `get.php?md5=` is LibGen's file endpoint specifically; a bare
+    //    `libgen` search or book page is not a file.
+    const isSignedFile =
+      /\bget\.php\?[^#]*\bmd5=/i.test(url) ||
+      /\bmd5=[0-9a-f]{16,}/i.test(url) ||
+      (DIRECT_HOSTS.some((h) => host.includes(h)) &&
+        !SEARCH_HOSTS.some((h) => host.includes(h)) &&
+        /\.(epub|pdf|mobi|azw3?|djvu|cbz|cbr|zip)(\?|$)/i.test(url)) ||
+      // LibreTexts serves real files from a path ending in the format rather than
+      // a filename, e.g. `downloads.libretexts.org/api/v1/download/med-12554/pdf`
+      // — a genuine 10MB `application/pdf` (verified 2026-10-03) that the
+      // extension check above rejects. It IS a direct download; treating it as a
+      // search page was one half of why the wrong LibreTexts book was offered.
+      /libretexts\.org\/api\/v\d+\/download\/[^/]+\/(pdf|epub|full|zip)$/i.test(url);
+    if (isSignedFile) {
     return {
       kind: "direct",
       badge: "Direct",

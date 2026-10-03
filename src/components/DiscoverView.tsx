@@ -23,6 +23,7 @@ import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
 import { titlesRoughlyMatch } from "../lib/audiobookScraper";
+import { isRelevantMirrorResult } from "../lib/mirrorRelevance";
 import {
   createSearchSignal,
   abortActiveSearch,
@@ -867,7 +868,17 @@ function DiscoverView({
     }
   }
 
-  function sortMirrors(mirrors: any[]): any[] {
+  /**
+   * Rank mirrors for a specific book.
+   *
+   * `context` supplies the book this list belongs to so mirrors that are NOT
+   * actually about that book can be dropped. Without it the function cannot
+   * tell a genuine mirror from a keyword coincidence.
+   */
+  function sortMirrors(
+    mirrors: any[],
+    context?: { query?: string; title?: string; author?: string }
+  ): any[] {
     // Filter out library.lol as it is reportedly taken down
     // Also filter duplicates by exact URL
     const seenUrls = new Set<string>();
@@ -879,7 +890,27 @@ function DiscoverView({
       return true;
     });
 
-    const processed = filtered.map(m => {
+    // Relevance gate, BEFORE any labelling.
+    //
+    // Rave aggregates loosely: searching "capture or kill" (a Vince Flynn
+    // thriller) returned LibreTexts open textbooks and RoyalLib titles that
+    // merely shared the word "capture". The labelling below then promoted
+    // those to "LibreTexts Direct Download", so tapping the book offered a
+    // neuroscience textbook as the thriller's file. Relevance has to be decided
+    // first, because once a mirror is branded it looks authoritative.
+    const relevant = context
+      ? filtered.filter((m) =>
+          isRelevantMirrorResult({
+            query: context.query,
+            bookTitle: context.title,
+            bookAuthor: context.author,
+            candidateTitle: m.mirrorTitle || m.bookTitle || m.title,
+            candidateAuthor: m.mirrorAuthor || m.bookAuthor || m.author,
+          })
+        )
+      : filtered;
+
+    const processed = relevant.map(m => {
       const label = (m.label || "").toLowerCase();
       const url = (m.url || "").toLowerCase();
       const sourceId = (m.sourceId || "").toLowerCase();
@@ -1064,13 +1095,34 @@ function DiscoverView({
       // "The Butt: An Exit Strategy" — and because those come back as real
       // editions, the Royallib/LibreTexts mirror for them hands the user the
       // wrong book. Only keep editions whose title actually matches.
-      const titleMatches = rawBooks.filter(
+      const strictMatches = rawBooks.filter(
         (b: any) => titlesRoughlyMatch(title, b.title || "", author || undefined)
       );
 
       // Fall back to the raw list only if the strict match found nothing —
       // never silently hide a book because the matcher was too fussy.
-      const candidates = titleMatches.length > 0 ? titleMatches : rawBooks;
+      //
+      // The fallback is the last resort, NOT an equal option: an unfiltered
+      // re-admit is what let a Vince Flynn thriller offer "Computational
+      // Cognitive Neuroscience" and other open textbooks as "LibreTexts Direct
+      // Download". titlesRoughlyMatch correctly rejected all of them, so the
+      // junk only appeared via this line. Re-apply the relevance gate to the
+      // fallback so it can widen a genuine near-match without admitting
+      // keyword coincidences, and let it go empty when nothing is plausibly
+      // the book — an honest "no download found" beats a wrong download.
+      const relaxedMatches = rawBooks.filter(
+        (b: any) =>
+          isRelevantMirrorResult({
+            query: q,
+            bookTitle: title,
+            bookAuthor: author || undefined,
+            candidateTitle: b.title,
+            candidateAuthor: b.author,
+          })
+      );
+      // Prefer the strict set; fall back only to results that still pass the
+      // relevance gate.
+      const candidates = strictMatches.length > 0 ? strictMatches : relaxedMatches;
 
       const uniqueVariants = candidates.reduce((acc: any[], current: any) => {
         const key = `${(current.extension || "").toLowerCase()}-${current.size || ""}-${current.source || ""}-${current.language || ""}`;
@@ -1092,7 +1144,7 @@ function DiscoverView({
       if (uniqueVariants.length > 0) {
         const firstVariant = uniqueVariants[0];
         setSelectedFeaturedVariant(firstVariant);
-        fetchFeaturedVariantMirrors(firstVariant);
+        fetchFeaturedVariantMirrors(firstVariant, { query: q, title, author });
       }
     } catch (err) {
       console.error("Failed to load featured downloads:", err);
@@ -1101,7 +1153,17 @@ function DiscoverView({
     }
   };
 
-  const fetchFeaturedVariantMirrors = async (variant: any) => {
+  const fetchFeaturedVariantMirrors = async (
+    variant: any,
+    ctx?: { query?: string; title?: string; author?: string }
+  ) => {
+    // Fall back to the variant's own metadata so relevance filtering is active
+    // even when the caller has no separate book context.
+    const bookCtx = {
+      query: ctx?.query,
+      title: ctx?.title || variant?.title,
+      author: ctx?.author || variant?.author,
+    };
     const gen = detailFetchGen.current;
     const isStale = () => gen !== detailFetchGen.current;
     setFetchingFeaturedMirrors(true);
@@ -1112,7 +1174,7 @@ function DiscoverView({
     const instant = buildInstantMirrors(variant);
     if (instant.length > 0) {
       if (isStale()) return;
-      setFeaturedMirrors(sortMirrors(instant));
+      setFeaturedMirrors(sortMirrors(instant, bookCtx));
       setFetchingFeaturedMirrors(false);
     }
 
@@ -1177,7 +1239,7 @@ function DiscoverView({
         if (isStale()) return;
         const links = data.downloadLinks || data.options || [];
         if (links.length > 0) {
-          setFeaturedMirrors(sortMirrors([...instant, ...links]));
+          setFeaturedMirrors(sortMirrors([...instant, ...links], bookCtx));
         } else if (instant.length === 0) {
           setFeaturedMirrorError("No download mirrors found for this variant.");
         }
@@ -3035,7 +3097,7 @@ function DiscoverView({
       } else {
         const instant = buildInstantMirrors(activeVariant);
         if (instant.length > 0) {
-          const sortedInstant = sortMirrors(instant);
+          const sortedInstant = sortMirrors(instant, { title: book.title, author: book.author });
           setMirrors(sortedInstant);
           hadUsableMirrors = true;
           setFetchingMirrors(false);
@@ -3055,7 +3117,7 @@ function DiscoverView({
         if (data.error) throw new Error(data.error);
 
         const links = data.downloadLinks || data.options || [];
-        const sorted = sortMirrors([...instant, ...links]);
+        const sorted = sortMirrors([...instant, ...links], { title: book.title, author: book.author });
         if (links.length > 0 || instant.length === 0) {
           setMirrors(sorted);
         }
