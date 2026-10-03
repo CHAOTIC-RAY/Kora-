@@ -338,7 +338,7 @@ export function createJsonClient(
         out.push({
           url: id,
           name,
-          // APIs rarely number cleanly; -1 is Tachiyomi's "unnumbered" marker.
+          // APIs rarely number cleanly; -1 is the format's "unnumbered" marker.
           chapterNumber: -1,
         });
       }

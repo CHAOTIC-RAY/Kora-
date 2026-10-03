@@ -1,7 +1,7 @@
 /**
  * Madara theme — one engine, many sites.
  *
- * The single highest-leverage thing in the Tachiyomi ecosystem. 248 of the
+ * The single highest-leverage thing in this source ecosystem. Hundreds of the
  * 1,377 Keiyoushi packages extend the same `Madara` base class and differ only
  * in a handful of selectors, because they all run the `madara` WordPress
  * plugin. Porting that base class once covers a quarter of every source list

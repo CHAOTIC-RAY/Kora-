@@ -157,7 +157,7 @@ check("details marks initialised", det.initialized === true);
 const chs = await client.chapters(pop.mangas[0]);
 check("chapters found", chs.length === 3, "n=" + chs.length);
 // Fixture order is 1085,1086,1087 and the source asks for `reverse`,
-// so the newest (1087) must come first — same as Tachiyomi's sorted list.
+// so the newest (1087) must come first — the format's sorted-list order.
 check("transform reverse applied", chs[0]?.name === "Chapter 1087", chs[0]?.name);
 check("chapter number parsed", chs[0]?.chapterNumber === 1087, String(chs[0]?.chapterNumber));
 check("chapter url relative", chs[0]?.url === "/chapter/1087", chs[0]?.url);

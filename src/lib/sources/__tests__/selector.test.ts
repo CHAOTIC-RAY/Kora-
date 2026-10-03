@@ -1,6 +1,6 @@
 /**
  * Exercise the jsoup-selector shim against selectors taken from real
- * Tachiyomi Gen 2 sources, so the dialect gaps are proven closed rather than
+ * Gen 2 sources, so the dialect gaps are proven closed rather than
  * assumed closed.
  */
 import { load } from "cheerio";

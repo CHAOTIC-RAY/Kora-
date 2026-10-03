@@ -8,7 +8,7 @@
  * A plugin reaches the network only through the Worker relay, and only
  * for its own declared baseUrl — see client.ts.
  *
- * Registry discovery follows Tachiyomi Gen 2: a repo is a static
+ * Registry discovery follows the Gen 2 model: a repo is a static
  * index.json listing extensions, each with one or more sources.
  */
 
@@ -499,7 +499,7 @@ function absolutise(baseUrl: string, u: string | undefined): string {
  *
  * The index lists *extensions*, each holding one or more plugins. Kora's
  * plugin unit is the entry, not the extension, so one extension yields several
- * entries — the same way Tachiyomi shows a multi-source extension.
+ * entries — the same way the format shows a multi-source extension.
  *
  * Every entry carries its `category`, because the hub groups on it and the
  * piracy opt-in applies to sources only.

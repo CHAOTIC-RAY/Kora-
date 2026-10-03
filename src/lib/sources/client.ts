@@ -89,7 +89,7 @@ function readField(
   if (!spec.selector) return "";
 
   // Shorthand `img@src` means "read this attribute"; `@text` (used throughout
-  // the Tachiyomi sources for the element's text content) means read text.
+  // the format's sources for the element's text content) means read text.
   let sel = spec.selector;
   let attr = spec.attr;
   let wantsText = Boolean(spec.text);
@@ -120,7 +120,7 @@ function finish(
   let out = (value || "").replace(/\s+/g, " ").trim();
 
   if (spec.capture !== undefined) {
-    // Tachiyomi extracts chapter numbers with substringAfterLast(/). We model
+    // The format extracts chapter numbers with substringAfterLast(/). We model
     // that as "take the Nth numeric group" rather than a full regex engine.
     const nums = out.match(/\d+(?:\.\d+)?/g) || [];
     out = nums[spec.capture] ?? "";
@@ -158,7 +158,7 @@ function parseListing(
     const author = rule.author ? readField($, card, rule.author, pageUrl) : "";
 
     mangas.push({
-      // Store the path, not the absolute url — this is Tachiyomi's
+      // Store the path, not the absolute url — this is the format's
       // setUrlWithoutDomain behaviour and lets the source survive a move.
       url: toRelativeUrl(source.baseUrl, absUrl(pageUrl, relUrl)),
       title,
@@ -352,7 +352,7 @@ export function createSourceClient(plugin: SourcePlugin): SourceClient {
         list.push({
           url: toRelativeUrl(plugin.baseUrl, abs),
           name,
-          // -1 is Tachiyomi's marker for "no numbering" (one-shots, albums).
+          // -1 is the format's marker for "no numbering" (one-shots, albums).
           chapterNumber: Number.isFinite(numeric) ? numeric : -1,
         });
       });

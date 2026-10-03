@@ -1,7 +1,7 @@
 /**
  * Series/volume grouping tests.
  *
- * The library groups a series into one row the way Mihon does, so the
+ * The library groups a series into one row, so the
  * grouping rules decide what a user sees as one book versus many. A wrong
  * merge hides real books, which is worse than a missed grouping, so the
  * conservative cases are pinned here.

@@ -38,7 +38,7 @@ const VERIFIED: {
 ];
 
 /**
- * Tachiyomi Gen 2 ids are 64-bit. These are synthetic but stable per slug:
+ * Gen 2 ids are 64-bit. These are synthetic but stable per slug:
  * a source must keep its id forever, because the id is how an installed
  * plugin is recognised across app versions.
  */

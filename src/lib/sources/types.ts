@@ -1,18 +1,18 @@
 /**
- * Kora Source Plugins — type contract, modelled on Tachiyomi **Gen 2**
- * (keiyoushi/extensions-source + keiyoushi/extensions registry).
+ * Kora Source Plugins — type contract, using the **Gen 2** extension manifest
+ * format (the shape published by the keiyoushi extensions registry).
  *
  * A plugin is *data*, not code: a JSON document describing how to reach a
  * website and pull titles, chapters and page images out of it. The shape
- * deliberately mirrors the Tachiyomi source contract (Source / CatalogueSource
- * / HttpSource) because that API is a functional interface — the shape is not
+ * deliberately mirrors that registry's source contract (Source / CatalogueSource
+ * / HttpSource) because it is a functional interface — the shape is not
  * copyrightable, and keeping it means sources stay mechanical to write and easy
- * to recognise for anyone who knows Tachiyomi.
+ * to recognise for anyone who knows the format.
  *
- * Gen 2 is the base, not Gen 1 (timschneeb/tachiyomi-extensions). Gen 1 has had
- * zero commits since Sept 2023; Gen 2 is the live channel with ~2,336 sources.
- * Concretely that means our ids/names line up with the Keiyoushi registry, and
- * `versionCode` follows its positional string format (see parseVersionCode).
+ * Gen 2 is the base rather than Gen 1, which has been effectively dormant for
+ * years; Gen 2 is the live channel with thousands of sources. Concretely that
+ * means our ids/names line up with that registry, and `versionCode` follows its
+ * positional string format (see parseVersionCode).
  *
  * Kora fetches from the origin site and relays bytes. It never hosts or
  * re-publishes content. See docs/PLUGIN-CREATION.md.
@@ -229,7 +229,7 @@ export interface SourcePlugin {
   /**
    * Source id.
    *
-   * Declared as a string deliberately. Tachiyomi Gen 2 ids are 64-bit hashes
+   * Declared as a string deliberately. Gen 2 ids are 64-bit hashes
    * (e.g. "6289731484943315811") which do NOT survive a JSON number round
    * trip — `Number("6289731484943315811")` collapses to 6289731484943316000.
    * Sources that carry their own upstream id therefore declare it as a
@@ -264,8 +264,10 @@ export interface SourcePlugin {
   readableCheckedAt?: string;
   /**
    * Gen 2 provenance, so a plugin can be traced back to the upstream extension
-   * it was ported from. `packageName` is the `eu.kanade.tachiyomi.extension.*`
-   * / `keiyoushi.*` coordinate.
+   * it was ported from. `packageName` is the upstream extension coordinate,
+   * conventionally an `eu.kanade.tachiyomi.extension.*` / `keiyoushi.*` string —
+   * the literal namespace is part of the on-disk format, so it is quoted as a
+   * value even though the project itself is not used.
    */
   gen2?: {
     packageName: string;
@@ -295,8 +297,8 @@ export interface SourcePlugin {
   /** Bot-wall hint. `cloudflare` routes through the Worker relay. */
   client?: "default" | "cloudflare" | "custom";
   /**
-   * Shared site engine. `madara` covers the WordPress `madara` plugin, which
-   * ~248 of the Tachiyomi source list runs — one port, hundreds of sites.
+   * Shared site engine. `madara` covers the WordPress `madara` plugin, which a
+   * few hundred sites in the source list run — one port, hundreds of sites.
    * A theme plugin needs no `endpoints`; the engine supplies them.
    */
   theme?: "madara" | "json";
@@ -405,7 +407,7 @@ export interface PluginManifest {
 export type MangaStatus = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface Manga {
-  /** Path relative to baseUrl — mirrors Tachiyomi's setUrlWithoutDomain. */
+  /** Path relative to baseUrl — the format's `setUrlWithoutDomain` convention. */
   url: string;
   title: string;
   thumbnailUrl?: string;
@@ -422,18 +424,18 @@ export interface Manga {
 export interface Chapter {
   url: string;
   name: string;
-  /** -1 for one-shots with no numbering, matching Tachiyomi. */
+  /** -1 for one-shots with no numbering, matching the format's convention. */
   chapterNumber: number;
   dateUpload?: number;
 }
 
 export interface Page {
-  /** Positional advisory, exactly as Tachiyomi documents it. */
+  /** Positional advisory, per the format's documented meaning. */
   index: number;
   /**
    * The panel image.
    *
-   * Tachiyomi names this `image`, with `url` reserved for the chapter page it
+   * The format names this `image`, with `url` reserved for the chapter page it
    * was scraped from. The field is required because a page with no image is
    * not a page — a caller must never have to null-check before rendering.
    */

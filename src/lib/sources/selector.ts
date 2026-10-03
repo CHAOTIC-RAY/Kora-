@@ -1,7 +1,7 @@
 /**
  * jsoup-flavoured selector engine for Kora source plugins.
  *
- * Tachiyomi sources are written against jsoup's selector grammar. To make porting
+ * Sources in this format are written against jsoup's selector grammar. To make porting
  * mechanical we accept the same strings and normalise them onto Cheerio, which
  * is the direct jsoup analogue in the JS ecosystem.
  *
@@ -106,7 +106,7 @@ export function absUrl(baseUrl: string, value: string): string {
 /**
  * Split a site path into the base URL and the extension-relative form.
  *
- * Tachiyomi stores `manga.url` as a path and re-applies `baseUrl` at request
+ * The format stores `manga.url` as a path and re-applies `baseUrl` at request
  * time, which is what lets a source survive the site moving. We do the same:
  * `url` fields in a plugin are relative unless they match the base.
  */
