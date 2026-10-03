@@ -1,13 +1,14 @@
 /**
- * Series detail view — Mihon's manga screen, with volume grouping.
+ * Series detail view — the manga screen, with volume grouping.
  *
- * Section order is Mihon's `MangaScreenItem` enum exactly:
+ * Section order is the source manifest's `MangaScreenItem` enum exactly:
  *   INFO_BOX → ACTION_ROW → DESCRIPTION_WITH_TAG → CHAPTER_HEADER → rows
- * Mihon renders a flat chapter list because it has no volume concept;
+ * A flat chapter list is what the format's own screens render, because the
+ * format has no volume concept;
  * here the last section is a volume list, which is the one deliberate
  * difference.
  *
- * Progress is chapter-count based (`completed / total`) to match Mihon's
+ * Progress is chapter-count based (`completed / total`) to match the
  * unread badge, not page-based — a resume page is shown on the row itself.
  */
 import React from "react";

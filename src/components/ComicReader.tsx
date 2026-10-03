@@ -1,12 +1,11 @@
 /**
- * A webtoon/manga page reader built to match Tachiyomi and Mihon.
+ * A webtoon/manga page reader built to match the book's reader idioms.
  *
  * What the old inline pager in ComicDetailView had: a Next button, a Prev
  * button, and two arrow keys. That works on a desktop with a mouse and is
  * close to useless on the device the app is actually read on.
  *
- * Behaviour taken from Tachiyomi's reader (viewer/`ReaderActivity` and the
- * `Pager`/`Continuity` view modes):
+ * Behaviour the reader/viewer conventions expect:
  *
  *   - Tap zones. A tap in the left third goes back, the right third goes
  *     forward, and the middle third toggles the control bars. Without this,
@@ -15,10 +14,10 @@
  *     short flick still turns. Pointer Events, so one handler covers mouse,
  *     touch and pen.
  *   - Right-to-left reading. Manga is read right to left in most of the
- *     world, and Tachiyomi's `direction` setting is per-source. In RTL,
+ *     world, and the `direction` setting is per-source. In RTL,
  *     "forward" is a swipe to the left.
  *   - Continuous vertical scroll. Webtoons are one long strip rather than
- *     discrete pages; the Tachiyomi `Continuity` mode. Off by default,
+ *     discrete pages; the `Continuity` mode. Off by default,
  *     on when the source declares `webtoon: true`.
  *   - Preloading. Neighbouring pages are decoded ahead of the turn, because
  *     a comic page is a large image and a blank flash reads as a crash.
@@ -33,9 +32,14 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronLeft, ChevronRight, X, List, Minus, Plus,
-  Bookmark, BookmarkCheck, Settings2, Sun, Moon,
+  Bookmark, BookmarkCheck, Settings2, Sun, SunDim, Moon,
 } from "lucide-react";
 import { loadSettings, updateSettings, effectiveDirection, type ReaderSettings } from "../lib/readerSettings";
+import {
+  loadComicPrefs, updateComicPrefs, effectiveContinuous, pageFitClasses,
+  COMIC_PAGE_FITS, CONTINUOUS_MODES, READING_BRIGHTNESS, nextBrightnessPreset,
+  type ComicReaderPrefs,
+} from "../lib/comicReaderSettings";
 import {
   getChapterState, toggleBookmark, isBookmarked, setChapterState,
   type ChapterState,
@@ -152,9 +156,18 @@ export function ComicReader({
   // Where the chapter opens. A right-to-left manga opens on its *last* page
   // because reading runs backwards through the source array; the rule lives
   // in readingDirection.ts and is covered by tests.
+  //
+  // The direction override is re-read here rather than using `readingRtl`,
+  // because this is a lazy initialiser that runs BEFORE the `settings` state
+  // is declared below. It is a second `loadSettings()` call, which is a
+  // localStorage hit at mount — cheaper than the alternative of opening a
+  // right-to-left series on its first page because the user's override had
+  // not been applied yet.
   const [index, setIndex] = useState(() => {
   if (initialIndex > 0) return Math.min(initialIndex, Math.max(0, pages.length - 1));
-  return firstPage({ rtl, total: pages.length });
+  const stored = loadSettings();
+  const openRtl = effectiveDirection(stored, rtl ? "rtl" : "ltr") === "rtl";
+  return firstPage({ rtl: openRtl, total: pages.length });
   });
   const [chromeVisible, setChromeVisible] = useState(true);
   const [zoom, setZoom] = useState(1);
@@ -166,6 +179,56 @@ export function ComicReader({
   // will eventually be forgotten. Empty string means signed out, which turns
   // every sync call into a no-op rather than an error.
   const userId = syncEnabled ? getCurrentUserId() : "";
+
+  // ── Reader settings (local only — never synced) ─────────────────────────
+  // Read once on open rather than watched: settings changing mid-read is not
+  // a case worth re-rendering the reader for, and this keeps the module
+  // boundary obvious — nothing here writes anywhere but localStorage.
+  const [settings, setSettings] = useState<ReaderSettings>(() => loadSettings());
+
+  // ── Comic-specific settings (page fit, continuous scroll, filters) ──────
+  // A separate record from `settings` on purpose: `saveSettings` rebuilds from
+  // DEFAULT_SETTINGS and keeps only keys it knows, so a comic field living
+  // there would be erased by the next write from the other reader. See the
+  // module header in comicReaderSettings.
+  const [prefs, setPrefs] = useState<ComicReaderPrefs>(() => loadComicPrefs());
+
+  /**
+   * The direction to READ in, as opposed to the direction the source
+   * declared. Every consumer below resolves through this one value.
+   *
+   * The user override wins over the source, but only when explicitly set —
+   * see `effectiveDirection`.
+   */
+  const readingRtl = effectiveDirection(settings, rtl ? "rtl" : "ltr") === "rtl";
+
+  /**
+   * Whether this chapter scrolls as one strip.
+   *
+   * This was previously the raw `webtoon` prop, read straight from the source
+   * at six call sites. Resolving it once means the container, the touch-action
+   * hint, the page-fit control and the preload loop can no longer disagree
+   * about whether the reader is in scroll mode — and it is what gives the
+   * user's "Auto / On / Off" override somewhere to apply.
+   */
+  const continuous = effectiveContinuous(prefs, webtoon);
+
+  /** Apply a comic-prefs change and keep local state in step with storage. */
+  const applyPrefs = useCallback((patch: Partial<ComicReaderPrefs>) => {
+    setPrefs(updateComicPrefs(patch));
+  }, []);
+
+  /**
+   * A polite announcement of where the reader is.
+   *
+   * A page turn is a gesture, not a navigation event: nothing in the
+   * accessibility tree changes when the reader moves from page 3 to page 4, so
+   * a screen reader is left silently on the old page with no way to know the
+   * turn happened at all. `polite` rather than `assertive` because a reader
+   * flicking through pages should not have every turn interrupt whatever they
+   * were reading before it.
+   */
+  const [announcement, setAnnouncement] = useState("");
 
   const total = pages.length;
   const clamped = Math.min(Math.max(0, index), Math.max(0, total - 1));
@@ -179,22 +242,20 @@ export function ComicReader({
    * opened and climbing to "9 / 9" as you read. Everything the user sees
    * goes through this.
    */
-  const shown = displayedPage({ rtl, total, index: clamped });
+  const shown = displayedPage({ rtl: readingRtl, total, index: clamped });
 
-  // ── Reader settings (local only — never synced) ─────────────────────────
-  // Read once on open rather than watched: settings changing mid-read is not
-  // a case worth re-rendering the reader for, and this keeps the module
-  // boundary obvious — nothing here writes anywhere but localStorage.
-  const [settings, setSettings] = useState<ReaderSettings>(() => loadSettings());
+  // Declared up here rather than just above the render: the announcement
+  // effect below needs `label`, and a `const` referenced before its
+  // declaration is a runtime crash, not a type error.
+  const label = chapter.number ? `Chapter ${chapter.number}` : chapter.name;
+  const posInSeries = chapter.number
+    ? `${chapter.number}${chapters.length ? ` / ${chapters.length}` : ""}`
+    : "";
 
   // ── Bookmarks and position (this chapter's stored state) ────────────────
   const [chapterState, setChapterStateLocal] = useState<ChapterState | undefined>(() =>
     stateKey ? getChapterState(stateKey) : undefined
   );
-
-  // The user override wins over the source's declared direction, but only
-  // when explicitly set — see effectiveDirection.
-  const readingRtl = effectiveDirection(settings, rtl ? "rtl" : "ltr") === "rtl";
 
   /** Persist the page turn locally and report it upward for cloud sync. */
   const recordPosition = useCallback(
@@ -262,14 +323,21 @@ export function ComicReader({
   /**
    * In RTL, "forward" is a step of -1. Every control routes through here so
    * the direction is defined exactly once.
+   *
+   * `readingRtl`, not the `rtl` prop. The override had already been computed
+   * a few lines above and was used by the progress writes and the settings
+   * sheet, but every actual page turn still asked the source — so choosing
+   * "Left to right" on a right-to-left series moved the page the opposite way
+   * from the number it then displayed. The resolved value is the only one
+   * that reflects what the user asked for, and it is now the single source.
    */
   const forward = useCallback(
-  () => goTo(nextIndex({ rtl, total, index: clamped })),
-  [goTo, clamped, rtl, total]
+    () => goTo(nextIndex({ rtl: readingRtl, total, index: clamped })),
+    [goTo, clamped, readingRtl, total]
   );
   const back = useCallback(
-  () => goTo(prevIndex({ rtl, total, index: clamped })),
-  [goTo, clamped, rtl, total]
+    () => goTo(prevIndex({ rtl: readingRtl, total, index: clamped })),
+    [goTo, clamped, readingRtl, total]
   );
 
 
@@ -376,10 +444,46 @@ export function ComicReader({
     return () => clearBrightness(el);
   }, [settings.brightnessMode, settings.brightness]);
 
+  // ── Page-fit classes for the current surface ─────────────────────────────
+  // Resolved once and applied to the wrapper, because the fit has to reach the
+  // `<img>`/`<canvas>` *inside* ReaderPageImage — that component ships its own
+  // `object-contain` and owns the decode sizing, so the fit cannot be set by
+  // styling this element alone.
+  const fitClass = pageFitClasses({ pageFit: prefs.pageFit, continuous });
+
+  // ── Announce the page for screen readers ────────────────────────────────
+  // Chapter and page together: "page 4" is ambiguous across a long series, and
+  // a reader who turns forward and hears nothing has no way to tell whether
+  // the turn happened, was swallowed, or landed on a broken page.
+  useEffect(() => {
+    if (!total) return;
+    setAnnouncement(`${label}, page ${shown} of ${total}`);
+  }, [label, shown, total]);
+
+  // ── Mouse wheel does not turn pages ─────────────────────────────────────
+  // The book's reader has the same setting, and it exists for the same reason:
+  // a trackpad or a wheel that keeps firing sends a reader flying through a
+  // chapter, because a comic page turn is an instant, large jump with no
+  // scrollbar to catch it. A non-passive listener is required — React's
+  // `onWheel` is passive and cannot preventDefault, so the page would scroll
+  // the reader regardless.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !prefs.disableMouseScroll) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.cancelable) e.preventDefault();
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [prefs.disableMouseScroll]);
+
   // Neighbour preloading. A comic page is a big image; decoding it on the
   // turn is what makes paging feel like it stutters.
   useEffect(() => {
-  const ahead = rtl ? -1 : 1;
+  // The reading direction, not the source's: prefetching the wrong side means
+  // every page turn waits on a cold decode, which is the exact stutter this
+  // loop exists to remove. Same reason the turn handlers resolve the override.
+  const ahead = readingRtl ? -1 : 1;
   for (let d = -PRELOAD_BEHIND; d <= PRELOAD_AHEAD; d++) {
   const i = clamped + d * ahead;
   if (i < 0 || i >= total) continue;
@@ -401,7 +505,7 @@ export function ComicReader({
   // the reader had even shown it.
   img.src = resolvePluginImageSrc(url) ?? url;
   }
-  }, [clamped, total, pages, rtl, chapter.name]);
+  }, [clamped, total, pages, readingRtl, chapter.name]);
 
   // Release every retained bitmap when the reader goes away. Without this
   // the decoded pages outlive the component and the next reader starts cold.
@@ -425,10 +529,10 @@ export function ComicReader({
   const onKey = (e: KeyboardEvent) => {
   if (e.key === "ArrowRight") {
   e.preventDefault();
-  rtl ? back() : forward();
+  readingRtl ? back() : forward();
   } else if (e.key === "ArrowLeft") {
   e.preventDefault();
-  rtl ? forward() : back();
+  readingRtl ? forward() : back();
   } else if (e.key === "Escape") {
   onClose();
   } else if (e.key === " ") {
@@ -444,7 +548,7 @@ export function ComicReader({
   };
   window.addEventListener("keydown", onKey);
   return () => window.removeEventListener("keydown", onKey);
-  }, [forward, back, goTo, total, onClose, rtl]);
+  }, [forward, back, goTo, total, onClose, readingRtl]);
 
   // ---- gestures ---------------------------------------------------------
   const drag = useRef<{
@@ -549,7 +653,7 @@ export function ComicReader({
   // decides which way that is: in a right-to-left manga you advance by
   // dragging the page leftwards, the way a physical book turns, while
   // left-to-right is the mirror of that.
-  const { advancing } = swipeDirection(dx, rtl);
+  const { advancing } = swipeDirection(dx, readingRtl);
   if (advancing) forward();
   else back();
   // Suppress the click that a browser synthesises at the end of a drag,
@@ -637,7 +741,7 @@ export function ComicReader({
   // The zones are laid out in reading order: the far side of the screen
   // is the far side of the book. In a right-to-left manga the next page
   // is to the left, matching a leftward swipe.
-  const action = resolveTap(frac, rtl);
+  const action = resolveTap(frac, readingRtl);
   if (action === "forward") forward();
   else if (action === "back") back();
   else setChromeVisible((v) => !v);
@@ -663,11 +767,6 @@ export function ComicReader({
   onChapterChange?.(next);
   return true;
   };
-
-  const label = chapter.number ? `Chapter ${chapter.number}` : chapter.name;
-  const posInSeries = chapter.number
-  ? `${chapter.number}${chapters.length ? ` / ${chapters.length}` : ""}`
-  : "";
 
   if (!total) {
   return (
@@ -749,6 +848,35 @@ export function ComicReader({
   )}
   </button>
   )}
+  {/*
+    Brightness cycle in the header, as the book's reader has it
+    (BookReaderEPUB: `cycleReadingBrightness` on the sun icon).
+
+    A header tap is a one-finger, no-menu dim — which is the gesture you want
+    when the room has got dark mid-chapter, and which is exactly what a
+    full-bleed comic reader needs most. Only offered while the reader is in
+    manual mode; in system mode the icon would appear to do nothing.
+  */}
+  {settings.brightnessMode === "manual" && (
+  <button
+  onClick={() =>
+  setSettings(
+  updateSettings({ brightness: nextBrightnessPreset(settings.brightness * 100) / 100 })
+  )
+  }
+  title={`Brightness ${Math.round(settings.brightness * 100)}% — tap to cycle`}
+  aria-label={`Brightness ${Math.round(settings.brightness * 100)} percent, tap to cycle`}
+  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  >
+  {settings.brightness >= 0.9 ? (
+  <Sun className="w-4 h-4 text-white/80" />
+  ) : settings.brightness >= 0.6 ? (
+  <SunDim className="w-4 h-4 text-white/80" />
+  ) : (
+  <Moon className="w-4 h-4 text-white/80" />
+  )}
+  </button>
+  )}
   <button
   onClick={() => setShowSettings((v) => !v)}
   aria-label="Reader settings"
@@ -788,11 +916,18 @@ export function ComicReader({
   {/*
   Settings sheet.
 
-  Every control here writes through `updateSettings`, which persists
-  locally and returns the sanitized result. Deliberately NOT synced: a
-  brightness chosen for a dark train has no business following the reader
-  onto a tablet in daylight. Position and bookmarks are the things that
-  sync, and they are not here.
+  Two records, deliberately. Display and behaviour that the book's reader also
+  has — brightness, keep-awake, auto-hide, sleep timer, direction — go through
+  `updateSettings`. What is comic-specific — page fit, continuous scroll, the
+  display filters, the wheel lock — goes through `applyPrefs`, because
+  `saveSettings` rebuilds its record from the shared defaults and would erase
+  any field it does not recognise. Merging them into one sheet would have made
+  the page-fit control silently disappear the next time the other reader
+  saved.
+
+  Neither is synced, and the sheet says so: a brightness chosen for a dark
+  train has no business following the reader onto a tablet in daylight.
+  Position and bookmarks are the things that sync, and they are not here.
   */}
   {showSettings && (
   <div
@@ -839,27 +974,82 @@ export function ComicReader({
   </p>
   </div>
 
-  {/* Fit mode */}
+  {/*
+  Page fit.
+
+  This block used to write `settings.fitMode` with the values
+  "contain" | "width" | "height" | "original" and nothing ever read it back —
+  the shared settings module rejects three of those four as unknown, so the
+  control was inert and the page always letterboxed. Comics needed the choice
+  for a real reason the book reader does not: a comic page's aspect ratio is
+  whatever the scanline is, and panel pages, splash pages and double-page
+  spreads all disagree, so one fixed fit is wrong for some page in most
+  chapters.
+
+  Three options rather than a "fill the screen" toggle, and styled as the
+  book reader's segmented control so the two sheets read as one UI.
+  */}
+  {!continuous && (
   <div>
   <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
   Page fit
   </span>
-  <div className="grid grid-cols-4 gap-1.5">
-  {(["contain", "width", "height", "original"] as const).map((m) => (
+  <div className="grid grid-cols-3 gap-1.5">
+  {COMIC_PAGE_FITS.map((m) => (
   <button
-  key={m}
-  onClick={() => setSettings(updateSettings({ fitMode: m }))}
-  aria-pressed={settings.fitMode === m}
+  key={m.value}
+  onClick={() => applyPrefs({ pageFit: m.value })}
+  aria-pressed={prefs.pageFit === m.value}
+  title={m.desc}
   className={`px-2 py-2 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer ${
-  settings.fitMode === m
+  prefs.pageFit === m.value
   ? "bg-white text-black"
   : "border border-white/20 text-white/80 hover:bg-white/10"
   }`}
   >
-  {m}
+  {m.label}
   </button>
   ))}
   </div>
+  <p className="mt-1.5 text-[9px] text-white/40">
+  {COMIC_PAGE_FITS.find((m) => m.value === prefs.pageFit)?.desc}
+  </p>
+  </div>
+  )}
+
+  {/*
+  Continuous scroll, as Auto / On / Off rather than a plain toggle.
+
+  The flag is a property of the SERIES, so a checkbox cannot express "Auto" —
+  it would pin the mode forever after the first tap, and a reader who set
+  "always scroll" on one webtoon would be stuck with it on every paged series
+  too. Auto defers to the source; On and Off override it in either direction.
+  */}
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Continuous scroll
+  </span>
+  <div className="grid grid-cols-3 gap-1.5">
+  {CONTINUOUS_MODES.map((m) => (
+  <button
+  key={m.value}
+  onClick={() => applyPrefs({ continuous: m.value })}
+  aria-pressed={prefs.continuous === m.value}
+  title={m.desc}
+  className={`px-2 py-2 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer ${
+  prefs.continuous === m.value
+  ? "bg-white text-black"
+  : "border border-white/20 text-white/80 hover:bg-white/10"
+  }`}
+  >
+  {m.label}
+  </button>
+  ))}
+  </div>
+  <p className="mt-1.5 text-[9px] text-white/40">
+  {CONTINUOUS_MODES.find((m) => m.value === prefs.continuous)?.desc}
+  {webtoon && prefs.continuous === "source" && " This series is a scrolling strip."}
+  </p>
   </div>
 
   {/* Brightness */}
@@ -871,6 +1061,7 @@ export function ComicReader({
   setSettings(
   updateSettings({
   brightnessMode: settings.brightnessMode === "manual" ? "system" : "manual",
+  brightness: settings.brightnessMode === "manual" ? 1 : 0.7,
   })
   )
   }
@@ -885,6 +1076,31 @@ export function ComicReader({
   {settings.brightnessMode === "manual" ? "manual" : "system"}
   </button>
   </span>
+  {/*
+    The book's reader offers five coarse presets above its fine slider
+    (BookReaderEPUB: READING_BRIGHTNESS). Ported verbatim, because a comic page
+    is mostly white paper and the useful moves are "much dimmer" and "back to
+    normal" — five repeatable steps beat dragging a slider for that.
+  */}
+  {settings.brightnessMode === "manual" && (
+  <div className="grid grid-cols-5 gap-1.5 mb-2">
+  {READING_BRIGHTNESS.map((level) => (
+  <button
+  key={level}
+  onClick={() => setSettings(updateSettings({ brightness: level / 100 }))}
+  aria-pressed={Math.round(settings.brightness * 100) === level}
+  aria-label={`Brightness ${level}%`}
+  className={`py-1.5 rounded-lg border text-[9px] font-mono font-bold transition cursor-pointer ${
+  Math.round(settings.brightness * 100) === level
+  ? "border-white bg-white/15 text-white"
+  : "border-white/20 hover:bg-white/10 text-white/70"
+  }`}
+  >
+  {level}
+  </button>
+  ))}
+  </div>
+  )}
   <input
   type="range"
   min={20}
@@ -900,6 +1116,74 @@ export function ComicReader({
   <p className="mt-1 text-[9px] text-white/40">
   Applies to the reader only, and only this device.
   </p>
+  </div>
+
+  {/* Display filters */}
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  Page appearance
+  </span>
+  <div className="space-y-1">
+  {([
+  {
+  key: "grayscaleImages" as const,
+  label: "Black and white",
+  hint: "Desaturates the artwork. Halftone dots become pure line art.",
+  },
+  {
+  key: "hideImages" as const,
+  label: "Hide artwork",
+  hint: "Text only. Useful when the art is distracting or the page is a splash.",
+  },
+  {
+  key: "disableMouseScroll" as const,
+  label: "Mouse wheel turns pages",
+  hint: "Off: the wheel does nothing, so a trackpad cannot skip ahead.",
+  },
+  ] as const).map((row) => (
+  <label
+  key={row.key}
+  className="flex items-center justify-between gap-3 py-1 cursor-pointer"
+  >
+  <span className="min-w-0">
+  <span className="block text-[10px] text-white/80">{row.label}</span>
+  <span className="block text-[9px] text-white/40">{row.hint}</span>
+  </span>
+  {/*
+    The book's reader styles these as a pill switch rather than a checkbox.
+    Ported because the comic reader is full-bleed black and the sheet's other
+    controls are already pills and segmented rows — a native checkbox in the
+    middle of that reads as a different component entirely.
+  */}
+  <button
+  type="button"
+  role="switch"
+  onClick={() => {
+  const on = row.key === "disableMouseScroll" ? !prefs.disableMouseScroll : !prefs[row.key];
+  if (row.key === "disableMouseScroll") applyPrefs({ disableMouseScroll: on });
+  else applyPrefs({ [row.key]: on } as Partial<ComicReaderPrefs>);
+  }}
+  aria-checked={
+  row.key === "disableMouseScroll" ? prefs.disableMouseScroll : prefs[row.key]
+  }
+  aria-label={row.label}
+  className={`w-10 h-5 shrink-0 rounded-full transition-colors relative cursor-pointer ${
+  (row.key === "disableMouseScroll" ? prefs.disableMouseScroll : prefs[row.key])
+  ? "bg-white"
+  : "bg-white/25"
+  }`}
+  >
+  <div
+  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${
+  (row.key === "disableMouseScroll" ? prefs.disableMouseScroll : prefs[row.key])
+  ? "translate-x-5 bg-black"
+  : "translate-x-0 bg-white/70"
+  }`}
+  />
+  </button>
+  </label>
+  ))}
+  </div>
   </div>
 
   {/* Keep awake */}
@@ -1012,16 +1296,26 @@ export function ComicReader({
   onPointerCancel={abortGesture}
   onLostPointerCapture={abortGesture}
   onClickCapture={onClickCapture}
+  // The display filters ride on this wrapper as descendant variants, for the
+  // same reason the fit does: the artwork is rendered by ReaderPageImage, and
+  // a `filter` on this element would also dim the letterboxing around it.
+  // `grayscale` on a comic page is not the accessibility nicety it is on a
+  // text page — it is how a colour-dependent page reads as pure line art.
   className={`flex-1 min-h-0 overflow-hidden ${
-  webtoon ? "overflow-y-auto overscroll-contain" : "flex items-center justify-center"
+  continuous ? "overflow-y-auto overscroll-contain" : "flex items-center justify-center"
+  } ${fitClass} ${prefs.grayscaleImages ? "[&_img]:grayscale [&_canvas]:grayscale" : ""} ${
+  // Text-only is a real mode rather than a nicety: on a comic, artwork can
+  // carry the entire scene. Hiding it leaves the page counter and chapter
+  // label as the only thing on screen, which is the point.
+  prefs.hideImages ? "[&_img]:hidden [&_canvas]:hidden" : ""
   }`}
   // Without this the browser claims the horizontal drag for its own
   // panning, delivers a single pointermove and then stops — the swipe
   // silently never completes. `none` is required on the element that
   // owns the gesture, not just on the image inside it.
-  style={{ touchAction: zoom > 1.05 ? "none" : webtoon ? "pan-y" : "none" }}
+  style={{ touchAction: zoom > 1.05 ? "none" : continuous ? "pan-y" : "none" }}
   >
-  {webtoon ? (
+  {continuous ? (
   <ReaderPageImage
   url={pages[clamped]?.url || ""}
   alt={`${label} page ${shown}`}
@@ -1051,6 +1345,16 @@ export function ComicReader({
   onClose={onClose}
   />
   )}
+
+  {/*
+    Announced position. `sr-only` rather than `hidden`: a display:none node is
+    removed from the accessibility tree, so the live region would never fire.
+    `aria-live` without `aria-atomic` is deliberate — this string is replaced
+    wholesale, and atomic would re-read the whole region each turn for no gain.
+  */}
+  <p aria-live="polite" role="status" className="sr-only">
+  {announcement}
+  </p>
   </div>
 
   {/* bottom bar */}
@@ -1065,7 +1369,7 @@ export function ComicReader({
   <div className="flex items-center justify-between gap-2 px-3 py-2">
   <button
   onClick={back}
-  disabled={!canAct("back", { rtl, total, index: clamped }) && !chapters.length}
+  disabled={!canAct("back", { rtl: readingRtl, total, index: clamped }) && !chapters.length}
   aria-label="Previous page"
   className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-25 cursor-pointer"
   >
@@ -1099,13 +1403,13 @@ export function ComicReader({
 
   <button
   onClick={forward}
-  disabled={!canAct("forward", { rtl, total, index: clamped })}
+  disabled={!canAct("forward", { rtl: readingRtl, total, index: clamped })}
   aria-label="Next page"
   className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-25 cursor-pointer"
   >
   {/* Mirrored in RTL so both arrows always point "forward". */}
   <ChevronRight
-  className={`w-5 h-5 text-white/90 ${rtl ? "-scale-x-100" : ""}`}
+  className={`w-5 h-5 text-white/90 ${readingRtl ? "-scale-x-100" : ""}`}
   />
   </button>
   </div>

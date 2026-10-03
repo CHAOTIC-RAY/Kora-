@@ -1,5 +1,5 @@
 /**
- * Comic/manga detail view — the Mihon manga screen, adapted for a source
+ * Comic/manga detail view — the manga screen, adapted for a source
  * that has no local library entry yet.
  *
  * This is the screen a manga result should open. The existing Discover
@@ -7,10 +7,10 @@
  * which is meaningless for a title that is read chapter by chapter from
  * the source site. This one shows the series first and the reader second.
  *
- * Section order follows Mihon's `MangaScreenItem`:
+ * Section order follows the source manifest's `MangaScreenItem`:
  *   INFO_BOX -> STATUS -> DESCRIPTION -> CHAPTER_HEADER -> CHAPTER rows
  *
- * Mihon has no volume concept (verified against its `chapter.sq`), so the
+ * The format has no volume concept (verified against its `chapter.sq`), so the
  * chapter list here is flat and ordered, with volume boundaries shown when
  * the source's chapter numbers imply them.
  */
