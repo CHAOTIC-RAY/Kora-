@@ -397,7 +397,16 @@ export function titlesRoughlyMatch(
     }
   }
 
-  if (b.includes(a) || a.includes(b)) return true;
+  // Word-boundary containment, NOT raw substring. `b.includes(a)` accepted
+  // "MicroDune" for the expected title "Dune" and "Dune Enviroment" for
+  // "Dune Encyclopedia"'s sibling — a one-word title is a substring of half the
+  // catalogue. Require the shorter title to be a whole-token run of the longer.
+  const tokenRun = (haystack: string, needle: string): boolean => {
+    if (!needle) return false;
+    if (needle === haystack) return true;
+    return ` ${haystack} `.includes(` ${needle} `);
+  };
+  if (tokenRun(b, a) || tokenRun(a, b)) return true;
 
   const aWords = a.split(" ").filter((w) => w.length > 2);
   const bWords = new Set(b.split(" ").filter((w) => w.length > 2));

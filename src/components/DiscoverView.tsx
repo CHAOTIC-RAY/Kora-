@@ -892,23 +892,33 @@ function DiscoverView({
 
     // Relevance gate, BEFORE any labelling.
     //
-    // Rave aggregates loosely: searching "capture or kill" (a Vince Flynn
-    // thriller) returned LibreTexts open textbooks and RoyalLib titles that
-    // merely shared the word "capture". The labelling below then promoted
-    // those to "LibreTexts Direct Download", so tapping the book offered a
-    // neuroscience textbook as the thriller's file. Relevance has to be decided
-    // first, because once a mirror is branded it looks authoritative.
-    const relevant = context
-      ? filtered.filter((m) =>
-          isRelevantMirrorResult({
-            query: context.query,
-            bookTitle: context.title,
-            bookAuthor: context.author,
-            candidateTitle: m.mirrorTitle || m.bookTitle || m.title,
-            candidateAuthor: m.mirrorAuthor || m.bookAuthor || m.author,
-          })
-        )
-      : filtered;
+        // Rave aggregates loosely: searching "capture or kill" (a Vince Flynn
+        // thriller) returned LibreTexts open textbooks and RoyalLib titles that
+        // merely shared the word "capture". The labelling below then promoted
+        // those to "LibreTexts Direct Download", so tapping the book offered a
+        // neuroscience textbook as the thriller's file. Relevance has to be decided
+        // first, because once a mirror is branded it looks authoritative.
+        //
+        // IMPORTANT: a mirror has NO title of its own. buildInstantMirrors emits
+        // only {label, url, isDirect, sourceId}, and every link here is already
+        // derived from a variant that loadFeaturedDownloads filtered by relevance.
+        // Gating mirrors on `m.title` therefore read undefined for ALL of them and
+        // dropped the entire list — that is why every book showed "No download link
+        // found" after the relevance gate landed. Only gate a mirror that actually
+        // carries a title; otherwise pass it through untouched.
+        const relevant = context
+          ? filtered.filter((m) => {
+              const candidateTitle = m.mirrorTitle || m.bookTitle || m.title;
+              if (!candidateTitle) return true;
+              return isRelevantMirrorResult({
+                query: context.query,
+                bookTitle: context.title,
+                bookAuthor: context.author,
+                candidateTitle,
+                candidateAuthor: m.mirrorAuthor || m.bookAuthor || m.author,
+              });
+            })
+          : filtered;
 
     const processed = relevant.map(m => {
       const label = (m.label || "").toLowerCase();

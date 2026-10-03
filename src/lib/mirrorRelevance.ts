@@ -95,12 +95,32 @@ export function isRelevantMirrorResult(input: RelevanceInput): boolean {
   if (query) {
     const words = query.split(" ").filter((w) => w.length > 3);
     const strong = words.filter((w) => cand.includes(w));
-    // Require at least half the meaningful words AND more than one, so a
-    // single shared word ("capture") can never qualify.
-    if (words.length >= 2 && strong.length >= 2 && strong.length / words.length >= 0.5) {
+    // "At least half the meaningful words, and more than one" was too strict for
+    // a ONE-word query: "dune" yields words.length === 1, so the rule could
+    // never fire and every single-word title returned no downloads at all
+    // (reported 2026-10-03). For a single-word query the only meaningful signal
+    // IS that word, so require the whole title to be that word, optionally with
+    // extra words around it — "dune" must match "Dune" and "Dune Encyclopedia",
+    // but must not match "Dune: The Movie Art" being a different edition? It
+    // should — series and subtitle variants are wanted.
+    //
+    // So: for one word, require an exact-or-prefix title match. For several,
+    // keep the "half of them AND more than one" rule that rejects a lone shared
+    // word like "capture".
+    if (words.length === 1) {
+      const w = words[0];
+      // Match on WORD BOUNDARIES, not substrings. `cand.includes(w)` would
+      // accept "MicroDune" and "Dune Enviroment" for the query "dune", which
+      // are different books. The word must stand alone as a token.
+      if (cand === w) return true;
+      const tokens = cand.split(" ");
+      if (tokens.includes(w)) return true;
+      // Also allow the query to be a phrase inside a longer title only when
+      // every token of the query matches a token of the candidate.
+          } else if (words.length >= 2 && strong.length >= 2 && strong.length / words.length >= 0.5) {
       return true;
     }
-  }
+    }
 
   return false;
 }
