@@ -446,13 +446,22 @@ function isRealMd5(md5: unknown): md5 is string {
  */
 function isFileTargetUrl(url: string | null | undefined): boolean {
   if (!url) return false;
+  let parsed: URL;
   let path: string;
   try {
-    path = new URL(url).pathname.toLowerCase();
+    parsed = new URL(url);
+    path = parsed.pathname.toLowerCase();
   } catch {
     return false;
   }
-  if (/\.(html?|php|asp|aspx|jsp|cgi)$/.test(path)) return false;
+  // A LibGen `ads.php?md5=<hash>` / `get.php?md5=<hash>` is a FILE, not a page:
+  // the md5 is the file identity and the app resolves it to a signed CDN link.
+  // Only the PATHNAME was inspected before, so `.php` matched the "page" rule
+  // and every genuine LibGen row was flagged needsBrowser — which is how 14 real
+  // EPUBs ended up looking browser-only while real reader pages were trusted.
+  if (/[?&](md5|key)=/.test(parsed.search)) return true;
+  if (/\.php$/.test(path)) return false;
+  if (/\.(html?|asp|aspx|jsp|cgi)$/.test(path)) return false;
   if (/(^|\/)(slow_?download|details|viewtopic|search|book)(\/|$)/.test(path)) {
     if (!/\/download\//.test(path)) return false;
   }

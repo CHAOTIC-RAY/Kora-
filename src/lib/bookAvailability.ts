@@ -29,6 +29,11 @@ export interface AvailabilityBook {
   isNYTBestseller?: boolean;
   audiobookSourceUrl?: string | null;
   audiobookTracks?: unknown[] | null;
+  /**
+   * Set by the Worker when `downloadUrl` is a WEB PAGE (needs a real browser or
+   * login) rather than a file. Such a row must not be presented as downloadable.
+   */
+  needsBrowser?: boolean;
   variants?: AvailabilityBook[] | null;
 }
 
@@ -51,15 +56,49 @@ const ARCHIVE_SEARCH_SOURCES = new Set(["nyt", "google", "goodreads", "audiobook
 
 /** True when this record resolves to something we could fetch a file from. */
 function isDirectlyFetchable(book: AvailabilityBook): boolean {
-  if (typeof book.downloadUrl === "string" && /^https?:\/\//i.test(book.downloadUrl.trim())) return true;
-  if (typeof book.directUrl === "string" && book.directUrl.trim()) return true;
-  // Libgen / Z-Library style catalog rows are addressed by hash, resolved later.
-  if (typeof book.md5 === "string" && book.md5.trim()) return true;
-  if (typeof book.hash === "string" && book.hash.trim()) return true;
-  if (typeof book.iaId === "string" && book.iaId.trim()) return true;
+  const url = typeof book.downloadUrl === "string" ? book.downloadUrl.trim() : "";
+
+  // A real LibGen record: the md5 is the file. It must win before any
+  // needsBrowser reasoning.
+  //
+  // The Worker's `needsBrowser` flag is derived from the URL shape, and a genuine
+  // LibGen hit carries `ads.php?md5=<hash>` — a page shape it therefore flags as
+  // browser-only. Those rows DO download: verified 2026-10-03, an ads.php md5
+  // fetched 2,055,605 B of valid EPUB through the proxy. Trusting the flag
+  // blindly dropped all 14 real EPUBs from the "capture or kill" feed and left
+  // only LibreTexts — strictly worse than before.
+  const hasLibgenId =
+    (typeof book.md5 === "string" && book.md5.trim()) ||
+    (typeof book.hash === "string" && book.hash.trim()) ||
+    (typeof book.iaId === "string" && book.iaId.trim());
+
+  // Authoritative: an id we can resolve to a file, regardless of URL shape.
+  if (hasLibgenId) return true;
+
   if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
   if (Array.isArray(book.audiobookTracks) && book.audiobookTracks.length > 0) return true;
+
+  // A URL we can fetch. Trust the Worker's needsBrowser flag when present...
+  if (book.needsBrowser) return false;
+  // ...and fall back to sniffing when it is not (older cached rows).
+  if (/^https?:\/\//i.test(url) && !needsBrowserUrl(url)) return true;
+  if (typeof book.directUrl === "string" && book.directUrl.trim()) return true;
   return false;
+}
+
+/**
+ * URL shapes that are a page rather than a file.
+ *
+ * Only consulted when the row has no resolvable id and the Worker sent no
+ * `needsBrowser` flag. Extensionless LibreTexts endpoints are treated as files
+ * because they do serve a real `application/pdf`.
+ */
+const FILE_URL_RE =
+  /\.(epub|pdf|mobi|azw3?|djvu|cbz|cbr|zip)(\?|$)|\/(pdf|epub|full|zip)$|get\.php\?[^#]*\bmd5=|ads\.php\?[^#]*\bmd5=|\/download\//i;
+
+function needsBrowserUrl(url: string): boolean {
+  if (/royallib\.com|z-lib\.|\/book\/.+\.html$/i.test(url)) return true;
+  return !FILE_URL_RE.test(url);
 }
 
 function isArchiveSearchable(book: AvailabilityBook): boolean {
