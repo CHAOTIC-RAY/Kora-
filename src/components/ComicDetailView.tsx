@@ -33,6 +33,8 @@ interface ComicDetailViewProps {
   onClose: () => void;
   /** Persist the series in the library so it can be resumed later. */
   onAddToLibrary?: (manga: Manga) => void;
+  /** Series url currently being verified before the library add lands. */
+  verifyingSeriesId?: string | null;
   /** Progress keyed by `pluginId:url`, so resume survives a reload. */
   progress?: Record<string, { chapterIndex: number; pageNumber: number; totalPages: number }>;
 }
@@ -93,6 +95,7 @@ export default function ComicDetailView({
   book,
   onClose,
   onAddToLibrary,
+  verifyingSeriesId,
   progress = {},
 }: ComicDetailViewProps) {
   const [plugin, setPlugin] = useState<SourcePlugin | null>(null);
@@ -495,15 +498,27 @@ export default function ComicDetailView({
               the network and never touches a local archive, so repeating them
               here would describe a decision the user has not made yet. */}
 
-          {onAddToLibrary && manga && (
+          {onAddToLibrary && manga && (() => {
+            // The add is verified against the live source before it lands, so
+            // the button reflects that. Without this the tap looks like it did
+            // nothing for a second or two and users tap it twice.
+            const verifying = verifyingSeriesId === manga.url;
+            return (
             <button
-              onClick={() => onAddToLibrary(manga)}
-              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:border-kindle-accent/50 transition"
+              onClick={() => !verifying && onAddToLibrary(manga)}
+              disabled={verifying}
+              aria-busy={verifying}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-kindle-border text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:border-kindle-accent/50 transition disabled:opacity-60 disabled:cursor-wait"
             >
-              <Download className="w-3.5 h-3.5" />
-              Save to library
+              {verifying ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              {verifying ? "Checking series…" : "Save to library"}
             </button>
-          )}
+            );
+          })()}
 
           {/* 2. CHAPTER_HEADER */}
           {totalChapters > 0 && (

@@ -8,7 +8,7 @@ import { filterDownloadableBooks } from "../lib/bookAvailability";
 import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { getDiscoverablePlugins, isUnreadableSource } from "../lib/sources/store";
+import { getDiscoverablePlugins, getInstalledPlugins, isUnreadableSource } from "../lib/sources/store";
 import ComicDetailView from "./ComicDetailView";
 import { createSourceClient } from "../lib/sources/client";
 import { resolveBookFileUrl } from "../lib/sources/bookFile";
@@ -375,6 +375,8 @@ function DiscoverView({
    * it must not share that modal.
    */
   const [comicBook, setComicBook] = useState<any | null>(null);
+  /** Series url currently being verified before a library add, or null. */
+  const [verifyingSeriesId, setVerifyingSeriesId] = useState<string | null>(null);
 
   // A series opened from the Library arrives as an entry rather than a
   // search result. Seed it into the same slot a tapped result uses, then
@@ -1806,20 +1808,75 @@ function DiscoverView({
     } as BookMetadata;
   };
 
+  /**
+   * Verify a series is actually readable BEFORE adding it to the library.
+   *
+   * Adding first and downloading later is how a series ended up in the library
+   * with zero chapters: the user tapped save, walked away, and minutes later
+   * every mirror had failed. Books and audiobooks already add on success;
+   * manga did not.
+   *
+   * The check is deliberately shallow — first chapter, first few pages — so it
+   * costs one listing fetch plus one page fetch. That is the same evidence the
+   * registry's readability gate uses, and it is the only place the app can
+   * catch this before the entry exists.
+   */
+  const verifySeriesReadable = async (
+    manga: any,
+    signal?: AbortSignal
+  ): Promise<{ ok: boolean; reason?: string; chapters?: number }> => {
+    const sourceId = manga?.sourceId || comicBook?.sourceId;
+    const plugin = getInstalledPlugins().find((p) => p.id === sourceId);
+    if (!plugin) return { ok: false, reason: "That source is no longer installed." };
+
+    try {
+      const client = createSourceClient(plugin);
+      const chapters = await client.chapters(manga);
+      if (!chapters.length) {
+        return { ok: false, reason: "That series has no chapters at this source." };
+      }
+      // One page from the first chapter: a source can list chapters and still
+      // serve no images, which is exactly the failure this guards against.
+      const pages = await client.pages(chapters[0], manga);
+      if (!pages.length) {
+        return {
+          ok: false,
+          reason: "That series lists chapters but the first one has no pages.",
+        };
+      }
+      return { ok: true, chapters: chapters.length };
+    } catch (err: any) {
+      return {
+        ok: false,
+        reason: "Could not reach that source to check the series.",
+      };
+    }
+  };
+
   const handleAddMangaToLibrary = async (manga: any) => {
     const entry = buildMangaLibraryEntry(manga, comicBook);
+    setVerifyingSeriesId(String(manga?.url ?? entry.id));
     try {
+      const check = await verifySeriesReadable(manga);
+      if (!check.ok) {
+        toast.error(`Could not add "${entry.title}". ${check.reason}`, { duration: 6000 });
+        return;
+      }
       // Same order as the ebook and audiobook saves: persist, then tell the
       // app. A throw here reaches the user as a real error rather than a
       // success toast over a library that does not have the book.
       await syncBookToCloud(userId, entry);
       onBookAdded(entry);
-      toast.success(`Added "${entry.title}" to library`);
+      toast.success(`Added "${entry.title}" to library`, {
+        icon: `${check.chapters} chapters`,
+      });
     } catch (err) {
       console.error("Failed to save manga to library:", err);
       toast.error(
         `Could not save "${entry.title}" to your library. Sign in and try again.`
       );
+    } finally {
+      setVerifyingSeriesId(null);
     }
   };
 
@@ -4780,6 +4837,7 @@ function DiscoverView({
             book={comicBook}
             onClose={() => setComicBook(null)}
             onAddToLibrary={handleAddMangaToLibrary}
+            verifyingSeriesId={verifyingSeriesId}
           />,
           document.body
         )}
