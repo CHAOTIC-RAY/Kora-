@@ -9,16 +9,20 @@
 // sole search relay and returns signed links whose `key` expires; when it does,
 // we must mint a fresh one instead of blindly retrying the dead URL.
 
+// Only mirrors that were observed serving a signed key on 2026-10-03.
+//
+// Four of the original nine (`.is`, `.rs`, `.st`, `.gs`) no longer answer: each
+// hung for the full request budget and returned nothing, and `libgen.bz` returns
+// HTTP 500. That matters more than dead weight — every host is raced at once, so
+// each hanging one consumed budget and made the whole race intermittently fail.
+// With them present the caller fell back to a bare "search Rave" link roughly one
+// call in six. The remaining four all answered with a valid signed key, in
+// 1.7s-5.2s.
 const LIBGEN_SIGNED_HOSTS = [
   "libgen.li",
   "libgen.vg",
   "libgen.la",
-  "libgen.bz",
   "libgen.gl",
-  "libgen.gs",
-  "libgen.st",
-  "libgen.is",
-  "libgen.rs",
 ];
 
 const LIBGEN_UA =
