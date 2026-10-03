@@ -1491,11 +1491,38 @@ export default function App() {
     }
   }
 
-  async function startBackgroundDownload(
+  /**
+ * How long a mirror may take to deliver its FIRST byte before it is treated as
+ * dead and the next one is tried.
+ *
+ * Sized from measurement: a mirror that answers and then stalls leaves the
+ * stream reader blocked forever — no error, no progress, and the existing retry
+ * logic never fires because nothing rejects. 25s is comfortably above the
+ * ~3.9s the slowest healthy mirror took, and far below the several minutes a
+ * user will sit watching a frozen progress bar before assuming it broke.
+ *
+ * Only applies while zero bytes have arrived, so a slow-but-live transfer is
+ * never cut off.
+ */
+const STALL_TIMEOUT_MS = 25000;
+
+async function startBackgroundDownload(
     book: any,
     mirrors: any | any[],
     variant: any,
-    options?: { reuseDownloadId?: string; skipServiceWorker?: boolean }
+    options?: {
+      reuseDownloadId?: string;
+      skipServiceWorker?: boolean;
+      /**
+       * Fired once, on the first mirror that actually delivers bytes.
+       *
+       * The library entry is only worth creating once a download is proven to
+       * be real: a mirror can answer 200 with a plausible Content-Length and
+       * then stall, and an entry created at that point is a library item the
+       * user can never open. Receives the running byte count and the total.
+       */
+      onFirstBytes?: (received: number, total: number) => void;
+    }
   ) {
     const rawMirrors = Array.isArray(mirrors) ? mirrors : [mirrors];
     const mirrorList = expandDownloadMirrors(rawMirrors.filter(Boolean), variant);
@@ -1635,6 +1662,10 @@ export default function App() {
         let contentDisposition = "";
         const maxStreamRetries = 4;
         let streamDone = false;
+        // Per-mirror: set once this mirror has actually delivered bytes, and
+        // reset for the next mirror so a dead one cannot inherit the previous
+        // mirror's proof.
+        let verifiedBytes = false;
 
         for (let attempt = 0; attempt < maxStreamRetries && !streamDone; attempt++) {
           const headers: Record<string, string> = {};
@@ -1643,10 +1674,25 @@ export default function App() {
           }
           let response: Response;
           try {
-            response = await fetch(proxyUrl, {
-              signal: abortController.signal,
-              headers,
-            });
+            // A mirror that accepts the connection and then never sends a byte
+            // leaves the reader blocked forever: no error, no progress, no
+            // timeout. Without this the UI sits on "downloading" indefinitely
+            // and the user has no idea another mirror is available. The signal
+            // fires only while nothing has arrived, so a slow-but-live transfer
+            // is never cut off — the timer resets on every chunk below.
+            const stallTimer = setTimeout(() => {
+              if (receivedLength === 0) {
+                abortController.abort();
+              }
+            }, STALL_TIMEOUT_MS);
+            try {
+              response = await fetch(proxyUrl, {
+                signal: abortController.signal,
+                headers,
+              });
+            } finally {
+              clearTimeout(stallTimer);
+            }
           } catch (fetchErr: any) {
             if (abortController.signal.aborted) throw fetchErr;
             if (receivedLength > 0 && attempt < maxStreamRetries - 1) {
@@ -1722,6 +1768,18 @@ export default function App() {
               const percent = contentLength > 0
                 ? Math.round((receivedLength / contentLength) * 100)
                 : null;
+
+              // Prove the mirror actually delivers bytes.
+              //
+              // A mirror can answer 200 with a correct Content-Length and then
+              // stall, or trickle so slowly that the user gives up long before
+              // anything useful arrives. Both looked identical to "downloading".
+              // Once real bytes have landed, the download is real and the entry
+              // is worth creating — which is the gate the library add waits on.
+              if (!verifiedBytes && receivedLength > 0) {
+                verifiedBytes = true;
+                options?.onFirstBytes?.(receivedLength, contentLength);
+              }
 
               const now = Date.now();
               if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
