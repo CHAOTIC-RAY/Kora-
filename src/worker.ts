@@ -33,6 +33,7 @@ import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
+import { buildRaveDownloadOptions } from "./lib/raveDownloadOptions";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 import { assertSafeFetchTarget } from "./lib/ssrfGuard";
 import {
@@ -2481,71 +2482,39 @@ export default {
       // Check if this is a real 32-char MD5 or a SHA-256 pseudo-ID (64-char, from IA results)
       const isRealMd5 = !!md5 && /^[a-f0-9]{32}$/i.test(md5);
 
-      let downloadLinks: any[] = [];
+      // PRIMARY + ONLY: Rave Book Search is the sole relay. It aggregates
+      // LibGen, Anna's Archive, Z-Library and Internet Archive and returns
+      // signed direct URLs (LibGen get.php?md5=<h>&key=<t> -> 307 to booksdl.lc).
+      //
+      // The mirror list comes from buildRaveDownloadOptions, shared with the
+      // client and the dev server. That module previously had zero callers: the
+      // Worker kept its own inline copy, so the two lists could drift — which is
+      // the precise failure its header exists to prevent.
+      let downloadLinks: any[] = buildRaveDownloadOptions({
+        md5,
+        iaId,
+        raveDirect,
+        searchQuery: url.searchParams.get("q") || "",
+      }) as any[];
 
-      // PRIMARY + ONLY: use Rave Book Search's real direct-download link.
-      // Rave is the sole relay — it already aggregates LibGen, Anna's Archive,
-      // Z-Library and Internet Archive and returns signed direct URLs
-      // (e.g. LibGen get.php?md5=<h>&key=<t> -> 307 to booksdl.lc CDN).
-      // The Worker no longer contacts LibGen/Z-Library directly.
-      if (raveDirect) {
-        try {
-          const parsed = new URL(raveDirect);
-          const isDirectLink = /get\.php\?md5=.+&key=/.test(parsed.pathname + parsed.search) ||
-                              parsed.hostname.includes("archive.org") ||
-                              parsed.hostname.includes("booksdl.lc") ||
-                              parsed.hostname.includes("annas-archive");
-          if (isDirectLink) {
-            downloadLinks.push({
+      // Rave's signed `key` expires, and search results carry no direct URL at
+      // all (the payload has md5 but no directUrl/raveDirect/iaId). So most of
+      // the time the client can only send an md5 and the builder yields just a
+      // Rave search link. Mint a fresh signed key from that md5 instead of
+      // leaving the user a homepage to click. resolveLibgenSigned races the
+      // mirrors, so this re-resolves rather than retrying a dead URL.
+      if (isRealMd5 && !downloadLinks.some((l) => l.isDirect)) {
+        const signed = await resolveLibgenSigned(md5);
+        if (signed) {
+          downloadLinks = [
+            {
               label: "Rave Direct Download",
-              url: `/api/proxy-file?url=${encodeURIComponent(parsed.toString())}`,
+              url: `/api/proxy-file?url=${encodeURIComponent(signed)}`,
               isDirect: true,
-              sourceId: "rave"
-            });
-          }
-        } catch (_) { /* ignore malformed url */ }
-      }
-
-      if (iaId && downloadLinks.length === 0) {
-        // Internet Archive item with known iaId — proxy through /api/proxy-file.
-        // IA is surfaced via Rave results (iaId), so this still flows through Rave.
-        downloadLinks = [
-          {
-            label: "Internet Archive (Direct Download)",
-            url: `/api/proxy-file?url=${encodeURIComponent(`https://archive.org/details/${iaId}`)}`,
-            isDirect: true
-          },
-          {
-            label: "Internet Archive (Browse Page)",
-            url: `https://archive.org/details/${iaId}`,
-            isDirect: false
-          },
-          {
-            label: "Search Rave for this book",
-            url: `https://ravebooksearch.com/search?q=${encodeURIComponent(url.searchParams.get("q") || md5 || "")}`,
-            isDirect: false,
-            // Flagged as a lookup, not a file, so the UI can hide its download
-            // button. The client skips adding its own Rave row when it sees this.
-            isSearch: true
-          }
-        ];
-      } else if (downloadLinks.length === 0) {
-        // No Rave direct link and no IA id. Hand the user a real search on Rave
-        // — the engine that already aggregates every source — instead of
-        // Anna's Archive, which returned an unscoped homepage and read as a
-        // dead end. Carries the actual book so it lands on the right results.
-        const searchText = url.searchParams.get("q") || "";
-        const raveSearch = `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText || md5 || "")}`;
-        downloadLinks = [
-          {
-            label: searchText
-              ? `Search Rave for "${searchText}"`
-              : "Search Rave for this book",
-            url: searchText ? raveSearch : "https://ravebooksearch.com",
-            isDirect: false,
-            sourceId: "rave"
-          }
-        ];
+              sourceId: "rave",
+            },
+          ];
+        }
       }
 
       return new Response(JSON.stringify({ 
