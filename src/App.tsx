@@ -1513,6 +1513,49 @@ export default function App() {
  * Only applies while zero bytes have arrived, so a slow-but-live transfer is
  * never cut off.
  */
+/**
+ * Does this first chunk look like an HTML page rather than a book file?
+ *
+ * Two signals, because either alone can lie:
+ *  - Content-Type says `text/html`;
+ *  - the bytes themselves begin with `<!DOCTYPE html`, `<html`, or a comment.
+ *
+ * The byte check matters most: an unsigned/expired LibGen link returns the ad
+ * landing page as a 200, and content sniffing alone sometimes sees
+ * `application/octet-stream` from the CDN while the body is still HTML.
+ *
+ * Only inspect the first chunk — a legitimate EPUB can contain "<" bytes later,
+ * and a zip begins `PK`. Kept deliberately small and dependency-free.
+ */
+function looksLikeHtmlPage(chunk: Uint8Array, contentType?: string | null): boolean {
+  if (contentType && /text\/html|application\/xhtml/i.test(contentType)) return true;
+
+  // Scan only the head; chunk boundaries can split a tag but never a short prefix.
+  const n = Math.min(chunk.length, 512);
+  if (n === 0) return false;
+  let head = "";
+  for (let i = 0; i < n; i++) head += String.fromCharCode(chunk[i]);
+  head = head.trimStart().toLowerCase();
+
+  // Real file magic wins outright — never reject a genuine download.
+  // Compare BYTES, not a string cast, because control characters (0x03 in the
+  // zip header, the 7z signature) do not survive a naive escape in source.
+  const b = (i: number) => (i < chunk.length ? chunk[i] : 0);
+  if (b(0) === 0x50 && b(1) === 0x4b) return false;       // zip / epub / cbz
+  if (b(0) === 0x25 && b(1) === 0x50 && b(2) === 0x44) return false; // %PDF
+  if (b(0) === 0x7b && b(1) === 0x5c) return false;        // {\rtf
+  if (b(0) === 0x37 && b(1) === 0x7a && b(2) === 0xbc) return false; // 7z
+  if (b(0) === 0x52 && b(1) === 0x61 && b(2) === 0x72) return false; // Rar
+
+  return (
+    head.startsWith("<!doctype html") ||
+    head.startsWith("<html") ||
+    head.startsWith("<?xml") ||
+    head.startsWith("<!--") ||
+    /<head|<body|<title|<meta\s/i.test(head)
+  );
+  }
+
 const STALL_TIMEOUT_MS = 25000;
 
 async function startBackgroundDownload(
@@ -1703,6 +1746,7 @@ async function startBackgroundDownload(
         // reset for the next mirror so a dead one cannot inherit the previous
         // mirror's proof.
         let verifiedBytes = false;
+        let sniffedMagic = false;
 
         for (let attempt = 0; attempt < maxStreamRetries && !streamDone; attempt++) {
           const headers: Record<string, string> = {};
@@ -1801,6 +1845,26 @@ async function startBackgroundDownload(
               }
               chunks.push(value);
               receivedLength += value.length;
+
+              // Sniff the first chunk for an HTML/ad page before trusting it.
+              //
+              // An expired or unsigned LibGen key answers 200 with ~20KB of
+              // text/html (the ad landing page). Because that is a *successful*
+              // response with plausible bytes, the stream looked healthy: the
+              // download kept going and only surfaced as a failure after the
+              // full stall budget — measured at 103 seconds earlier today. The
+              // bytes are the tell, so check them the moment they arrive and
+              // bail out immediately, letting the caller advance the mirror
+              // ladder instead of waiting.
+              if (!sniffedMagic) {
+                sniffedMagic = true;
+                if (looksLikeHtmlPage(value, contentType)) {
+                  throw new DOMException(
+                    "Mirror returned an HTML page instead of the file",
+                    "HtmlNotFileError"
+                  );
+                }
+              }
 
               const percent = contentLength > 0
                 ? Math.round((receivedLength / contentLength) * 100)

@@ -122,12 +122,23 @@ export async function fetchBinaryWithLibgenMirrors(
             if (binType.includes("text/html")) continue;
             return bin;
           }
-          // Supplied signed link is expired: its HTML has no fresh embedded key.
-          // Mint a brand-new signed key from the md5 and retry that instead.
-          const expiredMd5 = attemptUrl.match(/md5=([a-fA-F0-9]{32})/i)?.[1]?.toLowerCase();
-          if (alreadySigned && expiredMd5) {
-            const fresh = await resolveLibgenSigned(expiredMd5, 8000);
-            if (fresh) {
+          // The HTML is a landing/ad page rather than the file. Two distinct
+          // cases, and BOTH need a fresh key:
+          //
+          //  (a) the URL carried a `key=` that has since expired — its HTML
+          //      embeds no usable link, so mint a new one from the md5;
+          //  (b) the URL is an unsigned landing page (`ads.php?md5=`, or a bare
+          //      `get.php?md5=` with no key) — Rave returns exactly this shape,
+          //      and it was never signed in the first place, so the old
+          //      `alreadySigned` guard skipped the repair and the request fell
+          //      through to "all mirrors failed". Verified 2026-10-03: an
+          //      `ads.php?md5=649CBE…` returns 20,872 B of text/html.
+          //
+          // Re-mint on either. The md5 is all that is needed either way.
+          const landingMd5 = attemptUrl.match(/md5=([a-fA-F0-9]{32})/i)?.[1]?.toLowerCase();
+          if (landingMd5) {
+            const fresh = await resolveLibgenSigned(landingMd5, 8000);
+            if (fresh && fresh !== attemptUrl) {
               const bin = await fetch(fresh, {
                 headers: {
                   ...headers,

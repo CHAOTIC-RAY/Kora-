@@ -28,6 +28,38 @@ const LIBGEN_SIGNED_HOSTS = [
 const LIBGEN_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
 
+/**
+ * Is this LibGen URL a landing/ad page rather than a file endpoint?
+ *
+ * Rave returns `https://libgen.la/ads.php?md5=<32-hex>` as a search result's
+ * `downloadUrl`. That page renders an ad and only *links* onward to a signed
+ * `get.php`; fetched directly it answers 200 with ~20KB of `text/html`
+ * (verified 2026-10-03), which reads as a successful download and then fails as
+ * a book.
+ *
+ * The one exception is a signed link: `get.php?md5=…&key=…` 307s to the CDN and
+ * genuinely serves the file, so it must not be treated as a landing page.
+ */
+export function isLibgenLandingPage(url: string | null | undefined): boolean {
+  if (!url) return false;
+  let decoded = url;
+  try {
+    // The URL is usually nested inside a /api/proxy-file?url=... wrapper.
+    decoded = decodeURIComponent(url);
+  } catch {
+    /* keep the raw value */
+  }
+  const lower = decoded.toLowerCase();
+  if (!/libgen|booksdl/.test(lower)) return false;
+  // Signed => a real file endpoint.
+  if (/[?&]key=/i.test(decoded)) return false;
+  // ads.php is always a landing page.
+  if (lower.includes("ads.php")) return true;
+  // A bare get.php?md5= (no key) lands on the ad page too.
+  if (/get\.php\?[^#]*\bmd5=/i.test(decoded)) return true;
+  return false;
+}
+
 export async function resolveLibgenSigned(
   md5: string,
   // Was 2800ms, which is borderline rather than generous: measured from this

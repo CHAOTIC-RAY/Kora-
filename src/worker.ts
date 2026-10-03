@@ -32,7 +32,7 @@ import {
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
-import { resolveLibgenSigned } from "./lib/libgenSigned";
+import { resolveLibgenSigned, isLibgenLandingPage } from "./lib/libgenSigned";
 import { buildRaveDownloadOptions } from "./lib/raveDownloadOptions";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 import { assertSafeFetchTarget } from "./lib/ssrfGuard";
@@ -2503,7 +2503,18 @@ export default {
       // Rave search link. Mint a fresh signed key from that md5 instead of
       // leaving the user a homepage to click. resolveLibgenSigned races the
       // mirrors, so this re-resolves rather than retrying a dead URL.
-      if (isRealMd5 && !downloadLinks.some((l) => l.isDirect)) {
+      //
+      // The condition is "no GENUINELY direct link", not "no direct link".
+      // Rave hands back `downloadUrl = libgen.la/ads.php?md5=<32-hex>` — an ad
+      // landing page that buildRaveDownloadOptions can mark isDirect — so the
+      // old `!some(l => l.isDirect)` guard was satisfied and the repair never
+      // ran. The user was then offered a "Direct Download" that resolved to
+      // ~20KB of HTML (verified 2026-10-03) once tapped. A landing page is not
+      // a file, so it must not suppress re-minting.
+      const hasGenuineDirect = downloadLinks.some(
+        (l) => l.isDirect && !isLibgenLandingPage(l.url)
+      );
+      if (isRealMd5 && !hasGenuineDirect) {
         const signed = await resolveLibgenSigned(md5);
         if (signed) {
           downloadLinks = [
