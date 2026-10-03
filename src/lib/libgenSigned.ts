@@ -75,23 +75,33 @@ export async function resolveLibgenSigned(
 ): Promise<string> {
   const tryHost = async (host: string): Promise<string> => {
     for (const proto of ["https", "http"] as const) {
-      try {
-        const res = await fetch(`${proto}://${host}/get.php?md5=${md5}`, {
-          headers: { "User-Agent": LIBGEN_UA },
-          redirect: "follow",
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (!res.ok) continue;
-        const html = await res.text();
-        const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
-        if (!m) continue;
-        return `${proto}://${host}/${m[0]}`;
-      } catch {
-        /* try next proto */
+      // `ads.php` is the page that still embeds a live signed link. A bare
+      // `get.php?md5=` (no key) now answers 307 with an EMPTY body — verified
+      // 2026-10-03 — so scraping it yields nothing and the caller is handed a
+      // dead link. Try ads.php first, then get.php as a fallback.
+      for (const page of ["ads.php", "get.php"] as const) {
+        try {
+          const res = await fetch(`${proto}://${host}/${page}?md5=${md5}`, {
+            headers: { "User-Agent": LIBGEN_UA },
+            redirect: "follow",
+            signal: AbortSignal.timeout(timeoutMs),
+          });
+          if (!res.ok) continue;
+
+          const html = await res.text();
+          // An empty body means we followed a redirect to nothing useful.
+          if (!html) continue;
+
+          const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
+          if (!m) continue;
+          return `${proto}://${host}/${m[0]}`;
+        } catch {
+          /* try next page / proto / host */
+        }
       }
     }
     throw new Error(`libgen ${host} no signed key`);
-  };
+    };
 
   try {
     return await Promise.any(LIBGEN_SIGNED_HOSTS.map(tryHost));
