@@ -3104,6 +3104,25 @@ function DiscoverView({
         const contentLength = response.headers.get('Content-Length');
         const total = contentLength ? parseInt(contentLength, 10) : 0;
         let loaded = 0;
+        // Report progress even without Content-Length. A 30MB LibGen file
+        // arrives at roughly 0.26MB/s, so it legitimately takes ~2 minutes;
+        // with `total === 0` the old code updated nothing for the whole
+        // transfer and the UI looked hung. Without a total we show loaded
+        // megabytes and a moving step label instead of a percentage.
+        let lastReport = 0;
+        const reportProgress = (force = false) => {
+          const now = performance.now();
+          // Throttle to ~4/s so a fast stream cannot flood React state.
+          if (!force && now - lastReport < 250) return;
+          lastReport = now;
+          setDownloadProgress({
+            step: total
+              ? `downloading (Mirror ${index + 1}/${directMirrors.length})`
+              : `downloading ${(loaded / 1048576).toFixed(1)} MB (Mirror ${index + 1}/${directMirrors.length})`,
+            percent: total ? Math.min(Math.floor((loaded / total) * 100), 95) : 30,
+            error: null
+          });
+        };
 
         const reader = response.body?.getReader();
         if (!reader) {
@@ -3116,15 +3135,7 @@ function DiscoverView({
           if (done) break;
           chunks.push(value);
           loaded += value.length;
-          
-          if (total) {
-            const percent = Math.floor((loaded / total) * 100);
-            setDownloadProgress({
-              step: `downloading (Mirror ${index + 1}/${directMirrors.length})`,
-              percent: Math.min(percent, 95),
-              error: null
-            });
-          }
+          reportProgress();
         }
 
         setDownloadProgress({ 
