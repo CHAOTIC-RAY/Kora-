@@ -124,3 +124,82 @@ export function isRelevantMirrorResult(input: RelevanceInput): boolean {
 
   return false;
 }
+
+/**
+ * Author-aware strict match for an edition list.
+ *
+ * The bug this fixes: the edition filter called
+ * `titlesRoughlyMatch(title, b.title, author)` and passed only the BOOK's
+ * author, never the CANDIDATE's. `titlesRoughlyMatch` treats "expected author
+ * present but not found in the actual text" as an author mismatch and demands
+ * 60% title-word overlap. Since the actual string passed in was only a title,
+ * that mismatch fired on EVERY result.
+ *
+ * For "Vince Flynn Capture or Kill" (author "Don Bentley") against a real LibGen
+ * edition "Capture or Kill" by "Vince Flynn; Don Bentley":
+ *
+ *   expected words = [vince, flynn, capture, kill]   (4)
+ *   actual words   = [capture, kill]                 (2)
+ *   overlap 2, required ceil(4 * 0.6) = 3           -> REJECTED
+ *
+ * so all three genuine EPUBs were discarded and the modal fell through to a
+ * RoyalLib HTML page. Two things are wrong and both are handled here:
+ *
+ *  1. The candidate's own author must be compared. When it corroborates the
+ *     book's author (co-author, "X; Y" forms), there is no mismatch and the
+ *     title is compared on its own — no penalty.
+ *  2. When the book title itself contains the author's name ("Vince Flynn
+ *     Capture or Kill"), those words can never appear in a published title, so
+ *     they must not count toward the overlap requirement.
+ */
+export function matchesEditionStrictly(input: {
+  title?: string | null;
+  author?: string | null;
+  candidateTitle?: string | null;
+  candidateAuthor?: string | null;
+}): boolean {
+  const { title, author, candidateTitle, candidateAuthor } = input;
+  if (!candidateTitle) return false;
+  if (!title) return true;
+
+  // Remove author words from BOTH sides before comparing.
+  //
+  // The stored title is "Vince Flynn Capture or Kill" — the series author is
+  // part of it — while every published edition is titled "Capture or Kill …".
+  // Those words can never appear in a real title, so leaving them in makes the
+  // overlap ratio unreachable and rejects the genuine editions. Strip author
+  // names from both sides first, then compare titles alone.
+  const authorWords = new Set<string>();
+  for (const source of [author, candidateAuthor]) {
+    for (const w of norm(source).split(" ")) {
+      if (w.length > 2) authorWords.add(w);
+    }
+  }
+  const stripAuthors = (s: string): string => {
+    let out = s;
+    for (const w of authorWords) {
+      out = out.replace(new RegExp(`\\b${w}\\b`, "gi"), " ");
+    }
+    return out.replace(/\s+/g, " ").trim();
+  };
+
+  const bareTitle = stripAuthors(title);
+  const bareCandidate = stripAuthors(candidateTitle);
+  // If stripping leaves nothing (the title IS the author's name), fall back.
+  const ref = bareTitle || title;
+  const cand = bareCandidate || candidateTitle;
+
+  const nAuthor = norm(author);
+  const nCandAuthor = norm(candidateAuthor);
+  const authorsDisagree =
+    Boolean(nAuthor && nCandAuthor) &&
+    !(nCandAuthor.includes(nAuthor) || nAuthor.includes(nCandAuthor));
+
+  if (authorsDisagree) {
+    // A genuinely different author writing the same title is the classic case
+    // worth rejecting ("Capture or Kill" by Agatha Christie).
+    return false;
+  }
+
+  return titlesRoughlyMatch(ref, cand);
+}

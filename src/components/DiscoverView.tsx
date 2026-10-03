@@ -23,7 +23,7 @@ import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
 import { titlesRoughlyMatch } from "../lib/audiobookScraper";
-import { isRelevantMirrorResult } from "../lib/mirrorRelevance";
+import { isRelevantMirrorResult, matchesEditionStrictly } from "../lib/mirrorRelevance";
 import {
   createSearchSignal,
   abortActiveSearch,
@@ -1105,8 +1105,18 @@ function DiscoverView({
       // "The Butt: An Exit Strategy" — and because those come back as real
       // editions, the Royallib/LibreTexts mirror for them hands the user the
       // wrong book. Only keep editions whose title actually matches.
-      const strictMatches = rawBooks.filter(
-        (b: any) => titlesRoughlyMatch(title, b.title || "", author || undefined)
+      // Compare author-AWARE, passing the CANDIDATE's author too. The old call
+      // passed only the book's author, so titlesRoughlyMatch saw an author
+      // mismatch on every result and demanded 60% title-word overlap — which
+      // discarded all three genuine "Capture or Kill" EPUBs and left the modal
+      // with a RoyalLib HTML page. See matchesEditionStrictly.
+      const strictMatches = rawBooks.filter((b: any) =>
+        matchesEditionStrictly({
+          title,
+          author,
+          candidateTitle: b.title,
+          candidateAuthor: b.author,
+        })
       );
 
       // Fall back to the raw list only if the strict match found nothing —
