@@ -3329,9 +3329,9 @@ export default function App() {
 
   // Handle book selection for reading
   const handleOpenBook = useCallback(async (book: BookMetadata) => {
-    // A series with several volumes opens its detail screen first, the way
-    // Mihon opens a manga rather than jumping into a chapter. A single
-    // volume is still just a book, so it goes straight to the reader.
+    // A series with several volumes opens its detail screen first rather
+    // than jumping straight into a chapter. A single volume is still just
+    // a book, so it goes straight to the reader.
     if (book.kind === "manga" || book.kind === "comic" || book.series?.trim()) {
       const group = findGroupForBook(libraryGroups, book.id);
       if (group && group.total > 1) {

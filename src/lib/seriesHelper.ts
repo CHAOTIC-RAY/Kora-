@@ -237,7 +237,7 @@ export function detectSeriesAcrossLibrary(library: BookMetadata[]): BookMetadata
 /**
  * A library row: either a single book, or a series that owns many volumes.
  *
- * Mihon keeps a Series as a first-class row and hangs chapters off it, so
+ * A Series is kept as a first-class row with its chapters hung off it, so
  * the library shows "Solo Leveling" once rather than once per volume. This
  * is that same shape, derived from what is already in `BookMetadata` rather
  * than a second store, so existing libraries group with no migration.

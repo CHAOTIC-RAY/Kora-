@@ -1,7 +1,7 @@
 /**
  * One page image, decoded at a size the device can survive.
  *
- * The web equivalent of Tachiyomi's `subsampling-scale-image-view`. That
+ * The web equivalent of Android's `subsampling-scale-image-view`. That
  * library exists because a 1000x15000 webtoon page decoded at full
  * resolution is a ~60MB RGBA bitmap, and a phone that allocates it can be
  * killed by the OS mid-page-turn. There is no web equivalent of tiling, so

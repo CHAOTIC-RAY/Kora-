@@ -6,7 +6,7 @@
  * to decode the *whole* bitmap before it can paint anything: a
  * 1000x15000 RGBA surface is roughly 60MB of heap, which on a mid-range
  * phone is the difference between a page turn and a tab being killed by
- * the OS. The same problem is why Tachiyomi ships
+ * the OS. The same problem is why Android ships
  * `subsampling-scale-image-view` — it decodes a tile-sized slice of the
  * bitmap rather than the whole thing. There is no web equivalent of
  * tiling, but there is a web equivalent of *not decoding at all*: decode
