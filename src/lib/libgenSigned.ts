@@ -26,7 +26,16 @@ const LIBGEN_UA =
 
 export async function resolveLibgenSigned(
   md5: string,
-  timeoutMs = 2800
+  // Was 2800ms, which is borderline rather than generous: measured from this
+  // machine, libgen.vg — a mirror that reliably returns a valid signed link —
+  // took 1.3s, 1.8s and 3.8s across three calls. At 2.8s the winner was
+  // frequently aborted and the caller fell back to a bare "search Rave" link,
+  // which is the same dead end this function exists to prevent.
+  //
+  // All hosts are raced at once, so a longer budget costs nothing on the happy
+  // path: Promise.any returns as soon as the FIRST one succeeds. This only
+  // lengthens the wait when every mirror is slow or dead.
+  timeoutMs = 7000
 ): Promise<string> {
   const tryHost = async (host: string): Promise<string> => {
     for (const proto of ["https", "http"] as const) {
