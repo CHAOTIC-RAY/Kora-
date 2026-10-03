@@ -3041,7 +3041,20 @@ function DiscoverView({
 
     // Featured/catalog books need an archive search before mirrors exist.
     // Race fast sources instead of blocking on a full multi-source "all" scan.
-    if ((activeBook.isNYTBook || activeBook.isGoogleBook || activeBook.source === 'nyt' || activeBook.source === 'google' || activeBook.source === 'goodreads' || activeBook.source === 'audiobook') && (activeBook.searchQuery || activeBook.title)) {
+    //
+    // This block used to be gated on `isNYTBook || isGoogleBook || source ===
+    // 'nyt' | 'google' | ...`, so the search, relevance filter and ranking only
+    // ran for books that arrived from those catalogs. A book discovered any
+    // other way (e.g. an Anna's Archive / Rave result opened straight from
+    // Discover) skipped it entirely and kept whatever `variants[0]` it was
+    // handed — typically a RoyalLib HTML page with no md5. Mirrors are built from
+    // the active variant, so no md5 meant the sheet could only ever offer
+    // "Search open catalogs". That is the bug reported 2026-10-03 for
+    // "Vince Flynn Capture or Kill": editions listed, mirrors empty.
+    //
+    // Search whenever we have a title and no usable variant yet. `variants` may
+    // legitimately be empty, and re-searching an existing list is cheap.
+    if (activeBook.title || activeBook.searchQuery) {
       try {
         const q = activeBook.searchQuery || cleanTitleAndAuthorForEbookSearch(activeBook.title, activeBook.author);
         const searchResult = await searchDownloadVariants(q);
