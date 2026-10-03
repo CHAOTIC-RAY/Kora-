@@ -3046,12 +3046,47 @@ function DiscoverView({
         const q = activeBook.searchQuery || cleanTitleAndAuthorForEbookSearch(activeBook.title, activeBook.author);
         const searchResult = await searchDownloadVariants(q);
         if (searchResult.books.length > 0) {
+          // Filter and rank BEFORE choosing the active variant.
+          //
+          // This used `searchResult.books[0]` — raw API order. Rave returns
+          // RoyalLib HTML pages first for most queries, so the modal opened on a
+          // search page with no md5 and could only ever offer "Search open
+          // catalogs" — even though the same response contained three real
+          // LibGen EPUBs further down. Reported 2026-10-03 for "Vince Flynn
+          // Capture or Kill": editions were listed but the mirrors were a
+          // search page.
+          const TITLE = activeBook.title;
+          const AUTHOR = activeBook.author || undefined;
+          const strict = searchResult.books.filter((b: any) =>
+            matchesEditionStrictly({
+              title: TITLE,
+              author: AUTHOR,
+              candidateTitle: b.title,
+              candidateAuthor: b.author,
+            })
+          );
+          const relaxed = searchResult.books.filter((b: any) =>
+            isRelevantMirrorResult({
+              query: q,
+              bookTitle: TITLE,
+              bookAuthor: AUTHOR,
+              candidateTitle: b.title,
+              candidateAuthor: b.author,
+            })
+          );
+          const usable = strict.length > 0 ? strict : relaxed;
+          // Fall back to the raw list ONLY if relevance rejected everything, so
+          // the sheet is never empty for an unusual title.
+          const chosen = usable.length > 0 ? usable : searchResult.books;
+
+          rankVariants(chosen);
+
           activeBook = {
             ...activeBook,
-            variants: searchResult.books,
-            downloadLinks: searchResult.books
+            variants: chosen,
+            downloadLinks: chosen
           };
-          activeVariant = searchResult.books[0];
+          activeVariant = chosen[0];
           onSelectedBookChange(activeBook);
           setSelectedVariant(activeVariant);
         }
@@ -3750,8 +3785,16 @@ function DiscoverView({
         return;
       }
 
-      // 2. Pick the best result - prioritize those already havingrave source
-      const firstBookResult = searchResult.books.find((b: any) => b.sourceId === "rave") || searchResult.books[0];
+      // 2. Pick the best result — prioritize a Rave-sourced row, then rank.
+      //    Never take raw index 0: Rave returns RoyalLib HTML pages first for
+      //    most queries, and a page with no md5 cannot produce a download link.
+      //    Same defect as the modal's `books[0]`, fixed in 88104b0's follow-up.
+      const ranked = [...searchResult.books];
+      rankVariants(ranked);
+      const firstBookResult =
+        ranked.find((b: any) => b.sourceId === "rave") ||
+        ranked.find((b: any) => b.md5) ||
+        ranked[0];
       
       // 3. Fetch mirrors for this book
       const res = await fetch(`/api/annas-archive/details?md5=${firstBookResult.md5}`);
