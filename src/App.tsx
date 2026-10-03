@@ -1341,8 +1341,17 @@ export default function App() {
       return;
     }
     swDownloadFallbackRef.current.set(downloadId, fallback);
-    toast.loading(`Retrying ${fallback.book.title}…`, { id: downloadId });
-    void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
+    // Advance down the mirror ladder rather than re-hitting whichever host just
+    // failed. See markMirrorTried — without it this list was always the full set.
+    const nextMirrors = untriedMirrors(downloadId, fallback.mirrors);
+    const skipped = fallback.mirrors.length - nextMirrors.length;
+    toast.loading(
+      skipped > 0
+        ? `Retrying ${fallback.book.title} on another mirror…`
+        : `Retrying ${fallback.book.title}…`,
+      { id: downloadId }
+    );
+    void startBackgroundDownload(fallback.book, nextMirrors, fallback.variant, {
       reuseDownloadId: downloadId,
     });
   }, []);
@@ -1524,6 +1533,30 @@ async function startBackgroundDownload(
       onFirstBytes?: (received: number, total: number) => void;
     }
   ) {
+    // Surface "the mirror is actually delivering" on the downloads row.
+    // Without it the sheet shows a 0 KB / Connecting state that is visually
+    // identical whether the mirror is slow or dead.
+    const onFirstBytes = options?.onFirstBytes ?? ((received: number) => {
+      const id = options?.reuseDownloadId;
+      if (!id) return;
+      setGlobalDownloads((prev) => {
+        const updated = prev.map((dl) =>
+          dl.id === id && !dl.verified
+            ? {
+                ...dl,
+                verified: true,
+                verifiedAt: Date.now(),
+                transferred: received >= 1024 * 1024
+                  ? `${(received / 1048576).toFixed(1)} MB`
+                  : `${Math.max(1, Math.round(received / 1024))} KB`,
+              }
+            : dl
+        );
+        persistDownloadsLogNow(updated);
+        return updated;
+      });
+    });
+
     const rawMirrors = Array.isArray(mirrors) ? mirrors : [mirrors];
     const mirrorList = expandDownloadMirrors(rawMirrors.filter(Boolean), variant);
     if (!mirrorList || mirrorList.length === 0) {
@@ -1542,6 +1575,8 @@ async function startBackgroundDownload(
         size: variant.size || "Unknown",
         status: "downloading",
         percent: 0,
+        // Not yet proven: no bytes have arrived from the mirror.
+        verified: false,
         timestamp: Date.now()
       };
 
@@ -1636,7 +1671,9 @@ async function startBackgroundDownload(
             percent: 0,
             speed: "Connecting...",
             eta: "",
-            transferred: attemptLabel
+            transferred: attemptLabel,
+            // A fresh mirror must earn its own proof.
+            verified: false
           } : dl);
           persistDownloadsLogNow(updated);
           return updated;
@@ -2053,6 +2090,16 @@ async function startBackgroundDownload(
         }
         logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error: ${err.message || err}`);
         finalError = err;
+        // Remember this mirror so a later retry skips it.
+        //
+        // This was missing, which quietly defeated the whole ladder: the loop
+        // below advanced through mirrors within a single attempt, but a RETRY
+        // re-derived the full list from scratch, so it re-hit whichever mirror
+        // had just failed — usually the same dead or throttled host — and the
+        // user saw an identical failure. `untriedMirrors` (used by the service
+        // worker watchdog) already existed for exactly this; the foreground
+        // path never fed it.
+        markMirrorTried(downloadId, mirror.url);
         // Proceed to the next mirror if this one failed
       } finally {
         foregroundDownloadAborts.current.delete(downloadId);

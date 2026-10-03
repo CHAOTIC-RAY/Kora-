@@ -230,6 +230,12 @@ export default function DownloadsManager({
                   <p className="text-[10px] text-kindle-text-muted mt-0.5">
                     {dl.author} • {dl.status === "downloading" ? (
                       <span className="inline-flex flex-wrap items-center gap-1.5">
+                        {/* Until bytes arrive, say so plainly. "0 KB" alone is
+                            indistinguishable from a stalled mirror, which is
+                            what the stall guard is for. */}
+                        {!dl.verified && (
+                          <span className="text-kindle-text-muted italic text-[9px]">connecting…</span>
+                        )}
                         <span className="font-mono text-kindle-text font-medium bg-kindle-bg border border-kindle-border/40 px-1.5 py-0.5 rounded text-[9px]">{dl.transferred || "0 KB"}</span>
                         {dl.speed && <span className="text-kindle-accent font-bold font-mono text-[9px] bg-kindle-accent/[0.04] border border-kindle-accent/10 px-1.5 py-0.5 rounded">{dl.speed}</span>}
                         {dl.eta && <span className="text-kindle-text-muted italic text-[9px]">{dl.eta}</span>}
