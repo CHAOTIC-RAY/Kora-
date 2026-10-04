@@ -170,7 +170,14 @@ export default function UnoGame({
     try {
       await transport.initSignaling();
     } catch (err) {
+      // Surface it. A console.warn hid PERMISSION_DENIED from a missing
+      // unoRooms rule for the entire life of this feature, so the lobby opened
+      // looking healthy while signalling could never happen.
       console.warn("Firestore signaling offline, relying on LAN/BroadcastChannel:", err);
+      toast.error(
+        "Online signalling is unavailable — a peer on another network will not be found. " +
+          "Same-Wi-Fi players can still connect."
+      );
     }
 
     setScreen("lobby");
@@ -208,10 +215,15 @@ export default function UnoGame({
       await transport.initSignaling();
     } catch (err) {
       console.warn("Firestore signaling offline, connecting via LAN/BroadcastChannel:", err);
+      toast.error(
+        "Online signalling is unavailable — you can only reach players on this network."
+      );
     }
 
-    // Announce presence
-    transport.send({ type: "JOIN", player: guestPlayer });
+    // No JOIN is sent here: the data channel cannot be open yet, so
+    // transport.send() iterates an empty map and is a silent no-op. The
+    // transport already sends JOIN itself from dc.onopen
+    // (p2pTransport.ts:273), which is the only copy that can actually arrive.
     setScreen("lobby");
     toast.success(`Joined room ${code}!`);
   };
@@ -221,10 +233,15 @@ export default function UnoGame({
     if (!transportRef.current || !transportRef.current.isHost) return;
 
     const host = transportRef.current.localPlayer;
-    // Fill up to 4 players with bots if fewer than 2 human players
-    const currentGuests: UnoPlayer[] = []; // In peer map or state
-    const players: UnoPlayer[] = [host, ...currentGuests];
+    // Real guests only: prefer the transport's OPEN channels, and fall back to
+    // the JOIN roster for a guest whose channel closed a moment ago.
+    const connected = new Set(transportRef.current.connectedPeerIds());
+    const currentGuests: UnoPlayer[] = joinedGuests.filter((g) => connected.has(g.id));
+    const roster = currentGuests.length > 0 ? currentGuests : joinedGuests;
+    const players: UnoPlayer[] = [host, ...roster];
 
+    // Only top up with bots when genuinely alone — a connected human must keep
+    // their own seat rather than being replaced by a Scholar Bot.
     while (players.length < 2) {
       const idx = players.length;
       players.push({
@@ -259,7 +276,31 @@ export default function UnoGame({
   };
 
   // Packet receiver handler
+  /**
+   * Human guests that have joined this host's lobby.
+   *
+   * `launchP2pGame` previously read a hardcoded `const currentGuests = []`, so a
+   * real guest was absent from the engine, its seat was backfilled with a CPU
+   * bot, and the SYNC_STATE broadcast iterated a player list containing no human
+   * — meaning `sendToPeer` was never called and the guest received nothing.
+   * The guest has always sent `JOIN` (types.ts:62) but nothing handled it.
+   */
+  const [joinedGuests, setJoinedGuests] = useState<UnoPlayer[]>([]);
+
+  // Only the host collects a roster; a guest's list stays empty, so the lobby
+  // must not claim a peer count it cannot actually see.
+  const isP2pHost = transportRef.current?.isHost ?? false;
+
   const handleP2pPacket = (packet: UnoPacket, senderId: string) => {
+    if (packet.type === "JOIN") {
+      // De-dupe by player id: the guest sends JOIN on channel open, and a
+      // retry after a reconnect would otherwise duplicate the seat.
+      setJoinedGuests((prev) =>
+        prev.some((g) => g.id === packet.player.id) ? prev : [...prev, packet.player]
+      );
+      playUnoSound("card_play");
+      return;
+    }
     if (packet.type === "SYNC_STATE") {
       setPublicState(packet.state);
       setMyHand(packet.yourHand);
@@ -653,7 +694,12 @@ export default function UnoGame({
               <div className="w-full p-4 rounded-2xl bg-kindle-card border border-kindle-border text-left space-y-3">
                 <div className="flex items-center justify-between text-xs font-bold text-kindle-text pb-2 border-b border-kindle-border/60">
                   <span>Connected Players</span>
-                  <span className="text-[10px] text-kindle-accent font-mono">LAN Peer Ready</span>
+                  {/* Was a hardcoded "LAN Peer Ready" while rendering only
+                      yourself, so a zero-peer lobby looked identical to a
+                      healthy one. Report the real roster. */}
+                  <span className="text-[10px] text-kindle-accent font-mono">
+                    {isP2pHost ? `${joinedGuests.length + 1} connected` : "Waiting for host"}
+                  </span>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs text-kindle-text">
@@ -663,6 +709,25 @@ export default function UnoGame({
                     </span>
                     <span className="text-[10px] uppercase font-bold text-kindle-text-muted">Host</span>
                   </div>
+                  {joinedGuests.map((g) => (
+                    <div
+                      key={g.id}
+                      className="flex items-center justify-between text-xs text-kindle-text"
+                    >
+                      <span className="font-medium flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        {g.name}
+                      </span>
+                      <span className="text-[10px] uppercase font-bold text-kindle-text-muted">
+                        Player
+                      </span>
+                    </div>
+                  ))}
+                  {isP2pHost && joinedGuests.length === 0 && (
+                    <p className="text-[11px] text-kindle-text-muted pt-1">
+                      Waiting for another player to join with this code…
+                    </p>
+                  )}
                 </div>
               </div>
 

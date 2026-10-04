@@ -43,6 +43,27 @@ service cloud.firestore {
       }
     }
 
+    // Kora Uno — P2P multiplayer. MISSING until 2026-10-04, which is why Uno P2P
+    // never worked: every path below fell through to the catch-all deny below and
+    // the host's very first `setDoc` threw PERMISSION_DENIED, which
+    // UnoGame.tsx swallowed with a console.warn — so the lobby opened looking
+    // healthy while signalling could never happen.
+    //
+    // Deliberately NOT a copy of the Scrabble/battle rules. Those require
+    // `roomId.matches('[0-9]+')`, but Uno generates 6 alphanumeric characters
+    // from "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" (p2pTransport.ts:19) — a numeric
+    // rule would reject "AB3X9Z". Hence the 4-16 length-only test.
+    //
+    // The subcollection match is a wildcard rather than the p2pRooms shape
+    // (`iceCol == 'hostIce' || 'guestIce'`) because Uno writes per-peer ICE
+    // documents — hostIce_{guestId} and guestIce_{uid} (p2pTransport.ts:167,216).
+    match /unoRooms/{roomId} {
+      allow read, create, update, delete: if roomId.size() >= 4 && roomId.size() <= 16;
+      match /{sub}/{subId} {
+        allow read, create, update, delete: if roomId.size() >= 4 && roomId.size() <= 16;
+      }
+    }
+
     // Community Wattpad-style books, comments, and likes
     match /communityBooks/{bookId} {
       allow read: if true;

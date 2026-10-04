@@ -57,6 +57,21 @@ export class UnoP2pTransport {
     }
   }
 
+  /**
+   * Ids of peers whose data channel is open.
+   *
+   * The host needs this to know WHO is actually connected. `launchP2pGame` used
+   * to hardcode an empty guest list, so it backfilled the human guest's seat with
+   * a CPU bot and the SYNC_STATE broadcast loop iterated a player list that
+   * contained no human — so `sendToPeer` was never called and the guest received
+   * nothing.
+   */
+  public connectedPeerIds(): string[] {
+    return Array.from(this.dataChannels.entries())
+      .filter(([, dc]) => dc.readyState === "open")
+      .map(([id]) => id);
+  }
+
   public onPacket(handler: PacketHandler): () => void {
     this.listeners.add(handler);
     return () => this.listeners.delete(handler);

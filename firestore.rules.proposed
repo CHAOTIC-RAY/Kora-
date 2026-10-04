@@ -139,7 +139,19 @@ service cloud.firestore {
       }
     }
 
-    // Online Scrabble — ephemeral rooms.
+    // Kora Uno P2P. Was missing entirely, so every unoRooms access fell through
+    // to the catch-all deny and the host's first setDoc threw
+    // PERMISSION_DENIED. Alphanumeric 6-char codes, per-peer ICE
+    // subcollections — hence length-only plus a wildcard sub match.
+    match /unoRooms/{roomId} {
+      allow get, list, create, update, delete:
+        if roomId.size() >= 4 && roomId.size() <= 16;
+      match /{sub}/{subId} {
+        allow get, list, create, update, delete:
+          if roomId.size() >= 4 && roomId.size() <= 16;
+      }
+    }
+
     match /scrabbleRooms/{roomId} {
       allow get, list, create, update, delete:
         if roomId.size() == 6 && roomId.matches('[0-9]+');
