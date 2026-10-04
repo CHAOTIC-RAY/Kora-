@@ -521,8 +521,25 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
       size = r.size;
     }
 
-    const isbnMatch = (r.title || "").match(/(\d{10,13})/);
-    const isbn = isbnMatch ? isbnMatch[1] : null;
+    // Prefer a real ISBN field; fall back to digits embedded in the title.
+    //
+    // The previous version ONLY scraped /(\d{10,13})/ out of the title, so it
+    // missed the `isbn` field Rave actually returns (measured 2026-10-03:
+    // "Kill or capture: the war on terror" carries isbn 9780547547893 and the
+    // title contains no digits at all). Without an ISBN the client cannot do an
+    // exact-identifier metadata lookup, which is what stops the modal swapping
+    // to a different book.
+    const rawIsbn =
+      r.isbn ||
+      r.ISBN ||
+      r.isbn13 ||
+      r.isbn10 ||
+      (Array.isArray(r.industryIdentifiers)
+        ? r.industryIdentifiers.find((i: any) => /^ISBN/i.test(i?.type || ""))?.identifier
+        : null);
+    const titleDigits = (r.title || "").match(/(\d{10,13})/);
+    const isbnCandidate = String(rawIsbn || titleDigits?.[1] || "").replace(/[^0-9Xx]/g, "");
+    const isbn = /^\d{9}[\dXx]$/.test(isbnCandidate) ? isbnCandidate : null;
 
     let coverUrl = r.coverUrl || "";
     if (!coverUrl && isbn && /^\d{10,13}$/.test(isbn)) {
@@ -2575,6 +2592,54 @@ export default {
     }
 
     // 5. Open Library Search
+    if (path === "/api/open-library/isbn") {
+      // Exact-identifier metadata lookup.
+      //
+      // An ISBN names exactly one edition, which removes the guesswork from a
+      // keyword search. This matters because the stored title often contains the
+      // author's name ("Vince Flynn Capture or Kill"), so `intitle:` + `inauthor:`
+      // cannot both be satisfied on Google Books and it falls back to loosely
+      // matched items — which is how the modal ended up showing a completely
+      // different book about a minute after it opened (reported 2026-10-03).
+      try {
+        const isbn = (url.searchParams.get("isbn") || "").replace(/[^0-9Xx]/g, "");
+        if (!/^\d{9}[\dXx]$/.test(isbn)) {
+          return new Response(JSON.stringify({ error: "invalid isbn" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+          });
+        }
+        const res = await fetch(
+          `https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`
+        );
+        const data = await res.json();
+        const rec = data?.[`ISBN:${isbn}`] || null;
+        return new Response(
+          JSON.stringify({
+            isbn,
+            found: Boolean(rec),
+            title: rec?.title || null,
+            authors: (rec?.authors || []).map((a: any) => a?.name).filter(Boolean),
+            description:
+              typeof rec?.description === "string"
+                ? rec.description
+                : rec?.description?.value || null,
+            publishers: rec?.publishers || [],
+            publishDate: rec?.publish_date || null,
+            subjects: (rec?.subjects || []).slice(0, 8),
+            numberOfPages: rec?.number_of_pages || null,
+            coverUrl: rec?.cover?.large || rec?.cover?.medium || rec?.cover?.small || null,
+          }),
+          { headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
+        );
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message || "isbn lookup failed" }), {
+          status: 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+        });
+      }
+    }
+
     if (path === "/api/open-library/search") {
       try {
         const q = url.searchParams.get("q");

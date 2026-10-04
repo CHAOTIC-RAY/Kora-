@@ -1895,7 +1895,15 @@ function DiscoverView({
     } else {
       setFeaturedBookDetails(null);
     }
-    fetchFeaturedMetadata(book.title, book.author || "", undefined, book.description || "");
+    // Pass the ISBN through so the lookup is exact-identifier based instead of
+    // a keyword guess (see fetchFeaturedMetadata).
+    fetchFeaturedMetadata(
+      book.title,
+      book.author || "",
+      undefined,
+      book.description || "",
+      book.isbn13 || book.isbn10 || book.isbn || selectedFeaturedBook?.isbn || null
+    );
   };
 
   const closeBookDetail = () => {
@@ -2139,11 +2147,84 @@ function DiscoverView({
     }
   };
 
+  /**
+   * The title/author the modal must display.
+   *
+   * `featuredBookDetails` arrives from an async Google/Open Library lookup, and
+   * that lookup can resolve to a DIFFERENT book — a Chinese-language edition
+   * replaced a Vince Flynn thriller about a minute after the modal opened. So
+   * the fetched identity is only adopted when it is verifiably the same book;
+   * otherwise the list record (which the user actually tapped) stays.
+   */
+  const displayIdentity = (): { title: string; author: string } => {
+    const base = selectedFeaturedBook || {};
+    const baseTitle = base.title || "";
+    const baseAuthor = base.author || "";
+    const d = featuredBookDetails;
+    if (d?.title && metadataIsSameBook(baseTitle, baseAuthor, {
+      title: d.title,
+      authors: d.authors,
+    })) {
+      return { title: d.title, author: (d.authors && d.authors[0]) || baseAuthor };
+    }
+    return { title: baseTitle, author: baseAuthor };
+  };
+
+  /**
+   * How well a metadata record matches the book on screen (higher is better).
+   *
+   * Used to rank Google/Open Library candidates before any of them is allowed to
+   * overwrite the modal's title.
+   */
+  const metadataRelevance = (title: string, author: string, info: any): number => {
+    if (!info) return -1;
+    let score = 0;
+    if (matchesEditionStrictly({
+      title, author,
+      candidateTitle: info.title,
+      candidateAuthor: Array.isArray(info.authors) ? info.authors.join(" ") : info.authors,
+    })) {
+      score += 10;
+    }
+    const t = (info.title || "").toLowerCase();
+    const want = (title || "").toLowerCase();
+    if (t && want && (t === want || t.includes(want) || want.includes(t))) score += 5;
+    // A matching language is a weak signal that the edition is the right one.
+    if (info.language && want && !want.includes(info.language.toLowerCase().slice(0, 2))) {
+      // Different language is suspicious but not disqualifying (translations).
+    } else if (info.language) {
+      score += 1;
+    }
+    return score;
+  };
+
+  /** True when a metadata record is plausibly the same book as the one on screen. */
+  const metadataIsSameBook = (title: string, author: string, info: any): boolean => {
+    if (!info?.title) return false;
+    if (matchesEditionStrictly({
+      title, author,
+      candidateTitle: info.title,
+      candidateAuthor: Array.isArray(info.authors) ? info.authors.join(" ") : info.authors,
+    })) return true;
+    // Accept a clear title match even when the author differs (co-author,
+    // " ed." suffixes, missing author on the catalog row).
+    const norm = (s?: string | null) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const a = norm(title);
+    const b = norm(info.title);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const at = new Set(a.split(" "));
+    const bt = b.split(" ");
+    const overlap = bt.filter((w) => at.has(w)).length;
+    return bt.length > 0 && overlap / bt.length >= 0.8;
+  };
+
   const fetchFeaturedMetadata = async (
     title: string,
     author: string,
     forceSource?: "google" | "nyt" | "openlibrary",
-    seedDescriptionArg?: string
+    seedDescriptionArg?: string,
+    isbn?: string | null
   ) => {
     const gen = detailFetchGen.current;
     const isStale = () => gen !== detailFetchGen.current;
@@ -2152,6 +2233,76 @@ function DiscoverView({
     setSimilarBooks([]);
     setReadMoreExpanded(false);
     const sourceToUse = forceSource || metadataSource;
+
+    // ── ISBN first: an exact identifier, no keyword guessing ──
+    //
+    // A keyword lookup is inherently ambiguous here because the stored title
+    // usually contains the author's name, so `intitle:` + `inauthor:` cannot both
+    // be satisfied and the provider falls back to loosely matched items. That is
+    // how the modal swapped to a completely different book (observed: a
+    // Chinese-language edition) about a minute after it opened. An ISBN names
+    // exactly one edition, so try it before any keyword search.
+    const cleanIsbn = (isbn || "").replace(/[^0-9Xx]/g, "");
+    if (/^\d{9}[\dXx]$/.test(cleanIsbn)) {
+      try {
+        const [gbRes, olRes] = await Promise.all([
+          fetch(`/api/google-books/search?q=${encodeURIComponent(`isbn:${cleanIsbn}`)}`),
+          fetch(`/api/open-library/isbn?isbn=${cleanIsbn}`),
+        ]);
+
+        let exact: any = null;
+        if (gbRes.ok) {
+          const gd = await gbRes.json();
+          const v = gd?.items?.[0]?.volumeInfo;
+          if (v?.title) {
+            exact = {
+              title: v.title,
+              authors: v.authors || [],
+              description: v.description,
+              pageCount: v.pageCount,
+              publishedDate: v.publishedDate,
+              publisher: v.publisher,
+              language: v.language,
+              categories: v.categories ? Array.from(new Set(v.categories)) : [],
+              industryIdentifiers: v.industryIdentifiers || [],
+              coverUrl: v.imageLinks?.thumbnail?.replace("http:", "https:"),
+              source: "Google Books (ISBN)",
+            };
+          }
+        }
+        // Open Library fills gaps (often a better cover or a real blurb).
+        if (olRes.ok) {
+          const od = await olRes.json();
+          if (od?.found) {
+            exact = {
+              ...(exact || { title: od.title, authors: od.authors || [] }),
+              title: exact?.title || od.title,
+              authors: exact?.authors?.length ? exact.authors : od.authors || [],
+              description: exact?.description || od.description,
+              pageCount: exact?.pageCount || od.numberOfPages,
+              publishedDate: exact?.publishedDate || od.publishDate,
+              publisher: exact?.publisher || od.publishers?.[0],
+              categories: exact?.categories?.length ? exact.categories : od.subjects || [],
+              industryIdentifiers: [{ type: "ISBN_13", identifier: cleanIsbn }],
+              coverUrl: exact?.coverUrl || od.coverUrl,
+              source: (exact?.source || "Open Library") + " (ISBN)",
+            };
+          }
+        }
+
+        if (exact && !isStale()) {
+          setFeaturedBookDetails({
+            ...exact,
+            description: exact.description || seedDescriptionArg || "",
+            subjects: exact.categories,
+          });
+          setLoadingFeaturedDetails(false);
+          return;
+        }
+      } catch {
+        /* fall through to the keyword path */
+      }
+    }
     const cleanTitle = (title || "").trim();
     const cleanAuthor = (author || "").trim();
     const seedDescription = seedDescriptionArg || selectedFeaturedBook?.description || "";
@@ -2176,12 +2327,34 @@ function DiscoverView({
             const data = await res.json();
             if (data?.error || !data?.items?.length) continue;
             usedFallback = data.source === "openlibrary-fallback";
+            // Rank by RELEVANCE first, then by description richness.
+            //
+            // This ranked purely on description length, with no check that the
+            // result was the book being shown. Google returns loosely-matched
+            // items when `intitle:`/`inauthor:` cannot be satisfied, so a long
+            // blurb on a completely different book (observed: an unrelated
+            // Chinese-language edition replacing a Vince Flynn thriller ~1 min
+            // after the modal opened) won outright. `isStale()` only guards
+            // staleness, not correctness.
             const ranked = [...data.items].sort((a: any, b: any) => {
+              const aRel = metadataRelevance(cleanTitle, cleanAuthor, a.volumeInfo);
+              const bRel = metadataRelevance(cleanTitle, cleanAuthor, b.volumeInfo);
+              if (aRel !== bRel) return bRel - aRel;
               const ad = (a.volumeInfo?.description || "").length;
               const bd = (b.volumeInfo?.description || "").length;
               return bd - ad;
             });
-            info = ranked[0]?.volumeInfo;
+            // Never adopt a title/author that is not the book on screen.
+            const chosen = ranked[0]?.volumeInfo;
+            if (
+              chosen &&
+              !metadataIsSameBook(cleanTitle, cleanAuthor, chosen)
+            ) {
+              // Keep the blurb if we can find one, but never the identity.
+              info = { ...chosen, title: cleanTitle, authors: cleanAuthor ? [cleanAuthor] : chosen.authors };
+            } else {
+              info = chosen;
+            }
             if (info?.description) break;
             if (info) break;
           } catch (err) {
@@ -2362,7 +2535,13 @@ function DiscoverView({
     tempStorage.set("preferred_source", newSource, 168); // 1 week TTL but helper handles daily reset if desired, though user said "resets daily" for source? Wait, "saved in a temporary local storage which resets daily"
     // Actually the tempStorage helper I wrote has 24h default.
     if (selectedFeaturedBook) {
-      fetchFeaturedMetadata(selectedFeaturedBook.title, selectedFeaturedBook.author || "", newSource);
+      fetchFeaturedMetadata(
+        selectedFeaturedBook.title,
+        selectedFeaturedBook.author || "",
+        newSource,
+        undefined,
+        selectedFeaturedBook.isbn13 || selectedFeaturedBook.isbn10 || selectedFeaturedBook.isbn || null
+      );
     }
   };
 
@@ -5524,7 +5703,7 @@ function DiscoverView({
                   <div className="flex-1 min-w-0">
                     <div className="mb-8">
                       <h2 className="text-3xl md:text-5xl font-serif text-kindle-text mb-3 leading-tight tracking-tight">
-                        {featuredBookDetails?.title || selectedFeaturedBook.title}
+                        {displayIdentity().title}
                       </h2>
                       <div className="text-xl text-kindle-text-muted font-sans flex flex-wrap items-center gap-2">
                         <span>By</span>
@@ -5959,7 +6138,7 @@ function DiscoverView({
                         </div>
                         <div className="bg-kindle-card/20 border border-kindle-border rounded-2xl overflow-hidden p-4 md:p-6">
                           <HardcoverCommunity 
-                            book={{ title: featuredBookDetails?.title || selectedFeaturedBook.title, author: featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author } as any}
+                            book={{ title: displayIdentity().title, author: displayIdentity().author } as any}
                           />
                         </div>
                       </section>
