@@ -90,6 +90,7 @@ const AnnotationsHub = lazy(() => importWithRetry(() => import("./components/Ann
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
 import { toast, Toaster } from "react-hot-toast";
+import { createToastSwipeHandlers } from "./lib/toastSwipe";
 import { logger } from "./lib/logger";
 import { judgeMirrorDownload } from "./lib/mirrorOutcome";
 import { hostOf, recordMirrorOutcome } from "./lib/mirrorReliability";
@@ -694,6 +695,24 @@ export default function App() {
   const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState<boolean>(() => isSoundEffectsEnabled());
   const [gettingStartedBookEnabled, setGettingStartedBookEnabledState] = useState<boolean>(() => isGettingStartedBookEnabled());
   const [loungeGuidesEnabled, setLoungeGuidesEnabledState] = useState<boolean>(() => isLoungeGuidesEnabled());
+
+  /**
+   * Swipe-to-dismiss for toasts.
+   *
+   * `react-hot-toast` only supports click-to-dismiss, so a gesture wrapper is
+   * delegated around the <Toaster /> to cover every toast without touching the
+   * 140+ call sites. Memoised with an empty dep list because the handlers keep
+   * their drag state in the closure, not in React state — recreating them on
+   * every render would drop a drag in progress.
+   */
+  const toastSwipeHandlers = useMemo(
+    () =>
+      createToastSwipeHandlers({
+        // The toast <li> carries the toast id as its DOM id.
+        dismiss: (el: HTMLElement) => toast.dismiss(el.id),
+      }),
+    []
+  );
 
   const mobileTabs = useMemo(() => {
     const tabs: MobileTabDef[] = [];
@@ -4246,8 +4265,15 @@ async function startBackgroundDownload(
       )}
 
       {/* Settings Modal */}
+      <div
+        {...toastSwipeHandlers}
+        style={toastSwipeHandlers.style}
+        aria-label="Notifications"
+      >
       <Toaster position="bottom-center" toastOptions={{
-        duration: 5000,
+        // Auto-dismiss. Errors linger a little longer because they usually
+        // carry something the user needs to read.
+        duration: 4000,
         style: {
           background: 'var(--toast-bg, var(--kindle-card))',
           color: 'var(--kindle-text)',
@@ -4271,12 +4297,14 @@ async function startBackgroundDownload(
           },
         },
         error: {
+          duration: 7000,
           iconTheme: {
             primary: '#ef4444',
             secondary: '#fff',
           },
         }
       }} />
+      </div>
       <FluidOverlay
         open={showAuthModal}
         onClose={() => {
