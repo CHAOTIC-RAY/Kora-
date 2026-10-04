@@ -78,7 +78,7 @@ check(
 );
 
 console.log("\n=== invalid/empty ISBN must not be trusted ===");
-const bad = ["", "not-an-isbn", "123"].filter((x) => !/^(97[89]|978)\d{10}$|^\d{9}[\dX]$/.test(x));
+const bad = ["", "not-an-isbn", "123"].filter((x) => !/^(?:\d{9}[\dXx]|\d{13})$/.test(x));
 check("non-ISBN values are rejected before any lookup", bad.length === 3, bad.join(", "));
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

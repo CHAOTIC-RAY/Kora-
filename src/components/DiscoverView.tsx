@@ -2243,7 +2243,7 @@ function DiscoverView({
     // Chinese-language edition) about a minute after it opened. An ISBN names
     // exactly one edition, so try it before any keyword search.
     const cleanIsbn = (isbn || "").replace(/[^0-9Xx]/g, "");
-    if (/^\d{9}[\dXx]$/.test(cleanIsbn)) {
+    if (/^(?:\d{9}[\dXx]|\d{13})$/.test(cleanIsbn)) {
       try {
         const [gbRes, olRes] = await Promise.all([
           fetch(`/api/google-books/search?q=${encodeURIComponent(`isbn:${cleanIsbn}`)}`),

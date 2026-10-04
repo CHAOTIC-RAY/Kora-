@@ -539,7 +539,7 @@ async function mapRaveV1Results(rawResults: any[], _query: string): Promise<any[
         : null);
     const titleDigits = (r.title || "").match(/(\d{10,13})/);
     const isbnCandidate = String(rawIsbn || titleDigits?.[1] || "").replace(/[^0-9Xx]/g, "");
-    const isbn = /^\d{9}[\dXx]$/.test(isbnCandidate) ? isbnCandidate : null;
+    const isbn = /^(?:\d{9}[\dXx]|\d{13})$/.test(isbnCandidate) ? isbnCandidate : null;
 
     let coverUrl = r.coverUrl || "";
     if (!coverUrl && isbn && /^\d{10,13}$/.test(isbn)) {
@@ -2603,7 +2603,7 @@ export default {
       // different book about a minute after it opened (reported 2026-10-03).
       try {
         const isbn = (url.searchParams.get("isbn") || "").replace(/[^0-9Xx]/g, "");
-        if (!/^\d{9}[\dXx]$/.test(isbn)) {
+        if (!/^(?:\d{9}[\dXx]|\d{13})$/.test(isbn)) {
           return new Response(JSON.stringify({ error: "invalid isbn" }), {
             status: 400,
             headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
