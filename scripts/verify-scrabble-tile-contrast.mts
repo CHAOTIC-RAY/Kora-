@@ -86,14 +86,31 @@ for (const k of keys) {
 }
 
 console.log("\n=== the old accent fill is gone from board cells ===");
-// Scope to the board cell's own className. `bg-kindle-accent text-kindle-bg`
-// is still correct on BUTTONS elsewhere in the sheet (accent fill, bg-coloured
-// label) — only the tiles were wrong, so a global ban would be incorrect.
+// Scope to the cell's own className, and specifically to the PLACED-tile branch.
+// `bg-kindle-accent` is still legitimate in two places on a cell:
+//   - the drag ghost (`bg-kindle-accent/10` + dashed accent border), which is a
+//     translucent overlay on an otherwise empty cell, and
+//   - the accent BORDER on a committed tile.
+// What must not come back is a committed tile whose FILL is the accent, since
+// that is what made the letter invisible.
 const cellBlock = /className=\{`aspect-square rounded[^`]*`\}/.exec(src)?.[0] ?? "";
+// Locate the committed-tile class string directly. It is the branch that pairs
+// `border-2 border-kindle-accent` with a card fill; anchoring on the distinctive
+// border (not on the end of the chain) keeps an explanatory comment inside the
+// template from being mistaken for the code.
+const committedTileBranch =
+  /"bg-kindle-card text-kindle-text font-bold border-2 border-kindle-accent shadow"/.exec(src)?.[0] ?? "";
+// A guard that cannot find its target is worse than no guard: it passes for the
+// wrong reason and silently stops protecting anything.
 check(
-  "board cell no longer paints bg-kindle-accent",
-  !cellBlock.includes("bg-kindle-accent"),
-  cellBlock.includes("bg-kindle-accent") ? "still present in the cell className" : "cell uses card + text"
+  "guard located the committed-tile branch",
+  committedTileBranch.length > 0,
+  committedTileBranch.length === 0 ? "regex did not match — guard would be vacuous" : "ok"
+);
+check(
+  "committed tile does not fill with bg-kindle-accent",
+  committedTileBranch.length > 0 && !/bg-kindle-accent\b/.test(committedTileBranch),
+  committedTileBranch.slice(0, 70)
 );
 check(
   "board cell letter span pins no text colour",

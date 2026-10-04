@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { isSoundEffectsEnabled } from "../lib/featureToggles";
+import { useWordDrag, type DragTile } from "../lib/useWordDrag";
 import {
   X,
   Shuffle,
@@ -332,6 +333,83 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     playClickSound();
     setSelectedRackIdx(selectedRackIdx === rackIdx ? null : rackIdx);
   };
+
+  // ── Drag to place a whole word ────────────────────────────────────────────
+  //
+  // Placing used to mean: tap a rack tile, then tap a cell. `clickBoardCell`
+  // returned on the first occupied cell, so a multi-letter word could not be
+  // laid down as one gesture — you re-selected and re-tapped for every letter.
+  // `useWordDrag` lifts the run of tiles the pointer grabbed and places them
+  // with that same arrangement, along whichever axis the drag travelled, so a
+  // word can be dropped horizontally or vertically.
+  const placeDraggedWord = useCallback(
+    (run: DragTile[], cells: { r: number; c: number }[]) => {
+      if (!isMyTurn()) return;
+      const me = getMyPlayer();
+      if (!me) return;
+
+      // Re-validate at commit time: the board can change between the drag
+      // preview and the release (opponent move, or a second placement).
+      for (let i = 0; i < cells.length; i++) {
+        const { r, c } = cells[i];
+        const key = `${r},${c}`;
+        const existing = board[key];
+        if (existing && !existing.isTemp) return;
+        if (existing && !tempPlaced.some((t) => t.r === r && t.c === c)) return;
+        if (!run[i]?.letter || !me.tiles[run[i].rackIdx]) return;
+      }
+
+      playClickSound();
+      const nextBoard = { ...board };
+      const nextTemp = [...tempPlaced];
+      for (let i = 0; i < cells.length; i++) {
+        const { r, c } = cells[i];
+        const tile = run[i];
+        me.tiles[tile.rackIdx] = "";
+        nextTemp.push({ r, c, letter: tile.letter, rackIdx: tile.rackIdx });
+        nextBoard[`${r},${c}`] = {
+          letter: tile.letter,
+          score: TILE_VALUES[tile.letter] || 1,
+          isTemp: true,
+        };
+      }
+      setTempPlaced(nextTemp);
+      setBoard(nextBoard);
+      setSelectedRackIdx(null);
+    },
+    [board, tempPlaced, isMyTurn, getMyPlayer, playClickSound]
+  );
+
+  const liftTempTile = useCallback(
+    (r: number, c: number) => {
+      const idx = tempPlaced.findIndex((t) => t.r === r && t.c === c);
+      if (idx === -1) return;
+      const removed = tempPlaced[idx];
+      const me = getMyPlayer();
+      if (me) me.tiles[removed.rackIdx] = removed.letter;
+      const nextTemp = [...tempPlaced];
+      nextTemp.splice(idx, 1);
+      setTempPlaced(nextTemp);
+      const nextBoard = { ...board };
+      delete nextBoard[`${r},${c}`];
+      setBoard(nextBoard);
+    },
+    [tempPlaced, board, getMyPlayer]
+  );
+
+  const wordDrag = useWordDrag({
+    boardSize: 15,
+    canMove: isMyTurn(),
+    rack: getMyPlayer()?.tiles ?? [],
+    cellAt: (r, c) => board[`${r},${c}`],
+    isCommitted: (r, c) => {
+      const cell = board[`${r},${c}`];
+      return Boolean(cell && !cell.isTemp);
+    },
+    tempCells: tempPlaced,
+    onPlace: placeDraggedWord,
+    onLift: liftTempTile,
+  });
 
   const clickBoardCell = (r: number, c: number) => {
     if (!isMyTurn()) return;
@@ -973,12 +1051,24 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
                 {/* Left Column: Board */}
                 <div className="lg:col-span-7 flex flex-col items-center">
-                  <div className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-15 gap-[1px] sm:gap-[2px] select-none">
+                  <div
+                    ref={wordDrag.gridRef as React.RefObject<HTMLDivElement>}
+                    onPointerMove={wordDrag.boardHandlers.onPointerMove}
+                    onPointerUp={wordDrag.boardHandlers.onPointerUp}
+                    onPointerCancel={wordDrag.boardHandlers.onPointerCancel}
+                    className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-15 gap-[1px] sm:gap-[2px] select-none touch-none">
                     {Array.from({ length: 15 }).map((_, r) =>
                       Array.from({ length: 15 }).map((_, c) => {
                         const key = `${r},${c}`;
                         const cell = board[key];
                         const mult = getCellMultiplier(r, c);
+                        // Ghost preview for the in-flight drag: shows exactly
+                        // where the grabbed word would land, and whether it is
+                        // legal. Without it the user is dragging blind.
+                        const ghostIdx = wordDrag.placement?.valid
+                          ? wordDrag.placement.cells.findIndex((g) => g.r === r && g.c === c)
+                          : -1;
+                        const ghostLetter = ghostIdx >= 0 ? wordDrag.tiles[ghostIdx]?.letter : null;
 
                         return (
                           <div
@@ -997,10 +1087,23 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                                                                                                               : "bg-kindle-card text-kindle-text font-bold border-2 border-kindle-accent shadow"
                                                               : mult.type
                                                               ? mult.color
-                                                              : "bg-white  hover:bg-neutral-100  text-kindle-text  border border-kindle-border/40 dark:border-transparent"
+                                                              : ghostLetter
+                                ? "bg-kindle-accent/10 border-2 border-dashed border-kindle-accent"
+                                : "bg-white  hover:bg-neutral-100  text-kindle-text  border border-kindle-border/40 dark:border-transparent"
                             }`}
                           >
-                            {cell ? (
+                            {ghostLetter ? (
+                              /* Drag preview: the letter this cell WOULD hold,
+                                 dimmed so it reads as pending, not committed. */
+                              <div className="w-full h-full flex items-center justify-center relative opacity-60">
+                                <span className="text-[11px] sm:text-xs md:text-base font-serif font-bold leading-none text-kindle-text">
+                                  {ghostLetter}
+                                </span>
+                                <span className="absolute bottom-[1px] right-[1px] text-[7px] sm:text-[8px] font-mono font-bold leading-none opacity-90 text-kindle-text">
+                                  {TILE_VALUES[ghostLetter] || 1}
+                                </span>
+                              </div>
+                            ) : cell ? (
                               <motion.div
                                 layout
                                 className="w-full h-full flex items-center justify-center relative"
@@ -1106,11 +1209,14 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             key={`${letter}-${idx}`}
                             layout
                             onClick={() => selectRackTile(idx)}
+                            {...wordDrag.rackHandlers(idx)}
                             className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
                               isEmpty
                                 ? "bg-kindle-bg border-dashed border-kindle-border text-kindle-text-muted"
                                 : isSelected
                                 ? "bg-kindle-accent border-amber-300 text-kindle-bg font-bold scale-105 shadow-lg -translate-y-1"
+                                : wordDrag.isDragging(idx)
+                                ? "bg-kindle-accent/15 border-2 border-kindle-accent text-kindle-text"
                                 : "bg-kindle-card border-kindle-accent/40 text-kindle-text hover:-translate-y-0.5"
                             }`}
                             initial={{ scale: 0.85, opacity: 0.35, rotate: -14 }}
