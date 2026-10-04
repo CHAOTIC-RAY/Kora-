@@ -35,6 +35,7 @@ import {
   Bookmark, BookmarkCheck, Settings2, Sun, SunDim, Moon,
 } from "lucide-react";
 import { loadSettings, updateSettings, effectiveDirection, type ReaderSettings } from "../lib/readerSettings";
+import { READER_THEMES, PRIMARY_READER_THEME_KEYS } from "../lib/readerThemes";
 import {
   loadComicPrefs, updateComicPrefs, effectiveContinuous, pageFitClasses,
   COMIC_PAGE_FITS, CONTINUOUS_MODES, READING_BRIGHTNESS, nextBrightnessPreset,
@@ -212,6 +213,21 @@ export function ComicReader({
    * user's "Auto / On / Off" override somewhere to apply.
    */
   const continuous = effectiveContinuous(prefs, webtoon);
+
+  /**
+   * Reading theme, resolved the same way the EPUB reader resolves it.
+   *
+   * `READER_THEMES` entries are Tailwind class strings, applied verbatim — that
+   * is why the EPUB reader can be themed without inline styles. The comic reader
+   * previously hardcoded `bg-kindle-bg` plus white-alpha chrome, so it ignored the
+   * app theme entirely and read as a different app. Sharing the key space (via
+   * `comicReaderPrefs.theme`) means one picker drives both readers.
+   */
+  const activeTheme = READER_THEMES[prefs.theme] || READER_THEMES.dark;
+  const isDarkTheme =
+    prefs.theme === "dark" ||
+    prefs.theme === "night" ||
+    prefs.theme === "oled";
 
   /** Apply a comic-prefs change and keep local state in step with storage. */
   const applyPrefs = useCallback((patch: Partial<ComicReaderPrefs>) => {
@@ -770,13 +786,13 @@ export function ComicReader({
 
   if (!total) {
   return (
-  <div className="fixed inset-0 z-[10000] bg-black flex flex-col items-center justify-center gap-3">
-  <p className="text-[11px] uppercase tracking-widest text-white/60">
+  <div className="fixed inset-0 z-[10000] bg-kindle-bg flex flex-col items-center justify-center gap-3">
+  <p className="text-[11px] uppercase tracking-widest text-kindle-text-muted">
   This chapter has no pages
   </p>
   <button
   onClick={onClose}
-  className="px-4 py-2 border border-white/25 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/80"
+  className="px-4 py-2 border border-kindle-border rounded-lg text-[10px] font-bold uppercase tracking-widest text-kindle-text"
   >
   Close
   </button>
@@ -790,21 +806,34 @@ export function ComicReader({
   role="dialog"
   aria-modal="true"
   aria-label={seriesTitle ? `${seriesTitle} — ${label}` : "Reader"}
-  className="fixed inset-0 z-[10000] bg-black flex flex-col select-none"
+  className={`fixed inset-0 z-[10000] flex flex-col select-none touch-manipulation overscroll-none ${activeTheme.bg} ${activeTheme.text} transition-colors duration-200`}
+  style={{
+    // Match the EPUB reader's viewport handling (BookReaderEPUB.tsx:3108-3119).
+    // Without these the chrome sits under a notch, a home indicator, or the
+    // on-screen keyboard on a phone.
+    paddingTop: "var(--kora-safe-top)",
+    paddingBottom: "var(--kora-safe-bottom)",
+    paddingLeft: "var(--kora-safe-left)",
+    paddingRight: "var(--kora-safe-right)",
+    height: "var(--kora-vvh, 100dvh)",
+    maxHeight: "var(--kora-vvh, 100dvh)",
+    boxSizing: "border-box",
+    overflow: "hidden",
+  }}
   >
   {/* top bar */}
   {chromeVisible && (
-  <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between gap-3 px-3 py-2 bg-gradient-to-b from-black/85 to-transparent pointer-events-none">
+  <div className={`absolute top-0 inset-x-0 z-20 flex items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b shrink-0 ${activeTheme.border} ${isDarkTheme ? "bg-neutral-900/80" : "bg-white/80"} backdrop-blur-sm pointer-events-none`}>
   <button
   onClick={onClose}
   aria-label="Close reader"
-  className="pointer-events-auto inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/80 hover:text-white cursor-pointer"
+  className="pointer-events-auto inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:text-kindle-text/80 cursor-pointer"
   >
   <X className="w-4 h-4" />
   <span className="hidden sm:inline">Back</span>
   </button>
   <div className="flex flex-col items-center min-w-0 px-2">
-  <span className="text-[10px] font-bold uppercase tracking-widest text-white/90 truncate">
+  <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text truncate">
   {seriesTitle ? `${seriesTitle} · ` : ""}
   {label}
   </span>
@@ -816,11 +845,11 @@ export function ComicReader({
   Deliberately not clickable: knowing you are reading a CBZ is useful, acting
   on it here would promise something this reader cannot do.
   */}
-  <span className="flex items-center gap-1.5 text-[9px] text-white/50 font-mono">
+  <span className="flex items-center gap-1.5 text-[9px] text-kindle-text-muted font-mono">
   {posInSeries && <span>{posInSeries}</span>}
   {formatLabel && (
   <span
-  className="px-1.5 rounded bg-white/10 text-white/70"
+  className="px-1.5 rounded bg-kindle-text/10 text-kindle-text/80"
   title="Identified from the file's contents, not its name"
   >
   {formatLabel}
@@ -839,12 +868,12 @@ export function ComicReader({
   onClick={toggleCurrentBookmark}
   aria-label={currentBookmarked ? "Remove bookmark for this page" : "Bookmark this page"}
   aria-pressed={currentBookmarked}
-  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="p-1.5 rounded-lg hover:bg-kindle-text/10 cursor-pointer"
   >
   {currentBookmarked ? (
   <BookmarkCheck className="w-4 h-4 text-amber-300" />
   ) : (
-  <Bookmark className="w-4 h-4 text-white/80" />
+  <Bookmark className="w-4 h-4 text-kindle-text" />
   )}
   </button>
   )}
@@ -866,14 +895,14 @@ export function ComicReader({
   }
   title={`Brightness ${Math.round(settings.brightness * 100)}% — tap to cycle`}
   aria-label={`Brightness ${Math.round(settings.brightness * 100)} percent, tap to cycle`}
-  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="p-1.5 rounded-lg hover:bg-kindle-text/10 cursor-pointer"
   >
   {settings.brightness >= 0.9 ? (
-  <Sun className="w-4 h-4 text-white/80" />
+  <Sun className="w-4 h-4 text-kindle-text" />
   ) : settings.brightness >= 0.6 ? (
-  <SunDim className="w-4 h-4 text-white/80" />
+  <SunDim className="w-4 h-4 text-kindle-text" />
   ) : (
-  <Moon className="w-4 h-4 text-white/80" />
+  <Moon className="w-4 h-4 text-kindle-text" />
   )}
   </button>
   )}
@@ -881,16 +910,16 @@ export function ComicReader({
   onClick={() => setShowSettings((v) => !v)}
   aria-label="Reader settings"
   aria-expanded={showSettings}
-  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="p-1.5 rounded-lg hover:bg-kindle-text/10 cursor-pointer"
   >
-  <Settings2 className="w-4 h-4 text-white/80" />
+  <Settings2 className="w-4 h-4 text-kindle-text" />
   </button>
   <button
   onClick={() => setShowSlider((v) => !v)}
   aria-label="Page slider"
-  className="p-1.5 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="p-1.5 rounded-lg hover:bg-kindle-text/10 cursor-pointer"
   >
-  <List className="w-4 h-4 text-white/80" />
+  <List className="w-4 h-4 text-kindle-text" />
   </button>
   </div>
   </div>
@@ -898,8 +927,8 @@ export function ComicReader({
 
   {/* page slider */}
   {showSlider && (
-  <div className="absolute top-14 inset-x-0 z-20 px-5 py-2 bg-black/80 flex items-center gap-3">
-  <span className="text-[9px] font-mono text-white/60">{shown}</span>
+  <div className="absolute top-14 inset-x-0 z-20 px-5 py-2 bg-kindle-card flex items-center gap-3">
+  <span className="text-[9px] font-mono text-kindle-text-muted">{shown}</span>
   <input
   type="range"
   min={1}
@@ -907,9 +936,9 @@ export function ComicReader({
   value={shown}
   aria-label="Go to page"
   onChange={(e) => goTo(indexForDisplayed({ rtl: readingRtl, total, page: Number(e.target.value) }))}
-  className="flex-1 accent-white"
+  className="flex-1 accent-kindle-accent"
   />
-  <span className="text-[9px] font-mono text-white/60">{total}</span>
+  <span className="text-[9px] font-mono text-kindle-text-muted">{total}</span>
   </div>
   )}
 
@@ -933,24 +962,74 @@ export function ComicReader({
   <div
   role="dialog"
   aria-label="Reader settings"
-  className="absolute inset-x-0 bottom-0 z-30 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-black/95 backdrop-blur border-t border-white/10 px-4 py-4 space-y-4"
+  className="absolute inset-x-0 bottom-0 z-30 max-h-[70vh] overflow-y-auto rounded-t-2xl bg-kindle-card backdrop-blur border-t border-kindle-border px-4 py-4 pb-[max(1.25rem,var(--kora-safe-bottom))] space-y-4"
   >
   <div className="flex items-center justify-between">
-  <span className="text-[10px] font-bold uppercase tracking-widest text-white/90">
+  <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text">
   Reader settings
   </span>
   <button
   onClick={() => setShowSettings(false)}
   aria-label="Close settings"
-  className="p-1 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="p-1 rounded-lg hover:bg-kindle-text/10 cursor-pointer"
   >
-  <X className="w-4 h-4 text-white/70" />
+  <X className="w-4 h-4 text-kindle-text/80" />
   </button>
+  </div>
+
+  {/* Reading theme — mirrors the EPUB reader's picker
+      (BookReaderEPUB.tsx:3293-3378) so one control means the same thing in both
+      readers. Previously the comic reader had no theme control at all and was
+      hardcoded black, so this is what makes the two visually consistent. */}
+  <div>
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
+  Reading theme
+  </span>
+  <div className="grid grid-cols-4 gap-1.5">
+  {PRIMARY_READER_THEME_KEYS.map((k) => {
+  const th = READER_THEMES[k];
+  const on = prefs.theme === k;
+  return (
+  <button
+  key={k}
+  onClick={() => applyPrefs({ theme: k })}
+  aria-pressed={on}
+  aria-label={th.label}
+  className={`h-10 rounded-lg border flex items-center justify-center text-[10px] font-semibold transition ${
+  on ? "ring-2 ring-kindle-accent border-transparent" : "border-kindle-border"
+  }`}
+  style={{ background: th.previewBg, color: th.previewText }}
+  >
+  {th.label}
+  </button>
+  );
+  })}
+  </div>
+  <div className="grid grid-cols-3 gap-1.5 mt-1.5">
+  {(["light", "green", "dark"] as const).map((k) => {
+  const th = READER_THEMES[k];
+  const on = prefs.theme === k;
+  return (
+  <button
+  key={k}
+  onClick={() => applyPrefs({ theme: k })}
+  aria-pressed={on}
+  aria-label={th.label}
+  className={`h-8 rounded-lg border flex items-center justify-center text-[9px] font-semibold transition ${
+  on ? "ring-2 ring-kindle-accent border-transparent" : "border-kindle-border"
+  }`}
+  style={{ background: th.previewBg, color: th.previewText }}
+  >
+  {th.label}
+  </button>
+  );
+  })}
+  </div>
   </div>
 
   {/* Reading direction */}
   <div>
-  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Reading direction
   </span>
   <div className="flex gap-2">
@@ -961,15 +1040,15 @@ export function ComicReader({
   aria-pressed={readingRtl === (d === "rtl")}
   className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest cursor-pointer ${
   readingRtl === (d === "rtl")
-  ? "bg-white text-black"
-  : "border border-white/20 text-white/80 hover:bg-white/10"
+  ? "bg-kindle-text text-kindle-bg shadow"
+  : "border border-kindle-border text-kindle-text hover:bg-kindle-text/10"
   }`}
   >
   {d === "rtl" ? "Right to left" : "Left to right"}
   </button>
   ))}
   </div>
-  <p className="mt-1.5 text-[9px] text-white/40">
+  <p className="mt-1.5 text-[9px] text-kindle-text-muted/70">
   Default follows the source. Override it here if you prefer the other.
   </p>
   </div>
@@ -991,7 +1070,7 @@ export function ComicReader({
   */}
   {!continuous && (
   <div>
-  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Page fit
   </span>
   <div className="grid grid-cols-3 gap-1.5">
@@ -1003,15 +1082,15 @@ export function ComicReader({
   title={m.desc}
   className={`px-2 py-2 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer ${
   prefs.pageFit === m.value
-  ? "bg-white text-black"
-  : "border border-white/20 text-white/80 hover:bg-white/10"
+  ? "bg-kindle-text text-kindle-bg shadow"
+  : "border border-kindle-border text-kindle-text hover:bg-kindle-text/10"
   }`}
   >
   {m.label}
   </button>
   ))}
   </div>
-  <p className="mt-1.5 text-[9px] text-white/40">
+  <p className="mt-1.5 text-[9px] text-kindle-text-muted/70">
   {COMIC_PAGE_FITS.find((m) => m.value === prefs.pageFit)?.desc}
   </p>
   </div>
@@ -1026,7 +1105,7 @@ export function ComicReader({
   too. Auto defers to the source; On and Off override it in either direction.
   */}
   <div>
-  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Continuous scroll
   </span>
   <div className="grid grid-cols-3 gap-1.5">
@@ -1038,15 +1117,15 @@ export function ComicReader({
   title={m.desc}
   className={`px-2 py-2 rounded-lg text-[9px] font-bold uppercase tracking-wider cursor-pointer ${
   prefs.continuous === m.value
-  ? "bg-white text-black"
-  : "border border-white/20 text-white/80 hover:bg-white/10"
+  ? "bg-kindle-text text-kindle-bg shadow"
+  : "border border-kindle-border text-kindle-text hover:bg-kindle-text/10"
   }`}
   >
   {m.label}
   </button>
   ))}
   </div>
-  <p className="mt-1.5 text-[9px] text-white/40">
+  <p className="mt-1.5 text-[9px] text-kindle-text-muted/70">
   {CONTINUOUS_MODES.find((m) => m.value === prefs.continuous)?.desc}
   {webtoon && prefs.continuous === "source" && " This series is a scrolling strip."}
   </p>
@@ -1054,7 +1133,7 @@ export function ComicReader({
 
   {/* Brightness */}
   <div>
-  <span className="flex items-center justify-between text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="flex items-center justify-between text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Brightness
   <button
   onClick={() =>
@@ -1066,7 +1145,7 @@ export function ComicReader({
   )
   }
   aria-pressed={settings.brightnessMode === "manual"}
-  className="pointer-events-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-white/20 text-[8px] text-white/70 hover:bg-white/10 cursor-pointer"
+  className="pointer-events-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-kindle-border text-[8px] text-kindle-text/80 hover:bg-kindle-text/10 cursor-pointer"
   >
   {settings.brightnessMode === "manual" ? (
   <Moon className="w-3 h-3" />
@@ -1092,8 +1171,8 @@ export function ComicReader({
   aria-label={`Brightness ${level}%`}
   className={`py-1.5 rounded-lg border text-[9px] font-mono font-bold transition cursor-pointer ${
   Math.round(settings.brightness * 100) === level
-  ? "border-white bg-white/15 text-white"
-  : "border-white/20 hover:bg-white/10 text-white/70"
+  ? "border-kindle-accent bg-kindle-accent/15 text-kindle-accent"
+  : "border-kindle-border hover:bg-kindle-text/10 text-kindle-text/80"
   }`}
   >
   {level}
@@ -1111,16 +1190,16 @@ export function ComicReader({
   onChange={(e) =>
   setSettings(updateSettings({ brightness: Number(e.target.value) / 100 }))
   }
-  className="w-full accent-white disabled:opacity-30"
+  className="w-full accent-kindle-accent disabled:opacity-30"
   />
-  <p className="mt-1 text-[9px] text-white/40">
+  <p className="mt-1 text-[9px] text-kindle-text-muted/70">
   Applies to the reader only, and only this device.
   </p>
   </div>
 
   {/* Display filters */}
   <div>
-  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Page appearance
   </span>
   <div className="space-y-1">
@@ -1146,8 +1225,8 @@ export function ComicReader({
   className="flex items-center justify-between gap-3 py-1 cursor-pointer"
   >
   <span className="min-w-0">
-  <span className="block text-[10px] text-white/80">{row.label}</span>
-  <span className="block text-[9px] text-white/40">{row.hint}</span>
+  <span className="block text-[10px] text-kindle-text">{row.label}</span>
+  <span className="block text-[9px] text-kindle-text-muted/70">{row.hint}</span>
   </span>
   {/*
     The book's reader styles these as a pill switch rather than a checkbox.
@@ -1169,15 +1248,15 @@ export function ComicReader({
   aria-label={row.label}
   className={`w-10 h-5 shrink-0 rounded-full transition-colors relative cursor-pointer ${
   (row.key === "disableMouseScroll" ? prefs.disableMouseScroll : prefs[row.key])
-  ? "bg-white"
-  : "bg-white/25"
+  ? "bg-kindle-accent"
+  : "bg-kindle-text/25"
   }`}
   >
   <div
   className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full shadow-sm transition-transform ${
   (row.key === "disableMouseScroll" ? prefs.disableMouseScroll : prefs[row.key])
-  ? "translate-x-5 bg-black"
-  : "translate-x-0 bg-white/70"
+  ? "translate-x-5 bg-kindle-bg"
+  : "translate-x-0 bg-kindle-text/70"
   }`}
   />
   </button>
@@ -1188,7 +1267,7 @@ export function ComicReader({
 
   {/* Keep awake */}
   <label className="flex items-center justify-between gap-3 cursor-pointer">
-  <span className="text-[9px] uppercase tracking-widest text-white/50">
+  <span className="text-[9px] uppercase tracking-widest text-kindle-text-muted">
   Keep screen awake
   </span>
   <input
@@ -1196,18 +1275,18 @@ export function ComicReader({
   checked={settings.keepAwake}
   disabled={!keepAwakeSupported()}
   onChange={(e) => setSettings(updateSettings({ keepAwake: e.target.checked }))}
-  className="accent-white disabled:opacity-30"
+  className="accent-kindle-accent disabled:opacity-30"
   />
   </label>
   {!keepAwakeSupported() && (
-  <p className="text-[9px] text-white/40">
+  <p className="text-[9px] text-kindle-text-muted/70">
   This browser will not let a page hold the screen awake.
   </p>
   )}
 
   {/* Auto-hide */}
   <div>
-  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Hide controls after
   </span>
   <div className="flex gap-1.5">
@@ -1218,8 +1297,8 @@ export function ComicReader({
   aria-pressed={settings.autoHideSeconds === sec}
   className={`flex-1 px-2 py-1.5 rounded-lg text-[9px] font-bold uppercase cursor-pointer ${
   settings.autoHideSeconds === sec
-  ? "bg-white text-black"
-  : "border border-white/20 text-white/80 hover:bg-white/10"
+  ? "bg-kindle-text text-kindle-bg shadow"
+  : "border border-kindle-border text-kindle-text hover:bg-kindle-text/10"
   }`}
   >
   {sec === 0 ? "never" : `${sec}s`}
@@ -1230,7 +1309,7 @@ export function ComicReader({
 
   {/* Sleep timer */}
   <div>
-  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Sleep timer
   </span>
   <div className="flex gap-1.5">
@@ -1241,8 +1320,8 @@ export function ComicReader({
   aria-pressed={settings.sleepTimerMinutes === min}
   className={`flex-1 px-2 py-1.5 rounded-lg text-[9px] font-bold uppercase cursor-pointer ${
   settings.sleepTimerMinutes === min
-  ? "bg-white text-black"
-  : "border border-white/20 text-white/80 hover:bg-white/10"
+  ? "bg-kindle-text text-kindle-bg shadow"
+  : "border border-kindle-border text-kindle-text hover:bg-kindle-text/10"
   }`}
   >
   {min === 0 ? "off" : `${min}m`}
@@ -1250,14 +1329,14 @@ export function ComicReader({
   ))}
   </div>
   {sleepExpired && (
-  <p className="mt-1 text-[9px] text-white/50">Sleep timer ran out — reader closed.</p>
+  <p className="mt-1 text-[9px] text-kindle-text-muted">Sleep timer ran out — reader closed.</p>
   )}
   </div>
 
   {/* Bookmarks in this chapter */}
   {stateKey && !!chapterState?.bookmarks.length && (
   <div>
-  <span className="block text-[9px] uppercase tracking-widest text-white/50 mb-1.5">
+  <span className="block text-[9px] uppercase tracking-widest text-kindle-text-muted mb-1.5">
   Bookmarks in this chapter
   </span>
   <div className="flex flex-wrap gap-1.5">
@@ -1274,7 +1353,7 @@ export function ComicReader({
   </div>
   )}
 
-  <p className="text-[9px] text-white/35 leading-relaxed">
+  <p className="text-[9px] text-kindle-text-muted/60 leading-relaxed">
   These settings stay on this device. Your bookmarks and reading position
   follow you to your other devices.
   </p>
@@ -1360,9 +1439,9 @@ export function ComicReader({
   {/* bottom bar */}
   {chromeVisible && (
   <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/85 to-transparent">
-  <div className="h-1 bg-white/10">
+  <div className="h-1 bg-kindle-text/10">
   <div
-  className="h-full bg-white/70 transition-[width] duration-150"
+  className="h-full bg-kindle-text/70 transition-[width] duration-150"
   style={{ width: `${(shown / total) * 100}%` }}
   />
   </div>
@@ -1371,14 +1450,14 @@ export function ComicReader({
   onClick={back}
   disabled={!canAct("back", { rtl: readingRtl, total, index: clamped }) && !chapters.length}
   aria-label="Previous page"
-  className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-25 cursor-pointer"
+  className="p-2 rounded-lg hover:bg-kindle-text/10 disabled:opacity-25 cursor-pointer"
   >
-  <ChevronLeft className="w-5 h-5 text-white/90" />
+  <ChevronLeft className="w-5 h-5 text-kindle-text" />
   </button>
 
   <button
   onClick={() => setChromeVisible(true)}
-  className="text-[10px] font-mono text-white/75 px-3 py-1 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="text-[10px] font-mono text-kindle-text px-3 py-1 rounded-lg hover:bg-kindle-text/10 cursor-pointer"
   >
   {shown} / {total}
   </button>
@@ -1387,17 +1466,17 @@ export function ComicReader({
   <button
   onClick={() => setZoom((z) => Math.max(1, z - 0.5))}
   aria-label="Zoom out"
-  className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-25 cursor-pointer"
+  className="p-2 rounded-lg hover:bg-kindle-text/10 disabled:opacity-25 cursor-pointer"
   disabled={zoom <= 1}
   >
-  <Minus className="w-4 h-4 text-white/80" />
+  <Minus className="w-4 h-4 text-kindle-text" />
   </button>
   <button
   onClick={() => setZoom((z) => Math.min(4, z + 0.5))}
   aria-label="Zoom in"
-  className="p-2 rounded-lg hover:bg-white/10 cursor-pointer"
+  className="p-2 rounded-lg hover:bg-kindle-text/10 cursor-pointer"
   >
-  <Plus className="w-4 h-4 text-white/80" />
+  <Plus className="w-4 h-4 text-kindle-text" />
   </button>
   </div>
 
@@ -1405,11 +1484,11 @@ export function ComicReader({
   onClick={forward}
   disabled={!canAct("forward", { rtl: readingRtl, total, index: clamped })}
   aria-label="Next page"
-  className="p-2 rounded-lg hover:bg-white/10 disabled:opacity-25 cursor-pointer"
+  className="p-2 rounded-lg hover:bg-kindle-text/10 disabled:opacity-25 cursor-pointer"
   >
   {/* Mirrored in RTL so both arrows always point "forward". */}
   <ChevronRight
-  className={`w-5 h-5 text-white/90 ${readingRtl ? "-scale-x-100" : ""}`}
+  className={`w-5 h-5 text-kindle-text ${readingRtl ? "-scale-x-100" : ""}`}
   />
   </button>
   </div>
@@ -1426,13 +1505,13 @@ export function ComicReader({
   */}
   <button
   onClick={() => stepChapter("prev")}
-  className="text-[9px] font-bold uppercase tracking-widest text-white/50 hover:text-white/90 cursor-pointer"
+  className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text cursor-pointer"
   >
   ← Prev chapter
   </button>
   <button
   onClick={() => stepChapter("next")}
-  className="text-[9px] font-bold uppercase tracking-widest text-white/50 hover:text-white/90 cursor-pointer"
+  className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text cursor-pointer"
   >
   Next chapter →
   </button>

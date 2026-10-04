@@ -1,3 +1,5 @@
+import { READER_THEMES } from "./readerThemes";
+
 /**
  * Comic-reader settings that the book reader's settings module does not own.
  *
@@ -46,6 +48,15 @@ export interface ComicReaderPrefs {
   hideImages: boolean;
   /** Stop the mouse wheel from turning pages. */
   disableMouseScroll: boolean;
+  /**
+   * Reading theme key, matching `READER_THEMES` in `readerThemes.ts`.
+   *
+   * The comic reader previously hardcoded `bg-black` with white-alpha chrome, so
+   * it ignored the selected theme entirely and looked like a different app from
+   * the EPUB reader. Sharing the same key space means one theme picker drives
+   * both readers and they stay visually consistent.
+   */
+  theme: string;
 }
 
 export const DEFAULT_COMIC_PREFS: ComicReaderPrefs = {
@@ -54,6 +65,7 @@ export const DEFAULT_COMIC_PREFS: ComicReaderPrefs = {
   grayscaleImages: false,
   hideImages: false,
   disableMouseScroll: false,
+  theme: "dark",
 };
 
 const STORAGE_KEY = "kora_comic_reader_settings";
@@ -152,6 +164,11 @@ export function sanitizeComicPrefs(input: unknown): ComicReaderPrefs {
   if (typeof raw.grayscaleImages === "boolean") out.grayscaleImages = raw.grayscaleImages;
   if (typeof raw.hideImages === "boolean") out.hideImages = raw.hideImages;
   if (typeof raw.disableMouseScroll === "boolean") out.disableMouseScroll = raw.disableMouseScroll;
+  // Only accept a key that actually exists in READER_THEMES — an unknown string
+  // would resolve to an undefined theme and paint the reader unstyled.
+  if (typeof raw.theme === "string" && raw.theme in READER_THEMES) {
+    out.theme = raw.theme;
+  }
   return out;
 }
 

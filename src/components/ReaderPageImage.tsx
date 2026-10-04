@@ -376,10 +376,10 @@ export function ReaderPageImage({
         role="alert"
       >
         <AlertTriangle className="w-7 h-7 text-amber-500" />
-        <p className="text-[11px] uppercase tracking-widest text-white/80">
+        <p className="text-[11px] uppercase tracking-widest text-kindle-text">
           Page {pageLabel} unavailable
         </p>
-        <p className="text-[10px] text-white/50 max-w-xs leading-relaxed">{message}</p>
+        <p className="text-[10px] text-kindle-text-muted max-w-xs leading-relaxed">{message}</p>
         <div className="flex items-center gap-2 mt-1">
           <button
             onClick={(e) => {
@@ -387,7 +387,7 @@ export function ReaderPageImage({
               onRetry?.(url);
               setRetry((r) => ({ url, attempt: r.url === url ? r.attempt + 1 : 1 }));
             }}
-            className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-1.5 border border-white/25 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/85 hover:bg-white/10 cursor-pointer"
+            className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-1.5 border border-kindle-border rounded-lg text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-text/10 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             Retry
@@ -398,7 +398,7 @@ export function ReaderPageImage({
                 e.stopPropagation();
                 onSkip();
               }}
-              className="pointer-events-auto px-3 py-1.5 border border-white/25 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/85 hover:bg-white/10 cursor-pointer"
+              className="pointer-events-auto px-3 py-1.5 border border-kindle-border rounded-lg text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-text/10 cursor-pointer"
             >
               Skip page
             </button>
@@ -409,7 +409,7 @@ export function ReaderPageImage({
                 e.stopPropagation();
                 onClose();
               }}
-              className="pointer-events-auto px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white/60 hover:text-white cursor-pointer"
+              className="pointer-events-auto px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text cursor-pointer"
             >
               Back
             </button>
@@ -452,7 +452,7 @@ export function ReaderPageImage({
         }}
       />
       {status !== "ready" && (
-        <Loader2 className="absolute inset-0 m-auto w-6 h-6 animate-spin text-white/40 pointer-events-none" />
+        <Loader2 className="absolute inset-0 m-auto w-6 h-6 animate-spin text-kindle-text-muted/70 pointer-events-none" />
       )}
     </div>
   );
