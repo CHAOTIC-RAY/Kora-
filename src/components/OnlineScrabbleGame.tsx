@@ -986,12 +986,18 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             onClick={() => clickBoardCell(r, c)}
                             className={`aspect-square rounded flex flex-col items-center justify-center relative cursor-pointer transition ${
                               cell
-                                ? cell.isTemp
-                                  ? "bg-kindle-accent text-kindle-bg font-bold border-2 border-amber-300 animate-pulse shadow-md"
-                                  : "bg-kindle-accent text-kindle-bg font-bold border border-kindle-accent shadow"
-                                : mult.type
-                                ? mult.color
-                                : "bg-white  hover:bg-neutral-100  text-kindle-text  border border-kindle-border/40 dark:border-transparent"
+                                                              ? cell.isTemp
+                                                                                                                              /* Temp tile: card + text, NOT accent + bg. Paper (#8B7355 on
+                                                                                                                                 #FAF7F2) and Sepia (#9C7A5B on #F4ECD8) are both mid-tone, so an
+                                                                                                                                 accent fill yields only 4.20:1 and 3.33:1 — below AA — while
+                                                                                                                                 card + text is >= 12:1 on every theme. The pending state is
+                                                                                                                                 carried by the amber border and pulse, not by a colour that
+                                                                                                                                 cannot carry text. */
+                                                                                                                              ? "bg-kindle-card text-kindle-text font-bold border-2 border-amber-400 animate-pulse shadow-md"
+                                                                                                                              : "bg-kindle-card text-kindle-text font-bold border-2 border-kindle-accent shadow"
+                                                              : mult.type
+                                                              ? mult.color
+                                                              : "bg-white  hover:bg-neutral-100  text-kindle-text  border border-kindle-border/40 dark:border-transparent"
                             }`}
                           >
                             {cell ? (
@@ -1002,12 +1008,24 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                 animate={{ scale: 1, opacity: 1 }}
                                 transition={{ type: "spring", stiffness: 420, damping: 26, mass: 0.6 }}
                               >
-                                <span className="text-[11px] sm:text-xs md:text-base font-serif font-bold leading-none text-kindle-text">
-                                  {cell.letter}
-                                </span>
-                                <span className="absolute bottom-[1px] right-[1px] text-[7px] sm:text-[8px] font-mono font-bold leading-none opacity-90 text-kindle-accent">
-                                  {cell.score}
-                                </span>
+                                {/*
+                                                                  The letter must NOT hardcode `text-kindle-text`:
+                                                                  the cell paints the tile background with
+                                                                  `bg-kindle-accent`, and `--color-kindle-accent` and
+                                                                  `--color-kindle-text` are near-identical on every
+                                                                  theme — EXACTLY equal on `.oled` (#E8E8E8). That
+                                                                  combination drew the letter in the same colour as
+                                                                  its own background, so placed tiles were invisible
+                                                                  on all eight themes (reported 2026-10-03). Let the
+                                                                  cell decide, so temp tiles stay light-on-accent and
+                                                                  committed tiles dark-on-card.
+                                                                */}
+                                                                <span className="text-[11px] sm:text-xs md:text-base font-serif font-bold leading-none">
+                                                                  {cell.letter}
+                                                                </span>
+                                                                <span className="absolute bottom-[1px] right-[1px] text-[7px] sm:text-[8px] font-mono font-bold leading-none opacity-90">
+                                                                  {cell.score}
+                                                                </span>
                               </motion.div>
                             ) : mult.type ? (
                               <span className="text-[7px] sm:text-[9px] font-black leading-none uppercase tracking-tight text-kindle-text">
