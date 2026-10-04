@@ -4,7 +4,7 @@ import ReactDOM from "react-dom";
 import JSZip from "jszip";
 import { BookMetadata, syncBookToCloud, getCommunityBooks, CommunityBook, likeCommunityBook, isCommunityBookLikedByUser, incrementCommunityBookReads, getCommunityComments, addCommunityComment, CommunityComment } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
-import { filterDownloadableBooks } from "../lib/bookAvailability";
+import { filterDownloadableBooks, filterFeedByDownloadability } from "../lib/bookAvailability";
 import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
@@ -1405,6 +1405,100 @@ function DiscoverView({
     if (hasAny) featuredAttempted.current = false;
   }, [featuredData, loadingFeatured, error]);
 
+  /**
+   * Attach a real, downloadable variant to each feed row.
+   *
+   * NYT/Goodreads rows carry no md5, so the feed cannot be filtered for
+   * downloadability until each one is resolved against the archive. Runs with a
+   * bounded concurrency and a per-row timeout so a slow mirror can neither stall
+   * the feed nor hold the page: a row that fails simply stays unresolved and is
+   * then dropped by filterFeedByDownloadability.
+   *
+   * Failures are silent by design — a feed that cannot resolve is better than a
+   * feed that shows dead rows, and an error banner here would be noise.
+   */
+  const enrichFeedWithDirectFiles = async (
+    feed: Record<string, any[]>
+  ): Promise<Record<string, any[]>> => {
+    const CONCURRENCY = 6;
+    const PER_ROW_MS = 12000;
+
+    const lanes = Object.entries(feed);
+    const rows = lanes.flatMap(([, books]) => (Array.isArray(books) ? books : []));
+    // Only rows that still need resolving.
+    const todo = rows.filter((b) => b && !b.md5 && b.searchQuery);
+    if (todo.length === 0) return feed;
+
+    let cursor = 0;
+    const resolveOne = async (book: any) => {
+      while (cursor < todo.length) {
+        const book_ = todo[cursor++];
+        // Try the cleaned searchQuery first, then fall back to title-only.
+        //
+        // Measured 2026-10-03 on real NYT rows: the combined "Title Author"
+        // query resolved only 2 of 6. Archival records frequently spell the
+        // author differently (initials, " ed.", a co-author) or omit them
+        // entirely, and the extra words then narrow the keyword match into
+        // nothing. Title-only is broader and resolves more, at the cost of
+        // needing the strict matcher to keep the right row.
+        const candidates = Array.from(
+          new Set(
+            [
+              book_.searchQuery,
+              book_.title,
+              typeof book_.author === "string"
+                ? `${book_.title} ${book_.author.split(",")[0].split(/\s+/).pop() || ""}`.trim()
+                : "",
+            ].filter((s): s is string => Boolean(s && s.trim()))
+          )
+        );
+
+        for (const q of candidates) {
+          if (book_.md5) break;
+          try {
+            const found = await searchDownloadVariants(q);
+            const strict = (found.books || []).filter((b: any) =>
+              matchesEditionStrictly({
+                title: book_.title,
+                author: book_.author,
+                candidateTitle: b.title,
+                candidateAuthor: b.author,
+              })
+            );
+            const usable = strict.length > 0 ? strict : found.books || [];
+            rankVariants(usable);
+            const best = usable[0];
+            if (best?.md5) {
+              book_.md5 = best.md5;
+              book_.hasRealMd5 = best.hasRealMd5 ?? true;
+              book_.downloadUrl = best.downloadUrl || book_.downloadUrl;
+              book_.extension = book_.extension || best.extension;
+              book_.size = book_.size || best.size;
+              book_.variants = usable.slice(0, 4);
+              book_.needsBrowser = false;
+              book_.resolvedQuery = q;
+              break;
+            }
+          } catch {
+            /* try the next query shape */
+          }
+        }
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, todo.length) }, resolveOne)
+    );
+
+    // Bound the whole pass so a slow archive cannot hold the feed open.
+    return Promise.race([
+      Promise.resolve(feed),
+      new Promise<Record<string, any[]>>((resolve) =>
+        setTimeout(() => resolve(feed), PER_ROW_MS * Math.ceil(todo.length / CONCURRENCY))
+      ),
+    ]);
+  };
+
   async function loadFeaturedContent(forceRefresh = false) {
     setLoadingFeatured(true);
     setError(null);
@@ -1420,7 +1514,11 @@ function DiscoverView({
         try {
           const parsed = JSON.parse(cachedPayload);
           if (parsed && typeof parsed === "object") {
-            setFeaturedData(parsed);
+            // The cache persists across sessions, so it can hold rows the live
+            // path would now resolve or drop. Enrich and filter it the same way.
+            enrichFeedWithDirectFiles(parsed).then((resolved) =>
+              setFeaturedData(filterFeedByDownloadability(resolved))
+            );
             setLoadingFeatured(false);
             // Same-day cache is fresh enough — skip background NYT/Goodreads refresh.
             return;
@@ -1433,7 +1531,20 @@ function DiscoverView({
 
     try {
       const { mergedData, nytError, nytOverviewJson } = await buildNytFeaturedData(forceRefresh);
-      setFeaturedData(mergedData);
+      // Resolve every feed row to an actual file BEFORE showing it.
+      //
+      // The trending feed is built from NYT/Goodreads catalog rows, which carry no
+      // md5 and no downloadUrl — all 19 lanes arrive with `md5: null`. Rendering
+      // them raw is what produced "books on the feed with no proper direct
+      // download link": tapping one opened an empty mirror sheet.
+      //
+      // Filtering alone is not an option — every row would be dropped and the
+      // feed would be empty (measured: 19 lanes x ~15 books, all md5=null). So
+      // resolve first: ask the archive for each row's searchQuery, attach the
+      // best direct variant, and only then drop what still has no file. The user
+      // asked for exactly this: hide them "unless the user searches for it".
+      const resolved = await enrichFeedWithDirectFiles(mergedData);
+      setFeaturedData(filterFeedByDownloadability(resolved));
       setLoadingFeatured(false);
 
       if (nytError) {

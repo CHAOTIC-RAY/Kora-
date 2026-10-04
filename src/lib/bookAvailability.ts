@@ -131,6 +131,52 @@ export function filterDownloadableBooks<T extends AvailabilityBook>(books: T[] |
   return books.filter((b) => b && hasDownloadableSource(b));
 }
 
+/**
+ * Stricter variant for BROWSE feeds (trending, shelves, recommendations).
+ *
+ * `filterDownloadableBooks` deliberately admits catalog rows we could re-search
+ * when the user opens the book — reasonable for a search result, where the user
+ * already named the book and a search is a cheap next step.
+ *
+ * A browse row has no such context: the user did not ask for it, so opening it
+ * and finding nothing is a dead end. The request (2026-10-03) was to hide those
+ * from the feed "unless the user searches for it" — so on a feed we require an
+ * actual file: a resolvable id (md5/hash/iaId), a real file URL, or an
+ * audiobook source.
+ */
+export function filterFeedByDownloadability<T extends AvailabilityBook>(
+  input: Record<string, T[]> | T[] | null | undefined
+): any {
+  // The trending feed is a record of lanes (one array per shelf), while search
+  // results are a flat array. Accept both so one guard covers every feed.
+  if (!input || typeof input !== "object") return input;
+  if (Array.isArray(input)) return input.filter((b) => b && hasDirectFile(b));
+  const out: Record<string, T[]> = {};
+  for (const [lane, rows] of Object.entries(input as Record<string, T[]>)) {
+    out[lane] = Array.isArray(rows) ? rows.filter((b) => b && hasDirectFile(b)) : rows;
+  }
+  return out;
+}
+
+/** True only when the row itself already points at a fetchable file. */
+export function hasDirectFile(book: AvailabilityBook | null | undefined): boolean {
+  if (!book) return false;
+  if (typeof book.md5 === "string" && book.md5.trim()) return true;
+  if (typeof book.hash === "string" && book.hash.trim()) return true;
+  if (typeof book.iaId === "string" && book.iaId.trim()) return true;
+  if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
+  if (Array.isArray(book.audiobookTracks) && book.audiobookTracks.length > 0) return true;
+
+  if (book.needsBrowser) return false;
+  const url = typeof book.downloadUrl === "string" ? book.downloadUrl.trim() : "";
+  if (/^https?:\/\//i.test(url) && !needsBrowserUrl(url)) return true;
+  if (typeof book.directUrl === "string" && book.directUrl.trim()) return true;
+
+  // A grouped result is only as good as its best variant.
+  const variants = Array.isArray(book.variants) ? book.variants : [];
+  return variants.some((v) => v && hasDirectFile(v));
+}
+
 export interface CoverSafeOptions {
   /** Upper bound on returned books. */
   limit?: number;
