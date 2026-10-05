@@ -24,6 +24,17 @@ export interface AudiobookSearchResult {
   source: string;
   listenUrl?: string;
   listenUrlAlt?: string;
+  /**
+   * Who reads it. LibriVox returns a real reader for every record (its whole
+   * catalogue is volunteer-narrated), and the field was being computed by
+   * parseLibrivoxJson and then discarded because the type had nowhere to put
+   * it. Optional, because the HTML-scraped hosts do not expose it.
+   */
+  narrator?: string;
+  /** Genre labels where the source provides them (LibriVox only, currently). */
+  genres?: string[];
+  /** Direct media files, where the source exposes them (LibriVox sections). */
+  sections?: { url: string; title: string }[];
 }
 
 export const POPULAR_AUDIOBOOKS = [
@@ -337,7 +348,7 @@ export async function searchAudiobooksFromSources(
                 source: src.name,
                 genres: b.genres,
                 sections: b.sections,
-              } as unknown as AudiobookSearchResult,
+              },
             ]);
           }
           return;
