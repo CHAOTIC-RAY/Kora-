@@ -23,6 +23,11 @@ import {
   titlesRoughlyMatch,
 } from "./lib/audiobookScraper";
 import {
+  ALL_AUDIOBOOK_SOURCES,
+  SEARCHABLE_AUDIOBOOK_SOURCES,
+  audiobookSearchUrl,
+} from "./lib/audiobookSources";
+import {
   getCachedAudiobookDetail,
   getCachedAudiobookSearch,
   setCachedAudiobookSearch,
@@ -1872,10 +1877,14 @@ export default {
             const seen = new Set<string>();
 
             // Primary: scrape the known free-audiobook hosts.
-            const scrapeSources = [
-              { name: "fulllengthaudiobooks", url: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://fulllengthaudiobooks.com" },
-              { name: "hdaudiobooks", url: `https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://hdaudiobooks.com" },
-            ];
+            // From the shared registry, which was verified host-by-host on
+            // 2026-10-05. Unreachable hosts are excluded there, so this never
+            // burns a request on a dead domain.
+            const scrapeSources = SEARCHABLE_AUDIOBOOK_SOURCES.map((src) => ({
+              name: src.name,
+              url: audiobookSearchUrl(src, q) || "",
+              base: src.base,
+            })).filter((src) => Boolean(src.url));
 
             await Promise.allSettled(scrapeSources.map(async (src) => {
               try {
@@ -1945,7 +1954,21 @@ export default {
       const expectedTitle = (url.searchParams.get("title") || "").trim();
 
       try {
-        const allowedHosts = ["hdaudiobooks.com", "fulllengthaudiobooks.com", "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com"];
+        // Derived from the shared registry so a source cannot be added to the
+        // scraper and then silently rejected here. Previously a hardcoded list of
+        // two hosts, which is exactly how new sources would fail with
+        // "Unsupported audiobook source URL" instead of working.
+        const allowedHosts = [
+          ...ALL_AUDIOBOOK_SOURCES.map((s) => s.base),
+          // LibriVox serves its media from archive.org.
+          "archive.org",
+        ].map((u) => {
+          try {
+            return new URL(u).hostname.replace(/^www\./, "");
+          } catch {
+            return u.replace(/^www\./, "");
+          }
+        });
         for (const u of urls) {
           const host = new URL(u).hostname.replace(/^www\./, "");
           if (!allowedHosts.some(h => h.replace(/^www\./, "") === host)) {

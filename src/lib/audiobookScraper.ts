@@ -253,6 +253,13 @@ export function parseFullLengthAudiobooksFeed(html: string, baseUrl = "https://f
 }
 
 /** Search both audiobook sources; tries fulllength first (better hit rate). */
+import {
+  SEARCHABLE_AUDIOBOOK_SOURCES,
+  audiobookSearchUrl,
+  parseLibrivoxJson,
+  type AudiobookSource,
+} from "./audiobookSources";
+
 export async function searchAudiobooksFromSources(
   fetchHtml: (url: string) => Promise<string>,
   q: string,
@@ -269,15 +276,40 @@ export async function searchAudiobooksFromSources(
     }
   };
 
-  const sources = [
-    { name: "fulllengthaudiobooks", url: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://fulllengthaudiobooks.com" },
-    { name: "hdaudiobooks", url: `https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://hdaudiobooks.com" },
-  ];
+  // Replaces a hardcoded two-host list. Every source here was verified live on
+  // 2026-10-05 (reachability, search-URL shape, and that the page yields book
+  // links). Hosts that turned out to be unreachable are recorded in
+  // UNREACHABLE_AUDIOBOOK_HOSTS and never requested.
+  const sources = SEARCHABLE_AUDIOBOOK_SOURCES;
 
   await Promise.allSettled(
-    sources.map(async (src) => {
+    sources.map(async (src: AudiobookSource) => {
+      const url = audiobookSearchUrl(src, q);
+      if (!url) return;
       try {
-        const html = await fetchHtml(src.url);
+        // LibriVox is a documented JSON API, not an HTML site, and `extended=1`
+        // returns real per-section MP3 URLs. Scraping its markup would lose
+        // both the fuzzy `^title` match and the files.
+        if (src.kind === "api") {
+          const body = await fetchHtml(url);
+          for (const b of parseLibrivoxJson(body)) {
+            addBatch([
+              {
+                title: b.title,
+                author: b.author,
+                narrator: b.narrator,
+                link: b.link,
+                coverUrl: b.coverUrl,
+                source: src.name,
+                genres: b.genres,
+                sections: b.sections,
+              } as unknown as AudiobookSearchResult,
+            ]);
+          }
+          return;
+        }
+
+        const html = await fetchHtml(url);
         addBatch(parseAudiobookSearchHtml(html, src.name, src.base, maxResults));
       } catch {
         /* skip failed source */
