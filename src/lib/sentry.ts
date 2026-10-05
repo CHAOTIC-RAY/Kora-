@@ -10,6 +10,7 @@
  */
 import * as Sentry from "@sentry/react";
 import "./sentryFeedback.css";
+import { isNativeApp } from "./capacitorNative";
 
 export function initSentry() {
   // Avoid double-init during HMR / StrictMode dev double-render.
@@ -25,16 +26,31 @@ export function initSentry() {
     return;
   }
 
-  Sentry.init({
-    dsn,
+  // The floating "Report a bug" button must NOT appear in the APK.
+    //
+    // Reported repeatedly ("apk is still showing the sentry report bug icon",
+    // then again after a placement fix). The earlier fix only repositioned the
+    // button on native — it never stopped it being created. `feedbackIntegration`
+    // injects its host element during `init`, so the actor renders regardless of
+    // any later CSS, and page stylesheet rules cannot reach it because it lives
+    // inside a shadow root.
+    //
+    // Crash REPORTING is deliberately kept: `feedbackIntegration` is what carries
+    // user reports, but plain error capture comes from `Sentry.init` itself and is
+    // untouched by this flag. Only the always-visible button is suppressed, so
+    // native crashes still reach Sentry while the icon is gone.
+    const showFeedbackWidget = !isNativeApp();
 
-    integrations: [
-      Sentry.browserTracingIntegration(),
-      Sentry.replayIntegration(),
-      Sentry.feedbackIntegration({
-        colorScheme: "system",
-      }),
-    ],
+    Sentry.init({
+      dsn,
+
+      integrations: [
+        Sentry.browserTracingIntegration(),
+        Sentry.replayIntegration(),
+        ...(showFeedbackWidget
+          ? [Sentry.feedbackIntegration({ colorScheme: "system" })]
+          : []),
+      ],
 
     // Tracing — capture 100% of transactions in dev, 10% in production
     tracesSampleRate: import.meta.env.PROD ? 0.1 : 1.0,
@@ -97,7 +113,10 @@ export function initSentry() {
     ],
   });
 
-  installFeedbackWidgetPlacer();
+  // Only bother measuring when the widget was actually created. On native the
+  // host element never exists, so the placer (and its MutationObserver watching
+  // the whole body) would run forever for nothing.
+  if (showFeedbackWidget) installFeedbackWidgetPlacer();
 }
 
 /* ─────────────────────────────────────────────────────────────────────
