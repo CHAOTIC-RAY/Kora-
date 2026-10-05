@@ -4,6 +4,14 @@ import { AnimatePresence, motion } from "motion/react";
 import { isSoundEffectsEnabled } from "../lib/featureToggles";
 import { useWordDrag, type DragTile } from "../lib/useWordDrag";
 import {
+  enqueueLetter,
+  removeQueuedAt,
+  queuedWord,
+  pruneQueue,
+  isRackSlotUnavailable,
+  type QueuedLetter,
+} from "../lib/scrabbleQueue";
+import {
   X,
   Shuffle,
   RefreshCw,
@@ -97,6 +105,17 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   const [turnIdx, setTurnIdx] = useState(0);
   const [bag, setBag] = useState<string[]>([]);
   const [selectedRackIdx, setSelectedRackIdx] = useState<number | null>(null);
+  /**
+   * The word being built, in the order the player chose.
+   *
+   * The rack is a fixed seven slots, so both existing paths derived their
+   * order from it — tap-tap forced rack order and word drag could only lift an
+   * adjacent run. This holds the player's sequence instead, and the board
+   * consumes it one letter per cell. Held as rack INDICES, not letters, so a
+   * shuffle or another placement cannot leave a queued letter that the player
+   * no longer holds.
+   */
+  const [letterQueue, setLetterQueue] = useState<QueuedLetter[]>([]);
   const [tempPlaced, setTempPlaced] = useState<{ r: number; c: number; letter: string; rackIdx: number }[]>([]);
   const [log, setLog] = useState<string[]>([]);
 
@@ -326,13 +345,73 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     return players.find((p) => p.id === myUid());
   };
 
+  /**
+   * Tap a rack tile: add it to the word being built.
+   *
+   * Tapping the same tile twice takes it back out, which is the fastest way to
+   * undo a mis-tap without hunting for a separate remove control — and it
+   * cannot be ambiguous, because a slot can only be in the queue once.
+   */
   const selectRackTile = (rackIdx: number) => {
     if (!isMyTurn()) return;
     const me = getMyPlayer();
     if (!me || !me.tiles[rackIdx]) return;
     playClickSound();
-    setSelectedRackIdx(selectedRackIdx === rackIdx ? null : rackIdx);
+
+    const inQueue = letterQueue.some((q) => q.rackIdx === rackIdx);
+    if (inQueue) {
+      setLetterQueue((prev) => removeQueuedAt(prev, prev.findIndex((q) => q.rackIdx === rackIdx)));
+      return;
+    }
+    // A tile already on the board cannot also join the word.
+    if (tempPlaced.some((t) => t.rackIdx === rackIdx)) return;
+    setLetterQueue((prev) => enqueueLetter(prev, rackIdx, me.tiles));
   };
+
+  /** Take back the last letter queued, without touching what is on the board. */
+  const undoQueuedLetter = () => {
+    if (!letterQueue.length) return;
+    playClickSound();
+    setLetterQueue((prev) => removeQueuedAt(prev, prev.length - 1));
+  };
+
+  /**
+   * Take back the most recently PLACED tile, leaving the rest of the turn
+   * alone. `recallTempTiles` returns the whole turn, which is the right tool
+   * for "wrong word" and the wrong one for "one letter was a mis-tap".
+   */
+  const recallLastPlaced = () => {
+    if (!tempPlaced.length) return;
+    playClickSound();
+    const me = getMyPlayer();
+    const last = tempPlaced[tempPlaced.length - 1];
+    if (me) me.tiles[last.rackIdx] = last.letter;
+
+    const nextTemp = [...tempPlaced];
+    nextTemp.pop();
+    setTempPlaced(nextTemp);
+
+    const newBoard = { ...board };
+    delete newBoard[`${last.r},${last.c}`];
+    setBoard(newBoard);
+  };
+
+  /**
+   * Drop queued letters the rack no longer holds.
+   *
+   * Every existing placement path blanks a rack slot in place, so a queue built
+   * before a shuffle or a word drag can reference a slot that now holds a
+   * different letter — or nothing. Left alone, that would show the player
+   * letters they no longer have and place tiles that were never theirs.
+   */
+  useEffect(() => {
+    const me = getMyPlayer();
+    if (!me) return;
+    setLetterQueue((prev) => {
+      const next = pruneQueue(prev, me.tiles);
+      return next.length === prev.length ? prev : next;
+    });
+  });
 
   // ── Drag to place a whole word ────────────────────────────────────────────
   //
@@ -435,16 +514,35 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
 
     if (board[key] && !board[key].isTemp) return;
 
-    if (selectedRackIdx !== null) {
+    // Placement source, in priority order:
+    //
+    //   1. the queued word — the normal path now, since the player builds the
+    //      word first and then places its letters one cell at a time;
+    //   2. a single pre-selected rack tile — the original tap-tap behaviour,
+    //      kept so an existing muscle memory does not break.
+    //
+    // A queue entry is consumed as it is placed, so the board fills in the
+    // order the letters were chosen.
+    const queued = letterQueue[0];
+    const rackIdxToPlace = queued ? queued.rackIdx : selectedRackIdx;
+    if (rackIdxToPlace !== null) {
       const me = getMyPlayer();
       if (!me) return;
-      const letter = me.tiles[selectedRackIdx];
+      const letter = me.tiles[rackIdxToPlace];
       if (!letter) return;
 
-      playClickSound();
-      me.tiles[selectedRackIdx] = "";
+      // Re-validate against the rack at commit time, not at queue time: a
+      // shuffle or a word drag can have invalidated the head of the queue
+      // between building it and placing it.
+      if (queued && queued.letter !== letter) {
+        setLetterQueue((prev) => pruneQueue(prev, me.tiles));
+        return;
+      }
 
-      const newTemp = [...tempPlaced, { r, c, letter, rackIdx: selectedRackIdx }];
+      playClickSound();
+      me.tiles[rackIdxToPlace] = "";
+
+      const newTemp = [...tempPlaced, { r, c, letter, rackIdx: rackIdxToPlace }];
       setTempPlaced(newTemp);
 
       setBoard((prev) => ({
@@ -452,6 +550,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
         [key]: { letter, score: TILE_VALUES[letter] || 1, isTemp: true },
       }));
 
+      if (queued) setLetterQueue((prev) => removeQueuedAt(prev, 0));
       setSelectedRackIdx(null);
     }
   };
@@ -1196,12 +1295,84 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                       )}
                     </div>
 
+                    {/*
+                    The word being built.
+
+                    Shown above the rack because the queue IS the player's
+                    word — the rack is only where the letters happen to sit.
+                    Without this the player has no way to see, or correct, the
+                    order they chose before the letters are on the board.
+                    */}
+                    {(letterQueue.length > 0 || tempPlaced.length > 0) && (
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 mb-2">
+                        {letterQueue.map((ql, qi) => (
+                          <button
+                            key={ql.rackIdx}
+                            onClick={() =>
+                              setLetterQueue((prev) => removeQueuedAt(prev, qi))
+                            }
+                            aria-label={`Remove ${ql.letter} from the word`}
+                            title="Tap to remove"
+                            className="w-8 h-8 rounded-lg bg-kindle-accent text-kindle-bg font-bold font-serif text-sm flex items-center justify-center hover:opacity-80 cursor-pointer border-2 border-amber-300/60"
+                          >
+                            {ql.letter}
+                          </button>
+                        ))}
+                        {letterQueue.length > 0 && tempPlaced.length > 0 && (
+                          <span className="text-white/30 text-xs px-0.5">&rarr;</span>
+                        )}
+                        {tempPlaced.map((t, ti) => (
+                          <span
+                            key={`${t.r},${t.c}`}
+                            className="w-8 h-8 rounded-lg bg-kindle-card border-2 border-amber-400/70 text-kindle-text font-bold font-serif text-sm flex items-center justify-center"
+                          >
+                            {t.letter}
+                          </span>
+                        ))}
+                        {letterQueue.length === 0 && tempPlaced.length === 0 && null}
+                      </div>
+                    )}
+
+                    {/* Per-letter undo. `recallTempTiles` returns the whole
+                    turn, which is the right tool for "wrong word" and the
+                    wrong one for "one letter was a mis-tap". */}
+                    {(letterQueue.length > 0 || tempPlaced.length > 0) && (
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <button
+                          onClick={undoQueuedLetter}
+                          disabled={letterQueue.length === 0}
+                          className="text-[9px] uppercase tracking-widest text-white/50 hover:text-white/90 disabled:opacity-25 cursor-pointer px-2 py-1 rounded border border-white/15"
+                        >
+                          Undo letter
+                        </button>
+                        <button
+                          onClick={recallLastPlaced}
+                          disabled={tempPlaced.length === 0}
+                          className="text-[9px] uppercase tracking-widest text-white/50 hover:text-white/90 disabled:opacity-25 cursor-pointer px-2 py-1 rounded border border-white/15"
+                        >
+                          Undo placed
+                        </button>
+                        {letterQueue.length > 0 && (
+                          <span className="text-[10px] font-mono text-amber-300/80">
+                            {queuedWord(letterQueue)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
                       {Array.from({ length: 7 }).map((_, idx) => {
                         const me = getMyPlayer();
                         const letter = me?.tiles[idx];
                         const isEmpty = !letter;
                         const isSelected = selectedRackIdx === idx;
+                        // A tile already on the board, or already in the word
+                        // being built, cannot be added again.
+                        const isSpokenFor = isRackSlotUnavailable(
+                          idx,
+                          letterQueue,
+                          tempPlaced
+                        );
                         const shake = isSelected;
 
                         return (
