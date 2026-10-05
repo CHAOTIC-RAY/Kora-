@@ -84,6 +84,51 @@ check(
   /not_found_handling\s*=\s*"single-page-application"/.test(toml)
 );
 
+// index.html names every hashed chunk, so a cached copy pins the browser to a
+// build the server no longer has. Measured 2026-10-05: after four deploys the
+// edge still answered / with CF-Cache-Status: HIT naming a deleted entry chunk,
+// while /version.json (no-store) reported a different buildId than local. That
+// is what made deploys look like they were racing when they were not.
+const headers = fs.readFileSync("public/_headers", "utf8");
+// Cloudflare _headers format: a path line, then indented header lines. Comments
+// start with '#' and are skipped. Parse it properly rather than slicing blindly —
+// a naive indexOf("\n\n") lands on the next rule and misses the header value.
+const headerRule = (path: string): string => {
+  const lines = headers.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() !== path) continue;
+    let body = "";
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j];
+      // A header line is indented; the next rule or a comment ends the block.
+      if (!l.trim() || !/^\s+/.test(l) || l.trim().startsWith("#")) break;
+      body += l + "\n";
+    }
+    return body;
+  }
+  return "";
+};
+check(
+  "index.html is must-revalidate",
+  (headerRule("/index.html") ?? "").includes("must-revalidate"),
+  "without this the edge pins browsers to a deleted build"
+);
+check(
+  "the site root is must-revalidate too",
+  (headerRule("/") ?? "").includes("must-revalidate"),
+  "/ is the URL users and the SW actually request"
+);
+check(
+  "hashed assets are still cached hard",
+  (headerRule("/assets/*") ?? "").includes("immutable"),
+  "immutable filenames should not be revalidated on every load"
+);
+check(
+  "version.json stays no-store (it is the source of truth)",
+  (headerRule("/version.json") ?? "").includes("no-store"),
+  "everything else is verified against this"
+);
+
 
 console.log("=== 1. /assets/ is network-first, not cache-first ===");
 check(

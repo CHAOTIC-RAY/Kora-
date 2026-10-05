@@ -5,3 +5,26 @@
 /sw.js
   Cache-Control: no-cache, must-revalidate
   Service-Worker-Allowed: /
+
+# index.html names every hashed chunk, so a cached copy pins the browser to a
+# build that no longer exists on the server. With no explicit rule Cloudflare
+# falls back to its default and serves it with a long TTL. Measured on
+# production while debugging on 2026-10-05: after four deploys, /version.json
+# (explicitly no-store, so it is the truth) reported buildId muv1p32c while the
+# local build was muv1mr4g, and every response for / carried
+# `CF-Cache-Status: HIT` naming an entry chunk that no longer existed.
+#
+# The failure was silent and looked exactly like a deploy race: the entry chunk
+# a page asked for was not on the server, so it fell through to the SPA
+# fallback and the app died on a MIME-type error. must-revalidate still lets the
+# edge store the object; it just forces a check with the origin before reuse.
+/index.html
+  Cache-Control: no-cache, must-revalidate
+
+/
+  Cache-Control: no-cache, must-revalidate
+
+# Hashed filenames are immutable by definition, so they should be cached hard.
+# This is deliberately the opposite policy from the two rules above.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
