@@ -7,8 +7,8 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v8";
-const API_CACHE = "kora-api-v8";
+const SHELL_CACHE = "kora-shell-v9";
+const API_CACHE = "kora-api-v9";
 const COVER_CACHE = "kora-covers-v1";
 const DATA_CACHE = "kora-data-v1"; // perf plan 3.2: bundled dictionary shards (immutable)
 // Do NOT cache sw.js / version.json — those must always hit the network so
@@ -108,6 +108,30 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       const keep = new Set([SHELL_CACHE, API_CACHE, COVER_CACHE, DATA_CACHE]);
       await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
+
+      // Deleting by NAME is not enough: SHELL_CACHE is a fixed string, so it
+      // survives every deploy and keeps accumulating the PREVIOUS build's hashed
+      // chunks forever. Nothing ever asked for them again, but they occupied
+      // storage and made an offline load silently serve an old build. Drop any
+      // /assets/ entry that is not in the current precache manifest.
+      try {
+        const shell = await caches.open(SHELL_CACHE);
+        const res = await fetch("/precache-manifest.json", { cache: "no-cache" });
+        const manifest = res.ok ? await res.json() : null;
+        const current = new Set(
+          (Array.isArray(manifest?.assets) ? manifest.assets : []).map((u) => new URL(u, self.location.origin).pathname)
+        );
+        if (current.size) {
+          const stale = (await shell.keys())
+            .map((req) => new URL(req.url).pathname)
+            .filter((p) => p.startsWith("/assets/") && !current.has(p));
+          await Promise.all(stale.map((p) => shell.delete(p)));
+          if (stale.length) console.info("[sw] pruned", stale.length, "stale chunk(s)");
+        }
+      } catch (e) {
+        /* manifest unavailable — leave the cache alone rather than risk pruning live assets */
+      }
+
       await self.clients.claim();
       // Tell open tabs a new worker is live so they can reload onto the new build.
       try {
@@ -1069,8 +1093,29 @@ self.addEventListener("fetch", (event) => {
         const cache = await caches.open(SHELL_CACHE);
         const cached = await cache.match(event.request);
 
-        if (url.pathname.startsWith("/assets/") && cached) {
-          return cached;
+        // Hashed build assets are immutable BY NAME: index-ABC123.js never
+        // changes content. But this handler returned the cached copy WITHOUT
+        // consulting the network, so after a deploy the SW happily served the
+        // previous build's chunks to a page whose index.html was new. The old
+        // chunks it needs were also never pruned, because `activate` deletes
+        // caches by NAME and SHELL_CACHE never changes.
+        //
+        // That combination is the "keeps crashing randomly" report: any tab
+        // open across a deploy kept asking for the old hashed filenames and got
+        // whatever happened to be in the cache, failing somewhere random. The
+        // fix is network-first for /assets/ — the entry HTML already decides
+        // which names are current, and the precache is only a warm-up.
+        if (url.pathname.startsWith("/assets/")) {
+          try {
+            const res = await fetch(event.request);
+            if (res && res.ok) cache.put(event.request, res.clone());
+            return res;
+          } catch (e) {
+            // Offline: a cached copy of this exact hashed name is still valid.
+            const stale = await cache.match(event.request);
+            if (stale) return stale;
+            throw e;
+          }
         }
 
         try {

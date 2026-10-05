@@ -9,6 +9,7 @@ import { APP_BUILD_ID, fetchRemoteVersion, isNewerBuild } from "./lib/appVersion
 import { initCapacitorShell, isNativeApp } from "./lib/capacitorNative";
 import { installNativeHttpShim, isNativeHttpAvailable } from "./lib/nativeHttp";
 import { initSentry } from "./lib/sentry";
+import { logger } from "./lib/logger";
 import { Bug } from "lucide-react";
 
 // Initialize Sentry as early as possible so boot-time errors are captured.
@@ -28,7 +29,13 @@ function isChunkLoadError(error: unknown): boolean {
     error instanceof Error
       ? `${error.message} ${(error as Error & { cause?: unknown }).cause ?? ""}`
       : String(error);
-  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(
+  // The browser's wording for this has grown over the years and differs by
+  // engine, so match the family rather than one string. A bare "Failed to fetch"
+  // is included deliberately: for a stale hashed chunk that IS the error, and
+  // excluding it left the user with a dead "Reload" button and no explanation.
+  // The reason it is safe to be broad here is that the only consequence is
+  // offering a reload, and a reload is harmless when the bundle was fine.
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS|ChunkLoadError|Failed to fetch|Loading chunk \d+ failed|error loading chunk/i.test(
     message
   );
 }
@@ -94,6 +101,22 @@ if ("serviceWorker" in navigator) {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Sentry.ErrorBoundary
+      onError={(error, componentStack, eventId) => {
+        // @sentry/react types this as (error, componentStack: string,
+        // eventId: string) — NOT React's (error, ErrorInfo). An earlier
+        // attempt read `info.componentStack`, which does not exist here.
+        // The boundary renders a generic message, so without this handler a
+        // crash is invisible: "keep crashing randomly" with nothing to act on.
+        // Sentry captures it when a DSN is configured, and console keeps it
+        // either way so the shipped diagnostic log names the component.
+        console.error("[crash] root boundary caught:", error, componentStack, eventId);
+        logger.error("[crash] root boundary caught", {
+          message: String((error as Error)?.message || error),
+          stack: String((error as Error)?.stack || "").slice(0, 2000),
+          componentStack: String(componentStack ?? "").slice(0, 2000),
+          eventId: String(eventId ?? ""),
+        });
+      }}
       fallback={({ resetError, error }) => (
         <div className="min-h-screen bg-kindle-bg text-kindle-text flex flex-col items-center justify-center p-4">
           <h1 className="text-xl font-bold mb-2">Something went wrong</h1>
