@@ -54,36 +54,34 @@ const WORKER = "src/worker.ts";
 const toml = fs.readFileSync(WRANGLER, "utf8");
 const worker = fs.readFileSync(WORKER, "utf8");
 
-console.log("=== 0. a missing /assets/ file 404s instead of serving HTML ===");
-check(
-  "wrangler still uses SPA fallback (needed for /share and /install)",
-  /not_found_handling\s*=\s*"single-page-application"/.test(toml),
-  "client routes depend on this, so the Worker must special-case /assets/"
-);
-check(
-  "the Worker intercepts GET/HEAD on /assets/",
-  /request\.method === "GET"[\s\S]{0,120}request\.method === "HEAD"[\s\S]{0,200}path\.startsWith\("\/assets\/"\)/.test(worker),
-  "without this the asset 200 arrives from the fallback"
-);
-check(
-  "/assets/* is in run_worker_first so the guard is reachable",
-  /run_worker_first\s*=\s*\[[^\]]*"\/assets\/\*"/.test(toml),
-  "without this the assets layer answers BEFORE the Worker and the guard is dead code"
-);
-check(
-  "the SPA fallback is still configured for client routes",
-  /not_found_handling\s*=\s*"single-page-application"/.test(toml),
-  "/share and /install depend on it"
-);
-check(
-  "it returns a real 404 for a miss",
-  /status:\s*404/.test(worker) && /content-type":\s*"text\/plain/.test(worker),
-  "never let a missing chunk resolve to HTML"
-);
+console.log("=== 0. stale-chunk handling is fixed on the CLIENT, not by routing assets ===");
+// A stale hashed chunk still resolves to 200 + index.html via the SPA fallback
+// (not_found_handling = "single-page-application"). The browser then reports
+// "Expected a JavaScript module script but the server responded with a MIME type
+// of 'text/html'", which is what isChunkLoadError() must recognise.
 check(
   "the client recognises the MIME-type failure as a chunk error",
   /Expected a JavaScript module script|MIME type of/.test(main),
   "this is the message the SPA fallback actually produces"
+);
+// Routing /assets/* through the Worker was TRIED and reverted: env.ASSETS is
+// not bound in practice, so assets reaching the Worker are not served from disk.
+// Measured with "/assets/*" in run_worker_first:
+//   /assets/<real current entry>.js -> http=404   (site would not boot)
+// This check exists so that change cannot silently come back.
+check(
+  "/assets/* is NOT routed through the Worker",
+  !/run_worker_first\s*=\s*\[[^\]]*"\/assets\/\*"/.test(toml),
+  "adding it 404s every real chunk — reverted, do not re-add"
+);
+check(
+  "run_worker_first still covers the API and /send",
+  /run_worker_first\s*=\s*\[[^\]]*"\/api\/\*"[^\]]*"\/send"/.test(toml),
+  "/share and /install rely on the SPA fallback instead"
+);
+check(
+  "the SPA fallback remains configured for client routes",
+  /not_found_handling\s*=\s*"single-page-application"/.test(toml)
 );
 
 

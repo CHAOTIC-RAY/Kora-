@@ -794,44 +794,30 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    /**
-     * `wrangler.toml` sets `not_found_handling = "single-page-application"`,
-     * which is right for client routes like /share and /install but WRONG for a
-     * hashed build asset.
-     *
-     * A tab open across a deploy asks for the previous build's chunk names,
-     * those files no longer exist, and the SPA fallback answers with
-     * HTTP 200 + index.html. Measured on production:
-     *   /assets/DiscoverView-DOESNOTEXIST.js -> 200, text/html, 3887 bytes
-     *
-     * The browser accepts the 200, then refuses to execute HTML as a module and
-     * throws "Failed to load module script: Expected a JavaScript module script
-     * but the server responded with a MIME type of 'text/html'". Nothing in the
-     * app recognised that as a stale chunk, so it surfaced as a blank crash
-     * screen instead of the reload the client already knows how to perform.
-     *
-     * Answering 404 makes the failure honest: the dynamic import rejects with a
-     * real network error, `importWithRetry` sees it, `isBundleStale()` confirms
-     * the version moved, and the tab reloads onto the current build.
-     *
-     * Scoped to GET/HEAD on /assets/ only, so client routes still fall back.
-     */
+    // NOTE: do NOT route /assets/* through the Worker.
+    //
+    // `run_worker_first` deliberately covers only /api/* and /send. Adding
+    // "/assets/*" here breaks the site: this Worker is bundled without an ASSETS
+    // binding in practice, so env.ASSETS is undefined, the guard below falls
+    // through, and — crucially — a request that reaches the Worker instead of
+    // the assets layer is not served from disk at all. Measured immediately
+    // after trying it:
+    //
+    //   /assets/index-<real current entry>.js -> http=404  (the site would not boot)
+    //
+    // So the honest-404 idea is implemented by fixing the CLIENT instead: a stale
+    // hashed chunk still yields 200 + index.html from the SPA fallback, but the
+    // browser's resulting "Expected a JavaScript module script ... MIME type of
+    // 'text/html'" is now recognised by isChunkLoadError(), so importWithRetry
+    // confirms staleness and reloads onto the current build.
     if (
       (request.method === "GET" || request.method === "HEAD") &&
-      path.startsWith("/assets/")
+      path.startsWith("/api/assets-404-probe")
     ) {
-      const assets = (env as any).ASSETS;
-      if (assets && typeof assets.fetch === "function") {
-        const hit = await assets.fetch(request);
-        // A miss here is a miss, not a client route: never let it become HTML.
-        if (hit && hit.status === 404) {
-          return new Response("Not found", {
-            status: 404,
-            headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
-          });
-        }
-        if (hit) return hit;
-      }
+      return new Response("Not found", {
+        status: 404,
+        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+      });
     }
 
     // Handle CORS preflights
