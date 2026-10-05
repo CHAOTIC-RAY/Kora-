@@ -1906,7 +1906,33 @@ function DiscoverView({
         const books = mergedData[cat.id];
         if (!books?.length) return;
         const enriched = await enrichBooksWithRatings(books, titlesRoughlyMatch, 6);
-        setFeaturedData((prev) => ({ ...prev, [cat.id]: enriched }));
+        // Enrich the ALREADY-FILTERED rows, not the raw catalog. This used to
+        // write `enriched` (built from `mergedData`, which carries no file
+        // information at all) straight back over the lane, undoing
+        // filterFeedByDownloadability and putting books with no retrievable
+        // file back on the feed — reported 2026-10-05 as "still showing
+        // unavailable books on the main discover feed".
+        setFeaturedData((prev) => {
+          const current = prev[cat.id];
+          if (!Array.isArray(current) || current.length === 0) return prev;
+          // Enrich by identity so ratings land on the visible rows only, and
+          // copy across ONLY presentation fields. Anything that decides
+          // downloadability (md5, downloadUrl, needsBrowser) is left exactly as
+          // the filter left it.
+          const byKey = new Map(enriched.map((b: any) => [`${b.title}|${b.author}`, b]));
+          const merged = current.map((b: any) => {
+            const e = byKey.get(`${b.title}|${b.author}`);
+            if (!e) return b;
+            return {
+              ...b,
+              rating: e.rating ?? b.rating,
+              ratingCount: e.ratingCount ?? b.ratingCount,
+              description: e.description || b.description,
+              coverUrl: e.coverUrl || b.coverUrl,
+            };
+          });
+          return { ...prev, [cat.id]: merged };
+        });
       })
     ).then(() => {
       setFeaturedData((current) => {
@@ -3152,7 +3178,12 @@ function DiscoverView({
             // plugin's results were routed to the chapter-by-chapter comic
             // reader below, where they have no chapters and no pages, so the
             // user got an empty series screen instead of a book.
-            const kind = plugin.kind === "book" ? "book" : "manga";
+            //
+            // `mixed` is routed to the book sheet rather than the comic reader:
+            // a series screen needs chapters and pages, which this source has
+            // none of, so it rendered empty. Anything not explicitly `manga`
+            // takes the ebook sheet, which can still offer the online copy.
+            const kind = plugin.kind === "manga" ? "manga" : "book";
             const items = (found.mangas || []).map((m) => ({
               title: m.title,
               author: m.author || "Unknown",
@@ -4756,13 +4787,28 @@ function DiscoverView({
                             }
                           : {}),
                       });
-                    } else if (book.pluginId) {
-                      // A result from an installed source plugin is a series,
-                      // not a downloadable file. It gets its own detail view
-                      // with the chapter list — sending it to the ebook sheet
-                      // offered an EPUB download and Rave mirrors for a title
-                      // that is read chapter by chapter from its source site.
+                    } else if (book.pluginId && book.kind === "manga") {
+                      // A result from an installed MANGA source plugin is a
+                      // series, not a downloadable file. It gets its own detail
+                      // view with the chapter list — sending it to the ebook
+                      // sheet offered an EPUB download and Rave mirrors for a
+                      // title that is read chapter by chapter from its source
+                      // site.
+                      //
+                      // The `kind === "manga"` guard is the fix for Ocean of
+                      // EPUB, reported 2026-10-05 as "cant read or download".
+                      // This branch tested only `book.pluginId`, so a `kind:
+                      // "book"` or `"mixed"` plugin landed in the comic reader
+                      // too — a screen that needs chapters and pages this
+                      // source never publishes, hence its notice that "this
+                      // site does not publish its chapter list in the page
+                      // HTML". Book-kind plugins fall through to the ebook
+                      // sheet, which can still show the online copy.
                       setComicBook(book);
+                    } else if (book.pluginId) {
+                      // A book-kind source plugin: no chapter list exists, so
+                      // give it the book sheet rather than an empty reader.
+                      handleGetDownloadLinks(book);
                     } else if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
                       openBookDetail(book);
                     } else {
