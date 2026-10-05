@@ -108,5 +108,48 @@ console.log(`  kept titles all from LibGen: ${realKept.every((b: any) => b.title
 check("all 14 real EPUBs kept", realKept.filter((b: any) => b.title.startsWith("Capture or Kill")).length === 14);
 check("all 20 RoyalLib pages dropped", !realKept.some((b: any) => b.title.startsWith("Junk")));
 
+console.log("\n=== the two rows that actually failed in the 2026-10-05 log ===");
+console.log("  Both are verbatim from kora_downloads_log; both ended in");
+// '"Proxy download failed. Please try again later."'
+
+// (a) "Shatter me" — md5 EMPTY, archive.org controlled-lending item.
+// Measured live: 302 -> 401, 0 bytes. The .epub path and /download/ segment
+// made FILE_URL_RE vouch for it, so the feed offered a borrow-only book.
+const shatterMe = {
+  title: "Shatter me",
+  author: "Mafi, Tahereh",
+  md5: "",
+  downloadUrl: "https://archive.org/download/shatterme0000mafi/shatterme0000mafi.epub",
+};
+const shatterKept = filterDownloadableBooks([shatterMe] as any);
+console.log(`  Shatter me kept: ${shatterKept.length > 0 ? "YES (bad)" : "no"}`);
+check("borrow-only Archive item dropped despite a .epub URL", shatterKept.length === 0);
+
+// (b) "THE CALAMITY CLUB" — a GENUINE LibGen md5 but a RoyalLib PAGE url.
+// This is the regression that exposed the ordering bug: hasDirectFile returned
+// true on the md5 before ever inspecting the URL, so an id could vouch for a
+// page. Measured: royallib .html -> HTTP 200, content-type text/html.
+const calamity = {
+  title: "THE CALAMITY CLUB",
+  author: "Kathryn Stockett",
+  md5: "54f2e7e36fe67f3189182621277f92b29a17715bc2d586487918457306333345",
+  downloadUrl: "https://royallib.com/book/Wister_Owen/the_pentecost_of_calamity.html",
+};
+const calamityKept = filterDownloadableBooks([calamity] as any);
+console.log(`  THE CALAMITY CLUB kept: ${calamityKept.length > 0 ? "YES (bad)" : "no"}`);
+check("a real md5 cannot vouch for an HTML page URL", calamityKept.length === 0);
+
+// (c) The same md5 WITHOUT the page URL must still be offered — the fix must
+// not throw out genuine archive records along with the bad URLs.
+const realLibgen = {
+  title: "THE CALAMITY CLUB",
+  author: "Kathryn Stockett",
+  md5: "54f2e7e36fe67f3189182621277f92b29a17715bc2d586487918457306333345",
+  downloadUrl: "/api/download-options?md5=54f2e7e36fe67f3189182621277f92b29a17715bc2d586487918457306333345",
+};
+const realKeptOk = filterDownloadableBooks([realLibgen] as any);
+console.log(`  same md5 with a real file URL kept: ${realKeptOk.length > 0 ? "yes" : "NO (over-blocked)"}`);
+check("a genuine md5 with a real file URL is still offered", realKeptOk.length === 1);
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

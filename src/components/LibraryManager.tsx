@@ -1126,10 +1126,14 @@ function LibraryManager({
       }));
 
       const res = await fetch(resolveApiUrl("/api/nytimes/recommendations"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+              method: "POST",
+              // Bounded: the diagnostic log showed "Failed to load recommendations:
+              // TypeError: Failed to fetch" with no time attached, so a stalled
+              // request had nothing to give up on.
+              signal: AbortSignal.timeout(20000),
+              headers: {
+                "Content-Type": "application/json"
+              },
         body: JSON.stringify({
           library: simplifiedLibrary,
           recentSearches: recentSearches

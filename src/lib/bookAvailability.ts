@@ -73,6 +73,19 @@ function isDirectlyFetchable(book: AvailabilityBook): boolean {
     (typeof book.iaId === "string" && book.iaId.trim());
 
   // Authoritative: an id we can resolve to a file, regardless of URL shape.
+  //
+  // Except when the URL positively contradicts it. Both 2026-10-05 failures were
+  // rows carrying a real id and an unusable URL:
+  //   "THE CALAMITY CLUB" md5=54f2e7e3...  +  royallib.com/.../calamity.html
+  //     -> HTTP 200 text/html -> "Proxy download failed"
+  //   "Shatter me" md5=""  +  archive.org/download/shatterme0000mafi/....epub
+  //     -> 302 -> 401, 0 bytes (controlled digital lending, borrow-only)
+  // An id proves a record EXISTS; it does not prove THIS url is the file. So a
+  // URL we know to be a page — or a borrow-only Archive scan — outranks the id.
+  // Note the ordering below keeps the LibGen `ads.php?md5=` case working: that
+  // resolves to a real file, so it does not match either rejection.
+  if (isArchiveLendingOnly(book, url)) return false;
+  if (needsBrowserUrl(url) && url) return false;
   if (hasLibgenId) return true;
 
   if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
@@ -98,6 +111,11 @@ const FILE_URL_RE =
 
 function needsBrowserUrl(url: string): boolean {
   if (/royallib\.com|z-lib\.|\/book\/.+\.html$/i.test(url)) return true;
+  // A Worker-relative or same-origin `/api/...` URL is an endpoint this Worker
+  // serves itself — it is a file route, not a scraped page, so it must not be
+  // judged by the extension heuristic. Rejecting these would silently drop
+  // legitimate rows (measured: /api/download-options?md5=... has no extension).
+  if (/^\/api\//.test(url) || /^(https?:\/\/[^/]+)?\/api\//i.test(url)) return false;
   return !FILE_URL_RE.test(url);
 }
 
@@ -131,7 +149,11 @@ function isArchiveLendingOnly(book: AvailabilityBook, url: string): boolean {
   // Archive scan accessions look like `title0000suffix`; ids ending in 4 digits
   // are controlled-lending placeholders, not LibGen md5s.
   const id = /archive\.org\/(?:download|details|stream)\/([^/?#]+)/i.exec(url)?.[1] ?? "";
-  return /\d{4}$/.test(id);
+  // Controlled-digital-lending accessions embed a 4-digit year marker in the
+  // MIDDLE of the id: `shatterme0000mafi`, `catchingfire0001martin`. It is not a
+  // suffix, so anchoring with `$` (my first attempt) never matched and the row
+  // stayed on the feed.
+  return /\d{4}/.test(id);
 }
 
 function isArchiveSearchable(book: AvailabilityBook): boolean {
@@ -194,14 +216,21 @@ export function filterFeedByDownloadability<T extends AvailabilityBook>(
 /** True only when the row itself already points at a fetchable file. */
 export function hasDirectFile(book: AvailabilityBook | null | undefined): boolean {
   if (!book) return false;
+  if (book.needsBrowser) return false;
+  const url = typeof book.downloadUrl === "string" ? book.downloadUrl.trim() : "";
+  // Check the URL BEFORE trusting an id. An id used to short-circuit
+  // immediately, so a row could carry a real md5 AND a page URL and still be
+  // offered: the log has exactly that — "THE CALAMITY CLUB" with a genuine
+  // LibGen md5 and `royallib.com/.../the_pentecost_of_calamity.html`, HTTP 200
+  // text/html, ending in "Proxy download failed. Please try again later."
+  // An id proves a record EXISTS; it does not prove this URL is the file.
+  if (needsBrowserUrl(url) && url) return false;
   if (typeof book.md5 === "string" && book.md5.trim()) return true;
   if (typeof book.hash === "string" && book.hash.trim()) return true;
   if (typeof book.iaId === "string" && book.iaId.trim()) return true;
   if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
   if (Array.isArray(book.audiobookTracks) && book.audiobookTracks.length > 0) return true;
 
-  if (book.needsBrowser) return false;
-  const url = typeof book.downloadUrl === "string" ? book.downloadUrl.trim() : "";
   // A borrow-only Archive item answers 401 no matter how real-looking the URL is,
   // so it must be rejected before the extension check can vouch for it.
   if (isArchiveLendingOnly(book, url)) return false;
