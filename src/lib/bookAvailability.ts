@@ -101,6 +101,39 @@ function needsBrowserUrl(url: string): boolean {
   return !FILE_URL_RE.test(url);
 }
 
+/**
+ * Internet Archive lending items.
+ *
+ * The log showed two identical failures for "Shatter me" with `md5: ""`:
+ *
+ *   downloadUrl: https://archive.org/download/shatterme0000mafi/shatterme0000mafi.epub
+ *   errorMessage: "Proxy download failed. Please try again later."
+ *
+ * Measured: that URL is a **302 -> 401 with 0 bytes**. Archive's controlled
+ * digital lending items are borrow-only; the `.epub` path and `/download/`
+ * segment look exactly like a real file, so `FILE_URL_RE` classified it as
+ * downloadable and the feed offered it. The failure is indistinguishable from a
+ * network error at the call site, so the user just sees a failed download.
+ *
+ * Two tell-tale signs identify these: the item id ends in 4 digits
+ * (`shatterme0000mafi`, a scan accession number rather than a LibGen md5) and
+ * the row has no `md5` of its own. A genuine LibGen/LibreTexts direct link always
+ * arrives with an id, so requiring both is safe and cheap — it costs a HEAD
+ * request only on rows that are already suspect.
+ */
+function isArchiveLendingOnly(book: AvailabilityBook, url: string): boolean {
+  if (!/archive\.org\//i.test(url)) return false;
+  // Already trusted: a real id came with it.
+  const hasRealId =
+    (typeof book.md5 === "string" && book.md5.trim()) ||
+    (typeof book.hash === "string" && book.hash.trim());
+  if (hasRealId) return false;
+  // Archive scan accessions look like `title0000suffix`; ids ending in 4 digits
+  // are controlled-lending placeholders, not LibGen md5s.
+  const id = /archive\.org\/(?:download|details|stream)\/([^/?#]+)/i.exec(url)?.[1] ?? "";
+  return /\d{4}$/.test(id);
+}
+
 function isArchiveSearchable(book: AvailabilityBook): boolean {
   if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller) return true;
   const source = (book.source || book.sourceId || "").trim().toLowerCase();
@@ -169,6 +202,9 @@ export function hasDirectFile(book: AvailabilityBook | null | undefined): boolea
 
   if (book.needsBrowser) return false;
   const url = typeof book.downloadUrl === "string" ? book.downloadUrl.trim() : "";
+  // A borrow-only Archive item answers 401 no matter how real-looking the URL is,
+  // so it must be rejected before the extension check can vouch for it.
+  if (isArchiveLendingOnly(book, url)) return false;
   if (/^https?:\/\//i.test(url) && !needsBrowserUrl(url)) return true;
   if (typeof book.directUrl === "string" && book.directUrl.trim()) return true;
 

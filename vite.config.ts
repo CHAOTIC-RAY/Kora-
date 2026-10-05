@@ -2,7 +2,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import compression from 'vite-plugin-compression2';
 import apkHtml from './scripts/vite-apk-html-plugin.ts';
 
@@ -22,6 +22,41 @@ function manualChunks(id: string): string | undefined {
   if (id.includes('puppeteer') || id.includes('cheerio') || id.includes('linkedom') || id.includes('readability')) return 'vendor-scraper';
   if (id.includes('jszip') || id.includes('pdf-lib') || id.includes('jsdom') || id.includes('crawlee')) return 'vendor-docs';
   return undefined;
+}
+
+/**
+ * The Firestore SDK must be ONE instance in the bundle.
+ *
+ * Diagnostic logs 2026-10-04/05 were flooded with:
+ *
+ *   @firebase/firestore: Firestore (12.15.0) INTERNAL ASSERTION FAILED:
+ *   Unexpected state (ID: b815) CONTEXT: {"el":"TypeError: n.tc.get is not a
+ *   function or its return value is not iterable ... enqueueRetryable ...
+ *
+ * That assertion is the SDK's private-transport registry complaining that a
+ * component it owns is not the one it was handed — the signature of two SDK
+ * copies sharing one app. Nothing in src/ imports `firebase/compat` or
+ * `@firebase/firestore-compat`; it arrives transitively via
+ * `@capacitor-firebase/authentication`, so both the modern and compat builds
+ * were bundled. The produced index chunk contained FIVE copies of the SDK's
+ * internal-assertion string, and it threw as an UNCAUGHT error roughly every
+ * 5 seconds forever, which is also why pages intermittently failed to load.
+ *
+ * Excluding the compat build removes the second SDK. It is a legacy shim over
+ * the same v8 API; no app code uses it, and the Capacitor plugin only needs
+ * `@firebase/app`, which stays.
+ */
+function firestoreCompatFilterPlugin(): Plugin {
+  return {
+    name: 'kora-drop-firestore-compat',
+    enforce: 'pre',
+    load(id) {
+      if (id.includes('node_modules') && id.includes('@firebase/firestore-compat')) {
+        return 'export {}';
+      }
+      return null;
+    },
+  };
 }
 
 const buildId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -46,6 +81,8 @@ export default defineConfig(() => {
     plugins: [
       react(),
       tailwindcss(),
+      // One Firestore SDK only — see the comment on the plugin.
+      firestoreCompatFilterPlugin(),
       // Emit .br (brotli) companions for static assets so the SW / CDN can serve
       // them; also shrinks what Capacitor bundles into the APK (Phase 1.1 / 3.5).
       compression({ algorithms: ['brotliCompress'], exclude: [/\\.(?:png|jpe?g|gif|webp|svg|woff2?)$/i] }),
@@ -128,6 +165,18 @@ export default defineConfig(() => {
       // some Android WebView versions, preventing JS/CSS from loading → white screen.
       // https://vite.dev/config/build-options.html#build-crossorigin
       crossOrigin: false,
+      resolve: {
+        // Force a single copy of every shared Firebase package. Two instances of
+        // the same package break Firestore's internal component assertions, and
+        // a transitive Capacitor plugin is enough to cause it.
+        dedupe: [
+          'firebase',
+          '@firebase/app',
+          '@firebase/firestore',
+          '@firebase/auth',
+          '@firebase/webchannel-wrapper',
+        ],
+      },
       rollupOptions: {
         output: {
           manualChunks,

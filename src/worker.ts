@@ -1513,13 +1513,28 @@ export default {
 
     // 2.1 NYT Specific List API
     if (path === "/api/nytimes/list") {
-      const listName = url.searchParams.get("list");
-      if (!listName) {
+      const rawListName = url.searchParams.get("list");
+      if (!rawListName) {
         return new Response(JSON.stringify({ error: "Missing list parameter" }), {
           status: 400,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }
+
+      // The NYT Books API only accepts SLUGS — `combined-print-and-e-book-fiction`.
+      // But the feed is built from the overview endpoint, which reports the
+      // human label `Combined Print & E-Book Fiction`, and the client forwarded
+      // that verbatim. So every lane request 404'd and the feed rendered with no
+      // NYT content ("sometimes loading without NYT", reported 2026-10-05).
+      //
+      // Measured on the live Worker: the display name returned 404, the slug
+      // returned 429 (rate limited, i.e. a VALID list that reached the API). So
+      // normalise to the slug here and let either form work at the call site.
+      const listName = rawListName
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 
       try {
         const apiKey = env.NYT_BOOKS_API_KEY || env.NYT_API_KEY || "";

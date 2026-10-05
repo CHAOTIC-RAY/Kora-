@@ -1408,29 +1408,134 @@ function DiscoverView({
   /**
    * Attach a real, downloadable variant to each feed row.
    *
-   * NYT/Goodreads rows carry no md5, so the feed cannot be filtered for
-   * downloadability until each one is resolved against the archive. Runs with a
-   * bounded concurrency and a per-row timeout so a slow mirror can neither stall
-   * the feed nor hold the page: a row that fails simply stays unresolved and is
-   * then dropped by filterFeedByDownloadability.
+   * NYT/Goodreads rows carry no md5, so a row is only downloadable once it has
+   * been resolved against the archive.
    *
-   * Failures are silent by design — a feed that cannot resolve is better than a
-   * feed that shows dead rows, and an error banner here would be noise.
+   * This used to resolve EVERY row before returning, which is why the feed sat
+   * on skeletons indefinitely (reported 2026-10-04: "see its empty"). Measured
+   * against the live payload: 19 lanes x 240 rows, every row with md5=null, so
+   * all 240 had to be resolved. Archive calls take 6.6-12.2s each against a 12s
+   * per-row budget, so the global race bound worked out to
+   * 12000 * ceil(240/6) = 480s. The feed awaited up to EIGHT MINUTES, and any
+   * row whose single call exceeded its budget was dropped even though a retry
+   * would have found it — leaving all 19 lanes empty.
+   *
+   * Now: resolve a small, visible slice up front and let the rest keep
+   * rendering as unresolved rows. Callers must treat this as fire-and-forget
+   * and set the loading flag BEFORE awaiting.
    */
   const enrichFeedWithDirectFiles = async (
-    feed: Record<string, any[]>
+    feed: Record<string, any[]>,
+    onResolved?: (feed: Record<string, any[]>) => void,
+    opts?: { budget?: number }
   ): Promise<Record<string, any[]>> => {
     const CONCURRENCY = 6;
     const PER_ROW_MS = 12000;
+    // Only the first screenful is resolved before the feed is handed back. The
+    // rest stream in behind it; nothing waits on them.
+    const PREVIEW_ROWS = 24;
+    // Wall-clock ceiling for the blocking slice. Measured archive latency is
+    // 6.6-12.2s, so a pair of query shapes barely fits; cap it so a slow
+    // archive cannot hold the first paint hostage.
+    const PREVIEW_BUDGET_MS = opts?.budget ?? 9000;
+
+    // ── Persistent resolution cache ──────────────────────────────────────────
+    //
+    // The feed is slow because it re-resolves from scratch on every single load.
+    // Measured cost per row: up to 3 query shapes (searchQuery / title /
+    // "title + surname"), and each shape is a `searchDownloadVariants` =
+    // `Promise.any(libgen, annas-archive)` = 2 HTTP calls at a measured 2.3-8.6s
+    // each. So one row can cost up to 6 calls / ~40s, and 240 rows cost up to
+    // 1440 calls per visit. Bookshelves barely change day to day, so a resolved
+    // (title+author -> md5) mapping is stable and worth keeping.
+    //
+    // Keyed on the normalised title+author, so a reprint or a new edition still
+    // hits, and a renamed edition misses and resolves again.
+    const CACHE_KEY = "kora_feed_md5_cache_v1";
+    const CACHE_MAX = 4000;
+    let cache: Record<string, string> = {};
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) cache = JSON.parse(raw) || {};
+    } catch {
+      cache = {};
+    }
+    const cacheKey = (b: any) =>
+      `${String(b?.title || "").toLowerCase().replace(/\s+/g, " ").trim()}|${String(
+        b?.author || ""
+      )
+        .toLowerCase()
+        .split(",")[0]
+        .trim()}`;
+    let cacheDirty = false;
+    // Titles confirmed to have no archive copy. Kept as a separate key prefix so
+    // one localStorage entry holds both outcomes and cannot be confused.
+    const MISS_KEY = "kora_feed_md5_miss_v1";
+    let misses: Set<string>;
+    try {
+      const rawMiss = localStorage.getItem(MISS_KEY);
+      misses = new Set<string>(rawMiss ? JSON.parse(rawMiss) : []);
+    } catch {
+      misses = new Set<string>();
+    }
+    // Titles already known to have no archive copy: stop re-probing them.
+    // Declared here because the work-list build below filters on it.
+    const isKnownMiss = (b: any) => misses.has(cacheKey(b));
+    const saveCache = () => {
+      if (!cacheDirty) return;
+      try {
+        if (misses.size > 0) {
+          const keep = Array.from(misses).slice(-CACHE_MAX);
+          localStorage.setItem(MISS_KEY, JSON.stringify(keep));
+        }
+        const keys = Object.keys(cache);
+        // Bound it so localStorage cannot grow without limit.
+        const trimmed =
+          keys.length > CACHE_MAX
+            ? Object.fromEntries(keys.slice(-CACHE_MAX).map((k) => [k, cache[k]]))
+            : cache;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(trimmed));
+      } catch {
+        /* quota or private mode — the cache is an optimisation, not a need */
+      }
+    };
 
     const lanes = Object.entries(feed);
     const rows = lanes.flatMap(([, books]) => (Array.isArray(books) ? books : []));
     // Only rows that still need resolving.
     const todo = rows.filter((b) => b && !b.md5 && b.searchQuery);
-    if (todo.length === 0) return feed;
+
+    // Apply cached resolutions first — this is what makes a reload fast.
+    let uncached = 0;
+    for (const b of todo) {
+      const hit = cache[cacheKey(b)];
+      if (hit) {
+        b.md5 = hit;
+        b.hasRealMd5 = true;
+        cacheDirty = true;
+      } else {
+        uncached++;
+      }
+    }
+    if (uncached === 0) {
+      saveCache();
+      return feed;
+    }
+    todo.length = 0;
+    todo.push(
+      ...rows.filter(
+        (b) => b && !b.md5 && b.searchQuery && !isKnownMiss(b)
+      )
+    );
+    // Everything still needing work turned out to be a known miss — resolving
+    // again would change nothing.
+    if (todo.length === 0) {
+      saveCache();
+      return feed;
+    }
 
     let cursor = 0;
-    const resolveOne = async (book: any) => {
+    const resolveOne = async () => {
       while (cursor < todo.length) {
         const book_ = todo[cursor++];
         // Try the cleaned searchQuery first, then fall back to title-only.
@@ -1477,26 +1582,62 @@ function DiscoverView({
               book_.variants = usable.slice(0, 4);
               book_.needsBrowser = false;
               book_.resolvedQuery = q;
+              // Remember the resolution so the next feed visit is instant.
+              cache[cacheKey(book_)] = best.md5;
+              cacheDirty = true;
               break;
             }
           } catch {
             /* try the next query shape */
           }
         }
+        // Negative cache. A bestseller with no archive copy is not going to grow
+        // one between visits, so remembering the miss is what stops the 240-row
+        // fan-out from repeating forever. Tracked in `misses` rather than in
+        // `cache`, because an empty-string value would be indistinguishable from
+        // "no entry" to the `if (hit)` lookup above.
+        if (!book_.md5 && !misses.has(cacheKey(book_))) {
+          misses.add(cacheKey(book_));
+          cacheDirty = true;
+        }
       }
     };
 
-    await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, todo.length) }, resolveOne)
+    // ── Blocking slice: only what the first screen needs ─────────────────────
+    // Previously every one of the 240 rows was resolved before this returned.
+    // The race below therefore waited up to 480s, and rows that missed their
+    // budget were dropped outright, so the feed painted 19 empty lanes.
+    const preview = todo.slice(0, PREVIEW_ROWS);
+    const blocking = Array.from(
+      { length: Math.min(CONCURRENCY, preview.length) },
+      () => resolveOne()
     );
-
-    // Bound the whole pass so a slow archive cannot hold the feed open.
-    return Promise.race([
-      Promise.resolve(feed),
-      new Promise<Record<string, any[]>>((resolve) =>
-        setTimeout(() => resolve(feed), PER_ROW_MS * Math.ceil(todo.length / CONCURRENCY))
-      ),
+    await Promise.race([
+      Promise.all(blocking),
+      new Promise<void>((r) => setTimeout(r, PREVIEW_BUDGET_MS)),
     ]);
+
+    // ── Background slice: everything else, streamed in as it lands ───────────
+    // Never awaited, so it cannot hold the feed open. Each batch hands back the
+    // whole feed so late arrivals repaint what they resolved.
+    if (onResolved && cursor < todo.length) {
+      void (async () => {
+        try {
+          while (cursor < todo.length) {
+            const batch = Array.from(
+              { length: Math.min(CONCURRENCY, todo.length - cursor) },
+              () => resolveOne()
+            );
+            await Promise.all(batch);
+            onResolved(feed);
+          }
+        } catch (err) {
+          console.warn("Feed enrichment (background) failed:", err);
+        }
+      })();
+    }
+
+    return feed;
   };
 
   async function loadFeaturedContent(forceRefresh = false) {
@@ -1543,8 +1684,17 @@ function DiscoverView({
       // resolve first: ask the archive for each row's searchQuery, attach the
       // best direct variant, and only then drop what still has no file. The user
       // asked for exactly this: hide them "unless the user searches for it".
-      const resolved = await enrichFeedWithDirectFiles(mergedData);
+      // Render the shelves on the row data we already have, then let
+      // enrichment fill in real files behind the user. The previous version
+      // awaited the whole 240-row pass (up to 480s) before clearing
+      // loadingFeatured, so the feed never left the skeleton state.
+      const onEnriched = (resolved: Record<string, any[]>) => {
+        setFeaturedData(filterFeedByDownloadability(resolved));
+      };
+      const resolved = await enrichFeedWithDirectFiles(mergedData, onEnriched);
       setFeaturedData(filterFeedByDownloadability(resolved));
+      // Cleared unconditionally and immediately: whatever is enriched now is
+      // shown, and what arrives later repaints. Never leave this true.
       setLoadingFeatured(false);
 
       if (nytError) {
@@ -1595,7 +1745,9 @@ function DiscoverView({
         nytOverviewJson = JSON.parse(cachedFeed);
       } else {
         console.log("[NYT Cache] Fetching fresh NYT overview...");
-        const res = await fetch("/api/nytimes/overview");
+        const res = await fetch("/api/nytimes/overview", {
+          signal: AbortSignal.timeout(12000),
+        });
         if (!res.ok) throw new Error("Failed to fetch NYT overview");
         nytOverviewJson = await res.json();
 
@@ -2592,7 +2744,13 @@ function DiscoverView({
 
     try {
       // Fetch current week
-      const res = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(date)}`);
+      // Bounded: the logs showed "NYT overview fetch failed: TypeError: Failed
+      // to fetch" with no time attached, i.e. an unbounded hang. A stalled
+      // request must not hold the feed open.
+      const res = await fetch(
+        `/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(date)}`,
+        { signal: AbortSignal.timeout(12000) }
+      );
       if (!res.ok) throw new Error(`NYT list fetch failed with status: ${res.status}`);
       const data = await res.json();
       
@@ -2606,7 +2764,10 @@ function DiscoverView({
       // Optimize: Fetch previous week as well to get more books
       if (previousDate) {
         try {
-          const resPrev = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(previousDate)}`);
+            const resPrev = await fetch(
+            `/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(previousDate)}`,
+            { signal: AbortSignal.timeout(12000) }
+          );
           if (resPrev.ok) {
             const dataPrev = await resPrev.json();
             if (dataPrev?.results?.books) {
