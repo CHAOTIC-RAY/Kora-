@@ -30,12 +30,20 @@ function isChunkLoadError(error: unknown): boolean {
       ? `${error.message} ${(error as Error & { cause?: unknown }).cause ?? ""}`
       : String(error);
   // The browser's wording for this has grown over the years and differs by
-  // engine, so match the family rather than one string. A bare "Failed to fetch"
-  // is included deliberately: for a stale hashed chunk that IS the error, and
-  // excluding it left the user with a dead "Reload" button and no explanation.
-  // The reason it is safe to be broad here is that the only consequence is
-  // offering a reload, and a reload is harmless when the bundle was fine.
-  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS|ChunkLoadError|Failed to fetch|Loading chunk \d+ failed|error loading chunk/i.test(
+  // engine, so match the family rather than one string.
+  //
+  // The important addition is the MIME-type family. `wrangler.toml` sets
+  // `not_found_handling = "single-page-application"`, which means a chunk that
+  // no longer exists (the tab is open across a deploy) is answered with
+  // HTTP 200 + index.html — measured: a deliberately bogus chunk name returns
+  // `200 text/html 3887 bytes`. The browser then refuses to execute it as a
+  // module and reports:
+  //   "Failed to load module script: Expected a JavaScript module script but
+  //    the server responded with a MIME type of 'text/html'."
+  // which matches NONE of the old patterns, so it was never recognised as a
+  // chunk failure and fell through to the raw error boundary instead of the
+  // reload path. That is the "keeps crashing randomly" symptom.
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Unable to preload CSS|ChunkLoadError|Failed to fetch|Loading chunk \d+ failed|error loading chunk|Failed to load module script|Expected a JavaScript module script|MIME type of|text\/html/i.test(
     message
   );
 }

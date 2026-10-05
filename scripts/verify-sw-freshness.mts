@@ -41,6 +41,42 @@ const check = (label: string, ok: boolean, extra = "") => {
   console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}${extra ? `  ${extra}` : ""}`);
 };
 
+// ── A missing hashed chunk must 404, never fall back to index.html ───────────
+// Measured on production before this guard existed:
+//   /assets/DiscoverView-DOESNOTEXIST.js -> 200, text/html, 3887 bytes
+// The browser accepts the 200 and then refuses to execute HTML as a module
+// ("Expected a JavaScript module script but the server responded with a MIME
+// type of 'text/html'"), which matched no chunk-failure pattern and surfaced as
+// a blank crash screen. Both halves are pinned below.
+const WRANGLER = "wrangler.toml";
+const WORKER = "src/worker.ts";
+
+const toml = fs.readFileSync(WRANGLER, "utf8");
+const worker = fs.readFileSync(WORKER, "utf8");
+
+console.log("=== 0. a missing /assets/ file 404s instead of serving HTML ===");
+check(
+  "wrangler still uses SPA fallback (needed for /share and /install)",
+  /not_found_handling\s*=\s*"single-page-application"/.test(toml),
+  "client routes depend on this, so the Worker must special-case /assets/"
+);
+check(
+  "the Worker intercepts GET/HEAD on /assets/",
+  /request\.method === "GET"[\s\S]{0,120}request\.method === "HEAD"[\s\S]{0,200}path\.startsWith\("\/assets\/"\)/.test(worker),
+  "without this the asset 200 arrives from the fallback"
+);
+check(
+  "it returns a real 404 for a miss",
+  /status:\s*404/.test(worker) && /content-type":\s*"text\/plain/.test(worker),
+  "never let a missing chunk resolve to HTML"
+);
+check(
+  "the client recognises the MIME-type failure as a chunk error",
+  /Expected a JavaScript module script|MIME type of/.test(main),
+  "this is the message the SPA fallback actually produces"
+);
+
+
 console.log("=== 1. /assets/ is network-first, not cache-first ===");
 check(
   "no cache-first short-circuit for /assets/",
