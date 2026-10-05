@@ -2758,7 +2758,28 @@ async function startBackgroundDownload(
       return;
     }
 
+    // Hard ceiling on the auth handshake. `loadingAuth` gates the ENTIRE app
+    // (App.tsx returns <KoraLoading/> while it is true), so if this callback
+    // never fires — Firebase slow, blocked, or the tab restored offline — the
+    // user gets a permanent "LOADING APP..." screen with no way forward.
+    //
+    // Reported 2026-10-05 as "the full site is broken again / ui is broken fully
+    // every page": every HTTP-level check passed (HTML well-formed, CSS 310 KB
+    // and intact, live bundle byte-identical to local, buildId matched) while the
+    // app never rendered, because the gate was an unbounded external call.
+    //
+    // On timeout we release the gate and fall through to the local library.
+    // Authentication can still complete later — onAuthStateChanged sets `user`
+    // whenever it fires, and refreshLibrary re-runs on the user change — so this
+    // degrades to offline-first rather than breaking the app.
+    const AUTH_BOOT_TIMEOUT_MS = 6000;
+    const bootTimer = setTimeout(() => {
+      setLoadingAuth(false);
+      void refreshLibrary("");
+    }, AUTH_BOOT_TIMEOUT_MS);
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      clearTimeout(bootTimer);
       if (currentUser) {
         setUser(currentUser);
         setLoadingAuth(false);
@@ -2793,7 +2814,10 @@ async function startBackgroundDownload(
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      clearTimeout(bootTimer);
+    };
   }, []);
 
   // Cross-device: register this device + serve P2P file requests when enabled
