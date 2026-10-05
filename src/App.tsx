@@ -2159,7 +2159,36 @@ async function startBackgroundDownload(
         logger.info(`Successfully completed download for "${book.title}". Saved to IndexedDB with ID: ${id}`);
         toast.success(`${book.title} downloaded!`, { id: downloadId });
         refreshLibrary();
-        
+
+        /**
+         * Drop the synthetic library tile now that the real book exists.
+         *
+         * `LibraryManager` builds in-flight tiles from the downloads queue and
+         * deliberately suppresses the real library row while a matching download
+         * is active (`booksWithoutActiveDownloads`). Nothing ever removed a
+         * COMPLETED entry, so that suppression kept winning forever: the real
+         * book was in the library but invisible, and the only visible thing was
+         * the stale "downloading" stub.
+         *
+         * That is exactly what was reported on 2026-10-05 as "it got library and
+         * was stuck at 0 and disspeard and after a while it showed up in library
+         * downloaded" — the tile at 0% is the stub, its disappearance is the stub
+         * being swapped for the real row, and the final appearance is the real
+         * book once the tile stops shadowing it.
+         *
+         * Ordered deliberately:
+         *   1. refreshLibrary() first, so the real book is already loaded when
+         *      the stub stops masking it (otherwise there is a one-frame gap).
+         *   2. persist before removing, so a reload cannot resurrect the stub.
+         *   3. The removal is keyed on `id === downloadId` AND completed, so an
+         *      unrelated queued download is never dropped.
+         */
+        setGlobalDownloads(prev => {
+          const updated = prev.filter(dl => dl.id !== downloadId);
+          persistDownloadsLogNow(updated);
+          return updated;
+        });
+
         success = true;
         break; // Stop iterating on success
       } catch (err: any) {

@@ -48,7 +48,30 @@ function getIsDarkMode(): boolean {
  * with thousands of ink-drop strokes; an SVG feTurbulence filter gives the
  * wobble. After the fill completes, the children (subtitle) fade up.
  */
-export default function KoraWordmarkReveal({ children }: { children?: React.ReactNode }) {
+/**
+ * `replay` exists because this component was written for a page you SCROLL past
+ * (InstallView), where replaying the reveal on re-entry is a feature.
+ *
+ * The boot loading screen (KoraLoading) reuses the same component, and there it
+ * is a bug — reported 2026-10-05 as "on loading screen kora animation blinks in
+ * and out". Two paths reset `done` back to false, which unmounts the already-
+ * revealed subtitle to `opacity: 0` and replays the ink animation:
+ *
+ *   1. IntersectionObserver, on leaving the viewport (lines ~253-264). On boot
+ *      the loading screen can be scrolled or reflowed off-screen briefly.
+ *   2. onResize, whenever `wrap.clientWidth` changes (lines ~231-241). A scrollbar
+ *      appearing, a rotating device, or an on-screen keyboard all change it.
+ *
+ * Default is false: run once, reveal once, never blink. Pass `replay` to restore
+ * the scroll-past behaviour InstallView wants.
+ */
+export default function KoraWordmarkReveal({
+  children,
+  replay = false,
+}: {
+  children?: React.ReactNode;
+  replay?: boolean;
+}) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [done, setDone] = useState(false);
@@ -233,6 +256,11 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       // Critical optimization: ignore resizes where width did not change (e.g. mobile virtual keyboard or browser address bar toggling)
       if (currentWidth === lastWidth && lastWidth > 0) return;
       lastWidth = currentWidth;
+      // The boot screen must reveal once. Without this guard a scrollbar
+      // appearing, a device rotation or an on-screen keyboard replays the whole
+      // ink animation and hides the already-revealed subtitle again — the
+      // "blinks in and out" report.
+      if (!replay) return;
 
       clearTimeout(t);
       t = window.setTimeout(() => {
@@ -241,33 +269,37 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
     };
     window.addEventListener("resize", onResize);
 
-    // Start the animation when the wrapper enters the screen, and reset on scroll away so it re-triggers when scrolled back down
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            if (!started) {
-              started = true;
-              start();
-            }
-          } else {
-            if (started) {
-              started = false;
-              cancelled = true;
-              cancelAnimationFrame(raf);
-              if (revealTimer) clearTimeout(revealTimer);
-              doneRef.current = false;
-              setDone(false);
-              revealArmed.current = false;
-              wrap.classList.remove("kora-ink-zoomed");
-              ctx.clearRect(0, 0, canvas.width, canvas.height);
-            }
-          }
-        });
-      },
-      { threshold: 0.05 }
-    );
-    io.observe(wrap);
+    // Start the animation when the wrapper enters the screen. On a page you
+    // scroll past (replay) it also resets when scrolled away so it re-triggers.
+    // On the boot screen there is nothing to scroll back to, and resetting could
+    // only ever cause a blink, so the observer is not even installed.
+    const io = replay
+      ? new IntersectionObserver(
+          (entries) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                if (!started) {
+                  started = true;
+                  start();
+                }
+              } else if (started) {
+                started = false;
+                cancelled = true;
+                cancelAnimationFrame(raf);
+                if (revealTimer) clearTimeout(revealTimer);
+                doneRef.current = false;
+                setDone(false);
+                revealArmed.current = false;
+                wrap.classList.remove("kora-ink-zoomed");
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+              }
+            });
+          },
+          { threshold: 0.05 }
+        )
+      : null;
+    if (io) io.observe(wrap);
+    else start(); // non-replay: reveal immediately, exactly once
 
     const getThemeKey = () => {
       const dark = getIsDarkMode();
@@ -311,7 +343,7 @@ export default function KoraWordmarkReveal({ children }: { children?: React.Reac
       cancelAnimationFrame(raf);
       clearTimeout(t);
       clearTimeout(revealTimer);
-      io.disconnect();
+      io?.disconnect();
       observer.disconnect();
       window.removeEventListener("resize", onResize);
     };

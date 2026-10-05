@@ -2971,7 +2971,10 @@ export default function InstallView() {
               <span key={i} className="w-3 h-3 rounded-full border-2 border-kindle-border bg-kindle-bg" />
             ))}
           </div>
-          <KoraWordmarkReveal>
+          {/* replay: this section sits below the fold and is scrolled past, so the
+              ink reveal is meant to re-trigger on the way back up. The boot
+              screen (KoraLoading) deliberately opts out — see KoraWordmarkReveal. */}
+          <KoraWordmarkReveal replay>
             <div className="relative space-y-3 max-w-lg mx-auto">
               <p className="text-base font-sans font-bold uppercase tracking-[0.25em] text-kindle-accent">
                 A Chaos Studio Project
