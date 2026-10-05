@@ -6,6 +6,7 @@ import {
   titlesRoughlyMatch,
   type AudiobookDetail,
 } from "./audiobookScraper";
+import { SEARCHABLE_AUDIOBOOK_SOURCES, audiobookSearchUrl } from "./audiobookSources";
 
 const DETAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SEARCH_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -62,10 +63,13 @@ export function buildAudiobookProbeUrls(input: {
   const uniqueDirect = [...new Set(direct)];
   if (uniqueDirect.length > 0) return uniqueDirect;
 
-  return [
-    input.title ? `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
-    input.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
-  ].filter(Boolean) as string[];
+  // Derived from the registry. These were a hardcoded two-host list, so a book
+  // found on one of the eight new sources could not have its detail resolved —
+  // search worked and then the player page 404'd.
+  return SEARCHABLE_AUDIOBOOK_SOURCES.map((src) => {
+    const url = audiobookSearchUrl(src, input.title || "");
+    return url || "";
+  }).filter(Boolean);
 }
 
 function isValidDetail(

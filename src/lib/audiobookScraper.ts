@@ -167,6 +167,35 @@ function parseMp3LinksFromHtml(html: string, baseUrl: string): AudiobookTrack[] 
   return tracks;
 }
 
+/**
+ * Which registered source a detail page belongs to.
+ *
+ * Replaces a `fulllengthaudiobooks ? ... : "hdaudiobooks"` ternary that made the
+ * host a binary choice, so every newly added source was reported as
+ * hdaudiobooks. Matches longest host first so `hdaudiobooks.net` cannot be
+ * shadowed by `hdaudiobooks.com`.
+ */
+export function sourceNameForUrl(pageUrl: string): string {
+  const host = (() => {
+    try {
+      return new URL(pageUrl).hostname.replace(/^www\./, "").toLowerCase();
+    } catch {
+      return pageUrl.toLowerCase();
+    }
+  })();
+  const ranked = ALL_AUDIOBOOK_SOURCES.map((s) => {
+    let h = "";
+    try {
+      h = new URL(s.base).hostname.replace(/^www\./, "").toLowerCase();
+    } catch {
+      h = s.base.toLowerCase();
+    }
+    return { name: s.name, host: h };
+  }).sort((a, b) => b.host.length - a.host.length);
+  const hit = ranked.find((r) => r.host && host.endsWith(r.host));
+  return hit?.name ?? host;
+}
+
 export function parseAudiobookDetailHtml(html: string, pageUrl: string): AudiobookDetail {
   const $ = cheerio.load(html);
   const baseUrl = new URL(pageUrl).origin;
@@ -175,7 +204,11 @@ export function parseAudiobookDetailHtml(html: string, pageUrl: string): Audiobo
   if (tracks.length === 0) tracks = parseAudioElements(html, baseUrl);
   if (tracks.length === 0) tracks = parseMp3LinksFromHtml(html, baseUrl);
 
-  const source = pageUrl.includes("fulllengthaudiobooks") ? "fulllengthaudiobooks" : "hdaudiobooks";
+  // Was a two-way ternary, so EVERY other host was labelled "hdaudiobooks" —
+  // which is why adding eight sources would have silently mislabelled all of
+  // them. Resolved from the registry by host instead, longest-first so a
+  // subdomain cannot shadow a parent entry.
+  const source = sourceNameForUrl(pageUrl);
 
   return {
     title: extractTitleFromPage($),
@@ -254,6 +287,7 @@ export function parseFullLengthAudiobooksFeed(html: string, baseUrl = "https://f
 
 /** Search both audiobook sources; tries fulllength first (better hit rate). */
 import {
+  ALL_AUDIOBOOK_SOURCES,
   SEARCHABLE_AUDIOBOOK_SOURCES,
   audiobookSearchUrl,
   parseLibrivoxJson,

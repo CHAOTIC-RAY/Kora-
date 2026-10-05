@@ -17,6 +17,7 @@
  *   - storynory.com        -> search returns editorial links only, browse-only
  *   - audiobookbay.lu      -> magnet/torrent index, not direct MP3, browse-only
  */
+import fs from "node:fs";
 import {
   ALL_AUDIOBOOK_SOURCES,
   AUDIOBOOK_SOURCES,
@@ -27,6 +28,7 @@ import {
   audiobookSearchUrl,
   parseLibrivoxJson,
 } from "../src/lib/audiobookSources";
+import { sourceNameForUrl } from "../src/lib/audiobookScraper";
 
 let failures = 0;
 const check = (label: string, ok: boolean, extra = "") => {
@@ -135,6 +137,46 @@ check(
   "a book with no url is dropped",
   parseLibrivoxJson('{"books":[{"title":"X"}]}').length === 0
 );
+
+console.log("\n=== detail pages are attributed to the right source ===");
+// Was a `fulllengthaudiobooks ? ... : "hdaudiobooks"` ternary, so every other
+// host was reported as hdaudiobooks and all eight new sources would have been
+// silently mislabelled.
+const attribution: [string, string][] = [
+  ["https://hdaudiobooks.com/dune-audiobook/", "hdaudiobooks"],
+  ["https://fulllengthaudiobooks.com/book/x/", "fulllengthaudiobooks"],
+  ["https://librivox.org/alices-adventures/", "librivox"],
+  ["https://www.librivox.org/alices-adventures/", "librivox"],
+  // Longest-host-first, so .net must not be shadowed by .com
+  ["https://hdaudiobooks.net/some-book/", "hdaudiobooks_net"],
+  ["https://audiozaic.com/book/x/", "audiozaic"],
+  ["https://audiobooks4soul.com/book/x/", "audiobooks4soul"],
+  ["https://learnoutloud.com/book/x/", "learnoutloud"],
+];
+let attrBad = 0;
+for (const [url, want] of attribution) {
+  const got = sourceNameForUrl(url);
+  if (got !== want) {
+    attrBad++;
+    console.log(`     ${url} -> ${got} (want ${want})`);
+  }
+}
+check("every detail URL resolves to its own source", attrBad === 0, `${attribution.length} URLs`);
+
+console.log("\n=== detail resolution can reach the new sources ===");
+for (const f of ["src/lib/audiobookServer.ts", "src/lib/audiobookDetailClient.ts"]) {
+  const short = f.split("/").pop()!;
+  const body = fs.readFileSync(f, "utf8");
+  check(
+    `${short} derives probe URLs from the registry`,
+    body.includes("SEARCHABLE_AUDIOBOOK_SOURCES") && body.includes("audiobookSearchUrl"),
+    "not a hardcoded two-host list"
+  );
+  check(
+    `${short} no longer hardcodes a two-host probe`,
+    !body.includes("fulllengthaudiobooks.com/?s=${encodeURIComponent")
+  );
+}
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);
