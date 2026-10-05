@@ -804,10 +804,39 @@ function DiscoverView({
   //   3. Reader-friendly format (EPUB > AZW3 > MOBI > FB2 > PDF)
   // Ties keep their original relative order (Array.prototype.sort is stable).
   function rankVariants(variants: any[]): any[] {
+    /**
+     * English-first, measured against real API values rather than assumed ones.
+     *
+     * Anna's Archive returns a wide spread: "English", "eng", "en",
+     * "English;Undetermined", "English Français", "French", "fr", "fra", "fre",
+     * "Romanian", "Dutch", and 24 rows with no language at all. The old test was
+     * an exact match on en/eng/english, so "English;Undetermined" and
+     * "English Français" — both English records — were ranked BELOW plain French.
+     *
+     * Ranks: 0 English, 1 unknown, 2 other. Matching is prefix/substring based so
+     * multi-valued and ISO-639-2 style codes are handled; the non-English check
+     * looks for a known other-language token so a mixed string that starts with
+     * "English" is not mistaken for a foreign record.
+     */
+    const OTHER_LANGUAGES = [
+      "fre", "fra", "french", "ita", "italian", "spa", "spanish", "por", "portuguese",
+      "deu", "ger", "german", "rus", "russian", "rum", "romanian", "nld", "dutch",
+      "dan", "danish", "swe", "swedish", "nor", "norwegian", "pol", "polish",
+      "tur", "turkish", "ara", "arabic", "hin", "hindi", "chi", "chinese",
+      "jpn", "japanese", "kor", "korean", "heb", "hebrew", "gre", "greek",
+      "cze", "czech", "hun", "hungarian", "ron", "rum", "ukr", "ukrainian",
+      "vie", "vietnamese", "tha", "thai", "ind", "indonesian", "msa", "malay",
+      "fin", "finnish", "nob", "norwegian", "cat", "catalan", "lat", "latin",
+    ];
     const langRank = (v: any): number => {
-      const l = (v.language || "").trim().toLowerCase();
-      if (!l) return 1; // unlabelled — probably English, but below an explicit match
-      if (l === "en" || l === "eng" || l === "english") return 0;
+      const raw = (v.language || "").trim().toLowerCase();
+      if (!raw) return 1; // unlabelled — probably English, but below an explicit match
+      // Any recognisable English token, including inside a multi-valued string.
+      if (/(^|[^a-z])en(g|gl)?([^a-z]|$)/.test(raw) || raw.includes("english")) return 0;
+      // A known other language present means this is not simply an English record.
+      const tokens = raw.split(/[^a-z]+/).filter(Boolean);
+      if (tokens.some((t) => OTHER_LANGUAGES.includes(t))) return 2;
+      // Some other label entirely (an unrecognised language name).
       return 2;
     };
     const sourceRank = (v: any): number => {
