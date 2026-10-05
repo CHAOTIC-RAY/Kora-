@@ -557,13 +557,23 @@ function DiscoverView({
     return orderedCats.map(cat => {
       const rawBooks = featuredData[cat.id];
       if (!Array.isArray(rawBooks) || rawBooks.length === 0) return null;
-      // Filter out books with unknown/missing authors
+      // Drop placeholder authors, but never at the cost of emptying a lane.
+      //
+      // This used to return `null` when every row was filtered out, which is
+      // what made the Audiobook Library load and then vanish: measured on a live
+      // search, 26 of 50 rows arrive with no author, so a lane could end up
+      // entirely "Unknown" and disappear with no error and no explanation
+      // ("its loading and even after loading it disappears"). A lane with real
+      // rows is now shown regardless; rows without an author simply render as
+      // such, which is honest.
       const books = rawBooks.filter((b: any) => {
         const author = (b.author || b.contributor || "").trim().toLowerCase();
         return author && author !== "unknown" && author !== "unknown author";
       });
-      if (books.length === 0) return null;
-      return { cat, books };
+      // Prefer rows with an author, but fall back to the full set rather than
+      // showing an empty lane.
+      const usable = books.length > 0 ? books : rawBooks;
+      return { cat, books: usable };
     }).filter(Boolean) as { cat: any; books: any[] }[];
   }, [featuredData, feedFilter]);
 
@@ -624,6 +634,14 @@ function DiscoverView({
   // Editions are ranked best-first; only the top 2 show until expanded.
   const [showAllEditions, setShowAllEditions] = useState(false);
   const [loadingFeaturedDownloads, setLoadingFeaturedDownloads] = useState<boolean>(false);
+  /**
+   * Goodreads / audiobook / NetGalley lanes load AFTER the NYT feed has already
+   * painted. They had no flag at all, so the shelves simply sat empty and then
+   * filled in — reported 2026-10-05 as "its loading and even after loading it
+   * disappears". `loadingSecondaryFeatured` lets the panel say so, and stops an
+   * empty shelf being mistaken for "there is nothing here".
+   */
+  const [loadingSecondaryFeatured, setLoadingSecondaryFeatured] = useState<boolean>(false);
   const [selectedFeaturedVariant, setSelectedFeaturedVariant] = useState<any | null>(null);
   const [featuredMirrors, setFeaturedMirrors] = useState<any[]>([]);
   const [fetchingFeaturedMirrors, setFetchingFeaturedMirrors] = useState<boolean>(false);
@@ -1834,6 +1852,21 @@ function DiscoverView({
   }
 
   async function loadSecondaryFeaturedContent(
+    baseData: Record<string, any[]>,
+    nytError: string | null,
+    background = false
+  ) {
+    // Only the foreground pass shows the indicator; a background refresh must
+    // not flash a spinner over content the user is already reading.
+    if (!background) setLoadingSecondaryFeatured(true);
+    try {
+      await loadSecondaryFeaturedContentInner(baseData, nytError, background);
+    } finally {
+      if (!background) setLoadingSecondaryFeatured(false);
+    }
+  }
+
+  async function loadSecondaryFeaturedContentInner(
     baseData: Record<string, any[]>,
     nytError: string | null,
     background = false
@@ -5255,7 +5288,11 @@ function DiscoverView({
                     {error ? (
                       <p className="text-sm font-bold text-kindle-text-muted">{error}</p>
                     ) : (
-                      <p className="text-sm font-bold text-kindle-text-muted">No trending titles right now</p>
+                      <p className="text-sm font-bold text-kindle-text-muted">
+                        {loadingSecondaryFeatured
+                          ? "Loading shelves…"
+                          : "No trending titles right now"}
+                      </p>
                     )}
                     <p className="text-xs text-kindle-text-muted/70 max-w-sm">
                       {error
