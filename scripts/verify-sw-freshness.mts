@@ -66,6 +66,16 @@ check(
   "without this the asset 200 arrives from the fallback"
 );
 check(
+  "/assets/* is in run_worker_first so the guard is reachable",
+  /run_worker_first\s*=\s*\[[^\]]*"\/assets\/\*"/.test(toml),
+  "without this the assets layer answers BEFORE the Worker and the guard is dead code"
+);
+check(
+  "the SPA fallback is still configured for client routes",
+  /not_found_handling\s*=\s*"single-page-application"/.test(toml),
+  "/share and /install depend on it"
+);
+check(
   "it returns a real 404 for a miss",
   /status:\s*404/.test(worker) && /content-type":\s*"text\/plain/.test(worker),
   "never let a missing chunk resolve to HTML"

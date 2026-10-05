@@ -12,7 +12,17 @@ not_found_handling = "single-page-application"
 # reach the Worker rather than the SPA: the device browsers it targets are old
 # enough that booting the React bundle to display a 4-character code is both
 # slow and a good way to hit a syntax error. Everything else is static/SPA.
-run_worker_first = ["/api/*", "/send"]
+#
+# /assets/* MUST also run Worker-first. Without it the assets layer answers
+# directly and a hashed chunk that no longer exists (a tab open across a deploy)
+# is served the SPA fallback: measured on production, a bogus chunk name returned
+# HTTP 200 text/html, and the browser then refused to execute HTML as a module
+# ("Expected a JavaScript module script but the server responded with a MIME type
+# of 'text/html'"). Nothing in the app matched that as a stale chunk, so it showed
+# up as a blank crash screen. With /assets/* listed here, the Worker's guard in
+# src/worker.ts gets to return a real 404 and the client reloads onto the current
+# build. Do NOT remove this entry.
+run_worker_first = ["/api/*", "/send", "/assets/*"]
 
 [browser]
 binding = "BROWSER"
