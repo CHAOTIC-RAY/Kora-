@@ -26,6 +26,7 @@ import {
   ALL_AUDIOBOOK_SOURCES,
   SEARCHABLE_AUDIOBOOK_SOURCES,
   audiobookSearchUrl,
+  parseLibrivoxJson,
 } from "./lib/audiobookSources";
 import {
   getCachedAudiobookDetail,
@@ -1884,12 +1885,32 @@ export default {
               name: src.name,
               url: audiobookSearchUrl(src, q) || "",
               base: src.base,
+              kind: src.kind,
             })).filter((src) => Boolean(src.url));
 
             await Promise.allSettled(scrapeSources.map(async (src) => {
               try {
-                const html = await fetchPageHtmlWithProxies(src.url);
-                const batch = parseAudiobookSearchHtml(html, src.name, src.base).filter((r) => {
+                const body = await fetchPageHtmlWithProxies(src.url);
+
+                // LibriVox is a documented JSON API, not an HTML page. Running
+                // the HTML regexes over its JSON produced zero results — which
+                // is exactly what the live Worker did: 47 results, none from
+                // LibriVox. Branch on the registry's `kind`.
+                const parsed =
+                  src.kind === "api"
+                    ? parseLibrivoxJson(body).map((b) => ({
+                        title: b.title,
+                        author: b.author,
+                        narrator: b.narrator,
+                        link: b.link,
+                        coverUrl: b.coverUrl,
+                        source: src.name,
+                        genres: b.genres,
+                        sections: b.sections,
+                      }))
+                    : parseAudiobookSearchHtml(body, src.name, src.base);
+
+                const batch = parsed.filter((r: any) => {
                   if (seen.has(r.link)) return false;
                   seen.add(r.link);
                   return true;
