@@ -11,7 +11,15 @@
  *      volatile query params, or the detail panel lists "Libgen Mirror
  *      (libgen.li)" three times.
  */
-import { canonicalMirrorKey, isValidIsbn, isValidIsbn10, isValidIsbn13, pickRealIsbn } from "../discoverDetailHelpers";
+import {
+  canonicalMirrorKey,
+  DOWNLOAD_SEARCH_SOURCES,
+  isDownloadSearchSource,
+  isValidIsbn,
+  isValidIsbn10,
+  isValidIsbn13,
+  pickRealIsbn,
+} from "../discoverDetailHelpers";
 
 let passed = 0;
 let failed = 0;
@@ -249,6 +257,28 @@ check(
     canonicalMirrorKey("https://annas-archive.org/md5/abc?token=9&_=8"),
   true
 );
+
+// ── download search sources: `all` must be raced, not starved ─────────────
+// THE REGRESSION: the detail panel raced only `libgen` + `annas-archive` and
+// consulted broad `all` only AFTER both failed — inside the same 16s deadline
+// those two 14s fetches had already eaten. Manual search queries `all` directly,
+// so the panel reported "No direct files discovered for this edition yet" for a
+// book that manual search finds fine (reported for "The Munich Affair").
+//
+// A timing probe reproduced it exactly: narrow legs missing at 14s left the
+// fallback ~2s, which cannot cover the 7-24s legacy Rave response.
+check("`all` is a raced source", DOWNLOAD_SEARCH_SOURCES.includes("all" as never), true);
+check("libgen is a raced source", DOWNLOAD_SEARCH_SOURCES.includes("libgen" as never), true);
+check(
+  "annas-archive is a raced source",
+  DOWNLOAD_SEARCH_SOURCES.includes("annas-archive" as never),
+  true
+);
+check("isDownloadSearchSource('all')", isDownloadSearchSource("all"), true);
+check("isDownloadSearchSource('nyt')", isDownloadSearchSource("nyt"), false);
+// The broad source must not be the ONLY leg either — the narrow ones give speed
+// when they answer fast.
+check("all three sources are raced", DOWNLOAD_SEARCH_SOURCES.length, 3);
 
 console.log(
   `\n${failed === 0 ? "ok  " : "FAIL"}  src\\lib\\__tests__\\discoverDetailHelpers.test.ts` +

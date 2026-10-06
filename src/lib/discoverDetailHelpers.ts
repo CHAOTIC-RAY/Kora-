@@ -78,6 +78,25 @@ export function pickRealIsbn(
 }
 
 /**
+ * The archive sources a download search races.
+ *
+ * `all` is a PEER, not a late fallback. Manual search queries broad `all`, while
+ * the detail panel used to race only the two narrow filters and consult `all`
+ * afterwards — by which point the shared deadline had been eaten by the failing
+ * narrow legs, so the broad query never got a real chance to answer. Including
+ * `all` up front is what makes the detail panel and manual search agree.
+ *
+ * Exported so a test can pin the membership of this list: dropping `all` again
+ * silently restores "no download link here, but manual search finds plenty".
+ */
+export const DOWNLOAD_SEARCH_SOURCES = ["libgen", "annas-archive", "all"] as const;
+
+/** True when a source is one of the raced archive sources. */
+export function isDownloadSearchSource(source: string): boolean {
+  return (DOWNLOAD_SEARCH_SOURCES as readonly string[]).includes(source);
+}
+
+/**
  * Query parameters that carry a session or cache-buster rather than identity.
  *
  * This is a DENY-list on purpose. An earlier version used an allow-list of

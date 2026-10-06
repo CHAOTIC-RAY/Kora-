@@ -53,7 +53,12 @@ import { judgeMirrorDownload } from "../lib/mirrorOutcome";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
-import { canonicalMirrorKey, isValidIsbn, pickRealIsbn } from "../lib/discoverDetailHelpers";
+import {
+  canonicalMirrorKey,
+  DOWNLOAD_SEARCH_SOURCES,
+  isValidIsbn,
+  pickRealIsbn,
+} from "../lib/discoverDetailHelpers";
 
 function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
   const display = getDisplayRating(book);
@@ -782,27 +787,34 @@ function DiscoverView({
     const q = query.trim();
     if (!q) return { books: [], totalCount: 0, hasMore: false };
 
+    // A leg only "hits" if it returns at least one book. Empty throws, so an
+    // empty-but-successful response is discarded rather than winning the race.
     const firstHit = async (source: string) => {
       const page = await fetchPage(q, source, 1);
       if (!page.books?.length) throw new Error(`empty:${source}`);
       return page;
     };
 
-    // ── One shared deadline for the whole search ──
+    // ── `all` races as a FIRST-CLASS leg, not a late fallback ──
     //
-    // A single 16s budget covers BOTH stages. Two separate 16s budgets let the
-    // worst case run ~32s (16s to fail the fast legs, then 16s more for the
-    // fallback), which is what "Scanning global archives..." looked like for
-    // half a minute.
+    // This is what made the detail panel and manual search disagree. Manual
+    // search queries `source=all` (broad); this function used to race only
+    // `libgen` + `annas-archive` (two narrow filters) and consult `all` only
+    // afterwards. Two things then broke it:
     //
-    // The deadline is deliberately LOOSER than `fetchPage`'s own
-    // `AbortSignal.timeout(14000)`. That is the load-bearing detail: the inner
-    // fetch always settles by ~14s, so this timer can only ever act as a backstop
-    // for an environment where the abort signal does not fire — it must never be
-    // the thing that cuts a request short. An earlier version used 20s/12s, and
-    // that 12s was TIGHTER than the 14s cap, so a slow-but-successful "all"
-    // search was discarded and replaced with an empty list, turning a working
-    // book into "No download found". Keep this above 14s.
+    //   1. The Worker treats an empty 200 as a REAL answer ("nothing matched",
+    //      not a failure) and keeps it in the race, so a narrow leg could win
+    //      with zero books.
+    //   2. By the time the fallback ran, the shared deadline had been partly
+    //      consumed by the failing narrow legs — two 14s fetches left `all`
+    //      roughly 2s, which is not enough for the 7-24s legacy Rave response.
+    //      The fallback died and the panel reported "No direct files discovered
+    //      for this edition yet" for a book that manual search finds fine.
+    //      Reported for "The Munich Affair".
+    //
+    // Racing `all` from the start makes both paths ask the same question at the
+    // same breadth. The narrow legs stay for speed, but they can no longer starve
+    // the broad one.
     const EMPTY: { books: any[]; totalCount: number; hasMore: boolean } = { books: [], totalCount: 0, hasMore: false };
     const deadline = Date.now() + 16000;
     const budgetLeft = () => Math.max(0, deadline - Date.now());
@@ -830,14 +842,18 @@ function DiscoverView({
       }
     };
 
+    // `all` is a peer here, not a rescue mission. `firstHit("all")` (not bare
+    // `fetchPage`) so an empty broad answer is also treated as a miss and the
+    // race keeps waiting for a leg that actually found something. The list lives
+    // in discoverDetailHelpers so a test can pin that `all` stays in it.
     try {
-      return await withDeadline(Promise.any([firstHit("libgen"), firstHit("annas-archive")]));
+      return await withDeadline(
+        Promise.any(DOWNLOAD_SEARCH_SOURCES.map((source) => firstHit(source)))
+      );
     } catch {
-      try {
-        return await withDeadline(fetchPage(q, "all", 1));
-      } catch {
-        return EMPTY;
-      }
+      // Every leg failed or the deadline passed. An honest empty result beats a
+      // spinner that never resolves.
+      return EMPTY;
     }
   }
 
@@ -4979,7 +4995,20 @@ function DiscoverView({
                     } else if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
                       openBookDetail(book);
                     } else {
-                      handleGetDownloadLinks(book);
+                      // Archive/Rave results open the FULL book detail popup, not
+                      // the download sheet.
+                      //
+                      // This branch used to call `handleGetDownloadLinks`, which
+                      // sets `selectedBook` and therefore renders the download
+                      // modal — so a manually searched book showed a bare mirror
+                      // list with no overview, author profile, or editions, and
+                      // the user read that as "the book detail popup doesn't show".
+                      //
+                      // `openBookDetail` sets `selectedFeaturedBook`, and the effect
+                      // at ~1391 already runs `loadFeaturedDownloads` +
+                      // `loadFeaturedAudiobook` for it, so the popup gets the same
+                      // editions and mirrors — plus everything the sheet never had.
+                      openBookDetail(book);
                     }
                   }}
                 >
