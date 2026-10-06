@@ -2475,13 +2475,6 @@ function DiscoverView({
     const sourceToUse = forceSource || metadataSource;
 
     // ── ISBN first: an exact identifier, no keyword guessing ──
-    //
-    // A keyword lookup is inherently ambiguous here because the stored title
-    // usually contains the author's name, so `intitle:` + `inauthor:` cannot both
-    // be satisfied and the provider falls back to loosely matched items. That is
-    // how the modal swapped to a completely different book (observed: a
-    // Chinese-language edition) about a minute after it opened. An ISBN names
-    // exactly one edition, so try it before any keyword search.
     const cleanIsbn = (isbn || "").replace(/[^0-9Xx]/g, "");
     if (/^(?:\d{9}[\dXx]|\d{13})$/.test(cleanIsbn)) {
       try {
@@ -2510,7 +2503,6 @@ function DiscoverView({
             };
           }
         }
-        // Open Library fills gaps (often a better cover or a real blurb).
         if (olRes.ok) {
           const od = await olRes.json();
           if (od?.found) {
@@ -2522,7 +2514,7 @@ function DiscoverView({
               pageCount: exact?.pageCount || od.numberOfPages,
               publishedDate: exact?.publishedDate || od.publishDate,
               publisher: exact?.publisher || od.publishers?.[0],
-              categories: exact?.categories?.length ? exact.categories : od.subjects || [],
+              categories: exact?.categories?.length ? exact.categories : [],
               industryIdentifiers: [{ type: "ISBN_13", identifier: cleanIsbn }],
               coverUrl: exact?.coverUrl || od.coverUrl,
               source: (exact?.source || "Open Library") + " (ISBN)",
@@ -2532,9 +2524,25 @@ function DiscoverView({
 
         if (exact && !isStale()) {
           setFeaturedBookDetails({
-            ...exact,
+            title: selectedFeaturedBook?.title || exact.title,
+            authors: selectedFeaturedBook?.author
+              ? [selectedFeaturedBook.author]
+              : exact.authors,
             description: exact.description || seedDescriptionArg || "",
-            subjects: exact.categories,
+            pageCount: exact.pageCount,
+            publishedDate: exact.publishedDate,
+            publisher: exact.publisher || selectedFeaturedBook?.publisher,
+            language: exact.language || selectedFeaturedBook?.language,
+            isbn: cleanIsbn,
+            isbn13: cleanIsbn.length === 13 ? cleanIsbn : null,
+            isbn10: cleanIsbn.length === 10 ? cleanIsbn : null,
+            categories: [],
+            subjects: [],
+            maturityRating: undefined,
+            averageRating: undefined,
+            ratingsCount: undefined,
+            coverUrl: exact.coverUrl || selectedFeaturedBook?.coverUrl || null,
+            source: exact.source,
           });
           setLoadingFeaturedDetails(false);
           return;
