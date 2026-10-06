@@ -1108,7 +1108,16 @@ self.addEventListener("fetch", (event) => {
         if (url.pathname.startsWith("/assets/")) {
           try {
             const res = await fetch(event.request);
-            if (res && res.ok) cache.put(event.request, res.clone());
+            if (res && res.ok) {
+              // Prevent caching HTML responses for asset requests.
+              // If the Worker/network returns index.html for a missing asset
+              // (common SPA fallback), caching it poisons the shell cache and
+              // breaks stylesheets/scripts in future loads.
+              const contentType = res.headers.get("content-type") || "";
+              if (!contentType.includes("text/html")) {
+                cache.put(event.request, res.clone());
+              }
+            }
             return res;
           } catch (e) {
             // Offline: a cached copy of this exact hashed name is still valid.
