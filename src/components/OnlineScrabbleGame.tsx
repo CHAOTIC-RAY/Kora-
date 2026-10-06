@@ -1365,7 +1365,15 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                         const me = getMyPlayer();
                         const letter = me?.tiles[idx];
                         const isEmpty = !letter;
-                        const isSelected = selectedRackIdx === idx;
+                        // A tile is "selected" when it is in the word being built.
+                        //
+                        // This used to read `selectedRackIdx`, which the tap
+                        // handler never sets — it only mutates `letterQueue`. The
+                        // tile therefore stayed visually unselected after every
+                        // tap, so selecting letters looked like nothing happened
+                        // and the whole rack read as still awaiting input.
+                        const isQueued = letterQueue.some((q) => q.rackIdx === idx);
+                        const isSelected = isQueued || selectedRackIdx === idx;
                         // A tile already on the board, or already in the word
                         // being built, cannot be added again.
                         const isSpokenFor = isRackSlotUnavailable(
@@ -1373,6 +1381,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                           letterQueue,
                           tempPlaced
                         );
+                        // Shake on tap rather than on a state that never changes.
                         const shake = isSelected;
 
                         return (
@@ -1381,6 +1390,16 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             layout
                             onClick={() => selectRackTile(idx)}
                             {...wordDrag.rackHandlers(idx)}
+                            aria-pressed={isSelected}
+                            title={
+                              isEmpty
+                                ? "Empty rack slot"
+                                : isSpokenFor && !isQueued
+                                ? "Already on the board"
+                                : isQueued
+                                ? "Tap again to take this letter back"
+                                : `Add ${letter} to your word`
+                            }
                             className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
                               isEmpty
                                 ? "bg-kindle-bg border-dashed border-kindle-border text-kindle-text-muted"
@@ -1389,7 +1408,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                 : wordDrag.isDragging(idx)
                                 ? "bg-kindle-accent/15 border-2 border-kindle-accent text-kindle-text"
                                 : "bg-kindle-card border-kindle-accent/40 text-kindle-text hover:-translate-y-0.5"
-                            }`}
+                            } ${isSpokenFor && !isQueued ? "opacity-45" : ""}`}
                             initial={{ scale: 0.85, opacity: 0.35, rotate: -14 }}
                             animate={shake ? { rotate: [-4, 4, -3, 3, 0], scale: [1, 1.05, 1] } : { scale: 1, opacity: 1, rotate: 0 }}
                             transition={shake ? { type: "spring", stiffness: 340, damping: 14, mass: 0.4 } : { type: "spring", stiffness: 520, damping: 24, mass: 0.55 }}

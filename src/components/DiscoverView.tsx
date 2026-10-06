@@ -53,6 +53,7 @@ import { judgeMirrorDownload } from "../lib/mirrorOutcome";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
+import { canonicalMirrorKey, pickRealIsbn } from "../lib/discoverDetailHelpers";
 
 function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
   const display = getDisplayRating(book);
@@ -583,6 +584,10 @@ function DiscoverView({
   const [categoryPreviousDate, setCategoryPreviousDate] = useState<string | null>(null);
   const [loadingCategoryMore, setLoadingCategoryMore] = useState<boolean>(false);
   const [loadingCategory, setLoadingCategory] = useState<boolean>(false);
+  // Per-view error, distinct from the page-level `error`. Without it a failed
+  // category load rendered "No books found", which reads as "genuinely empty"
+  // and gives the user nothing to act on.
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   // Download states
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -783,13 +788,41 @@ function DiscoverView({
       return page;
     };
 
+    // The whole race is bounded, not just each leg.
+    //
+    // Budgets are deliberately LOOSER than `fetchPage`'s own
+    // `AbortSignal.timeout(14000)`. That is the load-bearing detail: the inner
+    // fetch always settles by ~14s, so these timers can only ever act as a
+    // backstop for an environment where the abort signal does not fire. An
+    // earlier version used 20s/12s — and the 12s fallback budget was TIGHTER
+    // than the 14s cap, so a slow-but-successful "all" search was discarded and
+    // replaced with an empty list, turning a working book into "No download
+    // found". Keep every budget above 14s.
+    const EMPTY: { books: any[]; totalCount: number; hasMore: boolean } = { books: [], totalCount: 0, hasMore: false };
+
     try {
-      return await Promise.any([firstHit("libgen"), firstHit("annas-archive")]);
+      return await Promise.race([
+        Promise.any([firstHit("libgen"), firstHit("annas-archive")]),
+        (async () => {
+          await new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("download-variant-search-timeout")), 16000)
+          );
+          return EMPTY;
+        })(),
+      ]);
     } catch {
       try {
-        return await fetchPage(q, "all", 1);
+        return await Promise.race([
+          fetchPage(q, "all", 1),
+          (async () => {
+            await new Promise((_, reject) =>
+              setTimeout(() => reject(new Error("download-variant-fallback-timeout")), 16000)
+            );
+            return EMPTY;
+          })(),
+        ]);
       } catch {
-        return { books: [], totalCount: 0, hasMore: false };
+        return EMPTY;
       }
     }
   }
@@ -922,18 +955,29 @@ function DiscoverView({
    * actually about that book can be dropped. Without it the function cannot
    * tell a genuine mirror from a keyword coincidence.
    */
+  /**
+   * Canonical identity of a mirror URL, for de-duplication.
+   *
+   * See `canonicalMirrorKey` in `../lib/discoverDetailHelpers`. It is re-exported
+   * through this module's local alias so the dedupe below and the tests share
+   * exactly one implementation.
+   */
+
   function sortMirrors(
     mirrors: any[],
     context?: { query?: string; title?: string; author?: string }
   ): any[] {
     // Filter out library.lol as it is reportedly taken down
-    // Also filter duplicates by exact URL
+    // Also filter duplicates by canonical URL (see canonicalMirrorKey)
     const seenUrls = new Set<string>();
     const filtered = mirrors.filter(m => {
       const url = (m.url || "").toLowerCase();
       if (url.includes("library.lol")) return false;
-      if (seenUrls.has(url)) return false;
-      if (url) seenUrls.add(url);
+      const key = canonicalMirrorKey(m.url);
+      if (key) {
+        if (seenUrls.has(key)) return false;
+        seenUrls.add(key);
+      }
       return true;
     });
 
@@ -1089,7 +1133,13 @@ function DiscoverView({
           : [],
         language: info.language || "English",
         description: info.description || "",
-        isbn: info.industryIdentifiers?.[0]?.identifier || "",
+        // Pick a genuine ISBN, not just industryIdentifiers[0]. That slot can
+        // hold a non-ISBN Google identifier, which made the cover fallback try
+        // `covers.openlibrary.org/b/isbn/<garbage>` and 404 again — the blank
+        // grey placeholder the user saw on Eclipse.
+        isbn: pickRealIsbn(info.industryIdentifiers),
+        isbn13: (info.industryIdentifiers || []).find((i: any) => /^\d{13}$/.test(String(i.identifier).replace(/-/g, "")))?.identifier?.replace(/-/g, "") || "",
+        isbn10: (info.industryIdentifiers || []).find((i: any) => /^[\dX]{10}$/i.test(String(i.identifier).replace(/-/g, "")))?.identifier?.replace(/-/g, "") || "",
         isGoogleBook: true,
         source: "google",
         searchQuery: `${info.title || ""} ${info.authors?.[0] || ""}`.trim()
@@ -2022,10 +2072,19 @@ function DiscoverView({
     setFeedFilter("all");
   };
 
+  /**
+   * Find an audiobook source for the book on screen.
+   *
+   * The stream request is given its own timeout rather than relying on a
+   * caller-supplied signal: `loadFeaturedAudiobook` called this with NO signal,
+   * so a stalled `/api/audiobooks/search/stream` held the audiobook section in
+   * "Searching audiobook archives..." forever. A bounded attempt that gives up
+   * and renders the real empty state beats an indefinite spinner.
+   */
   const findAudiobookMatch = async (title: string, author?: string, generation?: number) => {
     const q = `${title} ${author || ""}`.trim();
     try {
-      const results = await streamAudiobookSearch(q, () => {});
+      const results = await streamAudiobookSearch(q, () => {}, AbortSignal.timeout(12000));
       if (generation !== undefined && generation !== audiobookFetchGen.current) return null;
       const match = results.find(
         (r) => titlesRoughlyMatch(title, r.title, r.author)
@@ -2849,9 +2908,16 @@ function DiscoverView({
       );
       if (!res.ok) throw new Error(`NYT list fetch failed with status: ${res.status}`);
       const data = await res.json();
-      
+
       if (data?.status !== "OK" || !data?.results?.books) {
-        return { books: [], previousDate: null };
+        // Distinguish "the list is genuinely empty" from "the API refused".
+        // Returning a silent empty list here made the UI render "No books found
+        // in this category" for rate limits, a bad key, or a malformed list —
+        // a dead end with no way to retry. Surface the status text instead.
+        const why = data?.status === "OK"
+          ? "response contained no books array"
+          : `API responded with status "${data?.status ?? "unknown"}"`;
+        throw new Error(`NYT list "${listName}" unavailable: ${why}`);
       }
 
       let books = data.results.books;
@@ -2917,9 +2983,14 @@ function DiscoverView({
       const enrichedBooks = await enrichBooksWithRatings(mappedBooks, titlesRoughlyMatch, 10);
       return { books: enrichedBooks, previousDate };
     } catch (err) {
+      // Rethrow. A silent empty list here is indistinguishable from a genuinely
+      // empty category, so the panel rendered "No books found in this category"
+      // for a rate limit, a bad key, or a stalled request — a dead end with
+      // nothing to retry and no signal that anything went wrong. Letting the
+      // error reach `handleCategoryClick` lets it show the reason plus a retry.
       console.error("Failed to fetch NYT category:", err);
       logger.error("[discover] nyt category fetch failed", { error: (err as Error)?.message || String(err) });
-      return { books: [], previousDate: null };
+      throw err;
     }
   }
 
@@ -3056,6 +3127,7 @@ function DiscoverView({
     setCategoryPreviousDate(null);
     setCategoryBooks([]);
     setError(null);
+    setCategoryError(null);
 
     try {
       if (category.source === "goodreads") {
@@ -3078,7 +3150,10 @@ function DiscoverView({
     } catch (err: any) {
       console.error("Failed to load category:", err);
       logger.error("[discover] category load failed", { source: viewingCategory?.source, query: viewingCategory?.query, error: err?.message || String(err) });
-      setError(`Failed to load category: ${err.message}`);
+      // Show the reason in the panel AND clear the stale global banner: the page
+      // error belongs to the search surface, not this category view.
+      setCategoryError(err?.message ? `Couldn't load this list. ${err.message}` : "Couldn't load this list.");
+      setError(null);
     } finally {
       setLoadingCategory(false);
     }
@@ -4898,11 +4973,14 @@ function DiscoverView({
                           const attempt = parseInt(target.dataset.attempt || "0");
                           target.dataset.attempt = String(attempt + 1);
 
-                          // Attempt 1: if we have a real ISBN, try OpenLibrary by ISBN
-                          if (attempt === 0 && book.isbn && /^\d{10,13}$/.test(book.isbn)) {
+                          // Attempt 1: try OpenLibrary by ISBN. `pickRealIsbn`
+                          // already validated the value, so any non-empty
+                          // result here is a genuine ISBN.
+                          const fallbackIsbn = book.isbn13 || book.isbn10 || book.isbn || "";
+                          if (attempt === 0 && /^\d{9}[\dXx]$|^\d{13}$/.test(fallbackIsbn)) {
                             target.src =
                               resolveCoverImageSrc(
-                                `https://covers.openlibrary.org/b/isbn/${book.isbn}-M.jpg`
+                                `https://covers.openlibrary.org/b/isbn/${fallbackIsbn}-M.jpg`
                               ) || "";
                             return;
                           }
@@ -5111,9 +5189,25 @@ function DiscoverView({
             <div className="py-24 flex flex-col items-center justify-center">
               <KoraLoading context="category" categorySource={viewingCategory?.source} compact />
             </div>
+          ) : categoryError ? (
+            <div className="py-16 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
+              <p className="text-xs text-kindle-text-muted italic">{categoryError}</p>
+              <button
+                onClick={() => viewingCategory && handleCategoryClick(viewingCategory)}
+                className="mt-4 text-[10px] font-bold uppercase tracking-widest text-kindle-accent hover:underline"
+              >
+                Try again
+              </button>
+            </div>
           ) : categoryBooks.length === 0 ? (
             <div className="py-16 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
               <p className="text-xs text-kindle-text-muted italic">No books found in this category.</p>
+              <button
+                onClick={() => viewingCategory && handleCategoryClick(viewingCategory)}
+                className="mt-4 text-[10px] font-bold uppercase tracking-widest text-kindle-accent hover:underline"
+              >
+                Refresh list
+              </button>
             </div>
           ) : (
             <>
