@@ -1269,12 +1269,6 @@ body.kora-install::-webkit-scrollbar-thumb {
 
 
 
-.dark 
-
-
-
-.dark 
-
 /* Hide scroll bar on mobile view */
 @media (max-width: 768px) {
   ::-webkit-scrollbar {
