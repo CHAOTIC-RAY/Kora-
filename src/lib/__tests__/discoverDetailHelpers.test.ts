@@ -11,7 +11,7 @@
  *      volatile query params, or the detail panel lists "Libgen Mirror
  *      (libgen.li)" three times.
  */
-import { canonicalMirrorKey, pickRealIsbn } from "../discoverDetailHelpers";
+import { canonicalMirrorKey, isValidIsbn, isValidIsbn10, isValidIsbn13, pickRealIsbn } from "../discoverDetailHelpers";
 
 let passed = 0;
 let failed = 0;
@@ -24,11 +24,14 @@ function check(name: string, actual: unknown, expected: unknown) {
 }
 
 // ── pickRealIsbn ──────────────────────────────────────────────────────────
-// A clean ISBN-13.
+// A clean ISBN-13. Note the check digit: 9780316011488 is the valid form.
+// Writing this fixture as ...481 (the old, unvalidated value) made the test suite
+// itself depend on the missing checksum — it passed only because no ISBN-13
+// validation existed, and failed the moment `isValidIsbn13` was added.
 check(
   "isbn-13 alone",
-  pickRealIsbn([{ type: "ISBN_13", identifier: "9780316011481" }]),
-  "9780316011481"
+  pickRealIsbn([{ type: "ISBN_13", identifier: "9780316011488" }]),
+  "9780316011488"
 );
 
 // ISBN-10 with a check digit of X (the Gathering Storm supplement, a real one).
@@ -62,8 +65,8 @@ check(
 // Hyphens are stripped so the value can go straight into a cover URL.
 check(
   "strips hyphens",
-  pickRealIsbn([{ type: "ISBN_13", identifier: "978-0-316-01148-1" }]),
-  "9780316011481"
+  pickRealIsbn([{ type: "ISBN_13", identifier: "978-0-316-01148-8" }]),
+  "9780316011488"
 );
 
 // Nothing usable -> empty string, so callers skip the request entirely.
@@ -156,6 +159,94 @@ check("whitespace url", canonicalMirrorKey("   "), "");
 check(
   "malformed url falls back to raw text",
   canonicalMirrorKey("not a url") === canonicalMirrorKey("NOT A URL"),
+  true
+);
+
+// ── ISBN-13 checksum (F6) ─────────────────────────────────────────────────
+// THE REGRESSION: ISBN-10 got a full mod-11 check while ISBN-13 got a bare
+// length test, so an opaque 13-digit Google identifier passed and was requested
+// from Open Library — 404ing into the blank card the whole module prevents.
+check("isbn-13 bad checksum rejected", isValidIsbn13("1234567890123"), false);
+check("isbn-13 good checksum accepted", isValidIsbn13("9780439023481"), true);
+check(
+  "pickRealIsbn rejects a 13-digit non-ISBN",
+  pickRealIsbn([{ type: "OTHER", identifier: "1234567890123" }]),
+  ""
+);
+// With one bad 13-digit sibling present, a real ISBN-10 must still be found —
+// this is the exact row that broke: an unvalidated isbn13 used to outrank it.
+check(
+  "real isbn-10 survives a bad isbn-13 sibling",
+  pickRealIsbn([
+    { type: "ISBN_10", identifier: "0439023483" },
+    { type: "OTHER", identifier: "1234567890123" },
+  ]),
+  "0439023483"
+);
+
+// ── the F2 caller contract ────────────────────────────────────────────────
+// The cover <img> fallback must source its ISBN from `book.isbn` (the validated
+// field) and NOT from the bare-length `isbn13`/`isbn10` siblings. Pinned here
+// because the bug lived in the caller while the helper tested green.
+const googleRow = {
+  isbn: pickRealIsbn([
+    { type: "ISBN_10", identifier: "0439023483" },
+    { type: "OTHER", identifier: "1234567890123" },
+  ]),
+  // What the length-regex capture at the Google Books mapper produces:
+  isbn13: "1234567890123",
+  isbn10: "0439023483",
+};
+// Old chain: `isbn13 || isbn10 || isbn` -> the opaque id -> a 404.
+check("old cover chain picked the bad id", googleRow.isbn13, "1234567890123");
+// New chain: `isbn` only -> a genuine ISBN -> a real cover request.
+check("new cover chain picks the validated isbn", googleRow.isbn, "0439023483");
+
+// `fetchFeaturedMetadata` guards its ISBN argument with isValidIsbn, so an
+// unvalidated sibling from any caller degrades to keyword search instead of
+// silently missing on an exact-identifier lookup.
+check("isValidIsbn gates metadata lookup", isValidIsbn("1234567890123"), false);
+check("isValidIsbn passes a real isbn", isValidIsbn("9780439023481"), true);
+check("isValidIsbn rejects empty", isValidIsbn(""), false);
+check("isValidIsbn10 rejects short strings", isValidIsbn10("123"), false);
+
+// ── canonicalMirrorKey: query params are identity (F3) ────────────────────
+// THE REGRESSION: an allow-list of {md5,id,path,file,name} collapsed every other
+// query param away, so two different searches on the same path were deduped into
+// one row. The app's own `ravebooksearch.com/search?q=<title>` hand-off is this
+// exact shape.
+check(
+  "different q values stay distinct",
+  canonicalMirrorKey("https://ravebooksearch.com/search?q=eclipse%20lewis") ===
+    canonicalMirrorKey("https://ravebooksearch.com/search?q=dune%20herbert"),
+  false
+);
+// Same q, differing volatile key -> still one mirror.
+check(
+  "same q collapses across volatile key",
+  canonicalMirrorKey("https://ravebooksearch.com/search?q=eclipse%20lewis&key=AAA") ===
+    canonicalMirrorKey("https://ravebooksearch.com/search?key=BBB&q=eclipse%20lewis"),
+  true
+);
+// `lang` and `volume` are identity-bearing for edition mirrors.
+check(
+  "lang param is identity",
+  canonicalMirrorKey("https://annas-archive.org/dl?md5=abc&lang=en") ===
+    canonicalMirrorKey("https://annas-archive.org/dl?md5=abc&lang=fr"),
+  false
+);
+// The path is case-sensitive: a slug-like path is not an md5.
+check(
+  "path case is preserved",
+  canonicalMirrorKey("https://ravebooksearch.com/Book/Eclipse") ===
+    canonicalMirrorKey("https://ravebooksearch.com/book/eclipse"),
+  false
+);
+// Other volatile names are stripped too, not just `key`.
+check(
+  "token and _ are stripped",
+  canonicalMirrorKey("https://annas-archive.org/md5/abc?token=1&_=2") ===
+    canonicalMirrorKey("https://annas-archive.org/md5/abc?token=9&_=8"),
   true
 );
 

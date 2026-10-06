@@ -53,7 +53,7 @@ import { judgeMirrorDownload } from "../lib/mirrorOutcome";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
-import { canonicalMirrorKey, pickRealIsbn } from "../lib/discoverDetailHelpers";
+import { canonicalMirrorKey, isValidIsbn, pickRealIsbn } from "../lib/discoverDetailHelpers";
 
 function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
   const display = getDisplayRating(book);
@@ -788,39 +788,53 @@ function DiscoverView({
       return page;
     };
 
-    // The whole race is bounded, not just each leg.
+    // ── One shared deadline for the whole search ──
     //
-    // Budgets are deliberately LOOSER than `fetchPage`'s own
+    // A single 16s budget covers BOTH stages. Two separate 16s budgets let the
+    // worst case run ~32s (16s to fail the fast legs, then 16s more for the
+    // fallback), which is what "Scanning global archives..." looked like for
+    // half a minute.
+    //
+    // The deadline is deliberately LOOSER than `fetchPage`'s own
     // `AbortSignal.timeout(14000)`. That is the load-bearing detail: the inner
-    // fetch always settles by ~14s, so these timers can only ever act as a
-    // backstop for an environment where the abort signal does not fire. An
-    // earlier version used 20s/12s — and the 12s fallback budget was TIGHTER
-    // than the 14s cap, so a slow-but-successful "all" search was discarded and
-    // replaced with an empty list, turning a working book into "No download
-    // found". Keep every budget above 14s.
+    // fetch always settles by ~14s, so this timer can only ever act as a backstop
+    // for an environment where the abort signal does not fire — it must never be
+    // the thing that cuts a request short. An earlier version used 20s/12s, and
+    // that 12s was TIGHTER than the 14s cap, so a slow-but-successful "all"
+    // search was discarded and replaced with an empty list, turning a working
+    // book into "No download found". Keep this above 14s.
     const EMPTY: { books: any[]; totalCount: number; hasMore: boolean } = { books: [], totalCount: 0, hasMore: false };
+    const deadline = Date.now() + 16000;
+    const budgetLeft = () => Math.max(0, deadline - Date.now());
+
+    /** Race `work` against whatever remains of the shared deadline. */
+    const withDeadline = async <T,>(work: Promise<T>): Promise<T> => {
+      const remaining = budgetLeft();
+      if (remaining <= 0) throw new Error("download-variant-deadline-exceeded");
+      let timerId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        // The timer is cleared on every exit path. Un-cleared, each call leaked a
+        // live 16s handle — and this runs in a loop over several query shapes per
+        // book, so a feed load stranded hundreds of them.
+        return await Promise.race([
+          work,
+          new Promise<never>((_resolve, reject) => {
+            timerId = setTimeout(
+              () => reject(new Error("download-variant-deadline-exceeded")),
+              remaining
+            );
+          }),
+        ]);
+      } finally {
+        if (timerId !== undefined) clearTimeout(timerId);
+      }
+    };
 
     try {
-      return await Promise.race([
-        Promise.any([firstHit("libgen"), firstHit("annas-archive")]),
-        (async () => {
-          await new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("download-variant-search-timeout")), 16000)
-          );
-          return EMPTY;
-        })(),
-      ]);
+      return await withDeadline(Promise.any([firstHit("libgen"), firstHit("annas-archive")]));
     } catch {
       try {
-        return await Promise.race([
-          fetchPage(q, "all", 1),
-          (async () => {
-            await new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("download-variant-fallback-timeout")), 16000)
-            );
-            return EMPTY;
-          })(),
-        ]);
+        return await withDeadline(fetchPage(q, "all", 1));
       } catch {
         return EMPTY;
       }
@@ -2525,6 +2539,15 @@ function DiscoverView({
     seedDescriptionArg?: string,
     isbn?: string | null
   ) => {
+    // Re-validate the incoming ISBN once, here, for every caller. Several pass
+    // `book.isbn13 || book.isbn10 || book.isbn`, and those siblings come from a
+    // bare length regex rather than a checksum — so an opaque Google identifier
+    // reaches the exact-ISBN branch below, finds no match, and silently degrades
+    // to a keyword guess. One guard here covers all of them, so the call sites
+    // can stay simple without knowing about checksums.
+    const cleanIsbn = isValidIsbn(String(isbn || "").replace(/-/g, "").trim())
+      ? String(isbn).replace(/-/g, "").trim()
+      : "";
     const gen = detailFetchGen.current;
     const isStale = () => gen !== detailFetchGen.current;
     setLoadingFeaturedDetails(true);
@@ -2534,8 +2557,7 @@ function DiscoverView({
     const sourceToUse = forceSource || metadataSource;
 
     // ── ISBN first: an exact identifier, no keyword guessing ──
-    const cleanIsbn = (isbn || "").replace(/[^0-9Xx]/g, "");
-    if (/^(?:\d{9}[\dXx]|\d{13})$/.test(cleanIsbn)) {
+    if (cleanIsbn) {
       try {
         const [gbRes, olRes] = await Promise.all([
           fetch(`/api/google-books/search?q=${encodeURIComponent(`isbn:${cleanIsbn}`)}`),
@@ -4973,10 +4995,15 @@ function DiscoverView({
                           const attempt = parseInt(target.dataset.attempt || "0");
                           target.dataset.attempt = String(attempt + 1);
 
-                          // Attempt 1: try OpenLibrary by ISBN. `pickRealIsbn`
-                          // already validated the value, so any non-empty
-                          // result here is a genuine ISBN.
-                          const fallbackIsbn = book.isbn13 || book.isbn10 || book.isbn || "";
+                          // Attempt 1: try OpenLibrary by ISBN.
+                          //
+                          // `book.isbn` ONLY, never `isbn13`/`isbn10`. Those
+                          // siblings are captured by a bare length regex, so an
+                          // opaque 13-digit Google identifier outranks the
+                          // checksum-validated `pickRealIsbn` result here and
+                          // 404s into a blank card — a previously-working cover
+                          // broken by the very validation added to fix it.
+                          const fallbackIsbn = book.isbn || "";
                           if (attempt === 0 && /^\d{9}[\dXx]$|^\d{13}$/.test(fallbackIsbn)) {
                             target.src =
                               resolveCoverImageSrc(
@@ -5166,6 +5193,11 @@ function DiscoverView({
               onClick={() => {
                 setViewingCategory(null);
                 setCategoryBooks([]);
+                // Reset the error too, matching every other exit path out of the
+                // category view. Leaving it set hides the message (the section is
+                // gated on viewingCategory) but strands it in state for whatever
+                // renders next.
+                setCategoryError(null);
               }}
               className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
             >
