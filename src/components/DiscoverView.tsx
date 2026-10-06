@@ -797,24 +797,36 @@ function DiscoverView({
 
     // ── `all` races as a FIRST-CLASS leg, not a late fallback ──
     //
-    // This is what made the detail panel and manual search disagree. Manual
-    // search queries `source=all` (broad); this function used to race only
-    // `libgen` + `annas-archive` (two narrow filters) and consult `all` only
-    // afterwards. Two things then broke it:
+    // Manual search queries source=all (broad). This function used to race only
+    // the two narrow filters (libgen, annas-archive) and consult `all` only
+    // AFTERWARD, inside the same 16s shared deadline that the two failing narrow
+    // legs had already consumed. Two 14s fetches left the broad query roughly 2s,
+    // and the legacy Rave rung takes 7-24s — so `all` never got to answer, and
+    // the panel reported "No direct files discovered for this edition yet" for a
+    // book that manual search resolves instantly. Reported for "The Munich
+    // Affair"; a timing probe reproduces it (old: 0 books at 16.0s).
     //
-    //   1. The Worker treats an empty 200 as a REAL answer ("nothing matched",
-    //      not a failure) and keeps it in the race, so a narrow leg could win
-    //      with zero books.
-    //   2. By the time the fallback ran, the shared deadline had been partly
-    //      consumed by the failing narrow legs — two 14s fetches left `all`
-    //      roughly 2s, which is not enough for the 7-24s legacy Rave response.
-    //      The fallback died and the panel reported "No direct files discovered
-    //      for this edition yet" for a book that manual search finds fine.
-    //      Reported for "The Munich Affair".
+    // That deadline starvation is the WHOLE root cause. An earlier draft of this
+    // comment also blamed the Worker treating an empty HTTP 200 as a real
+    // answer, which is wrong for this path: `firstHit` throws on an empty page
+    // and `Promise.any` only settles on a FULFILLED promise, so an empty leg
+    // cannot win the race — before this change or after. That behaviour belongs
+    // to the Worker's own v1-vs-legacy race, which the client cannot influence.
     //
-    // Racing `all` from the start makes both paths ask the same question at the
-    // same breadth. The narrow legs stay for speed, but they can no longer starve
-    // the broad one.
+    // Cost note: all three legs hit the same /api/annas-archive/search endpoint
+    // and the same Rave upstream — `source=libgen` / `source=annas-archive` /
+    // `source=all` are query-string filters on one engine. So this is 3 requests
+    // to one upstream where the old shape used 2 in the happy path and 4 at worst
+    // (2 legs plus the fallback). `Promise.any` resolves on first fulfilment, so
+    // an unfiltered hit can win over a narrow one purely on latency; that is
+    // acceptable here because every candidate is subsequently gated by
+    // `matchesEditionStrictly` (see loadFeaturedDownloads), so a wider winner
+    // cannot surface a wrong book — it only widens the candidate pool.
+    //
+    // `all` is a peer here, not a rescue mission: `firstHit("all")` (not bare
+    // `fetchPage`) so an empty broad answer is also treated as a miss and the race
+    // keeps waiting for a leg that actually found something. The list lives in
+    // discoverDetailHelpers so a test can pin that `all` stays in it.
     const EMPTY: { books: any[]; totalCount: number; hasMore: boolean } = { books: [], totalCount: 0, hasMore: false };
     const deadline = Date.now() + 16000;
     const budgetLeft = () => Math.max(0, deadline - Date.now());
@@ -1212,7 +1224,7 @@ function DiscoverView({
     return `${cleanTitle} ${cleanAuthor}`.trim().replace(/\s+/g, " ");
   }
 
-  const loadFeaturedDownloads = async (title: string, author: string) => {
+  const loadFeaturedDownloads = async (title: string, author: string, searchQuery?: string) => {
     const gen = detailFetchGen.current;
     const isStale = () => gen !== detailFetchGen.current;
     setLoadingFeaturedDownloads(true);
@@ -1222,7 +1234,17 @@ function DiscoverView({
     setFeaturedMirrorError(null);
     
     try {
-      const q = cleanTitleAndAuthorForEbookSearch(title, author);
+      // Prefer the row's curated `searchQuery` when the caller has one. Every feed
+      // mapper builds it from the clean title+author it already computed, so
+      // re-deriving it here would be a lossy second pass —
+      // `cleanTitleAndAuthorForEbookSearch` strips punctuation and collapses
+      // whitespace, which can change the query the archives were given. This
+      // mirrors `handleGetDownloadLinks`, which has always preferred
+      // `book.searchQuery`; routing archive results through the detail popup must
+      // not silently switch them to a different query string.
+      const q =
+        (searchQuery && searchQuery.trim()) ||
+        cleanTitleAndAuthorForEbookSearch(title, author);
       const result = await searchDownloadVariants(q);
       if (isStale()) return;
       const rawBooks = result.books || [];
@@ -1404,7 +1426,11 @@ function DiscoverView({
 
   useEffect(() => {
     if (selectedFeaturedBook) {
-      loadFeaturedDownloads(selectedFeaturedBook.title, selectedFeaturedBook.author);
+      loadFeaturedDownloads(
+        selectedFeaturedBook.title,
+        selectedFeaturedBook.author,
+        selectedFeaturedBook.searchQuery
+      );
       const generation = audiobookFetchGen.current;
       loadFeaturedAudiobook(selectedFeaturedBook, generation);
     } else {
@@ -1557,7 +1583,6 @@ function DiscoverView({
     opts?: { budget?: number }
   ): Promise<Record<string, any[]>> => {
     const CONCURRENCY = 6;
-    const PER_ROW_MS = 12000;
     // Only the first screenful is resolved before the feed is handed back. The
     // rest stream in behind it; nothing waits on them.
     const PREVIEW_ROWS = 24;
@@ -1570,11 +1595,11 @@ function DiscoverView({
     //
     // The feed is slow because it re-resolves from scratch on every single load.
     // Measured cost per row: up to 3 query shapes (searchQuery / title /
-    // "title + surname"), and each shape is a `searchDownloadVariants` =
-    // `Promise.any(libgen, annas-archive)` = 2 HTTP calls at a measured 2.3-8.6s
-    // each. So one row can cost up to 6 calls / ~40s, and 240 rows cost up to
-    // 1440 calls per visit. Bookshelves barely change day to day, so a resolved
-    // (title+author -> md5) mapping is stable and worth keeping.
+    // "title + surname"), and each shape is a `searchDownloadVariants` = 3
+    // concurrent legs (libgen, annas-archive, all — see DOWNLOAD_SEARCH_SOURCES)
+    // at a measured 2.3-8.6s each. So one row can cost up to 9 calls, and 240
+    // rows cost up to 2160 calls per visit. Bookshelves barely change day to day,
+    // so a resolved (title+author -> md5) mapping is stable and worth keeping.
     //
     // Keyed on the normalised title+author, so a reprint or a new edition still
     // hits, and a renamed edition misses and resolves again.
@@ -2206,6 +2231,13 @@ function DiscoverView({
     setFeaturedMirrors([]);
     setFeaturedMirrorError(null);
     setShowAllEditions(false);
+    // `downloadProgress` is shared between the download sheet and this popup, and
+    // the popup renders its `step !== "idle"` branch INSTEAD of the mirror list.
+    // handleGetDownloadLinks resets it on open; without the same reset here, a
+    // failed or completed download from the sheet (e.g. "All direct mirrors
+    // failed…") would still be set and the popup would show that stale block
+    // rather than the mirrors it just fetched.
+    setDownloadProgress({ step: "idle", percent: 0, error: null });
     setSelectedFeaturedBook(book);
     // Seed overview immediately from list data (NYT synopses, etc.) so the
     // panel is never empty while Google / Open Library enrich it.
@@ -6291,6 +6323,35 @@ function DiscoverView({
                                 </button>
                               )}
                             </div>
+
+                            {/* One-tap import, mirroring the download sheet.
+                                Archive results used to open that sheet, which had a
+                                "Recommended Direct Download" button; routing them to
+                                this popup instead silently removed the only one-tap
+                                path, leaving per-mirror clicks as the sole option. */}
+                            {!fetchingFeaturedMirrors &&
+                              !featuredMirrorError &&
+                              featuredMirrors.some((m: any) => m.isDirect) &&
+                              downloadProgress.step === "idle" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAutoDownload(featuredMirrors)}
+                                  className="w-full p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 transition-all duration-300 text-left flex items-center justify-between group shadow-lg shadow-emerald-600/10 hover:shadow-emerald-500/20 text-white cursor-pointer"
+                                >
+                                  <div>
+                                    <p className="text-xs font-bold font-sans flex items-center gap-1.5 text-white">
+                                      <Loader2 className="w-3.5 h-3.5 text-neutral-300 animate-spin" />
+                                      Recommended Direct Download
+                                    </p>
+                                    <p className="text-[10px] text-emerald-100/80 font-medium font-sans mt-0.5">
+                                      Import high-quality{" "}
+                                      {selectedFeaturedVariant?.extension || "epub"} copy to
+                                      library.
+                                    </p>
+                                  </div>
+                                  <Download className="w-4 h-4 text-emerald-100 group-hover:scale-110 transition shrink-0 ml-2 animate-bounce" />
+                                </button>
+                              )}
 
                             {/* Mirrors for selected variant */}
                             {selectedFeaturedVariant && (
