@@ -6,7 +6,7 @@ import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
+import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
 import { escapeHtml } from "../lib/relay/sanitize";
@@ -3666,7 +3666,7 @@ function DiscoverView({
               <button
                 onClick={() => {
                   if (audiobookLibraryMode) closeAudiobookLibrary();
-                  setFeedFilter("community");
+                  setFeedFilter("plugins");
                 }}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   feedFilter === "plugins"
@@ -3674,8 +3674,8 @@ function DiscoverView({
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
               >
-                <Feather className="w-3.5 h-3.5 text-amber-500" />
-                Community
+                <Puzzle className="w-3.5 h-3.5 text-amber-500" />
+                Plugins
               </button>
             </div>
             <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
