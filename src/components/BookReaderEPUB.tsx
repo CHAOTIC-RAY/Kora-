@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import DOMPurify from 'dompurify';
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
@@ -4559,7 +4560,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                             </div>
                             <div 
                               className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
-                              dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
+                              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(chapterHtmlWithHighlights, { USE_PROFILES: { html: true } }) }}
                               onClick={handleEpubContentClick}
                             />
                           </div>
@@ -4669,7 +4670,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                     <div 
                       id="epub-text-viewer"
                       className={`epub-content reader-select-surface leading-relaxed ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
-                      dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(chapterHtmlWithHighlights, { USE_PROFILES: { html: true } }) }}
                       onClick={handleEpubContentClick}
                     />
 

@@ -2039,7 +2039,7 @@ app.get("/api/audiobooks/search/stream", async (req, res) => {
 
   res.setHeader("Content-Type", "application/x-ndjson");
   res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
 
   const cached = getCachedAudiobookSearch(q);
   if (cached) {
@@ -2150,7 +2150,7 @@ app.get("/api/search/stream", async (req, res) => {
 
   res.setHeader("Content-Type", "application/x-ndjson");
   res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
 
   const all: any[] = [];
 
@@ -3088,7 +3088,7 @@ app.get("/api/proxy-file", async (req, res) => {
 
     // SSRF guard: block private/internal hosts and non-http(s) schemes.
     try {
-      assertSafeProxyUrl(targetUrl);
+      assertSafeProxyUrl(targetUrl, true);
     } catch (e: any) {
       return res.status(403).json({ error: "Proxy blocked: " + (e.message || "invalid URL") });
     }
@@ -3119,7 +3119,7 @@ app.get("/api/proxy-file", async (req, res) => {
           redirect: "follow",
         });
         if (audioRes.ok || audioRes.status === 206) {
-          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Origin", "http://localhost:5173");
           res.setHeader("Accept-Ranges", "bytes");
           res.setHeader("Content-Type", audioRes.headers.get("content-type") || "audio/mpeg");
           if (audioRes.headers.get("content-length")) {

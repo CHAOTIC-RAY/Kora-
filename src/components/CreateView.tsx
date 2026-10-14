@@ -51,7 +51,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { motion, LayoutGroup } from "motion/react";
-import { BookMetadata, publishCommunityBook, CommunityBook } from "../lib/firebase";
+import { BookMetadata } from "../lib/firebase";
 import { getBookFile, storeBookFile } from "../db/indexedDB";
 import {
   buildEpubFromText,
@@ -71,7 +71,6 @@ interface CreateViewProps {
   onClose: () => void;
   onOpenReader?: (book: BookMetadata) => void;
   onBookUpdated?: (updatedBook: BookMetadata) => void;
-  onOpenCommunity?: () => void;
 }
 
 const editorFonts = [
@@ -90,7 +89,6 @@ export default function CreateView({
   onClose,
   onOpenReader,
   onBookUpdated,
-  onOpenCommunity,
 }: CreateViewProps) {
   const [title, setTitle] = useState(book.title || "My New Book");
   const [author, setAuthor] = useState(book.author || "Unknown Author");
@@ -98,13 +96,6 @@ export default function CreateView({
   const [publisher, setPublisher] = useState(book.publisher || "Kora EPUB Studio");
   const [description, setDescription] = useState(book.notes || "");
   const [tags, setTags] = useState<string[]>(book.tags || ["created", "epub"]);
-
-  // Community Publishing state
-  const [showPublishModal, setShowPublishModal] = useState(false);
-  const [publishGenre, setPublishGenre] = useState("Fantasy");
-  const [publishSummary, setPublishSummary] = useState(book.notes || "");
-  const [isPublishing, setIsPublishing] = useState(false);
-  const [publishedSuccess, setPublishedSuccess] = useState<CommunityBook | null>(null);
 
   // Cover image / style
   const [coverBg, setCoverBg] = useState("linear-gradient(135deg, #2c3e50 0%, #000000 100%)");
@@ -498,36 +489,6 @@ export default function CreateView({
     }
   };
 
-  const handlePublishToCommunity = async () => {
-    try {
-      setIsPublishing(true);
-      const communityBook = await publishCommunityBook({
-        id: `comm_${book.id || Date.now()}`,
-        title: title || "Untitled Story",
-        author: author || "Anonymous Author",
-        authorId: userId || "user_community_author",
-        description: publishSummary || description || "A community story written on Kora.",
-        genre: publishGenre,
-        tags: tags.length > 0 ? tags : ["community", "story", publishGenre.toLowerCase()],
-        coverGradient: coverBg,
-        coverUrl: coverImage || undefined,
-        chapters: chapters.map((c) => ({
-          id: c.id,
-          title: c.title,
-          text: c.text,
-          html: c.html,
-        })),
-      });
-
-      setPublishedSuccess(communityBook);
-    } catch (err) {
-      console.error("[CreateView] Publish to Community failed:", err);
-      toast.error("Failed to publish story to community. Tap Retry.");
-    } finally {
-      setIsPublishing(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-[100] bg-kindle-bg text-kindle-text flex flex-col font-sans overflow-hidden">
       {/* Top Navigation Header */}
@@ -622,19 +583,6 @@ export default function CreateView({
 
         {/* Right Actions: Save, Publish, Combined Download Dropdown, Read Mode */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Publish to Community Button */}
-          <button
-            type="button"
-            onClick={() => {
-              setPublishSummary(description || "");
-              setShowPublishModal(true);
-            }}
-            className="p-1.5 sm:px-3 sm:py-1.5 rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition cursor-pointer shadow-xs"
-            title="Publish Story to Kora Community"
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Publish</span>
-          </button>
 
           <button
             type="button"
@@ -1586,183 +1534,6 @@ export default function CreateView({
               </div>
             </motion.div>
           </button>
-        )}
-
-        {/* Publish to Community Modal */}
-        {showPublishModal && (
-          <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-kindle-card border border-kindle-border rounded-2xl p-6 max-w-md w-full shadow-2xl relative flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPublishModal(false);
-                  setPublishedSuccess(null);
-                }}
-                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-kindle-bg text-kindle-text-muted hover:text-kindle-text transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              {publishedSuccess ? (
-                <div className="text-center py-4 space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center mx-auto text-white shadow-lg">
-                    <Sparkles className="w-8 h-8" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-kindle-text">Story Published! 🎉</h3>
-                    <p className="text-xs text-kindle-text-muted mt-1">
-                      "{publishedSuccess.title}" is now live on the Kora Community. Readers can now discover, like, and comment on your work!
-                    </p>
-                  </div>
-
-                  <div className="p-3 bg-kindle-bg rounded-xl border border-kindle-border/60 text-left text-xs space-y-1">
-                    <p className="font-bold text-kindle-text">{publishedSuccess.title}</p>
-                    <p className="text-kindle-text-muted">Genre: <span className="text-kindle-accent font-semibold">{publishedSuccess.genre}</span> • {publishedSuccess.chapters.length} Chapters</p>
-                  </div>
-
-                  <div className="flex flex-col gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPublishModal(false);
-                        setPublishedSuccess(null);
-                        onClose();
-                        if (onOpenCommunity) onOpenCommunity();
-                      }}
-                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-md hover:brightness-110 transition cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      <Globe className="w-4 h-4" />
-                      View in Community Discover
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowPublishModal(false);
-                        setPublishedSuccess(null);
-                      }}
-                      className="w-full py-2 rounded-xl border border-kindle-border text-kindle-text font-bold text-xs hover:bg-kindle-bg transition cursor-pointer"
-                    >
-                      Keep Editing
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-3 border-b border-kindle-border/40 pb-3">
-                    <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                      <Globe className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-kindle-text">Publish to Kora Community</h3>
-                      <p className="text-[11px] text-kindle-text-muted">Share your story with readers on Kora</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3.5">
-                    <div>
-                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
-                        Story Title
-                      </label>
-                      <input
-                        type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-bold focus:outline-none focus:border-kindle-accent"
-                        placeholder="Title of your story"
-                        aria-label="Title of your story"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
-                        Pen Name / Author
-                      </label>
-                      <input
-                        type="text"
-                        value={author}
-                        onChange={(e) => setAuthor(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-semibold focus:outline-none focus:border-kindle-accent"
-                        placeholder="Author name"
-                        aria-label="Author name"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
-                        Primary Genre
-                      </label>
-                      <select
-                        value={publishGenre}
-                        onChange={(e) => setPublishGenre(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-bold focus:outline-none focus:border-kindle-accent"
-                      >
-                        <option value="Fantasy">Fantasy</option>
-                        <option value="Romance">Romance</option>
-                        <option value="Sci-Fi">Sci-Fi / Cyberpunk</option>
-                        <option value="Mystery">Mystery / Thriller</option>
-                        <option value="Young Adult">Young Adult</option>
-                        <option value="Fanfiction">Fanfiction</option>
-                        <option value="General Fiction">General Fiction</option>
-                        <option value="Poetry">Poetry</option>
-                        <option value="Adventure">Adventure</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-bold text-kindle-text-muted uppercase tracking-wider block mb-1">
-                        Synopsis / Description
-                      </label>
-                      <textarea
-                        value={publishSummary}
-                        onChange={(e) => setPublishSummary(e.target.value)}
-                        rows={3}
-                        className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text focus:outline-none focus:border-kindle-accent resize-none"
-                        placeholder="Hooks, blurbs, and summary for community readers..."
-                      />
-                    </div>
-
-                    <div className="p-3 bg-kindle-bg rounded-xl border border-kindle-border/50 text-[11px] flex justify-between text-kindle-text-muted font-medium">
-                      <span>📖 Chapters: <strong className="text-kindle-text">{chapters.length}</strong></span>
-                      <span>✍️ Total Words: <strong className="text-kindle-text">{chapters.reduce((sum, c) => sum + (c.text ? c.text.split(/\s+/).filter(Boolean).length : 0), 0)}</strong></span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2 border-t border-kindle-border/40">
-                    <button
-                      type="button"
-                      onClick={() => setShowPublishModal(false)}
-                      className="flex-1 py-2 rounded-xl border border-kindle-border text-xs font-bold text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handlePublishToCommunity}
-                      disabled={isPublishing || !title.trim()}
-                      className="flex-[2] py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-xs shadow-md hover:brightness-110 transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {isPublishing ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Publishing...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="w-4 h-4" />
-                          Publish Story Now
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </>
-              )}
-            </motion.div>
-          </div>
         )}
       </div>
     </div>

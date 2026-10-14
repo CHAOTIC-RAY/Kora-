@@ -2,16 +2,17 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import ReactDOM from "react-dom";
 import JSZip from "jszip";
-import { BookMetadata, syncBookToCloud, getCommunityBooks, CommunityBook, likeCommunityBook, isCommunityBookLikedByUser, incrementCommunityBookReads, getCommunityComments, addCommunityComment, CommunityComment } from "../lib/firebase";
+import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
 import { Search, BookOpen, Download, Globe, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
+import { escapeHtml } from "../lib/relay/sanitize";
 import KoraLoading from "./KoraLoading";
+import SourcePluginsHub from "./SourcePluginsHub";
 import HardcoverCommunity from "./HardcoverCommunity";
-import CommunityStoriesHub from "./CommunityStoriesHub";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
@@ -250,40 +251,9 @@ function DiscoverView({
     return tempStorage.get<any>("preferred_source") || "google";
   });
   const [loadingFeatured, setLoadingFeatured] = useState<boolean>(true);
-  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook" | "netgalley" | "community">("all");
+  const [feedFilter, setFeedFilter] = useState<"all" | "goodreads" | "nyt" | "audiobook" | "netgalley" | "plugins">("all");
   const [audiobookLibraryMode, setAudiobookLibraryMode] = useState(false);
 
-  // Community Wattpad-style Stories state
-  const [communityBooks, setCommunityBooks] = useState<CommunityBook[]>([]);
-  const [communityGenreFilter, setCommunityGenreFilter] = useState<string>("all");
-  const [selectedCommunityBook, setSelectedCommunityBook] = useState<CommunityBook | null>(null);
-  const [selectedCommunityChapterIdx, setSelectedCommunityChapterIdx] = useState<number>(0);
-  const [readingCommunityBook, setReadingCommunityBook] = useState<CommunityBook | null>(null);
-  const [communityComments, setCommunityComments] = useState<CommunityComment[]>([]);
-  const [newCommentText, setNewCommentText] = useState<string>("");
-  const [isLikingCommunityBook, setIsLikingCommunityBook] = useState<boolean>(false);
-  const [isUserLikedMap, setIsUserLikedMap] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    if (feedFilter === "community") {
-      async function loadCommunity() {
-        try {
-          const list = await getCommunityBooks(communityGenreFilter);
-          setCommunityBooks(list);
-          
-          const likedMap: Record<string, boolean> = {};
-          for (const b of list) {
-            const liked = await isCommunityBookLikedByUser(b.id, userId);
-            likedMap[b.id] = liked;
-          }
-          setIsUserLikedMap(likedMap);
-        } catch (err) {
-          console.warn("[DiscoverView] Error loading community books:", err);
-        }
-      }
-      loadCommunity();
-    }
-  }, [feedFilter, communityGenreFilter, userId]);
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -3369,8 +3339,8 @@ function DiscoverView({
                             const div = document.createElement("div");
                             div.className = "kora-typo-cover w-full h-full flex flex-col items-center justify-center p-4 text-center bg-kindle-card absolute inset-0";
                             div.innerHTML = `
-                              <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;margin-bottom:6px;">${(book.author || "Author").substring(0, 30)}</div>
-                              <div style="font-size:11px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${book.title}</div>
+                              <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;margin-bottom:6px;">${escapeHtml((book.author || "Author").substring(0, 30))}</div>
+                              <div style="font-size:11px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(book.title)}</div>
                             `;
                             parent.style.position = "relative";
                             parent.appendChild(div);
@@ -3705,7 +3675,7 @@ function DiscoverView({
                   setFeedFilter("community");
                 }}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
-                  feedFilter === "community"
+                  feedFilter === "plugins"
                     ? "border-amber-500 text-amber-500 font-extrabold"
                     : "border-transparent text-kindle-text-muted hover:text-kindle-text"
                 }`}
@@ -3715,16 +3685,12 @@ function DiscoverView({
               </button>
             </div>
             <div className="text-[9px] text-kindle-text-muted font-mono uppercase tracking-wider font-semibold hidden sm:block">
-              {feedFilter === "all" ? "Archives & Curated Feeds" : "Kora Community"}
+              {feedFilter === "all" ? "Archives & Curated Feeds" : "Source Plugins"}
             </div>
           </div>
 
-          {feedFilter === "community" ? (
-            <CommunityStoriesHub
-              userId={userId}
-              onOpenCreateView={onOpenCreateView}
-              onImportToLibrary={onBookAdded}
-            />
+          {feedFilter === "plugins" ? (
+            <SourcePluginsHub />
           ) : loadingFeatured ? (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-5">
               {[...Array(6)].map((_, i) => (
@@ -3862,7 +3828,7 @@ function DiscoverView({
                                 if (parent && !parent.querySelector(".kora-typo-cover")) {
                                   const div = document.createElement("div");
                                   div.className = "kora-typo-cover w-full h-full flex flex-col items-center justify-center p-3 bg-kindle-card absolute inset-0";
-                                  div.innerHTML = `<div style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;opacity:0.3;margin-bottom:4px;">${(book.author||"").substring(0,25)}</div><div style="font-size:9px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${book.title}</div>`;
+                                  div.innerHTML = `<div style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;opacity:0.3;margin-bottom:4px;">${escapeHtml((book.author||"").substring(0,25))}</div><div style="font-size:9px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(book.title)}</div>`;
                                   parent.style.position = "relative";
                                   parent.appendChild(div);
                                 }

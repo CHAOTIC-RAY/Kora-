@@ -4227,7 +4227,6 @@ async function startBackgroundDownload(
               setActiveBook(updatedBook);
               setLastReadBook(updatedBook);
             }}
-            onOpenCommunity={() => switchTab("discover")}
           />
         ) : activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF

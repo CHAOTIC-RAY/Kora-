@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DOMPurify from 'dompurify';
 import { Bookmark, ChevronLeft, ExternalLink, Loader2, Settings2 } from "lucide-react";
 import {
   peekFeedArticle,
@@ -446,7 +447,7 @@ export default function FeedArticleReader({
                         lineHeight: prefs.lineSpacing,
                         ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
                       }}
-                      dangerouslySetInnerHTML={{ __html: displayHtml }}
+                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(displayHtml, { USE_PROFILES: { html: true } }) }}
                     />
                   )}
                 </section>

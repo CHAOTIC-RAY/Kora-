@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import DOMPurify from 'dompurify';
 import { Bookmark, ChevronDown, ChevronUp, Filter, Grid, LayoutGrid, Loader2, RefreshCw, Share2, Settings2, Zap } from "lucide-react";
 import type { FeedItem } from "../lib/feedStorage";
 import { getItemThumbnail } from "../lib/feedPreview";
@@ -803,7 +804,7 @@ export default function FeedTikTokScroll({
                           className={`feed-article-content max-w-none text-xs sm:text-sm font-serif leading-relaxed [&_*]:[unicode-bidi:plaintext] ${
                             isDarkMode ? "text-neutral-200" : "text-neutral-900"
                           }`}
-                          dangerouslySetInnerHTML={{ __html: articleHtmlMap[item.id].html }}
+                          dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(articleHtmlMap[item.id].html, { USE_PROFILES: { html: true } }) }}
                         />
                       ) : item.summary ? (
                         <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap font-serif">

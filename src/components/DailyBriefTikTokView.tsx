@@ -1,4 +1,5 @@
 import React, {useEffect, useRef, useState, useMemo} from"react";
+import DOMPurify from 'dompurify';
 import {createPortal} from"react-dom";
 import {
  ChevronDown,
@@ -423,7 +424,7 @@ export default function DailyBriefTikTokView({
  return (
  <div
  className="prose prose-xs max-w-none space-y-2 leading-relaxed text-kindle-text"
- dangerouslySetInnerHTML={{__html: cleanHtml || originalItem.summary ||""}}
+ dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(cleanHtml || originalItem.summary ||"", { USE_PROFILES: { html: true } })}}
  />
  );
 })()}

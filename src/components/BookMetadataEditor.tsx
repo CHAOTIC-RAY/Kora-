@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { BookMetadata, getLocalLibrary, syncBookToCloud } from "../lib/firebase";
 import { X, Save, BookOpen, RefreshCw, Search, Loader2, Library } from "lucide-react";
-import HardcoverCommunity from "./HardcoverCommunity";
 import { enrichBookMetadata } from "../lib/metadataEnricher";
 import {
   ensureSeriesFields,
@@ -420,7 +419,6 @@ export default function BookMetadataEditor({
             <label className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Download URL</label>
             <input value={downloadUrl} onChange={(e) => setDownloadUrl(e.target.value)} placeholder="e.g. https://example.com/book.epub" className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-kindle-accent" />
           </div>
-          <HardcoverCommunity book={book} />
         </div>
         <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-kindle-border">
           <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-widest hover:bg-kindle-bg transition">
