@@ -522,7 +522,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
               <pre className="whitespace-pre-wrap font-inherit">{content}</pre>
             </div>
           )}
-        </div>
+        </button>
       </div>
     </div>
   );
