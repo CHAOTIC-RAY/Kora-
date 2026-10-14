@@ -12,7 +12,6 @@ import { logger } from "../lib/logger";
 import { escapeHtml } from "../lib/relay/sanitize";
 import KoraLoading from "./KoraLoading";
 import SourcePluginsHub from "./SourcePluginsHub";
-import HardcoverCommunity from "./HardcoverCommunity";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
@@ -3473,11 +3472,6 @@ function DiscoverView({
 
       )}
 
-      {searchMode && communityBook && (
-        <section className="bg-kindle-card border border-kindle-border rounded-3xl p-8 shadow-sm max-w-5xl mx-auto overflow-hidden">
-          <HardcoverCommunity book={communityBook} />
-        </section>
-      )}
 
       {!searchMode && viewingCategory && (
         <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -4703,18 +4697,6 @@ function DiscoverView({
                         </section>
                       </div>
 
-                      {/* Hardcover Community */}
-                      <section className="pt-10 border-t border-kindle-border">
-                        <div className="flex items-center gap-2 mb-6">
-                          <Users className="w-4 h-4 text-kindle-accent" />
-                          <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-kindle-text">Community Readers</h3>
-                        </div>
-                        <div className="bg-kindle-card/20 border border-kindle-border rounded-2xl overflow-hidden p-4 md:p-6">
-                          <HardcoverCommunity 
-                            book={{ title: featuredBookDetails?.title || selectedFeaturedBook.title, author: featuredBookDetails?.authors?.[0] || selectedFeaturedBook.author } as any}
-                          />
-                        </div>
-                      </section>
                     </div>
                   </div>
                 </div>
