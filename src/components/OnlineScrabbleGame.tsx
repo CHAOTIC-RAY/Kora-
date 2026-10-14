@@ -156,16 +156,67 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   };
 
   const drawTiles = (count: number, currentBag: string[]) => {
-    const drawn: string[] = [];
-    const remaining = [...currentBag];
-    for (let i = 0; i < count; i++) {
-      if (remaining.length === 0) break;
-      const idx = Math.floor(Math.random() * remaining.length);
-      drawn.push(remaining[idx]);
-      remaining.splice(idx, 1);
-    }
-    return { drawn, remaining };
-  };
+      const drawn: string[] = [];
+      const remaining = [...currentBag];
+      // Letter counts for rack balance analysis
+      const letterCounts: Record<string, number> = {};
+      for (const tile of remaining) {
+        letterCounts[tile] = (letterCounts[tile] || 0) + 1;
+      }
+    
+      // Vowel/consonant sets
+      const vowels = new Set(['A', 'E', 'I', 'O', 'U']);
+      const consonants = new Set(['B', 'C', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z']);
+      // Note: 'U' is in both - will handle below
+    
+      for (let i = 0; i < count; i++) {
+        if (remaining.length === 0) break;
+      
+        // Calculate vowel/consonant balance of remaining tiles
+        let vRemaining = 0, cRemaining = 0;
+        for (const tile of remaining) {
+          const upper = tile.toUpperCase();
+          if (vowels.has(upper)) vRemaining++;
+          else if (consonants.has(upper)) cRemaining++;
+        }
+      
+        // Weighted selection: prefer tiles that maintain balance
+        // A good rack typically has 3-5 vowels out of 7
+        const targetVowels = 7; // we're drawing, aim for balanced end result
+      
+        // Simple weighted random: slightly favor tiles that help balance
+        const totalRemaining = remaining.length;
+        let weights: number[] = [];
+        for (const tile of remaining) {
+          const upper = tile.toUpperCase();
+          let weight = 1;
+          if (vowels.has(upper)) weight = 1.1; // slightly favor vowels to avoid all-consonant racks
+          else weight = 0.9; // slight consonant penalty
+          weights.push(weight);
+        }
+      
+        // Normalize weights
+        const weightSum = weights.reduce((a, b) => a + b, 0);
+        const normWeights = weights.map(w => w / weightSum);
+      
+        // Weighted random selection
+        let rand = Math.random() * weightSum;
+        let selectedIdx = 0;
+        for (let j = 0; j < normWeights.length; j++) {
+          rand -= normWeights[j];
+          if (rand <= 0) {
+            selectedIdx = j;
+            break;
+          }
+        }
+      
+        const idx = selectedIdx;
+        drawn.push(remaining[idx]);
+        remaining.splice(idx, 1);
+      }
+    
+      return { drawn, remaining };
+    };
 
   const initCpuGame = () => {
     setGameMode("cpu");
@@ -885,62 +936,117 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 pb-12">
             {screen === "menu" && (
               <div className="max-w-md mx-auto space-y-6 pt-4 text-center">
-                <div className="w-20 h-20 mx-auto rounded-3xl bg-kindle-card  border-2 border-kindle-border  flex items-center justify-center text-3xl font-serif font-bold text-kindle-accent shadow-xl">
+                <div className="w-20 h-20 mx-auto rounded-3xl bg-kindle-card border-2 border-kindle-border flex items-center justify-center text-3xl font-serif font-bold text-kindle-accent shadow-xl">
                   S<span className="text-xs text-amber-500 font-mono ml-0.5">1</span>
                 </div>
                 <div className="space-y-2">
-                  <h3 className="font-serif text-2xl font-extrabold text-kindle-text ">Classic Scrabble</h3>
-                  <p className="text-xs text-kindle-text-muted  leading-relaxed">
+                  <h3 className="font-serif text-2xl font-extrabold text-kindle-text">Classic Scrabble</h3>
+                  <p className="text-xs text-kindle-text-muted leading-relaxed">
                     Test your vocabulary offline against Kora or host an online multiplayer clash room using Firebase sync.
                   </p>
                 </div>
 
-                <div className="space-y-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={initCpuGame}
-                    className="w-full py-3.5 px-4 rounded-xl bg-kindle-accent hover:opacity-80 text-kindle-bg font-bold text-sm tracking-wider uppercase flex items-center justify-center gap-2 shadow-lg transition active:scale-95"
-                  >
-                    <Cpu className="w-4 h-4" /> Play VS Kora
-                  </button>
-
-                  <div className="relative py-2">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-kindle-border " /></div>
-                    <span className="relative bg-kindle-bg  px-3 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted ">Online Matchmaking</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={createOnlineRoom}
-                    className="w-full py-3 px-4 rounded-xl border-2 border-kindle-border  hover:border-kindle-accent/60 bg-kindle-card  text-xs font-bold uppercase tracking-wider text-kindle-text  flex items-center justify-center gap-2 transition"
-                  >
-                    <Users className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Host Online Room
-                  </button>
-
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={roomCode}
-                      onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                      placeholder="6-Digit Code"
-                      maxLength={6}
-                      className="flex-1 bg-kindle-card  border-2 border-kindle-border  rounded-xl px-3 py-2 text-center font-mono text-sm tracking-widest text-kindle-text dark:text-white uppercase outline-none focus:border-kindle-accent"
-                    />
+                <div className="space-y-4 pt-2">
+                  {/* CPU Mode Card */}
+                  <div className="rounded-2xl bg-kindle-card border border-kindle-border p-4 shadow-md hover:shadow-lg transition">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                        <Cpu className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-kindle-text">Play VS Kora (CPU)</h4>
+                        <p className="text-xs text-kindle-text-muted">
+                          Challenge Kora's AI with adaptive difficulty. No internet required.
+                        </p>
+                      </div>
+                    </div>
                     <button
                       type="button"
-                      onClick={joinOnlineRoom}
-                      className="px-5 py-2 rounded-xl bg-amber-800 dark:bg-white text-white dark:text-black font-bold text-xs uppercase tracking-wider hover:brightness-110 transition"
-                    >
-                      Join
-                    </button>
+                      onClick={initCpuGame}
+                      className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:opacity-80 text-amber-50 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition active:scale-95">
+                        <Cpu className="w-3.5 h-3.5" /> Start CPU Game
+                      </button>
+                    <p className="text-xs text-kindle-text-muted text-center mt-2">
+                      Average game time: 3-5 minutes
+                    </p>
                   </div>
 
-                  {roomMsg && <p className="text-xs text-rose-400 font-medium">{roomMsg}</p>}
+                  {/* Online Mode Card */}
+                  <div className="rounded-2xl bg-kindle-card border border-kindle-border p-4 shadow-md hover:shadow-lg transition">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-kindle-text">Host Online Room</h4>
+                        <p className="text-xs text-kindle-text-muted">
+                          Create a room and share the code with friends for a multiplayer clash.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={createOnlineRoom}
+                        className="py-2 px-4 rounded-xl border-2 border-kindle-border hover:border-kindle-accent/60 bg-kindle-card text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center justify-center gap-2 shadow-md transition active:scale-95">
+                        <Users className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> Create Room
+                      </button>
+                      <span className="text-xs text-kindle-text-muted">
+                        {isHost ? `Room #${roomCode}` : ''}
+                      </span>
+                    </div>
+                    <p className="text-xs text-kindle-text-muted text-center mt-2">
+                      Max 4 players · 7 tiles each
+                    </p>
+                  </div>
+
+                  {/* Join Online Room Section */}
+                  <div className="rounded-2xl bg-kindle-card border border-kindle-border p-4 shadow-md hover:shadow-lg transition">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                        <Search className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-kindle-text">Join Online Room</h4>
+                        <p className="text-xs text-kindle-text-muted">
+                          Enter a room code to join an existing multiplayer match.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={roomCode}
+                        onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                        placeholder="6-Digit Code"
+                        maxLength={6}
+                        className="flex-1 bg-kindle-card border-2 border-kindle-border rounded-xl px-3 py-2 text-center font-mono text-sm tracking-widest text-kindle-text dark:text-white uppercase outline-none focus:border-kindle-accent"
+                        disabled={!roomCode || roomCode.length < 6}
+                        aria-invalid={roomCode.length > 0 && roomCode.length < 6}
+                      />
+                      <button
+                        type="button"
+                        onClick={joinOnlineRoom}
+                        className="px-4 py-2 rounded-xl bg-amber-800 dark:bg-white text-white dark:text-black font-bold text-xs uppercase tracking-wider hover:brightness-110 transition"
+                        disabled={!roomCode || roomCode.length < 6}
+                      >
+                        Join
+                      </button>
+                    </div>
+                    {roomCode.length > 0 && roomCode.length < 6 && (
+                      <p className="text-xs text-rose-400 font-medium mt-1">
+                        Code must be 6 digits
+                      </p>
+                    )}
+                    {roomCode.length >= 6 && (
+                      <p className="text-xs text-emerald-400 font-medium mt-1">
+                        Valid 6-digit code
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
-
-            {screen === "lobby" && (
+            )}{screen === "lobby" && (
               <div className="max-w-md mx-auto space-y-6 pt-6 text-center">
                 <div className="p-6 rounded-2xl bg-kindle-card border-2 border-kindle-border space-y-4">
                   <div className="text-xs uppercase tracking-widest text-kindle-text-muted">Room Code</div>
@@ -973,7 +1079,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
                 {/* Left Column: Board */}
                 <div className="lg:col-span-7 flex flex-col items-center">
-                  <div className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-15 gap-[1px] sm:gap-[2px] select-none">
+                  <div className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-12 gap-1 sm:gap-2 select-none">
                     {Array.from({ length: 15 }).map((_, r) =>
                       Array.from({ length: 15 }).map((_, c) => {
                         const key = `${r},${c}`;
@@ -1060,7 +1166,24 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                     </div>
                   </div>
 
-                  {/* Tile Rack */}
+                  
+                  {/* Turn Indicator */}
+                  <div className="bg-kindle-card rounded-2xl border border-kindle-border p-3 shadow-md mb-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
+                        {'Your Turn' if isMyTurn() else 'Opponent's Turn'}
+                      </h3>
+                      <span className={isMyTurn() ? 'text-amber-500' : 'text-kindle-text-muted'}>
+                        {isMyTurn() ? '⚡' : '⏳'}
+                      </span>
+                    </div>
+                    {isMyTurn() && (
+                      <p className="text-xs text-kindle-text-muted">Place your tiles on the board</p>
+                    )}
+                    {!isMyTurn() && (
+                      <p className="text-xs text-kindle-text-muted">Waiting for opponent...</p>
+                    )}
+                  </div>{/* Tile Rack */}
                   <div className="bg-kindle-card  border border-kindle-border  rounded-2xl p-3 shadow-md space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted ">Your Tile Rack</h3>
@@ -1088,7 +1211,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             key={`${letter}-${idx}`}
                             layout
                             onClick={() => selectRackTile(idx)}
-                            className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
+                            className={`min-w-44 min-h-44 w-14 h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
                               isEmpty
                                 ? "bg-kindle-bg border-dashed border-kindle-border text-kindle-text-muted"
                                 : isSelected
