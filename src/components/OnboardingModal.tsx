@@ -465,7 +465,7 @@ export default function OnboardingModal({
                         </h3>
                       </div>
                       <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-                        Pick topics you care about — each one loads several trusted site feeds into your Read tab. Your Daily News Brief uses these.
+                        Pick topics you care about — each one loads several trusted site feeds into your Paper tab. Your Daily News Brief uses these.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-kindle-text-muted shrink-0 pt-0.5">

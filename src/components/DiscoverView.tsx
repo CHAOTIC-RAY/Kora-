@@ -803,7 +803,7 @@ function DiscoverView({
       console.error(err);
       if (isStale()) return;
       if (instant.length === 0) {
-        setFeaturedMirrorError(err.message || "Failed to fetch download mirrors.");
+        setFeaturedMirrorError("Failed to fetch download mirrors. Tap Retry to try again.");
       }
     } finally {
       if (!isStale()) setFetchingFeaturedMirrors(false);
@@ -945,7 +945,7 @@ function DiscoverView({
       await loadSecondaryFeaturedContent(mergedData, nytError);
     } catch (err: any) {
       console.error("Failed to load featured content:", err);
-      setError(`Failed to load featured content: ${err.message || err}`);
+      setError("Failed to load featured content. Tap Retry to try again.");
       setLoadingFeatured(false);
     }
   }
@@ -1000,7 +1000,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("NYT overview fetch failed:", err);
-      nytError = err.message || "Failed to fetch NYT overview";
+      nytError = "Failed to fetch NYT overview. Tap Retry.";
     }
 
     const mergedData: Record<string, any[]> = {};
@@ -1879,7 +1879,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("Failed to load category:", err);
-      setError(`Failed to load category: ${err.message}`);
+      setError("Failed to load category. Tap Retry.");
     } finally {
       setLoadingCategory(false);
     }
@@ -2191,7 +2191,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("Search error:", err);
-      setError(err.message || "Search failed. Mirrors may be temporarily unavailable.");
+      setError("Search failed. Tap Retry to search again.");
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -2418,7 +2418,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       if (!hadUsableMirrors) {
-        setMirrorError(err.message || "Failed to retrieve download mirrors.");
+        setMirrorError("Failed to retrieve download mirrors. Tap Retry.");
       }
     } finally {
       setFetchingMirrors(false);
@@ -2917,7 +2917,7 @@ function DiscoverView({
       }, 1200);
     } catch (err: any) {
       // If proxy download failed (CAPTCHA, Cloudflare, etc), open in in-app browser
-      const errMsg = err.message || "Failed to download from this mirror.";
+      const errMsg = "Failed to download from this mirror. Tap Retry.";
       if (errMsg.toLowerCase().includes("captcha") ||
           errMsg.toLowerCase().includes("cloudflare") ||
           errMsg.toLowerCase().includes("verification") ||
@@ -2981,7 +2981,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("Background auto-download failed:", err);
-      toast.error(`Auto-download failed: ${err.message}`, { id: tId });
+      toast.error("Auto-download failed. Tap Retry to try again.", { id: tId });
     }
   }
 

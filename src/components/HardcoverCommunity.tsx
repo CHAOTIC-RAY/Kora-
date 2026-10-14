@@ -107,7 +107,7 @@ function HardcoverCommunityContent({ book }: HardcoverCommunityProps) {
           setHardcoverReviews(bookData.user_books);
         }
       } catch (err: any) {
-        setHardcoverError(err.message || "Failed to load Hardcover reviews");
+        setHardcoverError("Failed to load Hardcover reviews. Tap Retry to try again.");
       } finally {
         setLoadingHardcover(false);
       }
@@ -136,7 +136,7 @@ function HardcoverCommunityContent({ book }: HardcoverCommunityProps) {
           setGoodreadsReviews([]);
         }
       } catch (err: any) {
-        setGoodreadsError(err.message || "Failed to load Goodreads reviews");
+        setGoodreadsError("Failed to load Goodreads reviews. Tap Retry to try again.");
       } finally {
         setLoadingGoodreads(false);
       }

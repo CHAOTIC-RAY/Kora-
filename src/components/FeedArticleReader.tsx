@@ -240,7 +240,7 @@ export default function FeedArticleReader({
       markFeedItemSaved(target.id, book.id);
       await onSaved?.();
     } catch (err) {
-      alert((err as Error).message || "Could not save to library.");
+      toast.error("Could not save to library. Tap Retry.");
     } finally {
       setSaving(false);
     }

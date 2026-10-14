@@ -229,7 +229,7 @@ export default function BookCoverEditor({ book, userId, onClose, onUpdate }: Boo
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-label="Close" type="button" />
       <div className="relative w-full max-w-2xl bg-kindle-card rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in fade-in duration-200 border border-kindle-border">
         <div className="p-6 border-b border-kindle-border flex items-center justify-between pt-[var(--kora-safe-top)]">
           <div className="space-y-1">

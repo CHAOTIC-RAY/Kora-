@@ -3,7 +3,7 @@
  * Status: pending | completed | dismissed (swipe forever).
  *
  * Post-onboarding journey starts with the in-library walkthrough book,
- * then Discover (first download) and Read tab.
+ * then Discover (first download) and Paper tab.
  */
 
 export type GuideId =
@@ -283,7 +283,7 @@ export const GUIDE_CATALOG: GuideDefinition[] = [
   {
     id: "news-feed",
     title: "Morning paper",
-    short: "Read tab & headlines",
+    short: "Paper tab & headlines",
     blurb: "We'll open Read, show the feed, then Manage Sources for your RSS list.",
     icon: "rss",
     journey: true,

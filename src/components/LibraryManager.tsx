@@ -63,7 +63,7 @@ async function shareBook(book: BookMetadata): Promise<void> {
     // Web / no native share — copy link.
     try {
       await navigator.clipboard.writeText(link);
-      alert("Book link copied to clipboard");
+      toast.success("Book link copied to clipboard!");
     } catch { /* ignore */ }
   }
 }
@@ -920,7 +920,7 @@ function LibraryManager({
       localStorage.setItem("kora_nyt_recommendations", JSON.stringify(recs));
     } catch (err: any) {
       console.error("Failed to load recommendations:", err);
-      setRecommendationError(err.message || "Could not load recommendations");
+      setRecommendationError("Could not load recommendations. Tap Retry.");
     } finally {
       setLoadingRecommendations(false);
     }
@@ -2773,7 +2773,7 @@ function LibraryManager({
                   onBookSelected(newBook);
                 } catch (err) {
                   console.error("[Create Template Error]:", err);
-                  alert("Failed to create template book. Please try again.");
+                  toast.error("Failed to create template book. Please try again.");
                 } finally {
                   setIsCreatingFromTemplate(false);
                 }

@@ -2410,7 +2410,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       playBookOpenSound();
     } catch (err: any) {
       console.error("EPUB Loader Error:", err);
-      setError(err.message || "Failed to parse EPUB reader file.");
+      setError("Failed to parse EPUB. Tap Retry to try again.");
       setLoading(false);
     }
   }
@@ -3276,7 +3276,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
         {/* Sidebar: Reader Settings panel */}
         {showSettings && (
           <>
-            <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} />
+            <button className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} aria-label="Close settings" type="button" />
             <aside data-guide="reader-settings-panel" className={`w-full md:w-80 h-[min(70vh,32rem)] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 pb-[max(1.25rem,var(--kora-safe-bottom))] overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
               <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
@@ -4770,7 +4770,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                 {/* Offline Selection Analyzer Sheet */}
                 {showAnalyzer && (
                   <div className="absolute inset-0 z-[80] flex items-end justify-center p-0 md:p-6 animate-in fade-in duration-200">
-                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowAnalyzer(false)} />
+                    <button className="absolute inset-0 bg-black/60" onClick={() => setShowAnalyzer(false)} aria-label="Close analyzer" type="button" />
                     <div className={`relative w-full md:max-w-2xl h-[75vh] md:h-auto md:max-h-[85vh] ${activeTheme.card} ${activeTheme.text} border-t md:border ${activeTheme.border} rounded-t-3xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300`}>
                       
                       {/* Panel Header */}

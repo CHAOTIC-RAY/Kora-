@@ -531,7 +531,7 @@ function SettingsView({
       }
     } catch (err: any) {
       console.error("Local Upload Error:", err);
-      setUploadError("Failed to store file locally in IndexedDB: " + err.message);
+      setUploadError("Failed to store file locally. Tap Retry.");
     } finally {
       setUploading(false);
     }
@@ -643,7 +643,7 @@ function SettingsView({
   const handleSelectRealDir = async () => {
     try {
       if (!(window as any).showDirectoryPicker) {
-        alert("Directory Selection is not natively supported by your browser or inside this iframe sandbox. Please enable the 'Virtual Folder Simulator' below to simulate a local downloads folder!");
+        toast.info("Directory Selection is not natively supported. Tap Dismiss.");
         return;
       }
       const handle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
@@ -751,7 +751,7 @@ function SettingsView({
         setScanResultText("No directory or simulator is currently configured to scan.");
       }
     } catch (err: any) {
-      setScanResultText(`Scan failed: ${err.message}`);
+      setScanResultText("Scan failed. Tap Retry.");
     } finally {
       setIsScanning(false);
     }
@@ -2683,7 +2683,7 @@ function SettingsView({
               <div className="space-y-3">
                 <button 
                   className="w-full py-3.5 bg-[#4285F4] text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:brightness-110 transition cursor-pointer"
-                  onClick={() => alert("Cloud Sync Integration: Please set up Google OAuth in AI Studio settings to enable this feature.")}
+                  onClick={() => toast.info("Cloud Sync Integration: Set up Google OAuth in AI Studio settings.")}
                 >
                   Connect Google Drive
                 </button>
@@ -2759,7 +2759,7 @@ function SettingsView({
               <button
                 onClick={() => {
                   logger.clear();
-                  alert("Diagnostic logs cleared.");
+                  toast.success("Diagnostic logs cleared.");
                 }}
                 className="flex-1 flex items-center justify-center gap-2 py-2 border border-kindle-border rounded-xl text-[10px] font-bold uppercase tracking-widest text-kindle-text hover:bg-kindle-bg transition cursor-pointer"
               >

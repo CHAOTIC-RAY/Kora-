@@ -299,7 +299,7 @@ export default function InAppBrowser({ userId, onBookAdded, grayscaleCovers, ini
         status: "error",
         filename,
         progress: 0,
-        errorText: err.message || "Failed to process the downloaded file."
+        errorText: "Failed to process the downloaded file. Tap Retry."
       });
     }
   }

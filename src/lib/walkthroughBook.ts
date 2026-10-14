@@ -127,7 +127,7 @@ const CHAPTERS: Array<{ title: string; text?: string; html?: string }> = [
 <ul class="kora-guide-list">
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="first-book-search">Find your first book</button></li>
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="sync-setup">Setup &amp; sync</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="news-feed">Morning paper — Read tab</button></li>
+<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="news-feed">Morning paper — Paper tab</button></li>
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="narrator-mode">Voice Narrator deep dive</button></li>
 </ul>
 <p class="kora-cta-row">

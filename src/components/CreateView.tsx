@@ -345,7 +345,7 @@ export default function CreateView({
 
   const handleDeleteChapter = (id: string) => {
     if (chapters.length <= 1) {
-      alert("An EPUB book must have at least one chapter.");
+      toast.error("An EPUB book must have at least one chapter.");
       return;
     }
     const next = chapters.filter((c) => c.id !== id);
@@ -442,10 +442,10 @@ export default function CreateView({
       if (onBookUpdated) onBookUpdated(updatedBook);
 
       setHasUnsavedChanges(false);
-      alert("Book saved successfully as EPUB!");
+      toast.success("Book saved successfully as EPUB!");
     } catch (err) {
       console.error("[CreateView] Save failed:", err);
-      alert("Failed to save EPUB. Please try again.");
+      toast.error("Failed to save EPUB. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -469,7 +469,7 @@ export default function CreateView({
       await downloadBlob(filename, blob);
     } catch (err) {
       console.error("[CreateView] Download EPUB failed:", err);
-      alert("Could not generate EPUB download.");
+      toast.error("Could not generate EPUB download. Tap Retry.");
     } finally {
       setIsDownloadingEpub(false);
     }
@@ -492,7 +492,7 @@ export default function CreateView({
       await downloadBlob(filename, pdfBlob);
     } catch (err) {
       console.error("[CreateView] Download PDF failed:", err);
-      alert("Could not generate PDF download.");
+      toast.error("Could not generate PDF download. Tap Retry.");
     } finally {
       setIsDownloadingPdf(false);
     }
@@ -522,7 +522,7 @@ export default function CreateView({
       setPublishedSuccess(communityBook);
     } catch (err) {
       console.error("[CreateView] Publish to Community failed:", err);
-      alert("Failed to publish story to community.");
+      toast.error("Failed to publish story to community. Tap Retry.");
     } finally {
       setIsPublishing(false);
     }
@@ -559,6 +559,7 @@ export default function CreateView({
                 }}
                 className="text-xs font-bold bg-transparent border-b border-transparent hover:border-kindle-border focus:border-kindle-accent focus:outline-none text-kindle-text truncate w-24 sm:w-56"
                 placeholder="Book Title"
+                aria-label="Book Title"
               />
               <p className="text-[10px] text-kindle-text-muted truncate">
                 by {author} • EPUB Creator
@@ -1466,7 +1467,7 @@ export default function CreateView({
 
         {/* Mobile Download Popup / Bottom Sheet */}
         {showMobileDownloadPopup && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[100] flex items-end sm:items-center justify-center p-4" onClick={() => setShowMobileDownloadPopup(false)}>
+          <button className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[100] flex items-end sm:items-center justify-center p-4" onClick={() => setShowMobileDownloadPopup(false)} aria-label="Close" type="button">
             <motion.div
               initial={{ opacity: 0, y: 100 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1673,6 +1674,7 @@ export default function CreateView({
                         onChange={(e) => setTitle(e.target.value)}
                         className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-bold focus:outline-none focus:border-kindle-accent"
                         placeholder="Title of your story"
+                        aria-label="Title of your story"
                       />
                     </div>
 
@@ -1686,6 +1688,7 @@ export default function CreateView({
                         onChange={(e) => setAuthor(e.target.value)}
                         className="w-full px-3 py-2 rounded-xl bg-kindle-bg border border-kindle-border text-xs text-kindle-text font-semibold focus:outline-none focus:border-kindle-accent"
                         placeholder="Author name"
+                        aria-label="Author name"
                       />
                     </div>
 

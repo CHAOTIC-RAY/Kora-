@@ -700,7 +700,7 @@ export default function AudiobookPlayer({
       }
     } catch (err) {
       console.error("Download failed:", err);
-      alert("Some tracks failed to download. Check your connection and try again.");
+      toast.error("Some tracks failed to download. Tap Retry to try again.");
     } finally {
       setDownloading(false);
     }

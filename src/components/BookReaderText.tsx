@@ -494,7 +494,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
         )}
 
         {/* Content Viewer viewport */}
-        <div className="flex-1 overflow-auto p-4 md:p-8 bg-transparent" onClick={() => { if (showSettings) setShowSettings(false); }}>
+        <button className="flex-1 overflow-auto p-4 md:p-8 bg-transparent" onClick={() => { if (showSettings) setShowSettings(false); }} aria-label="Close settings" type="button">
           {loading ? (
             <div className="flex justify-center py-20">
               <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />

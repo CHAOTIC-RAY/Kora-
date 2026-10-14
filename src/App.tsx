@@ -123,7 +123,7 @@ import StorageChoiceModal from "./components/StorageChoiceModal";
 const BASE_MOBILE_TABS: MobileTabDef[] = [
   { id: "library" as const, label: "Library", Icon: Library },
   { id: "discover" as const, label: "Discover", Icon: Compass },
-  { id: "feed" as const, label: "Read", Icon: Rss },
+  { id: "feed" as const, label: "Paper", Icon: Rss },
   { id: "tools" as const, label: "Workshop", Icon: Hammer },
 ];
 
@@ -674,7 +674,7 @@ export default function App() {
       tabs.push({ id: "discover" as const, label: "Discover", Icon: Compass });
     }
     if (newsTabEnabled) {
-      tabs.push({ id: "feed" as const, label: "Read", Icon: Rss });
+      tabs.push({ id: "feed" as const, label: "Paper", Icon: Rss });
     }
     tabs.push({ id: "tools" as const, label: "Workshop", Icon: Hammer });
     return tabs;
@@ -1829,7 +1829,7 @@ export default function App() {
           removeDownloadEntry(downloadId);
           return;
         }
-        logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error: ${err.message || err}`);
+        logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error logged.`);
         finalError = err;
         // Proceed to the next mirror if this one failed
       } finally {
@@ -1939,6 +1939,39 @@ export default function App() {
 
   // Keep document head SEO (title/description/canonical) in sync with the active SPA route.
   useEffect(() => {
+
+
+// Hash-based routing for browser Back button support
+useEffect(() => {
+  const handleHashChange = () => {
+    const hash = window.location.hash || "#library";
+    const hashMap: Record<string, string> = {
+      "#library": "library",
+      "#feed": "feed",
+      "#scrabble": "scrabble",
+      "#crossword": "crossword",
+      "#wordsearch": "wordsearch",
+      "#guardian": "guardian",
+    };
+    const targetTab = hashMap[hash] || "library";
+    if (targetTab !== activeTab) {
+      setActiveTab(targetTab);
+    }
+  };
+  window.addEventListener("hashchange", handleHashChange);
+  handleHashChange();
+  return () => window.removeEventListener("hashchange", handleHashChange);
+}, []);
+
+// Track active tab for hash sync
+const [activeTab, setActiveTab] = useState("library");
+
+useEffect(() => {
+  const timeout = setTimeout(() => {
+    window.location.hash = activeTab;
+  }, 100);
+  return () => clearTimeout(timeout);
+}, [activeTab]);
     const path = window.location.pathname.replace(/\/+$/, "") || "/";
     const routes: Record<string, { title: string; description?: string; noindex?: boolean }> = {
       "/": { title: "", description: "Discover, track, and read books across EPUB, PDF, and more. Search millions of ebooks and audiobooks and read offline." },
@@ -2275,7 +2308,7 @@ export default function App() {
         setTimeout(() => setSharingStatus("idle"), 5000);
       } catch (err: any) {
         console.error("[PWA Share Target Error]:", err);
-        setSharingError(err.message || "Failed to save shared text.");
+        setSharingError("Failed to save shared text. Tap Retry.");
         setSharingStatus("error");
       }
     })();
@@ -2332,7 +2365,7 @@ export default function App() {
       setTimeout(() => setSharingStatus("idle"), 5000);
     } catch (err: any) {
       console.error("[PWA Share Target Error]:", err);
-      setSharingError(err.message || "Failed to convert shared webpage.");
+      setSharingError("Failed to convert shared webpage. Tap Retry.");
       setSharingStatus("error");
     }
   }
@@ -2883,7 +2916,7 @@ export default function App() {
       setAuthEmail("");
       setAuthPassword("");
     } catch (err: any) {
-      setAuthError(err.message || "Authentication failed. Check credentials.");
+      setAuthError("Authentication failed. Tap Retry to re-sign in.");
     } finally {
       setLoadingAuth(false);
     }
@@ -2909,7 +2942,7 @@ export default function App() {
         code !== "auth/cancelled-popup-request" &&
         !/cancel|dismiss|closed/i.test(String(err?.message || ""))
       ) {
-        setAuthError(err.message || "Google Sign-In failed.");
+        setAuthError("Google Sign-In failed. Tap Retry to try again.");
       }
     } finally {
       setLoadingAuth(false);

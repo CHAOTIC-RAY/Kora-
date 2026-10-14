@@ -76,12 +76,12 @@ export default function DeviceDownloadPicker({
         if (result.ok) ok++;
         else {
           fail++;
-          toast.error(result.error || `Couldn't download ${book.title}`);
+          toast.error(`Couldn't download ${book.title}. Tap Retry to try again.`);
         }
       } catch (err) {
         fail++;
         toast.dismiss(`hydrate-${book.id}`);
-        toast.error(err instanceof Error ? err.message : `Couldn't download ${book.title}`);
+        toast.error(`Couldn't download ${book.title}. Tap Retry to try again.`);
       }
     }
     onCachedIdsChanged();

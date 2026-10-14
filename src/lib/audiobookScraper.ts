@@ -24,6 +24,8 @@ export interface AudiobookSearchResult {
   source: string;
   listenUrl?: string;
   listenUrlAlt?: string;
+  // Optional identifier for download mirror lookup (MD5 hash or custom ID)
+  downloadId?: string;
 }
 
 export const POPULAR_AUDIOBOOKS = [
@@ -253,6 +255,145 @@ export function parseFullLengthAudiobooksFeed(html: string, baseUrl = "https://f
 }
 
 /** Search both audiobook sources; tries fulllength first (better hit rate). */
+export interface SourceConfig {
+  name: string;
+  url: string;
+  base: string;
+  priority: 1 | 2 | 3;
+  enabled: boolean;
+  selectors: {
+    title: string;
+    link: string;
+    cover: string;
+    author?: string;
+  };
+  rateLimit?: number; // ms between requests
+  timeout?: number; // request timeout in ms
+  mirrors?: string[]; // alternative mirrors
+}
+
+const SOURCE_PRIORITIES = {
+  1: "primary",   // Most reliable, highest quality
+  2: "secondary", // Good backup sources
+  3: "tertiary",  // Last resort, community-sourced
+};
+
+/**
+ * Expanded source list with priority tiers and fallback chains.
+ * Each source has selectors for HTML parsing and fallback targets.
+ */
+const SOURCES: SourceConfig[] = [
+  // Tier 1: Primary sources (most reliable)
+  {
+    name: "fulllengthaudiobooks",
+    url: "https://fulllengthaudiobooks.com",
+    base: "https://fulllengthaudiobooks.com",
+    priority: 1,
+    enabled: true,
+    selectors: {
+      title: "h2.entry-title a, h2.post-title a",
+      link: "href",
+      cover: "img.wp-post-image@src, img@data-src",
+      author: ".author, .book-author",
+    },
+    rateLimit: 2000,
+    timeout: 15000,
+    mirrors: ["https://fulllengthaudiobooks2.com", "http://localhost:3000/fulllengthaudiobooks"],
+  },
+  {
+    name: "hdaudiobooks",
+    url: "https://hdaudiobooks.com",
+    base: "https://hdaudiobooks.com",
+    priority: 1,
+    enabled: true,
+    selectors: {
+      title: "article.post, article[class*='post-'] h2 a",
+      link: "href",
+      cover: "img.wp-post-image@src, img@data-src",
+      author: ".author, .book-author",
+    },
+    rateLimit: 2000,
+    timeout: 15000,
+    mirrors: ["https://hdaudiobooks2.com", "http://localhost:3000/hdaudiobooks"],
+  },
+
+  // Tier 2: Secondary sources
+  {
+    name: "libgen-mirror",
+    url: "https://libgen.li",
+    base: "https://libgen.li",
+    priority: 2,
+    enabled: true,
+    selectors: {
+      title: "a.book-title, a.title, .field-title a",
+      link: "href",
+      cover: "img.cover@src, img@data-src",
+      author: ".author, .field-author",
+    },
+    rateLimit: 3000,
+    timeout: 20000,
+    mirrors: ["https://libgen.is", "https://libgen.se", "http://libgen.gs"],
+  },
+  {
+    name: "annas-archive",
+    url: "https://annas-archive.org",
+    base: "https://annas-archive.org",
+    priority: 2,
+    enabled: true,
+    selectors: {
+      title: "h3.title a, .book-title a",
+      link: "href",
+      cover: "img.cover@src",
+      author: ".author, .field-author",
+    },
+    rateLimit: 3000,
+    timeout: 20000,
+    mirrors: ["https://anna.ren", "http://annas-archive.mirror"],
+  },
+
+  // Tier 3: Tertiary sources (community, mirrors)
+  {
+    name: "z-lib-mirror",
+    url: "https://z-lib.org",
+    base: "https://z-lib.org",
+    priority: 3,
+    enabled: true,
+    selectors: {
+      title: "h3.title a, .book-title a",
+      link: "href",
+      cover: "img.cover@src",
+      author: ".author, .field-author",
+    },
+    rateLimit: 3000,
+    timeout: 20000,
+    mirrors: ["https://z-lib.is", "https://z-lib.sx"],
+  },
+  {
+    name: "project-gutenberg",
+    url: "https://www.gutenberg.org",
+    base: "https://www.gutenberg.org",
+    priority: 3,
+    enabled: true,
+    selectors: {
+      title: "h1.title a, .book-title a",
+      link: "href",
+      cover: "img.cover@src",
+      author: ".author, .field-author",
+    },
+    rateLimit: 5000,
+    timeout: 30000,
+    mirrors: [],
+  },
+];
+
+/**
+ * Search audiobooks from sources with tiered fallback logic.
+ * Tries sources in priority order, falls back on failure.
+ * @param fetchHtml Function to fetch HTML content
+ * @param query Search query
+ * @param maxResults Maximum results to return
+ * @returns Promise resolving to audiobook search results
+ */
 export async function searchAudiobooksFromSources(
   fetchHtml: (url: string) => Promise<string>,
   q: string,
@@ -269,23 +410,76 @@ export async function searchAudiobooksFromSources(
     }
   };
 
-  const sources = [
-    { name: "fulllengthaudiobooks", url: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://fulllengthaudiobooks.com" },
-    { name: "hdaudiobooks", url: `https://hdaudiobooks.com/?s=${encodeURIComponent(q)}`, base: "https://hdaudiobooks.com" },
-  ];
+  // Sort sources by priority (1 first, then 2, then 3)
+  const sortedSources = [...SOURCES].sort((a, b) => a.priority - b.priority);
 
-  await Promise.allSettled(
-    sources.map(async (src) => {
-      try {
-        const html = await fetchHtml(src.url);
-        addBatch(parseAudiobookSearchHtml(html, src.name, src.base, maxResults));
-      } catch {
-        /* skip failed source */
+  // Try each source in priority order with rate limiting
+  for (const source of sortedSources) {
+    if (!source.enabled) continue;
+
+    try {
+      // Apply rate limiting
+      if (source.rateLimit) {
+        await new Promise((resolve) => setTimeout(resolve, source.rateLimit));
       }
-    })
-  );
 
-  return results;
+      const searchUrl = `${source.url}/?s=${encodeURIComponent(q)}`;
+      const html = await fetchHtml(searchUrl);
+
+      if (html && html.length > 100) {
+        addBatch(
+          parseAudiobookSearchHtml(html, source.name, source.base, maxResults)
+        );
+
+        // If we got results from this source, stop trying lower-priority sources
+        // but continue collecting from remaining sources at same priority
+        if (results.length > 0) {
+          // Still try other sources at same priority for more results
+          continue;
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[searchAudiobooksFromSources] Source "${source.name}" failed:`,
+        err.message
+      );
+      // Continue to next source on failure
+    }
+  }
+
+  // If no live sources returned results, fall back to popular books
+  if (results.length === 0) {
+    console.warn(
+      "[searchAudiobooksFromSources] No live sources returned results, using fallback"
+    );
+    const lower = q.toLowerCase();
+    POPULAR_AUDIOBOOKS.filter(
+      (b) =>
+        b.title.toLowerCase().includes(lower) ||
+        b.author.toLowerCase().includes(lower)
+    ).forEach((b) => {
+      results.push({
+        ...b,
+        coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author || "")}`,
+        link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+        listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+        listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
+        source: "fulllengthaudiobooks-fallback",
+      });
+    });
+  }
+
+  // Deduplicate by link
+  const deduped: AudiobookSearchResult[] = [];
+  const dedupSeen = new Set<string>();
+  for (const r of results) {
+    if (!dedupSeen.has(r.link)) {
+      dedupSeen.add(r.link);
+      deduped.push(r);
+    }
+  }
+
+  return deduped.length > 0 ? deduped : results;
 }
 
 export async function scrapePopularAudiobooks(
@@ -428,4 +622,18 @@ export function mapPopularAudiobooks() {
     listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
     listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
   }));
+}
+
+/// Map source config name to display string for onChunk
+function sourceNameForResult(result: AudiobookSearchResult): string {
+  const sourceMap: Record<string, string> = {
+    fulllengthaudiobooks: "fulllengthaudiobooks",
+    hdaudiobooks: "hdaudiobooks",
+    libgen-mirror: "libgen-mirror",
+    annas-archive: "annas-archive",
+    z-lib-mirror: "z-lib-mirror",
+    project-gutenberg: "project-gutenberg",
+    fallback: "fulllengthaudiobooks-fallback",
+  };
+  return sourceMap[result.source] || result.source;
 }

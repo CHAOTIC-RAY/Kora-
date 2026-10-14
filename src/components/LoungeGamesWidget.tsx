@@ -86,7 +86,7 @@ export default function LoungeGamesWidget({ onPlayGame }: { onPlayGame?: (g: Gam
                 onPlayGame?.(s.id);
               }}
               onMouseEnter={() => setActive(s.id)}
-              className={`w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3 transition cursor-pointer ${
+              className={`w-full text-left rounded-xl border px-4 py-3 flex items-center gap-3 transition cursor-pointer ${
                 isActive
                   ? "border-kindle-accent/40 bg-kindle-accent/10"
                   : "border-kindle-border bg-kindle-bg/40 hover:border-kindle-accent/25"

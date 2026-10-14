@@ -101,7 +101,7 @@ export default function DownloadsManager({
       setTimeout(() => setClipStatus("idle"), 3500);
     } catch (err: any) {
       console.error("[Clipper Error]:", err);
-      setClipError(err.message || "Failed to convert website.");
+      setClipError("Failed to convert website. Tap Retry.");
       setClipStatus("error");
       addDownloadLog("Web Import Failure", clipperUrl, "0 KB", "error");
     }
