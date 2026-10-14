@@ -1585,7 +1585,7 @@ export default function CreateView({
                 </button>
               </div>
             </motion.div>
-          </div>
+          </button>
         )}
 
         {/* Publish to Community Modal */}

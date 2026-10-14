@@ -1256,16 +1256,12 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
                 {/* Left Column: Board */}
                 <div className="lg:col-span-7 flex flex-col items-center">
-<<<<<<< HEAD
-                  <div className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-12 gap-1 sm:gap-2 select-none">
-=======
                   <div
                     ref={wordDrag.gridRef as React.RefObject<HTMLDivElement>}
                     onPointerMove={wordDrag.boardHandlers.onPointerMove}
                     onPointerUp={wordDrag.boardHandlers.onPointerUp}
                     onPointerCancel={wordDrag.boardHandlers.onPointerCancel}
-                    className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-15 gap-[1px] sm:gap-[2px] select-none touch-none">
->>>>>>> origin/main
+                    className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-12 gap-1 sm:gap-2 select-none touch-none">
                     {Array.from({ length: 15 }).map((_, r) =>
                       Array.from({ length: 15 }).map((_, c) => {
                         const key = `${r},${c}`;
@@ -1395,7 +1391,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                   <div className="bg-kindle-card rounded-2xl border border-kindle-border p-3 shadow-md mb-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">
-                        {'Your Turn' if isMyTurn() else 'Opponent's Turn'}
+                        {isMyTurn() ? 'Your Turn' : "Opponent's Turn"}
                       </h3>
                       <span className={isMyTurn() ? 'text-amber-500' : 'text-kindle-text-muted'}>
                         {isMyTurn() ? '⚡' : '⏳'}
@@ -1516,9 +1512,6 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             key={`${letter}-${idx}`}
                             layout
                             onClick={() => selectRackTile(idx)}
-<<<<<<< HEAD
-                            className={`min-w-44 min-h-44 w-14 h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
-=======
                             {...wordDrag.rackHandlers(idx)}
                             aria-pressed={isSelected}
                             title={
@@ -1530,8 +1523,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                 ? "Tap again to take this letter back"
                                 : `Add ${letter} to your word`
                             }
-                            className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
->>>>>>> origin/main
+                            className={`min-w-44 min-h-44 w-14 h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
                               isEmpty
                                 ? "bg-kindle-bg border-dashed border-kindle-border text-kindle-text-muted"
                                 : isSelected

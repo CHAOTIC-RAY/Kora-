@@ -629,10 +629,10 @@ function sourceNameForResult(result: AudiobookSearchResult): string {
   const sourceMap: Record<string, string> = {
     fulllengthaudiobooks: "fulllengthaudiobooks",
     hdaudiobooks: "hdaudiobooks",
-    libgen-mirror: "libgen-mirror",
-    annas-archive: "annas-archive",
-    z-lib-mirror: "z-lib-mirror",
-    project-gutenberg: "project-gutenberg",
+    "libgen-mirror": "libgen-mirror",
+    "annas-archive": "annas-archive",
+    "z-lib-mirror": "z-lib-mirror",
+    "project-gutenberg": "project-gutenberg",
     fallback: "fulllengthaudiobooks-fallback",
   };
   return sourceMap[result.source] || result.source;
