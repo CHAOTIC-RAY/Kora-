@@ -321,8 +321,6 @@ export default function OnboardingModal({
       ? feedsForCountry(localCountry).length
       : (TOPIC_FEED_GROUPS.find((g) => g.id === topicId)?.feeds.length ?? 0);
 
-  if (!isOpen) return null;
-
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -333,6 +331,8 @@ export default function OnboardingModal({
       document.body.style.overflow = "";
     };
   }, [isOpen]);
+
+  if (!isOpen) return null;
 
   const handleArchetypeSelect = (arc: (typeof ARCHETYPES)[0]) => {
     setSelectedArchetype(arc.id);
