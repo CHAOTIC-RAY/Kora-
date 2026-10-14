@@ -2344,39 +2344,6 @@ async function startBackgroundDownload(
 
   // Keep document head SEO (title/description/canonical) in sync with the active SPA route.
   useEffect(() => {
-
-
-// Hash-based routing for browser Back button support
-useEffect(() => {
-  const handleHashChange = () => {
-    const hash = window.location.hash || "#library";
-    const hashMap: Record<string, string> = {
-      "#library": "library",
-      "#feed": "feed",
-      "#scrabble": "scrabble",
-      "#crossword": "crossword",
-      "#wordsearch": "wordsearch",
-      "#guardian": "guardian",
-    };
-    const targetTab = hashMap[hash] || "library";
-    if (targetTab !== activeTab) {
-      setActiveTab(targetTab);
-    }
-  };
-  window.addEventListener("hashchange", handleHashChange);
-  handleHashChange();
-  return () => window.removeEventListener("hashchange", handleHashChange);
-}, []);
-
-// Track active tab for hash sync
-const [activeTab, setActiveTab] = useState("library");
-
-useEffect(() => {
-  const timeout = setTimeout(() => {
-    window.location.hash = activeTab;
-  }, 100);
-  return () => clearTimeout(timeout);
-}, [activeTab]);
     const path = window.location.pathname.replace(/\/+$/, "") || "/";
     const routes: Record<string, { title: string; description?: string; noindex?: boolean }> = {
       "/": { title: "", description: "Discover, track, and read books across EPUB, PDF, and more. Search millions of ebooks and audiobooks and read offline." },
@@ -2393,6 +2360,35 @@ useEffect(() => {
       setSeo({ title: "Kora", canonical: path });
     }
   }, []);
+
+  // Hash-based routing for browser Back button support
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash || "#library";
+      const hashMap: Record<string, string> = {
+        "#library": "library",
+        "#feed": "feed",
+        "#scrabble": "scrabble",
+        "#crossword": "crossword",
+        "#wordsearch": "wordsearch",
+        "#guardian": "guardian",
+      };
+      const targetTab = hashMap[hash] || "library";
+      setActiveTab((prev) => (prev === targetTab ? prev : targetTab));
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    handleHashChange();
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      window.location.hash = activeTab;
+    }, 100);
+    return () => clearTimeout(timeout);
+  }, [activeTab]);
+
 
   useEffect(() => {
     void (async () => {
