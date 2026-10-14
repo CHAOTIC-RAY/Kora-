@@ -43,6 +43,14 @@ service cloud.firestore {
       }
     }
 
+    // Uno P2P rooms (alphanumeric room codes 4-16 chars). Never store file bytes here.
+    match /unoRooms/{roomId} {
+      allow read, write: if roomId.size() >= 4 && roomId.size() <= 16;
+    }
+    match /unoRooms/{roomId}/{sub1}/{sub2} {
+      allow read, write: if roomId.size() >= 4 && roomId.size() <= 16;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
