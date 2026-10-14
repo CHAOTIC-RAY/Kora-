@@ -1,0 +1,28 @@
+{
+  "id": "kora-manga-s2read",
+  "name": "S2Read",
+  "lang": "en",
+  "version": 1,
+  "nsfw": false,
+  "piracy": true,
+  "kind": "manga",
+  "theme": "madara",
+  "baseUrl": "https://s2read.com",
+  "icon": "https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-Plugins/main/icons/s2read.png",
+  "gen2": {
+    "packageName": "eu.kanade.tachiyomi.extension.en.s2read",
+    "versionName": "1.4.7",
+    "versionCode": "17",
+    "homeUrl": "https://s2read.com"
+  },
+  "headers": {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+  },
+  "madara": {
+    "mangaSubString": "manga",
+    "popularOrderBy": "views",
+    "latestOrderBy": "update"
+  },
+  "readable": true,
+  "readableCheckedAt": "2026-09-30T07:19:40.806Z"
+}

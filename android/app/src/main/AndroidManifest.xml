@@ -25,8 +25,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
-    <!-- Voice / TTS / future mic features -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Audio playback for TTS / audiobook playback.
+         RECORD_AUDIO was removed 2026-10-03: nothing in the app records audio
+         (no MediaRecorder, getUserMedia, AudioRecord or SpeechRecognition,
+         grepped across src/), it was declared "for future mic features", and
+         asking a reading app for the microphone is a needless Play-policy and
+         trust cost. Re-add it alongside the feature that needs it, not before.
+         MODIFY_AUDIO_SETTINGS is required for playback and stays. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
     <!-- Keep screen on while reading / listening -->

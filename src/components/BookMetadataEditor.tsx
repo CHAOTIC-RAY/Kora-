@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { resolveCoverImageSrc } from "../lib/coverImage";
 import { BookMetadata, getLocalLibrary, syncBookToCloud } from "../lib/firebase";
 import { X, Save, BookOpen, RefreshCw, Search, Loader2, Library } from "lucide-react";
 import HardcoverCommunity from "./HardcoverCommunity";
@@ -261,7 +262,7 @@ export default function BookMetadataEditor({
                           >
                             <div className="w-10 h-14 bg-kindle-bg rounded overflow-hidden shrink-0 shadow-sm">
                               {result.volumeInfo.imageLinks?.thumbnail ? (
-                                <img src={result.volumeInfo.imageLinks.thumbnail} alt="" className="w-full h-full object-cover" />
+                                <img src={resolveCoverImageSrc(result.volumeInfo.imageLinks.thumbnail) || ""} alt="" className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-kindle-text-muted">
                                   <BookOpen className="w-4 h-4" />
@@ -365,7 +366,7 @@ export default function BookMetadataEditor({
                       </span>
                       <div className="w-8 h-11 rounded overflow-hidden bg-kindle-border shrink-0">
                         {b.coverUrl ? (
-                          <img src={b.coverUrl} alt="" className="w-full h-full object-cover" />
+                          <img src={resolveCoverImageSrc(b.coverUrl) || ""} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <BookOpen className="w-3 h-3 opacity-40" />

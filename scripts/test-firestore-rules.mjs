@@ -98,7 +98,29 @@ function evaluateRules({ path: docPath, operation, auth, resource, requestData }
     return { allowed: false, rule: 'fallback', notes: 'Deeper subpath not matched' };
   }
 
-  // 6. match /communityBooks/{bookId}
+  // 6. match /unoRooms/{roomId}
+  // Added 2026-10-04. Uno was missing from the rules entirely and fell through
+  // to the catch-all deny, so its host `setDoc` threw PERMISSION_DENIED — which
+  // was swallowed, making Uno P2P look like it worked while never connecting.
+  // The room code is 6 ALPHANUMERIC chars (generateUnoRoomCode), and ICE lives in
+  // per-peer subcollections (hostIce_{guestId}), so this is deliberately NOT the
+  // numeric scrabbleRooms shape.
+  if (segments[0] === 'unoRooms' && segments.length >= 2) {
+    const roomId = segments[1];
+    const validRoom = roomId.length >= 4 && roomId.length <= 16;
+    if (segments.length === 2 || segments.length === 4) {
+      return {
+        allowed: validRoom,
+        rule: 'unoRooms/{roomId}',
+        notes: validRoom
+          ? 'Alphanumeric roomId within 4-16 chars'
+          : 'Room ID must be 4-16 characters'
+      };
+    }
+    return { allowed: false, rule: 'fallback', notes: 'Deeper subpath not matched' };
+  }
+
+  // 7. match /communityBooks/{bookId}
   if (segments[0] === 'communityBooks' && segments.length >= 2) {
     const bookId = segments[1];
     if (segments.length === 2) {
@@ -264,6 +286,49 @@ const tests = [
     name: 'BattleRooms: Subcollection under valid 6-digit room allowed',
     params: { path: '/battleRooms/123456/players/p1', operation: 'write', auth: null },
     expected: true
+  },
+
+  // --- UNO ROOMS ---
+  // The real generateUnoRoomCode() alphabet, plus the per-peer ICE subpaths.
+  {
+    name: 'UnoRooms: alphanumeric room allowed',
+    params: { path: '/unoRooms/AB3X9Z', operation: 'write', auth: null },
+    expected: true
+  },
+  {
+    name: 'UnoRooms: lowercase-free digits-only code allowed',
+    params: { path: '/unoRooms/234567', operation: 'write', auth: null },
+    expected: true
+  },
+  {
+    name: 'UnoRooms: guest offer subcollection allowed',
+    params: { path: '/unoRooms/AB3X9Z/guests/uid1', operation: 'write', auth: null },
+    expected: true
+  },
+  {
+    name: 'UnoRooms: per-peer hostIce subcollection allowed',
+    params: { path: '/unoRooms/AB3X9Z/hostIce_uid1/cand1', operation: 'write', auth: null },
+    expected: true
+  },
+  {
+    name: 'UnoRooms: per-peer guestIce subcollection allowed',
+    params: { path: '/unoRooms/AB3X9Z/guestIce_uid1/cand1', operation: 'write', auth: null },
+    expected: true
+  },
+  {
+    name: 'UnoRooms: too-short room ID rejected',
+    params: { path: '/unoRooms/AB', operation: 'write', auth: null },
+    expected: false
+  },
+  {
+    name: 'UnoRooms: over-long room ID rejected',
+    params: { path: '/unoRooms/ABCDEFGHIJKLMNOPQ', operation: 'write', auth: null },
+    expected: false
+  },
+  {
+    name: 'UnoRooms: numeric-only rule must NOT be copied (AB3X9Z rejected by Scrabble shape)',
+    params: { path: '/scrabbleRooms/AB3X9Z', operation: 'write', auth: null },
+    expected: false
   },
 
   // --- SCRABBLE ROOMS ---

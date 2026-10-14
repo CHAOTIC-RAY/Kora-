@@ -107,7 +107,9 @@ export interface TopicFeedGroup {
 export const TOPIC_FEED_GROUPS: TopicFeedGroup[] = [
   {
     id: "local",
-    label: "Local & Updates",
+    // Just "Local": the country is chosen in the picker beside this tile, so
+    // the label no longer implies a place.
+    label: "Local",
     feeds: DEFAULT_FEED_SUBSCRIPTIONS,
   },
   {

@@ -85,6 +85,39 @@ function isRecoverableFirestoreError(error: unknown): boolean {
   ].includes(code);
 }
 
+/**
+ * Read-only accessors for the Firebase handles.
+ *
+ * `db` and `isRealFirebase` are module-private `let`s rather than constants —
+ * they are assigned once the SDK has initialised — so exporting the bindings
+ * would hand out a live reference that a caller could observe before it is
+ * ready. These getters read at call time instead, which is what every caller
+ * actually wants.
+ */
+export function getFirestoreDb() {
+  return db;
+}
+
+/**
+ * The signed-in user's uid, or "" when signed out / Firebase inactive.
+ *
+ * Callers that need a user id deep in the tree use this rather than threading
+ * one down as a prop through every intermediate component. It is read at call
+ * time, so it is correct even if sign-in happens after the component mounted.
+ */
+export function getCurrentUserId(): string {
+  if (!isRealFirebase) return "";
+  try {
+    return auth?.currentUser?.uid ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function isFirebaseActive(): boolean {
+  return isRealFirebase;
+}
+
 function noteFirestoreSyncIssue(error: unknown, context: string) {
   if (isRecoverableFirestoreError(error)) {
     console.warn(`Firestore sync deferred (${context}):`, error);
@@ -154,6 +187,20 @@ export interface BookMetadata {
   coverUrl?: string;
   downloadUrl?: string;
   md5?: string; // catalog identity for cross-device re-fetch (never store file bytes in Firebase)
+
+  /* ---- download queue state ----
+   * The library grid renders a transient card for a download that is in
+   * flight or has failed, so the queue is merged into the book list it
+   * renders. These were read by LibraryManager without ever being declared
+   * here, which left the file uncompilable. */
+  /** Marks this entry as a queue row rather than a saved book. */
+  isDownloadingCard?: boolean;
+  /** "queued" | "downloading" | "done" | "error", as the queue reports it. */
+  downloadStatus?: string;
+  /** The live queue entry backing this card, for progress and retry. */
+  activeDownload?: unknown;
+  /** Kept visibly greyed in the grid until the user retries. */
+  failedDownload?: boolean;
   source?: string;
   tags: string[];
   status: "to-read" | "reading" | "completed";
@@ -173,6 +220,22 @@ export interface BookMetadata {
   description?: string;
   series?: string;
   seriesNumber?: string;
+  /**
+   * What this entry is. "book" is a standalone file; "manga" and "comic"
+   * are series that own many volumes and get a detail view listing them.
+   * Absent means "book", so existing libraries need no migration.
+   */
+  kind?: "book" | "manga" | "comic";
+  /**
+   * For a saved series: the installed plugin it came from, and the path
+   * within that plugin's site.
+   *
+   * Both are required to reopen it — `ComicDetailView` rebuilds the `Manga`
+   * from these and re-fetches details and chapters. A manga entry saved
+   * without them is a card that cannot be opened.
+   */
+  pluginId?: string;
+  sourceId?: string;
   /** Audiobook-specific metadata (track URLs sync; audio blobs stay on-device) */
   audiobookTracks?: { index: number; title: string; src: string }[];
   audiobookSourceUrl?: string;
@@ -404,10 +467,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
   if (isRecoverableFirestoreError(error)) {
     console.warn("Firestore Error (recoverable): ", JSON.stringify(errInfo));
+    console.warn("[Firestore-read] path=", path, "code=", (error as any)?.code, "message=", (error as any)?.message);
     return;
   }
 
   console.error("Firestore Error: ", JSON.stringify(errInfo));
+  console.error("[Firestore-read] path=", path, "code=", (error as any)?.code, "message=", (error as any)?.message);
   disableFirebase();
   throw new Error(JSON.stringify(errInfo));
 }
@@ -821,6 +886,9 @@ export async function getCommunityBooks(genreFilter?: string): Promise<Community
       });
     } catch (err) {
       console.warn("Failed to fetch community books from Firestore:", err);
+      if (typeof console !== "undefined") {
+        console.warn("[Firestore-read] path=communityBooks code=", (err as any)?.code, "message=", (err as any)?.message);
+      }
     }
   }
 

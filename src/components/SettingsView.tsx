@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { User } from "firebase/auth";
 import {
   Moon, Sun, Monitor,
@@ -26,7 +26,13 @@ const skinIcons: Record<string, React.ComponentType<{ className?: string }>> = {
 
 import { toast } from "react-hot-toast";
 import { getTimeOfDayAutoTheme, DAYLIGHT_THEME_SCHEDULE, PRIMARY_READER_THEME_KEYS, resolveReaderTheme } from "../lib/readerThemes";
-import { getAllDictionaryEntries, addDictionaryEntry, deleteDictionaryEntry, DictionaryEntry } from "../lib/dictionary";
+import {
+  applyActiveThemePlugin,
+  getActiveThemePluginId,
+  getInstalledThemePlugins,
+  setActiveThemePluginId,
+  syncThemePluginMarker,
+} from "../lib/sources/themeRuntime";
 import { APP_SKINS, DEFAULT_APP_SKIN } from "../lib/appSkin";
 import {
   loadNewsReaderPrefs,
@@ -61,6 +67,9 @@ import {
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
+// The plugin HUB is not here — it lives in Discover (SourcePluginsHub). What is
+// here is the other half: one bento tile per installed non-source plugin.
+import PluginBentoTiles from "./PluginBentoTiles";
 import WebClipperPanel from "./WebClipperPanel";
 import DevicesSyncPanel from "./DevicesSyncPanel";
 import P2pTransferPanel from "./P2pTransferPanel";
@@ -69,9 +78,15 @@ import WordSearchGame from "./WordSearchGame";
 import GameScoreTracker from "./GameScoreTracker";
 import LinguistGuardian from "./LinguistGuardian";
 import OnlineScrabbleGame from "./OnlineScrabbleGame";
+import UnoGame from "./UnoGame";
 import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
+import DictionaryWidget from "./DictionaryWidget";
+// Download Control lives in the SETTINGS branch of this file only. It drives
+// the live download queue App owns — see the call site for why.
+import DownloadControlSection from "./DownloadControlSection";
+import type { DownloadEntry } from "../lib/downloadControl";
 import { isNativeAndroid } from "../lib/capacitorNative";
 import { gameViewVariant } from "../lib/canHover";
 import {
@@ -152,6 +167,19 @@ interface SettingsViewProps {
   /** When false (hidden keep-alive tab), skip heavy IDB/dir init until first activation. */
   isActive?: boolean;
   onModalToggle?: (isOpen: boolean) => void;
+
+  /**
+   * Download Control (Settings branch only). `downloads` is the live queue
+   * owned by App — Settings renders it, it does not keep its own copy, so the
+   * two surfaces can never disagree about what is in flight.
+   */
+  downloads?: DownloadEntry[];
+  onCancelDownload?: (downloadId: string) => void;
+  onRetryDownload?: (dl: DownloadEntry | string) => void;
+  onDismissDownload?: (downloadId: string) => void;
+  onDownloadsChange?: (downloads: DownloadEntry[]) => void;
+  /** Whether the service worker controls the page (needed for background downloads). */
+  swControllerReady?: boolean;
 
   /** Feature toggles section */
   newsTabEnabled?: boolean;
@@ -259,6 +287,15 @@ function SettingsView({
   onChangeGettingStartedBookEnabled,
   loungeGuidesEnabled = true,
   onChangeLoungeGuidesEnabled,
+  // Download Control. Declared on SettingsViewProps but never destructured,
+  // so the JSX below referenced six names that were not in scope and the
+  // file did not compile — the section was built but never reachable.
+  downloads,
+  onCancelDownload,
+  onRetryDownload,
+  onDismissDownload,
+  onDownloadsChange,
+  swControllerReady,
 }: SettingsViewProps) {
   const setRP = (patch: Partial<ReaderPrefs>) => onReaderPrefsChange({ ...readerPrefs, ...patch });
   const setSP = (patch: Partial<SearchPrefs>) => onSearchPrefsChange({ ...searchPrefs, ...patch });
@@ -275,6 +312,29 @@ function SettingsView({
     tts: false,
     about: false,
   });
+
+  // The active theme plugin, read straight from the runtime rather than through
+  // a prop: this is the one place that needs to *clear* it, and the runtime
+  // already owns the apply/clear logic that App.tsx listens to.
+  const [activePluginThemeId, setActivePluginThemeId] = useState<string | null>(
+    () => getActiveThemePluginId()
+  );
+  const activePluginThemeName = useMemo(() => {
+    if (!activePluginThemeId) return null;
+    return (
+      getInstalledThemePlugins().find((t) => t.themeId === activePluginThemeId)?.name ??
+      null
+    );
+  }, [activePluginThemeId]);
+
+  const onClearPluginTheme = useCallback(() => {
+    setActiveThemePluginId(null);
+    applyActiveThemePlugin(document);
+    syncThemePluginMarker(null);
+    setActivePluginThemeId(null);
+    // App.tsx owns the `dark` class, so tell it to re-run its theme effect.
+    window.dispatchEvent(new CustomEvent("kora:display-theme-changed", { detail: displayTheme }));
+  }, [displayTheme]);
 
   const [newsReaderPrefs, setNewsReaderPrefs] = useState<NewsReaderPrefs>(() => loadNewsReaderPrefs());
   const setNRP = (patch: Partial<NewsReaderPrefs>) => {
@@ -311,8 +371,6 @@ function SettingsView({
     }));
   };
 
-  const [dictEntries, setDictEntries] = useState<DictionaryEntry[]>([]);
-  const [allEntries, setAllEntries] = useState<DictionaryEntry[]>([]);
   const [showLiveLogs, setShowLiveLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState(() => logger.getLogs());
   const [apkAutoUpdate, setApkAutoUpdate] = useState(() => isApkAutoUpdateEnabled());
@@ -349,11 +407,12 @@ function SettingsView({
   const [showScoreTracker, setShowScoreTracker] = useState<boolean>(false);
   const [showGuardian, setShowGuardian] = useState<boolean>(false);
   const [showScrabble, setShowScrabble] = useState<boolean>(false);
+  const [showUno, setShowUno] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const [showP2p, setShowP2p] = useState<boolean>(false);
-  const [showDictionary, setShowDictionary] = useState<boolean>(false);
   const [showClipper, setShowClipper] = useState<boolean>(false);
   const [showFolderWatch, setShowFolderWatch] = useState<boolean>(false);
+  const [showDictionary, setShowDictionary] = useState<boolean>(false);
   const [showClearLibrary, setShowClearLibrary] = useState<boolean>(false);
   const [clearingLibrary, setClearingLibrary] = useState<boolean>(false);
   const [showReadAloud, setShowReadAloud] = useState<boolean>(false);
@@ -367,9 +426,9 @@ function SettingsView({
       showScoreTracker ||
       showGuardian ||
       showScrabble ||
+      showUno ||
       showInsights ||
       showP2p ||
-      showDictionary ||
       showClipper ||
       showFolderWatch ||
       showReadAloud ||
@@ -382,9 +441,9 @@ function SettingsView({
     showScoreTracker,
     showGuardian,
     showScrabble,
+    showUno,
     showInsights,
     showP2p,
-    showDictionary,
     showClipper,
     showFolderWatch,
     showReadAloud,
@@ -443,6 +502,7 @@ function SettingsView({
       else if (tool === "score-tracker" || tool === "scoretracker") setShowScoreTracker(true);
       else if (tool === "guardian" || tool === "linguist-guardian") setShowGuardian(true);
       else if (tool === "scrabble") setShowScrabble(true);
+      else if (tool === "uno" || tool === "kora-uno") setShowUno(true);
       else if (tool === "p2p") setShowP2p(true);
       else if (tool === "wikipedia" || tool === "wiki") setShowWikipedia(true);
     };
@@ -536,12 +596,6 @@ function SettingsView({
       setUploading(false);
     }
   };
-  const [dictSearch, setDictSearch] = useState<string>("");
-  const [showAddWordForm, setShowAddWordForm] = useState<boolean>(false);
-  const [newWord, setNewWord] = useState<string>("");
-  const [newDef, setNewDef] = useState<string>("");
-  const [newPos, setNewPos] = useState<string>("noun");
-  const [newEx, setNewEx] = useState<string>("");
 
   // Download directory settings states
   const [realDirHandle, setRealDirHandle] = useState<FileSystemDirectoryHandle | null>(null);
@@ -621,15 +675,8 @@ function SettingsView({
   const [newVirtualExt, setNewVirtualExt] = useState<"epub" | "pdf">("epub");
 
   useEffect(() => {
-    if (!isActive && !showDictionary) return;
-    async function loadDict() {
-      const entries = await getAllDictionaryEntries();
-      setAllEntries(entries);
-      // Only show custom entries in settings, not the external dictionary
-      setDictEntries(entries.filter(e => e.isCustom));
-    }
-    void loadDict();
-    
+    if (!isActive) return;
+
     async function initDir() {
       if (isActive) {
         const handle = await getSavedDirectoryHandle();
@@ -638,7 +685,7 @@ function SettingsView({
       }
     }
     void initDir();
-  }, [isActive, showDictionary]);
+  }, [isActive]);
 
   const handleSelectRealDir = async () => {
     try {
@@ -757,44 +804,6 @@ function SettingsView({
     }
   };
 
-  const handleAddWord = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newWord.trim() || !newDef.trim()) return;
-    addDictionaryEntry({
-      word: newWord.trim(),
-      definition: newDef.trim(),
-      partOfSpeech: newPos,
-      example: newEx.trim() || undefined,
-      isCustom: true
-    });
-    const entries = await getAllDictionaryEntries();
-    setAllEntries(entries);
-    setDictEntries(entries.filter(e => e.isCustom));
-    setNewWord("");
-    setNewDef("");
-    setNewPos("noun");
-    setNewEx("");
-    setShowAddWordForm(false);
-  };
-
-  const handleSaveWordToPersonal = async (entry: DictionaryEntry) => {
-    addDictionaryEntry({
-      ...entry,
-      isCustom: true
-    });
-    const entries = await getAllDictionaryEntries();
-    setAllEntries(entries);
-    setDictEntries(entries.filter(e => e.isCustom));
-    toast.success(`"${entry.word}" saved to personal dictionary`);
-  };
-
-  const handleDeleteWord = async (word: string) => {
-    deleteDictionaryEntry(word);
-    const entries = await getAllDictionaryEntries();
-    setAllEntries(entries);
-    setDictEntries(entries.filter(e => e.isCustom));
-  };
-
   const fontOptions = [
     { id: "font-serif", label: "Serif" },
     { id: "font-sans", label: "Sans" },
@@ -819,209 +828,6 @@ function SettingsView({
     { id: "max-w-2xl px-6", label: "Medium" },
     { id: "max-w-4xl px-8", label: "Wide" }
   ];
-  const renderPersonalDictionaryContent = () => (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between border-b border-kindle-border pb-3">
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
-            <BookMarked className="w-4 h-4 text-kindle-text" />
-          </div>
-          <div>
-            <h3 className="font-bold text-xs uppercase tracking-wider text-kindle-text">Personal Dictionary</h3>
-            <p className="text-[10px] text-kindle-text-muted">Definitions used inside book readers</p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowAddWordForm(!showAddWordForm)}
-          className="flex items-center gap-1 px-2.5 py-1.5 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-xl text-[9px] font-bold uppercase tracking-widest transition"
-        >
-          <Plus className="w-3 h-3" /> {showAddWordForm ? "Cancel" : "Add Word"}
-        </button>
-      </div>
-
-      {showAddWordForm && (
-        <form onSubmit={handleAddWord} className="p-4 bg-kindle-bg border border-kindle-border rounded-xl space-y-3.5 animate-in slide-in-from-top duration-200">
-          <h4 className="text-[10px] uppercase tracking-widest font-bold text-kindle-text-muted">Define Custom Word</h4>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Word</label>
-              <input
-                type="text"
-                required
-                value={newWord}
-                onChange={(e) => setNewWord(e.target.value)}
-                placeholder="e.g. Ephemeral"
-                className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
-              />
-            </div>
-            <div>
-              <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Part of Speech</label>
-              <select
-                value={newPos}
-                onChange={(e) => setNewPos(e.target.value)}
-                className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
-              >
-                <option value="noun">Noun</option>
-                <option value="verb">Verb</option>
-                <option value="adjective">Adjective</option>
-                <option value="adverb">Adverb</option>
-                <option value="other">Other/Mix</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Definition</label>
-            <textarea
-              required
-              rows={2}
-              value={newDef}
-              onChange={(e) => setNewDef(e.target.value)}
-              placeholder="The meaning of the word..."
-              className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[9px] uppercase tracking-wider font-bold text-kindle-text-muted mb-1">Example Usage (Optional)</label>
-            <input
-              type="text"
-              value={newEx}
-              onChange={(e) => setNewEx(e.target.value)}
-              placeholder="Sentence using the word..."
-              className="w-full p-2 bg-kindle-card border border-kindle-border rounded-lg text-xs focus:outline-none focus:border-kindle-accent"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="w-full py-2 bg-kindle-text text-kindle-bg hover:bg-kindle-accent rounded-lg text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
-          >
-            Save Word Definition
-          </button>
-        </form>
-      )}
-
-      <div className="space-y-3">
-        <div className="relative">
-          <SearchIcon className="w-3.5 h-3.5 text-kindle-text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search words in dictionary..."
-            value={dictSearch}
-            onChange={(e) => setDictSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs outline-none"
-          />
-        </div>
-
-        <div className="max-h-60 overflow-y-auto border border-kindle-border rounded-xl divide-y divide-kindle-border bg-kindle-bg scrollbar-hide">
-          {(() => {
-            const query = dictSearch.trim().toLowerCase();
-            let displayedEntries: DictionaryEntry[] = [];
-            
-            if (query === "") {
-              displayedEntries = dictEntries;
-            } else {
-              // Search the entire dictionary
-              const exactMatches: DictionaryEntry[] = [];
-              const startsWithMatches: DictionaryEntry[] = [];
-              const containsMatches: DictionaryEntry[] = [];
-              
-              const pool = allEntries.length > 0 ? allEntries : dictEntries;
-              
-              for (const entry of pool) {
-                const entryWord = entry.word.toLowerCase();
-                if (entryWord === query) {
-                  exactMatches.push(entry);
-                } else if (entryWord.startsWith(query)) {
-                  startsWithMatches.push(entry);
-                } else if (entryWord.includes(query)) {
-                  containsMatches.push(entry);
-                }
-              }
-              
-              displayedEntries = [...exactMatches, ...startsWithMatches, ...containsMatches].slice(0, 50);
-            }
-
-            if (displayedEntries.length === 0) {
-              return (
-                <div className="p-8 text-center text-xs text-kindle-text-muted italic flex flex-col items-center gap-2">
-                  <span>No words matching "{dictSearch}" in dictionary database.</span>
-                  {dictSearch.trim() && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewWord(dictSearch);
-                        setNewDef("");
-                        setNewEx("");
-                        setNewPos("noun");
-                        setShowAddWordForm(true);
-                      }}
-                      className="mt-1 px-3 py-1.5 bg-kindle-accent/10 hover:bg-kindle-accent/20 text-kindle-accent border border-kindle-accent/25 rounded-xl text-[10px] font-bold uppercase tracking-widest transition cursor-pointer"
-                    >
-                      Define "{dictSearch}" Custom
-                    </button>
-                  )}
-                </div>
-              );
-            }
-
-            return displayedEntries.map((entry) => (
-              <div key={entry.word} className="p-3.5 flex items-start justify-between gap-3 bg-kindle-card">
-                <div className="space-y-1 min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold font-serif text-sm text-kindle-text">{entry.word}</span>
-                    {entry.partOfSpeech && (
-                      <span className="text-[8px] uppercase tracking-wider font-mono font-bold text-kindle-text-muted/70 bg-neutral-150 px-1 py-0.5 rounded">
-                        {entry.partOfSpeech}
-                      </span>
-                    )}
-                    {entry.isCustom ? (
-                      <span className="text-[7px] uppercase tracking-widest font-bold bg-kindle-accent/15 text-kindle-accent px-1.5 py-0.5 rounded-full">
-                        Personal
-                      </span>
-                    ) : (
-                      <span className="text-[7px] uppercase tracking-widest font-bold bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full">
-                        Oxford DB
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-kindle-text leading-relaxed font-sans">{entry.definition}</p>
-                  {entry.example && (
-                    <p className="text-[10px] italic text-kindle-text-muted font-sans font-medium">"{entry.example}"</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {entry.isCustom ? (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteWord(entry.word)}
-                      className="p-1.5 text-kindle-text-muted hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                      title="Delete Definition"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveWordToPersonal(entry)}
-                      className="px-2 py-1 bg-kindle-bg hover:bg-kindle-accent/10 border border-kindle-border rounded-lg text-[9px] font-bold uppercase tracking-wider text-kindle-text hover:text-kindle-accent transition cursor-pointer flex items-center gap-1"
-                      title="Add to Personal Dictionary"
-                    >
-                      <Plus className="w-3 h-3 text-kindle-accent" /> Save
-                    </button>
-                  )}
-                </div>
-              </div>
-            ));
-          })()}
-        </div>
-      </div>
-    </div>
-  );
-
   const renderFolderWatchContent = () => (
     <div className="space-y-5">
       <p className="text-[11px] text-kindle-text-muted leading-relaxed">
@@ -1340,7 +1146,27 @@ function SettingsView({
                     <Toggle on={autoDisplayTheme} onClick={() => onChangeAutoDisplayTheme(!autoDisplayTheme)} />
                   </div>
                 </div>
-                
+
+                {/* A theme plugin paints over whichever built-in theme is
+                    selected, so the user needs to know the swatches below are
+                    not what they are currently looking at — and be able to get
+                    back to a built-in theme from here. */}
+                {activePluginThemeName && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-kindle-accent/40 bg-kindle-accent/5 px-3 py-2">
+                    <p className="text-xs text-kindle-text">
+                      Theme plugin active:{" "}
+                      <span className="font-semibold">{activePluginThemeName}</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onClearPluginTheme}
+                      className="rounded-lg border border-kindle-border px-2.5 py-1 text-[11px] text-kindle-text"
+                    >
+                      Use a built-in theme
+                    </button>
+                  </div>
+                )}
+
                 <div className={`grid grid-cols-3 sm:grid-cols-4 gap-2 ${autoDisplayTheme ? 'opacity-50 pointer-events-none' : ''}`}>
                   {PRIMARY_READER_THEME_KEYS.concat(["light", "green", "dark"]).map((tKey) => {
                     const th = resolveReaderTheme(tKey);
@@ -1584,6 +1410,28 @@ function SettingsView({
                   </div>
                 </div>
               </button>
+
+              {/* Kora Uno (P2P Wildcard Clash) */}
+              <button
+                type="button"
+                onClick={() => setShowUno(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-rose-500/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-rose-500 rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Flame className="w-6 h-6" />
+                </div>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-rose-500 transition">Kora Uno (P2P)</h4>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Fast-paced color &amp; number card clash. Play P2P over your local Wi-Fi or battle tactical bots offline.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Launch Clash →
+                  </div>
+                </div>
+              </button>
             </div>
           </section>
 
@@ -1635,7 +1483,9 @@ function SettingsView({
                 </div>
               </button>
 
-              {/* Personal Dictionary Card */}
+              {/* Personal Dictionary Card — Workshop only.
+                  The real editor lives here; it is not reachable from
+                  Settings, and the landing page card is just a preview. */}
               <button
                 type="button"
                 onClick={() => setShowDictionary(true)}
@@ -1648,7 +1498,7 @@ function SettingsView({
                   <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text group-hover:text-kindle-accent transition">Personal Dictionary</h4>
                   <p className="text-[9px] text-kindle-text-muted mt-1 uppercase tracking-widest font-bold">Vocabulary Bank</p>
                   <p className="text-[10px] text-kindle-text-muted mt-1.5 leading-relaxed">
-                    Browse custom definitions and lookups saved during reading sessions.
+                    Add, edit and delete the words you save while reading.
                   </p>
                 </div>
               </button>
@@ -2044,6 +1894,19 @@ function SettingsView({
               </div>
             </div>
           </section>
+
+          {/* INSTALLED-PLUGIN TILES — WORKSHOP BRANCH (the "tools" view).
+              This is the end of the tools block: the settings branch opens
+              immediately below this one, at the Storage Mode card.
+
+              There is deliberately NO plugin hub here. Install, enable, disable
+              and remove all happen in the one hub in Discover, because two hubs
+              are two answers to "is this installed?". What belongs in Workshop
+              is the thing you USE once installed: a tile per non-source plugin,
+              styled like the built-in tool cards above, opening that plugin's
+              own panel. The filter comes from `surfaceForCategory` in
+              lib/sources/store.ts, the same rule the placement tests assert. */}
+          <PluginBentoTiles onModalToggle={onModalToggle} />
 
         </div>
         )}
@@ -2659,15 +2522,6 @@ function SettingsView({
 
         {view === "settings" && (
         <>
-        {/* Personal Dictionary Section */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs">
-          {renderPersonalDictionaryContent()}
-        </section>
-        </>
-        )}
-
-        {view === "settings" && (
-        <>
         {showCloudImport && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in zoom-in duration-200">
             <div className="absolute inset-0 bg-black/50" onClick={() => setShowCloudImport(false)} />
@@ -2818,6 +2672,24 @@ function SettingsView({
             </p>
           </div>
         </section>
+
+        {/* ── Download Control ──────────────────────────────────────────
+            SETTINGS BRANCH ONLY (`view === "settings"`). The Workshop branch
+            (`view === "tools"`) that follows must NOT grow this section — it
+            already carries its own storage affordances, and a download queue
+            control surface belongs with the account/storage settings.
+
+            It reads the live queue App owns (`globalDownloads`) and drives the
+            same cancel/retry callbacks the Library grid uses, so it controls
+            the real transfers rather than a copy of the list. */}
+        <DownloadControlSection
+          downloads={downloads ?? []}
+          onCancel={onCancelDownload}
+          onRetry={onRetryDownload}
+          onDismiss={onDismissDownload}
+          onSetDownloads={onDownloadsChange}
+          serviceWorkerReady={swControllerReady}
+        />
         </>
         )}
 
@@ -3035,6 +2907,21 @@ function SettingsView({
                 RaveSearch
               </a>
             </div>
+            {/* Documentation. Sits with the other About rows rather than in
+                its own panel: this is the screen a user lands on to find out
+                what the app is, and the docs are the long answer to that. */}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-kindle-text-muted">Documentation</span>
+              <a
+                href="https://chaotic-ray.github.io/Kora-/"
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold flex items-center gap-1.5 hover:text-kindle-accent transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                Open Documentation
+              </a>
+            </div>
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-kindle-text-muted">GitHub</span>
               <a
@@ -3215,6 +3102,7 @@ function SettingsView({
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
       <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} onOpenScores={() => setShowScoreTracker(true)} />
       <OnlineScrabbleGame open={showScrabble} onClose={() => setShowScrabble(false)} />
+      <UnoGame open={showUno} onClose={() => setShowUno(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <ReadingInsightsTool
         open={showInsights}
         onClose={() => setShowInsights(false)}
@@ -3222,20 +3110,34 @@ function SettingsView({
       />
       <P2pTransferPanel open={showP2p} onClose={() => setShowP2p(false)} />
 
-      <FluidOverlay open={showDictionary} onClose={() => setShowDictionary(false)} variant="sheet" panelClassName="max-w-xl p-6">
-        <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
-          <div className="flex items-center gap-3">
-            <BookMarked className="w-5 h-5 text-kindle-text" />
-            <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Personal Dictionary</h3>
+      {/* Personal Dictionary — the one editor, opened from the Workshop card.
+          Uses the same component as the landing page preview so add/edit/
+          delete behave identically wherever the user opens it. */}
+      {showDictionary && (
+        <FluidOverlay
+          open={showDictionary}
+          onClose={() => setShowDictionary(false)}
+          variant="sheet"
+          panelClassName="max-w-xl p-6"
+        >
+          <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">
+            <div className="flex items-center gap-3">
+              <BookMarked className="w-5 h-5 text-kindle-text" />
+              <h3 className="font-lexend font-bold text-sm uppercase tracking-wider">Personal Dictionary</h3>
+            </div>
+            <button
+              onClick={() => setShowDictionary(false)}
+              className="p-1.5 hover:bg-neutral-100 rounded-lg"
+              aria-label="Close dictionary"
+            >
+              <X className="w-5 h-5 text-kindle-text" />
+            </button>
           </div>
-          <button onClick={() => setShowDictionary(false)} className="p-1.5 hover:bg-neutral-100 rounded-lg">
-            <X className="w-5 h-5 text-kindle-text" />
-          </button>
-        </div>
-        <div className="max-h-[75vh] overflow-y-auto pr-1">
-          {renderPersonalDictionaryContent()}
-        </div>
-      </FluidOverlay>
+          <div className="max-h-[75vh] overflow-y-auto pr-1">
+            <DictionaryWidget bare onClose={() => setShowDictionary(false)} />
+          </div>
+        </FluidOverlay>
+      )}
 
       <FluidOverlay open={showClipper} onClose={() => setShowClipper(false)} variant="sheet" panelClassName="max-w-xl p-6">
         <div className="flex items-center justify-between border-b border-kindle-border pb-3 mb-4">

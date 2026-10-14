@@ -1,7 +1,16 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { isSoundEffectsEnabled } from "../lib/featureToggles";
+import { useWordDrag, type DragTile } from "../lib/useWordDrag";
+import {
+  enqueueLetter,
+  removeQueuedAt,
+  queuedWord,
+  pruneQueue,
+  isRackSlotUnavailable,
+  type QueuedLetter,
+} from "../lib/scrabbleQueue";
 import {
   X,
   Shuffle,
@@ -96,6 +105,17 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   const [turnIdx, setTurnIdx] = useState(0);
   const [bag, setBag] = useState<string[]>([]);
   const [selectedRackIdx, setSelectedRackIdx] = useState<number | null>(null);
+  /**
+   * The word being built, in the order the player chose.
+   *
+   * The rack is a fixed seven slots, so both existing paths derived their
+   * order from it — tap-tap forced rack order and word drag could only lift an
+   * adjacent run. This holds the player's sequence instead, and the board
+   * consumes it one letter per cell. Held as rack INDICES, not letters, so a
+   * shuffle or another placement cannot leave a queued letter that the player
+   * no longer holds.
+   */
+  const [letterQueue, setLetterQueue] = useState<QueuedLetter[]>([]);
   const [tempPlaced, setTempPlaced] = useState<{ r: number; c: number; letter: string; rackIdx: number }[]>([]);
   const [log, setLog] = useState<string[]>([]);
 
@@ -376,13 +396,150 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     return players.find((p) => p.id === myUid());
   };
 
+  /**
+   * Tap a rack tile: add it to the word being built.
+   *
+   * Tapping the same tile twice takes it back out, which is the fastest way to
+   * undo a mis-tap without hunting for a separate remove control — and it
+   * cannot be ambiguous, because a slot can only be in the queue once.
+   */
   const selectRackTile = (rackIdx: number) => {
     if (!isMyTurn()) return;
     const me = getMyPlayer();
     if (!me || !me.tiles[rackIdx]) return;
     playClickSound();
-    setSelectedRackIdx(selectedRackIdx === rackIdx ? null : rackIdx);
+
+    const inQueue = letterQueue.some((q) => q.rackIdx === rackIdx);
+    if (inQueue) {
+      setLetterQueue((prev) => removeQueuedAt(prev, prev.findIndex((q) => q.rackIdx === rackIdx)));
+      return;
+    }
+    // A tile already on the board cannot also join the word.
+    if (tempPlaced.some((t) => t.rackIdx === rackIdx)) return;
+    setLetterQueue((prev) => enqueueLetter(prev, rackIdx, me.tiles));
   };
+
+  /** Take back the last letter queued, without touching what is on the board. */
+  const undoQueuedLetter = () => {
+    if (!letterQueue.length) return;
+    playClickSound();
+    setLetterQueue((prev) => removeQueuedAt(prev, prev.length - 1));
+  };
+
+  /**
+   * Take back the most recently PLACED tile, leaving the rest of the turn
+   * alone. `recallTempTiles` returns the whole turn, which is the right tool
+   * for "wrong word" and the wrong one for "one letter was a mis-tap".
+   */
+  const recallLastPlaced = () => {
+    if (!tempPlaced.length) return;
+    playClickSound();
+    const me = getMyPlayer();
+    const last = tempPlaced[tempPlaced.length - 1];
+    if (me) me.tiles[last.rackIdx] = last.letter;
+
+    const nextTemp = [...tempPlaced];
+    nextTemp.pop();
+    setTempPlaced(nextTemp);
+
+    const newBoard = { ...board };
+    delete newBoard[`${last.r},${last.c}`];
+    setBoard(newBoard);
+  };
+
+  /**
+   * Drop queued letters the rack no longer holds.
+   *
+   * Every existing placement path blanks a rack slot in place, so a queue built
+   * before a shuffle or a word drag can reference a slot that now holds a
+   * different letter — or nothing. Left alone, that would show the player
+   * letters they no longer have and place tiles that were never theirs.
+   */
+  useEffect(() => {
+    const me = getMyPlayer();
+    if (!me) return;
+    setLetterQueue((prev) => {
+      const next = pruneQueue(prev, me.tiles);
+      return next.length === prev.length ? prev : next;
+    });
+  });
+
+  // ── Drag to place a whole word ────────────────────────────────────────────
+  //
+  // Placing used to mean: tap a rack tile, then tap a cell. `clickBoardCell`
+  // returned on the first occupied cell, so a multi-letter word could not be
+  // laid down as one gesture — you re-selected and re-tapped for every letter.
+  // `useWordDrag` lifts the run of tiles the pointer grabbed and places them
+  // with that same arrangement, along whichever axis the drag travelled, so a
+  // word can be dropped horizontally or vertically.
+  const placeDraggedWord = useCallback(
+    (run: DragTile[], cells: { r: number; c: number }[]) => {
+      if (!isMyTurn()) return;
+      const me = getMyPlayer();
+      if (!me) return;
+
+      // Re-validate at commit time: the board can change between the drag
+      // preview and the release (opponent move, or a second placement).
+      for (let i = 0; i < cells.length; i++) {
+        const { r, c } = cells[i];
+        const key = `${r},${c}`;
+        const existing = board[key];
+        if (existing && !existing.isTemp) return;
+        if (existing && !tempPlaced.some((t) => t.r === r && t.c === c)) return;
+        if (!run[i]?.letter || !me.tiles[run[i].rackIdx]) return;
+      }
+
+      playClickSound();
+      const nextBoard = { ...board };
+      const nextTemp = [...tempPlaced];
+      for (let i = 0; i < cells.length; i++) {
+        const { r, c } = cells[i];
+        const tile = run[i];
+        me.tiles[tile.rackIdx] = "";
+        nextTemp.push({ r, c, letter: tile.letter, rackIdx: tile.rackIdx });
+        nextBoard[`${r},${c}`] = {
+          letter: tile.letter,
+          score: TILE_VALUES[tile.letter] || 1,
+          isTemp: true,
+        };
+      }
+      setTempPlaced(nextTemp);
+      setBoard(nextBoard);
+      setSelectedRackIdx(null);
+    },
+    [board, tempPlaced, isMyTurn, getMyPlayer, playClickSound]
+  );
+
+  const liftTempTile = useCallback(
+    (r: number, c: number) => {
+      const idx = tempPlaced.findIndex((t) => t.r === r && t.c === c);
+      if (idx === -1) return;
+      const removed = tempPlaced[idx];
+      const me = getMyPlayer();
+      if (me) me.tiles[removed.rackIdx] = removed.letter;
+      const nextTemp = [...tempPlaced];
+      nextTemp.splice(idx, 1);
+      setTempPlaced(nextTemp);
+      const nextBoard = { ...board };
+      delete nextBoard[`${r},${c}`];
+      setBoard(nextBoard);
+    },
+    [tempPlaced, board, getMyPlayer]
+  );
+
+  const wordDrag = useWordDrag({
+    boardSize: 15,
+    canMove: isMyTurn(),
+    rack: getMyPlayer()?.tiles ?? [],
+    cellAt: (r, c) => board[`${r},${c}`],
+    isCommitted: (r, c) => {
+      const cell = board[`${r},${c}`];
+      return Boolean(cell && !cell.isTemp);
+    },
+    tempCells: tempPlaced,
+    onPlace: placeDraggedWord,
+    onLift: liftTempTile,
+  });
 
   const clickBoardCell = (r: number, c: number) => {
     if (!isMyTurn()) return;
@@ -408,16 +565,35 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
 
     if (board[key] && !board[key].isTemp) return;
 
-    if (selectedRackIdx !== null) {
+    // Placement source, in priority order:
+    //
+    //   1. the queued word — the normal path now, since the player builds the
+    //      word first and then places its letters one cell at a time;
+    //   2. a single pre-selected rack tile — the original tap-tap behaviour,
+    //      kept so an existing muscle memory does not break.
+    //
+    // A queue entry is consumed as it is placed, so the board fills in the
+    // order the letters were chosen.
+    const queued = letterQueue[0];
+    const rackIdxToPlace = queued ? queued.rackIdx : selectedRackIdx;
+    if (rackIdxToPlace !== null) {
       const me = getMyPlayer();
       if (!me) return;
-      const letter = me.tiles[selectedRackIdx];
+      const letter = me.tiles[rackIdxToPlace];
       if (!letter) return;
 
-      playClickSound();
-      me.tiles[selectedRackIdx] = "";
+      // Re-validate against the rack at commit time, not at queue time: a
+      // shuffle or a word drag can have invalidated the head of the queue
+      // between building it and placing it.
+      if (queued && queued.letter !== letter) {
+        setLetterQueue((prev) => pruneQueue(prev, me.tiles));
+        return;
+      }
 
-      const newTemp = [...tempPlaced, { r, c, letter, rackIdx: selectedRackIdx }];
+      playClickSound();
+      me.tiles[rackIdxToPlace] = "";
+
+      const newTemp = [...tempPlaced, { r, c, letter, rackIdx: rackIdxToPlace }];
       setTempPlaced(newTemp);
 
       setBoard((prev) => ({
@@ -425,6 +601,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
         [key]: { letter, score: TILE_VALUES[letter] || 1, isTemp: true },
       }));
 
+      if (queued) setLetterQueue((prev) => removeQueuedAt(prev, 0));
       setSelectedRackIdx(null);
     }
   };
@@ -1079,12 +1256,28 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
                 {/* Left Column: Board */}
                 <div className="lg:col-span-7 flex flex-col items-center">
+<<<<<<< HEAD
                   <div className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-12 gap-1 sm:gap-2 select-none">
+=======
+                  <div
+                    ref={wordDrag.gridRef as React.RefObject<HTMLDivElement>}
+                    onPointerMove={wordDrag.boardHandlers.onPointerMove}
+                    onPointerUp={wordDrag.boardHandlers.onPointerUp}
+                    onPointerCancel={wordDrag.boardHandlers.onPointerCancel}
+                    className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-15 gap-[1px] sm:gap-[2px] select-none touch-none">
+>>>>>>> origin/main
                     {Array.from({ length: 15 }).map((_, r) =>
                       Array.from({ length: 15 }).map((_, c) => {
                         const key = `${r},${c}`;
                         const cell = board[key];
                         const mult = getCellMultiplier(r, c);
+                        // Ghost preview for the in-flight drag: shows exactly
+                        // where the grabbed word would land, and whether it is
+                        // legal. Without it the user is dragging blind.
+                        const ghostIdx = wordDrag.placement?.valid
+                          ? wordDrag.placement.cells.findIndex((g) => g.r === r && g.c === c)
+                          : -1;
+                        const ghostLetter = ghostIdx >= 0 ? wordDrag.tiles[ghostIdx]?.letter : null;
 
                         return (
                           <div
@@ -1092,15 +1285,34 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             onClick={() => clickBoardCell(r, c)}
                             className={`aspect-square rounded flex flex-col items-center justify-center relative cursor-pointer transition ${
                               cell
-                                ? cell.isTemp
-                                  ? "bg-kindle-accent text-kindle-bg font-bold border-2 border-amber-300 animate-pulse shadow-md"
-                                  : "bg-kindle-accent text-kindle-bg font-bold border border-kindle-accent shadow"
-                                : mult.type
-                                ? mult.color
+                                                              ? cell.isTemp
+                                                                                                                              /* Temp tile: card + text, NOT accent + bg. Paper (#8B7355 on
+                                                                                                                                 #FAF7F2) and Sepia (#9C7A5B on #F4ECD8) are both mid-tone, so an
+                                                                                                                                 accent fill yields only 4.20:1 and 3.33:1 — below AA — while
+                                                                                                                                 card + text is >= 12:1 on every theme. The pending state is
+                                                                                                                                 carried by the amber border and pulse, not by a colour that
+                                                                                                                                 cannot carry text. */
+                                                                                                                              ? "bg-kindle-card text-kindle-text font-bold border-2 border-amber-400 animate-pulse shadow-md"
+                                                                                                                              : "bg-kindle-card text-kindle-text font-bold border-2 border-kindle-accent shadow"
+                                                              : mult.type
+                                                              ? mult.color
+                                                              : ghostLetter
+                                ? "bg-kindle-accent/10 border-2 border-dashed border-kindle-accent"
                                 : "bg-white  hover:bg-neutral-100  text-kindle-text  border border-kindle-border/40 dark:border-transparent"
                             }`}
                           >
-                            {cell ? (
+                            {ghostLetter ? (
+                              /* Drag preview: the letter this cell WOULD hold,
+                                 dimmed so it reads as pending, not committed. */
+                              <div className="w-full h-full flex items-center justify-center relative opacity-60">
+                                <span className="text-[11px] sm:text-xs md:text-base font-serif font-bold leading-none text-kindle-text">
+                                  {ghostLetter}
+                                </span>
+                                <span className="absolute bottom-[1px] right-[1px] text-[7px] sm:text-[8px] font-mono font-bold leading-none opacity-90 text-kindle-text">
+                                  {TILE_VALUES[ghostLetter] || 1}
+                                </span>
+                              </div>
+                            ) : cell ? (
                               <motion.div
                                 layout
                                 className="w-full h-full flex items-center justify-center relative"
@@ -1108,12 +1320,24 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                 animate={{ scale: 1, opacity: 1 }}
                                 transition={{ type: "spring", stiffness: 420, damping: 26, mass: 0.6 }}
                               >
-                                <span className="text-[11px] sm:text-xs md:text-base font-serif font-bold leading-none text-kindle-text">
-                                  {cell.letter}
-                                </span>
-                                <span className="absolute bottom-[1px] right-[1px] text-[7px] sm:text-[8px] font-mono font-bold leading-none opacity-90 text-kindle-accent">
-                                  {cell.score}
-                                </span>
+                                {/*
+                                                                  The letter must NOT hardcode `text-kindle-text`:
+                                                                  the cell paints the tile background with
+                                                                  `bg-kindle-accent`, and `--color-kindle-accent` and
+                                                                  `--color-kindle-text` are near-identical on every
+                                                                  theme — EXACTLY equal on `.oled` (#E8E8E8). That
+                                                                  combination drew the letter in the same colour as
+                                                                  its own background, so placed tiles were invisible
+                                                                  on all eight themes (reported 2026-10-03). Let the
+                                                                  cell decide, so temp tiles stay light-on-accent and
+                                                                  committed tiles dark-on-card.
+                                                                */}
+                                                                <span className="text-[11px] sm:text-xs md:text-base font-serif font-bold leading-none">
+                                                                  {cell.letter}
+                                                                </span>
+                                                                <span className="absolute bottom-[1px] right-[1px] text-[7px] sm:text-[8px] font-mono font-bold leading-none opacity-90">
+                                                                  {cell.score}
+                                                                </span>
                               </motion.div>
                             ) : mult.type ? (
                               <span className="text-[7px] sm:text-[9px] font-black leading-none uppercase tracking-tight text-kindle-text">
@@ -1198,12 +1422,93 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                       )}
                     </div>
 
+                    {/*
+                    The word being built.
+
+                    Shown above the rack because the queue IS the player's
+                    word — the rack is only where the letters happen to sit.
+                    Without this the player has no way to see, or correct, the
+                    order they chose before the letters are on the board.
+                    */}
+                    {(letterQueue.length > 0 || tempPlaced.length > 0) && (
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 mb-2">
+                        {letterQueue.map((ql, qi) => (
+                          <button
+                            key={ql.rackIdx}
+                            onClick={() =>
+                              setLetterQueue((prev) => removeQueuedAt(prev, qi))
+                            }
+                            aria-label={`Remove ${ql.letter} from the word`}
+                            title="Tap to remove"
+                            className="w-8 h-8 rounded-lg bg-kindle-accent text-kindle-bg font-bold font-serif text-sm flex items-center justify-center hover:opacity-80 cursor-pointer border-2 border-amber-300/60"
+                          >
+                            {ql.letter}
+                          </button>
+                        ))}
+                        {letterQueue.length > 0 && tempPlaced.length > 0 && (
+                          <span className="text-white/30 text-xs px-0.5">&rarr;</span>
+                        )}
+                        {tempPlaced.map((t, ti) => (
+                          <span
+                            key={`${t.r},${t.c}`}
+                            className="w-8 h-8 rounded-lg bg-kindle-card border-2 border-amber-400/70 text-kindle-text font-bold font-serif text-sm flex items-center justify-center"
+                          >
+                            {t.letter}
+                          </span>
+                        ))}
+                        {letterQueue.length === 0 && tempPlaced.length === 0 && null}
+                      </div>
+                    )}
+
+                    {/* Per-letter undo. `recallTempTiles` returns the whole
+                    turn, which is the right tool for "wrong word" and the
+                    wrong one for "one letter was a mis-tap". */}
+                    {(letterQueue.length > 0 || tempPlaced.length > 0) && (
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <button
+                          onClick={undoQueuedLetter}
+                          disabled={letterQueue.length === 0}
+                          className="text-[9px] uppercase tracking-widest text-white/50 hover:text-white/90 disabled:opacity-25 cursor-pointer px-2 py-1 rounded border border-white/15"
+                        >
+                          Undo letter
+                        </button>
+                        <button
+                          onClick={recallLastPlaced}
+                          disabled={tempPlaced.length === 0}
+                          className="text-[9px] uppercase tracking-widest text-white/50 hover:text-white/90 disabled:opacity-25 cursor-pointer px-2 py-1 rounded border border-white/15"
+                        >
+                          Undo placed
+                        </button>
+                        {letterQueue.length > 0 && (
+                          <span className="text-[10px] font-mono text-amber-300/80">
+                            {queuedWord(letterQueue)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
                       {Array.from({ length: 7 }).map((_, idx) => {
                         const me = getMyPlayer();
                         const letter = me?.tiles[idx];
                         const isEmpty = !letter;
-                        const isSelected = selectedRackIdx === idx;
+                        // A tile is "selected" when it is in the word being built.
+                        //
+                        // This used to read `selectedRackIdx`, which the tap
+                        // handler never sets — it only mutates `letterQueue`. The
+                        // tile therefore stayed visually unselected after every
+                        // tap, so selecting letters looked like nothing happened
+                        // and the whole rack read as still awaiting input.
+                        const isQueued = letterQueue.some((q) => q.rackIdx === idx);
+                        const isSelected = isQueued || selectedRackIdx === idx;
+                        // A tile already on the board, or already in the word
+                        // being built, cannot be added again.
+                        const isSpokenFor = isRackSlotUnavailable(
+                          idx,
+                          letterQueue,
+                          tempPlaced
+                        );
+                        // Shake on tap rather than on a state that never changes.
                         const shake = isSelected;
 
                         return (
@@ -1211,13 +1516,30 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                             key={`${letter}-${idx}`}
                             layout
                             onClick={() => selectRackTile(idx)}
+<<<<<<< HEAD
                             className={`min-w-44 min-h-44 w-14 h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
+=======
+                            {...wordDrag.rackHandlers(idx)}
+                            aria-pressed={isSelected}
+                            title={
+                              isEmpty
+                                ? "Empty rack slot"
+                                : isSpokenFor && !isQueued
+                                ? "Already on the board"
+                                : isQueued
+                                ? "Tap again to take this letter back"
+                                : `Add ${letter} to your word`
+                            }
+                            className={`w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
+>>>>>>> origin/main
                               isEmpty
                                 ? "bg-kindle-bg border-dashed border-kindle-border text-kindle-text-muted"
                                 : isSelected
                                 ? "bg-kindle-accent border-amber-300 text-kindle-bg font-bold scale-105 shadow-lg -translate-y-1"
+                                : wordDrag.isDragging(idx)
+                                ? "bg-kindle-accent/15 border-2 border-kindle-accent text-kindle-text"
                                 : "bg-kindle-card border-kindle-accent/40 text-kindle-text hover:-translate-y-0.5"
-                            }`}
+                            } ${isSpokenFor && !isQueued ? "opacity-45" : ""}`}
                             initial={{ scale: 0.85, opacity: 0.35, rotate: -14 }}
                             animate={shake ? { rotate: [-4, 4, -3, 3, 0], scale: [1, 1.05, 1] } : { scale: 1, opacity: 1, rotate: 0 }}
                             transition={shake ? { type: "spring", stiffness: 340, damping: 14, mass: 0.4 } : { type: "spring", stiffness: 520, damping: 24, mass: 0.55 }}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Swords, Trophy, Grid3X3, Search, Globe, BookA, RefreshCw, Crown, Sparkles, Check, ChevronRight } from "lucide-react";
+import { getAllDictionaryEntries, type DictionaryEntry } from "../lib/dictionary";
 
 // ── 1. LINGUIST GUARDIAN (2D Pokémon style battle arena) ──
 type SpriteKind = "guardian" | "rival" | "boss";
@@ -758,59 +759,41 @@ interface DictItem {
 }
 
 const LOCAL_DICT: Record<string, DictItem> = {
+  // The landing page is a showcase, so the only word that belongs here is
+  // Kora itself. The other sample words were invented marketing filler and
+  // read as real entries to anyone who typed them in.
   kora: {
     word: "Kora",
     pos: "proper noun",
     def: "The ultimate offline-first e-ink optimized reading companion, engineered to restore your digital sovereignty, focus, and eye health.",
     ex: "She uploaded a library of classic classics onto her Kora reader for deep evening offline reading."
-  },
-  ephemeral: {
-    word: "ephemeral",
-    pos: "adjective",
-    def: "Lasting for a very short time; transient; fleeting.",
-    ex: "Digital popups are ephemeral distraction, while unbleached paper pages offer lasting focus."
-  },
-  lucid: {
-    word: "lucid",
-    pos: "adjective",
-    def: "Expressed clearly; easy to understand; completely rational.",
-    ex: "A lucid typesetting engine layout helps students process complex literature faster."
-  },
-  serene: {
-    word: "serene",
-    pos: "adjective",
-    def: "Calm, peaceful, and completely untroubled.",
-    ex: "The unbleached Natural Paper theme creates a serene landscape for late night relaxation."
-  },
-  somber: {
-    word: "somber",
-    pos: "adjective",
-    def: "Dark, gloomy, or serious in tone.",
-    ex: "The Dusk Twilight theme is designed with soft dark palettes appropriate for somber bedtime reviews."
-  },
-  sovereign: {
-    word: "sovereign",
-    pos: "noun / adjective",
-    def: "Possessing supreme, independent power and authority. Self-governing.",
-    ex: "Kora enables a sovereign offline repository for books without tracking scripts."
-  },
-  nuance: {
-    word: "nuance",
-    pos: "noun",
-    def: "A subtle difference or shade of meaning, expression, or color.",
-    ex: "High-contrast displays miss the organic wood-grain nuance of high-density simulated ink."
-  },
-  chaos: {
-    word: "Chaos Studio",
-    pos: "noun",
-    def: "An independent open-source creative group crafting highly functional digital sanctuaries.",
-    ex: "Chaos Studio built Kora to liberate readers from cloud telemetry tracking."
   }
 };
-
-export function SearchableDictionaryDemo() {
+/**
+ * Searchable dictionary card for the Workshop.
+ *
+ * Reads the user's real dictionary so the card is not a decorative sample.
+ * `LOCAL_DICT` remains as the empty-state illustration — a first-run reader
+ * has no saved words, and showing an empty box would read as broken.
+ */
+export function SearchableDictionaryDemo({ onOpenReal }: { onOpenReal?: () => void }) {
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState<DictItem>(LOCAL_DICT.kora);
+  const [entries, setEntries] = useState<DictionaryEntry[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    getAllDictionaryEntries()
+      .then((all) => {
+        if (alive) setEntries(all);
+      })
+      .catch(() => {
+        /* An empty dictionary is a normal state, not an error. */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -822,11 +805,26 @@ export function SearchableDictionaryDemo() {
       return;
     }
 
+    // Real entries win over the sample, so a word the reader saved is found.
+    const real = entries.find(
+      (e) =>
+        e.word.toLowerCase() === norm ||
+        e.word.toLowerCase().startsWith(norm)
+    );
+    if (real) {
+      setSearchResult({
+        word: real.word,
+        pos: real.partOfSpeech || "saved word",
+        def: real.definition || "Saved to your dictionary.",
+        ex: real.example || "",
+      });
+      return;
+    }
+
     const match = LOCAL_DICT[norm];
     if (match) {
       setSearchResult(match);
     } else {
-      // Find close match or fallback
       const keys = Object.keys(LOCAL_DICT);
       const closeKey = keys.find(k => k.startsWith(norm));
       if (closeKey) {
@@ -834,9 +832,11 @@ export function SearchableDictionaryDemo() {
       } else {
         setSearchResult({
           word: val,
-          pos: "offline search result",
-          def: "This word is not in our lightweight local preview cache. Try searching 'Kora', 'ephemeral', 'lucid', 'serene', 'somber', or 'sovereign'!",
-          ex: "You can expand dictionary assets inside the main Kora Companion's database."
+          pos: "not found",
+          def: entries.length
+            ? `No match in your ${entries.length} saved word${entries.length === 1 ? "" : "s"}.`
+            : "No match in your dictionary yet. Add words to look them up here and in the reader.",
+          ex: "",
         });
       }
     }
@@ -855,7 +855,7 @@ export function SearchableDictionaryDemo() {
           <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-kindle-text-muted" />
           <input 
             type="text" 
-            placeholder="Search word (e.g., ephemeral, lucid, serene...)"
+            placeholder="Search your dictionary (e.g. kora…)"
             value={query}
             onChange={handleSearch}
             className="w-full bg-kindle-card border border-kindle-border rounded-lg pl-8.5 pr-4 py-1.5 text-[10px] text-kindle-text placeholder-kindle-text-muted focus:outline-none focus:border-purple-500/50 transition-colors"
@@ -896,9 +896,22 @@ export function SearchableDictionaryDemo() {
         </AnimatePresence>
       </div>
 
-      {/* Tips panel */}
-      <div className="text-[8px] text-kindle-text-muted text-left pt-1 border-t border-kindle-border">
-        💡 Local preview loaded with core vocabulary words.
+      {/* Footer — reflects real state, and is the way into the editor. */}
+      <div className="text-[8px] text-kindle-text-muted text-left pt-2 border-t border-kindle-border flex items-center gap-2">
+        <span className="flex-1">
+          {entries.length
+            ? `${entries.length} saved word${entries.length === 1 ? "" : "s"} · searchable offline`
+            : "Sample vocabulary — add your own words to search them here."}
+        </span>
+        {onOpenReal && (
+          <button
+            type="button"
+            onClick={onOpenReal}
+            className="inline-flex items-center gap-0.5 font-bold uppercase tracking-widest text-kindle-accent hover:opacity-70 transition cursor-pointer"
+          >
+            Manage <ChevronRight className="w-2.5 h-2.5" />
+          </button>
+        )}
       </div>
     </div>
   );

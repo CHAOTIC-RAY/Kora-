@@ -1,0 +1,281 @@
+/**
+ * Book availability helpers.
+ *
+ * Two rules the UI needs before it renders a book as actionable:
+ *  - does this book have a cover we can actually show?
+ *  - can this book be downloaded at all?
+ *
+ * Both are pure so they can be unit tested without a DOM.
+ */
+
+/** A search/catalog result, or any variant of one. Deliberately loose. */
+export interface AvailabilityBook {
+  title?: string;
+  coverUrl?: string | null;
+  book_image?: string | null;
+  image?: string | null;
+  downloadUrl?: string | null;
+  directUrl?: string | null;
+  md5?: string | null;
+  hash?: string | null;
+  id?: string | null;
+  iaId?: string | null;
+  sourceId?: string | null;
+  source?: string | null;
+  extension?: string | null;
+  searchQuery?: string | null;
+  isGoogleBook?: boolean;
+  isNYTBook?: boolean;
+  isNYTBestseller?: boolean;
+  audiobookSourceUrl?: string | null;
+  audiobookTracks?: unknown[] | null;
+  /**
+   * Set by the Worker when `downloadUrl` is a WEB PAGE (needs a real browser or
+   * login) rather than a file. Such a row must not be presented as downloadable.
+   */
+  needsBrowser?: boolean;
+  variants?: AvailabilityBook[] | null;
+}
+
+/** Cover URL off any of the field names the scrapers use. */
+export function getCoverCandidate(book: AvailabilityBook | null | undefined): string | null {
+  if (!book) return null;
+  const raw = book.coverUrl || book.book_image || book.image;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed ? trimmed : null;
+}
+
+/** True when the book has a cover URL that could plausibly load. */
+export function hasCoverCandidate(book: AvailabilityBook | null | undefined): boolean {
+  return getCoverCandidate(book) !== null;
+}
+
+/** Sources whose hits carry no file of their own and must be re-searched. */
+const ARCHIVE_SEARCH_SOURCES = new Set(["nyt", "google", "goodreads", "audiobook"]);
+
+/** True when this record resolves to something we could fetch a file from. */
+function isDirectlyFetchable(book: AvailabilityBook): boolean {
+  const url = typeof book.downloadUrl === "string" ? book.downloadUrl.trim() : "";
+
+  // A real LibGen record: the md5 is the file. It must win before any
+  // needsBrowser reasoning.
+  //
+  // The Worker's `needsBrowser` flag is derived from the URL shape, and a genuine
+  // LibGen hit carries `ads.php?md5=<hash>` — a page shape it therefore flags as
+  // browser-only. Those rows DO download: verified 2026-10-03, an ads.php md5
+  // fetched 2,055,605 B of valid EPUB through the proxy. Trusting the flag
+  // blindly dropped all 14 real EPUBs from the "capture or kill" feed and left
+  // only LibreTexts — strictly worse than before.
+  const hasLibgenId =
+    (typeof book.md5 === "string" && book.md5.trim()) ||
+    (typeof book.hash === "string" && book.hash.trim()) ||
+    (typeof book.iaId === "string" && book.iaId.trim());
+
+  // Authoritative: an id we can resolve to a file, regardless of URL shape.
+  //
+  // Except when the URL positively contradicts it. Both 2026-10-05 failures were
+  // rows carrying a real id and an unusable URL:
+  //   "THE CALAMITY CLUB" md5=54f2e7e3...  +  royallib.com/.../calamity.html
+  //     -> HTTP 200 text/html -> "Proxy download failed"
+  //   "Shatter me" md5=""  +  archive.org/download/shatterme0000mafi/....epub
+  //     -> 302 -> 401, 0 bytes (controlled digital lending, borrow-only)
+  // An id proves a record EXISTS; it does not prove THIS url is the file. So a
+  // URL we know to be a page — or a borrow-only Archive scan — outranks the id.
+  // Note the ordering below keeps the LibGen `ads.php?md5=` case working: that
+  // resolves to a real file, so it does not match either rejection.
+  if (isArchiveLendingOnly(book, url)) return false;
+  if (needsBrowserUrl(url) && url) return false;
+  if (hasLibgenId) return true;
+
+  if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
+  if (Array.isArray(book.audiobookTracks) && book.audiobookTracks.length > 0) return true;
+
+  // A URL we can fetch. Trust the Worker's needsBrowser flag when present...
+  if (book.needsBrowser) return false;
+  // ...and fall back to sniffing when it is not (older cached rows).
+  if (/^https?:\/\//i.test(url) && !needsBrowserUrl(url)) return true;
+  if (typeof book.directUrl === "string" && book.directUrl.trim()) return true;
+  return false;
+}
+
+/**
+ * URL shapes that are a page rather than a file.
+ *
+ * Only consulted when the row has no resolvable id and the Worker sent no
+ * `needsBrowser` flag. Extensionless LibreTexts endpoints are treated as files
+ * because they do serve a real `application/pdf`.
+ */
+const FILE_URL_RE =
+  /\.(epub|pdf|mobi|azw3?|djvu|cbz|cbr|zip)(\?|$)|\/(pdf|epub|full|zip)$|get\.php\?[^#]*\bmd5=|ads\.php\?[^#]*\bmd5=|\/download\//i;
+
+function needsBrowserUrl(url: string): boolean {
+  if (/royallib\.com|z-lib\.|\/book\/.+\.html$/i.test(url)) return true;
+  // A Worker-relative or same-origin `/api/...` URL is an endpoint this Worker
+  // serves itself — it is a file route, not a scraped page, so it must not be
+  // judged by the extension heuristic. Rejecting these would silently drop
+  // legitimate rows (measured: /api/download-options?md5=... has no extension).
+  if (/^\/api\//.test(url) || /^(https?:\/\/[^/]+)?\/api\//i.test(url)) return false;
+  return !FILE_URL_RE.test(url);
+}
+
+/**
+ * Internet Archive lending items.
+ *
+ * The log showed two identical failures for "Shatter me" with `md5: ""`:
+ *
+ *   downloadUrl: https://archive.org/download/shatterme0000mafi/shatterme0000mafi.epub
+ *   errorMessage: "Proxy download failed. Please try again later."
+ *
+ * Measured: that URL is a **302 -> 401 with 0 bytes**. Archive's controlled
+ * digital lending items are borrow-only; the `.epub` path and `/download/`
+ * segment look exactly like a real file, so `FILE_URL_RE` classified it as
+ * downloadable and the feed offered it. The failure is indistinguishable from a
+ * network error at the call site, so the user just sees a failed download.
+ *
+ * Two tell-tale signs identify these: the item id ends in 4 digits
+ * (`shatterme0000mafi`, a scan accession number rather than a LibGen md5) and
+ * the row has no `md5` of its own. A genuine LibGen/LibreTexts direct link always
+ * arrives with an id, so requiring both is safe and cheap — it costs a HEAD
+ * request only on rows that are already suspect.
+ */
+function isArchiveLendingOnly(book: AvailabilityBook, url: string): boolean {
+  if (!/archive\.org\//i.test(url)) return false;
+  // Already trusted: a real id came with it.
+  const hasRealId =
+    (typeof book.md5 === "string" && book.md5.trim()) ||
+    (typeof book.hash === "string" && book.hash.trim());
+  if (hasRealId) return false;
+  // Archive scan accessions look like `title0000suffix`; ids ending in 4 digits
+  // are controlled-lending placeholders, not LibGen md5s.
+  const id = /archive\.org\/(?:download|details|stream)\/([^/?#]+)/i.exec(url)?.[1] ?? "";
+  // Controlled-digital-lending accessions embed a 4-digit year marker in the
+  // MIDDLE of the id: `shatterme0000mafi`, `catchingfire0001martin`. It is not a
+  // suffix, so anchoring with `$` (my first attempt) never matched and the row
+  // stayed on the feed.
+  return /\d{4}/.test(id);
+}
+
+function isArchiveSearchable(book: AvailabilityBook): boolean {
+  if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller) return true;
+  const source = (book.source || book.sourceId || "").trim().toLowerCase();
+  if (ARCHIVE_SEARCH_SOURCES.has(source)) return true;
+  // A searchQuery means we can go re-resolve the file on demand.
+  return typeof book.searchQuery === "string" && book.searchQuery.trim().length > 0;
+}
+
+/**
+ * True when a book is worth showing as downloadable: either it already
+ * resolves to a file, or it is a catalog entry we can run an archive search
+ * for when the user opens it.
+ */
+export function hasDownloadableSource(book: AvailabilityBook | null | undefined): boolean {
+  if (!book) return false;
+
+  if (isDirectlyFetchable(book)) return true;
+  if (isArchiveSearchable(book)) return true;
+
+  // A grouped result is only as good as its best variant.
+  const variants = Array.isArray(book.variants) ? book.variants : [];
+  return variants.some((v) => v && (isDirectlyFetchable(v) || isArchiveSearchable(v)));
+}
+
+/** Drop books we could never hand a file for. */
+export function filterDownloadableBooks<T extends AvailabilityBook>(books: T[] | null | undefined): T[] {
+  if (!Array.isArray(books)) return [];
+  return books.filter((b) => b && hasDownloadableSource(b));
+}
+
+/**
+ * Stricter variant for BROWSE feeds (trending, shelves, recommendations).
+ *
+ * `filterDownloadableBooks` deliberately admits catalog rows we could re-search
+ * when the user opens the book — reasonable for a search result, where the user
+ * already named the book and a search is a cheap next step.
+ *
+ * A browse row has no such context: the user did not ask for it, so opening it
+ * and finding nothing is a dead end. The request (2026-10-03) was to hide those
+ * from the feed "unless the user searches for it" — so on a feed we require an
+ * actual file: a resolvable id (md5/hash/iaId), a real file URL, or an
+ * audiobook source.
+ */
+export function filterFeedByDownloadability<T extends AvailabilityBook>(
+  input: Record<string, T[]> | T[] | null | undefined
+): any {
+  // The trending feed is a record of lanes (one array per shelf), while search
+  // results are a flat array. Accept both so one guard covers every feed.
+  if (!input || typeof input !== "object") return input;
+  if (Array.isArray(input)) return input.filter((b) => b && hasDirectFile(b));
+  const out: Record<string, T[]> = {};
+  for (const [lane, rows] of Object.entries(input as Record<string, T[]>)) {
+    out[lane] = Array.isArray(rows) ? rows.filter((b) => b && hasDirectFile(b)) : rows;
+  }
+  return out;
+}
+
+/** True only when the row itself already points at a fetchable file. */
+export function hasDirectFile(book: AvailabilityBook | null | undefined): boolean {
+  if (!book) return false;
+  if (book.needsBrowser) return false;
+  const url = typeof book.downloadUrl === "string" ? book.downloadUrl.trim() : "";
+  // Check the URL BEFORE trusting an id. An id used to short-circuit
+  // immediately, so a row could carry a real md5 AND a page URL and still be
+  // offered: the log has exactly that — "THE CALAMITY CLUB" with a genuine
+  // LibGen md5 and `royallib.com/.../the_pentecost_of_calamity.html`, HTTP 200
+  // text/html, ending in "Proxy download failed. Please try again later."
+  // An id proves a record EXISTS; it does not prove this URL is the file.
+  if (needsBrowserUrl(url) && url) return false;
+  if (typeof book.md5 === "string" && book.md5.trim()) return true;
+  if (typeof book.hash === "string" && book.hash.trim()) return true;
+  if (typeof book.iaId === "string" && book.iaId.trim()) return true;
+  if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
+  if (Array.isArray(book.audiobookTracks) && book.audiobookTracks.length > 0) return true;
+
+  // A borrow-only Archive item answers 401 no matter how real-looking the URL is,
+  // so it must be rejected before the extension check can vouch for it.
+  if (isArchiveLendingOnly(book, url)) return false;
+  if (/^https?:\/\//i.test(url) && !needsBrowserUrl(url)) return true;
+  if (typeof book.directUrl === "string" && book.directUrl.trim()) return true;
+
+  // A grouped result is only as good as its best variant.
+  const variants = Array.isArray(book.variants) ? book.variants : [];
+  return variants.some((v) => v && hasDirectFile(v));
+}
+
+export interface CoverSafeOptions {
+  /** Upper bound on returned books. */
+  limit?: number;
+  /** Identifies a book across shuffles/re-renders. */
+  keyOf?: (book: AvailabilityBook) => string;
+}
+
+/**
+ * Keep only books that have a cover, skipping ones already known-broken so a
+ * dead cover is replaced by the next candidate rather than left as a gap.
+ */
+export function pickBooksWithWorkingCovers<T extends AvailabilityBook>(
+  books: T[] | null | undefined,
+  opts: CoverSafeOptions & { isBroken?: (book: AvailabilityBook) => boolean } = {},
+): T[] {
+  const { limit, keyOf, isBroken } = opts;
+  if (!Array.isArray(books)) return [];
+
+  const seen = new Set<string>();
+  const out: T[] = [];
+
+  for (const book of books) {
+    if (!book) continue;
+    if (!hasCoverCandidate(book)) continue;
+    if (isBroken?.(book)) continue;
+
+    const key = keyOf ? keyOf(book) : (book.title || "").trim().toLowerCase();
+    if (key) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+    }
+    out.push(book);
+    if (typeof limit === "number" && out.length >= limit) break;
+  }
+
+  return out;
+}
