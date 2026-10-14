@@ -53,6 +53,15 @@ interface DiscoverViewProps {
   zlibConfig?: any;
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
+  /** Book id from a shared /book?id=.. link. */
+  initialBookId?: string | null;
+  /** "Title Author" search text from a shared /book?q=.. link. */
+  initialBookQuery?: string | null;
+  /** Book title from a shared /book?t=.. link (preferred over q). */
+  initialBookTitle?: string | null;
+  /** Book author from a shared /book?a=.. link. */
+  initialBookAuthor?: string | null;
+  onClearInitialBookLink?: () => void;
   onOpenBrowser?: (url: string) => void;
   onTriggerDownload?: (book: any, mirrors: any | any[], variant: any) => void;
   onPlayAudiobook?: (book: BookMetadata) => void;
@@ -206,6 +215,11 @@ function DiscoverView({
   zlibConfig,
   initialQuery = null,
   onClearInitialQuery,
+  initialBookId = null,
+  initialBookQuery = null,
+  initialBookTitle = null,
+  initialBookAuthor = null,
+  onClearInitialBookLink,
   onOpenBrowser,
   onTriggerDownload,
   onPlayAudiobook,
@@ -228,6 +242,32 @@ function DiscoverView({
   const [results, setResults] = useState<any[]>([]);
   const observerTargetRef = React.useRef<HTMLDivElement | null>(null);
   const [searchMode, setSearchMode] = useState<boolean>(false);
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (!initialBookId && !initialBookQuery && !initialBookTitle) return;
+    if (deepLinkHandledRef.current) return;
+    deepLinkHandledRef.current = true;
+
+    const title = (initialBookTitle || initialBookQuery || "").trim();
+    const author = (initialBookAuthor || "").trim();
+    if (!title) {
+      onClearInitialBookLink?.();
+      return;
+    }
+
+    setFullscreenDetail(true);
+    openBookDetail({
+      id: initialBookId || `deeplink_${title}`,
+      title,
+      author,
+      searchQuery: `${title} ${author}`.trim(),
+      source: "deep-link",
+    } as any);
+
+    onClearInitialBookLink?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialBookId, initialBookQuery, initialBookTitle, initialBookAuthor]);
+
   const [featuredData, setFeaturedData] = useState<Record<string, any[]>>({});
   const [selectedFeaturedBook, setSelectedFeaturedBook] = useState<any | null>(null);
   const [featuredAudiobookSource, setFeaturedAudiobookSource] = useState<any | null>(null);
