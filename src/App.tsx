@@ -2367,14 +2367,18 @@ async function startBackgroundDownload(
     const handleHashChange = () => {
       const hash = window.location.hash || "#library";
       const hashMap: Record<string, string> = {
-        "#library": "library",
-        "#feed": "feed",
-        "#scrabble": "scrabble",
-        "#crossword": "crossword",
-        "#wordsearch": "wordsearch",
-        "#guardian": "guardian",
-      };
-      const targetTab = hashMap[hash] || "library";
+              "#lounge": "lounge",
+              "#library": "library",
+              "#discover": "discover",
+              "#feed": "feed",
+              "#tools": "tools",
+              "#settings": "settings",
+              "#scrabble": "scrabble",
+              "#crossword": "crossword",
+              "#wordsearch": "wordsearch",
+              "#guardian": "guardian",
+            };
+            const targetTab = hashMap[hash] || "library";
       setActiveTab((prev) => (prev === targetTab ? prev : targetTab));
     };
     window.addEventListener("hashchange", handleHashChange);
