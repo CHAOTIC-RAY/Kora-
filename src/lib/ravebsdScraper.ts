@@ -10,6 +10,8 @@ type ScrapedBook = {
   title: string; author: string; year?: string; format?: string; filesize?: number;
   language?: string; source: string; downloadUrl: string; directUrl?: string;
   directReady?: boolean; coverUrl?: string; identifier?: string; md5?: string;
+  pageUrl?: string; length?: string; bitrate?: string; narrator?: string; abridged?: boolean;
+  tracks?: number; publisher?: string; description?: string;
 };
 
 const UA = "KoraBookSearch/1.0 (+https://github.com/CHAOTIC-RAY/Kora-)";
@@ -156,7 +158,7 @@ async function searchLibriVox(query: string, mode: string): Promise<ScrapedBook[
   if (mode !== "audiobooks") return [];
   const titleQuery = query.trim().replace(/^(the|a|an)\\s+/i, "");
   const url = "https://librivox.org/api/feed/audiobooks/?" + new URLSearchParams({
-    title: "^" + titleQuery, format: "json", limit: "12"
+    title: "^" + titleQuery, format: "json", extended: "1", limit: "10"
   }).toString();
   try {
     const data = await getJson(url);
@@ -165,11 +167,20 @@ async function searchLibriVox(query: string, mode: string): Promise<ScrapedBook[
       const download = safeHttp(b.url_zip_file);
       const title = clean(b.title);
       if (!title || !download) return null;
+      const archiveId = String(b.url_iarchive || "").match(/archive\\.org\\/details\\/([^/?#]+)/i)?.[1] || "";
+      const readers = Array.isArray(b.sections) ? [...new Set(b.sections.flatMap((section: any) =>
+        (Array.isArray(section.readers) ? section.readers : []).map((reader: any) => clean(reader.display_name)).filter(Boolean)
+      ))].slice(0, 3).join(", ") : "";
+      const seconds = Number(b.totaltimesecs) || 0;
+      const minutes = Math.round(seconds / 60);
+      const length = minutes >= 60 ? Math.floor(minutes / 60) + " h" + (minutes % 60 ? " " + (minutes % 60) + " min" : "") : minutes ? minutes + " min" : "";
       return {
         title, author: Array.isArray(b.authors) ? b.authors.map((a: any) => clean([a.first_name, a.last_name].filter(Boolean).join(" "))).filter(Boolean).join(", ") : "",
-        year: "", format: "zip", filesize: 0, language: clean(b.language), source: "LibriVox (public-domain audiobook)",
-        downloadUrl: download, directUrl: download, directReady: true,
-        coverUrl: safeHttp(b.url_cover), identifier: String(b.id || "")
+        year: b.copyright_year && b.copyright_year !== "0" ? String(b.copyright_year) : "",
+        format: "zip", filesize: seconds > 0 ? seconds * 8000 : 0, language: clean(b.language),
+        source: "LibriVox (public-domain audiobook)", downloadUrl: download, directUrl: download, directReady: true,
+        coverUrl: archiveId ? "https://archive.org/services/img/" + encodeURIComponent(archiveId) : safeHttp(b.url_cover),
+        identifier: String(b.id || ""), pageUrl: safeHttp(b.url_librivox), length, bitrate: "64 kbps", narrator: readers, abridged: false
       };
     }).filter((x: ScrapedBook | null): x is ScrapedBook => !!x);
   } catch { return []; }
@@ -191,27 +202,35 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
   }));
   const counts: Record<string, number> = {};
   const all = settled.flatMap(([id, rows]) => { counts[id] = rows.length; return rows; });
+  // Keep distinct source/format copies so alternate legitimate files remain available.
   const seen = new Set<string>();
-  const results = all.filter(book => {
-    const key = norm(book.title) + "|" + norm(book.author);
-    if (!key || seen.has(key)) return false;
+  const ranked = all.filter(book => {
+    const key = [norm(book.title), norm(book.author), norm(book.source), norm(book.format || "")].join("|");
+    if (!norm(book.title) || seen.has(key)) return false;
     seen.add(key); return true;
   }).map(book => ({ book, score: relevance(book.title, book.author, q) }))
-    .filter(x => x.score >= 0.25)
-    .sort((a, b) => b.score - a.score || Number(!!b.book.directReady) - Number(!!a.book.directReady))
-    .slice(0, 25).map(x => x.book);
-  return { results, meta: { fallback: true, sources: counts, total: results.length } };
+    .sort((a, b) => b.score - a.score || Number(!!b.book.directReady) - Number(!!a.book.directReady));
+  const matching = ranked.filter(x => x.score >= 0.25);
+  const results = (matching.length ? matching : ranked).slice(0, 25).map(x => x.book);
+  return { results, meta: { fallback: true, sources: counts, total: results.length, mode, query: q } };
 }
 
 export async function searchIndependentPopularBooks(): Promise<any> {
-  const queries = ["popular classic novels", "science fiction classics", "public domain children's books"];
-  const lists = await Promise.all(queries.map(async (q) => {
-    const [gutenberg, archive] = await Promise.all([searchGutenberg(q), searchInternetArchive(q, "ebooks")]);
-    const books = [...gutenberg, ...archive].filter(b => b.title).slice(0, 8).map(b => ({
+  const topics = [
+    { name: "Public-Domain Classics", q: "classic novels", mode: "ebooks" },
+    { name: "Open Textbooks", q: "biology", mode: "ebooks" },
+    { name: "Science & Learning", q: "physics", mode: "ebooks" },
+    { name: "Free Audiobooks", q: "Sherlock Holmes", mode: "audiobooks" }
+  ];
+  const lists = await Promise.all(topics.map(async topic => {
+    const result = await searchIndependentBookSources(topic.q, topic.mode, "all");
+    const books = result.results.slice(0, 8).map(b => ({
       title: b.title, author: b.author || "Unknown Author", book_image: b.coverUrl || "",
-      description: "", primary_isbn13: "", source: b.source, downloadUrl: b.directUrl || b.downloadUrl
+      description: b.description || "", primary_isbn13: "", source: b.source,
+      downloadUrl: b.directUrl || b.downloadUrl, format: b.format || "",
+      pageUrl: b.pageUrl || ""
     }));
-    return { list_name: q, display_name: q.replace(/\b\w/g, c => c.toUpperCase()), list_name_encoded: q.replace(/\s+/g, "-"), books };
+    return { list_name: topic.q, display_name: topic.name, list_name_encoded: topic.name.toLowerCase().replace(/\\s+/g, "-"), books };
   }));
   return { status: "OK", results: { lists: lists.filter(x => x.books.length) } };
 }
