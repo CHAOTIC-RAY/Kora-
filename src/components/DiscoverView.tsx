@@ -276,6 +276,57 @@ function DiscoverView({
   };
 
   const [query, setQuery] = useState<string>("");
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [searchSuggestions, setSearchSuggestions] = useState<Array<{ title: string; author: string; coverUrl?: string }>>([]);
+  const [showSearchAssist, setShowSearchAssist] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Search history is intentionally session-only: it improves convenience
+  // without retaining a permanent record of what the reader searches for.
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("kora:discover-search-history");
+      if (stored) setRecentSearches(JSON.parse(stored).filter((item: unknown) => typeof item === "string").slice(0, 6));
+    } catch {
+      /* Storage can be unavailable in private browsing or embedded contexts. */
+    }
+  }, []);
+
+  // Google Books suggestions are recommendations, never an autocomplete
+  // mutation. Keep the user's text untouched until they explicitly choose one.
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 2 || !showSearchAssist) {
+      setSearchSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetchDiscoverApi(
+          `/api/google-books/search?q=${encodeURIComponent(term)}&maxResults=5`,
+          { signal: undefined },
+          1
+        );
+        if (!response.ok) return;
+        const payload = await response.json();
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        const suggestions = items.map((item: any) => ({
+          title: String(item.volumeInfo?.title || "").trim(),
+          author: Array.isArray(item.volumeInfo?.authors) ? String(item.volumeInfo.authors[0] || "").trim() : "",
+          coverUrl: item.volumeInfo?.imageLinks?.thumbnail || item.volumeInfo?.imageLinks?.smallThumbnail,
+        })).filter((item: { title: string }) => item.title).slice(0, 5);
+        if (!cancelled) setSearchSuggestions(suggestions);
+      } catch {
+        if (!cancelled) setSearchSuggestions([]);
+      }
+    }, 260);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, showSearchAssist]);
+
   /** Tracks the term that was last actually executed, so re-submitting the same
    * typed text still counts as "same" while a changed query always reruns. */
   const lastSearchedTerm = React.useRef<string>("");
@@ -1979,6 +2030,14 @@ function DiscoverView({
     const term = typeof e === "string" ? e : (typeof e === "number" ? e.toString() : query);
     if (!term || !term.trim()) return;
 
+    const normalizedTerm = term.trim();
+    setRecentSearches((previous) => {
+      const next = [normalizedTerm, ...previous.filter((item) => item.toLocaleLowerCase() !== normalizedTerm.toLocaleLowerCase())].slice(0, 6);
+      try { sessionStorage.setItem("kora:discover-search-history", JSON.stringify(next)); } catch { /* optional */ }
+      return next;
+    });
+    setShowSearchAssist(false);
+    setSearchSuggestions([]);
     if (typeof e === "string") setQuery(e);
 
     try {
@@ -3119,8 +3178,14 @@ function DiscoverView({
               <input
                 type="text"
                 placeholder="For best results, use the full book title and author name…"
+                ref={searchInputRef}
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setShowSearchAssist(true)}
+                onChange={(e) => { setQuery(e.target.value); setShowSearchAssist(true); }}
+                onKeyDown={(e) => { if (e.key === "Escape") setShowSearchAssist(false); }}
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-expanded={showSearchAssist && (searchSuggestions.length > 0 || recentSearches.length > 0)}
                 data-guide="discover-search-input"
                 className="w-full pl-12 pr-32 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
               />
@@ -3141,6 +3206,43 @@ function DiscoverView({
                   Search
                 </button>
               </div>
+              {showSearchAssist && (searchSuggestions.length > 0 || (query.trim().length === 0 && recentSearches.length > 0)) && (
+                <div
+                  className="absolute left-0 right-0 top-[calc(100%+8px)] z-[80] overflow-hidden rounded-2xl border border-kindle-border bg-kindle-card shadow-2xl"
+                  role="listbox"
+                  aria-label={query.trim() ? "Book suggestions from Google Books" : "Recent searches"}
+                >
+                  {query.trim().length === 0 ? (
+                    <>
+                      <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Recent searches · this session</div>
+                      {recentSearches.map((item) => (
+                        <button key={item} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => { void handleSearch(item); searchInputRef.current?.blur(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-kindle-text hover:bg-kindle-bg transition">
+                          <RefreshCw className="h-4 w-4 shrink-0 text-kindle-text-muted" />
+                          <span className="min-w-0 flex-1 truncate">{item}</span>
+                          <span className="text-[10px] text-kindle-text-muted">Search again</span>
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    <>
+                      <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Suggested titles · Google Books</div>
+                      {searchSuggestions.map((item) => (
+                        <button key={item.title + item.author} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => { void handleSearch(`${item.title} ${item.author}`.trim()); searchInputRef.current?.blur(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-kindle-bg transition">
+                          <div className="h-10 w-7 shrink-0 overflow-hidden rounded bg-kindle-bg border border-kindle-border">
+                            {item.coverUrl ? <img src={resolveCoverImageSrc(item.coverUrl) || item.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" /> : <BookOpen className="m-1 h-5 w-5 text-kindle-text-muted" />}
+                          </div>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-kindle-text">{item.title}</span>
+                            <span className="block truncate text-xs text-kindle-text-muted">{item.author || "Author not listed"}</span>
+                          </span>
+                          <span className="text-[10px] text-kindle-accent">Recommendation</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setShowSearchAssist(false)} className="w-full border-t border-kindle-border px-4 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text">Dismiss</button>
+                </div>
+              )}
             </form>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -3385,13 +3487,7 @@ function DiscoverView({
                       ? "bg-kindle-accent/[0.03] border-kindle-accent/30 shadow-lg ring-1 ring-kindle-accent/10" 
                       : "border-transparent hover:bg-kindle-card/50"
                   }`}
-                  onClick={() => {
-                    if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
-                      openBookDetail(book);
-                    } else {
-                      handleGetDownloadLinks(book);
-                    }
-                  }}
+                  onClick={() => openBookDetail(book)}
                 >
                   <div className={`aspect-[2/3] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
                     {!hideCovers && book.coverUrl ? (
