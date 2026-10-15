@@ -4147,10 +4147,6 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
-  }
-};
-  }
-};
 
 async function resolveLibgenAdsKey(md5: string, onBotCheck?: (text: string) => void): Promise<string> {
   // Try fetching ads.php from LibGen mirrors to extract signed key
@@ -4166,7 +4162,7 @@ async function resolveLibgenAdsKey(md5: string, onBotCheck?: (text: string) => v
   const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
   for (const mirror of LIBGEN_ADS_MIRRORS) {
     try {
-      const adsUrl = \`\${mirror}/ads.php?md5=\${md5.toLowerCase()}\`;
+      const adsUrl = mirror + "/ads.php?md5=" + md5.toLowerCase();
       const res = await fetch(adsUrl, {
         headers: {
           "User-Agent": UA,
