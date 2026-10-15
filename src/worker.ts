@@ -2267,8 +2267,8 @@ export default {
       const iaId = url.searchParams.get("iaId") || "";
       const raveDirect = url.searchParams.get("url"); // Rave's signed direct URL from search results
 
-      if (!md5 && !raveDirect) {
-        return new Response(JSON.stringify({ error: "MD5 or direct URL is required" }), {
+      if (!md5 && !raveDirect && !iaId) {
+        return new Response(JSON.stringify({ error: "MD5, Internet Archive ID, or direct URL is required" }), {
           status: 400,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
@@ -2317,7 +2317,9 @@ export default {
       // too restrictive - it prevented valid md5 values from being used when
       // extracted from search results HTML, causing LibGen books to fall through
       // to the Open Library catalogue fallback instead of showing direct links.
-      if (isRealMd5 || md5) {
+      if (isRealMd5) {
+        // Only a verified 32-character MD5 is valid for LibGen resolution.
+        // SHA-256 catalogue IDs must never be sent to MD5-based endpoints.
         // Instant mirrors first so the client never waits on LibGen HTML scraping.
         // Signed CDN resolution is best-effort with a short parallel timeout.
         const instantMirrors = [
@@ -2355,17 +2357,14 @@ export default {
           }
         }
       } else if (iaId && downloadLinks.length === 0) {
-        // Internet Archive item with known iaId — proxy through /api/proxy-file
+        // Internet Archive item with known iaId — resolve through its public metadata API
+        // instead of treating the /details page as a binary download.
         downloadLinks = [
           {
-            label: "Internet Archive (Direct Download)",
-            url: `/api/proxy-file?url=${encodeURIComponent(`https://archive.org/details/${iaId}`)}`,
-            isDirect: true
-          },
-          {
-            label: "Internet Archive (Browse Page)",
-            url: `https://archive.org/details/${iaId}`,
-            isDirect: false
+            label: "Internet Archive item page",
+            url: `https://archive.org/details/${encodeURIComponent(iaId)}`,
+            isDirect: false,
+            sourceId: "archive"
           }
         ];
       } else if (downloadLinks.length === 0) {
