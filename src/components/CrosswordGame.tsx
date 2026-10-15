@@ -547,7 +547,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  return (
  <AnimatePresence>
  <motion.div
- className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md"
+ className="kora-game-theme fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/65 backdrop-blur-md"
  initial={{opacity: 0}}
  animate={{opacity: 1}}
  exit={{opacity: 0}}
@@ -573,7 +573,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  return (
  <AnimatePresence>
  <motion.div
- className="fixed inset-0 z-[80] flex flex-col bg-kindle-bg text-kindle-text w-full h-full"
+ className="kora-game-theme fixed inset-0 z-[80] flex flex-col bg-kindle-bg text-kindle-text w-full h-full"
  initial={{opacity: 0}}
  animate={{opacity: 1}}
  exit={{opacity: 0}}
@@ -801,7 +801,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  ?"bg-amber-100 dark:bg-amber-950/70 text-amber-950 dark:text-amber-100 border-amber-400 dark:border-amber-600"
  : filled && isWheel
  ?"bg-amber-400 text-neutral-950 border-amber-500 font-bold"
- :"bg-white dark:bg-[#1a1a20] text-neutral-900 dark:text-neutral-100 border-neutral-300 dark:border-neutral-700 hover:border-amber-400"
+ :"bg-[var(--theme-card)] text-[var(--theme-text)] border-[var(--theme-border)] hover:border-[var(--theme-accent)]"
 } ${flashing ?"kora-xw-pop":""} ${wrong ?"ring-2 ring-red-500 bg-red-100 dark:bg-red-950/50":""}`}
  style={{fontSize: `clamp(10px, ${Math.floor(280 / puzzle.size)}px, 18px)`}}
  >
