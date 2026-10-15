@@ -1698,6 +1698,17 @@ export default function App() {
       });
       if (!identityCheck.ok) {
         navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId });
+        const fallback = swDownloadFallbackRef.current.get(downloadId);
+        if (fallback) {
+          swDownloadFallbackRef.current.delete(downloadId);
+          logger.warn(`SW mirror returned an invalid or mismatched book (${identityCheck.detail}); retrying the mirror ladder in the foreground.`);
+          toast.loading(`Retrying ${fallback.book.title} with another source…`, { id: downloadId });
+          void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
+            reuseDownloadId: downloadId,
+            skipServiceWorker: true,
+          });
+          return;
+        }
         throw new Error(identityCheck.detail);
       }
 
@@ -1742,6 +1753,7 @@ export default function App() {
       });
       toast.success(String(finalTitle) + " downloaded!", { id: downloadId });
       refreshLibrary();
+      swDownloadFallbackRef.current.delete(downloadId);
       navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId });
     } catch (err) {
       console.error("SW pickup failed:", err);
@@ -1848,7 +1860,7 @@ export default function App() {
       } else if (data.type === "download-complete") {
         clearSwDownloadWatchdog(data.downloadId);
         swMadeProgressRef.current.delete(data.downloadId);
-        swDownloadFallbackRef.current.delete(data.downloadId);
+        // Keep the foreground mirror ladder until the returned bytes have passed validation.
         await ingestDownloadRef.current(data.downloadId, data.title, data.size, Boolean(data.conversionExpected), data.sourceUrl);
       } else if (data.type === "conversion-progress") {
         const status = String(data.status || data.stage || "extracting");
