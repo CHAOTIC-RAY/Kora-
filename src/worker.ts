@@ -4147,6 +4147,8 @@ export default {
     }
 
     return new Response("Not Found", { status: 404 });
+  }
+};
 
 async function resolveLibgenAdsKey(md5: string, onBotCheck?: (text: string) => void): Promise<string> {
   // Try fetching ads.php from LibGen mirrors to extract signed key
@@ -4190,4 +4192,3 @@ async function resolveLibgenAdsKey(md5: string, onBotCheck?: (text: string) => v
   }
   return "";
 }
-
