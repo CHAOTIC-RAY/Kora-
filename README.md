@@ -67,6 +67,7 @@ The development server starts through `tsx server.ts`. Open the local URL printe
 |---|---|
 | `npm run dev` | Run the local application/server |
 | `npm run lint` | Run the TypeScript no-emit check |
+| `npm run test:scrabble-scoring` | Run deterministic Scrabble CPU scoring regression checks |
 | `npm run build` | Build the data bundle, web assets, and bundled server |
 | `npm run build:prod` | Build with the production app channel |
 | `npm run build:beta` | Build with the beta app channel |
