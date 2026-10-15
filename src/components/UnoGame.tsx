@@ -589,15 +589,16 @@ export default function UnoGame({
     <AnimatePresence>
       <div className="kora-game-theme fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-md p-2 sm:p-4">
         <motion.div
+          style={{ backgroundColor: "var(--theme-bg)", color: "var(--theme-text)" }}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className={`w-full bg-kindle-bg border border-kindle-border rounded-3xl overflow-hidden shadow-2xl flex flex-col ${
+          className={`kora-game-theme w-full border border-[var(--theme-border)] rounded-3xl overflow-hidden shadow-2xl flex flex-col ${
             variant === "fullscreen" ? "h-full max-w-full rounded-none" : "h-[90vh] max-w-5xl"
           }`}
         >
           {/* Header Bar */}
-          <header className="px-5 py-3 border-b border-kindle-border/60 flex items-center justify-between shrink-0 bg-kindle-card/60">
+          <header className="px-5 py-3 border-b border-[var(--theme-border)] flex items-center justify-between shrink-0 bg-[var(--theme-card)]">
             <div className="flex items-center gap-2.5">
               <div className="p-2 rounded-xl bg-rose-500/10 text-rose-500">
                 <Flame className="w-5 h-5" />
@@ -692,7 +693,7 @@ export default function UnoGame({
                 <div className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-card)] p-3 sm:p-4">
                   <div className="mb-3 flex items-center gap-2 px-1 text-left text-[10px] font-black uppercase tracking-[.2em] text-[var(--theme-text-muted)]"><Users className="h-3.5 w-3.5" /> Have a room code?</div>
                   <div className="flex gap-2">
-                    <input type="text" placeholder="ENTER ROOM CODE" value={joinInput} onChange={(e) => setJoinInput(e.target.value.toUpperCase())} maxLength={6} aria-label="Room code" className="min-w-0 flex-1 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-card)] px-4 py-3 font-mono text-sm tracking-[.2em] text-white outline-none placeholder:text-white/25 focus:border-rose-400" />
+                    <input type="text" placeholder="ENTER ROOM CODE" value={joinInput} onChange={(e) => setJoinInput(e.target.value.toUpperCase())} maxLength={6} aria-label="Room code" className="min-w-0 flex-1 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-bg)] px-4 py-3 font-mono text-sm tracking-[.2em] text-[var(--theme-text)] outline-none placeholder:text-[var(--theme-text-muted)] focus:border-[var(--theme-accent)]" />
                     <button type="button" onClick={() => joinP2pRoom(joinInput)} className="rounded-xl bg-[var(--theme-accent)] px-5 py-3 text-xs font-black uppercase tracking-widest text-[var(--theme-bg)] transition hover:bg-rose-100">Join</button>
                   </div>
                 </div>
@@ -703,7 +704,7 @@ export default function UnoGame({
 
           {/* SCREEN 2: P2P LOBBY */}
           {screen === "lobby" && (
-            <main className="flex-1 p-6 flex flex-col items-center justify-center max-w-lg mx-auto w-full space-y-6 text-center">
+            <main className="kora-game-theme flex-1 p-6 flex flex-col items-center justify-center max-w-lg mx-auto w-full space-y-6 text-center">
               <div className="space-y-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-rose-500">
                   Local Network Arena
@@ -789,7 +790,7 @@ export default function UnoGame({
           {/* SCREEN 3: ACTIVE PLAYING ARENA */}
           {screen === "playing" && publicState && (
             <main className="kora-game-theme relative flex-1 overflow-hidden p-3 text-[var(--theme-text)] sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 48%), var(--theme-bg)" }}>
-              <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,.16) .7px, transparent .7px)", backgroundSize: "15px 15px" }} />
+              <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(color-mix(in srgb, var(--theme-text) 10%, transparent) .7px, transparent .7px)", backgroundSize: "15px 15px" }} />
               <div className="relative z-10 flex h-full min-h-[470px] flex-col gap-3 sm:gap-4">
                 {/* Opponent seats */}
                 <div className="flex shrink-0 items-center justify-center gap-2 overflow-x-auto pb-1">
@@ -800,7 +801,7 @@ export default function UnoGame({
                       <div key={p.id} className={`flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-2 transition-all ${isActive ? "border-[var(--theme-border)] bg-[var(--theme-card)] shadow-lg ring-2 ring-white/10" : "border-[var(--theme-border)] bg-[var(--theme-card)]"}`}>
                         <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-black text-[var(--theme-text)] shadow-inner" style={{ background: `linear-gradient(145deg,${accents[i % accents.length]},#202334)` }}>
                           {p.name.charAt(0).toUpperCase()}
-                          {isActive && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[#171923] bg-emerald-300" />}
+                          {isActive && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[var(--theme-card)] bg-emerald-300" />}
                         </div>
                         <div className="min-w-0 text-left">
                           <p className="max-w-[100px] truncate text-[11px] font-black sm:text-xs">{p.name}</p>
@@ -813,7 +814,7 @@ export default function UnoGame({
                 </div>
 
                 {/* Custom felt table */}
-                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-[var(--theme-border)] shadow-[inset_0_0_45px_rgba(0,0,0,.38),0_18px_50px_rgba(0,0,0,.25)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
+                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-[var(--theme-border)] shadow-[inset_0_0_28px_color-mix(in_srgb,var(--theme-text)_7%,transparent),0_12px_32px_color-mix(in_srgb,var(--theme-text)_10%,transparent)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
                   <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-[var(--theme-border)] sm:inset-5 sm:rounded-[2rem]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[60%]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[62%] w-[56%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[40%]" />
@@ -842,7 +843,7 @@ export default function UnoGame({
                       {publicState.currentColor} active
                     </div>
                     <p className="max-w-xl text-xs font-semibold text-[var(--theme-text-muted)] sm:text-sm">{publicState.lastActionDescription}</p>
-                    <p className={`text-[10px] font-black uppercase tracking-[.2em] sm:text-xs ${isMyTurn ? "text-amber-200" : "text-emerald-100/60"}`}>
+                    <p className={`text-[10px] font-black uppercase tracking-[.2em] sm:text-xs ${isMyTurn ? "text-[var(--theme-accent)]" : "text-[var(--theme-text-muted)]"}`}>
                       {isMyTurn ? "Your turn — play a matching card" : `Waiting for ${activePlayer?.name || "opponent"}`}
                     </p>
                   </div>
@@ -872,7 +873,7 @@ export default function UnoGame({
 
           {/* SCREEN 4: GAME OVER / VICTORY */}
           {screen === "game_over" && publicState && (
-            <main className="flex-1 p-6 flex flex-col items-center justify-center max-w-md mx-auto w-full space-y-6 text-center">
+            <main className="kora-game-theme flex-1 p-6 flex flex-col items-center justify-center max-w-md mx-auto w-full space-y-6 text-center">
               <div className="p-4 rounded-full bg-amber-500/10 text-amber-500 animate-bounce">
                 <Trophy className="w-16 h-16" />
               </div>
