@@ -223,7 +223,7 @@ export default function WordSearchGame({open, onClose, variant ="fullscreen", on
  return (
  <AnimatePresence>
  <motion.div
- className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md"
+ className="kora-game-theme fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-black/65 backdrop-blur-md"
  initial={{opacity: 0}}
  animate={{opacity: 1}}
  exit={{opacity: 0}}
@@ -249,7 +249,7 @@ export default function WordSearchGame({open, onClose, variant ="fullscreen", on
  return (
  <AnimatePresence>
  <motion.div
- className="fixed inset-0 z-[80] flex flex-col bg-kindle-bg text-kindle-text w-full h-full"
+ className="kora-game-theme fixed inset-0 z-[80] flex flex-col bg-kindle-bg text-kindle-text w-full h-full"
  initial={{opacity: 0}}
  animate={{opacity: 1}}
  exit={{opacity: 0}}
@@ -476,7 +476,7 @@ export default function WordSearchGame({open, onClose, variant ="fullscreen", on
  ?"bg-kindle-accent text-kindle-bg border-kindle-accent"
  : solved
  ?"bg-kindle-accent/35 text-kindle-text border-kindle-accent/50"
- :"bg-white text-kindle-text border-kindle-border"
+ :"bg-[var(--theme-card)] text-[var(--theme-text)] border-[var(--theme-border)]"
 }`}
  style={{fontSize: `clamp(11px, ${Math.floor(260 / puzzle.size)}px, 18px)`}}
  >
