@@ -19,9 +19,31 @@ function romanToInt(s: string): number | null {
 }
 
 /** Pull series name + number from a free-form title when fields are empty. */
+export function parseVolumeFromTitle(title: string): ParsedSeries | null {
+  const t = (title || "").trim();
+  if (!t) return null;
+
+  const patterns = [
+    /^(.*?)\\s+(?:vol(?:ume)?\\.?|book|ch(?:apter)?\\.?|part)\\s*#?\\s*(\\d+(?:\\.\\d+)?)\\s*$/i,
+    /^(.*?)\\s*\\(\\s*(?:vol(?:ume)?\\.?|book|ch(?:apter)?\\.?|part)\\s*#?\\s*(\\d+(?:\\.\\d+)?)\\s*\\)\\s*$/i,
+  ];
+  for (const pattern of patterns) {
+    const match = t.match(pattern);
+    if (!match) continue;
+    const series = match[1]?.trim().replace(/[,:–—-]+$/, "").trim();
+    const rawNumber = match[2];
+    if (!series || !rawNumber) continue;
+    const numeric = Number.parseFloat(rawNumber);
+    return { series, seriesNumber: Number.isFinite(numeric) ? String(numeric) : rawNumber };
+  }
+  return null;
+}
+
 export function parseSeriesFromTitle(title: string): ParsedSeries | null {
   const t = (title || "").trim();
   if (!t) return null;
+  const volume = parseVolumeFromTitle(t);
+  if (volume) return volume;
 
   // Pattern: Series Name #N: Rest
   let m = t.match(/^(.+?)\s*(?:#|book\s+)(\d+(?:\.\d+)?)\s*[:\-–—]\s*(.+)$/i);
@@ -169,8 +191,8 @@ export function getSeriesProgress(
 export function detectSeriesAcrossLibrary(library: BookMetadata[]): BookMetadata[] {
   return library.map(ensureSeriesFields);
 }
-/** Group books by series. Returns an array of series groups. */
-export function buildLibraryGroups(library: BookMetadata[]): Array<{
+export interface LibraryGroup {
+  key: string;
   isSeries: boolean;
   title: string;
   total: number;
@@ -180,31 +202,32 @@ export function buildLibraryGroups(library: BookMetadata[]): Array<{
   toRead: number;
   furthestCompletedNumber: number;
   highestNumber: number;
-}> {
-  // Ensure each book has series and seriesNumber fields
-  const booksWithSeries = library.map(ensureSeriesFields);
+}
 
-  // Group by normalized series key
+/** Group books by series. Returns an array of series groups. */
+export function buildLibraryGroups(library: BookMetadata[]): LibraryGroup[] {
+  // Detect numbered volumes first, then let an exactly matching bare title
+  // join its series as volume one. Similar-but-not-identical titles stay separate.
+  const detectedBooks = library.map(ensureSeriesFields);
+  const seriesKeys = new Set(
+    detectedBooks.map((book) => normalizeSeriesKey(book.series || "")).filter(Boolean)
+  );
+  const booksWithSeries = detectedBooks.map((book) => {
+    if (book.series?.trim() || !seriesKeys.has(normalizeSeriesKey(book.title || ""))) return book;
+    return { ...book, series: book.title.trim(), seriesNumber: book.seriesNumber || "1" };
+  });
+
+  // Group numbered volumes by series, and keep every unrelated standalone entry distinct.
   const groupsMap = new Map<string, BookMetadata[]>();
   for (const book of booksWithSeries) {
-    const key = normalizeSeriesKey(book.series ?? "");
+    const key = normalizeSeriesKey(book.series ?? "") || `book:${book.id}`;
     if (!groupsMap.has(key)) {
       groupsMap.set(key, []);
     }
     groupsMap.get(key)!.push(book);
   }
 
-  const groups: Array<{
-    isSeries: boolean;
-    title: string;
-    total: number;
-    volumes: BookMetadata[];
-    completed: number;
-    reading: number;
-    toRead: number;
-    furthestCompletedNumber: number;
-    highestNumber: number;
-  }> = [];
+  const groups: LibraryGroup[] = [];
 
   for (const [key, books] of groupsMap) {
     if (books.length === 0) continue;
@@ -254,6 +277,7 @@ export function buildLibraryGroups(library: BookMetadata[]): Array<{
     }
 
     groups.push({
+      key,
       isSeries,
       title,
       total: sortedVolumes.length,
@@ -267,4 +291,9 @@ export function buildLibraryGroups(library: BookMetadata[]): Array<{
   }
 
   return groups;
+}
+
+/** Return the series group that contains a book, or null when absent. */
+export function findGroupForBook(groups: LibraryGroup[], bookId: string): LibraryGroup | null {
+  return groups.find((group) => group.volumes.some((book) => book.id === bookId)) || null;
 }

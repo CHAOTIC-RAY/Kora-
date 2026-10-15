@@ -4,9 +4,10 @@ import { getAllDictionaryEntries, DictionaryEntry } from "../lib/dictionary";
 
 interface DictionaryWidgetProps {
   onClose?: () => void;
+  bare?: boolean;
 }
 
-export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
+export default function DictionaryWidget({ onClose, bare = false }: DictionaryWidgetProps) {
   const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [query, setQuery] = useState("");
   const [ready, setReady] = useState(false);
@@ -39,7 +40,7 @@ export default function DictionaryWidget({ onClose }: DictionaryWidgetProps) {
     s.replace(/&#\d+;/g, (m) => String.fromCodePoint(parseInt(m.slice(2, -1), 10)));
 
   return (
-    <div className="flex flex-col h-full w-full bg-kindle-bg text-kindle-text">
+    <div className={`flex flex-col h-full w-full ${bare ? "" : "bg-kindle-bg text-kindle-text"}`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-kindle-border">
         <div className="flex items-center gap-2">
           <BookA className="w-4 h-4 text-kindle-accent" />

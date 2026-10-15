@@ -21,6 +21,7 @@ import {
   abortActiveSearch,
   streamAudiobookSearch,
   streamEbookSearch,
+  getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { canHover } from "../lib/canHover";
@@ -254,7 +255,6 @@ function DiscoverView({
       return;
     }
 
-    setFullscreenDetail(true);
     openBookDetail({
       id: initialBookId || `deeplink_${title}`,
       title,

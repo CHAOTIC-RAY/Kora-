@@ -694,7 +694,7 @@ function SettingsView({
   const handleSelectRealDir = async () => {
     try {
       if (!(window as any).showDirectoryPicker) {
-        toast.info("Directory Selection is not natively supported. Tap Dismiss.");
+        toast("Directory Selection is not natively supported. Tap Dismiss.", { icon: "ℹ️" });
         return;
       }
       const handle = await (window as any).showDirectoryPicker({ mode: "readwrite" });
@@ -741,7 +741,7 @@ function SettingsView({
           })()
         )
       );
-      await clearLibraryExcept(userId || "", keepIds);
+      clearLibraryExcept(new Set(keepIds));
       if (onCachedIdsChanged) onCachedIdsChanged();
       if (onRefreshLibrary) onRefreshLibrary();
       toast.success("Library cleared — only the Getting started guide remains.");
@@ -2563,7 +2563,7 @@ function SettingsView({
               <div className="space-y-3">
                 <button 
                   className="w-full py-3.5 bg-[#4285F4] text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg hover:brightness-110 transition cursor-pointer"
-                  onClick={() => toast.info("Cloud Sync Integration: Set up Google OAuth in AI Studio settings.")}
+                  onClick={() => toast("Cloud Sync Integration: Set up Google OAuth in AI Studio settings.", { icon: "ℹ️" })}
                 >
                   Connect Google Drive
                 </button>

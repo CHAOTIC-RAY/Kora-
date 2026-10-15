@@ -134,6 +134,21 @@ try {
 
 export { db, auth, isRealFirebase };
 
+/** Current authenticated UID, or an empty string while signed out/offline. */
+export function getCurrentUserId(): string {
+  return auth?.currentUser?.uid || "";
+}
+
+/** Firestore handle shared by the comic progress sync module. */
+export function getFirestoreDb() {
+  return db;
+}
+
+/** True only while a real Firestore connection is configured. */
+export function isFirebaseActive(): boolean {
+  return Boolean(isRealFirebase && db);
+}
+
 // ---------------------------------------------------------------------------
 // RESILIENT STATE SYNC ENGINE
 // Handles syncing library books, progress, tags, and notes to Firestore (if available)
@@ -180,6 +195,12 @@ export interface BookMetadata {
   audiobookCurrentTrack?: number;
   audiobookCurrentTime?: number;
   downloadId?: string;
+  /** Optional source/content kind used by manga and series grouping. */
+  kind?: string;
+  /** Transient download-card state; persisted as part of local UI records only. */
+  isDownloadingCard?: boolean;
+  activeDownload?: { id: string; status?: string } | null;
+  failedDownload?: boolean;
 }
 
 // LocalStorage helpers
