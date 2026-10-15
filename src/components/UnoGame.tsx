@@ -587,7 +587,7 @@ export default function UnoGame({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4">
+      <div className="kora-game-theme fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-md p-2 sm:p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -649,12 +649,12 @@ export default function UnoGame({
 
           {/* SCREEN 1: MENU / MODE SELECTION */}
           {screen === "menu" && (
-            <main className="relative flex-1 overflow-y-auto bg-[#11131d] px-4 py-7 text-white sm:px-8 sm:py-10">
+            <main className="relative flex-1 overflow-y-auto bg-[var(--theme-bg)] px-4 py-7 text-[var(--theme-text)] sm:px-8 sm:py-10">
               <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(244,63,94,.22), transparent 45%), radial-gradient(ellipse at 0% 100%, rgba(37,136,255,.16), transparent 40%)" }} />
               <div className="relative mx-auto flex min-h-full w-full max-w-4xl flex-col items-center justify-center gap-7 text-center">
                 <div className="relative">
                   <div className="absolute -inset-5 rounded-full bg-rose-500/20 blur-2xl" />
-                  <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] border border-white/15 bg-[#1c2030] shadow-2xl rotate-[-7deg]">
+                  <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] border border-[var(--theme-border)] bg-[var(--theme-card)] shadow-2xl rotate-[-7deg]">
                     <div className="h-16 w-12 rotate-[7deg] rounded-xl border-[3px] border-white bg-gradient-to-br from-rose-500 via-orange-400 to-yellow-300 shadow-xl flex items-center justify-center">
                       <span className="text-2xl font-black italic text-white">K</span>
                     </div>
@@ -668,7 +668,7 @@ export default function UnoGame({
                   </p>
                 </div>
                 <div className="grid w-full gap-4 pt-1 sm:grid-cols-2">
-                  <button type="button" onClick={startSoloGame} className="group relative overflow-hidden rounded-3xl border border-emerald-300/20 bg-[#153a32] p-5 text-left shadow-xl transition hover:-translate-y-1 hover:border-emerald-200/60 hover:shadow-2xl sm:p-6">
+                  <button type="button" onClick={startSoloGame} className="group relative overflow-hidden rounded-3xl border border-[var(--theme-border)] bg-[var(--theme-card)] p-5 text-left shadow-xl transition hover:-translate-y-1 hover:border-[var(--theme-accent)] hover:shadow-2xl sm:p-6">
                     <div className="absolute -right-5 -top-8 h-32 w-28 rotate-12 opacity-80 transition group-hover:rotate-6 group-hover:scale-110">
                       <UnoCardArt card={{ id: "menu-green", color: "green", value: "7", scoreValue: 7 }} compact />
                     </div>
@@ -678,7 +678,7 @@ export default function UnoGame({
                       <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-200">Play now <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
                     </div>
                   </button>
-                  <button type="button" onClick={hostP2pRoom} className="group relative overflow-hidden rounded-3xl border border-rose-300/20 bg-[#3a202b] p-5 text-left shadow-xl transition hover:-translate-y-1 hover:border-rose-200/60 hover:shadow-2xl sm:p-6">
+                  <button type="button" onClick={hostP2pRoom} className="group relative overflow-hidden rounded-3xl border border-[var(--theme-border)] bg-[var(--theme-card)] p-5 text-left shadow-xl transition hover:-translate-y-1 hover:border-[var(--theme-accent)] hover:shadow-2xl sm:p-6">
                     <div className="absolute -right-5 -top-8 h-32 w-28 rotate-12 opacity-80 transition group-hover:rotate-6 group-hover:scale-110">
                       <UnoCardArt card={{ id: "menu-wild", color: "wild", value: "wild4", scoreValue: 50 }} compact />
                     </div>
@@ -788,7 +788,7 @@ export default function UnoGame({
 
           {/* SCREEN 3: ACTIVE PLAYING ARENA */}
           {screen === "playing" && publicState && (
-            <main className="relative flex-1 overflow-hidden p-3 text-white sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, rgba(244,63,94,.17), transparent 48%), linear-gradient(145deg,#11131d,#191d2b 55%,#10131b)" }}>
+            <main className="kora-game-theme relative flex-1 overflow-hidden p-3 text-[var(--theme-text)] sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 48%), var(--theme-bg)" }}>
               <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,.16) .7px, transparent .7px)", backgroundSize: "15px 15px" }} />
               <div className="relative z-10 flex h-full min-h-[470px] flex-col gap-3 sm:gap-4">
                 {/* Opponent seats */}
@@ -813,7 +813,7 @@ export default function UnoGame({
                 </div>
 
                 {/* Custom felt table */}
-                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-emerald-100/20 shadow-[inset_0_0_45px_rgba(0,0,0,.38),0_18px_50px_rgba(0,0,0,.25)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, #176b52 0%, #0d4a39 52%, #073427 100%)" }}>
+                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-emerald-100/20 shadow-[inset_0_0_45px_rgba(0,0,0,.38),0_18px_50px_rgba(0,0,0,.25)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
                   <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-white/10 sm:inset-5 sm:rounded-[2rem]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[60%]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[62%] w-[56%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[40%]" />
