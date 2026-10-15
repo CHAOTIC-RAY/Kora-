@@ -289,11 +289,12 @@ function DiscoverView({
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       try {
         const response = await fetchDiscoverApi(
           `/api/google-books/search?q=${encodeURIComponent(term)}&maxResults=5`,
-          { signal: undefined },
+          { signal: controller.signal },
           1
         );
         if (!response.ok) { if (!cancelled) setSearchSuggestions([]); return; }
@@ -312,6 +313,7 @@ function DiscoverView({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      controller.abort();
     };
   }, [query, showSearchAssist]);
 
