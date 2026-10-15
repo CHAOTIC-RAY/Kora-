@@ -622,7 +622,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  <button
  type="button"
  onClick={onOpenScores}
- className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
+ className="p-2 rounded-full border border-[var(--theme-border)] hover:bg-[var(--theme-card)] transition"
  aria-label="Open score tracker"
  title="Score Tracker"
  >
@@ -633,7 +633,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  <button
  type="button"
  onClick={() => setV(v ==="fullscreen"?"popup":"fullscreen")}
- className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
+ className="p-2 rounded-full border border-[var(--theme-border)] hover:bg-[var(--theme-card)] transition"
  aria-label={v ==="fullscreen"?"Shrink to popup":"Expand to fullscreen"}
  title={v ==="fullscreen"?"Popup":"Fullscreen"}
  >
@@ -643,7 +643,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  <button
  type="button"
  onClick={onClose}
- className="p-2 rounded-full border border-white/10 hover:bg-white/5 transition"
+ className="p-2 rounded-full border border-[var(--theme-border)] hover:bg-[var(--theme-card)] transition"
  aria-label="Close crossword"
  >
  <X className="w-5 h-5"/>
@@ -738,14 +738,14 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  <button
  type="button"
  onClick={() => setScreen("menu")}
- className="px-2.5 py-1.5 rounded-lg border border-white/10 text-[9px] font-bold uppercase tracking-wider opacity-70 hover:opacity-100"
+ className="px-2.5 py-1.5 rounded-lg border border-[var(--theme-border)] text-[9px] font-bold uppercase tracking-wider opacity-70 hover:opacity-100"
  >
  Menu
  </button>
  <button
  type="button"
  onClick={() => startLevel(mode, difficulty, level)}
- className="p-1.5 rounded-lg border border-white/10 opacity-70 hover:opacity-100"
+ className="p-1.5 rounded-lg border border-[var(--theme-border)] opacity-70 hover:opacity-100"
  title="Regenerate this level"
  >
  <RefreshCw className="w-3.5 h-3.5"/>
@@ -772,7 +772,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  return (
  <div
  key={`${r}-${c}`}
- className="aspect-square rounded-[3px] bg-neutral-900 dark:bg-black border border-neutral-950 shadow-inner"
+ className="aspect-square rounded-[3px] bg-[var(--theme-card)] border border-[var(--theme-border)] shadow-inner"
  />
  );
 }
@@ -838,7 +838,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  <button
  type="button"
  onClick={shuffleWheel}
- className="p-3 rounded-full border border-white/10 hover:bg-white/5"
+ className="p-3 rounded-full border border-[var(--theme-border)] hover:bg-[var(--theme-card)]"
  aria-label="Shuffle letters"
  >
  <Shuffle className="w-4 h-4 opacity-70"/>
@@ -850,7 +850,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  <button
  type="button"
  onClick={revealCell}
- className={`p-3 rounded-full border border-white/10 hover:bg-white/5 ${hintPulse ?"kora-xw-pop":""}`}
+ className={`p-3 rounded-full border border-[var(--theme-border)] hover:bg-[var(--theme-card)] ${hintPulse ?"kora-xw-pop":""}`}
  aria-label="Hint"
  >
  <Lightbulb className="w-4 h-4 opacity-70"/>
