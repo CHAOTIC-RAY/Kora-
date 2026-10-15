@@ -44,9 +44,10 @@
       <li><a href="#formats">Supported formats</a></li>
       <li><a href="#library">Library</a></li>
       <li><a href="#discover">Discover</a></li>
+      <li><a href="#audiobooks">Audiobooks</a></li>
       <li><a href="#plugins">Plugins</a></li>
       <li><a href="#sending">Send to a device</a></li>
-      <li><a href="#workshop">Workshop</a></li>
+      <li><a href="#workshop">Workshop and games</a></li>
       <li><a href="#themes">Themes</a></li>
       <li><a href="#downloads">Download control</a></li>
       <li><a href="#android">Android</a></li>
@@ -276,6 +277,64 @@
           are never hidden behind this switch.
         </p>
       </div>
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Search history and title recommendations</h3>
+          <span class="where">Discover search field</span>
+        </div>
+        <p>
+          The search field keeps a short, session-only list of recent queries.
+          While you type, it can request title and author suggestions from Google
+          Books. Suggestions are displayed below the input; they do not replace
+          what you typed unless you choose a recommendation.
+        </p>
+      </div>
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Book detail and edition resolution</h3>
+          <span class="where">Tap a search result</span>
+        </div>
+        <p>
+          Search results should open the same detail panel used by featured
+          catalogue items. Metadata, editions, and source mirrors may load
+          asynchronously. A catalogue entry is not proof that a file is
+          available; source and file validation can still fail.
+        </p>
+      </div>
+    </section>
+
+    <section id="audiobooks">
+      <h2><a class="anchor" href="#audiobooks">#</a>Audiobooks</h2>
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Playback and progress</h3>
+          <span class="where">Open an audiobook</span>
+        </div>
+        <p>
+          The player supports track navigation, seeking, playback speed,
+          progress restoration, and a minimized playback surface. Supported
+          tracks can update system media controls and playback metadata. Some
+          titles use browser text-to-speech rather than hosted audio.
+        </p>
+        <p class="nt">
+          <b>Network note</b> Remote audio can fail because a source has removed
+          a track, requires a referer, blocks a request, or becomes unavailable.
+          Downloaded tracks and locally generated speech have different
+          offline behaviour.
+        </p>
+      </div>
+      <div class="feat">
+        <div class="feat-h">
+          <h3>Sleep timer and smart skip</h3>
+          <span class="where">Player controls</span>
+        </div>
+        <p>
+          The player includes sleep and smart-skip preferences where supported.
+          Intro/outro detection is heuristic and can skip incorrectly for
+          unusual chapter lengths or metadata; turn it off if a chapter is cut
+          short.
+        </p>
+      </div>
     </section>
 
     <section id="plugins">
@@ -370,6 +429,9 @@
             <tr><td><strong>Personal Dictionary</strong></td><td>Look up and save words while reading; highlights definitions in the reader</td></tr>
             <tr><td><strong>Crossword</strong></td><td>Crossword grid</td></tr>
             <tr><td><strong>Word Search</strong></td><td>Word search grid</td></tr>
+            <tr><td><strong>Chess</strong></td><td>Play against the local Kora CPU or use pass-and-play</td></tr>
+            <tr><td><strong>Scrabble</strong></td><td>Letter-tile board game with online room support</td></tr>
+            <tr><td><strong>Uno</strong></td><td>Card game with local and multiplayer play options where available</td></tr>
           </tbody>
         </table>
       </div>
