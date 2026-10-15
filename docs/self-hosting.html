@@ -196,89 +196,53 @@ npx wrangler r2 bucket create kora-relay-beta</code></pre><button class="copy" t
     </section>
 
     <section id="secrets">
-      <h2><a class="anchor" href="#secrets">#</a>API keys</h2>
+      <h2><a class="anchor" href="#secrets">#</a>Server-side credentials</h2>
       <p>
-        The book-search key is optional. Kora searches without one — see
-        <a href="#fallbacks">the fallback chain</a> for what you get. Setting it
-        is a Cloudflare secret, not an environment variable: the Worker reads it
-        and it is never compiled into the bundle.
+        Optional upstream integrations may require credentials. Store these as
+        Cloudflare Worker secrets or in a local, gitignored <code>.dev.vars</code>
+        file. Never put private credentials in <code>VITE_*</code> variables:
+        Vite embeds those values into the client bundle.
+      </p>
+      <p>
+        The current Worker supports an optional <code>RAVE_API_KEY</code> secret
+        for one upstream catalog adapter. If your deployment uses that adapter,
+        configure it with:
       </p>
       <div class="term"><pre><code>npx wrangler secret put RAVE_API_KEY</code></pre><button class="copy" type="button">Copy</button></div>
-      <p>
-        Wrangler prompts for the value and stores it encrypted. It is sent in an
-        <code>X-API-Key</code> header and must stay server-side: anything
-        prefixed <code>VITE_</code> ends up in the public bundle.
-      </p>
-      <p>For local development, put secrets in <code>.dev.vars</code> (gitignored):</p>
+      <p>For local Worker development, add the same key to the gitignored <code>.dev.vars</code> file:</p>
       <div class="term"><pre><code>RAVE_API_KEY=your-key-here</code></pre><button class="copy" type="button">Copy</button></div>
+      <p>
+        The app can still start without this optional key. Availability and
+        result coverage then depend on the other catalog adapters configured in
+        the Worker and on the upstream services being reachable.
+      </p>
     </section>
 
     <section id="fallbacks">
-      <h2><a class="anchor" href="#fallbacks">#</a>What works without a key</h2>
+      <h2><a class="anchor" href="#fallbacks">#</a>Discovery and download fallbacks</h2>
       <p>
-        Kora runs with no Rave key at all. Search, discovery and downloads all
-        work; the only thing you lose is access to the key-authenticated v1
-        endpoint. The chain, in the order a search tries it:
+        Discovery combines metadata lookup with source-specific result adapters.
+        Google Books is used for book metadata where available; Open Library
+        provides supplemental metadata on supported fallback paths. A metadata
+        result is not necessarily a file source, and a file source is not
+        necessarily able to serve every title.
       </p>
       <ol class="steps">
-        <li>
-          <strong>Rave v1</strong> — <code>/api/v1/search</code>, requires the
-          key. Tried first, on the canonical host and then on the legacy Worker
-          host. The two are raced against each other, so a host that is not
-          answering does not delay the search.
-        </li>
-        <li>
-          <strong>Rave legacy</strong> — <code>/search/all</code>. Needs no key,
-          aggregates the same set of mirrors. This is what serves search on a
-          keyless install.
-        </li>
-        <li>
-          <strong>LibGen</strong> — resolved through signed CDN links, which
-          expire and are re-minted per request by racing mirrors.
-        </li>
-        <li>
-          <strong>Internet Archive</strong> — direct items, surfaced as their own
-          mirror.
-        </li>
-        <li>
-          <strong>Anna's Archive</strong>, <strong>LibreTexts</strong> and
-          <strong>Open Library</strong> — reached through the source endpoints
-          and the Worker proxy.
-        </li>
-        <li>
-          <strong>Project Gutenberg</strong> — reachable as a
-          <code>source=all</code> mirror, so public-domain titles appear
-          alongside everything else.
-        </li>
+        <li>Search metadata through the Google Books endpoint, with the configured fallback where supported.</li>
+        <li>Normalize and deduplicate the returned items before showing results.</li>
+        <li>Resolve editions and candidate file URLs through the available source adapters.</li>
+        <li>Fetch candidate files through the Worker proxy when required, rejecting common HTML interstitials and invalid or mismatched results.</li>
+        <li>Retry other available candidates when a source fails; partial bytes from one mirror must not be combined with another mirror's response.</li>
       </ol>
       <div class="note">
-        <p class="note-t">The response tells you which one answered</p>
+        <p class="note-t">Useful diagnostics</p>
         <p>
-          Every search response carries an <code>engine</code> field —
-          <code>"v1"</code>, <code>"legacy"</code> or <code>"none"</code> — plus
-          <code>fallback</code>, which is true whenever the engine is not
-          <code>v1</code>. The UI labels results from that field rather than
-          assuming v1, so a keyless install shows neutral wording
-          ("Open Catalog Mirror") instead of claiming a Rave result it never
-          fetched. Check it yourself:
-        </p>
-        <div class="term"><pre><code>curl "https://your-worker.workers.dev/api/annas-archive/search?q=dune&amp;source=all&amp;page=1"</code></pre><button class="copy" type="button">Copy</button></div>
-      </div>
-      <div class="note warn">
-        <p class="note-t">The v1 endpoint is unreliable, not dependable</p>
-        <p>
-          v1 is genuinely slower and fails outright on roughly half of queries;
-          the legacy endpoint's own response time has been measured anywhere from
-          7 to 24 seconds. That is why the three rungs race against a single
-          shared 28-second budget instead of running in sequence — a sequential
-          ladder can spend every timeout and still return nothing. In a
-          ten-query sample against the deployed Worker, v1 answered six and the
-          legacy endpoint answered the rest.
-        </p>
-        <p>
-          Plan for the legacy path being the one that usually serves you. Do not
-          describe a keyless or v1-backed install as "search always hits v1" —
-          that has not been true in measurement.
+          When a search or download fails, capture the request path, HTTP status,
+          selected source, and the diagnostic log around the attempt. A browser
+          message such as <code>TypeError: Failed to fetch</code> often means a
+          network, CORS, connection, or upstream failure; it does not identify
+          the root cause by itself. Verify upstream availability separately
+          before changing credentials or code.
         </p>
       </div>
     </section>
@@ -407,17 +371,13 @@ firebase deploy --only firestore:rules</code></pre><button class="copy" type="bu
               the repository variable and rebuild.</td>
             </tr>
             <tr>
-              <td>Book search slow or rate-limited</td>
-              <td>Check the <code>engine</code> field in the response. On the
-              legacy endpoint a slow response is upstream behaviour, not a
-              misconfiguration — measured between 7s and 24s. A key widens the
-              chance of the faster v1 rung answering, but does not remove the
-              legacy path.</td>
+              <td>Discovery slow or rate-limited</td>
+              <td>Check the request status and source-specific diagnostics. Slow responses can be upstream behaviour rather than a local misconfiguration. Check the configured adapter and upstream status; a credential does not remove the need for fallback handling.</td>
             </tr>
             <tr>
-              <td>Book search returns nothing at all</td>
+              <td>Discovery returns nothing</td>
               <td><code>engine</code> is <code>"none"</code>, meaning every rung
-              failed. Both Rave endpoints are bursty upstream, so retry. If the
+              failed. The upstream catalog may be temporarily unavailable, so retry. If the
               key is present, confirm it is a Worker secret and not a
               <code>VITE_</code> variable — anything prefixed
               <code>VITE_</code> is compiled into the public bundle.</td>
