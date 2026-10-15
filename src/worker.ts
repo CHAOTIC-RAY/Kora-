@@ -21,7 +21,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
-import { searchIndependentBookSources, searchIndependentPopularBooks } from "./lib/ravebsdScraper";
+import { searchIndependentBookSources, searchIndependentPopularBooks, getIndependentSourceHealth } from "./lib/ravebsdScraper";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
@@ -1710,6 +1710,18 @@ export default {
       }
     }
 
+    // Provider health is intentionally diagnostic-only: no credentials, full URLs, or query strings.
+    if (path === "/api/search/health") {
+      return new Response(JSON.stringify({
+        status: "ok",
+        engine: "independent-fallbacks",
+        sources: getIndependentSourceHealth(),
+        cache: "short-lived in-memory response cache"
+      }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" }
+      });
+    }
+
     if (path === "/api/search/stream") {
       const q = (url.searchParams.get("q") || "").trim();
       const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
@@ -2283,14 +2295,28 @@ export default {
       if (raveDirect) {
         try {
           const parsed = new URL(raveDirect);
-          const isDirectLink = /get\.php\?md5=.+&key=/.test(parsed.pathname + parsed.search) ||
-                              parsed.hostname.includes("archive.org");
-          if (isDirectLink) {
+          const host = parsed.hostname.toLowerCase();
+          const isLegacyResolvedLink =
+            /get\.php\?md5=.+&key=/i.test(parsed.pathname + parsed.search) ||
+            host === "archive.org" || host.endsWith(".archive.org");
+          // Source-native direct links from providers that publish open/public-domain files.
+          // Do not turn this endpoint into an arbitrary-URL proxy.
+          const openDownloadHosts = [
+            "gutenberg.org", "openstax.org", "libretexts.org", "librivox.org", "archive.org"
+          ];
+          const isAuthorizedOpenSource = parsed.protocol === "https:" &&
+            openDownloadHosts.some(domain => host === domain || host.endsWith("." + domain));
+          if (isLegacyResolvedLink || isAuthorizedOpenSource) {
+            const label = host.includes("gutenberg.org") ? "Project Gutenberg (direct)" :
+              host.includes("openstax.org") ? "OpenStax (direct)" :
+              host.includes("libretexts.org") ? "LibreTexts (direct)" :
+              host.includes("librivox.org") ? "LibriVox (direct)" :
+              host.includes("archive.org") ? "Internet Archive (direct)" : "Resolved source link";
             downloadLinks.push({
-              label: "Rave Direct (LibGen CDN)",
+              label,
               url: parsed.toString(),
               isDirect: true,
-              sourceId: "rave"
+              sourceId: isAuthorizedOpenSource ? host : "rave"
             });
           }
         } catch (_) { /* ignore malformed url */ }
@@ -2344,12 +2370,12 @@ export default {
             isDirect: false
           }
         ];
-      } else {
-        // SHA-256 pseudo-ID with no iaId — generic fallback
+      } else if (downloadLinks.length === 0) {
+        // No source-native download URL could be resolved; return a catalogue fallback.
         downloadLinks = [
           {
-            label: "Search Anna's Archive",
-            url: `https://annas-archive.org/search`,
+            label: "Search catalogue",
+            url: "https://openlibrary.org/search",
             isDirect: false
           }
         ];
