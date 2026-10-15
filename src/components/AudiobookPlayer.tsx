@@ -226,6 +226,7 @@ export default function AudiobookPlayer({
   const resumeTimeForTrack = useRef<number | null>(null);
   const outroSkipTriggered = useRef(false);
   const pendingTrackLoad = useRef<{ index: number; resumeTime?: number } | null>(null);
+  const trackLoadGeneration = useRef(0);
   const currentTrackRef = useRef(currentTrack);
   const goToTrackRef = useRef<(index: number) => void>(() => {});
   const isPlayingRef = useRef(isPlaying);
@@ -418,6 +419,7 @@ export default function AudiobookPlayer({
   const loadTrack = useCallback(
     async (index: number, autoPlay = false, resumeTime?: number) => {
       if (!tracks[index]) return;
+      const requestGeneration = ++trackLoadGeneration.current;
       if (isTtsBook) {
         await loadTtsTrack(index, autoPlay, resumeTime);
         return;
@@ -443,7 +445,11 @@ export default function AudiobookPlayer({
 
       try {
         const url = await resolveTrackUrl(index);
+        // A slower URL lookup must not overwrite a newer chapter selection or
+        // touch a media element after this player has unmounted.
+        if (requestGeneration !== trackLoadGeneration.current) return;
         const audio = audioRef.current;
+        if (!audio) return;
         // Prefer no crossOrigin for Worker proxy — some Android WebViews fail CORS on media.
         audio.removeAttribute("crossorigin");
         audio.src = url;
@@ -498,6 +504,7 @@ export default function AudiobookPlayer({
       }
     });
     return () => {
+      trackLoadGeneration.current += 1;
       unsub();
       ttsPlayerRef.current?.destroy();
       ttsPlayerRef.current = null;
