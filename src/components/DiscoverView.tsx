@@ -308,7 +308,7 @@ function DiscoverView({
           { signal: undefined },
           1
         );
-        if (!response.ok) return;
+        if (!response.ok) { if (!cancelled) setSearchSuggestions([]); return; }
         const payload = await response.json();
         const items = Array.isArray(payload.items) ? payload.items : [];
         const suggestions = items.map((item: any) => ({
@@ -3181,11 +3181,12 @@ function DiscoverView({
                 ref={searchInputRef}
                 value={query}
                 onFocus={() => setShowSearchAssist(true)}
+                onBlur={() => setShowSearchAssist(false)}
                 onChange={(e) => { setQuery(e.target.value); setShowSearchAssist(true); }}
                 onKeyDown={(e) => { if (e.key === "Escape") setShowSearchAssist(false); }}
                 autoComplete="off"
                 aria-autocomplete="list"
-                aria-expanded={showSearchAssist && (searchSuggestions.length > 0 || recentSearches.length > 0)}
+                aria-expanded={showSearchAssist && (query.trim() ? searchSuggestions.length > 0 : recentSearches.length > 0)}
                 data-guide="discover-search-input"
                 className="w-full pl-12 pr-32 py-4 bg-kindle-card border border-kindle-border rounded-2xl text-sm transition focus:ring-2 focus:ring-kindle-accent/20 outline-none shadow-sm placeholder:text-kindle-text-muted/60 group-hover:border-kindle-accent/40 font-sans"
               />
