@@ -385,9 +385,11 @@ export default function AudiobookPlayer({
           await ttsPlayerRef.current.play();
         }
       } catch (err) {
-        console.error("Failed to load TTS track:", err);
-        setPlaybackError((err as Error).message || "Could not load this chapter.");
-        setIsPlaying(false);
+        if (requestGeneration === trackLoadGeneration.current) {
+          console.error("Failed to load TTS track:", err);
+          setPlaybackError((err as Error).message || "Could not load this chapter.");
+          setIsPlaying(false);
+        }
       } finally {
         if (requestGeneration === trackLoadGeneration.current) setLoadingTrack(false);
       }
@@ -472,9 +474,11 @@ export default function AudiobookPlayer({
         }
         setCurrentTrack(index);
       } catch (err) {
-        console.error("Failed to load track:", err);
-        setPlaybackError("Could not load this track. Try downloading for offline playback.");
-        setIsPlaying(false);
+        if (requestGeneration === trackLoadGeneration.current) {
+          console.error("Failed to load track:", err);
+          setPlaybackError("Could not load this track. Try downloading for offline playback.");
+          setIsPlaying(false);
+        }
       } finally {
         if (requestGeneration === trackLoadGeneration.current) setLoadingTrack(false);
       }
