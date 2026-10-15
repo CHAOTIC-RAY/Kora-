@@ -169,3 +169,102 @@ export function getSeriesProgress(
 export function detectSeriesAcrossLibrary(library: BookMetadata[]): BookMetadata[] {
   return library.map(ensureSeriesFields);
 }
+/** Group books by series. Returns an array of series groups. */
+export function buildLibraryGroups(library: BookMetadata[]): Array<{
+  isSeries: boolean;
+  title: string;
+  total: number;
+  volumes: BookMetadata[];
+  completed: number;
+  reading: number;
+  toRead: number;
+  furthestCompletedNumber: number;
+  highestNumber: number;
+}> {
+  // Ensure each book has series and seriesNumber fields
+  const booksWithSeries = library.map(ensureSeriesFields);
+
+  // Group by normalized series key
+  const groupsMap = new Map<string, BookMetadata[]>();
+  for (const book of booksWithSeries) {
+    const key = normalizeSeriesKey(book.series ?? "");
+    if (!groupsMap.has(key)) {
+      groupsMap.set(key, []);
+    }
+    groupsMap.get(key)!.push(book);
+  }
+
+  const groups: Array<{
+    isSeries: boolean;
+    title: string;
+    total: number;
+    volumes: BookMetadata[];
+    completed: number;
+    reading: number;
+    toRead: number;
+    furthestCompletedNumber: number;
+    highestNumber: number;
+  }> = [];
+
+  for (const [key, books] of groupsMap) {
+    if (books.length === 0) continue;
+
+    // Sort volumes by seriesNumber numerically
+    const sortedVolumes = [...books].sort((a, b) => {
+      const na = parseSeriesNumber(a.seriesNumber ?? "");
+      const nb = parseSeriesNumber(b.seriesNumber ?? "");
+      if (na !== nb) return na - nb;
+      return (a.title || "").localeCompare(b.title || "");
+    });
+
+    // Determine if this is a series: more than one volume, or any book is manga
+    const isSeries =
+      sortedVolumes.length > 1 ||
+      sortedVolumes.some((b) => b.kind === "manga");
+
+    // The series title is the series field of the first book (they should be the same after ensureSeriesFields)
+    const title = sortedVolumes[0]?.series ?? "";
+
+    // Compute progress counts
+    let completed = 0;
+    let reading = 0;
+    let toRead = 0;
+    let furthestCompletedNumber = 0;
+    let highestNumber = 0;
+
+    for (const book of sortedVolumes) {
+      const isCompleted = book.status === "completed";
+      const isReading =
+        book.status === "reading" ||
+        (book.progress?.percent ?? 0) > 0;
+
+      if (isCompleted) completed++;
+      else if (isReading) reading++;
+      else toRead++;
+
+      const seriesNum = parseSeriesNumber(book.seriesNumber ?? "");
+      if (Number.isFinite(seriesNum)) {
+        if (isCompleted && seriesNum > furthestCompletedNumber) {
+          furthestCompletedNumber = seriesNum;
+        }
+        if (seriesNum > highestNumber) {
+          highestNumber = seriesNum;
+        }
+      }
+    }
+
+    groups.push({
+      isSeries,
+      title,
+      total: sortedVolumes.length,
+      volumes: sortedVolumes,
+      completed,
+      reading,
+      toRead,
+      furthestCompletedNumber,
+      highestNumber,
+    });
+  }
+
+  return groups;
+}
