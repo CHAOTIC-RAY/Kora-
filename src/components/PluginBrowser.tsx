@@ -245,6 +245,7 @@ export default function PluginBrowser({
     setInstallingId(e.plugin.id);
     try {
       const def = await fetchPluginDefinition(e.installUrl);
+      if (def.id !== e.plugin.id) throw new Error("Plugin ID mismatch");
       if (!def) throw new Error("empty response");
       installPlugin(def);
       // Installing is the opt-in. A separate Enable step meant a source
@@ -287,6 +288,7 @@ export default function PluginBrowser({
     try {
       const manifest = await fetchExtensionDefinition(e.installUrl);
       if (!manifest) throw new Error("empty response");
+      if (manifest.id !== e.plugin.id) throw new Error("Plugin ID mismatch");
       if (!installExtension(manifest)) {
         throw new Error("already installed, or it failed validation");
       }

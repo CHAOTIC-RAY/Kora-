@@ -209,7 +209,8 @@ export function addRepo(url: string): boolean {
 export function removeRepo(url: string): void {
   // The shipped registry is part of the app; it can be disabled but not
   // deleted, otherwise a user could end up with no way back.
-  writeJSON(LS_REPOS, getRepos().filter((r) => r !== DEFAULT_REPO));
+  const custom = readJSON<string[]>(LS_REPOS, []);
+  writeJSON(LS_REPOS, custom.filter((repo) => repo !== url));
 }
 
 export function installPlugin(plugin: SourcePlugin): void {
@@ -534,7 +535,7 @@ export async function fetchRegistry(
   const out: RepoEntry[] = [];
 
   for (const ext of list) {
-    const nsfw = isNsfwExtension(ext);
+    const nsfw = isNsfwExtension(ext) || (src as { nsfw?: boolean }).nsfw === true;
     for (const src of ext.sources ?? []) {
       const id = String(src.id);
       if (!id || !src.name) continue;
@@ -543,7 +544,7 @@ export async function fetchRegistry(
       // that omits it must not be read as "clean" by accident. Only an
       // explicit `piracy: false` is treated as declared-safe; everything else
       // is gated and the user decides.
-      const piracy = (src as { piracy?: boolean }).piracy === true;
+      const piracy = (src as { piracy?: boolean }).piracy !== false;
 
       // Only an explicit `false` is a broken source. A registry with no
       // `readable` field at all predates the verdict, and its sources are

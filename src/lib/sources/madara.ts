@@ -56,7 +56,7 @@ export const MADARA_SELECTORS: Required<MadaraSelectors> = {
 };
 
 function override(sel: MadaraSelectors, o: MadaraOverride | undefined): Required<MadaraSelectors> {
-  return { ...MADARA_SELECTORS, ...(o || {}) } as Required<MadaraSelectors>;
+  return { ...MADARA_SELECTORS, ...(o?.selectors ?? {}) } as Required<MadaraSelectors>;
 }
 
 /**
