@@ -263,29 +263,56 @@ function resolveUrl(href: string, base: string): string {
 }
 
 async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
-  const url = `https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all?q=${encodeURIComponent(query)}&mode=${mode}&source=${source}&page=${page}`;
-  const raveHeaders = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+  const configuredUrl = String(env?.RAVE_BOOK_SEARCH_URL || "").trim();
+  const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
+  let endpointKind: "legacy" | "ravebsd" = "legacy";
+  let endpoint: URL;
+  if (configuredUrl) {
+    endpoint = new URL(configuredUrl);
+    if (/\/api\/v1\/search\/?$/i.test(endpoint.pathname)) endpointKind = "ravebsd";
+    else if (/\/search\/all\/?$/i.test(endpoint.pathname)) endpointKind = "legacy";
+    else { endpoint.pathname = endpoint.pathname.replace(/\/+$/, "") + "/api/v1/search"; endpointKind = "ravebsd"; }
+    endpoint.searchParams.set("q", query);
+    endpoint.searchParams.set("mode", mode);
+    if (endpointKind === "legacy") {
+      endpoint.searchParams.set("source", source);
+      endpoint.searchParams.set("page", String(pageNumber));
+    } else {
+      endpoint.searchParams.delete("source");
+      endpoint.searchParams.delete("page");
+      const aliases: Record<string, string> = { "annas-archive": "annas", anna: "annas", ia: "archive", "internet-archive": "archive", zlib: "zlibrary" };
+      if (source && source !== "all") endpoint.searchParams.set("sources", aliases[source] || source);
+      else endpoint.searchParams.delete("sources");
+    }
+  } else {
+    endpoint = new URL("https://ravebooksearch.cloudflare-s3cvv.workers.dev/search/all");
+    endpoint.searchParams.set("q", query);
+    endpoint.searchParams.set("mode", mode);
+    endpoint.searchParams.set("source", source);
+    endpoint.searchParams.set("page", String(pageNumber));
+  }
+  const raveHeaders: Record<string, string> = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Accept": "application/json"
   };
-  // Bound search latency so book-detail "scanning" cannot hang indefinitely.
+  const apiKey = String(env?.RAVE_BOOK_SEARCH_API_KEY || "").trim();
+  if (apiKey) raveHeaders["X-API-Key"] = apiKey;
   const raveInit: RequestInit = { headers: raveHeaders, signal: AbortSignal.timeout(12000) };
   try {
     let res;
-    if (env && env.RAVE_BOOK_SEARCH) {
+    if (!configuredUrl && env?.RAVE_BOOK_SEARCH) {
       console.log("Using Cloudflare Service Binding RAVE_BOOK_SEARCH");
-      res = await env.RAVE_BOOK_SEARCH.fetch(url, raveInit);
+      res = await env.RAVE_BOOK_SEARCH.fetch(endpoint.toString(), raveInit);
     } else {
-      console.log("Falling back to public fetch for Rave Book Search");
-      res = await fetch(url, raveInit);
+      res = await fetch(endpoint.toString(), raveInit);
     }
-
     if (!res.ok) {
+      console.warn("Rave search returned HTTP " + res.status);
       return { results: [], meta: {} };
     }
-
     const data = await res.json() as any;
-    const rawResults: any[] = data.results || [];
-    const meta = data.meta || {};
+    const rawResults: any[] = Array.isArray(data.results) ? data.results : [];
+    let meta = data.meta && typeof data.meta === "object" ? data.meta : {};
 
     if (rawResults.length === 0) {
       return { results: [], meta: meta };
@@ -357,6 +384,12 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
       });
     }
 
+    if (endpointKind === "ravebsd") {
+      const offset = (pageNumber - 1) * 25;
+      const total = Number(meta.total ?? meta.totalCount) || mapped.length;
+      meta = { ...meta, total };
+      return { results: mapped.slice(offset, offset + 25), meta };
+    }
     return { results: mapped, meta };
   } catch (err) {
     console.error("fetchFromRaveBookSearch error:", err);
@@ -372,6 +405,10 @@ export interface Env {
   NYT_BOOKS_API_KEY?: string;
   GEMINI_API_KEY?: string;
   RAVE_BOOK_SEARCH?: any;
+  /** Optional self-hosted RaveBSD URL: origin, /api/v1/search, or legacy /search/all. */
+  RAVE_BOOK_SEARCH_URL?: string;
+  /** Optional RaveBSD X-API-Key. Keep this as a Worker secret. */
+  RAVE_BOOK_SEARCH_API_KEY?: string;
 }
 
 const FALLBACK_DOMAINS = {
@@ -1658,44 +1695,57 @@ export default {
 
     if (path === "/api/search/stream") {
       const q = (url.searchParams.get("q") || "").trim();
+      const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
+      const googlePageSize = 12;
       if (!q) {
         return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
       }
-
       const stream = new ReadableStream({
         async start(controller) {
           const enc = new TextEncoder();
-          const write = (obj: any) => controller.enqueue(enc.encode(JSON.stringify(obj) + "\n"));
-          const all: any[] = [];
-
-          await Promise.allSettled([
-            fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=12`)
-              .then(r => r.json())
-              .then(data => {
-                const books = (data.items || []).map((item: any) => {
-                  const info = item.volumeInfo || {};
-                  return {
-                    title: info.title,
-                    author: (info.authors || []).join(", "),
-                    coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
-                    year: info.publishedDate?.split("-")[0],
-                    publisher: info.publisher,
-                    isGoogleBook: true,
-                    source: "google",
-                  };
-                });
-                if (books.length) {
-                  all.push(...books);
-                  write({ source: "google", books });
-                }
-              }),
-          ]);
-
-          write({ done: true, totalCount: all.length, hasMore: all.length >= 12 });
-          controller.close();
+          const write = (obj: any) => {
+            try { controller.enqueue(enc.encode(JSON.stringify(obj) + "\n")); }
+            catch { /* The client closed the stream. */ }
+          };
+          let googleCount = 0, googleTotal = 0, raveCount = 0, raveTotal = 0;
+          const googleSearch = (async () => {
+            const startIndex = (page - 1) * googlePageSize;
+            const googleUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${googlePageSize}&startIndex=${startIndex}`;
+            const res = await fetch(googleUrl, { signal: AbortSignal.timeout(10000) });
+            if (!res.ok) throw new Error("Google Books returned HTTP " + res.status);
+            const data = await res.json() as any;
+            googleTotal = Number(data.totalItems) || 0;
+            const books = (data.items || []).map((item: any) => {
+              const info = item.volumeInfo || {};
+              return {
+                title: info.title,
+                author: (info.authors || []).join(", "),
+                coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:"),
+                year: info.publishedDate?.split("-")[0],
+                publisher: info.publisher,
+                isGoogleBook: true,
+                source: "google",
+              };
+            });
+            googleCount = books.length;
+            if (books.length) write({ source: "google", books });
+          })();
+          const raveSearch = (async () => {
+            const result = await fetchFromRaveBookSearch(env, q, "ebooks", "all", String(page));
+            const books = result.results.map((book: any) => ({ ...book, isGoogleBook: false, isRaveBook: true }));
+            raveCount = books.length;
+            raveTotal = Number(result.meta.total ?? result.meta.totalCount) || 0;
+            if (books.length) write({ source: "rave", books });
+          })();
+          await Promise.allSettled([googleSearch, raveSearch]);
+          const googleHasMore = googleCount >= googlePageSize || (googleTotal > 0 && page * googlePageSize < googleTotal);
+          const raveHasMore = raveCount >= 25 || (raveTotal > 0 && page * 25 < raveTotal);
+          const inferredRaveTotal = raveTotal || (raveCount ? page * 25 + (raveHasMore ? 25 : 0) : 0);
+          const totalCount = (googleTotal || ((page - 1) * googlePageSize + googleCount)) + inferredRaveTotal;
+          write({ done: true, totalCount, hasMore: googleHasMore || raveHasMore });
+          try { controller.close(); } catch { /* The stream has already been cancelled. */ }
         }
       });
-
       return new Response(stream, {
         headers: { "Content-Type": "application/x-ndjson", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache" }
       });

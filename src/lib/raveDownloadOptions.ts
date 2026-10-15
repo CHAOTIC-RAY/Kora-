@@ -92,23 +92,20 @@ export function buildRaveDownloadOptions(params: {
         isDirect: false,
       },
       {
-        label: "Search Rave for this book",
-        url: searchQuery
-          ? `https://ravebooksearch.com/search?q=${encodeURIComponent(searchQuery)}`
-          : "https://ravebooksearch.com",
+        label: "RaveBSD (self-hosted search)",
+        url: "https://ravebooksearch.com/",
         isDirect: false,
         isSearch: true,
       },
     ];
   } else if (downloadLinks.length === 0) {
-    const raveSearch = `https://ravebooksearch.com/search?q=${encodeURIComponent(searchQuery || md5 || "")}`;
     downloadLinks = [
       {
-        label: searchQuery ? `Search Rave for "${searchQuery}"` : "Search Rave for this book",
-        url: searchQuery ? raveSearch : "https://ravebooksearch.com",
+        label: "RaveBSD (self-hosted search)",
+        url: "https://ravebooksearch.com/",
         isDirect: false,
         sourceId: "rave",
-        isSearch: !searchQuery,
+        isSearch: true,
       },
     ];
   }

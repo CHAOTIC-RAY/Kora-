@@ -141,12 +141,20 @@ jobs:
           set -o pipefail
           echo "Android SDK ready"
 
+      - name: Type-check source
+        run: npm run lint
+
       - name: Build web assets for APK
         run: |
           echo "API base → $VITE_API_BASE_URL"
           echo "Channel  → $VITE_APP_CHANNEL"
           echo "APK ver  → $VITE_APK_VERSION"
           npm run build:apk-web
+
+      - name: Test source registry and Madara reader
+        run: |
+          npx tsx src/lib/sources/__tests__/registry.test.ts
+          npx tsx src/lib/sources/__tests__/madara.test.ts
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
