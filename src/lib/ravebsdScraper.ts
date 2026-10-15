@@ -217,13 +217,13 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
 
 export async function searchIndependentPopularBooks(): Promise<any> {
   const topics = [
-    { name: "Public-Domain Classics", q: "classic novels", mode: "ebooks" },
-    { name: "Open Textbooks", q: "biology", mode: "ebooks" },
-    { name: "Science & Learning", q: "physics", mode: "ebooks" },
-    { name: "Free Audiobooks", q: "Sherlock Holmes", mode: "audiobooks" }
+    { name: "Public-Domain Classics", q: "classic novels", mode: "ebooks", source: "gutenberg" },
+    { name: "Open Textbooks", q: "biology", mode: "ebooks", source: "openstax" },
+    { name: "Science & Learning", q: "physics", mode: "ebooks", source: "libretexts" },
+    { name: "Free Audiobooks", q: "Sherlock Holmes", mode: "audiobooks", source: "librivox" }
   ];
   const lists = await Promise.all(topics.map(async topic => {
-    const result = await searchIndependentBookSources(topic.q, topic.mode, "all");
+    const result = await searchIndependentBookSources(topic.q, topic.mode, topic.source);
     const books = result.results.slice(0, 8).map(b => ({
       title: b.title, author: b.author || "Unknown Author", book_image: b.coverUrl || "",
       description: b.description || "", primary_isbn13: "", source: b.source,
