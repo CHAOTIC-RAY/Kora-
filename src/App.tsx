@@ -1400,7 +1400,7 @@ export default function App() {
           bytes: new Uint8Array(await fileBlob.arrayBuffer()),
           requestedTitle: book.title,
           claimedExtension: fileExtension,
-          sawHtmlContentType: /text\\/html|application\\/xhtml/i.test(contentType),
+          sawHtmlContentType: contentType.toLowerCase().includes("text/html") || contentType.toLowerCase().includes("application/xhtml"),
         });
         if (!identityCheck.ok) {
           throw new Error(identityCheck.detail);
@@ -1694,7 +1694,7 @@ export default function App() {
         bytes: new Uint8Array(await blob.arrayBuffer()),
         requestedTitle: finalTitle,
         claimedExtension: fileExtension,
-        sawHtmlContentType: /text\\/html|application\\/xhtml/i.test(blob.type),
+        sawHtmlContentType: blob.type.toLowerCase().includes("text/html") || blob.type.toLowerCase().includes("application/xhtml"),
       });
       if (!identityCheck.ok) {
         navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId });
