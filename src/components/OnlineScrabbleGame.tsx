@@ -30,6 +30,7 @@ import {
 import { db, auth, isRealFirebase } from "../lib/firebase";
 import { doc, onSnapshot, setDoc, getDoc, updateDoc } from "firebase/firestore";
 import { WORD_BANK } from "../lib/wordGamesBank";
+import { scoreScrabbleCpuWord } from "../lib/scrabbleScoring";
 
 // Scrabble tile values
 const TILE_VALUES: Record<string, number> = {
@@ -995,25 +996,13 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
 
     if (chosenWord && placedCoords.length > 0) {
       const nextBoard = { ...currentBoard };
-      // Score the complete word, then apply premiums only to newly placed
-      // tiles. Comparing by letter alone is incorrect for repeated letters
-      // (e.g. a new E could accidentally hide an existing E from the score).
-      let turnScore = chosenWord.split("").reduce((sum, letter) => sum + (TILE_VALUES[letter] || 1), 0);
-      let wordMult = 1;
-
-      placedCoords.forEach((p) => {
-        nextBoard[`${p.r},${p.c}`] = { letter: p.letter, score: TILE_VALUES[p.letter] || 1 };
-
-        const cellVal = TILE_VALUES[p.letter] || 1;
-        const mult = getCellMultiplier(p.r, p.c);
-        if (mult.type === "TLS") turnScore += cellVal * 2;
-        else if (mult.type === "DLS") turnScore += cellVal;
-        if (mult.type === "TWS") wordMult *= 3;
-        if (mult.type === "DWS") wordMult *= 2;
-      });
-
-      let finalCpuScore = turnScore * wordMult;
-      if (placedCoords.length === 7) finalCpuScore += 50;
+      const cpuScore = scoreScrabbleCpuWord(
+        chosenWord,
+        placedCoords,
+        TILE_VALUES,
+        (row, column) => getCellMultiplier(row, column).type
+      );
+      const finalCpuScore = cpuScore.total;
 
       const usedLetters = placedCoords.map((p) => p.letter);
       const remainingCpuRack = [...cpuRack];
