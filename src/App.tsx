@@ -19,6 +19,8 @@ import {
 import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
+import { proxyUrlForMirror } from "./lib/downloadProxy";
+import { judgeMirrorDownload } from "./lib/mirrorOutcome";
 const LibraryManager = lazy(() => import("./components/LibraryManager"));
 const DiscoverView = lazy(() => import("./components/DiscoverView"));
 const SettingsView = lazy(() => import("./components/SettingsView"));
@@ -1104,9 +1106,7 @@ export default function App() {
         if ("Notification" in window && Notification.permission === "default") {
           try { await Notification.requestPermission(); } catch (e) {}
         }
-        const proxyUrls = mirrorList.map(
-          (m) => `/api/proxy-file?url=${encodeURIComponent(m.url)}`
-        );
+        const proxyUrls = mirrorList.map((m) => proxyUrlForMirror(m.url));
         const proxyUrl = proxyUrls[0];
         const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
         payloads[downloadId] = {
@@ -1168,7 +1168,7 @@ export default function App() {
           return updated;
         });
 
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        const proxyUrl = proxyUrlForMirror(mirror.url);
         const abortController = new AbortController();
         foregroundDownloadAborts.current.set(downloadId, abortController);
 
@@ -1395,6 +1395,18 @@ export default function App() {
         }
 
         let fileBlob = new Blob(chunks);
+        const identityCheck = await judgeMirrorDownload({
+          mirrorUrl: mirror.url,
+          bytes: new Uint8Array(await fileBlob.arrayBuffer()),
+          requestedTitle: book.title,
+          claimedExtension: fileExtension,
+          sawHtmlContentType: /text\\/html|application\\/xhtml/i.test(contentType),
+        });
+        if (!identityCheck.ok) {
+          throw new Error(identityCheck.detail);
+        }
+        logger.info(`[download] ${identityCheck.detail}`);
+
         const id = variant.md5 || Math.random().toString(36).substring(7);
 
         // Check if downloading using normal discovery search (non-advanced Google Book based search)
@@ -1655,7 +1667,7 @@ export default function App() {
   // Pick up a finished blob from the SW store, store it in the library, then
   // tell the SW to delete its copy. Shared by the completion handler and the
   // on-launch leftover sweep (C7).
-  async function ingestDownload(downloadId: string, fallbackTitle: string, fallbackSize?: string, conversionExpected = false) {
+  async function ingestDownload(downloadId: string, fallbackTitle: string, fallbackSize?: string, conversionExpected = false, completedProxyUrl?: string) {
     try {
       const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(downloadId)}`);
       if (!res.ok) throw new Error("pickup failed");
@@ -1670,6 +1682,24 @@ export default function App() {
       const id = variant.md5 || downloadId;
       const finalCoverUrl = book.coverUrl || "";
       const finalTags = Array.from(new Set([...(book.tags || []), ...inferBookTags(finalTitle, finalAuthor, fileExtension)]));
+      let actualMirrorUrl = completedProxyUrl || mirror?.mirrors?.[0]?.url || variant.downloadUrl || variant.directUrl || "";
+      try {
+        const proxy = new URL(actualMirrorUrl, window.location.origin);
+        if (proxy.pathname === "/api/proxy-file") actualMirrorUrl = proxy.searchParams.get("url") || actualMirrorUrl;
+      } catch {
+        /* identity validation can still check the bytes when a URL is unavailable */
+      }
+      const identityCheck = await judgeMirrorDownload({
+        mirrorUrl: actualMirrorUrl || window.location.origin,
+        bytes: new Uint8Array(await blob.arrayBuffer()),
+        requestedTitle: finalTitle,
+        claimedExtension: fileExtension,
+        sawHtmlContentType: /text\\/html|application\\/xhtml/i.test(blob.type),
+      });
+      if (!identityCheck.ok) {
+        navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId });
+        throw new Error(identityCheck.detail);
+      }
 
       await storeBookFile(id, blob, `${finalTitle}.${fileExtension}`, fileExtension);
       const newBook: BookMetadata = {
@@ -1819,7 +1849,7 @@ export default function App() {
         clearSwDownloadWatchdog(data.downloadId);
         swMadeProgressRef.current.delete(data.downloadId);
         swDownloadFallbackRef.current.delete(data.downloadId);
-        await ingestDownloadRef.current(data.downloadId, data.title, data.size, Boolean(data.conversionExpected));
+        await ingestDownloadRef.current(data.downloadId, data.title, data.size, Boolean(data.conversionExpected), data.sourceUrl);
       } else if (data.type === "conversion-progress") {
         const status = String(data.status || data.stage || "extracting");
         const percent = Math.max(0, Math.min(100, Number(data.percent) || 0));
