@@ -3841,7 +3841,9 @@ export default {
         }
 
         // 2. Resolve Libgen landing page to its actual direct file download link
-        const isLibgenLanding = targetUrl.includes("get.php?md5=") && !targetUrl.includes("&key=");
+        const isLibgenLanding =
+          (targetUrl.includes("get.php?md5=") || targetUrl.includes("ads.php?md5=")) &&
+          !targetUrl.includes("&key=");
         if (isLibgenLanding) {
           const md5Match = targetUrl.match(/md5=([a-fA-F0-9]{32})/i);
           // Prefer parallel signed-key resolution (avoids HTML/captcha traps that yield HTTP 500).
