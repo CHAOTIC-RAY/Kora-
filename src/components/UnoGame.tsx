@@ -797,14 +797,14 @@ export default function UnoGame({
                     const isActive = p.id === activePlayer?.id;
                     const accents = ["#f04452", "#2588ff", "#20b979", "#f8c844"];
                     return (
-                      <div key={p.id} className={`flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-2 transition-all ${isActive ? "border-white/35 bg-white/10 shadow-lg ring-2 ring-white/10" : "border-white/10 bg-black/20"}`}>
+                      <div key={p.id} className={`flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-2 transition-all ${isActive ? "border-[var(--theme-border)] bg-[var(--theme-card)] shadow-lg ring-2 ring-white/10" : "border-[var(--theme-border)] bg-[var(--theme-card)]"}`}>
                         <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-black text-white shadow-inner" style={{ background: `linear-gradient(145deg,${accents[i % accents.length]},#202334)` }}>
                           {p.name.charAt(0).toUpperCase()}
                           {isActive && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[#171923] bg-emerald-300" />}
                         </div>
                         <div className="min-w-0 text-left">
                           <p className="max-w-[100px] truncate text-[11px] font-black sm:text-xs">{p.name}</p>
-                          <p className="mt-0.5 text-[10px] text-white/50">{p.cardCount} cards{p.isCpu ? " · CPU" : ""}</p>
+                          <p className="mt-0.5 text-[10px] text-[var(--theme-text-muted)]">{p.cardCount} cards{p.isCpu ? " · CPU" : ""}</p>
                         </div>
                         {p.cardCount === 1 && !p.hasCalledUno && <button type="button" onClick={() => handleCatchUno(p.id)} className="rounded-lg bg-amber-300 px-2 py-1 text-[9px] font-black uppercase text-black animate-pulse">Catch!</button>}
                       </div>
@@ -814,10 +814,10 @@ export default function UnoGame({
 
                 {/* Custom felt table */}
                 <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-emerald-100/20 shadow-[inset_0_0_45px_rgba(0,0,0,.38),0_18px_50px_rgba(0,0,0,.25)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
-                  <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-white/10 sm:inset-5 sm:rounded-[2rem]" />
+                  <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-[var(--theme-border)] sm:inset-5 sm:rounded-[2rem]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[60%]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[62%] w-[56%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[40%]" />
-                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-emerald-50/65 sm:left-6 sm:top-6">
+                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-emerald-50/65 sm:left-6 sm:top-6">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_#6ee7b7]" /> Live table
                   </div>
                   <div className="relative z-10 flex w-full items-center justify-center gap-5 px-3 sm:gap-9">
@@ -827,21 +827,21 @@ export default function UnoGame({
                         <span className="absolute inset-0 -translate-x-1 translate-y-1 rotate-[-5deg]"><UnoCardBack compact /></span>
                         <span className="absolute inset-0"><UnoCardBack compact /></span>
                       </button>
-                      <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-[9px] font-black uppercase tracking-[.2em] text-white/75">Draw pile</span>
+                      <span className="rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1 text-[9px] font-black uppercase tracking-[.2em] text-[var(--theme-text-muted)]">Draw pile</span>
                     </div>
                     <div className="flex flex-col items-center gap-2">
                       <div className="relative h-28 w-[4.6rem] sm:h-36 sm:w-24">
                         {publicState.topDiscard && <motion.div key={publicState.topDiscard.id} initial={{ opacity: 0, y: -12, rotate: -9, scale: .9 }} animate={{ opacity: 1, y: 0, rotate: 2, scale: 1 }} transition={{ type: "spring", stiffness: 260, damping: 20 }} className="absolute inset-0"><UnoCardArt card={publicState.topDiscard} /></motion.div>}
                       </div>
-                      <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-[9px] font-black uppercase tracking-[.2em] text-white/75">Discard pile</span>
+                      <span className="rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1 text-[9px] font-black uppercase tracking-[.2em] text-[var(--theme-text-muted)]">Discard pile</span>
                     </div>
                   </div>
                   <div className="relative z-10 mt-4 flex flex-col items-center gap-2 px-4 text-center">
-                    <div className="flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest">
+                    <div className="flex items-center gap-2 rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1.5 text-[10px] font-black uppercase tracking-widest">
                       <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white/25" style={{ background: UNO_CARD_COLORS[publicState.currentColor as Exclude<UnoColor, "wild">] || "#fff" }} />
                       {publicState.currentColor} active
                     </div>
-                    <p className="max-w-xl text-xs font-semibold text-white/75 sm:text-sm">{publicState.lastActionDescription}</p>
+                    <p className="max-w-xl text-xs font-semibold text-[var(--theme-text-muted)] sm:text-sm">{publicState.lastActionDescription}</p>
                     <p className={`text-[10px] font-black uppercase tracking-[.2em] sm:text-xs ${isMyTurn ? "text-amber-200" : "text-emerald-100/60"}`}>
                       {isMyTurn ? "Your turn — play a matching card" : `Waiting for ${activePlayer?.name || "opponent"}`}
                     </p>
@@ -849,9 +849,9 @@ export default function UnoGame({
                 </section>
 
                 {/* Hand and action bar */}
-                <section className="shrink-0 rounded-[1.7rem] border border-white/10 bg-white/[.045] p-3 sm:p-4">
+                <section className="shrink-0 rounded-[1.7rem] border border-[var(--theme-border)] bg-[var(--theme-card)] p-3 sm:p-4">
                   <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                    <div><p className="text-xs font-black sm:text-sm">YOUR HAND <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/70">{myHand.length}</span></p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.18em] text-white/35">Tap a glowing card to play</p></div>
+                    <div><p className="text-xs font-black sm:text-sm">YOUR HAND <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[var(--theme-text-muted)]">{myHand.length}</span></p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.18em] text-[var(--theme-text-muted)]">Tap a glowing card to play</p></div>
                     {myHand.length <= 2 && <motion.button type="button" whileTap={{ scale: .94 }} onClick={handleCallUno} className="rounded-full border border-amber-200/50 bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2 text-[10px] font-black italic tracking-widest text-[#171923] shadow-[0_0_22px_rgba(251,191,36,.22)] sm:text-xs"><Flame className="mr-1 inline h-3.5 w-3.5" /> CALL UNO!</motion.button>}
                   </div>
                   <div className="flex min-h-[118px] items-end gap-2 overflow-x-auto overflow-y-hidden px-1 pb-2 pt-1 scrollbar-thin sm:min-h-[142px] sm:gap-2.5">
