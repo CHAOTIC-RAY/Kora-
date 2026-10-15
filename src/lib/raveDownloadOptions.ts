@@ -13,7 +13,7 @@ export type DownloadMirrorOption = {
   isSearch?: boolean;
 };
 
-function isVerifiedOpenAccessDirectUrl(value: string): boolean {
+export function isRaveDirectUpstreamUrl(value: string): boolean {
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== "https:") return false;
@@ -55,7 +55,7 @@ export function buildRaveDownloadOptions(params: {
   if (raveDirect) {
     try {
       const parsed = new URL(raveDirect);
-      if (isVerifiedOpenAccessDirectUrl(parsed.toString())) {
+      if (isRaveDirectUpstreamUrl(parsed.toString())) {
         options.push({
           label: "Open-access direct download",
           url: proxied(parsed.toString()),
