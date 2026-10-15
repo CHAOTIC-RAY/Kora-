@@ -477,7 +477,7 @@ function DiscoverView({
   // Recent Searches state
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
     try {
-      const saved = localStorage.getItem("kora_recent_searches");
+      const saved = sessionStorage.getItem("kora:discover-search-history");
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -2021,7 +2021,7 @@ function DiscoverView({
     const normalizedTerm = term.trim();
     setRecentSearches((previous) => {
       const next = [normalizedTerm, ...previous.filter((item) => item.toLocaleLowerCase() !== normalizedTerm.toLocaleLowerCase())].slice(0, 10);
-      try { localStorage.setItem("kora_recent_searches", JSON.stringify(next)); } catch { /* optional */ }
+      try { sessionStorage.setItem("kora:discover-search-history", JSON.stringify(next)); } catch { /* optional */ }
       return next;
     });
     setShowSearchAssist(false);
