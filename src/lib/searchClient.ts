@@ -1,16 +1,20 @@
-const SEARCH_CACHE_KEY = "kora_search_cache_v1";
+const SEARCH_CACHE_KEY = "kora_search_cache_v2";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 
 import { resolveApiUrl } from "./capacitorNative";
 
+type SearchChannel = "audiobook" | "ebook";
+
 interface SearchCacheEntry {
   results: any[];
   expires: number;
-  type: "audiobook" | "ebook";
+  type: SearchChannel;
+  totalCount?: number;
+  hasMore?: boolean;
 }
 
-let searchAbortController: AbortController | null = null;
+const searchAbortControllers: Partial<Record<SearchChannel, AbortController>> = {};
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 function loadCache(): Record<string, SearchCacheEntry> {
@@ -42,22 +46,44 @@ export function getCachedSearch(query: string, type: "audiobook" | "ebook"): any
   return null;
 }
 
-export function setCachedSearch(query: string, type: "audiobook" | "ebook", results: any[]) {
+export function getCachedSearchMeta(
+  query: string,
+  type: SearchChannel
+): { totalCount?: number; hasMore?: boolean } | null {
+  const key = `${type}:${query.toLowerCase().trim()}`;
+  const entry = loadCache()[key];
+  if (!entry || entry.expires <= Date.now()) return null;
+  return { totalCount: entry.totalCount, hasMore: entry.hasMore };
+}
+
+export function setCachedSearch(
+  query: string,
+  type: SearchChannel,
+  results: any[],
+  meta?: { totalCount?: number; hasMore?: boolean }
+) {
   const key = `${type}:${query.toLowerCase().trim()}`;
   const store = loadCache();
-  store[key] = { results, expires: Date.now() + CACHE_TTL_MS, type };
+  store[key] = { results, expires: Date.now() + CACHE_TTL_MS, type, ...meta };
   saveCache(store);
 }
 
-export function abortActiveSearch() {
-  searchAbortController?.abort();
-  searchAbortController = null;
+export function abortActiveSearch(channel?: SearchChannel) {
+  const channels = channel ? [channel] : (["audiobook", "ebook"] as SearchChannel[]);
+  for (const key of channels) {
+    searchAbortControllers[key]?.abort();
+    delete searchAbortControllers[key];
+  }
 }
 
-export function createSearchSignal(): AbortSignal {
-  abortActiveSearch();
-  searchAbortController = new AbortController();
-  return searchAbortController.signal;
+export function createSearchSignal(channel: SearchChannel = "ebook"): AbortSignal {
+  abortActiveSearch(channel);
+  const controller = new AbortController();
+  searchAbortControllers[channel] = controller;
+  controller.signal.addEventListener("abort", () => {
+    if (searchAbortControllers[channel] === controller) delete searchAbortControllers[channel];
+  }, { once: true });
+  return controller.signal;
 }
 
 export function debouncedSearch(fn: () => void, delayMs = 300) {
@@ -135,55 +161,59 @@ export async function streamAudiobookSearch(
 export async function streamEbookSearch(
   query: string,
   onSource: (source: string, books: any[]) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  page = 1
 ): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
-  const cached = getCachedSearch(query, "ebook");
-  if (cached?.length) {
-    onSource("cache", cached);
-    return { books: cached, totalCount: cached.length, hasMore: false };
+  const safePage = Number.isFinite(page) ? Math.max(1, Math.floor(page)) : 1;
+  if (safePage === 1) {
+    const cached = getCachedSearch(query, "ebook");
+    if (cached?.length) {
+      const meta = getCachedSearchMeta(query, "ebook");
+      onSource("cache", cached);
+      return { books: cached, totalCount: meta?.totalCount ?? cached.length, hasMore: meta?.hasMore ?? false };
+    }
   }
-
   const all: any[] = [];
+  let totalCount = 0;
+  let hasMore = false;
+  const consumeChunk = (chunk: any) => {
+    if (chunk?.done) {
+      totalCount = Number(chunk.totalCount) || all.length;
+      hasMore = Boolean(chunk.hasMore);
+      return;
+    }
+    const books = Array.isArray(chunk?.books) ? chunk.books : [];
+    if (books.length) {
+      all.push(...books);
+      onSource(chunk.source || "unknown", books);
+    }
+  };
   try {
-    const res = await fetch(resolveApiUrl(`/api/search/stream?q=${encodeURIComponent(query)}&page=1`), { signal });
-    if (!res.ok || !res.body) throw new Error("Stream failed");
-
+    const endpoint = `/api/search/stream?q=${encodeURIComponent(query)}&page=${safePage}`;
+    const res = await fetch(resolveApiUrl(endpoint), { signal });
+    if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let totalCount = 0;
-    let hasMore = false;
-
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
-
       for (const line of lines) {
         if (!line.trim()) continue;
-        try {
-          const chunk = JSON.parse(line);
-          if (chunk.done) {
-            totalCount = chunk.totalCount ?? all.length;
-            hasMore = !!chunk.hasMore;
-            continue;
-          }
-          const books = chunk.books || [];
-          if (books.length) {
-            all.push(...books);
-            onSource(chunk.source || "unknown", books);
-          }
-        } catch {
-          /* skip */
-        }
+        try { consumeChunk(JSON.parse(line)); } catch { /* Ignore malformed stream chunks. */ }
       }
     }
-
-    setCachedSearch(query, "ebook", all);
-    return { books: all, totalCount: totalCount || all.length, hasMore };
-  } catch {
-    return { books: all, totalCount: all.length, hasMore: false };
+    if (buffer.trim()) {
+      try { consumeChunk(JSON.parse(buffer)); } catch { /* Ignore a truncated final line. */ }
+    }
+    totalCount = totalCount || all.length;
+    if (safePage === 1) setCachedSearch(query, "ebook", all, { totalCount, hasMore });
+    return { books: all, totalCount, hasMore };
+  } catch (err: any) {
+    if (err?.name === "AbortError") throw err;
+    return { books: all, totalCount: totalCount || all.length, hasMore: false };
   }
 }

@@ -21,7 +21,6 @@ import {
   abortActiveSearch,
   streamAudiobookSearch,
   streamEbookSearch,
-  getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { canHover } from "../lib/canHover";
@@ -1960,7 +1959,7 @@ function DiscoverView({
         setAudiobookLoading(false);
       }
 
-      const signal = createSearchSignal();
+      const signal = createSearchSignal("audiobook");
       try {
         const results = await streamAudiobookSearch(
           term.trim(),
@@ -2019,7 +2018,7 @@ function DiscoverView({
     // Parallel audiobook search so both book + audiobook results show together.
     if (!isAudiobookSearch) {
       setAudiobookLoading(true);
-      const aSignal = createSearchSignal();
+      const aSignal = createSearchSignal("audiobook");
       streamAudiobookSearch(
         term.trim(),
         (_src, batch) => {
@@ -2037,7 +2036,7 @@ function DiscoverView({
 
     try {
       const source = sourceOverride || activeSource;
-      const signal = createSearchSignal();
+      const signal = createSearchSignal("ebook");
 
       let mappedBooks: any[];
       let totalCount: number;
@@ -2058,36 +2057,29 @@ function DiscoverView({
           more = result.hasMore;
         }
       } else {
-        const cached = page === 1 ? getCachedSearch(term, "ebook") : null;
-        if (cached?.length && page === 1) {
-          mappedBooks = cached;
-          totalCount = cached.length;
-          more = false;
-        } else {
-          const streamResult = await streamEbookSearch(
-            term,
-            (_src, books) => {
-              if (page === 1) {
-                setResults((prev) => {
-                  const seen = new Set(prev.map((b) => b.title + b.author));
-                  const merged = [...prev, ...books.filter((b) => !seen.has(b.title + b.author))];
-                  return merged;
-                });
-                setLoading(false);
-              }
-            },
-            signal
-          );
-          mappedBooks = streamResult.books;
-          totalCount = streamResult.totalCount;
-          more = streamResult.hasMore;
-
-          if (!mappedBooks.length) {
-            const result = await fetchGoogleBooks(term, page);
-            mappedBooks = result.books;
-            totalCount = result.totalCount;
-            more = result.hasMore;
-          }
+        const streamResult = await streamEbookSearch(
+          term,
+          (_src, books) => {
+            if (page === 1) {
+              setResults((prev) => {
+                const seen = new Set(prev.map((b) => b.title + b.author));
+                const merged = [...prev, ...books.filter((b) => !seen.has(b.title + b.author))];
+                return merged;
+              });
+              setLoading(false);
+            }
+          },
+          signal,
+          page
+        );
+        mappedBooks = streamResult.books;
+        totalCount = streamResult.totalCount;
+        more = streamResult.hasMore;
+        if (!mappedBooks.length) {
+          const result = await fetchGoogleBooks(term, page);
+          mappedBooks = result.books;
+          totalCount = result.totalCount;
+          more = result.hasMore;
         }
       }
 
