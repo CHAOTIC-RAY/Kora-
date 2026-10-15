@@ -259,6 +259,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     };
 
   const initCpuGame = () => {
+    if (cpuTurnTimerRef.current) clearTimeout(cpuTurnTimerRef.current);
+    cpuTurnTimerRef.current = null;
     setGameMode("cpu");
     setRoomMsg("");
     let currentBag = [...DEFAULT_BAG];
@@ -282,6 +284,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   };
 
   const createOnlineRoom = async () => {
+    if (cpuTurnTimerRef.current) clearTimeout(cpuTurnTimerRef.current);
+    cpuTurnTimerRef.current = null;
     if (!isRealFirebase || !db) {
       setRoomMsg("Firebase is disabled or unconfigured.");
       return;
@@ -395,6 +399,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   };
 
   const leaveRoom = () => {
+    if (cpuTurnTimerRef.current) clearTimeout(cpuTurnTimerRef.current);
+    cpuTurnTimerRef.current = null;
     if (unsubRef.current) unsubRef.current();
     setScreen("menu");
     setBoard({});
