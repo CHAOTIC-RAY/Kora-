@@ -57,7 +57,7 @@ const READER = `<body><div class="reading-content">
 </div></body>`;
 
 const pages: Record<string, string> = {
-  "https://example.test/manga/?m_orderby=views&page=1": LISTING,
+  "https://example.test/manga/?m_orderby=views&page=1&style=page": LISTING,
   "https://example.test/manga/alpha/": DETAILS,
   "https://example.test/manga/alpha/chapter-2/": READER,
   "https://example.test/manga/alpha/ch-1/": READER,
