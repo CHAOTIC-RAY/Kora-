@@ -276,21 +276,9 @@ function DiscoverView({
   };
 
   const [query, setQuery] = useState<string>("");
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [searchSuggestions, setSearchSuggestions] = useState<Array<{ title: string; author: string; coverUrl?: string }>>([]);
   const [showSearchAssist, setShowSearchAssist] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-
-  // Search history is intentionally session-only: it improves convenience
-  // without retaining a permanent record of what the reader searches for.
-  useEffect(() => {
-    try {
-      const stored = sessionStorage.getItem("kora:discover-search-history");
-      if (stored) setRecentSearches(JSON.parse(stored).filter((item: unknown) => typeof item === "string").slice(0, 6));
-    } catch {
-      /* Storage can be unavailable in private browsing or embedded contexts. */
-    }
-  }, []);
 
   // Google Books suggestions are recommendations, never an autocomplete
   // mutation. Keep the user's text untouched until they explicitly choose one.
@@ -2032,8 +2020,8 @@ function DiscoverView({
 
     const normalizedTerm = term.trim();
     setRecentSearches((previous) => {
-      const next = [normalizedTerm, ...previous.filter((item) => item.toLocaleLowerCase() !== normalizedTerm.toLocaleLowerCase())].slice(0, 6);
-      try { sessionStorage.setItem("kora:discover-search-history", JSON.stringify(next)); } catch { /* optional */ }
+      const next = [normalizedTerm, ...previous.filter((item) => item.toLocaleLowerCase() !== normalizedTerm.toLocaleLowerCase())].slice(0, 10);
+      try { localStorage.setItem("kora_recent_searches", JSON.stringify(next)); } catch { /* optional */ }
       return next;
     });
     setShowSearchAssist(false);
@@ -2085,14 +2073,6 @@ function DiscoverView({
       }
       return;
     }
-
-    // Save to search history
-    setRecentSearches(prev => {
-      const filtered = prev.filter(q => q.toLowerCase() !== term.toLowerCase().trim());
-      const updated = [term.trim(), ...filtered].slice(0, 10);
-      localStorage.setItem("kora_recent_searches", JSON.stringify(updated));
-      return updated;
-    });
 
     // Reset page if it's a new search term
     // For string calls (programmatic), compare string value.
