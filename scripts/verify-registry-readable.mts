@@ -66,7 +66,7 @@ async function relay(url: string, referer?: string): Promise<string> {
     );
     const j = (await r.json()) as { body?: string };
     const body = typeof j.body === "string" ? j.body : "";
-    const title = (body.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1] || "").replace(/\\s+/g, " ").slice(0, 80);
+    const title = (body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").replace(/\s+/g, " ").slice(0, 80);
     lastRelaySummary = {
       status: r.status,
       bytes: body.length,
