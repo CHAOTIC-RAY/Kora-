@@ -204,17 +204,11 @@ npx wrangler r2 bucket create kora-relay-beta</code></pre><button class="copy" t
         Vite embeds those values into the client bundle.
       </p>
       <p>
-        The current Worker supports an optional <code>RAVE_API_KEY</code> secret
-        for one upstream catalog adapter. If your deployment uses that adapter,
-        configure it with:
-      </p>
-      <div class="term"><pre><code>npx wrangler secret put RAVE_API_KEY</code></pre><button class="copy" type="button">Copy</button></div>
-      <p>For local Worker development, add the same key to the gitignored <code>.dev.vars</code> file:</p>
-      <div class="term"><pre><code>RAVE_API_KEY=your-key-here</code></pre><button class="copy" type="button">Copy</button></div>
-      <p>
-        The app can still start without this optional key. Availability and
-        result coverage then depend on the other catalog adapters configured in
-        the Worker and on the upstream services being reachable.
+        Configure only the credentials required by the integrations enabled in
+        your own deployment. Keep secret names and setup steps aligned with
+        <code>wrangler.toml</code>, the Worker code, and your deployment
+        environment. Kora can start without optional integrations, but catalog
+        coverage and external-service features may be reduced.
       </p>
     </section>
 
