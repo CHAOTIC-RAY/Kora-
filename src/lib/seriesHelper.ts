@@ -24,8 +24,8 @@ export function parseVolumeFromTitle(title: string): ParsedSeries | null {
   if (!t) return null;
 
   const patterns = [
-    /^(.*?)\\s+(?:vol(?:ume)?\\.?|book|ch(?:apter)?\\.?|part)\\s*#?\\s*(\\d+(?:\\.\\d+)?)\\s*$/i,
-    /^(.*?)\\s*\\(\\s*(?:vol(?:ume)?\\.?|book|ch(?:apter)?\\.?|part)\\s*#?\\s*(\\d+(?:\\.\\d+)?)\\s*\\)\\s*$/i,
+    /^(.*?)\s+(?:vol(?:ume)?\.?|book|ch(?:apter)?\.?|part)\s*#?\s*(\d+(?:\.\d+)?)\s*$/i,
+    /^(.*?)\s*\(\s*(?:vol(?:ume)?\.?|book|ch(?:apter)?\.?|part)\s*#?\s*(\d+(?:\.\d+)?)\s*\)\s*$/i,
   ];
   for (const pattern of patterns) {
     const match = t.match(pattern);

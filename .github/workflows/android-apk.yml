@@ -155,6 +155,7 @@ jobs:
         run: |
           npx tsx src/lib/sources/__tests__/registry.test.ts
           npx tsx src/lib/sources/__tests__/madara.test.ts
+          npx tsx src/lib/__tests__/seriesHelper.test.ts
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
