@@ -267,6 +267,10 @@ function resolveUrl(href: string, base: string): string {
 
 async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
   const configuredUrl = String(env?.RAVE_BOOK_SEARCH_URL || "").trim();
+  // The former public Rave deployment is retired. Use independent source adapters unless an operator explicitly configures a self-hosted engine.
+  if (!configuredUrl && !env?.RAVE_BOOK_SEARCH) {
+    return searchIndependentBookSources(query, mode, source);
+  }
   const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
   let endpointKind: "legacy" | "ravebsd" = "legacy";
   let endpoint: URL;
