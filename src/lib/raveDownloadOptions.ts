@@ -1,7 +1,8 @@
 /**
  * Download-option builder with Rave-independent catalogue fallbacks.
- * Catalogue/reader pages are never mislabeled as direct files. Guessed Internet
- * Archive filenames and the retired public Rave deployment are not used.
+ * Returns upstream URLs; the download client is responsible for wrapping them
+ * in /api/proxy-file exactly once. Returning already-proxied URLs here caused
+ * App.tsx to wrap them a second time, yielding HTTP 502 for every mirror.
  */
 export type DownloadMirrorOption = {
   label: string;
@@ -25,10 +26,6 @@ export function isRaveDirectUpstreamUrl(url: string): boolean {
   }
 }
 
-function proxied(url: string): string {
-  return "/api/proxy-file?url=" + encodeURIComponent(url);
-}
-
 function searchUrl(base: string, query: string): string {
   return base + encodeURIComponent(query);
 }
@@ -36,6 +33,8 @@ function searchUrl(base: string, query: string): string {
 /**
  * searchQuery should contain the actual title/author query. This API shape is
  * retained for Worker/dev-server callers, but fallbacks work without Rave.
+ * Important: urls are deliberately NOT pre-proxied. The client download path
+ * wraps upstream URLs once with /api/proxy-file and leaves proxy URLs intact.
  */
 export function buildRaveDownloadOptions(params: {
   md5?: string | null;
@@ -56,8 +55,8 @@ export function buildRaveDownloadOptions(params: {
       if (!isIaDetails && isRaveDirectUpstreamUrl(raveDirect)) {
         const slow = /\/slow_download\//i.test(raveDirect);
         options.push({
-          label: slow ? "Anna's Archive (manual download)" : "Direct file (via proxy)",
-          url: proxied(parsed.toString()),
+          label: slow ? "Anna's Archive (manual download)" : "Direct file",
+          url: parsed.toString(),
           isDirect: !slow,
           sourceId: "external",
         });
@@ -72,8 +71,8 @@ export function buildRaveDownloadOptions(params: {
   // A genuine LibGen MD5 is 32 hex chars. Never pass a pseudo SHA-256 ID.
   if (/^[a-f0-9]{32}$/i.test(md5)) {
     options.push({
-      label: "LibGen file endpoint (via proxy)",
-      url: proxied("https://libgen.li/get.php?md5=" + md5),
+      label: "LibGen file endpoint",
+      url: "https://libgen.li/get.php?md5=" + md5,
       isDirect: true,
       sourceId: "libgen",
     });
