@@ -798,7 +798,7 @@ export default function UnoGame({
                     const accents = ["#f04452", "#2588ff", "#20b979", "#f8c844"];
                     return (
                       <div key={p.id} className={`flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-2 transition-all ${isActive ? "border-[var(--theme-border)] bg-[var(--theme-card)] shadow-lg ring-2 ring-white/10" : "border-[var(--theme-border)] bg-[var(--theme-card)]"}`}>
-                        <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-black text-white shadow-inner" style={{ background: `linear-gradient(145deg,${accents[i % accents.length]},#202334)` }}>
+                        <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-black text-[var(--theme-text)] shadow-inner" style={{ background: `linear-gradient(145deg,${accents[i % accents.length]},#202334)` }}>
                           {p.name.charAt(0).toUpperCase()}
                           {isActive && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[#171923] bg-emerald-300" />}
                         </div>
@@ -851,7 +851,7 @@ export default function UnoGame({
                 {/* Hand and action bar */}
                 <section className="shrink-0 rounded-[1.7rem] border border-[var(--theme-border)] bg-[var(--theme-card)] p-3 sm:p-4">
                   <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                    <div><p className="text-xs font-black sm:text-sm">YOUR HAND <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-[var(--theme-text-muted)]">{myHand.length}</span></p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.18em] text-[var(--theme-text-muted)]">Tap a glowing card to play</p></div>
+                    <div><p className="text-xs font-black sm:text-sm">YOUR HAND <span className="ml-1 rounded-full bg-[var(--theme-bg)] px-2 py-0.5 text-[10px] text-[var(--theme-text-muted)]">{myHand.length}</span></p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.18em] text-[var(--theme-text-muted)]">Tap a glowing card to play</p></div>
                     {myHand.length <= 2 && <motion.button type="button" whileTap={{ scale: .94 }} onClick={handleCallUno} className="rounded-full border border-amber-200/50 bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2 text-[10px] font-black italic tracking-widest text-[#171923] shadow-[0_0_22px_rgba(251,191,36,.22)] sm:text-xs"><Flame className="mr-1 inline h-3.5 w-3.5" /> CALL UNO!</motion.button>}
                   </div>
                   <div className="flex min-h-[118px] items-end gap-2 overflow-x-auto overflow-y-hidden px-1 pb-2 pt-1 scrollbar-thin sm:min-h-[142px] sm:gap-2.5">
@@ -859,7 +859,7 @@ export default function UnoGame({
                       const playable = isMyTurn && canPlayCard(card, publicState.topDiscard, publicState.currentColor);
                       return (
                         <motion.button key={card.id} type="button" aria-label={`Play ${card.color} ${card.value}`} title={`${card.color} ${card.value}`} whileHover={{ y: playable ? -12 : -2, rotate: playable ? 0 : index % 2 ? 2 : -2, scale: playable ? 1.04 : 1.01 }} whileTap={{ scale: .95 }} onClick={() => handleCardClick(card)} disabled={!playable} className={`relative h-[108px] w-[70px] shrink-0 transition-all duration-150 sm:h-[132px] sm:w-[86px] ${playable ? "cursor-pointer drop-shadow-[0_8px_12px_rgba(255,255,255,.12)]" : "cursor-not-allowed opacity-45 grayscale-[.25]"} `}>
-                          {playable && <span className="pointer-events-none absolute -inset-1 rounded-2xl bg-white/10 blur-md" />}
+                          {playable && <span className="pointer-events-none absolute -inset-1 rounded-2xl bg-[var(--theme-bg)] blur-md" />}
                           <span className="relative block h-full w-full"><UnoCardArt card={card} compact /></span>
                         </motion.button>
                       );
