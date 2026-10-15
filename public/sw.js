@@ -1260,6 +1260,8 @@ self.addEventListener("message", (event) => {
       const downloadId = data.downloadId;
       if (downloadId) await delDB(conversionOutputId(downloadId));
     })());
+  } else if (data.type === "resume-pdf-conversions") {
+    event.waitUntil(resumePdfConversions());
   } else if (data.type === "retry-pdf-conversion") {
     event.waitUntil((async () => {
       const downloadId = data.downloadId;
@@ -1467,6 +1469,27 @@ self.addEventListener("fetch", (event) => {
         size: record.blob.size,
       }));
       return new Response(JSON.stringify(pending), { headers: { "Content-Type": "application/json" } });
+    })());
+    return;
+  }
+
+  if (url.pathname === "/__kora_sw_conversion_status__") {
+    event.respondWith((async () => {
+      const all = await getAllDB();
+      const jobs = all.filter((record) => record && record.conversionJob).map((record) => ({
+        downloadId: record.downloadId,
+        title: record.title,
+        author: record.author,
+        status: record.status,
+        progress: record.progress,
+        error: record.error,
+        errorCode: record.errorCode,
+        pagesProcessed: record.pagesProcessed || 0,
+        pagesTotal: record.pagesTotal || 0,
+        outputId: record.outputId || null,
+        updatedAt: record.updatedAt,
+      }));
+      return new Response(JSON.stringify(jobs), { headers: { "Content-Type": "application/json" } });
     })());
     return;
   }
