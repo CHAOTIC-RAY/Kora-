@@ -201,7 +201,7 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
   const requested = source.toLowerCase();
   const jobs: Array<[string, Promise<ScrapedBook[]>]> = [];
   if (requested === "all" || ["archive","internet-archive","ia"].includes(requested)) jobs.push(["archive", searchInternetArchive(q, mode, page)]);
-  if (mode !== "audiobooks" && (requested === "all" || ["gutenberg","project-gutenberg"].includes(requested))) jobs.push(["gutenberg", searchGutenberg(q)]);
+  if (mode !== "audiobooks" && (requested === "all" || ["gutenberg","project-gutenberg"].includes(requested))) jobs.push(["gutenberg", searchGutenberg(q, page)]);
   if (mode !== "audiobooks" && (requested === "all" || ["openstax","open-stax"].includes(requested))) jobs.push(["openstax", searchOpenStax(q, mode)]);
   if (mode !== "audiobooks" && (requested === "all" || ["libretexts","libre-texts"].includes(requested))) jobs.push(["libretexts", searchLibreTexts(q, mode, page)]);
   if (mode === "audiobooks" && (requested === "all" || ["librivox","libri-vox"].includes(requested))) jobs.push(["librivox", searchLibriVox(q, mode, page)]);
