@@ -235,7 +235,7 @@ function findActiveDownload(book: { id?: string; md5?: string; downloadId?: stri
   );
   return (
     downloads.find((download) => {
-      if (download.status !== "downloading" && download.status !== "error" && download.status !== "paused") return false;
+      if (download.status !== "downloading" && download.status !== "converting" && download.status !== "error" && download.status !== "paused") return false;
       return [download.id, download.md5].filter(Boolean).some((key) => bookKeys.has(String(key)));
     }) ?? null
   );
@@ -253,7 +253,7 @@ function LibraryDownloadOverlay({
   onManualDownload,
 }: {
   book: { coverUrl?: string };
-  download: { id?: string; percent?: number; status?: string; error?: string; errorMessage?: string; downloadUrl?: string };
+  download: { id?: string; percent?: number; status?: string; error?: string; errorMessage?: string; downloadUrl?: string; conversionOnly?: boolean; conversionStage?: string };
   hideCovers?: boolean;
   onStop?: () => void;
   onDelete?: () => void;
@@ -265,6 +265,7 @@ function LibraryDownloadOverlay({
   const pct = typeof download.percent === "number" ? download.percent : 0;
   const isError = download.status === "error";
   const isPaused = download.status === "paused";
+  const isConverting = download.status === "converting";
   return (
     <div
       className={`absolute inset-0 z-20 flex flex-col items-center justify-center ${
@@ -286,7 +287,7 @@ function LibraryDownloadOverlay({
       {isError && (
         <span className="absolute top-2 right-2 z-30 px-2 py-0.5 rounded-md bg-red-600/90 border border-red-500/50 text-[8px] font-bold uppercase tracking-wider text-white shadow-sm flex items-center gap-1">
           <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-          <span>FAILED</span>
+          <span>{download.conversionOnly ? "CONVERSION FAILED" : "FAILED"}</span>
         </span>
       )}
 
@@ -308,8 +309,8 @@ function LibraryDownloadOverlay({
               onRetry();
             }}
             className="p-1.5 rounded-full bg-red-600 text-white shadow-md hover:bg-red-500 active:scale-90 transition"
-            title="Retry download"
-            aria-label="Retry download"
+            title={download.conversionOnly ? "Retry EPUB conversion" : "Retry download"}
+            aria-label={download.conversionOnly ? "Retry EPUB conversion" : "Retry download"}
           >
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
@@ -383,7 +384,9 @@ function LibraryDownloadOverlay({
               <AlertTriangle className="w-5 h-5" />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-red-300 drop-shadow px-2">
-              {download.error === "Cancelled" || download.status === "cancelled" ? "Stopped" : "Download Failed"}
+              {download.error === "Cancelled" || download.status === "cancelled"
+                ? "Stopped"
+                : download.conversionOnly ? "EPUB Conversion Failed" : "Download Failed"}
             </span>
             {download.downloadUrl && (
               <p className="text-[9px] text-amber-500 mt-1 max-w-[220px] sm:max-w-xs truncate">
@@ -401,7 +404,7 @@ function LibraryDownloadOverlay({
                 className="mt-2.5 px-3 py-1 rounded-full bg-red-600 hover:bg-red-500 text-white text-[9px] font-bold uppercase tracking-wider shadow-md active:scale-95 transition flex items-center gap-1"
               >
                 <RefreshCw className="w-3 h-3" />
-                <span>Retry</span>
+                <span>{download.conversionOnly ? "Retry conversion" : "Retry"}</span>
               </button>
             )}
             {onManualDownload && download.downloadUrl ? (
@@ -453,7 +456,7 @@ function LibraryDownloadOverlay({
               <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
             </div>
             <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted px-2 text-center">
-              {isPaused ? "Paused" : "Downloading…"}
+              {isPaused ? "Paused" : isConverting ? "Converting to EPUB…" : "Downloading…"}
             </span>
           </>
         )}
@@ -1435,12 +1438,12 @@ function LibraryManager({
   // so we synthesize cards with id = download id/md5.
   const activeDownloadKeys = new Set(
     (downloads || [])
-      .filter((d) => d.status === "downloading" || d.status === "error" || d.status === "paused")
-      .flatMap((d) => [d.id, d.md5].filter(Boolean).map(String))
+      .filter((d) => d.status === "downloading" || d.status === "converting" || d.status === "error" || d.status === "paused")
+      .flatMap((d) => (d.conversionOnly ? [d.id] : [d.id, d.md5]).filter(Boolean).map(String))
   );
 
   const downloadingBooks: any[] = (downloads || [])
-    .filter((d) => d.status === "downloading" || d.status === "error" || d.status === "paused")
+    .filter((d) => d.status === "downloading" || d.status === "converting" || d.status === "error" || d.status === "paused")
     .map((d) => {
       let coverUrl = d.coverUrl || "";
       if (!coverUrl) {
@@ -1450,10 +1453,10 @@ function LibraryManager({
         } catch (e) {}
       }
       return {
-        id: d.md5 || d.id,
-        md5: d.md5,
+        id: d.conversionOnly ? d.id : (d.md5 || d.id),
+        md5: d.conversionOnly ? undefined : d.md5,
         downloadId: d.id,
-        title: d.title,
+        title: d.conversionOnly ? (d.title + " — EPUB conversion") : d.title,
         author: d.author,
         coverUrl,
         isDownloadingCard: true,
