@@ -704,15 +704,15 @@ export default function UnoGame({
 
           {/* SCREEN 2: P2P LOBBY */}
           {screen === "lobby" && (
-            <main className="kora-game-theme flex-1 p-6 flex flex-col items-center justify-center max-w-lg mx-auto w-full space-y-6 text-center">
+            <main className="kora-game-theme flex-1 p-6 flex flex-col items-center justify-center max-w-lg mx-auto w-full space-y-6 text-center bg-[var(--theme-bg)] text-[var(--theme-text)]">
               <div className="space-y-2">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-rose-500">
                   Local Network Arena
                 </span>
-                <h3 className="text-2xl font-serif font-bold text-kindle-text">
-                  Room Code: <span className="font-mono text-kindle-accent">{roomCode}</span>
+                <h3 className="text-2xl font-serif font-bold text-[var(--theme-text)]">
+                  Room Code: <span className="font-mono text-[var(--theme-accent)]">{roomCode}</span>
                 </h3>
-                <p className="text-xs text-kindle-text-muted max-w-sm mx-auto">
+                <p className="text-xs text-[var(--theme-text-muted)] max-w-sm mx-auto">
                   Share this code with other players connected to the same Wi-Fi network.
                 </p>
               </div>
@@ -721,30 +721,30 @@ export default function UnoGame({
                 <button
                   type="button"
                   onClick={copyRoomCode}
-                  className="px-4 py-2 rounded-xl border border-kindle-border hover:bg-kindle-card text-xs font-bold text-kindle-text flex items-center gap-2 transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-[var(--theme-border)] hover:bg-[var(--theme-card)] text-xs font-bold text-[var(--theme-text)] flex items-center gap-2 transition cursor-pointer"
                 >
                   {copiedCode ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
                   {copiedCode ? "Copied!" : "Copy Code"}
                 </button>
               </div>
 
-              <div className="w-full p-4 rounded-2xl bg-kindle-card border border-kindle-border text-left space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold text-kindle-text pb-2 border-b border-kindle-border/60">
+              <div className="w-full p-4 rounded-2xl bg-[var(--theme-card)] border border-[var(--theme-border)] text-left space-y-3">
+                <div className="flex items-center justify-between text-xs font-bold text-[var(--theme-text)] pb-2 border-b border-[var(--theme-border)]">
                   <span>Connected Players</span>
                   {/* Was a hardcoded "LAN Peer Ready" while rendering only
                       yourself, so a zero-peer lobby looked identical to a
                       healthy one. Report the real roster. */}
-                  <span className="text-[10px] text-kindle-accent font-mono">
+                  <span className="text-[10px] text-[var(--theme-accent)] font-mono">
                     {isP2pHost ? `${joinedGuests.length + 1} connected` : "Waiting for host"}
                   </span>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-kindle-text">
+                  <div className="flex items-center justify-between text-xs text-[var(--theme-text)]">
                     <span className="font-medium flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-500" />
                       {myName} (You)
                     </span>
-                    <span className="text-[10px] uppercase font-bold text-kindle-text-muted">Host</span>
+                    <span className="text-[10px] uppercase font-bold text-[var(--theme-text-muted)]">Host</span>
                   </div>
                   {joinedGuests.map((g) => (
                     <div
@@ -761,7 +761,7 @@ export default function UnoGame({
                     </div>
                   ))}
                   {isP2pHost && joinedGuests.length === 0 && (
-                    <p className="text-[11px] text-kindle-text-muted pt-1">
+                    <p className="text-[11px] text-[var(--theme-text-muted)] pt-1">
                       Waiting for another player to join with this code…
                     </p>
                   )}
@@ -772,16 +772,16 @@ export default function UnoGame({
                 <button
                   type="button"
                   onClick={() => setScreen("menu")}
-                  className="flex-1 py-3 rounded-xl border border-kindle-border text-xs font-bold text-kindle-text hover:bg-kindle-card transition cursor-pointer"
+                  className="flex-1 py-3 rounded-xl border border-[var(--theme-border)] text-xs font-bold text-[var(--theme-text)] hover:bg-[var(--theme-card)] transition cursor-pointer"
                 >
                   Back to Menu
                 </button>
                 <button
                   type="button"
                   onClick={launchP2pGame}
-                  className="flex-1 py-3 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-md hover:bg-rose-700 transition cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1 py-3 rounded-xl bg-[var(--theme-accent)] text-[var(--theme-bg)] text-xs font-bold shadow-md hover:opacity-90 transition cursor-pointer flex items-center justify-center gap-2"
                 >
-                  <Play className="w-4 h-4 fill-white" /> Start Match
+                  <Play className="w-4 h-4" /> Start Match
                 </button>
               </div>
             </main>
@@ -873,7 +873,7 @@ export default function UnoGame({
 
           {/* SCREEN 4: GAME OVER / VICTORY */}
           {screen === "game_over" && publicState && (
-            <main className="kora-game-theme flex-1 p-6 flex flex-col items-center justify-center max-w-md mx-auto w-full space-y-6 text-center">
+            <main className="kora-game-theme flex-1 p-6 flex flex-col items-center justify-center max-w-md mx-auto w-full space-y-6 text-center bg-[var(--theme-bg)] text-[var(--theme-text)]">
               <div className="p-4 rounded-full bg-amber-500/10 text-amber-500 animate-bounce">
                 <Trophy className="w-16 h-16" />
               </div>
@@ -911,9 +911,9 @@ export default function UnoGame({
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="bg-kindle-bg border border-kindle-border rounded-3xl p-6 max-w-xs w-full space-y-4 text-center shadow-2xl"
+                className="kora-game-theme bg-[var(--theme-bg)] border border-[var(--theme-border)] rounded-3xl p-6 max-w-xs w-full space-y-4 text-center shadow-2xl"
               >
-                <h4 className="text-sm font-bold text-kindle-text">
+                <h4 className="text-sm font-bold text-[var(--theme-text)]">
                   Choose Active Color
                 </h4>
                 <div className="grid grid-cols-2 gap-3">
