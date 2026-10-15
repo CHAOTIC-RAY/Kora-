@@ -84,8 +84,20 @@ async function searchInternetArchive(query: string, mode: string, page = 1): Pro
   })).then(rows => rows.filter((x): x is ScrapedBook => !!x));
 }
 
-async function searchGutenberg(query: string): Promise<ScrapedBook[]> {
-  const xml = await getText("https://www.gutenberg.org/ebooks/search.opds/?query=" + encodeURIComponent(query));
+async function searchGutenberg(query: string, page = 1): Promise<ScrapedBook[]> {
+  let feedUrl = "https://www.gutenberg.org/ebooks/search.opds/?query=" + encodeURIComponent(query);
+  let xml = "";
+  // Follow OPDS next links for later pages instead of returning page one repeatedly.
+  for (let n = 1; n <= Math.min(5, Math.max(1, page)); n++) {
+    xml = await getText(feedUrl);
+    if (!xml) return [];
+    if (n < page) {
+      const nextHref = (xml.match(/<link[^>]+rel=["']next["'][^>]+href=["']([^"']+)["']/i) ||
+        xml.match(/<link[^>]+href=["']([^"']+)["'][^>]+rel=["']next["']/i) || [])[1];
+      if (!nextHref) return [];
+      try { feedUrl = new URL(nextHref, feedUrl).toString(); } catch { return []; }
+    }
+  }
   if (!xml) return [];
   const out: ScrapedBook[] = [];
   for (const entry of xml.split(/<entry(?:\s[^>]*)?>/i).slice(1)) {
@@ -100,7 +112,6 @@ async function searchGutenberg(query: string): Promise<ScrapedBook[]> {
   }
   return out;
 }
-
 async function searchOpenLibrary(query: string, page = 1): Promise<ScrapedBook[]> {
   const u = new URL("https://openlibrary.org/search.json");
   u.searchParams.set("q", query); u.searchParams.set("limit", "25"); u.searchParams.set("offset", String((Math.max(1, page) - 1) * 25));
