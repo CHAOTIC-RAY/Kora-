@@ -49,7 +49,7 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
   if (String.fromCharCode(...bytes.slice(0, 5)) !== "%PDF-") throw new Error("This file does not have a valid PDF signature.");
 
   let pdf: any;
-  try { pdf = await getDocument({ data: bytes, isEvalSupported: false }).promise; }
+  try { pdf = await getDocument({ data: bytes }).promise; }
   catch { throw new Error("Kora couldn't open this PDF. It may be damaged, encrypted, or unsupported."); }
 
   const pageCount = Number(pdf.numPages) || 0;
