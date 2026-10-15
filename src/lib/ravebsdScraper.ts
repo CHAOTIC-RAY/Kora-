@@ -44,13 +44,13 @@ async function getText(url: string, accept = "application/atom+xml,application/x
   } catch { return ""; }
 }
 
-async function searchInternetArchive(query: string, mode: string): Promise<ScrapedBook[]> {
+async function searchInternetArchive(query: string, mode: string, page = 1): Promise<ScrapedBook[]> {
   const mediaType = mode === "audiobooks" ? "audio" : "texts";
   const u = new URL("https://archive.org/advancedsearch.php");
   u.searchParams.set("q", query + " AND mediatype:" + mediaType + " AND NOT collection:(inlibrary OR printdisabled) AND NOT access-restricted-item:true");
   ["identifier","title","creator","year","language"].forEach(f => u.searchParams.append("fl[]", f));
   u.searchParams.set("sort[]", "downloads desc");
-  u.searchParams.set("rows", "8"); u.searchParams.set("page", "1"); u.searchParams.set("output", "json");
+  u.searchParams.set("rows", "25"); u.searchParams.set("page", String(Math.max(1, page))); u.searchParams.set("output", "json");
   const data = await getJson(u.toString());
   const docs = Array.isArray(data?.response?.docs) ? data.response.docs : [];
   const exts = mode === "audiobooks" ? ["m4b","mp3","m4a","flac"] : ["epub","pdf","mobi","azw3","djvu","txt"];
@@ -92,9 +92,9 @@ async function searchGutenberg(query: string): Promise<ScrapedBook[]> {
   return out;
 }
 
-async function searchOpenLibrary(query: string): Promise<ScrapedBook[]> {
+async function searchOpenLibrary(query: string, page = 1): Promise<ScrapedBook[]> {
   const u = new URL("https://openlibrary.org/search.json");
-  u.searchParams.set("q", query); u.searchParams.set("limit", "12");
+  u.searchParams.set("q", query); u.searchParams.set("limit", "25"); u.searchParams.set("offset", String((Math.max(1, page) - 1) * 25));
   const data = await getJson(u.toString());
   const docs = Array.isArray(data?.docs) ? data.docs : [];
   return docs.map((d: any): ScrapedBook | null => {
@@ -138,9 +138,9 @@ async function searchOpenStax(query: string, mode: string): Promise<ScrapedBook[
 }
 
 /** LibreTexts' public book catalogue returns official generated PDFs when available. */
-async function searchLibreTexts(query: string, mode: string): Promise<ScrapedBook[]> {
+async function searchLibreTexts(query: string, mode: string, page = 1): Promise<ScrapedBook[]> {
   if (mode === "audiobooks") return [];
-  const url = "https://commons.libretexts.org/api/v1/search/books-v2?searchQuery=" + encodeURIComponent(query) + "&limit=10&page=1";
+  const url = "https://commons.libretexts.org/api/v1/search/books-v2?searchQuery=" + encodeURIComponent(query) + "&limit=10&page=" + String(Math.max(1, page));
   try {
     const data = await getJson(url);
     const books = Array.isArray(data?.results) ? data.results : [];
@@ -154,11 +154,11 @@ async function searchLibreTexts(query: string, mode: string): Promise<ScrapedBoo
 }
 
 /** LibriVox's public-domain audiobook API exposes a ZIP containing its chapter MP3s. */
-async function searchLibriVox(query: string, mode: string): Promise<ScrapedBook[]> {
+async function searchLibriVox(query: string, mode: string, page = 1): Promise<ScrapedBook[]> {
   if (mode !== "audiobooks") return [];
   const titleQuery = query.trim().replace(/^(the|a|an)\s+/i, "");
   const url = "https://librivox.org/api/feed/audiobooks/?" + new URLSearchParams({
-    title: "^" + titleQuery, format: "json", extended: "1", limit: "10"
+    title: "^" + titleQuery, format: "json", extended: "1", limit: "10", offset: String((Math.max(1, page) - 1) * 10)
   }).toString();
   try {
     const data = await getJson(url);
@@ -186,17 +186,17 @@ async function searchLibriVox(query: string, mode: string): Promise<ScrapedBook[
   } catch { return []; }
 }
 
-export async function searchIndependentBookSources(query: string, mode = "ebooks", source = "all"): Promise<{ results: ScrapedBook[]; meta: Record<string, any> }> {
+export async function searchIndependentBookSources(query: string, mode = "ebooks", source = "all", page = 1): Promise<{ results: ScrapedBook[]; meta: Record<string, any> }> {
   const q = query.trim();
   if (!q) return { results: [], meta: { sources: {}, fallback: true } };
   const requested = source.toLowerCase();
   const jobs: Array<[string, Promise<ScrapedBook[]>]> = [];
-  if (requested === "all" || ["archive","internet-archive","ia"].includes(requested)) jobs.push(["archive", searchInternetArchive(q, mode)]);
+  if (requested === "all" || ["archive","internet-archive","ia"].includes(requested)) jobs.push(["archive", searchInternetArchive(q, mode, page)]);
   if (mode !== "audiobooks" && (requested === "all" || ["gutenberg","project-gutenberg"].includes(requested))) jobs.push(["gutenberg", searchGutenberg(q)]);
   if (mode !== "audiobooks" && (requested === "all" || ["openstax","open-stax"].includes(requested))) jobs.push(["openstax", searchOpenStax(q, mode)]);
-  if (mode !== "audiobooks" && (requested === "all" || ["libretexts","libre-texts"].includes(requested))) jobs.push(["libretexts", searchLibreTexts(q, mode)]);
-  if (mode === "audiobooks" && (requested === "all" || ["librivox","libri-vox"].includes(requested))) jobs.push(["librivox", searchLibriVox(q, mode)]);
-  if (mode !== "audiobooks" && (requested === "all" || ["openlibrary","open-library","metadata"].includes(requested))) jobs.push(["openlibrary", searchOpenLibrary(q)]);
+  if (mode !== "audiobooks" && (requested === "all" || ["libretexts","libre-texts"].includes(requested))) jobs.push(["libretexts", searchLibreTexts(q, mode, page)]);
+  if (mode === "audiobooks" && (requested === "all" || ["librivox","libri-vox"].includes(requested))) jobs.push(["librivox", searchLibriVox(q, mode, page)]);
+  if (mode !== "audiobooks" && (requested === "all" || ["openlibrary","open-library","metadata"].includes(requested))) jobs.push(["openlibrary", searchOpenLibrary(q, page)]);
   const settled = await Promise.all(jobs.map(async ([id, promise]) => {
     try { return [id, await promise] as [string, ScrapedBook[]]; } catch { return [id, []] as [string, ScrapedBook[]]; }
   }));
@@ -212,7 +212,7 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
     .sort((a, b) => b.score - a.score || Number(!!b.book.directReady) - Number(!!a.book.directReady));
   const matching = ranked.filter(x => x.score >= 0.25);
   const results = (matching.length ? matching : ranked).slice(0, 25).map(x => x.book);
-  return { results, meta: { fallback: true, sources: counts, total: results.length, mode, query: q } };
+  return { results, meta: { fallback: true, sources: counts, total: results.length, mode, query: q, page, hasMore: results.length >= 25 } };
 }
 
 export async function searchIndependentPopularBooks(): Promise<any> {
