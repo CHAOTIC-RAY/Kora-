@@ -46,33 +46,31 @@ async function searchInternetArchive(query: string, mode: string): Promise<Scrap
   const mediaType = mode === "audiobooks" ? "audio" : "texts";
   const u = new URL("https://archive.org/advancedsearch.php");
   u.searchParams.set("q", query + " AND mediatype:" + mediaType + " AND NOT collection:(inlibrary OR printdisabled) AND NOT access-restricted-item:true");
-  ["identifier","title","creator","year","language","description"].forEach(f => u.searchParams.append("fl[]", f));
+  ["identifier","title","creator","year","language"].forEach(f => u.searchParams.append("fl[]", f));
   u.searchParams.set("sort[]", "downloads desc");
-  u.searchParams.set("rows", "12"); u.searchParams.set("page", "1"); u.searchParams.set("output", "json");
+  u.searchParams.set("rows", "8"); u.searchParams.set("page", "1"); u.searchParams.set("output", "json");
   const data = await getJson(u.toString());
   const docs = Array.isArray(data?.response?.docs) ? data.response.docs : [];
-  const results: ScrapedBook[] = [];
-  for (const d of docs) {
+  const exts = mode === "audiobooks" ? ["m4b","mp3","m4a","flac"] : ["epub","pdf","mobi","azw3","djvu","txt"];
+  return Promise.all(docs.map(async (d: any): Promise<ScrapedBook | null> => {
     const id = String(d.identifier || "");
-    if (!/^[a-z0-9._-]{1,160}$/i.test(id)) continue;
+    if (!/^[a-z0-9._-]{1,160}$/i.test(id)) return null;
     const title = clean(d.title);
-    if (!title) continue;
+    if (!title) return null;
     const meta = await getJson("https://archive.org/metadata/" + encodeURIComponent(id));
     const files = Array.isArray(meta?.files) ? meta.files : [];
-    const exts = mode === "audiobooks" ? ["m4b","mp3","m4a","flac"] : ["epub","pdf","mobi","azw3","djvu","txt"];
     const file = files.filter((f: any) => typeof f.name === "string" && !/^(metadata|__ia_thumb)/i.test(f.name) && exts.includes(f.name.split(".").pop().toLowerCase()))
       .sort((a: any, b: any) => exts.indexOf(a.name.split(".").pop().toLowerCase()) - exts.indexOf(b.name.split(".").pop().toLowerCase()))[0];
     const fileUrl = file ? safeHttp("https://archive.org/download/" + encodeURIComponent(id) + "/" + file.name.split("/").map(encodeURIComponent).join("/")) : "";
-    results.push({
+    return {
       title, author: Array.isArray(d.creator) ? d.creator.map(clean).join(", ") : clean(d.creator),
       year: String(d.year || ""), format: file?.name?.split(".").pop()?.toLowerCase() || "",
       filesize: Number(file?.size || 0), language: Array.isArray(d.language) ? clean(d.language[0]) : clean(d.language),
       source: "Internet Archive (open access)", downloadUrl: "https://archive.org/details/" + encodeURIComponent(id),
       ...(fileUrl ? { directUrl: fileUrl, directReady: true } : {}),
       coverUrl: safeHttp("https://archive.org/services/img/" + encodeURIComponent(id)), identifier: id
-    });
-  }
-  return results;
+    };
+  })).then(rows => rows.filter((x): x is ScrapedBook => !!x));
 }
 
 async function searchGutenberg(query: string): Promise<ScrapedBook[]> {
