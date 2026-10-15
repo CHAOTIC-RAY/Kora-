@@ -180,6 +180,23 @@ async function postToClients(msg) {
   clients.forEach((c) => c.postMessage(msg));
 }
 
+function looksLikeHtmlChunk(bytes) {
+  if (!bytes || !bytes.length) return false;
+  // Valid book signatures must never be mistaken for a webpage.
+  if ((bytes[0] === 0x50 && bytes[1] === 0x4b) ||
+      (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44) ||
+      (bytes[0] === 0x52 && bytes[1] === 0x61 && bytes[2] === 0x72) ||
+      (bytes[0] === 0x37 && bytes[1] === 0x7a && bytes[2] === 0xbc)) return false;
+  const head = new TextDecoder("utf-8", { fatal: false })
+    .decode(bytes.subarray(0, Math.min(bytes.length, 512)))
+    .replace(/^\\uFEFF/, "")
+    .trimStart()
+    .toLowerCase();
+  return head.startsWith("<!doctype html") || head.startsWith("<html") ||
+    head.startsWith("<?xml") || head.startsWith("<!--") ||
+    /<head|<body|<title|<meta\\s/i.test(head);
+}
+
 function formatBytes(bytes) {
   if (!bytes) return "0 B";
   const k = 1024;
@@ -260,6 +277,14 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
   try {
     for (let urlIdx = 0; urlIdx < proxyUrls.length; urlIdx++) {
       const proxyUrl = proxyUrls[urlIdx];
+      // Partial bytes and response headers belong to one mirror only. Never
+      // splice a dead mirror's prefix onto a different server's file.
+      if (urlIdx > 0) {
+        chunks = [];
+        received = 0;
+        contentType = "";
+        await delDB(partialId);
+      }
       for (let attempt = 0; attempt < maxStreamRetries; attempt++) {
         if (abortController.signal.aborted) {
           throw new DOMException("Cancelled", "AbortError");
@@ -280,8 +305,9 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
             received = 0;
           }
 
-          contentType = contentType || response.headers.get("content-type") || "";
-          if (contentType.toLowerCase().includes("text/html")) {
+          const responseContentType = response.headers.get("content-type") || "";
+          if (responseContentType) contentType = responseContentType;
+          if (/text\\/html|application\\/xhtml/i.test(contentType)) {
             throw new Error("Mirror returned a webpage instead of a book file.");
           }
 
@@ -309,6 +335,9 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
             }
             const { done, value } = await reader.read();
             if (done) break;
+            if (received === 0 && looksLikeHtmlChunk(value)) {
+              throw new Error("Mirror returned an HTML webpage instead of a book file.");
+            }
             chunks.push(value);
             received += value.length;
 
@@ -335,7 +364,7 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
             if (received - lastFlush >= PARTIAL_FLUSH_BYTES) {
               lastFlush = received;
               await savePartialState(partialId, {
-                payload: { ...payload, proxyUrl, proxyUrls },
+                payload: { ...payload, proxyUrl, proxyUrls: [proxyUrl, ...proxyUrls.slice(urlIdx + 1)] },
                 received,
                 chunks,
                 contentType,
@@ -347,7 +376,7 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
           const fileBlob = chunksToBlob(chunks, contentType || "application/octet-stream");
           await delDB(partialId);
           await putDB(downloadId, { id: downloadId, blob: fileBlob, payload, saved: false });
-          await finishDownload(payload, fileBlob);
+          await finishDownload({ ...payload, completedProxyUrl: proxyUrl }, fileBlob);
           return;
         } catch (err) {
           lastError = err;
@@ -965,6 +994,7 @@ async function finishDownload(payload, fileBlob) {
     downloadId,
     title: payload.title,
     size: formatBytes(fileBlob.size),
+    sourceUrl: payload.completedProxyUrl || payload.proxyUrl,
     conversionExpected: isPdf,
   });
   if (isPdf) {
