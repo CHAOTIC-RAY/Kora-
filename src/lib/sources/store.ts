@@ -535,8 +535,9 @@ export async function fetchRegistry(
   const out: RepoEntry[] = [];
 
   for (const ext of list) {
-    const nsfw = isNsfwExtension(ext) || (src as { nsfw?: boolean }).nsfw === true;
+    const extensionNsfw = isNsfwExtension(ext);
     for (const src of ext.sources ?? []) {
+      const nsfw = extensionNsfw || (src as { nsfw?: boolean }).nsfw === true;
       const id = String(src.id);
       if (!id || !src.name) continue;
 

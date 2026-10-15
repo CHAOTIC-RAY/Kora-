@@ -42,6 +42,14 @@ const INDEX = {
         sources: [{ id: "kora-manga-s2read", name: "S2Read", language: "en", piracy: true, nsfw: false, homeUrl: "https://s2read.com" }],
       },
       {
+        name: "NSFW bundle",
+        packageName: "kora.source.parent-nsfw",
+        resources: { apkUrl: "https://kora.test/nsfw.json", iconUrl: "" },
+        versionName: "1.0.0",
+        contentWarning: "CONTENT_WARNING_NSFW",
+        sources: [{ id: "kora-source-inherited-nsfw", name: "NSFW child source", language: "en", piracy: false, nsfw: false, homeUrl: "https://example.test" }],
+      },
+      {
         name: "Gutenberg",
         packageName: "kora.source.project-gutenberg",
         resources: { apkUrl: "https://kora.test/gutenberg.json", iconUrl: "" },
@@ -155,10 +163,11 @@ globalThis.fetch = (async (url: string) => {
 const { fetchRegistry, fetchExtensionDefinition, installExtension, isPluginCategory } = await import("../store");
 
 const entries = await fetchRegistry("https://kora.test/index.json");
-check("five entries", entries.length === 5, entries.length);
+check("six entries", entries.length === 6, entries.length);
 
 const byId = new Map(entries.map((e) => [e.plugin.id, e]));
 const src = byId.get("kora-manga-s2read")!;
+const inheritedNsfw = byId.get("kora-source-inherited-nsfw")!;
 const theme = byId.get("kora-theme-copper-night")!;
 const calibre = byId.get("kora-integration-calibre")!;
 const kindle = byId.get("kora-integration-kindle")!;
@@ -174,6 +183,7 @@ check("isPluginCategory rejects junk", isPluginCategory("nope") === false);
 
 // ── Gating applies to SOURCES ONLY ───────────────────────────────────────
 check("piracy source is gated", src.gated === true, src.gated);
+check("source inherits extension-level NSFW warning", inheritedNsfw.gated === true, inheritedNsfw.gated);
 check("clean source not gated", gutenberg.gated === false, gutenberg.gated);
 check("theme is NOT gated", theme.gated === false, theme.gated);
 check("calibre integration is NOT gated", calibre.gated === false, calibre.gated);

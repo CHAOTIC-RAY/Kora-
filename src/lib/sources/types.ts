@@ -509,6 +509,10 @@ export interface MadaraSelectors {
 export interface MadaraOverride {
   /** Path segment for the listing. Most sites use `manga`; some use `serie`. */
   mangaSubString?: string;
+  /** Optional full listing paths for source-specific WordPress themes. */
+  popularPath?: string;
+  latestPath?: string;
+  searchPath?: string;
   popularOrderBy?: string;
   latestOrderBy?: string;
   selectors?: MadaraSelectors;

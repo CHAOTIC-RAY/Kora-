@@ -240,5 +240,23 @@ ok("dead details -> no throw", Boolean(await dead.details(listing.mangas[0])));
 ok("dead chapters -> empty", (await dead.chapters(listing.mangas[0])).length === 0);
 ok("dead pages -> empty", (await dead.pages(chs[0])).length === 0);
 
+// Source-provided listing paths must be honored and paginated.
+{
+  const requested: string[] = [];
+  const customClient = createMadaraClient({
+    ...PLUGIN,
+    madara: { popularPath: "/manga/?status=hot&page=1", latestPath: "/manga/?order=update&page=1" },
+  } as unknown as SourcePlugin, async (url) => { requested.push(url); return LISTING; });
+  await customClient.popular(3);
+  await customClient.latest(2);
+  ok("popularPath override is honored and paginated", requested[0] === "https://example.test/manga/?status=hot&page=3", requested[0]);
+  ok("latestPath override is honored and paginated", requested[1] === "https://example.test/manga/?order=update&page=2", requested[1]);
+}
+{
+  const html = `<div class="page-item-detail manga"><a href="/series/gamma/" title="Gamma"><img data-src="/uploads/gamma.jpg"></a></div>`;
+  const seriesClient = createMadaraClient(PLUGIN, async () => html);
+  const result = await seriesClient.popular(1);
+  ok("listing accepts /series/ links", result.mangas.length === 1 && result.mangas[0].url === "https://example.test/series/gamma/", result.mangas);
+}
 console.log(`\n${pass} pass, ${fail} fail`);
 if (fail) process.exit(1);

@@ -73,6 +73,24 @@ function listingUrl(baseUrl: string, page: number, orderBy: string, sub: string,
   return `${root}/${sub || "manga"}/?${params.toString()}`;
 }
 
+/** Resolve optional source-specific listing URL patterns. */
+function overrideListingUrl(baseUrl: string, template: string, page: number, query?: string): string {
+  const p = Math.max(1, page);
+  const hasPagePlaceholder = /\{page\}/i.test(template);
+  const hasQueryPlaceholder = /\{(?:query|q)\}/i.test(template);
+  const expanded = template
+    .replace(/\{page\}/gi, String(p))
+    .replace(/\{(?:query|q)\}/gi, encodeURIComponent(query || ""));
+  const url = new URL(expanded, baseUrl.replace(/\/+$/, "") + "/");
+  if (!hasPagePlaceholder && (url.searchParams.has("page") || p > 1)) {
+    url.searchParams.set("page", String(p));
+  }
+  if (query && !hasQueryPlaceholder && !["s", "q", "query"].some((key) => url.searchParams.has(key))) {
+    url.searchParams.set("s", query);
+  }
+  return url.toString();
+}
+
 function statusFrom(raw: string): number {
   const s = raw.trim().toLowerCase();
   if (s.includes("ongoing") || s.includes("publishing")) return 1;
@@ -110,7 +128,11 @@ export function createMadaraClient(
       mode === "latest"
         ? o?.latestOrderBy || "update"
         : o?.popularOrderBy || "views";
-    const url = listingUrl(root, page, orderBy, sub, query);
+    const customPath =
+      mode === "popular" ? o?.popularPath : mode === "latest" ? o?.latestPath : o?.searchPath;
+    const url = customPath
+      ? overrideListingUrl(root, customPath, page, query)
+      : listingUrl(root, page, orderBy, sub, query);
 
     let html = "";
     try {
@@ -138,7 +160,7 @@ export function createMadaraClient(
       // `page-item-detail` on the page is frequently the site's own logo
       // block, which links to the homepage — that is a real anchor with a
       // real href, so the title test alone does not catch it.
-      if (!/\/manga\/|\/serie\/|\/comic\//i.test(href)) continue;
+      if (!/\/(?:manga|series?|serie|comic)\//i.test(href)) continue;
 
       const title = pickTitle(card) || pickText(card, "a") || "Untitled";
       // Prefer the lazy attribute, but reject the theme's placeholder and
@@ -244,7 +266,7 @@ export function createMadaraClient(
       // A chapter link points *into* a manga, never at the site root. The
       // first `wp-manga-chapter` match on a page is often a logo or promo
       // block with a real but meaningless href.
-      if (!/\/manga\/|\/serie\/|\/comic\//i.test(href)) continue;
+      if (!/\/(?:manga|series?|serie|comic)\//i.test(href)) continue;
       // The chapter name is the anchor's own text. Reading it through a
       // selector would walk the whole segment and can land on the *next*
       // chapter's anchor, so take the one that carries this chapter's href.
