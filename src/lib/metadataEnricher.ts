@@ -1,150 +1,127 @@
 import { BookMetadata, syncBookToCloud } from "./firebase";
 
+function cleanText(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<\/?[^>]+>/g, " ")
+    .replace(/\[source\]\s*\([^)]*\)/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalize(value: string): string {
+  return value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function titleMatches(wanted: string, candidate: string): boolean {
+  const a = normalize(wanted);
+  const b = normalize(candidate);
+  if (!a || !b) return false;
+  if (a === b || b.startsWith(a + " ") || a.startsWith(b + " ")) return true;
+  const wa = new Set(a.split(" ").filter((x) => x.length > 2));
+  const wb = new Set(b.split(" ").filter((x) => x.length > 2));
+  if (!wa.size || !wb.size) return false;
+  const overlap = [...wa].filter((x) => wb.has(x)).length;
+  return overlap / wa.size >= 0.8 && overlap / wb.size >= 0.65;
+}
+
+function candidateScore(title: string, author: string, info: any): number {
+  const candidateTitle = String(info?.title || "");
+  if (!titleMatches(title, candidateTitle)) return -100;
+  let score = normalize(title) === normalize(candidateTitle) ? 10 : 5;
+  const wantedAuthor = normalize(author);
+  const authors = (Array.isArray(info?.authors) ? info.authors : []).map((x: unknown) => normalize(String(x)));
+  if (wantedAuthor && authors.some((a: string) => a && (a.includes(wantedAuthor) || wantedAuthor.includes(a)))) score += 4;
+  else if (wantedAuthor && authors.length) score -= 2;
+  if (info?.description) score += 1;
+  if (info?.imageLinks?.thumbnail) score += 1;
+  return score;
+}
+
 /**
- * Enriches a book's metadata using the Google Books API.
- * 
- * @param userId The user's ID for cloud sync
- * @param book The book metadata object to enrich
- * @returns A new book metadata object with enriched details
+ * Enrich from independent catalogues. Search returns multiple candidates and
+ * rejects unrelated editions instead of blindly trusting items[0]. Descriptions
+ * are cleaned because provider pages often contain HTML/source annotations.
  */
 export async function enrichBookMetadata(userId: string, book: BookMetadata): Promise<BookMetadata> {
-  console.log(`[MetadataEnricher] Enriching book: "${book.title}" by "${book.author}"`);
-  
+  const cleanTitle = book.title.replace(/\.[^/.]+$/, "").trim();
+  const author = String(book.author || "").trim();
+  const enriched: BookMetadata = { ...book, progress: { ...book.progress }, tags: [...(book.tags || [])] };
+
   try {
-    // Clean up title for better search (remove extension, etc. if present in title)
-    const cleanTitle = book.title.replace(/\.[^/.]+$/, "").trim();
-    const query = encodeURIComponent(`intitle:${cleanTitle} inauthor:${book.author}`);
-    
-    const response = await fetch(`/api/google-books/search?q=${query}&maxResults=1`);
-    if (!response.ok) {
-      console.warn(`[MetadataEnricher] Google Books search failed for "${book.title}"`);
-      return book;
-    }
-    
-    const data = await response.json();
-    const googleBook = data.items?.[0]?.volumeInfo;
-    
-    if (!googleBook) {
-      console.log(`[MetadataEnricher] No matching book found on Google Books for "${book.title}"`);
-      return book;
-    }
-    
-    // Create a copy of the book to update
-    const enrichedBook: BookMetadata = { ...book };
-    
-    // 1. Fix Metadata and Book Details
-    if (googleBook.description && !enrichedBook.description) {
-      enrichedBook.description = googleBook.description;
-    }
-    
-    if (googleBook.publisher && !enrichedBook.publisher) {
-      enrichedBook.publisher = googleBook.publisher;
-    }
-    
-    if (googleBook.publishedDate && !enrichedBook.year) {
-      // Extract year from YYYY-MM-DD
-      enrichedBook.year = googleBook.publishedDate.split("-")[0];
-    }
-    
-    if (googleBook.pageCount && !enrichedBook.progress.totalPages) {
-      enrichedBook.progress.totalPages = googleBook.pageCount;
-    }
+    const query = encodeURIComponent("intitle:" + cleanTitle + (author ? " inauthor:" + author : ""));
+    const response = await fetch("/api/google-books/search?q=" + query + "&maxResults=10");
+    if (response.ok) {
+      const data = await response.json();
+      const items = Array.isArray(data.items) ? data.items : [];
+      const match = items
+        .map((item: any) => ({ info: item?.volumeInfo, score: candidateScore(cleanTitle, author, item?.volumeInfo) }))
+        .filter((x: any) => x.info && x.score >= 5)
+        .sort((a: any, b: any) => b.score - a.score)[0]?.info;
 
-    // Update language if it's default and we found a more specific one
-    if (googleBook.language && (enrichedBook.language === "English" || !enrichedBook.language)) {
-      // Convert language codes to names if needed, but keeping them as is for now
-      enrichedBook.language = googleBook.language;
-    }
-    
-    // 2. Secondary Main Source: NetGalley Catalog Lookup
-    try {
-      const cleanTitle = book.title.replace(/\.[^/.]+$/, "").trim();
-      const ngRes = await fetch(`/api/netgalley/book?title=${encodeURIComponent(cleanTitle)}&author=${encodeURIComponent(book.author || "")}`);
-      if (ngRes.ok) {
-        const ngData = await ngRes.json();
-        const ngDetails = ngData.details;
-        if (ngDetails) {
-          if (!enrichedBook.description && ngDetails.description) {
-            enrichedBook.description = ngDetails.description;
-          }
-          if (!enrichedBook.publisher && ngDetails.publisher) {
-            enrichedBook.publisher = ngDetails.publisher;
-          }
-          const hasPlaceholderCover = !enrichedBook.coverUrl || 
-                                      enrichedBook.coverUrl.includes("placeholder") || 
-                                      enrichedBook.coverUrl.includes("cover-redirect");
-          if (hasPlaceholderCover && ngDetails.coverUrl) {
-            enrichedBook.coverUrl = ngDetails.coverUrl;
-            console.log(`[MetadataEnricher] Updated cover from NetGalley for "${book.title}"`);
-          }
+      if (match) {
+        if (!enriched.description && match.description) enriched.description = cleanText(match.description);
+        if (!enriched.publisher && match.publisher) enriched.publisher = String(match.publisher).trim();
+        if (!enriched.year && match.publishedDate) enriched.year = String(match.publishedDate).slice(0, 4);
+        if (!enriched.progress.totalPages && Number(match.pageCount) > 0) enriched.progress.totalPages = Number(match.pageCount);
+        if ((!enriched.language || enriched.language === "English") && match.language) enriched.language = String(match.language).toUpperCase();
+        const cover = match.imageLinks?.thumbnail?.replace(/^http:/, "https:");
+        if ((!enriched.coverUrl || /placeholder|cover-redirect/i.test(enriched.coverUrl)) && cover) enriched.coverUrl = cover;
+        if (Array.isArray(match.categories)) {
+          const tags = new Set(enriched.tags);
+          match.categories.forEach((category: string) => String(category).split("/").map((s) => s.trim()).filter((s) => s.length > 1).forEach((s) => tags.add(s)));
+          enriched.tags = [...tags];
         }
       }
-    } catch (_) {}
-
-    // 3. Find Book Cover if missing
-    const hasPlaceholderCover = !enrichedBook.coverUrl || 
-                                enrichedBook.coverUrl.includes("placeholder") || 
-                                enrichedBook.coverUrl.includes("cover-redirect");
-                                
-    if (hasPlaceholderCover && googleBook?.imageLinks?.thumbnail) {
-      // Upgrade to high quality if possible by using the proxy
-      enrichedBook.coverUrl = googleBook.imageLinks.thumbnail.replace("http:", "https:");
-      console.log(`[MetadataEnricher] Updated cover for "${book.title}"`);
     }
-    
-    // 3. Fix Genre Tags and other tags
-    if (googleBook.categories && googleBook.categories.length > 0) {
-      const newTags = new Set(enrichedBook.tags);
-      
-      googleBook.categories.forEach((cat: string) => {
-        // Categories from Google Books are often multi-layered like "Fiction / Science Fiction / Space Opera"
-        // We split them and add as individual tags
-        const splitTags = cat.split("/").map(s => s.trim());
-        splitTags.forEach(t => {
-          if (t && t.length > 1) {
-            newTags.add(t);
-          }
-        });
-      });
-      
-      enrichedBook.tags = Array.from(newTags);
-      console.log(`[MetadataEnricher] Updated tags for "${book.title}": ${enrichedBook.tags.join(", ")}`);
-    }
-
-    // 4. Series detection from title / Google subtitle patterns
-    try {
-      const { ensureSeriesFields, parseSeriesFromTitle } = await import("./seriesHelper");
-      const titleParsed = parseSeriesFromTitle(googleBook.title || enrichedBook.title || "");
-      const fromCurrent = ensureSeriesFields(enrichedBook);
-      if (!enrichedBook.series?.trim() && (fromCurrent.series || titleParsed?.series)) {
-        enrichedBook.series = fromCurrent.series || titleParsed?.series;
-      }
-      if (!enrichedBook.seriesNumber?.trim() && (fromCurrent.seriesNumber || titleParsed?.seriesNumber)) {
-        enrichedBook.seriesNumber = fromCurrent.seriesNumber || titleParsed?.seriesNumber;
-      }
-      // Google sometimes embeds series in subtitle like "A Something Novel #2"
-      if ((!enrichedBook.series || !enrichedBook.seriesNumber) && googleBook.subtitle) {
-        const subParsed = parseSeriesFromTitle(`${googleBook.title} (${googleBook.subtitle})`);
-        if (subParsed) {
-          enrichedBook.series = enrichedBook.series || subParsed.series;
-          enrichedBook.seriesNumber = enrichedBook.seriesNumber || subParsed.seriesNumber;
-        }
-      }
-    } catch (err) {
-      console.warn("[MetadataEnricher] Series detection skipped", err);
-    }
-    
-    // Final sync to cloud if changed
-    if (JSON.stringify(enrichedBook) !== JSON.stringify(book)) {
-      enrichedBook.dateModified = Date.now();
-      await syncBookToCloud(userId, enrichedBook);
-      console.log(`[MetadataEnricher] Successfully enriched and synced "${book.title}"`);
-      return enrichedBook;
-    }
-    
   } catch (error) {
-    console.error(`[MetadataEnricher] Error enriching book "${book.title}":`, error);
+    console.warn("[MetadataEnricher] Google Books unavailable; keeping existing metadata", error);
   }
-  
+
+  // NetGalley is a supplementary source only; never replace a valid description.
+  try {
+    const response = await fetch("/api/netgalley/book?title=" + encodeURIComponent(cleanTitle) + "&author=" + encodeURIComponent(author));
+    if (response.ok) {
+      const data = await response.json();
+      const details = data?.details;
+      if (details && (!details.title || titleMatches(cleanTitle, String(details.title)))) {
+        if (!enriched.description && details.description) enriched.description = cleanText(details.description);
+        if (!enriched.publisher && details.publisher) enriched.publisher = String(details.publisher).trim();
+        if ((!enriched.coverUrl || /placeholder|cover-redirect/i.test(enriched.coverUrl)) && details.coverUrl) enriched.coverUrl = details.coverUrl;
+      }
+    }
+  } catch {
+    // Optional provider: the app remains usable when it is unavailable.
+  }
+
+  // Last-resort cover lookup by a validated ISBN only; avoid opaque catalogue IDs.
+  if (!enriched.coverUrl || /placeholder|cover-redirect/i.test(enriched.coverUrl)) {
+    try {
+      const response = await fetch("https://openlibrary.org/search.json?title=" + encodeURIComponent(cleanTitle) + (author ? "&author=" + encodeURIComponent(author) : "") + "&limit=5");
+      if (response.ok) {
+        const data = await response.json();
+        const docs = Array.isArray(data.docs) ? data.docs : [];
+        const match = docs.find((doc: any) => titleMatches(cleanTitle, String(doc.title || "")) &&
+          (!author || (doc.author_name || []).some((a: string) => titleMatches(author, a))));
+        if (match?.cover_i) enriched.coverUrl = "https://covers.openlibrary.org/b/id/" + match.cover_i + "-L.jpg";
+      }
+    } catch {
+      // Open Library is a best-effort fallback, not a hard dependency.
+    }
+  }
+
+  if (JSON.stringify(enriched) !== JSON.stringify(book)) {
+    enriched.dateModified = Date.now();
+    await syncBookToCloud(userId, enriched);
+    return enriched;
+  }
   return book;
 }
