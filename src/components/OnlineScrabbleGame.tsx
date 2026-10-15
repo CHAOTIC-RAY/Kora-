@@ -1077,7 +1077,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                 <Award className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="font-serif font-bold text-base leading-tight text-amber-900 ">Online Scrabble</h2>
+                <h2 className="font-serif font-bold text-base leading-tight text-kindle-text">Online Scrabble</h2>
                 <p className="text-[10px] uppercase tracking-wider text-kindle-text-muted ">
                   {screen === "game"
                     ? gameMode === "cpu"
@@ -1133,14 +1133,14 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                       <div>
                         <h4 className="font-semibold text-kindle-text">Play VS Kora (CPU)</h4>
                         <p className="text-xs text-kindle-text-muted">
-                          Challenge Kora's AI with adaptive difficulty. No internet required.
+                          Play against Kora's offline CPU. No internet required.
                         </p>
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={initCpuGame}
-                      className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:opacity-80 text-amber-50 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition active:scale-95">
+                      className="w-full py-2.5 px-4 rounded-xl bg-[var(--theme-accent)] hover:brightness-110 text-[var(--theme-bg)] font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition active:scale-95">
                         <Cpu className="w-3.5 h-3.5" /> Start CPU Game
                       </button>
                     <p className="text-xs text-kindle-text-muted text-center mt-2">
