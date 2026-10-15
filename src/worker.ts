@@ -1706,9 +1706,8 @@ export default {
       const q = (url.searchParams.get("q") || "").trim();
       const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
       const googlePageSize = 12;
-      if (!q) {
-        return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
-      }
+      if (!q) return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
+
       const stream = new ReadableStream({
         async start(controller) {
           const enc = new TextEncoder();
@@ -1716,42 +1715,96 @@ export default {
             try { controller.enqueue(enc.encode(JSON.stringify(obj) + "\n")); }
             catch { /* The client closed the stream. */ }
           };
-          let googleCount = 0, googleTotal = 0, raveCount = 0, raveTotal = 0;
-          const googleSearch = (async () => {
+          const normalize = (value: unknown) => String(value || "")
+            .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const keyFor = (book: any) => {
+            const title = normalize(book?.title);
+            const author = normalize(book?.author || book?.authors);
+            return title ? title + "|" + author : "";
+          };
+          try {
             const startIndex = (page - 1) * googlePageSize;
             const googleUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${googlePageSize}&startIndex=${startIndex}`;
-            const res = await fetch(googleUrl, { signal: AbortSignal.timeout(10000) });
-            if (!res.ok) throw new Error("Google Books returned HTTP " + res.status);
-            const data = await res.json() as any;
-            googleTotal = Number(data.totalItems) || 0;
-            const books = (data.items || []).map((item: any) => {
-              const info = item.volumeInfo || {};
-              return {
-                title: info.title,
-                author: (info.authors || []).join(", "),
-                coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:"),
-                year: info.publishedDate?.split("-")[0],
-                publisher: info.publisher,
-                isGoogleBook: true,
-                source: "google",
-              };
-            });
-            googleCount = books.length;
-            if (books.length) write({ source: "google", books });
-          })();
-          const raveSearch = (async () => {
-            const result = await fetchFromRaveBookSearch(env, q, "ebooks", "all", String(page));
-            const books = result.results.map((book: any) => ({ ...book, isGoogleBook: false, isRaveBook: true }));
-            raveCount = books.length;
-            raveTotal = Number(result.meta.total ?? result.meta.totalCount) || 0;
-            if (books.length) write({ source: "rave", books });
-          })();
-          await Promise.allSettled([googleSearch, raveSearch]);
-          const googleHasMore = googleCount >= googlePageSize || (googleTotal > 0 && page * googlePageSize < googleTotal);
-          const raveHasMore = raveCount >= 25 || (raveTotal > 0 && page * 25 < raveTotal);
-          const inferredRaveTotal = raveTotal || (raveCount ? page * 25 + (raveHasMore ? 25 : 0) : 0);
-          const totalCount = (googleTotal || ((page - 1) * googlePageSize + googleCount)) + inferredRaveTotal;
-          write({ done: true, totalCount, hasMore: googleHasMore || raveHasMore });
+            const [googleOutcome, raveOutcome] = await Promise.allSettled([
+              (async () => {
+                const res = await fetch(googleUrl, { signal: AbortSignal.timeout(10000) });
+                if (!res.ok) throw new Error("Google Books returned HTTP " + res.status);
+                const data = await res.json() as any;
+                const books = (data.items || []).map((item: any) => {
+                  const info = item.volumeInfo || {};
+                  return {
+                    title: info.title || "Unknown Title",
+                    author: (info.authors || []).join(", "),
+                    coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:"),
+                    year: info.publishedDate?.split("-")[0],
+                    publisher: info.publisher,
+                    description: info.description,
+                    isbn: (info.industryIdentifiers || []).find((v: any) => v.type === "ISBN_13")?.identifier,
+                    googleId: item.id,
+                    isGoogleBook: true,
+                    source: "Google Books",
+                  };
+                });
+                return { books, total: Number(data.totalItems) || 0 };
+              })(),
+              fetchFromRaveBookSearch(env, q, "ebooks", "all", String(page))
+            ]);
+
+            const google = googleOutcome.status === "fulfilled" ? googleOutcome.value : { books: [], total: 0 };
+            const rave = raveOutcome.status === "fulfilled" ? raveOutcome.value : { results: [], meta: {} };
+            const raveBooks = Array.isArray((rave as any)?.results) ? (rave as any).results : [];
+            const merged = new Map<string, any>();
+
+            // Add source-native results first so their real download/resolve metadata survives.
+            for (const book of raveBooks) {
+              const key = keyFor(book);
+              if (!key) continue;
+              merged.set(key, { ...book, isRaveBook: true, isGoogleBook: false });
+            }
+            for (const book of google.books) {
+              const key = keyFor(book);
+              if (!key) continue;
+              const existing = merged.get(key);
+              if (existing) {
+                // Google metadata enriches the source result, but must never overwrite a usable
+                // source URL, MD5/identifier, direct-file flag, or download resolver metadata.
+                merged.set(key, {
+                  ...book,
+                  ...existing,
+                  title: existing.title || book.title,
+                  author: existing.author || book.author,
+                  coverUrl: existing.coverUrl || book.coverUrl,
+                  year: existing.year || book.year,
+                  publisher: existing.publisher || book.publisher,
+                  description: existing.description || book.description,
+                  isbn: existing.isbn || book.isbn,
+                  googleId: book.googleId,
+                  isGoogleBook: true,
+                  isRaveBook: true,
+                });
+              } else {
+                merged.set(key, book);
+              }
+            }
+
+            const books = [...merged.values()];
+            if (books.length) write({ source: "merged", books });
+            const raveTotal = Number((rave as any)?.meta?.total ?? (rave as any)?.meta?.totalCount) || 0;
+            const totalCount = Math.max(books.length, google.total + raveTotal);
+            const googleHasMore = google.books.length >= googlePageSize || (google.total > page * googlePageSize);
+            const raveHasMore = raveBooks.length >= 25 || (raveTotal > page * 25);
+            write({ done: true, totalCount, hasMore: googleHasMore || raveHasMore, sources: {
+              google: google.books.length,
+              ravebsd: raveBooks.length,
+              failed: [
+                ...(googleOutcome.status === "rejected" ? ["google"] : []),
+                ...(raveOutcome.status === "rejected" ? ["ravebsd"] : [])
+              ]
+            } });
+          } catch (error: any) {
+            write({ done: true, totalCount: 0, hasMore: false, error: error?.message || "Book search failed" });
+          }
           try { controller.close(); } catch { /* The stream has already been cancelled. */ }
         }
       });
