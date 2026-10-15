@@ -22,8 +22,10 @@ import {
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
 import { searchIndependentBookSources, searchIndependentPopularBooks, getIndependentSourceHealth } from "./lib/ravebsdScraper";
+import { searchShadowBooks } from "./lib/shadowSources";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
+import { resolveLibgenSigned } from "./lib/libgenSigned";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
 import {
   getNetgalleyCoverUrl,
@@ -80,51 +82,6 @@ async function buildRaveFallbackFeed(): Promise<any> {
     } catch (_) { /* try next topic */ }
   }
   return { status: "OK", results: { lists } };
-}
-
-// signed CDN download link (get.php?md5=<h>&key=<t>). LibGen 307-redirects the
-// keyless link to an ads page that embeds the signed link in an <a href>.
-// Returns "" if it cannot be resolved within timeoutMs.
-// Hosts are raced in parallel so a single slow mirror cannot block the UI.
-async function resolveLibgenSigned(md5: string, timeoutMs = 2800): Promise<string> {
-  const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
-  const hosts = [
-    "libgen.li",
-    "libgen.vg",
-    "libgen.la",
-    "libgen.bz",
-    "libgen.gl",
-    "libgen.gs",
-    "libgen.st",
-    "libgen.is",
-    "libgen.rs",
-  ];
-
-  const tryHost = async (host: string): Promise<string> => {
-    for (const proto of ["https", "http"] as const) {
-      try {
-        const res = await fetch(`${proto}://${host}/get.php?md5=${md5}`, {
-          headers: { "User-Agent": ua },
-          redirect: "follow",
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        if (!res.ok) continue;
-        const html = await res.text();
-        const m = html.match(/get\.php\?md5=[a-f0-9]+&key=[A-Za-z0-9]+/i);
-        if (!m) continue;
-        return `${proto}://${host}/${m[0]}`;
-      } catch {
-        /* try next proto */
-      }
-    }
-    throw new Error(`libgen ${host} no signed key`);
-  };
-
-  try {
-    return await Promise.any(hosts.map(tryHost));
-  } catch (_) {
-    return "";
-  }
 }
 
 /** When Google Books is quota-limited, return an Open Library result shaped like a volumes response. */
@@ -1208,7 +1165,7 @@ export default {
       );
     }
 
-    // 1. Anna's Archive Search (Rave Book Search Scraper)
+    // 1. Anna's Archive Search (Shadow Sources + Rave fallback)
     if (path === "/api/annas-archive/search") {
       const query = url.searchParams.get("q");
       const mode = url.searchParams.get("mode") || "ebooks";
@@ -1222,6 +1179,39 @@ export default {
         });
       }
 
+      // Try shadow sources first (LibGen + Anna's Archive).
+      // Uses a static import; the dynamic import() the child left here broke the
+      // module graph (bundler could not resolve it at runtime in the Worker).
+      const cookieHeader = request.headers.get("Cookie") || "";
+      try {
+        const shadowResults = await searchShadowBooks(query, mode, source, Number(page), env, { Cookie: cookieHeader });
+        if (shadowResults.results.length > 0) {
+          const RESULTS_PER_PAGE = 25;
+          const searchPage = Math.max(1, Number(page));
+          const totalCount = shadowResults.meta.total ?? shadowResults.results.length;
+          const hasMore = shadowResults.results.length >= RESULTS_PER_PAGE ||
+            (shadowResults.meta.total && searchPage * RESULTS_PER_PAGE < shadowResults.meta.total);
+          return new Response(JSON.stringify({
+            books: shadowResults.results,
+            results: shadowResults.results,
+            source: source,
+            page: searchPage,
+            pageSize: shadowResults.results.length,
+            meta: shadowResults.meta,
+            totalCount,
+            hasMore,
+            mirror: "Shadow Sources",
+            parsedBy: "Shadow Sources Proxy"
+          }), {
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+      } catch (_) {
+        // Fall through to independent sources below
+      }
+
+      // Shadow sources returned nothing (mirrors blocked / challenged) — use the
+      // independent open-source scrapers, which always answer something.
       try {
         const { results: raveResults, meta } = await fetchFromRaveBookSearch(env, query, mode, source, page);
         const RESULTS_PER_PAGE = 25;
@@ -1240,7 +1230,7 @@ export default {
           meta: meta,
           totalCount,
           hasMore,
-          mirror: "Rave Official Site",
+          mirror: "Independent Sources",
           parsedBy: "Edge API Proxy"
         }), {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
@@ -2322,18 +2312,23 @@ export default {
         } catch (_) { /* ignore malformed url */ }
       }
 
-      if (isRealMd5) {
+      // Attempt LibGen direct download resolution if we have an md5
+      // (from query params or search results HTML). The isRealMd5 check was
+      // too restrictive - it prevented valid md5 values from being used when
+      // extracted from search results HTML, causing LibGen books to fall through
+      // to the Open Library catalogue fallback instead of showing direct links.
+      if (isRealMd5 || md5) {
         // Instant mirrors first so the client never waits on LibGen HTML scraping.
         // Signed CDN resolution is best-effort with a short parallel timeout.
         const instantMirrors = [
           {
             label: "Libgen Mirror (libgen.li)",
-            url: `https://libgen.li/get.php?md5=${md5.toLowerCase()}`,
+            url: `https://libgen.li/get.php?md5=${md5?.toLowerCase() || ""}`,
             isDirect: true
           },
           {
             label: "Anna's Archive",
-            url: `https://annas-archive.org/md5/${md5}`,
+            url: `https://annas-archive.org/md5/${md5 || ""}`,
             isDirect: false
           }
         ];
