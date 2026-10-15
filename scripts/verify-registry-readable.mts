@@ -53,16 +53,27 @@ const PRODUCTION = "https://kora.chaoticstudio.workers.dev";
  * cloud-metadata block. Fetching straight from here instead would test a
  * code path the app never uses.
  */
-async function relay(url: string, referer: string): Promise<string> {
+let lastRelaySummary = { status: 0, bytes: 0, title: "", hasMadaraCardClass: false };
+
+async function relay(url: string, referer?: string): Promise<string> {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), TIMEOUT);
   try {
+    const resolvedReferer = referer || `${new URL(url).origin}/`;
     const r = await fetch(
-      `${PRODUCTION}/api/source-fetch?u=${encodeURIComponent(url)}&r=${encodeURIComponent(referer)}`,
+      `${PRODUCTION}/api/source-fetch?u=${encodeURIComponent(url)}&r=${encodeURIComponent(resolvedReferer)}`,
       { signal: ac.signal }
     );
     const j = (await r.json()) as { body?: string };
-    return j.body || "";
+    const body = typeof j.body === "string" ? j.body : "";
+    const title = (body.match(/<title[^>]*>([\\s\\S]*?)<\\/title>/i)?.[1] || "").replace(/\\s+/g, " ").slice(0, 80);
+    lastRelaySummary = {
+      status: r.status,
+      bytes: body.length,
+      title,
+      hasMadaraCardClass: /class=["\'][^"\']*page-item-detail[^"\']*["\']/i.test(body),
+    };
+    return body;
   } finally {
     clearTimeout(t);
   }
@@ -125,7 +136,12 @@ async function verify(def: any, file: string): Promise<Result> {
     };
   }
   if (!page.mangas?.length) {
-    return { ...base, verdict: "unreadable", stage: "listing", detail: "no series returned" };
+    return {
+      ...base,
+      verdict: "unreadable",
+      stage: "listing",
+      detail: `no series returned (relay HTTP ${lastRelaySummary.status}, ${lastRelaySummary.bytes} bytes, card markup ${lastRelaySummary.hasMadaraCardClass ? "present" : "absent"}, title "${lastRelaySummary.title}")`.slice(0, 160),
+    };
   }
 
   const manga = page.mangas[0];
