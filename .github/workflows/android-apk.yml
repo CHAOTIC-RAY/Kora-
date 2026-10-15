@@ -84,8 +84,7 @@ jobs:
 
       - name: Clean install dependencies
         run: |
-          rm -rf node_modules package-lock.json
-          npm install --no-audit --no-fund --omit=optional
+          npm ci --no-audit --no-fund --omit=optional
           npm install @rollup/rollup-linux-x64-gnu --no-save --no-audit --no-fund || true
 
       - name: Type-check source
