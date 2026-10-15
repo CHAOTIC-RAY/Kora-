@@ -465,13 +465,16 @@ export default function AudiobookPlayer({
           try {
             await audio.play();
           } catch (playErr) {
+            if (requestGeneration !== trackLoadGeneration.current) return;
             // Retry once with anonymous CORS in case the first mode blocked decode.
             audio.crossOrigin = "anonymous";
             audio.load();
             await audio.play();
           }
+          if (requestGeneration !== trackLoadGeneration.current) return;
           setIsPlaying(true);
         }
+        if (requestGeneration !== trackLoadGeneration.current) return;
         setCurrentTrack(index);
       } catch (err) {
         if (requestGeneration === trackLoadGeneration.current) {
