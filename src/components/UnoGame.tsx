@@ -661,9 +661,9 @@ export default function UnoGame({
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <p className="text-[10px] font-black uppercase tracking-[.35em] text-rose-300">Kora Originals · Card Arena</p>
-                  <h3 className="text-4xl font-black italic tracking-tight sm:text-6xl">WILDCARD <span className="text-rose-400">CLASH</span></h3>
-                  <p className="mx-auto max-w-lg text-sm leading-relaxed text-white/60">
+                  <p className="text-[10px] font-black uppercase tracking-[.35em] text-[var(--theme-accent)]">Kora Originals · Card Arena</p>
+                  <h3 className="text-4xl font-black italic tracking-tight sm:text-6xl">WILDCARD <span className="text-[var(--theme-accent)]">CLASH</span></h3>
+                  <p className="mx-auto max-w-lg text-sm leading-relaxed text-[var(--theme-text-muted)]">
                     Outplay the table. Save your wild card. Call UNO before they catch you.
                   </p>
                 </div>
@@ -673,9 +673,9 @@ export default function UnoGame({
                       <UnoCardArt card={{ id: "menu-green", color: "green", value: "7", scoreValue: 7 }} compact />
                     </div>
                     <div className="relative z-10 flex h-full min-h-36 flex-col items-start justify-between gap-6">
-                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-300/15 text-emerald-200"><Cpu className="h-5 w-5" /></span>
-                      <div><h4 className="text-lg font-black">Solo Showdown</h4><p className="mt-1 max-w-[230px] text-xs leading-relaxed text-white/60">Jump straight into a match against tactical offline bots.</p></div>
-                      <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-200">Play now <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--theme-accent)]/10 text-[var(--theme-accent)]"><Cpu className="h-5 w-5" /></span>
+                      <div><h4 className="text-lg font-black">Solo Showdown</h4><p className="mt-1 max-w-[230px] text-xs leading-relaxed text-[var(--theme-text-muted)]">Jump straight into a match against tactical offline bots.</p></div>
+                      <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[var(--theme-accent)]">Play now <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
                     </div>
                   </button>
                   <button type="button" onClick={hostP2pRoom} className="group relative overflow-hidden rounded-3xl border border-[var(--theme-border)] bg-[var(--theme-card)] p-5 text-left shadow-xl transition hover:-translate-y-1 hover:border-[var(--theme-accent)] hover:shadow-2xl sm:p-6">
@@ -683,20 +683,20 @@ export default function UnoGame({
                       <UnoCardArt card={{ id: "menu-wild", color: "wild", value: "wild4", scoreValue: 50 }} compact />
                     </div>
                     <div className="relative z-10 flex h-full min-h-36 flex-col items-start justify-between gap-6">
-                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-300/15 text-rose-200"><Wifi className="h-5 w-5" /></span>
-                      <div><h4 className="text-lg font-black">Friend Arena</h4><p className="mt-1 max-w-[230px] text-xs leading-relaxed text-white/60">Create a room and invite a friend with a six-character code.</p></div>
-                      <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-rose-200">Host a game <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-[var(--theme-accent)]/10 text-[var(--theme-accent)]"><Wifi className="h-5 w-5" /></span>
+                      <div><h4 className="text-lg font-black">Friend Arena</h4><p className="mt-1 max-w-[230px] text-xs leading-relaxed text-[var(--theme-text-muted)]">Create a room and invite a friend with a six-character code.</p></div>
+                      <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-[var(--theme-accent)]">Host a game <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
                     </div>
                   </button>
                 </div>
-                <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/[.04] p-3 sm:p-4">
-                  <div className="mb-3 flex items-center gap-2 px-1 text-left text-[10px] font-black uppercase tracking-[.2em] text-white/45"><Users className="h-3.5 w-3.5" /> Have a room code?</div>
+                <div className="w-full max-w-xl rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-card)] p-3 sm:p-4">
+                  <div className="mb-3 flex items-center gap-2 px-1 text-left text-[10px] font-black uppercase tracking-[.2em] text-[var(--theme-text-muted)]"><Users className="h-3.5 w-3.5" /> Have a room code?</div>
                   <div className="flex gap-2">
-                    <input type="text" placeholder="ENTER ROOM CODE" value={joinInput} onChange={(e) => setJoinInput(e.target.value.toUpperCase())} maxLength={6} aria-label="Room code" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-sm tracking-[.2em] text-white outline-none placeholder:text-white/25 focus:border-rose-400" />
-                    <button type="button" onClick={() => joinP2pRoom(joinInput)} className="rounded-xl bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-[#171923] transition hover:bg-rose-100">Join</button>
+                    <input type="text" placeholder="ENTER ROOM CODE" value={joinInput} onChange={(e) => setJoinInput(e.target.value.toUpperCase())} maxLength={6} aria-label="Room code" className="min-w-0 flex-1 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-card)] px-4 py-3 font-mono text-sm tracking-[.2em] text-white outline-none placeholder:text-white/25 focus:border-rose-400" />
+                    <button type="button" onClick={() => joinP2pRoom(joinInput)} className="rounded-xl bg-[var(--theme-accent)] px-5 py-3 text-xs font-black uppercase tracking-widest text-[var(--theme-bg)] transition hover:bg-rose-100">Join</button>
                   </div>
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-[.2em] text-white/30">108 cards · 2–4 players · Offline ready</p>
+                <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[var(--theme-text-muted)]">108 cards · 2–4 players · Offline ready</p>
               </div>
             </main>
           )}
