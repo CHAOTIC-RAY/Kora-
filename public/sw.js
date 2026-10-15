@@ -189,12 +189,12 @@ function looksLikeHtmlChunk(bytes) {
       (bytes[0] === 0x37 && bytes[1] === 0x7a && bytes[2] === 0xbc)) return false;
   const head = new TextDecoder("utf-8", { fatal: false })
     .decode(bytes.subarray(0, Math.min(bytes.length, 512)))
-    .replace(/^\\uFEFF/, "")
     .trimStart()
     .toLowerCase();
   return head.startsWith("<!doctype html") || head.startsWith("<html") ||
     head.startsWith("<?xml") || head.startsWith("<!--") ||
-    /<head|<body|<title|<meta\\s/i.test(head);
+    head.includes("<head") || head.includes("<body") ||
+    head.includes("<title") || head.includes("<meta ");
 }
 
 function formatBytes(bytes) {
@@ -307,7 +307,7 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
 
           const responseContentType = response.headers.get("content-type") || "";
           if (responseContentType) contentType = responseContentType;
-          if (/text\\/html|application\\/xhtml/i.test(contentType)) {
+          if (contentType.toLowerCase().includes("text/html") || contentType.toLowerCase().includes("application/xhtml")) {
             throw new Error("Mirror returned a webpage instead of a book file.");
           }
 
@@ -389,7 +389,7 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
           if (received > 0 && chunks.length) {
             try {
               await savePartialState(partialId, {
-                payload: { ...payload, proxyUrl, proxyUrls },
+                payload: { ...payload, proxyUrl, proxyUrls: [proxyUrl, ...proxyUrls.slice(urlIdx + 1)] },
                 received,
                 chunks,
                 contentType,
