@@ -68,7 +68,7 @@ function override(sel: MadaraSelectors, o: MadaraOverride | undefined): Required
 function listingUrl(baseUrl: string, page: number, orderBy: string, sub: string, query?: string): string {
   const root = baseUrl.replace(/\/+$/, "");
   const p = Math.max(1, page);
-  const params = new URLSearchParams({ m_orderby: orderBy, page: String(p) });
+  const params = new URLSearchParams({ m_orderby: orderBy, page: String(p), style: "page" });
   if (query) params.set("s", query);
   return `${root}/${sub || "manga"}/?${params.toString()}`;
 }
@@ -88,6 +88,9 @@ function overrideListingUrl(baseUrl: string, template: string, page: number, que
   if (query && !hasQueryPlaceholder && !["s", "q", "query"].some((key) => url.searchParams.has(key))) {
     url.searchParams.set("s", query);
   }
+  // Madara normally builds listings with AJAX. style=page asks WordPress for
+  // server-rendered listing cards so the native parser can read them without a browser.
+  if (!url.searchParams.has("style")) url.searchParams.set("style", "page");
   return url.toString();
 }
 

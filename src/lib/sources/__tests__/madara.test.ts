@@ -249,8 +249,8 @@ ok("dead pages -> empty", (await dead.pages(chs[0])).length === 0);
   } as unknown as SourcePlugin, async (url) => { requested.push(url); return LISTING; });
   await customClient.popular(3);
   await customClient.latest(2);
-  ok("popularPath override is honored and paginated", requested[0] === "https://example.test/manga/?status=hot&page=3", requested[0]);
-  ok("latestPath override is honored and paginated", requested[1] === "https://example.test/manga/?order=update&page=2", requested[1]);
+  ok("popularPath override is honored and paginated", requested[0] === "https://example.test/manga/?status=hot&page=3&style=page", requested[0]);
+  ok("latestPath override is honored and paginated", requested[1] === "https://example.test/manga/?order=update&page=2&style=page", requested[1]);
 }
 {
   const html = `<div class="page-item-detail manga"><a href="/series/gamma/" title="Gamma"><img data-src="/uploads/gamma.jpg"></a></div>`;
