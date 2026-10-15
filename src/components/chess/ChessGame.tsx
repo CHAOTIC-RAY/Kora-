@@ -1070,8 +1070,8 @@ export default function ChessGame({
                       <div
                         key={sq}
                         onClick={() => handleSquareClick(f, r)}
-                        className={`relative flex items-center justify-center cursor-pointer transition-colors duration-150 ${
-                          isLight ? "bg-[#e8dcc4] dark:bg-[#3d3834]" : "bg-[#b8a788] dark:bg-[#252220]"
+                        className={`kora-chess-square relative flex items-center justify-center cursor-pointer transition-colors duration-150 ${
+                          isLight ? "kora-chess-square-light" : "kora-chess-square-dark"
                         } ${isSelected ? "!bg-amber-600/40 ring-2 ring-amber-500 z-10" : ""} ${
                           isLastMoved ? "bg-amber-500/20" : ""
                         } ${isKingCheckedSquare ? "!bg-red-500/50 animate-pulse" : ""}`}
