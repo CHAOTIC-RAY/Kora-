@@ -21,6 +21,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
+import { searchIndependentBookSources, searchIndependentPopularBooks } from "./lib/ravebsdScraper";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
@@ -43,6 +44,8 @@ async function sha256(message: string): Promise<string> {
 // Build an NYT-shaped "overview" feed from the Rave engine so the Discover page
 // always has real content even when the NYT Books API key is missing/invalid.
 async function buildRaveFallbackFeed(): Promise<any> {
+  return searchIndependentPopularBooks();
+  /* Legacy Rave fallback retained below for reference. */
   const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
   const topics = [
     { key: "hardcover-fiction", name: "Hardcover Fiction", q: "bestselling fiction" },
@@ -307,15 +310,17 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
       res = await fetch(endpoint.toString(), raveInit);
     }
     if (!res.ok) {
-      console.warn("Rave search returned HTTP " + res.status);
-      return { results: [], meta: {} };
+      console.warn("Configured book-search engine returned HTTP " + res.status + "; using independent scrapers.");
+      return searchIndependentBookSources(query, mode, source);
     }
     const data = await res.json() as any;
     const rawResults: any[] = Array.isArray(data.results) ? data.results : [];
     let meta = data.meta && typeof data.meta === "object" ? data.meta : {};
 
     if (rawResults.length === 0) {
-      return { results: [], meta: meta };
+      console.warn("Configured book-search engine returned no results; using independent scrapers.");
+      const fallback = await searchIndependentBookSources(query, mode, source);
+      return fallback.results.length ? fallback : { results: [], meta: { ...meta, ...fallback.meta } };
     }
 
     const mapped = [];
@@ -392,8 +397,8 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
     }
     return { results: mapped, meta };
   } catch (err) {
-    console.error("fetchFromRaveBookSearch error:", err);
-    return { results: [], meta: {} };
+    console.error("Configured book-search engine failed; using independent scrapers:", err);
+    return searchIndependentBookSources(query, mode, source);
   }
 }
 
