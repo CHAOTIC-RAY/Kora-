@@ -646,7 +646,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     if (gameMode === "cpu") {
       setTurnIdx(nextTurn);
       setLog(nextLog);
-      setTimeout(() => triggerCpuTurn(nextTurn, board, bag), 1200);
+      setTimeout(() => triggerCpuTurn(nextTurn, board, bag, undefined, nextLog), 1200);
     } else {
       try {
         await updateDoc(roomRef(roomCode), {
@@ -682,7 +682,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
       setBag(drawRes.remaining);
       setTurnIdx(nextTurn);
       setLog(nextLog);
-      setTimeout(() => triggerCpuTurn(nextTurn, board, drawRes.remaining, updatedPlayers), 1200);
+      setTimeout(() => triggerCpuTurn(nextTurn, board, drawRes.remaining, updatedPlayers, nextLog), 1200);
     } else {
       try {
         await updateDoc(roomRef(roomCode), {
@@ -849,7 +849,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
       setTurnIdx(nextTurn);
       setLog(nextLog);
 
-      setTimeout(() => triggerCpuTurn(nextTurn, updatedBoard, drawRes.remaining, updatedPlayers), 1500);
+      setTimeout(() => triggerCpuTurn(nextTurn, updatedBoard, drawRes.remaining, updatedPlayers, nextLog), 1500);
     } else {
       try {
         await updateDoc(roomRef(roomCode), {
@@ -870,9 +870,11 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     currentTurn: number,
     currentBoard: Record<string, BoardCell>,
     currentBag: string[],
-    currentPlayers?: Player[]
+    currentPlayers?: Player[],
+    currentLog?: string[]
   ) => {
     const activePlayers = currentPlayers || players;
+    const activeLog = currentLog || log;
     const cpuPlayer = activePlayers.find((p) => p.id === "cpu");
     if (!cpuPlayer) return;
 
@@ -1023,14 +1025,18 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
       setBag(drawRes.remaining);
       setTurnIdx(currentTurn + 1);
       setLog([
-        ...log,
+        ...activeLog,
         `Kora played '${chosenWord}' for ${finalCpuScore} pts. Your turn!`,
       ]);
       playScoreSound();
     } else {
       if (cpuRack.length > 0 && currentBag.length > 0) {
-        const drawRes = drawTiles(Math.min(3, currentBag.length), currentBag);
-        const keptTiles = cpuRack.slice(3);
+        const swapCount = Math.min(3, cpuRack.length);
+        // Return exchanged tiles to the bag before drawing replacements so
+        // the tile pool stays conserved and the CPU rack never loses letters.
+        const bagWithReturnedTiles = [...currentBag, ...cpuRack.slice(0, swapCount)];
+        const drawRes = drawTiles(swapCount, bagWithReturnedTiles);
+        const keptTiles = cpuRack.slice(swapCount);
         const nextCpuRack = [...keptTiles, ...drawRes.drawn];
         const nextPlayers = activePlayers.map((p) =>
           p.id === "cpu" ? { ...p, tiles: nextCpuRack } : p
@@ -1038,10 +1044,10 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
         setPlayers(nextPlayers);
         setBag(drawRes.remaining);
         setTurnIdx(currentTurn + 1);
-        setLog([...log, "Kora swapped tiles for fresh letters."]);
+        setLog([...activeLog, "Kora swapped tiles for fresh letters."]);
       } else {
         setTurnIdx(currentTurn + 1);
-        setLog([...log, "Kora passed."]);
+        setLog([...activeLog, "Kora passed."]);
       }
     }
   };
