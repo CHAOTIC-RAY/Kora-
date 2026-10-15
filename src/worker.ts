@@ -267,11 +267,11 @@ function resolveUrl(href: string, base: string): string {
 
 async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
   const configuredUrl = String(env?.RAVE_BOOK_SEARCH_URL || "").trim();
+  const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
   // The former public Rave deployment is retired. Use independent source adapters unless an operator explicitly configures a self-hosted engine.
   if (!configuredUrl && !env?.RAVE_BOOK_SEARCH) {
-    return searchIndependentBookSources(query, mode, source);
+    return searchIndependentBookSources(query, mode, source, pageNumber);
   }
-  const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
   let endpointKind: "legacy" | "ravebsd" = "legacy";
   let endpoint: URL;
   if (configuredUrl) {
@@ -315,7 +315,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
     }
     if (!res.ok) {
       console.warn("Configured book-search engine returned HTTP " + res.status + "; using independent scrapers.");
-      return searchIndependentBookSources(query, mode, source);
+      return searchIndependentBookSources(query, mode, source, pageNumber);
     }
     const data = await res.json() as any;
     const rawResults: any[] = Array.isArray(data.results) ? data.results : [];
@@ -323,7 +323,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
 
     if (rawResults.length === 0) {
       console.warn("Configured book-search engine returned no results; using independent scrapers.");
-      const fallback = await searchIndependentBookSources(query, mode, source);
+      const fallback = await searchIndependentBookSources(query, mode, source, pageNumber);
       return fallback.results.length ? fallback : { results: [], meta: { ...meta, ...fallback.meta } };
     }
 
@@ -385,10 +385,18 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         author,
         extension: extension.toUpperCase(),
         size: size,
-        source: r.source || "Rave",
+        source: r.source || "Independent source",
         language: r.language || r.lang || r.language_code || r.language_names || r.info?.language || undefined,
         downloadUrl: r.directUrl || r.downloadUrl || "",
-        iaId: r.source === "Internet Archive" ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
+        pageUrl: r.pageUrl || "",
+        format: r.format || extension.toLowerCase(),
+        directReady: !!(r.directReady || r.directUrl),
+        length: r.length || "",
+        narrator: r.narrator || "",
+        bitrate: r.bitrate || "",
+        publisher: r.publisher || "",
+        description: r.description || "",
+        iaId: /internet archive/i.test(r.source || "") ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
         coverUrl
       });
     }
@@ -402,7 +410,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
     return { results: mapped, meta };
   } catch (err) {
     console.error("Configured book-search engine failed; using independent scrapers:", err);
-    return searchIndependentBookSources(query, mode, source);
+    return searchIndependentBookSources(query, mode, source, pageNumber);
   }
 }
 
@@ -1706,9 +1714,8 @@ export default {
       const q = (url.searchParams.get("q") || "").trim();
       const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
       const googlePageSize = 12;
-      if (!q) {
-        return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
-      }
+      if (!q) return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
+
       const stream = new ReadableStream({
         async start(controller) {
           const enc = new TextEncoder();
@@ -1716,42 +1723,100 @@ export default {
             try { controller.enqueue(enc.encode(JSON.stringify(obj) + "\n")); }
             catch { /* The client closed the stream. */ }
           };
-          let googleCount = 0, googleTotal = 0, raveCount = 0, raveTotal = 0;
-          const googleSearch = (async () => {
+          const normalize = (value: unknown) => String(value || "")
+            .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const keyFor = (book: any) => {
+            const title = normalize(book?.title);
+            const author = normalize(book?.author || book?.authors);
+            return title ? title + "|" + author : "";
+          };
+          try {
             const startIndex = (page - 1) * googlePageSize;
             const googleUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${googlePageSize}&startIndex=${startIndex}`;
-            const res = await fetch(googleUrl, { signal: AbortSignal.timeout(10000) });
-            if (!res.ok) throw new Error("Google Books returned HTTP " + res.status);
-            const data = await res.json() as any;
-            googleTotal = Number(data.totalItems) || 0;
-            const books = (data.items || []).map((item: any) => {
-              const info = item.volumeInfo || {};
-              return {
-                title: info.title,
-                author: (info.authors || []).join(", "),
-                coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:"),
-                year: info.publishedDate?.split("-")[0],
-                publisher: info.publisher,
-                isGoogleBook: true,
-                source: "google",
-              };
-            });
-            googleCount = books.length;
-            if (books.length) write({ source: "google", books });
-          })();
-          const raveSearch = (async () => {
-            const result = await fetchFromRaveBookSearch(env, q, "ebooks", "all", String(page));
-            const books = result.results.map((book: any) => ({ ...book, isGoogleBook: false, isRaveBook: true }));
-            raveCount = books.length;
-            raveTotal = Number(result.meta.total ?? result.meta.totalCount) || 0;
-            if (books.length) write({ source: "rave", books });
-          })();
-          await Promise.allSettled([googleSearch, raveSearch]);
-          const googleHasMore = googleCount >= googlePageSize || (googleTotal > 0 && page * googlePageSize < googleTotal);
-          const raveHasMore = raveCount >= 25 || (raveTotal > 0 && page * 25 < raveTotal);
-          const inferredRaveTotal = raveTotal || (raveCount ? page * 25 + (raveHasMore ? 25 : 0) : 0);
-          const totalCount = (googleTotal || ((page - 1) * googlePageSize + googleCount)) + inferredRaveTotal;
-          write({ done: true, totalCount, hasMore: googleHasMore || raveHasMore });
+            const [googleOutcome, raveOutcome] = await Promise.allSettled([
+              (async () => {
+                const res = await fetch(googleUrl, { signal: AbortSignal.timeout(10000) });
+                if (!res.ok) throw new Error("Google Books returned HTTP " + res.status);
+                const data = await res.json() as any;
+                const books = (data.items || []).map((item: any) => {
+                  const info = item.volumeInfo || {};
+                  return {
+                    title: info.title || "Unknown Title",
+                    author: (info.authors || []).join(", "),
+                    coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:"),
+                    year: info.publishedDate?.split("-")[0],
+                    publisher: info.publisher,
+                    description: info.description,
+                    isbn: (info.industryIdentifiers || []).find((v: any) => v.type === "ISBN_13")?.identifier,
+                    googleId: item.id,
+                    isGoogleBook: true,
+                    source: "Google Books",
+                  };
+                });
+                return { books, total: Number(data.totalItems) || 0 };
+              })(),
+              fetchFromRaveBookSearch(env, q, "ebooks", "all", String(page))
+            ]);
+
+            const google = googleOutcome.status === "fulfilled" ? googleOutcome.value : { books: [], total: 0 };
+            const rave = raveOutcome.status === "fulfilled" ? raveOutcome.value : { results: [], meta: {} };
+            const raveBooks = Array.isArray((rave as any)?.results) ? (rave as any).results : [];
+            const merged = new Map<string, any>();
+
+            // Preserve separate source/format copies (RaveBSD does this too), because an
+            // Internet Archive PDF and a Gutenberg EPUB are distinct useful download options.
+            // Google Books is metadata/catalogue enrichment, not a replacement download source.
+            for (const book of raveBooks) {
+              const baseKey = keyFor(book);
+              if (!baseKey) continue;
+              const sourceKey = baseKey + "|" + normalize(book.source || "source") + "|" + normalize(book.format || "");
+              merged.set(sourceKey, { ...book, isRaveBook: true, isGoogleBook: false });
+            }
+            for (const book of google.books) {
+              const baseKey = keyFor(book);
+              if (!baseKey) continue;
+              const existingEntry = [...merged.entries()].find(([key]) => key.startsWith(baseKey + "|"));
+              if (existingEntry) {
+                const [existingKey, existing] = existingEntry;
+                // Enrich only one matching source row. Keep every source-specific download row
+                // and never overwrite its direct URL, identifier, or resolver metadata.
+                merged.set(existingKey, {
+                  ...book,
+                  ...existing,
+                  title: existing.title || book.title,
+                  author: existing.author || book.author,
+                  coverUrl: existing.coverUrl || book.coverUrl,
+                  year: existing.year || book.year,
+                  publisher: existing.publisher || book.publisher,
+                  description: existing.description || book.description,
+                  isbn: existing.isbn || book.isbn,
+                  googleId: book.googleId,
+                  isGoogleBook: true,
+                  isRaveBook: true,
+                });
+              } else {
+                merged.set(baseKey + "|google", book);
+              }
+            }
+
+            const books = [...merged.values()];
+            if (books.length) write({ source: "merged", books });
+            const raveTotal = Number((rave as any)?.meta?.total ?? (rave as any)?.meta?.totalCount) || 0;
+            const totalCount = Math.max(books.length, google.total + raveTotal);
+            const googleHasMore = google.books.length >= googlePageSize || (google.total > page * googlePageSize);
+            const raveHasMore = raveBooks.length >= 25 || (raveTotal > page * 25);
+            write({ done: true, totalCount, hasMore: googleHasMore || raveHasMore, sources: {
+              google: google.books.length,
+              ravebsd: raveBooks.length,
+              failed: [
+                ...(googleOutcome.status === "rejected" ? ["google"] : []),
+                ...(raveOutcome.status === "rejected" ? ["ravebsd"] : [])
+              ]
+            } });
+          } catch (error: any) {
+            write({ done: true, totalCount: 0, hasMore: false, error: error?.message || "Book search failed" });
+          }
           try { controller.close(); } catch { /* The stream has already been cancelled. */ }
         }
       });
