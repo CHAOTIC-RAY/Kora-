@@ -1066,13 +1066,13 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
 
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[9999] bg-kindle-bg text-kindle-text flex flex-col p-0 sm:items-center sm:justify-center sm:p-4 sm:backdrop-blur-md select-none overflow-hidden">
+      <div className="kora-game-theme fixed inset-0 z-[9999] bg-kindle-bg text-kindle-text flex flex-col p-0 sm:items-center sm:justify-center sm:p-4 sm:backdrop-blur-md select-none overflow-hidden">
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.96 }}
           transition={{ duration: 0.2 }}
-          className="w-full h-full sm:max-w-5xl sm:max-h-[96vh] bg-kindle-bg border-0 sm:border-2 border-kindle-border rounded-none sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-kindle-text"
+          className="kora-game-theme w-full h-full sm:max-w-5xl sm:max-h-[96vh] bg-kindle-bg border-0 sm:border-2 border-kindle-border rounded-none sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-kindle-text"
         >
           {/* Header Bar */}
           <div className="border-b-2 border-kindle-border shrink-0 bg-kindle-card kora-safe-top">
@@ -1299,7 +1299,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                                               ? mult.color
                                                               : ghostLetter
                                 ? "bg-kindle-accent/10 border-2 border-dashed border-kindle-accent"
-                                : "bg-white  hover:bg-neutral-100  text-kindle-text  border border-kindle-border/40 dark:border-transparent"
+                                : "bg-[var(--theme-card)] hover:bg-[var(--theme-bg)] text-kindle-text border border-kindle-border/40"
                             }`}
                           >
                             {ghostLetter ? (
