@@ -2338,10 +2338,13 @@ export default {
           downloadLinks.find((l) => /get\.php\?md5=.+&key=/i.test(l.url || ""))?.url ||
           "";
         const signed = alreadySigned || (await resolveLibgenSigned(md5, 2800));
-        if (signed && !downloadLinks.some((l) => l.url === signed)) {
+        // Also try resolving via ads.php key extraction (RaveBSD method) as fallback
+        const adsSigned = await resolveLibgenAdsKey(md5);
+        const finalSigned = signed || adsSigned;
+        if (finalSigned && !downloadLinks.some((l) => l.url === finalSigned)) {
           downloadLinks.unshift({
             label: "Direct Mirror (LibGen CDN)",
-            url: signed,
+            url: finalSigned,
             isDirect: true,
             sourceId: "libgen"
           });
@@ -4146,3 +4149,49 @@ export default {
     return new Response("Not Found", { status: 404 });
   }
 };
+  }
+};
+
+async function resolveLibgenAdsKey(md5: string, onBotCheck?: (text: string) => void): Promise<string> {
+  // Try fetching ads.php from LibGen mirrors to extract signed key
+  // This is the RaveBSD method: fetch ads.php?md5=HASH, extract key from HTML
+  // The ads.php page renders an ad that links to get.php?md5=HASH&key=KEY
+  // Returns the signed URL or empty string if failed
+  const LIBGEN_ADS_MIRRORS = [
+    "https://libgen.li",
+    "https://libgen.vg",
+    "https://libgen.la",
+    "https://libgen.gl",
+  ];
+  const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+  for (const mirror of LIBGEN_ADS_MIRRORS) {
+    try {
+      const adsUrl = \`\${mirror}/ads.php?md5=\${md5.toLowerCase()}\`;
+      const res = await fetch(adsUrl, {
+        headers: {
+          "User-Agent": UA,
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+          "Referer": \`\${adsUrl}/\`,
+        },
+        redirect: "follow",
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) continue;
+      const html = await res.text();
+      // Check for bot check pages (DDoS-Guard, captcha, etc.)
+      if (onBotCheck) onBotCheck(html);
+      // Extract signed key from ads page
+      const keyMatch = html.match(/get\.php\?md5=[a-f0-9]+&(?:amp;)?key=([A-Za-z0-9]+)/i);
+      if (keyMatch) {
+        const key = keyMatch[1];
+        // Verify the key matches this md5
+        const fullUrl = \`\${mirror}/get.php?md5=\${md5.toLowerCase()}&key=\${key}\`;
+        return fullUrl;
+      }
+    } catch (e) {
+      /* try next mirror */
+    }
+  }
+  return "";
+}
+
