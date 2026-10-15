@@ -1,58 +1,61 @@
-// Convert a fragment of Kora chapter HTML into Markdown.
-// Intentionally minimal: headings, blockquote, lists, paragraphs, line breaks.
+export interface ChapterInput {
+  title: string;
+  html: string;
+}
 
 export function htmlToMarkdown(html: string): string {
-  const div = document.createElement("div");
-  div.innerHTML = html || "";
+  if (!html) return "";
 
-  // Work on a serialized copy so we don't mutate the live DOM.
-  let md = div.innerHTML;
+  let md = html;
+  
+  // Clean scripts & styles
+  md = md.replace(/<script[\s\S]*?<\/script>/gi, "");
+  md = md.replace(/<style[\s\S]*?<\/style>/gi, "");
 
-  // Block elements first.
-  md = md
-    .replace(/<h1[^>]*>(.*?)<\/h1>/gi, "# $1\n\n")
-    .replace(/<h2[^>]*>(.*?)<\/h2>/gi, "## $1\n\n")
-    .replace(/<h3[^>]*>(.*?)<\/h3>/gi, "### $1\n\n")
-    .replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, inner) => {
-      const cleaned = (inner as string)
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<[^>]+>/g, "")
-        .trim();
-      return cleaned.split("\n").map((l) => `> ${l}`).join("\n") + "\n\n";
-    })
-    .replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "- $1\n")
-    .replace(/<(p|div)[^>]*>([\s\S]*?)<\/\1>/gi, "$2\n\n")
-    .replace(/<br\s*\/?>/gi, "\n");
+  // Headings
+  md = md.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, "\n# $1\n");
+  md = md.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, "\n## $1\n");
+  md = md.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, "\n### $1\n");
+  md = md.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, "\n#### $1\n");
 
-  // Strip any remaining tags.
+  // Bold & Italic
+  md = md.replace(/<(strong|b)[^>]*>([\s\S]*?)<\/(strong|b)>/gi, "**$2**");
+  md = md.replace(/<(em|i)[^>]*>([\s\S]*?)<\/(em|i)>/gi, "*$2*");
+
+  // Paragraphs & Line Breaks
+  md = md.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, "\n$1\n");
+  md = md.replace(/<br\s*\/?>/gi, "\n");
+
+  // Lists
+  md = md.replace(/<li[^>]*>([\s\S]*?)<\/li>/gi, "\n* $1");
+
+  // Remove remaining HTML tags
   md = md.replace(/<[^>]+>/g, "");
 
-  // Unescape common entities.
+  // Decode common HTML entities
   md = md
+    .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
+    .replace(/&#39;/g, "'");
 
-  // Collapse 3+ newlines into a double newline.
-  md = md.replace(/\n{3,}/g, "\n\n").trim() + "\n";
-  return md;
+  // Normalize excessive blank lines
+  return md.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-/** Build a full Markdown document from all chapters. */
-export function chaptersToMarkdown(
-  title: string,
-  author: string,
-  chapters: { title: string; html: string }[]
-): string {
-  const head = `# ${title}\n\n${author ? `*by ${author}*\n\n` : ""}`;
-  const body = chapters
-    .map((c) => {
-      const h = c.title ? `## ${c.title}\n\n` : "";
-      return h + htmlToMarkdown(c.html);
-    })
-    .join("\n");
-  return head + body;
+export function chaptersToMarkdown(title: string, author: string, chapters: ChapterInput[]): string {
+  let result = `# ${title || "Untitled"}\n`;
+  if (author) {
+    result += `**Author:** ${author}\n\n`;
+  }
+  result += `---\n\n`;
+
+  chapters.forEach((ch, idx) => {
+    result += `## ${ch.title || `Chapter ${idx + 1}`}\n\n`;
+    result += `${htmlToMarkdown(ch.html)}\n\n---\n\n`;
+  });
+
+  return result.trim();
 }

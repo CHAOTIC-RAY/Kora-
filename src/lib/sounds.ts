@@ -1,7 +1,4 @@
-import { isSoundEffectsEnabled } from "./featureToggles";
-
 export function playFlipSound() {
-  if (!isSoundEffectsEnabled()) return;
   try {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const duration = 0.12;
@@ -37,7 +34,6 @@ export function playFlipSound() {
 }
 
 export function playBookOpenSound() {
-  if (!isSoundEffectsEnabled()) return;
   try {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const duration = 0.25;

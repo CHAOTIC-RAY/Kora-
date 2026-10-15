@@ -16,7 +16,7 @@ export function setDailyNewsBriefEnabled(enabled: boolean) {
 export async function ensureServiceWorkerReady(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   try {
-    const registration = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
+    const registration = await navigator.serviceWorker.register("/sw.js");
     await navigator.serviceWorker.ready;
 
     if (!navigator.serviceWorker.controller) {

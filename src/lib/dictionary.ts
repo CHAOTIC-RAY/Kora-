@@ -1,12 +1,6 @@
 // Custom Personal Dictionary Utility
 // Comes with a default dictionary and manages user additions in localStorage.
 // Can load external dictionary data from dictionary-data.json (parsed from StarDict).
-//
-// Perf plan (Phase 3.5): the external dictionary is split into one JSON shard per
-// initial letter under /data/dict/<letter>.json. We never parse the whole 2 MB
-// file on the main thread — lookups fetch only the shard for the tapped word's
-// first letter and cache it. The service worker precaches these as cache-first
-// (immutable), so lookups also work fully offline.
 
 export interface DictionaryEntry {
   word: string;
@@ -68,77 +62,31 @@ const FALLBACK_DICTIONARY: DictionaryEntry[] = [
   }
 ];
 
-const DICT_BASE = "/data/dict";
-const DICT_BUCKET_COUNT = 32;
+// External dictionary cache (loaded from StarDict)
+let EXTERNAL_DICTIONARY: DictionaryEntry[] | null = null;
+let externalDictLoaded = false;
 
-// Must match bucketFor() in scripts/build-data-bundle.mjs.
-function bucketFor(word) {
-  const w = (word || "").toLowerCase();
-  let h = 0;
-  for (let i = 0; i < w.length; i++) {
-    h = (Math.imul(h, 31) + w.charCodeAt(i)) >>> 0;
-  }
-  return h % DICT_BUCKET_COUNT;
-}
-
-// Loaded shards, keyed by bucket number. Each shard is fetched at most once.
-const shardCache: Map<number, DictionaryEntry[]> = new Map();
-let shardLoadsInFlight: Map<number, Promise<DictionaryEntry[]>> = new Map();
-
-// The set of shard filenames that actually exist (from index.json). Lets us
-// avoid 404s for buckets that happen to be empty.
-let knownShards: Set<string> | null = null;
-async function loadKnownShards(): Promise<Set<string>> {
-  if (knownShards) return knownShards;
+// Load external dictionary data from JSON file (browser-safe)
+async function loadExternalDictionary(): Promise<void> {
+  if (externalDictLoaded) return;
+  
   try {
-    const res = await fetch(`${DICT_BASE}/index.json`);
-    if (res.ok) {
-      const idx = (await res.json()) as { shards?: string[] };
-      if (Array.isArray(idx.shards)) {
-        knownShards = new Set(idx.shards);
-        return knownShards;
-      }
+    const response = await fetch('/dictionary-data.json');
+    if (response.ok) {
+      EXTERNAL_DICTIONARY = await response.json();
+      console.log(`Loaded ${EXTERNAL_DICTIONARY!.length} entries from external dictionary`);
     }
-  } catch {
-    /* ignore */
+  } catch (e) {
+    // Silently fail - will use fallback dictionary
+    console.warn('Failed to load external dictionary:', e);
   }
-  knownShards = new Set(); // don't retry on failure
-  return knownShards;
+  
+  externalDictLoaded = true;
 }
 
-async function loadShard(bucket: number): Promise<DictionaryEntry[]> {
-  if (shardCache.has(bucket)) return shardCache.get(bucket)!;
-  const inflight = shardLoadsInFlight.get(bucket);
-  if (inflight) return inflight;
-  const p = (async () => {
-    const fname = `${bucket}.json`;
-    const known = await loadKnownShards();
-    if (!known.has(fname)) {
-      shardCache.set(bucket, []);
-      return [];
-    }
-    try {
-      const res = await fetch(`${DICT_BASE}/${fname}`);
-      if (!res.ok) return [];
-      const data = (await res.json()) as DictionaryEntry[];
-      shardCache.set(bucket, data);
-      return data;
-    } catch {
-      return [];
-    }
-  })();
-  shardLoadsInFlight.set(bucket, p);
-  const out = await p;
-  shardLoadsInFlight.delete(bucket);
-  return out;
-}
-
-async function loadAllShards(): Promise<DictionaryEntry[]> {
-  const known = await loadKnownShards();
-  const buckets = [...known].map((f) => parseInt(f.replace(/\.json$/, ""), 10));
-  if (!buckets.length) return [];
-  const all = await Promise.all(buckets.map((b) => loadShard(b)));
-  return all.flat();
+// Get the default dictionary (external if available, otherwise fallback)
+function getDefaultDictionary(): DictionaryEntry[] {
+  return EXTERNAL_DICTIONARY || FALLBACK_DICTIONARY;
 }
 
 export function getCustomDictionary(): DictionaryEntry[] {
@@ -162,11 +110,15 @@ export function saveCustomDictionary(entries: DictionaryEntry[]): void {
 }
 
 export async function getAllDictionaryEntries(): Promise<DictionaryEntry[]> {
-  const external = await loadAllShards();
+  // Try to load external dictionary on first call
+  if (!externalDictLoaded) {
+    await loadExternalDictionary();
+  }
+  
   const custom = getCustomDictionary();
-  const defaults = [...FALLBACK_DICTIONARY, ...external];
+  const defaults = [...FALLBACK_DICTIONARY, ...(EXTERNAL_DICTIONARY || [])];
   const defaultWords = defaults.filter(
-    (defWord) => !custom.some((custWord) => custWord.word.toLowerCase() === defWord.word.toLowerCase())
+    defWord => !custom.some(custWord => custWord.word.toLowerCase() === defWord.word.toLowerCase())
   );
   // Prefer custom, then dedupe defaults by word
   const seen = new Set(custom.map((e) => e.word.toLowerCase()));
@@ -220,71 +172,16 @@ function candidateForms(word: string): string[] {
   return [...forms].filter(Boolean);
 }
 
-async function fetchOnlineDefinition(term: string): Promise<DictionaryEntry | null> {
-  try {
-    const res = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(term)}&md=d&max=1`);
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!Array.isArray(data) || !data.length || !data[0].defs || !data[0].defs.length) {
-      return null;
-    }
-    const item = data[0];
-    const posMap: Record<string, string> = {
-      n: "noun",
-      v: "verb",
-      adj: "adjective",
-      adv: "adverb",
-      u: "interjection"
-    };
-    const rawDef = item.defs[0];
-    const parts = rawDef.split("\t");
-    const pos = posMap[parts[0]] || "definition";
-    const defText = parts.length > 1 ? parts[1].trim() : rawDef.trim();
-    return {
-      word: item.word || term,
-      definition: defText,
-      partOfSpeech: pos,
-      isCustom: false
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function lookupWord(word: string): Promise<DictionaryEntry | null> {
   const forms = candidateForms(word);
   if (!forms.length) return null;
-
-  // Only fetch the shard(s) the candidate forms actually fall into — never the
-  // whole 2 MB dictionary. Covers + custom entries are always consulted.
-  const buckets = new Set(forms.map(bucketFor));
-  const shardLists = await Promise.all([...buckets].map((b) => loadShard(b)));
-  const external = shardLists.flat();
-
-  const custom = getCustomDictionary();
-  const defaults = [...FALLBACK_DICTIONARY, ...external];
-  const byWord = new Map<string, DictionaryEntry>();
-  for (const entry of defaults) {
-    const key = entry.word.toLowerCase();
-    if (!byWord.has(key)) byWord.set(key, entry);
-  }
-  // Custom entries override defaults.
-  for (const entry of custom) byWord.set(entry.word.toLowerCase(), entry);
+  const all = await getAllDictionaryEntries();
+  const byWord = new Map(all.map((entry) => [entry.word.toLowerCase(), entry]));
 
   for (const form of forms) {
     const hit = byWord.get(form);
     if (hit) return hit;
   }
-
-  // Fallback to online dictionary lookup if local shards lack the word (e.g. non-'a' words)
-  for (const form of forms) {
-    const onlineEntry = await fetchOnlineDefinition(form);
-    if (onlineEntry) {
-      addDictionaryEntry(onlineEntry);
-      return onlineEntry;
-    }
-  }
-
   return null;
 }
 

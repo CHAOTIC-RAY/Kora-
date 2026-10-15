@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
-import DOMPurify from 'dompurify';
+import React, { useState, useEffect } from "react";
 import {
   Globe,
   Search,
@@ -27,7 +26,6 @@ import {
 import { toast } from "react-hot-toast";
 import { storeBookFile } from "../db/indexedDB";
 import { syncBookToCloud, BookMetadata } from "../lib/firebase";
-import { logger } from "../lib/logger";
 
 export interface WikiArticleSummary {
   pageid?: number;
@@ -78,9 +76,6 @@ const POPULAR_TOPICS = [
 export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, initialArticle }: WikipediaWidgetProps) {
   const [lang, setLang] = useState("en");
   const [query, setQuery] = useState("");
-  // Monotonic request id + debounce timer for live search.
-  const searchSeq = useRef(0);
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeArticle, setActiveArticle] = useState<WikiArticleSummary | null>(null);
@@ -166,47 +161,17 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
       }
     } catch (err) {
       console.error("Failed to fetch random Wikipedia article", err);
-      logger.error("[wiki] random article fetch failed", { lang, error: (err as Error)?.message || String(err) });
     } finally {
       setIsLoadingFeatured(false);
     }
   };
 
-  // Live search as the user types, debounced so a full query costs one
-  // request instead of one per keypress. Submitting the form still works.
-  useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    const term = query.trim();
-    if (term.length < 2) {
-      searchSeq.current++;
-      setSearchResults([]);
-      setIsSearching(false);
-      if (!term) setActiveTab("featured");
-      return;
-    }
-    searchTimer.current = setTimeout(() => {
-      void handleSearch(undefined, term);
-    }, 320);
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    };
-    // handleSearch reads `lang` too, so re-run when the language changes.
-  }, [query, lang]);
-
   // Perform search query using Wikipedia API
-  /**
-   * Live search, debounced.
-   *
-   * Typing straight into the API fired a request per keystroke and let a
-   * slow response overwrite a newer one, so results flickered between
-   * queries. Only the newest request is allowed to write state.
-   */
   const handleSearch = async (e?: React.FormEvent, searchQuery?: string) => {
     if (e) e.preventDefault();
     const searchTerm = searchQuery || query;
     if (!searchTerm.trim()) return;
 
-    const seq = ++searchSeq.current;
     setIsSearching(true);
     setActiveTab("search");
     try {
@@ -215,14 +180,12 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
       )}&utf8=&format=json&origin=*&srlimit=10`;
       const res = await fetch(url);
       const data = await res.json();
-      if (seq !== searchSeq.current) return; // a newer search won
       if (data?.query?.search) {
         setSearchResults(data.query.search);
       } else {
         setSearchResults([]);
       }
     } catch (err) {
-      if (seq !== searchSeq.current) return;
       toast.error("Failed to search Wikipedia. Check network connection.");
       console.error(err);
     } fonting: {
@@ -570,7 +533,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
                       <h4 className="text-xs font-bold text-kindle-text line-clamp-1">{item.title}</h4>
                       <div
                         className="text-[10px] text-kindle-text-muted line-clamp-2 leading-relaxed"
-                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(item.snippet, { USE_PROFILES: { html: true } }) }}
+                        dangerouslySetInnerHTML={{ __html: item.snippet }}
                       />
                       <span className="text-[8px] font-mono text-kindle-text-muted/80 block pt-0.5">
                         {item.wordcount ? `${item.wordcount.toLocaleString()} words` : "Wikipedia page"}
@@ -771,7 +734,7 @@ export default function WikipediaWidget({ onClose, userId, onRefreshLibrary, ini
                     className={`prose max-w-none text-xs sm:text-sm text-kindle-text leading-relaxed space-y-4 ${
                       useSerifFont ? "font-serif" : "font-sans"
                     }`}
-                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(articleContentHtml, { USE_PROFILES: { html: true } }) }}
+                    dangerouslySetInnerHTML={{ __html: articleContentHtml }}
                   />
                 )}
               </div>

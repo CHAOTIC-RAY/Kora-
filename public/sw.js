@@ -7,17 +7,13 @@
 const DB_NAME = "kora_sw_downloads";
 const STORE = "files";
 const PREFS_STORE = "prefs";
-const SHELL_CACHE = "kora-shell-v9";
-const API_CACHE = "kora-api-v9";
+const SHELL_CACHE = "kora-shell-v6";
+const API_CACHE = "kora-api-v6";
 const COVER_CACHE = "kora-covers-v1";
 const DATA_CACHE = "kora-data-v1"; // perf plan 3.2: bundled dictionary shards (immutable)
 // Do NOT cache sw.js / version.json — those must always hit the network so
 // redeploys are detected without a manual hard refresh.
-const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/favicon.svg"];
-// NOTE: /fonts/* are intentionally NOT precached here. They are served by the
-// Worker and routed network-only in the fetch handler (see /fonts/ route) — the
-// old code cached them via SHELL_ASSETS, which could store a truncated copy
-// that failed OTS decoding permanently.
+const SHELL_ASSETS = ["/", "/index.html", "/manifest.json", "/favicon.svg", "/fonts/opendyslexic-regular.woff2", "/fonts/opendyslexic-bold.woff2"];
 const WARM_API_PATHS = ["/api/audiobooks/popular", "/api/nytimes/overview"];
 const PERIODIC_SYNC_TAG = "kora-daily-brief";
 const DOWNLOAD_SYNC_TAG = "kora-retry-downloads";
@@ -61,41 +57,11 @@ async function warmDataCache() {
   );
 }
 
-async function warmShellCache() {
-  // Perf plan Phase 4: precache the hashed build assets listed in
-  // precache-manifest.json (entry chunk, CSS, lazy tab chunks). SHELL_ASSETS
-  // alone only covered unhashed files, so the ~2 MB entry chunk and every lazy
-  // tab chunk still hit the network on a cold start.
-  //
-  // Best-effort and non-fatal: a missing/failed manifest must never block SW
-  // install, it just means we fall back to runtime caching.
-  const cache = await caches.open(SHELL_CACHE);
-  try {
-    const res = await fetch("/precache-manifest.json", { cache: "no-cache" });
-    if (!res.ok) return;
-    const manifest = await res.json();
-    const assets = Array.isArray(manifest && manifest.assets) ? manifest.assets : [];
-    if (!assets.length) return;
-    await Promise.allSettled(
-      assets.map((url) =>
-        fetch(url)
-          .then((r) => {
-            if (r && r.ok) return cache.put(url, r);
-          })
-          .catch(() => {})
-      )
-    );
-  } catch {
-    /* no manifest (dev server / older build) — runtime caching still applies */
-  }
-}
-
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     Promise.all([
       caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {})),
-      warmShellCache(),
       warmApiCache(),
       warmDataCache(),
     ])
@@ -108,30 +74,6 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       const keep = new Set([SHELL_CACHE, API_CACHE, COVER_CACHE, DATA_CACHE]);
       await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
-
-      // Deleting by NAME is not enough: SHELL_CACHE is a fixed string, so it
-      // survives every deploy and keeps accumulating the PREVIOUS build's hashed
-      // chunks forever. Nothing ever asked for them again, but they occupied
-      // storage and made an offline load silently serve an old build. Drop any
-      // /assets/ entry that is not in the current precache manifest.
-      try {
-        const shell = await caches.open(SHELL_CACHE);
-        const res = await fetch("/precache-manifest.json", { cache: "no-cache" });
-        const manifest = res.ok ? await res.json() : null;
-        const current = new Set(
-          (Array.isArray(manifest?.assets) ? manifest.assets : []).map((u) => new URL(u, self.location.origin).pathname)
-        );
-        if (current.size) {
-          const stale = (await shell.keys())
-            .map((req) => new URL(req.url).pathname)
-            .filter((p) => p.startsWith("/assets/") && !current.has(p));
-          await Promise.all(stale.map((p) => shell.delete(p)));
-          if (stale.length) console.info("[sw] pruned", stale.length, "stale chunk(s)");
-        }
-      } catch (e) {
-        /* manifest unavailable — leave the cache alone rather than risk pruning live assets */
-      }
-
       await self.clients.claim();
       // Tell open tabs a new worker is live so they can reload onto the new build.
       try {
@@ -245,19 +187,9 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
 
-const WORKER_ORIGIN = typeof self !== "undefined" && self.location.hostname === "localhost"
-  ? "https://kora.chaoticstudio.workers.dev"
-  : self.location.origin;
-
 function absoluteUrl(url) {
   try {
-    // In the APK, self.location.origin is https://localhost. API calls
-    // like /api/proxy-file must go to the Worker origin, not the local
-    // WebView — otherwise the local dev server returns index.html (HTML).
-    if (url.startsWith("/api/")) {
-      return WORKER_ORIGIN + url;
-    }
-    return new URL(url, WORKER_ORIGIN).href;
+    return new URL(url, self.location.origin).href;
   } catch (e) {
     return url;
   }
@@ -960,35 +892,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Google Fonts (Lexend / Inter / Lora / ...) are pulled in via an @import in
-  // the stylesheet. We used to cache-first these, but a partial/opaque response
-  // fetched during a flaky network would get cached and then served forever,
-  // which is exactly how "fonts don't work" persisted across reloads (the OTS
-  // "decompressed WOFF 2.0 is less than compressed size" failure). Switch to
-  // network-first: the browser HTTP cache + gstatic edge cache already handle
-  // repeat fetches, so we only fall back to a cached copy when offline, and
-  // we only ever store a response we actually received in full (res.ok).
-  if (
-    event.request.method === "GET" &&
-    (url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com")
-  ) {
-    event.respondWith(
-      (async () => {
-        const cache = await caches.open(SHELL_CACHE);
-        try {
-          const res = await fetch(event.request);
-          // Only cache a genuine, complete response — never an opaque/partial one.
-          if (res && res.ok) cache.put(event.request, res.clone());
-          return res;
-        } catch {
-          const cached = await cache.match(event.request);
-          return cached || new Response("", { status: 504 });
-        }
-      })()
-    );
-    return;
-  }
-
   // Perf plan 3.2: bundled, immutable dictionary shards — cache-first, served
   // offline. These live under /data/ and never change between deploys.
   if (event.request.method === "GET" && url.pathname.startsWith("/data/")) {
@@ -1044,17 +947,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Fonts (same-origin /fonts/*, served by the Worker) are routed straight to
-  // the network and NOT cached by the SW. The browser HTTP cache + Cloudflare
-  // edge cache already handle repeat fetches, and SW-caching here only risked
-  // storing a truncated/partial copy that then failed OTS decoding forever
-  // ("Size of decompressed WOFF 2.0 is less than compressed size"). We must
-  // never serve a possibly-corrupt cached font, so we skip caching entirely.
-  if (url.pathname.startsWith("/fonts/")) {
-    event.respondWith(fetch(event.request));
-    return;
-  }
-
   if (url.pathname.startsWith("/api/")) return;
 
   // Navigations: network-first so redeploys show up without a hard refresh.
@@ -1093,38 +985,8 @@ self.addEventListener("fetch", (event) => {
         const cache = await caches.open(SHELL_CACHE);
         const cached = await cache.match(event.request);
 
-        // Hashed build assets are immutable BY NAME: index-ABC123.js never
-        // changes content. But this handler returned the cached copy WITHOUT
-        // consulting the network, so after a deploy the SW happily served the
-        // previous build's chunks to a page whose index.html was new. The old
-        // chunks it needs were also never pruned, because `activate` deletes
-        // caches by NAME and SHELL_CACHE never changes.
-        //
-        // That combination is the "keeps crashing randomly" report: any tab
-        // open across a deploy kept asking for the old hashed filenames and got
-        // whatever happened to be in the cache, failing somewhere random. The
-        // fix is network-first for /assets/ — the entry HTML already decides
-        // which names are current, and the precache is only a warm-up.
-        if (url.pathname.startsWith("/assets/")) {
-          try {
-            const res = await fetch(event.request);
-            if (res && res.ok) {
-              // Prevent caching HTML responses for asset requests.
-              // If the Worker/network returns index.html for a missing asset
-              // (common SPA fallback), caching it poisons the shell cache and
-              // breaks stylesheets/scripts in future loads.
-              const contentType = res.headers.get("content-type") || "";
-              if (!contentType.includes("text/html")) {
-                cache.put(event.request, res.clone());
-              }
-            }
-            return res;
-          } catch (e) {
-            // Offline: a cached copy of this exact hashed name is still valid.
-            const stale = await cache.match(event.request);
-            if (stale) return stale;
-            throw e;
-          }
+        if (url.pathname.startsWith("/assets/") && cached) {
+          return cached;
         }
 
         try {

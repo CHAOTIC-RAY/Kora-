@@ -7,7 +7,6 @@
 import { buildEpubFromText } from "./epubTools";
 import { syncBookToCloud, getLocalLibrary, type BookMetadata } from "./firebase";
 import { storeBookFile, getBookFile } from "../db/indexedDB";
-import { isGettingStartedBookEnabled, setGettingStartedBookEnabled } from "./featureToggles";
 
 export const WALKTHROUGH_BOOK_ID = "kora-walkthrough-guide";
 export const WALKTHROUGH_BOOK_TITLE = "Getting started with Kora";
@@ -127,7 +126,7 @@ const CHAPTERS: Array<{ title: string; text?: string; html?: string }> = [
 <ul class="kora-guide-list">
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="first-book-search">Find your first book</button></li>
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="sync-setup">Setup &amp; sync</button></li>
-<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="news-feed">Morning paper — Paper tab</button></li>
+<li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="news-feed">Morning paper — Read tab</button></li>
 <li><button type="button" data-kora-guide-cta="start-guide" data-guide-id="narrator-mode">Voice Narrator deep dive</button></li>
 </ul>
 <p class="kora-cta-row">
@@ -165,7 +164,6 @@ function buildMetadata(): BookMetadata {
 
 export function isWalkthroughBookHidden(): boolean {
   try {
-    if (!isGettingStartedBookEnabled()) return true;
     return localStorage.getItem(HIDDEN_KEY) === "true";
   } catch {
     return false;
@@ -174,13 +172,8 @@ export function isWalkthroughBookHidden(): boolean {
 
 export function setWalkthroughBookHidden(hidden: boolean) {
   try {
-    if (hidden) {
-      localStorage.setItem(HIDDEN_KEY, "true");
-      setGettingStartedBookEnabled(false);
-    } else {
-      localStorage.removeItem(HIDDEN_KEY);
-      setGettingStartedBookEnabled(true);
-    }
+    if (hidden) localStorage.setItem(HIDDEN_KEY, "true");
+    else localStorage.removeItem(HIDDEN_KEY);
     window.dispatchEvent(new CustomEvent("kora-walkthrough-visibility"));
   } catch {
     /* ignore */

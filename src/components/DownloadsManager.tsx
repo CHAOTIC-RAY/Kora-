@@ -3,13 +3,12 @@ import { Download, CheckCircle, Clock, FileWarning, Trash2, Globe, BookOpen, Ale
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { storeBookFile } from "../db/indexedDB";
 
-export interface DownloadsManagerProps {
+interface DownloadsManagerProps {
   userId?: string;
   onRefreshLibrary?: () => void;
   downloads: any[];
   onSetDownloads: (downloads: any[]) => void;
   onRetryDownload?: (dl: any) => void;
-  onManualDownload?: (dl: any) => void;
 }
 
 export default function DownloadsManager({ 
@@ -17,8 +16,7 @@ export default function DownloadsManager({
   onRefreshLibrary,
   downloads,
   onSetDownloads,
-  onRetryDownload,
-  onManualDownload
+  onRetryDownload
 }: DownloadsManagerProps) {
   const [clipperUrl, setClipperUrl] = useState<string>("");
   const [clipStatus, setClipStatus] = useState<"idle" | "fetching" | "converting" | "saving" | "success" | "error">("idle");
@@ -99,9 +97,10 @@ export default function DownloadsManager({
       }
 
       setTimeout(() => setClipStatus("idle"), 3500);
+
     } catch (err: any) {
       console.error("[Clipper Error]:", err);
-      setClipError("Failed to convert website. Tap Retry.");
+      setClipError(err.message || "Failed to convert website.");
       setClipStatus("error");
       addDownloadLog("Web Import Failure", clipperUrl, "0 KB", "error");
     }
@@ -230,12 +229,6 @@ export default function DownloadsManager({
                   <p className="text-[10px] text-kindle-text-muted mt-0.5">
                     {dl.author} • {dl.status === "downloading" ? (
                       <span className="inline-flex flex-wrap items-center gap-1.5">
-                        {/* Until bytes arrive, say so plainly. "0 KB" alone is
-                            indistinguishable from a stalled mirror, which is
-                            what the stall guard is for. */}
-                        {!dl.verified && (
-                          <span className="text-kindle-text-muted italic text-[9px]">connecting…</span>
-                        )}
                         <span className="font-mono text-kindle-text font-medium bg-kindle-bg border border-kindle-border/40 px-1.5 py-0.5 rounded text-[9px]">{dl.transferred || "0 KB"}</span>
                         {dl.speed && <span className="text-kindle-accent font-bold font-mono text-[9px] bg-kindle-accent/[0.04] border border-kindle-accent/10 px-1.5 py-0.5 rounded">{dl.speed}</span>}
                         {dl.eta && <span className="text-kindle-text-muted italic text-[9px]">{dl.eta}</span>}
@@ -244,11 +237,6 @@ export default function DownloadsManager({
                       <span>{dl.size || "Unknown size"}</span>
                     )}
                   </p>
-                  {dl.status === "error" && dl.errorMessage && (
-                    <p className="text-[10px] text-red-500 mt-0.5 truncate max-w-[200px] sm:max-w-xs">
-                      {dl.errorMessage}
-                    </p>
-                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   {dl.status === "completed" && <CheckCircle className="w-5 h-5 text-green-500" />}
@@ -292,16 +280,6 @@ export default function DownloadsManager({
                       className="p-2 text-kindle-text-muted hover:text-kindle-accent transition"
                     >
                       <ArrowRight className="w-4 h-4 rotate-[-45deg]" />
-                    </button>
-                  )}
-                  {/* Download manually — open raw mirror URL in browser/share */}
-                  {dl.status === "error" && dl.downloadUrl && (
-                    <button
-                      title="Download manually"
-                      onClick={() => onManualDownload?.(dl)}
-                      className="p-2 text-kindle-text-muted hover:text-kindle-accent transition"
-                    >
-                      <Globe className="w-4 h-4" />
                     </button>
                   )}
                   <button 

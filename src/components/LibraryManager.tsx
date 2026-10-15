@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion } from "motion/react";
 import { BookMetadata, syncBookToCloud, syncDeleteBook, loadCustomTags, saveCustomTags } from "../lib/firebase";
-import { storeBookFile, checkBookFileCached, deleteBookFile } from "../db/indexedDB";
+import { storeBookFile, checkBookFileCached, deleteBookFile, getBookFile } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft, Globe } from "lucide-react";
+import { BookOpen, CloudUpload as UploadCloud, Tag, Star, Trash2, ListFilter, CircleCheck as CheckCircle, Plus, Eye, Award, Clock, BookMarked, Circle as HelpCircle, HardDrive, Search, Cloud, CreditCard as Edit2, Image as ImageIcon, TriangleAlert as AlertTriangle, RefreshCw, MoveVertical as MoreVertical, Flame, TrendingUp, Calendar, Check, CheckSquare, Headphones, X, Square, Radio, Pause, Play, EyeOff, Compass, Share2, FileText, Sparkles, PenTool, ArrowLeft, Globe, Download } from "lucide-react";
 import {
   WALKTHROUGH_BOOK_ID,
   hideWalkthroughBookFromLibrary,
@@ -20,51 +20,208 @@ import { resolveCoverImageSrc } from "../lib/coverImage";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue, enqueueAudiobookDownload } from "../lib/audiobookSyncQueue";
 import { buildEpubFromText } from "../lib/epubTools";
-import { resolveApiUrl } from "../lib/capacitorNative";
+import { resolveApiUrl, isNativeApp } from "../lib/capacitorNative";
+import { buildBookDeepLink } from "../lib/bookShare";
+import {
+  buildLibraryTiles,
+  readGroupingPreference,
+  sortLibraryTiles,
+  writeGroupingPreference,
+  type LibraryTile,
+} from "../lib/libraryGrouping";
+import type { LibraryGroup } from "../lib/seriesHelper";
+import { logger } from "../lib/logger";
+import { openArchive } from "../lib/formats/archive";
+
+/**
+ * What the Workshop file picker will even offer to import.
+ *
+ * Note that this list is about *accepting the pick*, not about being able to
+ * read it — `.cbr` and `.cb7` are on it deliberately. A picker that silently
+ * refuses a file the user deliberately went looking for teaches them that
+ * Kora "did nothing", which is the failure mode the archive card used to
+ * avoid. They are accepted, identified from their bytes, and answered with a
+ * named reason when the format layer says they cannot be opened yet.
+ */
+const IMPORTABLE_EXTENSIONS = [
+  "epub",
+  "pdf",
+  "mobi",
+  "azw3",
+  "html",
+  "json",
+  "txt",
+  // Comic archives. `cbz`/`zip` are readable; `cbr`/`cb7` are named refusals.
+  "cbz",
+  "zip",
+  "cbr",
+  "cb7",
+];
+
+/** Extensions whose bytes are a comic archive rather than a text document. */
+const ARCHIVE_EXTENSIONS: readonly string[] = ["cbz", "zip", "cbr", "cb7"];
 
 /** Build the app's own shareable book link (deep link into the reader). */
 function buildBookShareLink(book: BookMetadata): string {
-  try {
-    const id = book.id || book.md5 || book.downloadId || "";
-    const q = encodeURIComponent(`${book.title} ${book.author || ""}`.trim());
-    return `https://kora.chaoticstudio.workers.dev/book?id=${encodeURIComponent(id)}&q=${q}`;
-  } catch {
-    return "https://kora.chaoticstudio.workers.dev/book";
-  }
+  return buildBookDeepLink(book);
 }
 
-/** Share a book using the device share sheet, falling back to copy-link. */
+/**
+ * Save a book already cached in the library to the user's real device storage
+ * (browser Downloads folder / normal OS download), not just the app sandbox.
+ * Uses showSaveFilePicker where available so the user picks the location,
+ * falling back to a standard anchor download.
+ */
+async function downloadBookToDevice(book: BookMetadata): Promise<void> {
+  const fileData = await getBookFile(book.id);
+  if (!fileData?.blob) {
+    throw new Error("This book isn't downloaded yet. Download it from Discover first.");
+  }
+  const ext = (book.extension || fileData.fileName?.split(".").pop() || "epub").toLowerCase();
+  const safeTitle = (book.title || "book").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 80);
+  const fileName = fileData.fileName || `${safeTitle}.${ext}`;
+
+  const type = fileData.blob.type || "application/octet-stream";
+
+  // Chromium browsers: let the user choose the exact folder + filename.
+  const picker = (window as any).showSaveFilePicker;
+  if (typeof picker === "function") {
+    try {
+      const handle = await picker({
+        suggestedName: fileName,
+        types: [{ description: ext.toUpperCase(), accept: { [type]: [`.${ext}`] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(fileData.blob);
+      await writable.close();
+      return;
+    } catch (err: any) {
+      // User aborted the picker — respect that, don't fall through to a surprise download.
+      if (err?.name === "AbortError") return;
+      // Any other failure (unsupported, permission) → fall back below.
+    }
+  }
+
+  const url = URL.createObjectURL(fileData.blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Read a Blob into a bare base64 string (no data: prefix) for Filesystem.writeFile. */
+async function blobToBase64(blob: Blob): Promise<string> {
+  const dataUrl: string = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result as string);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+  return dataUrl.slice(dataUrl.indexOf(",") + 1);
+}
+
+/** Filename-safe version of a book title, with the right extension. */
+function buildShareFileName(book: BookMetadata): string {
+  const cachedExt = (book.extension || "").trim().toLowerCase();
+  const ext = cachedExt || (book.filename?.split(".").pop() || "").trim().toLowerCase() || "epub";
+  const safeTitle = (book.title || "book").replace(/[\\/:*?"<>|]+/g, "_").slice(0, 80);
+  return `${safeTitle}.${ext}`;
+}
+
+/** Promotional blurb that rides along with the shared file. */
+function buildShareText(book: BookMetadata, link: string): string {
+  const author = book.author ? ` by ${book.author}` : "";
+  return `“${book.title}”${author}\n\nRead more books free on Kora:\n${link}`;
+}
+
+/**
+ * Share a library book as the actual file, with a promo blurb + Kora link.
+ *
+ * Order of attempts:
+ *  1. Native (APK) share sheet with the file attached — most reliable there.
+ *  2. Web Share API with a File, when the browser supports sharing files.
+ *  3. Plain download of the file + the promo text copied to the clipboard.
+ *  4. No file available (never downloaded) — fall back to sharing just the link.
+ */
 async function shareBook(book: BookMetadata): Promise<void> {
   const link = buildBookShareLink(book);
-  const text = `“${book.title}”${book.author ? ` by ${book.author}` : ""} — via Kora`;
+  const shareText = buildShareText(book, link);
+
+  let blob: Blob | null = null;
+  try {
+    blob = (await getBookFile(book.id))?.blob || null;
+  } catch {
+    /* treat as not-downloaded */
+  }
+
+  // Nothing to attach — share the link alone.
+  if (!blob) {
+    try {
+      const { Share } = await import("@capacitor/share");
+      await Share.share({ title: book.title, text: shareText, url: link, dialogTitle: "Share book" });
+      return;
+    } catch { /* fall through to clipboard */ }
+    try {
+      await navigator.clipboard.writeText(shareText);
+      alert("Book not downloaded yet — promo text and link copied to clipboard");
+    } catch { /* ignore */ }
+    return;
+  }
+
+  const fileName = buildShareFileName(book);
+
+  // 1) Native share sheet (APK) with the real file attached.
   try {
     const { Share } = await import("@capacitor/share");
     const { Filesystem, Directory } = await import("@capacitor/filesystem");
-    const cover = book.coverUrl ? resolveCoverImageSrc(book.coverUrl) : null;
-    let files: string[] = [];
-    if (cover) {
-      try {
-        const res = await fetch(cover);
-        const blob = await res.blob();
-        const dataUrl = await new Promise<string>((resolve) => {
-          const r = new FileReader();
-          r.onload = () => resolve(r.result as string);
-          r.readAsDataURL(blob);
-        });
-        const fileName = "kora-book-cover.png";
-        await Filesystem.writeFile({ path: fileName, data: dataUrl, directory: Directory.Cache });
-        const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
-        files = [uri.uri];
-      } catch { /* cover optional */ }
-    }
-    await Share.share({ title: book.title, text: `${text}\n${link}`, files, dialogTitle: "Share book" });
+    const base64 = await blobToBase64(blob);
+    await Filesystem.writeFile({
+      path: fileName,
+      data: base64,
+      directory: Directory.Cache,
+      recursive: true,
+    });
+    const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+    await Share.share({
+      title: book.title,
+      text: shareText,
+      files: [uri.uri],
+      dialogTitle: "Share book",
+    });
     return;
+  } catch (err) {
+    console.warn("[Kora/Share] native file share failed, trying web", err);
+  }
+
+  // 2) Web Share API with the file (Safari/Chrome support varies).
+  try {
+    const file = new File([blob], fileName, { type: blob.type || "application/octet-stream" });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: book.title, text: shareText });
+      return;
+    }
+  } catch (err: any) {
+    if (err?.name === "AbortError") return; // user cancelled — don't force a download
+  }
+
+  // 3) No file sharing available: save the file and copy the promo text.
+  try {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    await navigator.clipboard.writeText(shareText);
+    alert("Book file saved — promo text and link copied to clipboard");
   } catch {
-    // Web / no native share — copy link.
-    try {
-      await navigator.clipboard.writeText(link);
-      toast.success("Book link copied to clipboard!");
-    } catch { /* ignore */ }
+    alert("Couldn't share this book. Try 'Download to My Device' instead.");
   }
 }
 
@@ -247,7 +404,7 @@ function LibraryDownloadOverlay({
                 <span>Retry</span>
               </button>
             )}
-            {onManualDownload && download.downloadUrl && (
+            {onManualDownload && download.downloadUrl ? (
               <button
                 type="button"
                 onClick={(e) => {
@@ -260,7 +417,20 @@ function LibraryDownloadOverlay({
                 <Globe className="w-3 h-3" />
                 <span>Open in browser</span>
               </button>
-            )}
+            ) : download.downloadUrl ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  window.open(download.downloadUrl, '_blank', 'noopener');
+                }}
+                className="mt-2.5 px-3 py-1 rounded-full bg-kindle-accent/70 hover:bg-kindle-accent text-kindle-bg text-[9px] font-bold uppercase tracking-wider shadow-md active:scale-95 transition flex items-center gap-1"
+              >
+                <Globe className="w-3 h-3" />
+                <span>Open in browser</span>
+              </button>
+            ) : null}
           </>
         ) : (
           <>
@@ -568,6 +738,12 @@ interface LibraryManagerProps {
   onOpenAnnotations?: () => void;
   onBookUpdated?: (book: BookMetadata) => void;
   onImportLocalBook?: (book: BookMetadata) => void;
+  /**
+   * Opens a series detail screen for a grouped library tile. Falls back to
+   * onBookSelected on the representative volume, which the app already
+   * routes to the same series screen, so the prop is optional.
+   */
+  onOpenSeriesGroup?: (group: LibraryGroup) => void;
 }
 
 function calculateStreak(stats: Record<string, { minutes: number }>): number {
@@ -627,6 +803,7 @@ function LibraryManager({
   onOpenAnnotations,
   onBookUpdated,
   onImportLocalBook,
+  onOpenSeriesGroup,
 }: LibraryManagerProps) {
   // Add Book Modal States
   const [showAddBookOptions, setShowAddBookOptions] = useState<boolean>(false);
@@ -636,6 +813,12 @@ function LibraryManager({
   const [customBookAuthor, setCustomBookAuthor] = useState<string>("");
   const [isCreatingFromTemplate, setIsCreatingFromTemplate] = useState<boolean>(false);
   const [localFileDraft, setLocalFileDraft] = useState<{ file: File; title: string; ext: string } | null>(null);
+  /**
+   * Why a pick was refused, in the format layer's own words. Rendered on the
+   * upload card so a named refusal is visibly an answer rather than a
+   * file input that reset itself.
+   */
+  const [localImportError, setLocalImportError] = useState("");
 
   // Filters & sorting
   const [search, setSearch] = useState<string>("");
@@ -643,6 +826,19 @@ function LibraryManager({
   const [filterTag, setFilterTag] = useState<string>("all");
   const [filterType, setFilterType] = useState<"all" | "book" | "audiobook">("all");
   const [sortBy, setSortBy] = useState<string>("dateAdded");
+  /**
+   * Collapse multi-volume series into one tile. On by default: a shelf of
+   * thirty near-identical "One Piece Volume N" covers is unusable, and the
+   * toolbar toggle can always go back to every volume.
+   */
+  const [groupBySeries, setGroupBySeries] = useState<boolean>(() =>
+    readGroupingPreference()
+  );
+  const toggleGroupBySeries = () =>
+    setGroupBySeries((prev) => {
+      writeGroupingPreference(!prev);
+      return !prev;
+    });
   const [walkthroughHidden, setWalkthroughHidden] = useState(() => isWalkthroughBookHidden());
   const [walkthroughAdvancedMenu, setWalkthroughAdvancedMenu] = useState(() =>
     isWalkthroughAdvancedMenuEnabled()
@@ -676,6 +872,7 @@ function LibraryManager({
   const [syncingBookIds, setSyncingBookIds] = useState<Set<string>>(new Set());
   const [deletingBookIds, setDeletingBookIds] = useState<Set<string>>(new Set());
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
+  const [savingBookId, setSavingBookId] = useState<string | null>(null);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
   const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
 
@@ -778,10 +975,33 @@ function LibraryManager({
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
   const isLongPressedRef = useRef<boolean>(false);
 
-  /** Import a file the user selected from local storage into the library. */
+  /**
+   * Import a file the user selected from local storage into the library.
+   *
+   * Comic archives get read by the format layer before anything is stored,
+   * and that check is the *only* place that knows whether Kora can open what
+   * was picked. A `.cbz` sails through and is stored; a `.cbr` gets the named
+   * refusal the format layer produces and never reaches the library, because
+   * a library entry that cannot be opened is a worse dead end than a picker
+   * that says no — and silently importing it would make this exact feature
+   * lie the moment a RAR decoder lands, since the message is read from the
+   * format layer rather than hard-coded here.
+   */
   async function handleLocalFileImport(draft: { file: File; title: string; ext: string }) {
+    setLocalImportError("");
     try {
       const arrayBuffer = await draft.file.arrayBuffer();
+
+      // Read the verdict off the format layer, never off the extension.
+      if (ARCHIVE_EXTENSIONS.includes(draft.ext)) {
+        const result = await openArchive(new Uint8Array(arrayBuffer), draft.file.name);
+        if (result.status !== "ok") {
+          setLocalImportError(result.message);
+          setLocalFileDraft(null);
+          return;
+        }
+      }
+
       const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -793,6 +1013,12 @@ function LibraryManager({
       else if (draft.ext === "html") mimeType = "text/html";
       else if (draft.ext === "json") mimeType = "application/json";
       else if (draft.ext === "txt") mimeType = "text/plain";
+      // A stored MIME is not cosmetic: the reader route keys off the book's
+      // extension, and a CBZ stored as `application/octet-stream` would be
+      // indistinguishable from an unknown container on the next hydrate.
+      else if (draft.ext === "cbz" || draft.ext === "zip") mimeType = "application/vnd.comicbook+zip";
+      else if (draft.ext === "cbr") mimeType = "application/vnd.comicbook-rar";
+      else if (draft.ext === "cb7") mimeType = "application/vnd.comicbook-7z";
 
       const blob = new Blob([arrayBuffer], { type: mimeType });
       await storeBookFile(bookId, blob, draft.file.name, draft.ext);
@@ -900,10 +1126,14 @@ function LibraryManager({
       }));
 
       const res = await fetch(resolveApiUrl("/api/nytimes/recommendations"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+              method: "POST",
+              // Bounded: the diagnostic log showed "Failed to load recommendations:
+              // TypeError: Failed to fetch" with no time attached, so a stalled
+              // request had nothing to give up on.
+              signal: AbortSignal.timeout(20000),
+              headers: {
+                "Content-Type": "application/json"
+              },
         body: JSON.stringify({
           library: simplifiedLibrary,
           recentSearches: recentSearches
@@ -920,7 +1150,8 @@ function LibraryManager({
       localStorage.setItem("kora_nyt_recommendations", JSON.stringify(recs));
     } catch (err: any) {
       console.error("Failed to load recommendations:", err);
-      setRecommendationError("Could not load recommendations. Tap Retry.");
+      logger.error("[library] recommendations load failed", { error: err?.message || String(err) });
+      setRecommendationError(err.message || "Could not load recommendations");
     } finally {
       setLoadingRecommendations(false);
     }
@@ -1244,9 +1475,24 @@ function LibraryManager({
       )
     : finalRenderedBooks;
 
-  const renderedWithDownloads = downloadingBooks.length
-    ? [...downloadingBooks, ...booksWithoutActiveDownloads]
-    : finalRenderedBooks;
+  // In-flight downloads are synthetic stubs with no series fields, so they
+  // always render as plain tiles and never join a group.
+  const renderedWithDownloads: LibraryTile[] = downloadingBooks.length
+    ? [
+        ...downloadingBooks.map((book) => ({
+          kind: "book" as const,
+          key: `d:${book.id}`,
+          book: book as BookMetadata,
+        })),
+        ...sortLibraryTiles(
+          buildLibraryTiles(booksWithoutActiveDownloads, groupBySeries),
+          sortBy
+        ),
+      ]
+    : sortLibraryTiles(
+        buildLibraryTiles(booksWithoutActiveDownloads, groupBySeries),
+        sortBy
+      );
 
   // Reading Stats
   const totalBooks = books.length;
@@ -1403,6 +1649,31 @@ function LibraryManager({
                 <option value="title">Sort: Title</option>
               </select>
 
+              {/* Grouped vs every volume. Saving a 30-volume manga one volume
+                  at a time used to bury the rest of the shelf under 30
+                  near-identical covers; grouping puts it back to one tile. */}
+              <button
+                type="button"
+                onClick={toggleGroupBySeries}
+                aria-pressed={groupBySeries}
+                title={
+                  groupBySeries
+                    ? "One tile per series. Switch to showing every volume."
+                    : "Every volume on its own tile. Switch to grouped by series."
+                }
+                className={`px-2.5 py-1 rounded-full border text-[9px] font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1 ${
+                  groupBySeries
+                    ? "bg-kindle-text text-kindle-bg border-transparent shadow-sm"
+                    : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-text hover:text-kindle-text"
+                }`}
+              >
+                <BookMarked className="w-3 h-3" />
+                <span className="hidden sm:inline">
+                  {groupBySeries ? "Grouped by series" : "Every volume"}
+                </span>
+                <span className="sm:hidden">{groupBySeries ? "Grouped" : "Volumes"}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setFilterType((prev) => (prev === "book" ? "all" : "book"))}
@@ -1449,7 +1720,136 @@ function LibraryManager({
           </div>
         ) : (
           <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-5">
-            {renderedWithDownloads.map((book) => {
+            {renderedWithDownloads.map((tile) => {
+              // A group stands for several volumes, so it gets a compact tile:
+              // series cover, series name, a "N VOLS" badge and one progress
+              // line. Tapping opens the series screen; long-press still opens
+              // the per-book options sheet on the representative volume so
+              // download/share/remove stay reachable from a grouped shelf.
+              if (tile.kind === "series") {
+                const group = tile.group;
+                const cachedCount = group.volumes.filter((v) =>
+                  cachedBookIds.has(v.id)
+                ).length;
+                const allCached = cachedCount === group.total;
+                const badge =
+                  group.total > 1 ? `${group.total} VOLS` : group.title;
+                const seriesPercent = Math.round(group.fraction * 100);
+                return (
+                  <div
+                    key={tile.key}
+                    data-guide="library-series-tile"
+                    style={{ contentVisibility: "auto", containIntrinsicSize: "auto 280px" }}
+                    onTouchStart={(e) => !isManageMode && startLongPress(group.representative, e)}
+                    onTouchEnd={isManageMode ? undefined : endLongPress}
+                    onTouchMove={isManageMode ? undefined : handleTouchMove}
+                    onMouseDown={(e) => {
+                      if (!isManageMode && e.button === 0) startLongPress(group.representative, e);
+                    }}
+                    onMouseUp={isManageMode ? undefined : endLongPress}
+                    onMouseLeave={isManageMode ? undefined : endLongPress}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (isNativeApp() || isManageMode) return;
+                      setLongPressedBook(group.representative);
+                    }}
+                    onClick={(e) => {
+                      if (isManageMode) {
+                        // Selecting a group selects every volume in it, so bulk
+                        // tag/delete acts on the whole series.
+                        setSelectedBookIds((prev) => {
+                          const next = new Set(prev);
+                          const everySelected = group.volumes.every((v) => next.has(v.id));
+                          for (const v of group.volumes) {
+                            if (everySelected) next.delete(v.id);
+                            else next.add(v.id);
+                          }
+                          return next;
+                        });
+                        return;
+                      }
+                      if (isLongPressedRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        isLongPressedRef.current = false;
+                        return;
+                      }
+                      if (onOpenSeriesGroup) onOpenSeriesGroup(group);
+                      // Fallback path: the app already routes a multi-volume
+                      // book to the same series screen.
+                      else onBookSelected(group.representative);
+                    }}
+                    className="kindle-card w-full min-w-0 min-h-[220px] overflow-hidden flex flex-col cursor-pointer transition duration-300 select-none group/card"
+                  >
+                    <div className="relative w-full aspect-[2/3] bg-neutral-100 dark:bg-neutral-900 overflow-hidden border-b border-kindle-border">
+                      <img
+                        src={resolveCoverImageSrc(group.representative.coverUrl)}
+                        alt={group.title}
+                        loading="lazy"
+                        className={`w-full h-full object-cover transition duration-500 group-hover/card:scale-105 ${!allCached || (grayscaleCovers && !hideCovers) ? "opacity-75 grayscale" : ""}`}
+                      />
+                      {isManageMode && (
+                        <span
+                          className={`absolute top-2 left-2 w-5 h-5 rounded-md border-2 flex items-center justify-center ${
+                            group.volumes.every((v) => selectedBookIds.has(v.id))
+                              ? "bg-kindle-text border-kindle-text"
+                              : "bg-white/80 border-kindle-text/40"
+                          }`}
+                        >
+                          {group.volumes.every((v) => selectedBookIds.has(v.id)) && (
+                            <Check className="w-3 h-3 text-kindle-bg" strokeWidth={3} />
+                          )}
+                        </span>
+                      )}
+                      <div className="absolute top-2 right-2">
+                        <span
+                          className="px-2 py-1 rounded-lg bg-neutral-900/85 text-white text-[8px] font-bold uppercase tracking-wider shadow-sm backdrop-blur-sm"
+                          title={
+                            group.total > 1
+                              ? `${group.total} volumes in this series`
+                              : group.title
+                          }
+                        >
+                          {badge}
+                        </span>
+                      </div>
+                      {!allCached && (
+                        <span
+                          className="absolute top-9 right-2 px-2 py-1 rounded-lg bg-red-500 text-white text-[8px] font-bold uppercase tracking-wider shadow-sm"
+                          title={`${cachedCount} of ${group.total} volumes on this device`}
+                        >
+                          {group.total - cachedCount} P2P
+                        </span>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 flex h-1 bg-neutral-200 dark:bg-neutral-800">
+                        <div
+                          className={`h-full transition-all duration-500 ${
+                            group.completed === group.total
+                              ? "bg-emerald-600 dark:bg-emerald-500"
+                              : "bg-kindle-text"
+                          }`}
+                          style={{ width: `${seriesPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div className="p-1.5 md:p-3">
+                      <h4 className="font-sans text-xs md:text-sm font-bold text-kindle-text truncate mb-1">
+                        {group.title}
+                      </h4>
+                      <div className="flex items-center justify-between gap-2 text-[9px] font-semibold text-kindle-text-muted">
+                        <span className="truncate">
+                          {group.completed}/{group.total} read
+                        </span>
+                        <span className="text-kindle-accent font-bold shrink-0">
+                          {seriesPercent}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const book = tile.book;
               const isCached = cachedBookIds.has(book.id);
               const progressPercent = book.progress?.percent ?? 0;
               const isDownloadingCard = !!book.isDownloadingCard;
@@ -1473,7 +1873,15 @@ function LibraryManager({
                   }}
                   onMouseUp={isManageMode ? undefined : endLongPress}
                   onMouseLeave={isManageMode ? undefined : endLongPress}
-                  onContextMenu={(e) => e.preventDefault()}
+                  onContextMenu={(e) => {
+                    // Desktop/web only: right-click anywhere on the card — cover
+                    // image included — opens the same options sheet. In the APK
+                    // the WebView owns right-click and long-press already covers
+                    // it, and manage mode needs right-click for multi-select.
+                    e.preventDefault();
+                    if (isNativeApp() || isManageMode) return;
+                    setLongPressedBook(book);
+                  }}
                   onClick={(e) => {
                     if (isManageMode) {
                       setSelectedBookIds(prev => {
@@ -1630,7 +2038,7 @@ function LibraryManager({
                           void shareBook(book);
                         }}
                         className="p-2 bg-kindle-card border border-kindle-border text-kindle-text rounded-full shadow-lg hover:bg-kindle-bg transition"
-                        title="Share book link"
+                        title="Share book file"
                       >
                         <Share2 className="w-3 h-3" />
                       </button>
@@ -2232,7 +2640,26 @@ function LibraryManager({
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
                   >
                     <Share2 className="w-4 h-4 text-kindle-text-muted" />
-                    Share Book Link
+                    Share Book
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const book = longPressedBook;
+                      setLongPressedBook(null);
+                      setSavingBookId(book.id);
+                      downloadBookToDevice(book)
+                        .catch((err) => alert(err?.message || "Couldn't save the file."))
+                        .finally(() => setSavingBookId(null));
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors"
+                  >
+                    {savingBookId === longPressedBook.id ? (
+                      <RefreshCw className="w-4 h-4 text-kindle-text-muted animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 text-kindle-text-muted" />
+                    )}
+                    {savingBookId === longPressedBook.id ? "Saving…" : "Download to My Device"}
                   </button>
 
                   {!(isWalkthroughBook(longPressedBook) && !walkthroughAdvancedMenu) && (
@@ -2505,16 +2932,20 @@ function LibraryManager({
           <input
             id="kora-local-book-picker"
             type="file"
-            accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt"
+            accept=".epub,.pdf,.mobi,.azw3,.html,.json,.txt,.cbz,.zip,.cbr,.cb7"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (!file) return;
               const ext = file.name.split(".").pop()?.toLowerCase() || "";
-              if (!["epub", "pdf", "mobi", "azw3", "html", "json", "txt"].includes(ext)) {
+              if (!IMPORTABLE_EXTENSIONS.includes(ext)) {
                 setLocalFileDraft(null);
                 return;
               }
-              setLocalFileDraft({ file, title: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "), ext });
+              // A new pick clears the last refusal; otherwise the reason a
+              // .cbr was rejected would sit under the card while the user is
+              // importing a perfectly good .cbz.
+              setLocalImportError("");
+              setLocalFileDraft({ file, title: file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "), ext: ext });
             }}
             className="hidden"
           />
@@ -2553,8 +2984,32 @@ function LibraryManager({
               <p className="text-xs text-kindle-text-muted mt-1 leading-relaxed">
                 {localFileDraft
                   ? `“${localFileDraft.title}” (${(localFileDraft.file.size / 1024 / 1024).toFixed(1)} MB) — tap to import`
-                  : "Upload EPUB, PDF, or other ebooks from your device."}
+                  : "Upload EPUB, PDF, or comic archives (CBZ/ZIP) from your device."}
               </p>
+              {/* The format rules, in the place the file is actually chosen.
+                                Wording is tied to what the format layer can actually do, and
+                                it says the interesting part rather than the reassuring part:
+
+                                  - Split archives (comic.7z.001, .002, …) now OPEN. Select every
+                                    part together and Kora joins them; a missing part is named.
+                                  - Password-protected archives are DETECTED and the prompt appears,
+                                    but the bundled libarchive has no decryption support, so an
+                                    encrypted archive still cannot be opened. Saying so is the
+                                    honest version; promising a password box that silently fails
+                                    would not be.
+                              */}
+                            <p className="text-[9px] leading-relaxed text-kindle-text-muted/70 mt-1">
+                              CBZ, ZIP, RAR/CBR and 7z/CB7 all open — RAR and 7z are decoded by a bundled
+                              libarchive. Split archives open too: select every part (.001, .002, …)
+                              together and Kora joins them, naming any part that is missing. Password-protected
+                              archives are detected but cannot be decrypted by this build.
+                            </p>
+              {localImportError && (
+                <p className="text-[10px] leading-relaxed text-amber-700 dark:text-amber-400 mt-1.5 flex items-start gap-1.5">
+                  <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" />
+                  <span>{localImportError}</span>
+                </p>
+              )}
               {localFileDraft && (
                 <div className="mt-2 flex gap-2">
                   <button
@@ -2573,6 +3028,7 @@ function LibraryManager({
                     onClick={(e) => {
                       e.stopPropagation();
                       setLocalFileDraft(null);
+                      setLocalImportError("");
                       const input = document.getElementById("kora-local-book-picker") as HTMLInputElement | null;
                       if (input) input.value = "";
                     }}
@@ -2773,7 +3229,7 @@ function LibraryManager({
                   onBookSelected(newBook);
                 } catch (err) {
                   console.error("[Create Template Error]:", err);
-                  toast.error("Failed to create template book. Please try again.");
+                  alert("Failed to create template book. Please try again.");
                 } finally {
                   setIsCreatingFromTemplate(false);
                 }

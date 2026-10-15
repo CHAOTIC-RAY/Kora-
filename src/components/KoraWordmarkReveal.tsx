@@ -48,30 +48,7 @@ function getIsDarkMode(): boolean {
  * with thousands of ink-drop strokes; an SVG feTurbulence filter gives the
  * wobble. After the fill completes, the children (subtitle) fade up.
  */
-/**
- * `replay` exists because this component was written for a page you SCROLL past
- * (InstallView), where replaying the reveal on re-entry is a feature.
- *
- * The boot loading screen (KoraLoading) reuses the same component, and there it
- * is a bug — reported 2026-10-05 as "on loading screen kora animation blinks in
- * and out". Two paths reset `done` back to false, which unmounts the already-
- * revealed subtitle to `opacity: 0` and replays the ink animation:
- *
- *   1. IntersectionObserver, on leaving the viewport (lines ~253-264). On boot
- *      the loading screen can be scrolled or reflowed off-screen briefly.
- *   2. onResize, whenever `wrap.clientWidth` changes (lines ~231-241). A scrollbar
- *      appearing, a rotating device, or an on-screen keyboard all change it.
- *
- * Default is false: run once, reveal once, never blink. Pass `replay` to restore
- * the scroll-past behaviour InstallView wants.
- */
-export default function KoraWordmarkReveal({
-  children,
-  replay = false,
-}: {
-  children?: React.ReactNode;
-  replay?: boolean;
-}) {
+export default function KoraWordmarkReveal({ children }: { children?: React.ReactNode }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [done, setDone] = useState(false);
@@ -113,25 +90,13 @@ export default function KoraWordmarkReveal({
       wrap.classList.remove("kora-ink-zoomed");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Size the canvas backing store to its displayed box (capped so the
-      // wordmark stays sane).
-      //
-      // Note: this must only set the bitmap resolution (canvas.width/height).
-      // It must NEVER set canvas.style.width/height. Doing so resized the
-      // element whenever the ink animation started, which changed the
-      // document height inside the closing notebook — a full-screen section
-      // at the very bottom of the page. The browser then re-anchored the
-      // scroll position, which pushed the wordmark back out of view, which
-      // reset the animation, which resized it again: a visible scroll loop
-      // on the landing page. Layout size is now owned entirely by CSS below.
-      const rect = canvas.getBoundingClientRect();
-      const DISPLAY_W = Math.max(
-        1,
-        Math.round(rect.width || Math.min(wrap.clientWidth || 420, 420))
-      );
+      // Size the canvas to its displayed box (capped so the wordmark stays sane).
+      const DISPLAY_W = Math.min(wrap.clientWidth || 420, 420);
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = Math.round(DISPLAY_W * dpr);
       canvas.height = Math.round(DISPLAY_W * (VIEW_H / VIEW_W) * dpr);
+      canvas.style.width = `${DISPLAY_W}px`;
+      canvas.style.height = `${(DISPLAY_W * (VIEW_H / VIEW_W)).toFixed(1)}px`;
 
       const scale = (canvas.width / VIEW_W) * 0.92;
       const offsetX = (canvas.width - VIEW_W * scale) / 2;
@@ -256,11 +221,6 @@ export default function KoraWordmarkReveal({
       // Critical optimization: ignore resizes where width did not change (e.g. mobile virtual keyboard or browser address bar toggling)
       if (currentWidth === lastWidth && lastWidth > 0) return;
       lastWidth = currentWidth;
-      // The boot screen must reveal once. Without this guard a scrollbar
-      // appearing, a device rotation or an on-screen keyboard replays the whole
-      // ink animation and hides the already-revealed subtitle again — the
-      // "blinks in and out" report.
-      if (!replay) return;
 
       clearTimeout(t);
       t = window.setTimeout(() => {
@@ -269,37 +229,33 @@ export default function KoraWordmarkReveal({
     };
     window.addEventListener("resize", onResize);
 
-    // Start the animation when the wrapper enters the screen. On a page you
-    // scroll past (replay) it also resets when scrolled away so it re-triggers.
-    // On the boot screen there is nothing to scroll back to, and resetting could
-    // only ever cause a blink, so the observer is not even installed.
-    const io = replay
-      ? new IntersectionObserver(
-          (entries) => {
-            entries.forEach((e) => {
-              if (e.isIntersecting) {
-                if (!started) {
-                  started = true;
-                  start();
-                }
-              } else if (started) {
-                started = false;
-                cancelled = true;
-                cancelAnimationFrame(raf);
-                if (revealTimer) clearTimeout(revealTimer);
-                doneRef.current = false;
-                setDone(false);
-                revealArmed.current = false;
-                wrap.classList.remove("kora-ink-zoomed");
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-              }
-            });
-          },
-          { threshold: 0.05 }
-        )
-      : null;
-    if (io) io.observe(wrap);
-    else start(); // non-replay: reveal immediately, exactly once
+    // Start the animation when the wrapper enters the screen, and reset on scroll away so it re-triggers when scrolled back down
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            if (!started) {
+              started = true;
+              start();
+            }
+          } else {
+            if (started) {
+              started = false;
+              cancelled = true;
+              cancelAnimationFrame(raf);
+              if (revealTimer) clearTimeout(revealTimer);
+              doneRef.current = false;
+              setDone(false);
+              revealArmed.current = false;
+              wrap.classList.remove("kora-ink-zoomed");
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+          }
+        });
+      },
+      { threshold: 0.05 }
+    );
+    io.observe(wrap);
 
     const getThemeKey = () => {
       const dark = getIsDarkMode();
@@ -343,7 +299,7 @@ export default function KoraWordmarkReveal({
       cancelAnimationFrame(raf);
       clearTimeout(t);
       clearTimeout(revealTimer);
-      io?.disconnect();
+      io.disconnect();
       observer.disconnect();
       window.removeEventListener("resize", onResize);
     };
@@ -369,19 +325,7 @@ export default function KoraWordmarkReveal({
         className="kora-ink-wrapper w-full flex justify-center"
         style={{ filter: "url(#kora-realistic-ink)" }}
       >
-        {/* Height is pinned by CSS (not `auto`, and never set from JS) so the
-            element's layout box is stable before, during and after the ink
-            animation. `height:auto` on a canvas falls back to the 300x150
-            default bitmap ratio until JS resizes it, which is what used to
-            shift the page height on the final section. */}
-        <canvas
-          ref={canvasRef}
-          className="block"
-          style={{
-            width: "min(86vw, 420px)",
-            aspectRatio: `${VIEW_W} / ${VIEW_H}`,
-          }}
-        />
+        <canvas ref={canvasRef} className="block" style={{ width: "min(86vw, 420px)", height: "auto", aspectRatio: "287.6 / 112.78" }} />
       </div>
 
       <div

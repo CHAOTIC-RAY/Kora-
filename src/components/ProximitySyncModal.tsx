@@ -90,7 +90,7 @@ export default function ProximitySyncModal({
           }
         }).catch(err => {
           setSyncStep("error");
-          setErrorMsg("P2P Connection interrupted. Tap Retry.");
+          setErrorMsg(err.message || "P2P Connection interrupted.");
         });
       } else {
         setProgress(currentProgress);
@@ -113,7 +113,7 @@ export default function ProximitySyncModal({
         toast.error(res.error || "All online mirrors failed.", { id: toastId });
       }
     } catch (err: any) {
-      toast.error("Direct download failed. Tap Retry.", { id: toastId });
+      toast.error(err.message || "Direct download failed.", { id: toastId });
     } finally {
       setIsDirectDownloading(false);
     }

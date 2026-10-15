@@ -76,60 +76,56 @@ export async function streamAudiobookSearch(
     return cached;
   }
 
-  // Use the new tiered source search with fallbacks
   const all: any[] = [];
   const seen = new Set<string>();
 
   try {
-    // Try tiered source search first
-    const deduped = await searchAudiobooksFromSources(
-      async (url: string) => {
-        try {
-          const res = await fetch(url, { signal });
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return await res.text();
-        } catch {
-          throw new Error("Source fetch failed");
-        }
-      },
-      query,
-      20
-    );
+    const res = await fetch(`/api/audiobooks/search/stream?q=${encodeURIComponent(query)}`, { signal });
+    if (!res.ok || !res.body) throw new Error("Stream failed");
 
-    // Process results from tiered search
-    if (Array.isArray(deduped) && deduped.length > 0) {
-      for (const item of deduped) {
-        if (seen.has(item.link)) continue;
-        seen.add(item.link);
-        all.push(item);
-        onChunk(sourceNameForResult(item), [item]);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const chunk = JSON.parse(line);
+          if (chunk.done) continue;
+          const batch = (chunk.results || []).filter((r: any) => {
+            if (seen.has(r.link)) return false;
+            seen.add(r.link);
+            return true;
+          });
+          if (batch.length) {
+            all.push(...batch);
+            onChunk(chunk.source || "unknown", batch);
+          }
+        } catch {
+          /* skip bad line */
+        }
       }
     }
-
-    // If we got results, cache and return
-    if (all.length > 0) {
-      setCachedSearch(query, "audiobook", all);
-      return all;
+  } catch (err: any) {
+    if (err?.name === "AbortError") throw err;
+    // Graceful fallback to the non-streaming endpoint.
+    try {
+      const res = await fetch(`/api/audiobooks/search?q=${encodeURIComponent(query)}`, { signal });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : [];
+      const results = Array.isArray(data) ? data : [];
+      onChunk("fallback", results);
+      all.push(...results);
+    } catch {
+      /* both stream and fallback failed — return whatever we have */
     }
-
-    // If tiered search returned nothing, fall back to original streaming
-    // (original code continues below as fallback)
-  } catch (err) {
-    console.warn("[streamAudiobookSearch] Tiered search failed, falling back:", err.message);
-  }
-
-  // Original fallback: stream from API endpoints
-  try {
-    const res = await fetch(`/api/audiobooks/search?q=${encodeURIComponent(query)}`, {
-      signal,
-    });
-    const text = await res.text();
-    const data = text ? JSON.parse(text) : [];
-    const results = Array.isArray(data) ? data : [];
-    onChunk("fallback", results);
-    all.push(...results);
-  } catch {
-    /* both tiered and fallback failed — return whatever we have */
   }
 
   setCachedSearch(query, "audiobook", all);

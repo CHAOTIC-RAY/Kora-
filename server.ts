@@ -2107,7 +2107,18 @@ app.get("/api/audiobooks/detail", async (req, res) => {
   const expectedTitle = (req.query.title as string || "").trim();
 
   try {
-    const allowedHosts = ["hdaudiobooks.com", "fulllengthaudiobooks.com", "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com"];
+    const allowedHosts = [
+      "hdaudiobooks.com", "fulllengthaudiobooks.com",
+      "hotaudiobooks.com", "hdaudiobooks.net",
+      "audiobooks4soul.com", "audiozaic.com",
+      "librivox.org", "learnoutloud.com", "storynory.com",
+      "audiobookbay.lu", "archive.org",
+      "www.hdaudiobooks.com", "www.fulllengthaudiobooks.com",
+      "www.hotaudiobooks.com", "www.hdaudiobooks.net",
+      "www.audiobooks4soul.com", "www.audiozaic.com",
+      "www.librivox.org", "www.learnoutloud.com", "www.storynory.com",
+      "www.audiobookbay.lu", "web.archive.org"
+    ];
     for (const u of urls) {
       const host = new URL(u).hostname.replace(/^www\./, "");
       if (!allowedHosts.some(h => h.replace(/^www\./, "") === host)) {

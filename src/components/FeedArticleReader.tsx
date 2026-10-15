@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import DOMPurify from 'dompurify';
 import { Bookmark, ChevronLeft, ExternalLink, Loader2, Settings2 } from "lucide-react";
 import {
   peekFeedArticle,
@@ -241,7 +240,7 @@ export default function FeedArticleReader({
       markFeedItemSaved(target.id, book.id);
       await onSaved?.();
     } catch (err) {
-      toast.error("Could not save to library. Tap Retry.");
+      alert((err as Error).message || "Could not save to library.");
     } finally {
       setSaving(false);
     }
@@ -447,7 +446,7 @@ export default function FeedArticleReader({
                         lineHeight: prefs.lineSpacing,
                         ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
                       }}
-                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(displayHtml, { USE_PROFILES: { html: true } }) }}
+                      dangerouslySetInnerHTML={{ __html: displayHtml }}
                     />
                   )}
                 </section>

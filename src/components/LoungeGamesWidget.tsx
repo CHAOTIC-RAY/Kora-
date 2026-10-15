@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Grid3X3, Search, Swords, Gamepad2, Award, Flame } from "lucide-react";
+import { Grid3X3, Search, Swords, Gamepad2, Award } from "lucide-react";
 
-type GameId = "crossword" | "wordsearch" | "guardian" | "scrabble" | "uno";
+type GameId = "crossword" | "wordsearch" | "guardian" | "scrabble";
 
 interface GameSlide {
   id: GameId;
@@ -45,14 +45,6 @@ const SLIDES: GameSlide[] = [
     icon: <Swords className="w-5 h-5" />,
     accent: "text-rose-500",
   },
-  {
-    id: "uno",
-    title: "Kora Uno (P2P)",
-    tag: "Card Clash",
-    blurb: "Fast-paced color & action card battle. Connect over local Wi-Fi or challenge bots.",
-    icon: <Flame className="w-5 h-5" />,
-    accent: "text-rose-600",
-  },
 ];
 
 const FLIP_MS = 5000;
@@ -94,7 +86,7 @@ export default function LoungeGamesWidget({ onPlayGame }: { onPlayGame?: (g: Gam
                 onPlayGame?.(s.id);
               }}
               onMouseEnter={() => setActive(s.id)}
-              className={`w-full text-left rounded-xl border px-4 py-3 flex items-center gap-3 transition cursor-pointer ${
+              className={`w-full text-left rounded-xl border px-3 py-2.5 flex items-center gap-3 transition cursor-pointer ${
                 isActive
                   ? "border-kindle-accent/40 bg-kindle-accent/10"
                   : "border-kindle-border bg-kindle-bg/40 hover:border-kindle-accent/25"

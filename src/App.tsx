@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect, lazy, Suspense } from "react";
-import { importWithRetry, isBundleStale } from "./lib/importRetry";
-import {
-  auth, isRealFirebase, loadLibrary, BookMetadata, syncBookToCloud,
-  saveLocalLibrary, initFirebase
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import { 
+  auth, 
+  isRealFirebase, 
+  loadLibrary, 
+  BookMetadata, 
+  syncBookToCloud,
+  initFirebase 
 } from "./lib/firebase";
 import { enrichBookMetadata } from "./lib/metadataEnricher";
 import { 
@@ -16,35 +19,22 @@ import {
 import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
-import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
-import {
-  isNewsTabEnabled,
-  isDiscoverTabEnabled,
-  isSoundEffectsEnabled,
-  isGettingStartedBookEnabled,
-  isLoungeGuidesEnabled,
-  setNewsTabEnabled,
-  setDiscoverTabEnabled,
-  setSoundEffectsEnabled,
-  setLoungeGuidesEnabled,
-} from "./lib/featureToggles";
-const DiscoverView = lazy(() => importWithRetry(() => import("./components/DiscoverView")));
-const SettingsView = lazy(() => importWithRetry(() => import("./components/SettingsView")));
-const DeviceDownloadPicker = lazy(() => importWithRetry(() => import("./components/DeviceDownloadPicker")));
-const LoungeView = lazy(() => importWithRetry(() => import("./components/LoungeView")));
-const WikipediaWidget = lazy(() => importWithRetry(() => import("./components/WikipediaWidget")));
-const SeriesDetailView = lazy(() => importWithRetry(() => import("./components/SeriesDetailView")));
-import { buildLibraryGroups, findGroupForBook, type LibraryGroup } from "./lib/seriesHelper";
+const LibraryManager = lazy(() => import("./components/LibraryManager"));
+const DiscoverView = lazy(() => import("./components/DiscoverView"));
+const SettingsView = lazy(() => import("./components/SettingsView"));
+const DeviceDownloadPicker = lazy(() => import("./components/DeviceDownloadPicker"));
+const LoungeView = lazy(() => import("./components/LoungeView"));
+const WikipediaWidget = lazy(() => import("./components/WikipediaWidget"));
 import { GuideProvider } from "./components/GuideProvider";
 import { emitGuideEvent } from "./lib/guides";
-import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden, setWalkthroughBookHidden } from "./lib/walkthroughBook";
+import { ensureWalkthroughBook, isWalkthroughBook, isWalkthroughBookHidden } from "./lib/walkthroughBook";
 import { canHydrateBook } from "./lib/crossDeviceSync";
-const BookReaderEPUB = lazy(() => importWithRetry(() => import("./components/BookReaderEPUB")));
-const BookReaderPDF = lazy(() => importWithRetry(() => import("./components/BookReaderPDF")));
-const BookReaderComic = lazy(() => importWithRetry(() => import("./components/BookReaderComic")));
-const BookReaderText = lazy(() => importWithRetry(() => import("./components/BookReaderText")));
-const CreateView = lazy(() => importWithRetry(() => import("./components/CreateView")));
-const AudiobookPlayer = lazy(() => importWithRetry(() => import("./components/AudiobookPlayer")));
+import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
+const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
+const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
+const BookReaderText = lazy(() => import("./components/BookReaderText"));
+const CreateView = lazy(() => import("./components/CreateView"));
+const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
 import { loadAudiobookSession } from "./lib/audiobookSession";
 import { KoraIcon, KoraWordmark } from "./components/KoraLogo";
 import BetaChannelBadge from "./components/BetaChannelBadge";
@@ -70,51 +60,22 @@ import {
 } from "./lib/swBridge";
 import { applySelectedFeedSources, DEFAULT_FEED_SUBSCRIPTIONS } from "./lib/feedStorage";
 import { getTimeOfDayAutoTheme } from "./lib/readerThemes";
-import {
-  applyActiveThemePlugin,
-  resolveActiveThemePlugin,
-  syncThemePluginMarker,
-} from "./lib/sources/themeRuntime";
 import Quote from "./components/Quote";
-const FeedView = lazy(() => importWithRetry(() => import("./components/FeedView")));
+const FeedView = lazy(() => import("./components/FeedView"));
 import DownloadBookBtn from "./components/DownloadBookBtn";
-const OnboardingModal = lazy(() => importWithRetry(() => import("./components/OnboardingModal")));
-const GuideSetupPopup = lazy(() => importWithRetry(() => import("./components/GuideSetupPopup")));
-const DailyReminderModal = lazy(() => importWithRetry(() => import("./components/DailyReminderModal")));
+const OnboardingModal = lazy(() => import("./components/OnboardingModal"));
+const GuideSetupPopup = lazy(() => import("./components/GuideSetupPopup"));
+const DailyReminderModal = lazy(() => import("./components/DailyReminderModal"));
 import KoraLoading from "./components/KoraLoading";
 import PwaLifecycleBanner from "./components/PwaLifecycleBanner";
 import ApkUpdateBanner from "./components/ApkUpdateBanner";
 import ApkFooterLink from "./components/ApkFooterLink";
-const InstallView = lazy(() => importWithRetry(() => import("./components/InstallView")));
-const AnnotationsHub = lazy(() => importWithRetry(() => import("./components/AnnotationsHub")));
+import InstallView from "./components/InstallView";
+const AnnotationsHub = lazy(() => import("./components/AnnotationsHub"));
 import { loadDownloadsLog, persistDownloadsLogNow, schedulePersistDownloadsLog } from "./lib/downloadsLog";
 import { mergeReadingProgress } from "./lib/progressMerge";
 import { toast, Toaster } from "react-hot-toast";
-import { createToastSwipeHandlers } from "./lib/toastSwipe";
 import { logger } from "./lib/logger";
-import { judgeMirrorDownload } from "./lib/mirrorOutcome";
-import { hostOf, recordMirrorOutcome } from "./lib/mirrorReliability";
-import { isRealLibgenMd5, isFileUrl } from "./lib/bookIdentity";
-import { proxyUrlForMirror } from "./lib/downloadProxy";
-
-/**
- * Concatenate streamed chunks into one contiguous Uint8Array.
- *
- * The download loop accumulates `Uint8Array` chunks as they arrive; the
- * validator needs the whole file (the EPUB title lives in the central
- * directory at the END of the zip, so a prefix would decide nothing).
- */
-function toBytes(chunks: Uint8Array[]): Uint8Array {
-  let total = 0;
-  for (const c of chunks) total += c.length;
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (const c of chunks) {
-    out.set(c, at);
-    at += c.length;
-  }
-  return out;
-}
 import { 
   BookOpen, Search, User as UserIcon, LogOut, Cloud, 
   CloudLightning, Key, Smartphone, LogIn, Mail,
@@ -122,7 +83,8 @@ import {
   Compass, Play, Download, Globe, FileText, AlertCircle, AlertTriangle, Rss,
   RefreshCw, Zap, Database, Trash2, Library, BookMarked, Wrench, Sofa, Hammer
 } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import JSZip from "jszip";
+import { LayoutGroup, motion } from "motion/react";
 import FluidOverlay, { koraTabSpring } from "./components/FluidOverlay";
 import {
   hydrateBookFile,
@@ -131,8 +93,7 @@ import {
   registerThisDevice,
   listenAndServePeerRequests,
 } from "./lib/crossDeviceSync";
-const ProximitySyncModal = lazy(() => importWithRetry(() => import("./components/ProximitySyncModal")));
-const LibraryManager = lazy(() => importWithRetry(() => import("./components/LibraryManager")));
+const ProximitySyncModal = lazy(() => import("./components/ProximitySyncModal"));
 import {
   APP_SKIN_STORAGE_KEY,
   type AppSkinId,
@@ -152,10 +113,10 @@ import { provisionKoraStorage } from "./lib/capacitorNative";
 import { setKoraStorageMode, KoraStorageMode } from "./lib/koraStorage";
 import StorageChoiceModal from "./components/StorageChoiceModal";
 
-const BASE_MOBILE_TABS: MobileTabDef[] = [
+const BASE_MOBILE_TABS = [
   { id: "library" as const, label: "Library", Icon: Library },
   { id: "discover" as const, label: "Discover", Icon: Compass },
-  { id: "feed" as const, label: "Paper", Icon: Rss },
+  { id: "feed" as const, label: "Read", Icon: Rss },
   { id: "tools" as const, label: "Workshop", Icon: Hammer },
 ];
 
@@ -170,7 +131,6 @@ async function injectMetadataIntoEpub(
   year?: string
 ): Promise<Blob> {
   try {
-    const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(fileBlob);
     let opfPath = "";
     
@@ -265,136 +225,6 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
     }
     return this.props.children;
   }
-}
-
-/**
- * Floating mobile tab bar.
- *
- * The active pill is a SINGLE persistent element rendered once and moved with
- * `transform` only. The previous implementation used Framer Motion's
- * `layoutId` "magic motion": on every switch Motion ran a global layout
- * measurement pass for the pill at the same instant the heavy incoming tab
- * panel mounted, and that measurement-vs-mount competition was the visible
- * stutter/lag. Here we measure the target cell geometry once (in a layout
- * effect, after paint) and animate one element's `x` — no layout pass, no
- * magic motion, so the slide is always GPU-smooth regardless of what the new
- * tab is doing.
- */
-type MobileTabDef = { id: string; label: string; Icon: React.ComponentType<any> };
-
-function MobileTabBar({
-  mobileTabs,
-  activeTab,
-  switchTab,
-}: {
-  mobileTabs: MobileTabDef[];
-  activeTab: AppTab;
-  switchTab: (tab: AppTab) => void;
-}) {
-  const activeIndex = mobileTabs.findIndex(
-    (t) => t.id === activeTab || (t.id === "tools" && activeTab === "settings")
-  );
-  const safeIndex = activeIndex < 0 ? 0 : activeIndex;
-  const barRef = useRef<HTMLElement | null>(null);
-  const [pill, setPill] = React.useState<{ x: number; w: number } | null>(null);
-  const reduceMotion = useReducedMotion();
-
-  const measure = useCallback(() => {
-    const bar = barRef.current;
-    if (!bar) return;
-    // The pill is a child of <nav>, so index into the button list specifically
-    // (not bar.children, which would include the pill at index 0).
-    const buttons = bar.querySelectorAll<HTMLElement>(".kora-tab-item");
-    const cell = buttons[safeIndex];
-    if (!cell) return;
-    // Match the old `inset-x-0.5` (2px) horizontal padding the pill sat inside.
-    const INSET = 2;
-    setPill({ x: cell.offsetLeft + INSET, w: cell.offsetWidth - INSET * 2 });
-  }, [safeIndex]);
-
-  // Measure once after the bar paints (and whenever the tab set changes).
-  useLayoutEffect(() => {
-    measure();
-  }, [measure, mobileTabs.length]);
-
-  // Keep the pill glued to its cell across rotations / viewport changes.
-  useEffect(() => {
-    if (typeof ResizeObserver === "undefined" || !barRef.current) return;
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(barRef.current);
-    window.addEventListener("orientationchange", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("orientationchange", measure);
-    };
-  }, [measure]);
-
-  return (
-    <footer
-      className={`md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden ${
-        activeTab === "feed" ? "is-glass-tab" : ""
-      }`}
-    >
-      <nav
-        ref={barRef}
-        style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, 1fr)` }}
-        className="kora-tab-bar grid h-14 px-1.5 py-1"
-        aria-label="Main"
-      >
-        {/* Single persistent active pill — animated by transform only. */}
-        {pill && (
-          <motion.span
-            aria-hidden
-            className="kora-tab-pill absolute top-0.5 bottom-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
-            style={{ left: 0, width: pill.w }}
-            initial={false}
-            animate={{ x: pill.x }}
-            transition={
-              reduceMotion
-                ? { duration: 0 }
-                : { type: "spring" as const, stiffness: 720, damping: 40, mass: 0.6 }
-            }
-          />
-        )}
-        {mobileTabs.map(({ id, label, Icon }) => {
-          const isActive = activeTab === id || (id === "tools" && activeTab === "settings");
-          return (
-            <button
-              key={id}
-              type="button"
-              data-guide={
-                id === "discover"
-                  ? "nav-discover"
-                  : id === "library"
-                    ? "nav-library"
-                    : id === "feed"
-                      ? "nav-feed"
-                      : id === "tools"
-                        ? "nav-tools"
-                        : id === "lounge"
-                          ? "nav-lounge"
-                          : undefined
-              }
-              onClick={() => switchTab(id as AppTab)}
-              className={`kora-tab-item relative flex items-center justify-center rounded-xl transition-colors ${
-                isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
-              }`}
-              aria-current={isActive ? "page" : undefined}
-            >
-              <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
-                <Icon
-                  className={`w-5.5 h-5.5 shrink-0 transition-transform duration-150 ${
-                    isActive ? "scale-105" : "opacity-80"
-                  }`}
-                  strokeWidth={isActive ? 2.25 : 2}
-                />
-              </span>
-            </button>
-          );
-        })}
-      </nav>
-    </footer>
-  );
 }
 
 export default function App() {
@@ -536,113 +366,6 @@ export default function App() {
     });
   }, [scrollActiveTabToTop]);
 
-  // ---------------------------------------------------------------------
-  // Background tab prewarming (seamless tab switching)
-  //
-  // Tabs are React.lazy + keep-alive: a tab only mounts the first time it is
-  // visited, so that first switch pays for a chunk fetch AND a full mount —
-  // the visible lag. Here we warm both, in the background, after the app is
-  // idle: first the JS chunks (network/parse), then the panels themselves are
-  // added to mountedTabs so they render offscreen (the inactive panel is
-  // display:none + content-visibility:hidden, so it costs no paint).
-  //
-  // Staged so we never compete with the first paint or the active tab's data
-  // fetches, and gated off on low-end devices/perf mode where the extra
-  // resident DOM costs more than the switch it saves.
-  const prewarmedRef = useRef(false);
-  useEffect(() => {
-    if (prewarmedRef.current) return;
-    prewarmedRef.current = true;
-
-    let perfMode = false;
-    try {
-      perfMode = localStorage.getItem("kora_performance_mode") === "1";
-    } catch { /* ignore */ }
-    const nav = navigator as any;
-    // Only skip prewarming on genuinely constrained devices. An earlier version
-    // also bailed on `hardwareConcurrency <= 4`, which disabled prewarming on
-    // the majority of real Android phones — exactly the devices where the
-    // first tab switch is slowest. Chunk imports are cheap and idle-scheduled,
-    // so the useful floor is much lower than that.
-    const lowMemory = typeof nav.deviceMemory === "number" && nav.deviceMemory <= 1;
-    const saveData = !!(nav.connection && nav.connection.saveData);
-    const skipMounts = perfMode || lowMemory || saveData;
-
-    const idle: (cb: () => void, timeout: number) => number =
-      typeof (window as any).requestIdleCallback === "function"
-        ? (cb, timeout) => (window as any).requestIdleCallback(cb, { timeout })
-        : (cb, timeout) => window.setTimeout(cb, timeout);
-
-    const timers: number[] = [];
-
-    // Stage 1 — pull the lazy chunks into the module cache (no mount yet).
-    // Always worth doing: it's network/parse work that would otherwise happen
-    // synchronously on the user's first tap, and it costs no resident DOM.
-    timers.push(idle(() => {
-      void import("./components/FeedView");
-      void import("./components/DiscoverView");
-      void import("./components/LibraryManager");
-    }, 800));
-
-    // Stage 2 — heavier / less-likely tabs.
-    timers.push(idle(() => {
-      void import("./components/SettingsView");
-      if (isLoungeEnabled()) void import("./components/LoungeView");
-    }, 2500));
-
-    // Stage 3 — mount the panels offscreen so the first switch is a pure
-    // visibility flip rather than a mount. This is the part that costs
-    // resident DOM, so it stays gated on constrained devices.
-    if (!skipMounts) {
-      timers.push(idle(() => {
-        setMountedTabs((prev) => {
-          const next = new Set(prev);
-          if (!discoverTabEnabled) {
-            // discover explicitly excluded
-          } else {
-            next.add("discover");
-          }
-          if (!newsTabEnabled) {
-            // feed explicitly excluded
-          } else {
-            next.add("feed");
-          }
-          next.add("library");
-          next.add("tools");
-          if (isLoungeEnabled()) next.add("lounge");
-          return next.size === prev.size ? prev : next;
-        });
-      }, 4000));
-    }
-
-    return () => {
-      timers.forEach((id) => {
-        if (typeof (window as any).cancelIdleCallback === "function") {
-          try { (window as any).cancelIdleCallback(id); } catch { /* ignore */ }
-        }
-        clearTimeout(id);
-      });
-    };
-  }, []); // prewarming
-
-  // ── PWA version-mismatch guard ─────────────────────────────────────────
-  // After a new deploy, the service worker may serve stale JS chunks (Issue 1/5/18/21).
-  // If the remote version.json buildId differs from the embedded __KORA_BUILD_ID__,
-  // prompt the user to reload so they get the fresh bundle.
-  useEffect(() => {
-    let cancelled = false;
-    isBundleStale().then((stale) => {
-      if (!cancelled && stale) {
-        // Post a message to the service worker to skip the normal lifecycle;
-        // then prompt via PwaLifecycleBanner (which listens for the same signal).
-        if (navigator.serviceWorker?.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: "version-mismatch" });
-        }
-      }
-    });
-    return () => { cancelled = true; };
-  }, []);
-
   // Android hardware back / gesture:
   //  - from any non-home tab → go to home (Lounge if enabled, else Library)
   //  - on home → first press shows "press back again to exit"; second press
@@ -685,62 +408,14 @@ export default function App() {
     });
   }, [activeTab, scrollActiveTabToTop]);
 
-
-
-  // Feature toggles must be declared BEFORE the mobileTabs useMemo
-  // (which reads them synchronously during render), otherwise the
-  // useMemo factory throws "Cannot access 'X' before initialization".
-  const [newsTabEnabled, setNewsTabEnabledState] = useState<boolean>(() => isNewsTabEnabled());
-  const [discoverTabEnabled, setDiscoverTabEnabledState] = useState<boolean>(() => isDiscoverTabEnabled());
-  const [soundEffectsEnabled, setSoundEffectsEnabledState] = useState<boolean>(() => isSoundEffectsEnabled());
-  const [gettingStartedBookEnabled, setGettingStartedBookEnabledState] = useState<boolean>(() => isGettingStartedBookEnabled());
-  const [loungeGuidesEnabled, setLoungeGuidesEnabledState] = useState<boolean>(() => isLoungeGuidesEnabled());
-
-  /**
-   * Swipe-to-dismiss for toasts.
-   *
-   * `react-hot-toast` only supports click-to-dismiss, so a gesture wrapper is
-   * delegated around the <Toaster /> to cover every toast without touching the
-   * 140+ call sites. Memoised with an empty dep list because the handlers keep
-   * their drag state in the closure, not in React state — recreating them on
-   * every render would drop a drag in progress.
-   */
-  const toastSwipeHandlers = useMemo(
-    () =>
-      createToastSwipeHandlers({
-        // The toast <li> carries the toast id as its DOM id.
-        dismiss: (el: HTMLElement) => toast.dismiss(el.id),
-      }),
-    []
-  );
-
-  const mobileTabs = useMemo(() => {
-    const tabs: MobileTabDef[] = [];
-    if (isLoungeEnabled()) {
-      tabs.push({ id: "lounge" as const, label: "Lounge", Icon: Sofa });
-    }
-    tabs.push({ id: "library" as const, label: "Library", Icon: Library });
-    if (discoverTabEnabled) {
-      tabs.push({ id: "discover" as const, label: "Discover", Icon: Compass });
-    }
-    if (newsTabEnabled) {
-      tabs.push({ id: "feed" as const, label: "Paper", Icon: Rss });
-    }
-    tabs.push({ id: "tools" as const, label: "Workshop", Icon: Hammer });
-    return tabs;
-  }, [loungeEnabled, discoverTabEnabled, newsTabEnabled]);
-
   // Warm secondary tabs in the background so later switches stay keep-alive-fast.
-  // Only pre-mount tabs that are actually enabled — never mount a disabled feature.
   useEffect(() => {
     const warm = () => {
       setMountedTabs((prev) => {
         const next = new Set(prev);
-        const candidates: AppTab[] = [];
-        if (loungeEnabled) candidates.push("lounge");
-        candidates.push("library", "tools");
-        if (discoverTabEnabled) candidates.push("discover");
-        if (newsTabEnabled) candidates.push("feed");
+        const candidates: AppTab[] = loungeEnabled
+          ? ["lounge", "library", "discover", "feed", "tools"]
+          : ["library", "discover", "feed", "tools"];
         let changed = false;
         for (const id of candidates) {
           if (!next.has(id)) {
@@ -761,7 +436,15 @@ export default function App() {
     }
     const t = window.setTimeout(warm, 700);
     return () => window.clearTimeout(t);
-  }, [loungeEnabled, discoverTabEnabled, newsTabEnabled]);
+  }, [loungeEnabled]);
+
+  const mobileTabs = useMemo(() => {
+    if (!loungeEnabled) return BASE_MOBILE_TABS;
+    return [
+      { id: "lounge" as const, label: "Lounge", Icon: Sofa },
+      ...BASE_MOBILE_TABS,
+    ];
+  }, [loungeEnabled]);
 
   const handleLoungeEnabledChange = useCallback(
     (enabled: boolean) => {
@@ -774,13 +457,6 @@ export default function App() {
     [activeTab, switchTab]
   );
   const [activeBook, setActiveBook] = useState<BookMetadata | null>(null);
-  /**
-   * The series whose detail screen is open, or null. Multi-volume entries
-   * open this instead of the reader; picking a volume from it closes the
-   * screen and opens that volume.
-   */
-  const [openSeriesGroup, setOpenSeriesGroup] = useState<LibraryGroup | null>(null);
-
   const [activeBookMode, setActiveBookMode] = useState<"read" | "create">("read");
   const [audiobookPlayback, setAudiobookPlayback] = useState<BookMetadata | null>(null);
   const [audiobookPlaying, setAudiobookPlaying] = useState(false);
@@ -801,12 +477,6 @@ export default function App() {
   });
 
   const [appSkin, setAppSkin] = useState<AppSkinId>(() => readStoredAppSkin());
-
-  // The active theme *plugin*, if any. Null means the user is on a built-in
-  // theme. Read by the UI so it can show which theme is in effect, and kept in
-  // state (rather than read from storage inline) so the component re-renders
-  // when it changes.
-  const [pluginThemeId, setPluginThemeId] = useState<string | null>(() => null);
 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
     return localStorage.getItem("kora_onboarding_completed") !== "true";
@@ -836,50 +506,6 @@ export default function App() {
   });
   const [dailyNewsBriefEnabled, setDailyNewsBriefEnabled] = useState<boolean>(() => isDailyNewsBriefEnabled());
   const [showDailyReminder, setShowDailyReminder] = useState<boolean>(false);
-
-  const handleNewsTabChange = useCallback((enabled: boolean) => {
-    setNewsTabEnabledState(enabled);
-    setNewsTabEnabled(enabled);
-    if (!enabled && activeTab === "feed") {
-      switchTab("library");
-    }
-  }, [activeTab, switchTab]);
-
-  const handleDiscoverTabChange = useCallback((enabled: boolean) => {
-    setDiscoverTabEnabledState(enabled);
-    setDiscoverTabEnabled(enabled);
-    if (!enabled && activeTab === "discover") {
-      switchTab("library");
-    }
-  }, [activeTab, switchTab]);
-
-  const handleSoundEffectsChange = useCallback((enabled: boolean) => {
-    setSoundEffectsEnabledState(enabled);
-    setSoundEffectsEnabled(enabled);
-  }, []);
-
-  const handleGettingStartedBookChange = useCallback((enabled: boolean) => {
-    setGettingStartedBookEnabledState(enabled);
-    // setWalkthroughBookHidden calls setGettingStartedBookEnabled internally and dispatches kora-walkthrough-visibility
-    setWalkthroughBookHidden(!enabled);
-  }, []);
-
-  const handleLoungeGuidesChange = useCallback((enabled: boolean) => {
-    setLoungeGuidesEnabledState(enabled);
-    setLoungeGuidesEnabled(enabled);
-  }, []);
-
-  useEffect(() => {
-    const syncToggles = () => {
-      setNewsTabEnabledState(isNewsTabEnabled());
-      setDiscoverTabEnabledState(isDiscoverTabEnabled());
-      setSoundEffectsEnabledState(isSoundEffectsEnabled());
-      setGettingStartedBookEnabledState(isGettingStartedBookEnabled());
-      setLoungeGuidesEnabledState(isLoungeGuidesEnabled());
-    };
-    window.addEventListener("kora-feature-toggles-changed", syncToggles);
-    return () => window.removeEventListener("kora-feature-toggles-changed", syncToggles);
-  }, []);
 
   const handleDailyNewsBriefChange = async (enabled: boolean) => {
     setDailyNewsBriefEnabled(enabled);
@@ -1133,25 +759,10 @@ export default function App() {
 
   // Books Library list
   const [books, setBooks] = useState<BookMetadata[]>([]);
-  /** One row per series, so a ten-volume comic is a single library entry. */
-  const libraryGroups = useMemo(() => buildLibraryGroups(books), [books]);
   const [loadingLibrary, setLoadingLibrary] = useState<boolean>(false);
   const [cachedBookIds, setCachedBookIds] = useState<Set<string>>(new Set());
   const [selectedBookForDownload, setSelectedBookForDownload] = useState<any | null>(null);
-  /**
-   * A saved series opened from the Library. Seeded into DiscoverView so the
-   * series detail view can rebuild the Manga from the entry's plugin id and
-   * series path — a manga card in the library carries no file to open, so
-   * without this it could only ever be a dead end.
-   */
-  const [comicBookToOpen, setComicBookToOpen] = useState<any | null>(null);
-
   const [discoverInitialQuery, setDiscoverInitialQuery] = useState<string | null>(null);
-  // Shared /book?id=..&t=..&a=.. deep link → open that book's detail view full screen.
-  const [sharedBookId, setSharedBookId] = useState<string | null>(null);
-  const [sharedBookQuery, setSharedBookQuery] = useState<string | null>(null);
-  const [sharedBookTitle, setSharedBookTitle] = useState<string | null>(null);
-  const [sharedBookAuthor, setSharedBookAuthor] = useState<string | null>(null);
   const [feedInitialUrl, setFeedInitialUrl] = useState<string | null>(null);
   const [feedInitialFilter, setFeedInitialFilter] = useState<"all" | "unread" | "saved" | "briefs" | null>(null);
   const shortcutHandledRef = useRef(false);
@@ -1217,18 +828,6 @@ export default function App() {
   >(new Map());
   /** Download IDs that have received real SW byte progress (not just "Starting…"). */
   const swMadeProgressRef = useRef<Set<string>>(new Set());
-  /**
-   * Mirror URLs already burned for a download, per download id.
-   *
-   * The watchdog below retries in the foreground, and the manual Retry button
-   * does the same. Both used to hand `startBackgroundDownload` the *full*
-   * mirror list again, so a throttled host was re-tried first every time —
-   * a loop rather than a ladder. The 2026-10-01 log shows exactly that:
-   * `Mirror 1/10` appearing four times for "HOLLOW BONES" while libgen.li sat
-   * rate-limited at 0 bytes. Recording what has been tried lets each retry
-   * resume at the next untried host instead.
-   */
-  const triedMirrorsRef = useRef<Map<string, Set<string>>>(new Map());
   const swWatchdogTimersRef = useRef<Map<string, number>>(new Map());
 
   const removeDownloadEntry = useCallback((downloadId: string) => {
@@ -1328,15 +927,7 @@ export default function App() {
     [removeDownloadEntry]
   );
 
-  const retryFailedDownload = useCallback((download: { id?: string } | string) => {
-    // `DownloadEntry.id` is optional, so a caller can legitimately hand us
-    // an entry with no id. Fail loudly rather than looking up `undefined`
-    // and silently doing nothing.
-    const downloadId = typeof download === "string" ? download : download?.id;
-    if (!downloadId) {
-      console.warn("[downloads] retry called without a download id; ignoring");
-      return;
-    }
+  const retryFailedDownload = useCallback((downloadId: string) => {
     let fallback = swDownloadFallbackRef.current.get(downloadId);
     if (!fallback) {
       try {
@@ -1360,34 +951,10 @@ export default function App() {
       return;
     }
     swDownloadFallbackRef.current.set(downloadId, fallback);
-    // Advance down the mirror ladder rather than re-hitting whichever host just
-    // failed. See markMirrorTried — without it this list was always the full set.
-    const nextMirrors = untriedMirrors(downloadId, fallback.mirrors);
-    const skipped = fallback.mirrors.length - nextMirrors.length;
-    toast.loading(
-      skipped > 0
-        ? `Retrying ${fallback.book.title} on another mirror…`
-        : `Retrying ${fallback.book.title}…`,
-      { id: downloadId }
-    );
-    void startBackgroundDownload(fallback.book, nextMirrors, fallback.variant, {
+    toast.loading(`Retrying ${fallback.book.title}…`, { id: downloadId });
+    void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
       reuseDownloadId: downloadId,
     });
-  }, []);
-
-  const manualDownload = useCallback((download: any) => {
-    const url = download.downloadUrl;
-    if (!url) return;
-    try {
-      if (isNativeAndroid()) {
-        import("@capacitor/browser").then(({ Browser }) => Browser.open({ url }));
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
-    } catch {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }
-    toast.success(`Opening ${download.title || "book"} in browser...`);
   }, []);
 
   /** Expand a short mirror list into LibGen host candidates so one 500 doesn't kill the download. */
@@ -1431,31 +998,6 @@ export default function App() {
     }
   }
 
-  /**
-   * Mirrors for a retry, minus the ones already burned for this download.
-   *
-   * Returns the untouched list when everything has been tried, rather than an
-   * empty array: re-trying the full ladder is a reasonable last resort, and
-   * an empty list would surface as "No valid download mirrors available",
-   * which is both wrong and a dead end for the user.
-   */
-  function untriedMirrors(downloadId: string, mirrors: any[]) {
-    const tried = triedMirrorsRef.current.get(downloadId);
-    if (!tried || tried.size === 0) return mirrors;
-    const fresh = mirrors.filter((m) => !tried.has(m?.url));
-    return fresh.length > 0 ? fresh : mirrors;
-  }
-
-  function markMirrorTried(downloadId: string, url: string) {
-    if (!url) return;
-    let set = triedMirrorsRef.current.get(downloadId);
-    if (!set) {
-      set = new Set<string>();
-      triedMirrorsRef.current.set(downloadId, set);
-    }
-    set.add(url);
-  }
-
   function armSwDownloadWatchdog(downloadId: string) {
     clearSwDownloadWatchdog(downloadId);
     const timer = window.setTimeout(() => {
@@ -1476,10 +1018,7 @@ export default function App() {
         /* ignore */
       }
       toast.loading(`Retrying ${fallback.book.title}…`, { id: downloadId });
-      // Skip the hosts this download already failed on, so the retry advances
-      // down the ladder instead of re-hitting a throttled mirror 1.
-      const nextMirrors = untriedMirrors(downloadId, fallback.mirrors);
-      void startBackgroundDownload(fallback.book, nextMirrors, fallback.variant, {
+      void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
         reuseDownloadId: downloadId,
         skipServiceWorker: true,
       });
@@ -1488,137 +1027,12 @@ export default function App() {
   }
 
   // Background download handler
-  /**
-   * Record a service-worker download outcome into the local reliability ledger.
-   *
-   * The SW runs outside the page, so it cannot reach this store directly. It
-   * does, however, know which mirror URL it actually fetched and whether the
-   * transfer completed — and `swDownloadFallbackRef` holds the mirror list it
-   * was given, so the host can be identified here. Without this, the default
-   * download path recorded nothing at all and every mirror stayed unmeasured.
-   *
-   * The SW does not validate content, so a completion is recorded as a
-   * transport-level success; the foreground path (which does read the bytes)
-   * is what catches wrong books. `interrupted` is deliberately not counted.
-   */
-  function recordSwOutcome(
-    data: { type: string; downloadId?: string; error?: string },
-    fallback?: { book: any; mirrors: any[]; variant: any }
-  ) {
-    try {
-      const first = fallback?.mirrors?.[0];
-      const url = typeof first === "string" ? first : first?.url;
-      if (!url) return;
-      if (data.type === "download-complete") {
-        recordMirrorOutcome(url, "real-book");
-      } else if (data.error && data.error !== "Cancelled") {
-        recordMirrorOutcome(url, "unreachable");
-      }
-    } catch (e) {
-      /* Reporting must never break a download. */
-    }
-  }
-
-  /**
- * How long a mirror may take to deliver its FIRST byte before it is treated as
- * dead and the next one is tried.
- *
- * Sized from measurement: a mirror that answers and then stalls leaves the
- * stream reader blocked forever — no error, no progress, and the existing retry
- * logic never fires because nothing rejects. 25s is comfortably above the
- * ~3.9s the slowest healthy mirror took, and far below the several minutes a
- * user will sit watching a frozen progress bar before assuming it broke.
- *
- * Only applies while zero bytes have arrived, so a slow-but-live transfer is
- * never cut off.
- */
-/**
- * Does this first chunk look like an HTML page rather than a book file?
- *
- * Two signals, because either alone can lie:
- *  - Content-Type says `text/html`;
- *  - the bytes themselves begin with `<!DOCTYPE html`, `<html`, or a comment.
- *
- * The byte check matters most: an unsigned/expired LibGen link returns the ad
- * landing page as a 200, and content sniffing alone sometimes sees
- * `application/octet-stream` from the CDN while the body is still HTML.
- *
- * Only inspect the first chunk — a legitimate EPUB can contain "<" bytes later,
- * and a zip begins `PK`. Kept deliberately small and dependency-free.
- */
-function looksLikeHtmlPage(chunk: Uint8Array, contentType?: string | null): boolean {
-  if (contentType && /text\/html|application\/xhtml/i.test(contentType)) return true;
-
-  // Scan only the head; chunk boundaries can split a tag but never a short prefix.
-  const n = Math.min(chunk.length, 512);
-  if (n === 0) return false;
-  let head = "";
-  for (let i = 0; i < n; i++) head += String.fromCharCode(chunk[i]);
-  head = head.trimStart().toLowerCase();
-
-  // Real file magic wins outright — never reject a genuine download.
-  // Compare BYTES, not a string cast, because control characters (0x03 in the
-  // zip header, the 7z signature) do not survive a naive escape in source.
-  const b = (i: number) => (i < chunk.length ? chunk[i] : 0);
-  if (b(0) === 0x50 && b(1) === 0x4b) return false;       // zip / epub / cbz
-  if (b(0) === 0x25 && b(1) === 0x50 && b(2) === 0x44) return false; // %PDF
-  if (b(0) === 0x7b && b(1) === 0x5c) return false;        // {\rtf
-  if (b(0) === 0x37 && b(1) === 0x7a && b(2) === 0xbc) return false; // 7z
-  if (b(0) === 0x52 && b(1) === 0x61 && b(2) === 0x72) return false; // Rar
-
-  return (
-    head.startsWith("<!doctype html") ||
-    head.startsWith("<html") ||
-    head.startsWith("<?xml") ||
-    head.startsWith("<!--") ||
-    /<head|<body|<title|<meta\s/i.test(head)
-  );
-  }
-
-const STALL_TIMEOUT_MS = 25000;
-
-async function startBackgroundDownload(
+  async function startBackgroundDownload(
     book: any,
     mirrors: any | any[],
     variant: any,
-    options?: {
-      reuseDownloadId?: string;
-      skipServiceWorker?: boolean;
-      /**
-       * Fired once, on the first mirror that actually delivers bytes.
-       *
-       * The library entry is only worth creating once a download is proven to
-       * be real: a mirror can answer 200 with a plausible Content-Length and
-       * then stall, and an entry created at that point is a library item the
-       * user can never open. Receives the running byte count and the total.
-       */
-      onFirstBytes?: (received: number, total: number) => void;
-    }
+    options?: { reuseDownloadId?: string; skipServiceWorker?: boolean }
   ) {
-    // Surface "the mirror is actually delivering" on the downloads row.
-    // Without it the sheet shows a 0 KB / Connecting state that is visually
-    // identical whether the mirror is slow or dead.
-    const onFirstBytes = options?.onFirstBytes ?? ((received: number) => {
-      const id = options?.reuseDownloadId;
-      if (!id) return;
-      setGlobalDownloads((prev) => {
-        const updated = prev.map((dl) =>
-          dl.id === id && !dl.verified
-            ? {
-                ...dl,
-                verified: true,
-                verifiedAt: Date.now(),
-                transferred: received >= 1024 * 1024
-                  ? `${(received / 1048576).toFixed(1)} MB`
-                  : `${Math.max(1, Math.round(received / 1024))} KB`,
-              }
-            : dl
-        );
-        persistDownloadsLogNow(updated);
-        return updated;
-      });
-    });
-
     const rawMirrors = Array.isArray(mirrors) ? mirrors : [mirrors];
     const mirrorList = expandDownloadMirrors(rawMirrors.filter(Boolean), variant);
     if (!mirrorList || mirrorList.length === 0) {
@@ -1637,8 +1051,6 @@ async function startBackgroundDownload(
         size: variant.size || "Unknown",
         status: "downloading",
         percent: 0,
-        // Not yet proven: no bytes have arrived from the mirror.
-        verified: false,
         timestamp: Date.now()
       };
 
@@ -1676,7 +1088,7 @@ async function startBackgroundDownload(
           try { await Notification.requestPermission(); } catch (e) {}
         }
         const proxyUrls = mirrorList.map(
-          (m) => proxyUrlForMirror(m.url)
+          (m) => `/api/proxy-file?url=${encodeURIComponent(m.url)}`
         );
         const proxyUrl = proxyUrls[0];
         const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
@@ -1733,15 +1145,13 @@ async function startBackgroundDownload(
             percent: 0,
             speed: "Connecting...",
             eta: "",
-            transferred: attemptLabel,
-            // A fresh mirror must earn its own proof.
-            verified: false
+            transferred: attemptLabel
           } : dl);
           persistDownloadsLogNow(updated);
           return updated;
         });
 
-        const proxyUrl = proxyUrlForMirror(mirror.url);
+        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
         const abortController = new AbortController();
         foregroundDownloadAborts.current.set(downloadId, abortController);
 
@@ -1761,11 +1171,6 @@ async function startBackgroundDownload(
         let contentDisposition = "";
         const maxStreamRetries = 4;
         let streamDone = false;
-        // Per-mirror: set once this mirror has actually delivered bytes, and
-        // reset for the next mirror so a dead one cannot inherit the previous
-        // mirror's proof.
-        let verifiedBytes = false;
-        let sniffedMagic = false;
 
         for (let attempt = 0; attempt < maxStreamRetries && !streamDone; attempt++) {
           const headers: Record<string, string> = {};
@@ -1774,25 +1179,10 @@ async function startBackgroundDownload(
           }
           let response: Response;
           try {
-            // A mirror that accepts the connection and then never sends a byte
-            // leaves the reader blocked forever: no error, no progress, no
-            // timeout. Without this the UI sits on "downloading" indefinitely
-            // and the user has no idea another mirror is available. The signal
-            // fires only while nothing has arrived, so a slow-but-live transfer
-            // is never cut off — the timer resets on every chunk below.
-            const stallTimer = setTimeout(() => {
-              if (receivedLength === 0) {
-                abortController.abort();
-              }
-            }, STALL_TIMEOUT_MS);
-            try {
-              response = await fetch(proxyUrl, {
-                signal: abortController.signal,
-                headers,
-              });
-            } finally {
-              clearTimeout(stallTimer);
-            }
+            response = await fetch(proxyUrl, {
+              signal: abortController.signal,
+              headers,
+            });
           } catch (fetchErr: any) {
             if (abortController.signal.aborted) throw fetchErr;
             if (receivedLength > 0 && attempt < maxStreamRetries - 1) {
@@ -1865,41 +1255,9 @@ async function startBackgroundDownload(
               chunks.push(value);
               receivedLength += value.length;
 
-              // Sniff the first chunk for an HTML/ad page before trusting it.
-              //
-              // An expired or unsigned LibGen key answers 200 with ~20KB of
-              // text/html (the ad landing page). Because that is a *successful*
-              // response with plausible bytes, the stream looked healthy: the
-              // download kept going and only surfaced as a failure after the
-              // full stall budget — measured at 103 seconds earlier today. The
-              // bytes are the tell, so check them the moment they arrive and
-              // bail out immediately, letting the caller advance the mirror
-              // ladder instead of waiting.
-              if (!sniffedMagic) {
-                sniffedMagic = true;
-                if (looksLikeHtmlPage(value, contentType)) {
-                  throw new DOMException(
-                    "Mirror returned an HTML page instead of the file",
-                    "HtmlNotFileError"
-                  );
-                }
-              }
-
               const percent = contentLength > 0
                 ? Math.round((receivedLength / contentLength) * 100)
                 : null;
-
-              // Prove the mirror actually delivers bytes.
-              //
-              // A mirror can answer 200 with a correct Content-Length and then
-              // stall, or trickle so slowly that the user gives up long before
-              // anything useful arrives. Both looked identical to "downloading".
-              // Once real bytes have landed, the download is real and the entry
-              // is worth creating — which is the gate the library add waits on.
-              if (!verifiedBytes && receivedLength > 0) {
-                verifiedBytes = true;
-                options?.onFirstBytes?.(receivedLength, contentLength);
-              }
 
               const now = Date.now();
               if (now - lastUpdateTime > 150 || receivedLength === contentLength) {
@@ -2022,33 +1380,6 @@ async function startBackgroundDownload(
         let fileBlob = new Blob(chunks);
         const id = variant.md5 || Math.random().toString(36).substring(7);
 
-        // ── Validate what actually arrived, and score the mirror ──────────
-        // A file is saved only after it is shown to BE the requested book.
-        // This is the gate that stops a mirror from silently handing over a
-        // different book: the bytes are read, the container is checked, and
-        // the embedded title is compared with what the user asked for. A
-        // wrong book throws and the loop moves to the next mirror, having
-        // recorded a FAILED attempt for this host — which is what makes the
-        // reliability number on the sheet mean something.
-        const judged = await judgeMirrorDownload({
-          mirrorUrl: mirror.url,
-          bytes: toBytes(chunks),
-          requestedTitle: book.title,
-          claimedExtension: fileExtension,
-          sawHtmlContentType: /text\/html/i.test(contentType || ""),
-        });
-        if (!judged.ok) {
-          // A wrong book is worse than no book: do not save it.
-          throw new Error(
-            judged.mismatched
-              ? `This mirror served a different book. ${judged.detail}`
-              : judged.detail
-          );
-        }
-        logger.info(
-          `Mirror ${hostOf(mirror.url) || "?"} verified for "${book.title}": ${judged.detail}`
-        );
-
         // Check if downloading using normal discovery search (non-advanced Google Book based search)
         const isGoogleBookSearch = book.isGoogleBook || book.source === "google";
         
@@ -2159,36 +1490,7 @@ async function startBackgroundDownload(
         logger.info(`Successfully completed download for "${book.title}". Saved to IndexedDB with ID: ${id}`);
         toast.success(`${book.title} downloaded!`, { id: downloadId });
         refreshLibrary();
-
-        /**
-         * Drop the synthetic library tile now that the real book exists.
-         *
-         * `LibraryManager` builds in-flight tiles from the downloads queue and
-         * deliberately suppresses the real library row while a matching download
-         * is active (`booksWithoutActiveDownloads`). Nothing ever removed a
-         * COMPLETED entry, so that suppression kept winning forever: the real
-         * book was in the library but invisible, and the only visible thing was
-         * the stale "downloading" stub.
-         *
-         * That is exactly what was reported on 2026-10-05 as "it got library and
-         * was stuck at 0 and disspeard and after a while it showed up in library
-         * downloaded" — the tile at 0% is the stub, its disappearance is the stub
-         * being swapped for the real row, and the final appearance is the real
-         * book once the tile stops shadowing it.
-         *
-         * Ordered deliberately:
-         *   1. refreshLibrary() first, so the real book is already loaded when
-         *      the stub stops masking it (otherwise there is a one-frame gap).
-         *   2. persist before removing, so a reload cannot resurrect the stub.
-         *   3. The removal is keyed on `id === downloadId` AND completed, so an
-         *      unrelated queued download is never dropped.
-         */
-        setGlobalDownloads(prev => {
-          const updated = prev.filter(dl => dl.id !== downloadId);
-          persistDownloadsLogNow(updated);
-          return updated;
-        });
-
+        
         success = true;
         break; // Stop iterating on success
       } catch (err: any) {
@@ -2200,18 +1502,8 @@ async function startBackgroundDownload(
           removeDownloadEntry(downloadId);
           return;
         }
-        logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error logged.`);
+        logger.warn(`Mirror ${index + 1} failed for "${book.title}". URL: ${mirror.url}. Error: ${err.message || err}`);
         finalError = err;
-        // Remember this mirror so a later retry skips it.
-        //
-        // This was missing, which quietly defeated the whole ladder: the loop
-        // below advanced through mirrors within a single attempt, but a RETRY
-        // re-derived the full list from scratch, so it re-hit whichever mirror
-        // had just failed — usually the same dead or throttled host — and the
-        // user saw an identical failure. `untriedMirrors` (used by the service
-        // worker watchdog) already existed for exactly this; the foreground
-        // path never fed it.
-        markMirrorTried(downloadId, mirror.url);
         // Proceed to the next mirror if this one failed
       } finally {
         foregroundDownloadAborts.current.delete(downloadId);
@@ -2222,12 +1514,7 @@ async function startBackgroundDownload(
       logger.error(`All mirrors failed for "${book.title}". Last error: ${finalError?.message || finalError}`, finalError);
       console.error("Background download failed on all mirrors:", finalError);
       setGlobalDownloads(prev => {
-        const updated = prev.map(dl => dl.id === downloadId ? {
-          ...dl,
-          status: "error",
-          errorMessage: finalError?.message,
-          downloadUrl: variant.downloadUrl || variant.directUrl || mirrorList[0]?.url || ""
-        } : dl);
+        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "error", error: finalError?.message } : dl);
         persistDownloadsLogNow(updated);
         return updated;
       });
@@ -2301,30 +1588,6 @@ async function startBackgroundDownload(
       // so a manually-selected light theme never inherits a darkened background.
       document.body.classList.remove("dark");
     }
-    // A theme *plugin* overrides the built-in palette. It is applied after the
-    // class swap above because it writes the same custom properties those
-    // classes set — so it has to come last to win, and it has to re-run on
-    // every theme change so switching back to a built-in theme clears it.
-    const pluginTheme = isInstallView ? null : resolveActiveThemePlugin();
-    const applyResult = applyActiveThemePlugin(document);
-    syncThemePluginMarker(pluginTheme?.themeId ?? null);
-    setPluginThemeId(applyResult.applied);
-
-    // A plugin theme declares its own dark/light mode. When one is active it
-    // owns the `dark` class too, so the Tailwind `dark:` variants and the
-    // native status bar match the palette instead of the last built-in theme
-    // the user happened to pick.
-    if (pluginTheme) {
-      if (pluginTheme.dark) {
-        classes.push("dark");
-        document.documentElement.classList.add("dark");
-        document.body.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-        document.body.classList.remove("dark");
-      }
-    }
-
     document.body.className = Array.from(new Set(classes.filter(Boolean))).join(" ");
     document.documentElement.dataset.skin = activeSkin;
   }, [displayTheme, appSkin, window.location.pathname]);
@@ -2360,39 +1623,6 @@ async function startBackgroundDownload(
       setSeo({ title: "Kora", canonical: path });
     }
   }, []);
-
-  // Hash-based routing for browser Back button support
-
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash || "#library";
-      const hashMap: Record<string, string> = {
-              "#lounge": "lounge",
-              "#library": "library",
-              "#discover": "discover",
-              "#feed": "feed",
-              "#tools": "tools",
-              "#settings": "settings",
-              "#scrabble": "scrabble",
-              "#crossword": "crossword",
-              "#wordsearch": "wordsearch",
-              "#guardian": "guardian",
-            };
-            const targetTab = hashMap[hash] || "library";
-      setActiveTab((prev) => (prev === targetTab ? prev : targetTab));
-    };
-    window.addEventListener("hashchange", handleHashChange);
-    handleHashChange();
-    return () => window.removeEventListener("hashchange", handleHashChange);
-  }, []);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      window.location.hash = activeTab;
-    }, 100);
-    return () => clearTimeout(timeout);
-  }, [activeTab]);
-
 
   useEffect(() => {
     void (async () => {
@@ -2458,7 +1688,7 @@ async function startBackgroundDownload(
       console.error("SW pickup failed:", err);
       setGlobalDownloads((prev) => {
         const updated = prev.map((dl) =>
-          dl.id === downloadId ? { ...dl, status: "error", errorMessage: "Pickup failed", downloadUrl: dl.downloadUrl || dl.directUrl || "" } : dl
+          dl.id === downloadId ? { ...dl, status: "error", error: "Pickup failed" } : dl
         );
         persistDownloadsLogNow(updated);
         return updated;
@@ -2506,13 +1736,7 @@ async function startBackgroundDownload(
       } else if (data.type === "download-complete") {
         clearSwDownloadWatchdog(data.downloadId);
         swMadeProgressRef.current.delete(data.downloadId);
-        const swFallback = swDownloadFallbackRef.current.get(data.downloadId);
         swDownloadFallbackRef.current.delete(data.downloadId);
-        // The SW wrote the file to IndexedDB without checking it was the
-        // requested book, and it reported no outcome at all — so the reliability
-        // ledger stayed empty for every download that took the SW path (which
-        // is the default). Record a real attempt here.
-        recordSwOutcome(data, swFallback);
         await ingestDownloadRef.current(data.downloadId, data.title, data.size);
       } else if (data.type === "audiobook-track-complete") {
         handleAudiobookSwMessage(data);
@@ -2541,10 +1765,6 @@ async function startBackgroundDownload(
         const fallback = swDownloadFallbackRef.current.get(data.downloadId);
         if (fallback) {
           swDownloadFallbackRef.current.delete(data.downloadId);
-          // The SW exhausted this mirror. Count it as a failed attempt for the
-          // host that failed, so a persistently dead mirror sinks in the sheet
-          // instead of being retried first forever.
-          recordSwOutcome({ type: "download-error", downloadId: data.downloadId, error: data.error }, fallback);
           logger.warn(
             `SW download failed (${data.error}); retrying ${fallback.mirrors.length} mirror(s) in foreground`
           );
@@ -2557,7 +1777,7 @@ async function startBackgroundDownload(
         }
         setGlobalDownloads((prev) => {
           const updated = prev.map((dl) =>
-            dl.id === data.downloadId ? { ...dl, status: "error", errorMessage: data.error, downloadUrl: fallback?.variant?.downloadUrl || fallback?.variant?.directUrl || "" } : dl
+            dl.id === data.downloadId ? { ...dl, status: "error", error: data.error } : dl
           );
           persistDownloadsLogNow(updated);
           return updated;
@@ -2723,7 +1943,7 @@ async function startBackgroundDownload(
         setTimeout(() => setSharingStatus("idle"), 5000);
       } catch (err: any) {
         console.error("[PWA Share Target Error]:", err);
-        setSharingError("Failed to save shared text. Tap Retry.");
+        setSharingError(err.message || "Failed to save shared text.");
         setSharingStatus("error");
       }
     })();
@@ -2780,7 +2000,7 @@ async function startBackgroundDownload(
       setTimeout(() => setSharingStatus("idle"), 5000);
     } catch (err: any) {
       console.error("[PWA Share Target Error]:", err);
-      setSharingError("Failed to convert shared webpage. Tap Retry.");
+      setSharingError(err.message || "Failed to convert shared webpage.");
       setSharingStatus("error");
     }
   }
@@ -2791,28 +2011,7 @@ async function startBackgroundDownload(
       return;
     }
 
-    // Hard ceiling on the auth handshake. `loadingAuth` gates the ENTIRE app
-    // (App.tsx returns <KoraLoading/> while it is true), so if this callback
-    // never fires — Firebase slow, blocked, or the tab restored offline — the
-    // user gets a permanent "LOADING APP..." screen with no way forward.
-    //
-    // Reported 2026-10-05 as "the full site is broken again / ui is broken fully
-    // every page": every HTTP-level check passed (HTML well-formed, CSS 310 KB
-    // and intact, live bundle byte-identical to local, buildId matched) while the
-    // app never rendered, because the gate was an unbounded external call.
-    //
-    // On timeout we release the gate and fall through to the local library.
-    // Authentication can still complete later — onAuthStateChanged sets `user`
-    // whenever it fires, and refreshLibrary re-runs on the user change — so this
-    // degrades to offline-first rather than breaking the app.
-    const AUTH_BOOT_TIMEOUT_MS = 6000;
-    const bootTimer = setTimeout(() => {
-      setLoadingAuth(false);
-      void refreshLibrary("");
-    }, AUTH_BOOT_TIMEOUT_MS);
-
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      clearTimeout(bootTimer);
       if (currentUser) {
         setUser(currentUser);
         setLoadingAuth(false);
@@ -2847,10 +2046,7 @@ async function startBackgroundDownload(
       }
     });
 
-    return () => {
-      unsubscribe();
-      clearTimeout(bootTimer);
-    };
+    return () => unsubscribe();
   }, []);
 
   // Cross-device: register this device + serve P2P file requests when enabled
@@ -2991,31 +2187,6 @@ async function startBackgroundDownload(
       const kind = (params.get("kind") || "").toLowerCase();
       const action = (params.get("action") || "").toLowerCase();
       const newsUrl = params.get("url");
-
-      // Shared book link: /book?id=..&t=..&a=.. → Discover, book detail full screen.
-      if (/^\/book\/?$/.test(window.location.pathname)) {
-        const id = params.get("id") || "";
-        const t = params.get("t") || "";
-        const a = params.get("a") || "";
-        const q = params.get("q") || "";
-        if (id || t || q) {
-          if (discoverTabEnabled) {
-            switchTab("discover");
-            setSharedBookId(id || null);
-            setSharedBookQuery(q || null);
-            setSharedBookTitle(t || null);
-            setSharedBookAuthor(a || null);
-          } else if (t || q) {
-            // Discover is switched off for this user, so DiscoverView never
-            // mounts and the detail view can't open. Fall back to a plain
-            // search so the link still lands somewhere useful.
-            setDiscoverInitialQuery(q || `${t} ${a}`.trim());
-          }
-          return true;
-        }
-        return false;
-      }
-
       if (newsUrl) {
         switchTab("feed");
         setFeedInitialUrl(newsUrl);
@@ -3051,14 +2222,14 @@ async function startBackgroundDownload(
         }
         return true;
       }
-      if (go === "crossword" || go === "minigame" || go === "wordsearch" || go === "p2p" || go === "uno") {
+      if (go === "crossword" || go === "minigame" || go === "wordsearch" || go === "p2p") {
         switchTab("tools");
         window.setTimeout(() => {
           window.dispatchEvent(
             new CustomEvent("kora-open-tool", {
               detail: {
                 tool:
-                  go === "wordsearch" ? "wordsearch" : go === "p2p" ? "p2p" : go === "uno" ? "uno" : "crossword",
+                  go === "wordsearch" ? "wordsearch" : go === "p2p" ? "p2p" : "crossword",
               },
             })
           );
@@ -3066,10 +2237,6 @@ async function startBackgroundDownload(
         return true;
       }
       if (go === "feed" || go === "news" || briefs) {
-        if (!newsTabEnabled) {
-          switchTab("library");
-          return true;
-        }
         switchTab("feed");
         if (briefs || go === "news") setFeedInitialFilter("briefs");
         return true;
@@ -3079,10 +2246,6 @@ async function startBackgroundDownload(
         return true;
       }
       if (go === "discover") {
-        if (!discoverTabEnabled) {
-          switchTab("library");
-          return true;
-        }
         switchTab("discover");
         return true;
       }
@@ -3101,15 +2264,13 @@ async function startBackgroundDownload(
       const params = new URLSearchParams(window.location.search);
       const go = (params.get("go") || params.get("tab") || "").toLowerCase();
       const briefs = params.get("briefs") === "1";
-      // A shared /book link carries no ?go= — route on the pathname instead.
-      const isBookLink = /^\/book\/?$/.test(window.location.pathname);
-      if (go || briefs || isBookLink) {
+      if (go || briefs) {
         if (go === "continue" && loadingLibrary) {
           // wait for library
         } else {
           shortcutHandledRef.current = true;
           const clean = new URL(window.location.href);
-          ["go", "tab", "briefs", "source", "id", "q", "t", "a"].forEach((k) => clean.searchParams.delete(k));
+          ["go", "tab", "briefs", "source"].forEach((k) => clean.searchParams.delete(k));
           const qs = clean.searchParams.toString();
           window.history.replaceState({}, document.title, clean.pathname + (qs ? `?${qs}` : ""));
           routeFromParams(params);
@@ -3209,14 +2370,6 @@ async function startBackgroundDownload(
           return updated;
         }
         return current;
-      });
-
-      // Keep the currently-open book in sync with the refreshed library so the
-      // reader keeps receiving the latest progress (page/chapter) without a reopen.
-      setActiveBook((current) => {
-        if (!current) return current;
-        const updated = finalBooks.find((b) => b.id === current.id);
-        return updated ?? current;
       });
 
       if (opts?.promptDeviceDownloads && uid) {
@@ -3382,7 +2535,7 @@ async function startBackgroundDownload(
       setAuthEmail("");
       setAuthPassword("");
     } catch (err: any) {
-      setAuthError("Authentication failed. Tap Retry to re-sign in.");
+      setAuthError(err.message || "Authentication failed. Check credentials.");
     } finally {
       setLoadingAuth(false);
     }
@@ -3408,7 +2561,7 @@ async function startBackgroundDownload(
         code !== "auth/cancelled-popup-request" &&
         !/cancel|dismiss|closed/i.test(String(err?.message || ""))
       ) {
-        setAuthError("Google Sign-In failed. Tap Retry to try again.");
+        setAuthError(err.message || "Google Sign-In failed.");
       }
     } finally {
       setLoadingAuth(false);
@@ -3530,13 +2683,6 @@ async function startBackgroundDownload(
     setDiscoverInitialQuery(null);
   }, []);
 
-  const handleClearSharedBookLink = useCallback(() => {
-    setSharedBookId(null);
-    setSharedBookQuery(null);
-    setSharedBookTitle(null);
-    setSharedBookAuthor(null);
-  }, []);
-
   const handleChangeAutoDisplayTheme = useCallback((enabled: boolean) => {
     setAutoDisplayTheme(enabled);
     localStorage.setItem("kora_auto_display_theme", String(enabled));
@@ -3603,34 +2749,6 @@ async function startBackgroundDownload(
 
   // Handle book selection for reading
   const handleOpenBook = useCallback(async (book: BookMetadata) => {
-    // A series with several volumes opens its detail screen first rather
-    // than jumping straight into a chapter. A single volume is still just
-    // a book, so it goes straight to the reader.
-    if (book.kind === "manga" || book.kind === "comic" || book.series?.trim()) {
-      const group = findGroupForBook(libraryGroups, book.id);
-      if (group && group.total > 1) {
-        setOpenSeriesGroup(group);
-        return;
-      }
-      // A saved series is not a file, so there is nothing for the paths
-      // below to open. It has to go back to the source it came from, which
-      // is what carries `pluginId` + `sourceId` for. Falling through used
-      // to send it into the ebook reader, which then reported a file it
-      // never had.
-      if (book.pluginId) {
-        setComicBookToOpen({
-          pluginId: book.pluginId,
-          sourceId: book.sourceId,
-          title: book.title,
-          author: book.author,
-          coverUrl: book.coverUrl,
-          description: book.description,
-        });
-        switchTab("discover");
-        return;
-      }
-    }
-
     if (book.extension?.toLowerCase() === "audiobook") {
       if (!book.audiobookTracks?.length) {
         toast.error("This audiobook has no tracks. Open it from Discover to load audio files.");
@@ -3696,11 +2814,7 @@ async function startBackgroundDownload(
   }, [cachedBookIds]);
 
   if (window.location.pathname === "/install" || window.location.pathname === "/install/") {
-    return (
-      <Suspense fallback={<div className="min-h-screen bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
-        <InstallView />
-      </Suspense>
-    );
+    return <InstallView />;
   }
 
   if (loadingAuth) {
@@ -3791,16 +2905,11 @@ async function startBackgroundDownload(
             <button
               id="discover-tab"
               data-guide="nav-discover"
-              onClick={() => {
-                if (!discoverTabEnabled) return;
-                switchTab("discover");
-              }}
+              onClick={() => switchTab("discover")}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
-                discoverTabEnabled ? (
-                  activeTab === "discover"
-                    ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active"
-                    : "text-kindle-text-muted hover:text-kindle-text"
-                ) : "hidden"
+                activeTab === "discover" 
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
+                  : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
               <Compass className="w-3.5 h-3.5" />
@@ -3809,16 +2918,11 @@ async function startBackgroundDownload(
             <button
               id="feed-tab"
               data-guide="nav-feed"
-              onClick={() => {
-                if (!newsTabEnabled) return;
-                switchTab("feed");
-              }}
+              onClick={() => switchTab("feed")}
               className={`kora-desktop-nav-item px-4 py-1.5 rounded-lg text-[11px] font-bold font-sans transition-all flex items-center gap-1.5 ${
-                newsTabEnabled ? (
-                  activeTab === "feed"
-                    ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active"
-                    : "text-kindle-text-muted hover:text-kindle-text"
-                ) : "hidden"
+                activeTab === "feed" 
+                  ? "bg-kindle-card text-kindle-text shadow-xs border border-kindle-border is-active" 
+                  : "text-kindle-text-muted hover:text-kindle-text"
               }`}
             >
               <Rss className="w-3.5 h-3.5" />
@@ -3898,8 +3002,6 @@ async function startBackgroundDownload(
               onRefreshLibrary={refreshLibrary}
               onToggleAudiobookPlay={handleToggleAudiobookPlay}
               onExpandAudiobook={handleExpandAudiobook}
-              newsTabEnabled={newsTabEnabled}
-              loungeGuidesEnabled={loungeGuidesEnabled}
             />
             </Suspense>
           </div>
@@ -3925,19 +3027,16 @@ async function startBackgroundDownload(
             onCancelDownload={cancelBackgroundDownload}
             onDismissDownload={dismissDownload}
             onRetryDownload={retryFailedDownload}
-            onManualDownload={manualDownload}
             onPauseDownload={pauseBackgroundDownload}
             onResumeDownload={resumeBackgroundDownload}
             onOpenAnnotations={handleOpenAnnotations}
             onSearchTrigger={handleSearchDiscover}
-            onImportLocalBook={handleBookAdded}
             onBookUpdated={handleBookUpdated}
-            onOpenSeriesGroup={setOpenSeriesGroup}
           />
           </Suspense>
                   </div>
         )}
-        {mountedTabs.has("feed") && newsTabEnabled && (
+        {mountedTabs.has("feed") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "feed"}
@@ -3958,7 +3057,7 @@ async function startBackgroundDownload(
           </Suspense>
                   </div>
         )}
-        {mountedTabs.has("discover") && discoverTabEnabled && (
+        {mountedTabs.has("discover") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "discover"}
@@ -3982,13 +3081,6 @@ async function startBackgroundDownload(
             grayscaleCovers={grayscaleCovers}
             initialQuery={discoverInitialQuery}
             onClearInitialQuery={handleClearDiscoverInitialQuery}
-            initialBookId={sharedBookId}
-            initialBookQuery={sharedBookQuery}
-            initialBookTitle={sharedBookTitle}
-            initialComicBook={comicBookToOpen}
-            onInitialComicBookConsumed={() => setComicBookToOpen(null)}
-            initialBookAuthor={sharedBookAuthor}
-            onClearInitialBookLink={handleClearSharedBookLink}
             onOpenCreateView={() => {
               const newBook: BookMetadata = {
                 id: `created_${Date.now()}`,
@@ -4035,14 +3127,6 @@ async function startBackgroundDownload(
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             loungeEnabled={loungeEnabled}
             onChangeLoungeEnabled={handleLoungeEnabledChange}
-            newsTabEnabled={newsTabEnabled}
-            onChangeNewsTabEnabled={handleNewsTabChange}
-            soundEffectsEnabled={soundEffectsEnabled}
-            onChangeSoundEffectsEnabled={handleSoundEffectsChange}
-            gettingStartedBookEnabled={gettingStartedBookEnabled}
-            onChangeGettingStartedBookEnabled={handleGettingStartedBookChange}
-            loungeGuidesEnabled={loungeGuidesEnabled}
-            onChangeLoungeGuidesEnabled={handleLoungeGuidesChange}
             onToggleGrayscale={toggleGrayscale}
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
@@ -4065,7 +3149,7 @@ async function startBackgroundDownload(
           </Suspense>
                   </div>
         )}
-        {mountedTabs.has("tools") && (
+        {mountedTabs.has("settings") && (
           <div
             className="kora-tab-panel"
             hidden={activeTab !== "settings"}
@@ -4089,16 +3173,6 @@ async function startBackgroundDownload(
             onChangeDailyNewsBrief={handleDailyNewsBriefChange}
             loungeEnabled={loungeEnabled}
             onChangeLoungeEnabled={handleLoungeEnabledChange}
-            newsTabEnabled={newsTabEnabled}
-            onChangeNewsTabEnabled={handleNewsTabChange}
-            discoverTabEnabled={discoverTabEnabled}
-            onChangeDiscoverTabEnabled={handleDiscoverTabChange}
-            soundEffectsEnabled={soundEffectsEnabled}
-            onChangeSoundEffectsEnabled={handleSoundEffectsChange}
-            gettingStartedBookEnabled={gettingStartedBookEnabled}
-            onChangeGettingStartedBookEnabled={handleGettingStartedBookChange}
-            loungeGuidesEnabled={loungeGuidesEnabled}
-            onChangeLoungeGuidesEnabled={handleLoungeGuidesChange}
             onChangeTheme={changeTheme}
             onChangeAppSkin={changeAppSkin}
             onSignOut={handleSignOut}
@@ -4116,12 +3190,6 @@ async function startBackgroundDownload(
             onCachedIdsChanged={updateCachedBookIndex}
             onOpenOnboarding={handleShowOnboarding}
             onModalToggle={setAnyModalOpen}
-            downloads={globalDownloads}
-            onCancelDownload={cancelBackgroundDownload}
-            onDismissDownload={dismissDownload}
-            onRetryDownload={retryFailedDownload}
-            onDownloadsChange={setGlobalDownloads}
-            swControllerReady={!!("serviceWorker" in navigator) && !!navigator.serviceWorker?.controller}
           />
           </Suspense>
                   </div>
@@ -4182,36 +3250,15 @@ async function startBackgroundDownload(
             onClose={handleAudiobookClose}
             onPlayingChange={setAudiobookPlaying}
             onProgressUpdate={(updatedBook) => {
-              setBooks(prev => {
-                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
-                saveLocalLibrary(merged);
-                return merged;
-              });
+              setBooks((prev) => prev.map((b) => (b.id === updatedBook.id ? updatedBook : b)));
               setLastReadBook(updatedBook);
-              if (activeBook?.id === updatedBook.id) setActiveBook(updatedBook);
               setAudiobookPlayback(updatedBook);
+              if (activeBook?.id === updatedBook.id) setActiveBook(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
-              void syncBookToCloud(user?.uid || "", updatedBook);
             }}
           />
         </Suspense>
         )}
-      {/* Series detail — opened instead of the reader for multi-volume
-          entries. Picking a volume closes this and opens that volume. */}
-      {openSeriesGroup && (
-        <Suspense fallback={null}>
-          <SeriesDetailView
-            group={openSeriesGroup}
-            onClose={() => setOpenSeriesGroup(null)}
-            cachedIds={cachedBookIds}
-            onOpenVolume={(book) => {
-              setOpenSeriesGroup(null);
-              void handleOpenBook(book);
-            }}
-          />
-        </Suspense>
-      )}
-
       {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
         <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading context="reader" /></div>}>
         {activeBookMode === "create" ? (
@@ -4227,6 +3274,7 @@ async function startBackgroundDownload(
               setActiveBook(updatedBook);
               setLastReadBook(updatedBook);
             }}
+            onOpenCommunity={() => switchTab("discover")}
           />
         ) : activeBook.extension?.toLowerCase() === "pdf" ? (
           <BookReaderPDF
@@ -4234,33 +3282,12 @@ async function startBackgroundDownload(
             userId={user?.uid || ""}
             onClose={dismissReader}
             onProgressUpdate={(updatedBook) => {
-              setBooks(prev => {
-                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
-                saveLocalLibrary(merged);
-                return merged;
-              });
+              setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
               setLastReadBook(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
-              void syncBookToCloud(user?.uid || "", updatedBook);
             }}
           />
-        ) : ["cbz", "zip", "cbr", "cb7"].includes(activeBook.extension?.toLowerCase() || "") ? (
-          <BookReaderComic
-            book={activeBook}
-            userId={user?.uid || ""}
-            onClose={dismissReader}
-            onProgressUpdate={(updatedBook) => {
-              setBooks(prev => {
-                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
-                saveLocalLibrary(merged);
-                return merged;
-              });
-              setLastReadBook(updatedBook);
-              localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
-              void syncBookToCloud(user?.uid || "", updatedBook);
-            }}
-          />
-        ) : (activeBook.extension?.toLowerCase() === "pdf" || activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
+        ) : (activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
@@ -4271,14 +3298,9 @@ async function startBackgroundDownload(
               setActiveBookMode("create");
             }}
             onProgressUpdate={(updatedBook) => {
-              setBooks(prev => {
-                const merged = prev.map(b => b.id === updatedBook.id ? updatedBook : b);
-                saveLocalLibrary(merged);
-                return merged;
-              });
+              setBooks(prev => prev.map(b => b.id === updatedBook.id ? updatedBook : b));
               setLastReadBook(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
-              void syncBookToCloud(user?.uid || "", updatedBook);
             }}
           />
         ) : ["html", "htm", "json", "txt", "md", "csv"].includes(activeBook.extension?.toLowerCase() || "") ? (
@@ -4350,15 +3372,8 @@ async function startBackgroundDownload(
       )}
 
       {/* Settings Modal */}
-      <div
-        {...toastSwipeHandlers}
-        style={toastSwipeHandlers.style}
-        aria-label="Notifications"
-      >
       <Toaster position="bottom-center" toastOptions={{
-        // Auto-dismiss. Errors linger a little longer because they usually
-        // carry something the user needs to read.
-        duration: 4000,
+        duration: 5000,
         style: {
           background: 'var(--toast-bg, var(--kindle-card))',
           color: 'var(--kindle-text)',
@@ -4382,14 +3397,12 @@ async function startBackgroundDownload(
           },
         },
         error: {
-          duration: 7000,
           iconTheme: {
             primary: '#ef4444',
             secondary: '#fff',
           },
         }
       }} />
-      </div>
       <FluidOverlay
         open={showAuthModal}
         onClose={() => {
@@ -4569,11 +3582,55 @@ async function startBackgroundDownload(
 
       {/* 5. Modern Floating Mobile Navigation Bar — hidden while reading a book or modal open */}
       {!readerOpen && !anyModalOpen && (
-        <MobileTabBar
-          mobileTabs={mobileTabs}
-          activeTab={activeTab}
-          switchTab={switchTab}
-        />
+      <footer className={`md:hidden fixed kora-mobile-footer z-50 mx-auto max-w-md border border-kindle-border bg-kindle-card rounded-2xl kora-safe-bottom overflow-hidden ${activeTab === "feed" ? "is-glass-tab" : ""}`}>
+        <LayoutGroup id="kora-mobile-tabs">
+          <nav className={`kora-tab-bar grid h-14 px-1.5 py-1 ${loungeEnabled ? "grid-cols-5" : "grid-cols-4"}`} aria-label="Main">
+            {mobileTabs.map(({ id, label, Icon }) => {
+              const isActive = activeTab === id || (id === "tools" && activeTab === "settings");
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  data-guide={
+                    id === "discover"
+                      ? "nav-discover"
+                      : id === "library"
+                        ? "nav-library"
+                        : id === "feed"
+                          ? "nav-feed"
+                          : id === "tools"
+                            ? "nav-tools"
+                            : id === "lounge"
+                              ? "nav-lounge"
+                              : undefined
+                  }
+                  onClick={() => switchTab(id)}
+                  className={`kora-tab-item relative flex items-center justify-center rounded-xl transition-colors ${
+                    isActive ? "text-kindle-text is-active" : "text-kindle-text-muted"
+                  }`}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {isActive && (
+                    <motion.span
+                      layoutId="kora-tab-pill"
+                      className="kora-tab-pill absolute inset-y-0.5 inset-x-0.5 rounded-xl bg-kindle-bg/90 border border-kindle-border/70 shadow-sm"
+                      transition={koraTabSpring}
+                    />
+                  )}
+                  <span className="kora-tab-icon relative z-[1] flex items-center justify-center">
+                    <Icon
+                      className={`w-5.5 h-5.5 shrink-0 transition-transform duration-150 ${
+                        isActive ? "scale-105" : "opacity-80"
+                      }`}
+                      strokeWidth={isActive ? 2.25 : 2}
+                    />
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </LayoutGroup>
+      </footer>
       )}
 
       {/* 6. Compact Desktop Footer */}

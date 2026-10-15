@@ -24,8 +24,17 @@ export interface AudiobookSearchResult {
   source: string;
   listenUrl?: string;
   listenUrlAlt?: string;
-  // Optional identifier for download mirror lookup (MD5 hash or custom ID)
-  downloadId?: string;
+  /**
+   * Who reads it. LibriVox returns a real reader for every record (its whole
+   * catalogue is volunteer-narrated), and the field was being computed by
+   * parseLibrivoxJson and then discarded because the type had nowhere to put
+   * it. Optional, because the HTML-scraped hosts do not expose it.
+   */
+  narrator?: string;
+  /** Genre labels where the source provides them (LibriVox only, currently). */
+  genres?: string[];
+  /** Direct media files, where the source exposes them (LibriVox sections). */
+  sections?: { url: string; title: string }[];
 }
 
 export const POPULAR_AUDIOBOOKS = [
@@ -169,6 +178,35 @@ function parseMp3LinksFromHtml(html: string, baseUrl: string): AudiobookTrack[] 
   return tracks;
 }
 
+/**
+ * Which registered source a detail page belongs to.
+ *
+ * Replaces a `fulllengthaudiobooks ? ... : "hdaudiobooks"` ternary that made the
+ * host a binary choice, so every newly added source was reported as
+ * hdaudiobooks. Matches longest host first so `hdaudiobooks.net` cannot be
+ * shadowed by `hdaudiobooks.com`.
+ */
+export function sourceNameForUrl(pageUrl: string): string {
+  const host = (() => {
+    try {
+      return new URL(pageUrl).hostname.replace(/^www\./, "").toLowerCase();
+    } catch {
+      return pageUrl.toLowerCase();
+    }
+  })();
+  const ranked = ALL_AUDIOBOOK_SOURCES.map((s) => {
+    let h = "";
+    try {
+      h = new URL(s.base).hostname.replace(/^www\./, "").toLowerCase();
+    } catch {
+      h = s.base.toLowerCase();
+    }
+    return { name: s.name, host: h };
+  }).sort((a, b) => b.host.length - a.host.length);
+  const hit = ranked.find((r) => r.host && host.endsWith(r.host));
+  return hit?.name ?? host;
+}
+
 export function parseAudiobookDetailHtml(html: string, pageUrl: string): AudiobookDetail {
   const $ = cheerio.load(html);
   const baseUrl = new URL(pageUrl).origin;
@@ -177,7 +215,11 @@ export function parseAudiobookDetailHtml(html: string, pageUrl: string): Audiobo
   if (tracks.length === 0) tracks = parseAudioElements(html, baseUrl);
   if (tracks.length === 0) tracks = parseMp3LinksFromHtml(html, baseUrl);
 
-  const source = pageUrl.includes("fulllengthaudiobooks") ? "fulllengthaudiobooks" : "hdaudiobooks";
+  // Was a two-way ternary, so EVERY other host was labelled "hdaudiobooks" —
+  // which is why adding eight sources would have silently mislabelled all of
+  // them. Resolved from the registry by host instead, longest-first so a
+  // subdomain cannot shadow a parent entry.
+  const source = sourceNameForUrl(pageUrl);
 
   return {
     title: extractTitleFromPage($),
@@ -255,145 +297,14 @@ export function parseFullLengthAudiobooksFeed(html: string, baseUrl = "https://f
 }
 
 /** Search both audiobook sources; tries fulllength first (better hit rate). */
-export interface SourceConfig {
-  name: string;
-  url: string;
-  base: string;
-  priority: 1 | 2 | 3;
-  enabled: boolean;
-  selectors: {
-    title: string;
-    link: string;
-    cover: string;
-    author?: string;
-  };
-  rateLimit?: number; // ms between requests
-  timeout?: number; // request timeout in ms
-  mirrors?: string[]; // alternative mirrors
-}
+import {
+  ALL_AUDIOBOOK_SOURCES,
+  SEARCHABLE_AUDIOBOOK_SOURCES,
+  audiobookSearchUrl,
+  parseLibrivoxJson,
+  type AudiobookSource,
+} from "./audiobookSources";
 
-const SOURCE_PRIORITIES = {
-  1: "primary",   // Most reliable, highest quality
-  2: "secondary", // Good backup sources
-  3: "tertiary",  // Last resort, community-sourced
-};
-
-/**
- * Expanded source list with priority tiers and fallback chains.
- * Each source has selectors for HTML parsing and fallback targets.
- */
-const SOURCES: SourceConfig[] = [
-  // Tier 1: Primary sources (most reliable)
-  {
-    name: "fulllengthaudiobooks",
-    url: "https://fulllengthaudiobooks.com",
-    base: "https://fulllengthaudiobooks.com",
-    priority: 1,
-    enabled: true,
-    selectors: {
-      title: "h2.entry-title a, h2.post-title a",
-      link: "href",
-      cover: "img.wp-post-image@src, img@data-src",
-      author: ".author, .book-author",
-    },
-    rateLimit: 2000,
-    timeout: 15000,
-    mirrors: ["https://fulllengthaudiobooks2.com", "http://localhost:3000/fulllengthaudiobooks"],
-  },
-  {
-    name: "hdaudiobooks",
-    url: "https://hdaudiobooks.com",
-    base: "https://hdaudiobooks.com",
-    priority: 1,
-    enabled: true,
-    selectors: {
-      title: "article.post, article[class*='post-'] h2 a",
-      link: "href",
-      cover: "img.wp-post-image@src, img@data-src",
-      author: ".author, .book-author",
-    },
-    rateLimit: 2000,
-    timeout: 15000,
-    mirrors: ["https://hdaudiobooks2.com", "http://localhost:3000/hdaudiobooks"],
-  },
-
-  // Tier 2: Secondary sources
-  {
-    name: "libgen-mirror",
-    url: "https://libgen.li",
-    base: "https://libgen.li",
-    priority: 2,
-    enabled: true,
-    selectors: {
-      title: "a.book-title, a.title, .field-title a",
-      link: "href",
-      cover: "img.cover@src, img@data-src",
-      author: ".author, .field-author",
-    },
-    rateLimit: 3000,
-    timeout: 20000,
-    mirrors: ["https://libgen.is", "https://libgen.se", "http://libgen.gs"],
-  },
-  {
-    name: "annas-archive",
-    url: "https://annas-archive.org",
-    base: "https://annas-archive.org",
-    priority: 2,
-    enabled: true,
-    selectors: {
-      title: "h3.title a, .book-title a",
-      link: "href",
-      cover: "img.cover@src",
-      author: ".author, .field-author",
-    },
-    rateLimit: 3000,
-    timeout: 20000,
-    mirrors: ["https://anna.ren", "http://annas-archive.mirror"],
-  },
-
-  // Tier 3: Tertiary sources (community, mirrors)
-  {
-    name: "z-lib-mirror",
-    url: "https://z-lib.org",
-    base: "https://z-lib.org",
-    priority: 3,
-    enabled: true,
-    selectors: {
-      title: "h3.title a, .book-title a",
-      link: "href",
-      cover: "img.cover@src",
-      author: ".author, .field-author",
-    },
-    rateLimit: 3000,
-    timeout: 20000,
-    mirrors: ["https://z-lib.is", "https://z-lib.sx"],
-  },
-  {
-    name: "project-gutenberg",
-    url: "https://www.gutenberg.org",
-    base: "https://www.gutenberg.org",
-    priority: 3,
-    enabled: true,
-    selectors: {
-      title: "h1.title a, .book-title a",
-      link: "href",
-      cover: "img.cover@src",
-      author: ".author, .field-author",
-    },
-    rateLimit: 5000,
-    timeout: 30000,
-    mirrors: [],
-  },
-];
-
-/**
- * Search audiobooks from sources with tiered fallback logic.
- * Tries sources in priority order, falls back on failure.
- * @param fetchHtml Function to fetch HTML content
- * @param query Search query
- * @param maxResults Maximum results to return
- * @returns Promise resolving to audiobook search results
- */
 export async function searchAudiobooksFromSources(
   fetchHtml: (url: string) => Promise<string>,
   q: string,
@@ -410,76 +321,48 @@ export async function searchAudiobooksFromSources(
     }
   };
 
-  // Sort sources by priority (1 first, then 2, then 3)
-  const sortedSources = [...SOURCES].sort((a, b) => a.priority - b.priority);
+  // Replaces a hardcoded two-host list. Every source here was verified live on
+  // 2026-10-05 (reachability, search-URL shape, and that the page yields book
+  // links). Hosts that turned out to be unreachable are recorded in
+  // UNREACHABLE_AUDIOBOOK_HOSTS and never requested.
+  const sources = SEARCHABLE_AUDIOBOOK_SOURCES;
 
-  // Try each source in priority order with rate limiting
-  for (const source of sortedSources) {
-    if (!source.enabled) continue;
-
-    try {
-      // Apply rate limiting
-      if (source.rateLimit) {
-        await new Promise((resolve) => setTimeout(resolve, source.rateLimit));
-      }
-
-      const searchUrl = `${source.url}/?s=${encodeURIComponent(q)}`;
-      const html = await fetchHtml(searchUrl);
-
-      if (html && html.length > 100) {
-        addBatch(
-          parseAudiobookSearchHtml(html, source.name, source.base, maxResults)
-        );
-
-        // If we got results from this source, stop trying lower-priority sources
-        // but continue collecting from remaining sources at same priority
-        if (results.length > 0) {
-          // Still try other sources at same priority for more results
-          continue;
+  await Promise.allSettled(
+    sources.map(async (src: AudiobookSource) => {
+      const url = audiobookSearchUrl(src, q);
+      if (!url) return;
+      try {
+        // LibriVox is a documented JSON API, not an HTML site, and `extended=1`
+        // returns real per-section MP3 URLs. Scraping its markup would lose
+        // both the fuzzy `^title` match and the files.
+        if (src.kind === "api") {
+          const body = await fetchHtml(url);
+          for (const b of parseLibrivoxJson(body)) {
+            addBatch([
+              {
+                title: b.title,
+                author: b.author,
+                narrator: b.narrator,
+                link: b.link,
+                coverUrl: b.coverUrl,
+                source: src.name,
+                genres: b.genres,
+                sections: b.sections,
+              },
+            ]);
+          }
+          return;
         }
+
+        const html = await fetchHtml(url);
+        addBatch(parseAudiobookSearchHtml(html, src.name, src.base, maxResults));
+      } catch {
+        /* skip failed source */
       }
-    } catch (err) {
-      console.warn(
-        `[searchAudiobooksFromSources] Source "${source.name}" failed:`,
-        err.message
-      );
-      // Continue to next source on failure
-    }
-  }
+    })
+  );
 
-  // If no live sources returned results, fall back to popular books
-  if (results.length === 0) {
-    console.warn(
-      "[searchAudiobooksFromSources] No live sources returned results, using fallback"
-    );
-    const lower = q.toLowerCase();
-    POPULAR_AUDIOBOOKS.filter(
-      (b) =>
-        b.title.toLowerCase().includes(lower) ||
-        b.author.toLowerCase().includes(lower)
-    ).forEach((b) => {
-      results.push({
-        ...b,
-        coverUrl: `/api/cover-redirect?title=${encodeURIComponent(b.title)}&author=${encodeURIComponent(b.author || "")}`,
-        link: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-        listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-        listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
-        source: "fulllengthaudiobooks-fallback",
-      });
-    });
-  }
-
-  // Deduplicate by link
-  const deduped: AudiobookSearchResult[] = [];
-  const dedupSeen = new Set<string>();
-  for (const r of results) {
-    if (!dedupSeen.has(r.link)) {
-      dedupSeen.add(r.link);
-      deduped.push(r);
-    }
-  }
-
-  return deduped.length > 0 ? deduped : results;
+  return results;
 }
 
 export async function scrapePopularAudiobooks(
@@ -591,7 +474,16 @@ export function titlesRoughlyMatch(
     }
   }
 
-  if (b.includes(a) || a.includes(b)) return true;
+  // Word-boundary containment, NOT raw substring. `b.includes(a)` accepted
+  // "MicroDune" for the expected title "Dune" and "Dune Enviroment" for
+  // "Dune Encyclopedia"'s sibling — a one-word title is a substring of half the
+  // catalogue. Require the shorter title to be a whole-token run of the longer.
+  const tokenRun = (haystack: string, needle: string): boolean => {
+    if (!needle) return false;
+    if (needle === haystack) return true;
+    return ` ${haystack} `.includes(` ${needle} `);
+  };
+  if (tokenRun(b, a) || tokenRun(a, b)) return true;
 
   const aWords = a.split(" ").filter((w) => w.length > 2);
   const bWords = new Set(b.split(" ").filter((w) => w.length > 2));
@@ -622,18 +514,4 @@ export function mapPopularAudiobooks() {
     listenUrl: `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
     listenUrlAlt: `https://hdaudiobooks.com/?s=${encodeURIComponent(b.title)}`,
   }));
-}
-
-/// Map source config name to display string for onChunk
-function sourceNameForResult(result: AudiobookSearchResult): string {
-  const sourceMap: Record<string, string> = {
-    fulllengthaudiobooks: "fulllengthaudiobooks",
-    hdaudiobooks: "hdaudiobooks",
-    "libgen-mirror": "libgen-mirror",
-    "annas-archive": "annas-archive",
-    "z-lib-mirror": "z-lib-mirror",
-    "project-gutenberg": "project-gutenberg",
-    fallback: "fulllengthaudiobooks-fallback",
-  };
-  return sourceMap[result.source] || result.source;
 }

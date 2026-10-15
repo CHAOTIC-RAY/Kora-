@@ -91,7 +91,7 @@ export default function AnnotationsHub({ books, userId, onClose, onOpenBook }: A
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end md:items-center justify-center p-0 md:p-6" role="dialog" aria-modal="true" aria-label="Annotations hub">
-      <button className="absolute inset-0 bg-black/50" onClick={onClose} aria-label="Close annotations hub" type="button" />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative w-full md:max-w-2xl max-h-[88vh] bg-kindle-card text-kindle-text border border-kindle-border rounded-t-3xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-kindle-border">
           <div className="min-w-0">

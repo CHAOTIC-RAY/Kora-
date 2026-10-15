@@ -58,10 +58,6 @@ import {
   FileText,
   RefreshCw,
   Compass,
-  PenLine,
-  Highlighter,
-  NotebookPen,
-  FileDown,
   Heart,
   MessageCircle,
   Bookmark,
@@ -113,11 +109,10 @@ function Reveal({
       whileInView={{ opacity: 1, y: 0, scale: 1 }}
       viewport={{ once: true, margin: "-12% 0px" }}
       transition={{ 
-        // Comfort: settle, never bounce. High damping, low stiffness.
         type: "spring",
-        stiffness: 45,
-        damping: 26,
-        mass: 1,
+        stiffness: 65,
+        damping: 14,
+        mass: 0.8,
         delay, 
       }}
       className={className}
@@ -355,11 +350,10 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
       y: 0,
       scale: 1,
       transition: {
-        // Comfort: ease-out character — settles rather than springs.
         type: "spring" as const,
-        stiffness: 48,
-        damping: 26,
-        mass: 1
+        stiffness: 90,
+        damping: 15,
+        mass: 0.8
       }
     }
   };
@@ -382,12 +376,12 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
               The E-Ink Reading Sanctuary
             </div>
 
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif font-semibold text-kindle-text leading-[1.02] tracking-[-0.01em]">
-              Read, Listen, Write <span className="font-normal italic text-kindle-accent font-serif">&amp;</span> Discover
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif font-extrabold text-kindle-text leading-[1.05] tracking-tight">
+              Read, Listen <span className="font-light italic text-kindle-accent font-serif">&amp;</span> Discover
             </h1>
 
             <p className="text-base sm:text-lg text-kindle-text-muted leading-relaxed font-medium">
-              The open E-Ink digital reader with integrated high-fidelity voice narration, federated mirror discovery, a distraction-free writing space for highlights and notes, and a beautiful mind games lounge.
+              The open E-Ink digital reader with integrated high-fidelity voice narration, federated mirror discovery, and a beautiful mind games lounge.
             </p>
           </motion.div>
 
@@ -453,7 +447,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
         <motion.div 
           initial={{ opacity: 0, x: 28, scale: 0.97 }}
           animate={{ opacity: 1, x: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 42, damping: 24, delay: 0.28 }}
+          transition={{ type: "spring", stiffness: 55, damping: 14, delay: 0.28 }}
           className="lg:col-span-7 w-full flex items-center justify-center lg:justify-end"
         >
           <div className="relative w-full max-w-[580px] h-[460px] sm:h-[510px] flex items-center justify-center select-none">
@@ -471,7 +465,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                   ? "0 35px 75px rgba(0,0,0,0.85)" 
                   : "0 20px 45px rgba(0,0,0,0.55)"
               }}
-              transition={{ type: "spring", stiffness: 46, damping: 25 }}
+              transition={{ type: "spring", stiffness: 110, damping: 17 }}
               className={`absolute left-0 sm:left-2 top-4 sm:top-6 w-[360px] sm:w-[440px] h-[300px] sm:h-[340px] rounded-[22px] border-[10px] border-neutral-900 bg-black overflow-hidden flex flex-col cursor-pointer transition-shadow duration-300 ${
                 focusedDevice === "tablet" ? "ring-2 ring-sky-500/50" : ""
               }`}
@@ -491,44 +485,44 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                 </div>
               </div>
 
-              <div className="flex-1 p-4 sm:p-5 bg-kindle-text text-left relative overflow-hidden flex flex-col justify-between select-none">
-                <div className="space-y-2 text-kindle-bg">
-                  <div className="text-[8px] font-mono tracking-widest text-kindle-bg/60 uppercase font-bold">CHAPTER 3 OF 6</div>
-                  <h3 className="text-base font-serif font-bold text-kindle-bg mb-2 leading-snug">P2P sync &amp; devices</h3>
+              <div className="flex-1 p-4 sm:p-5 bg-black text-left relative overflow-hidden flex flex-col justify-between select-none">
+                <div className="space-y-2 text-white">
+                  <div className="text-[8px] font-mono tracking-widest text-neutral-400 uppercase font-bold">CHAPTER 3 OF 6</div>
+                  <h3 className="text-base font-serif font-bold text-white mb-2 leading-snug">P2P sync &amp; devices</h3>
                   
-                  <div className="space-y-1.5 text-[9px] font-sans text-kindle-bg/70 leading-relaxed max-h-[160px] overflow-hidden">
-                    <p className="font-bold text-kindle-bg text-[10px]">P2P sync &amp; devices</p>
-                    <p className="font-bold text-kindle-bg text-[9.5px]">How sync works in Kora</p>
-                    <p className="text-kindle-bg/70">
+                  <div className="space-y-1.5 text-[9px] font-sans text-neutral-300 leading-relaxed max-h-[160px] overflow-hidden">
+                    <p className="font-bold text-white text-[10px]">P2P sync &amp; devices</p>
+                    <p className="font-bold text-white text-[9.5px]">How sync works in Kora</p>
+                    <p className="text-neutral-300">
                       Kora keeps book files on your device. Sign-in syncs shelf metadata, reading progress, highlights, and notes — not the raw EPUB bytes.
                     </p>
 
-                    <p className="font-bold text-kindle-bg text-[9.5px] pt-1">Peer-to-peer (P2P) transfer</p>
-                    <p className="text-kindle-bg/70">
+                    <p className="font-bold text-white text-[9.5px] pt-1">Peer-to-peer (P2P) transfer</p>
+                    <p className="text-neutral-300">
                       When a title shows a P2P badge, another nearby device running Kora may share the file directly — no cloud upload of the book itself.
                     </p>
 
-                    <p className="font-bold text-kindle-bg text-[9.5px] pt-1">Open Tools → Devices &amp; Sync</p>
-                    <p className="text-kindle-bg/70 pl-1 border-l border-amber-500/50">Enable sharing on both devices on the same network</p>
-                    <p className="text-kindle-bg/70 pl-1 border-l border-amber-500/50">Tap a cloud-only book — proximity transfer can fill the local copy</p>
+                    <p className="font-bold text-white text-[9.5px] pt-1">Open Tools → Devices &amp; Sync</p>
+                    <p className="text-neutral-300 pl-1 border-l border-amber-500/50">Enable sharing on both devices on the same network</p>
+                    <p className="text-neutral-300 pl-1 border-l border-amber-500/50">Tap a cloud-only book — proximity transfer can fill the local copy</p>
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-kindle-bg/20 space-y-1">
-                  <div className="flex items-center justify-between text-[8px] font-mono text-kindle-bg/60">
+                <div className="pt-2 border-t border-neutral-800/80 space-y-1">
+                  <div className="flex items-center justify-between text-[8px] font-mono text-neutral-400">
                     <span>End of P2P sync &amp; devices</span>
                     <span>50% read</span>
                   </div>
 
                   <div className="flex items-center justify-between gap-3 pt-1">
                     <div className="flex-1 relative flex items-center h-2">
-                      <div className="w-full h-1 bg-kindle-bg/25 rounded-full overflow-hidden">
-                        <div className="h-full bg-kindle-bg rounded-full" style={{ width: "50%" }} />
+                      <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-white rounded-full" style={{ width: "50%" }} />
                       </div>
-                      <div className="absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-kindle-bg border-2 border-kindle-text shadow-md" />
+                      <div className="absolute left-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-black shadow-md" />
                     </div>
-                    <span className="text-[7.5px] font-mono text-kindle-bg/60 whitespace-nowrap">chapter 3 of 6 • 50% • ~3 min left</span>
-                    <div className="px-2 py-0.5 rounded bg-kindle-bg/10 border border-kindle-bg/30 text-kindle-bg text-[7.5px] font-bold tracking-wider flex items-center gap-1">
+                    <span className="text-[7.5px] font-mono text-neutral-400 whitespace-nowrap">chapter 3 of 6 • 50% • ~3 min left</span>
+                    <div className="px-2 py-0.5 rounded bg-black border border-neutral-700 text-white text-[7.5px] font-bold tracking-wider flex items-center gap-1">
                       <LayoutGrid className="w-2.5 h-2.5" /> 2-PAGE
                     </div>
                   </div>
@@ -549,7 +543,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                   ? "0 35px 75px rgba(0,0,0,0.85)" 
                   : "0 20px 50px rgba(0,0,0,0.6)"
               }}
-              transition={{ type: "spring", stiffness: 46, damping: 25 }}
+              transition={{ type: "spring", stiffness: 110, damping: 17 }}
               className={`absolute right-0 sm:right-2 bottom-2 w-[220px] sm:w-[245px] h-[410px] sm:h-[460px] rounded-[38px] border-[8px] border-neutral-900 bg-neutral-950 overflow-hidden flex flex-col cursor-pointer transition-shadow duration-300 ${
                 focusedDevice === "phone" ? "ring-2 ring-emerald-500/50" : ""
               }`}
@@ -573,7 +567,7 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
                 </div>
               </div>
 
-              <div className="flex-1 relative overflow-hidden flex flex-col justify-end p-3.5 select-none bg-kindle-card">
+              <div className="flex-1 relative overflow-hidden flex flex-col justify-end p-3.5 select-none bg-neutral-900">
                 <AnimatePresence>
                   <motion.div
                     key={newsIdx}
@@ -1004,15 +998,6 @@ export default function InstallView() {
     return theme.includes("dark") || theme === "night" || theme === "oled" || document.body.classList.contains("dark");
   });
 
-  // Comfort: mark <body> so the paper grain / warm scrollbar / reduced-motion
-  // rules in index.css apply to this page only — the app reader is untouched.
-  useEffect(() => {
-    document.body.classList.add("kora-install");
-    return () => {
-      document.body.classList.remove("kora-install");
-    };
-  }, []);
-
   // Keep site CSS variables and root dark mode class perfectly in sync
   useEffect(() => {
     const root = document.documentElement;
@@ -1021,20 +1006,19 @@ export default function InstallView() {
     if (isDarkMode) {
       root.classList.add("dark");
       body.classList.add("dark");
-      // Comfort: "lamplit dark" — a dim warm room, never cold black.
       const darkVars: Record<string, string> = {
-        "--theme-bg": "#1C1815",
-        "--theme-text": "#F2E9DE",
-        "--theme-card": "#262019",
-        "--theme-border": "#3A3128",
-        "--theme-accent": "#D9915B",
-        "--theme-text-muted": "#A99A8A",
-        "--color-kindle-bg": "#1C1815",
-        "--color-kindle-text": "#F2E9DE",
-        "--color-kindle-card": "#262019",
-        "--color-kindle-border": "#3A3128",
-        "--color-kindle-accent": "#D9915B",
-        "--color-kindle-text-muted": "#A99A8A",
+        "--theme-bg": "#121214",
+        "--theme-text": "#FAFAFA",
+        "--theme-card": "#1E1E22",
+        "--theme-border": "#2D2D30",
+        "--theme-accent": "#F59E0B",
+        "--theme-text-muted": "#A1A1AA",
+        "--color-kindle-bg": "#121214",
+        "--color-kindle-text": "#FAFAFA",
+        "--color-kindle-card": "#1E1E22",
+        "--color-kindle-border": "#2D2D30",
+        "--color-kindle-accent": "#F59E0B",
+        "--color-kindle-text-muted": "#A1A1AA",
       };
       Object.entries(darkVars).forEach(([k, v]) => {
         root.style.setProperty(k, v);
@@ -1043,19 +1027,18 @@ export default function InstallView() {
     } else {
       root.classList.remove("dark");
       body.classList.remove("dark");
-      // Comfort: warm paper + exactly one earthy accent (ochre ~32°).
       const lightVars: Record<string, string> = {
         "--theme-bg": "#FAF7F2",
         "--theme-text": "#2C2A26",
         "--theme-card": "#F3EEE6",
         "--theme-border": "#E4DDD2",
-        "--theme-accent": "#B07A45",
+        "--theme-accent": "#8B7355",
         "--theme-text-muted": "#6F6A5F",
         "--color-kindle-bg": "#FAF7F2",
         "--color-kindle-text": "#2C2A26",
         "--color-kindle-card": "#F3EEE6",
         "--color-kindle-border": "#E4DDD2",
-        "--color-kindle-accent": "#B07A45",
+        "--color-kindle-accent": "#8B7355",
         "--color-kindle-text-muted": "#6F6A5F",
       };
       Object.entries(lightVars).forEach(([k, v]) => {
@@ -1085,13 +1068,6 @@ export default function InstallView() {
   const [showWordSearchDemo, setShowWordSearchDemo] = useState(false);
   const [showWikipediaDemo, setShowWikipediaDemo] = useState(false);
   const [showDictionaryDemo, setShowDictionaryDemo] = useState(false);
-
-  /**
-   * The Workshop card used to be a hardcoded 7-word sample. It now hands off
-   * to the real dictionary, so the sample is only ever a preview and the
-   * actual entries stay reachable from exactly one place.
-   */
-  const openRealDictionary = React.useCallback(() => setShowDictionaryDemo(true), []);
   const [showLinguistGuardianDemo, setShowLinguistGuardianDemo] = useState(false);
 
   // Hide the sticky top nav once the closing notebook fills the screen.
@@ -1140,28 +1116,26 @@ export default function InstallView() {
     return () => observer.disconnect();
   }, []);
 
-  // Lock scroll position when the tab/app is hidden — prevents the landing
-  // view from jumping back to top after switching apps. Uses visibilitychange
-  // (not window blur/focus) so it only fires on real app/tab switches, not on
-  // spurious focus changes (e.g. speech-synthesis audio focus, iframe focus,
-  // address-bar show/hide) that would otherwise yank the page around.
+  // Lock scroll position when window loses focus — prevents
+  // the landing view from jumping back to top after switching apps.
   useEffect(() => {
-    let saved = 0;
-    let wasHidden = false;
-    const onVisibility = () => {
-      if (document.hidden) {
-        wasHidden = true;
-        saved = window.scrollY || window.pageYOffset || 0;
-      } else if (wasHidden) {
-        wasHidden = false;
-        const current = window.scrollY || 0;
-        if (saved > 0 && Math.abs(current - saved) > 10) {
-          window.scrollTo({ top: saved, behavior: "instant" });
-        }
+    const onBlur = () => {
+      if (heroSectionRef.current) {
+        heroSectionRef.current.dataset.scrollY = String(window.scrollY || window.pageYOffset || 0);
       }
     };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
+    const onFocus = () => {
+      const saved = Number(heroSectionRef.current?.dataset.scrollY || 0);
+      if (saved > 0 && Math.abs((window.scrollY || 0) - saved) > 10) {
+        window.scrollTo({ top: saved, behavior: "instant" });
+      }
+    };
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   // FAQ stays fully visible — no scroll fade.
@@ -1385,24 +1359,19 @@ export default function InstallView() {
 
   const features = [
     {
+      icon: Volume2,
+      title: "Voice Audiobook Engine",
+      description: "Convert any EPUB, PDF, or document into a natural voice audiobook with customizable speeds, pitch controls, and background playback."
+    },
+    {
       icon: BookOpen,
       title: "Distraction-Free E-Ink Canvas",
       description: "Enjoy offline reading with custom typography, line spacing, paper tinting, and dedicated amber warm backlight filters."
     },
     {
-      icon: Volume2,
-      title: "Voice Audiobook Engine",
-      description: "Convert any EPUB, PDF, or document into a natural voice audiobook with customizable speeds, pitch controls, synchronized sentence highlighting, and screen-off playback."
-    },
-    {
-      icon: PenLine,
-      title: "Annotations & Notebook",
-      description: "Highlight passages, color-code them, and jot chapter notes in a private notebook — then export everything to Markdown or JSON."
-    },
-    {
       icon: Compass,
       title: "Federated Book Discovery",
-      description: "Search open digital catalogs through the Rave Book Search engine for direct file mirror downloads — one relay, no scraping, no account."
+      description: "Search open digital catalogs across Rave Engine, LibGen, and Anna's Archive with direct file mirror downloads."
     },
     {
       icon: Radio,
@@ -1417,7 +1386,7 @@ export default function InstallView() {
     {
       icon: ShieldCheck,
       title: "100% Private & Offline First",
-      description: "Your library, reading progress, and notes stay stored locally on your device with complete offline access."
+      description: "Your library, reading progress, and settings stay stored locally on your device with complete offline access."
     }
   ];
 
@@ -1432,7 +1401,7 @@ export default function InstallView() {
     },
     {
       q: "Is Kora for piracy, or can I read copyrighted books?",
-      a: "Kora is a reader, not a file host. Its discovery tools search open catalogs through the Rave Book Search engine, which returns direct mirror download links — Kora itself does no scraping of LibGen signed links and never calls any Z-Library eAPI. Some catalogs host copyrighted material; you decide what to open, and you're responsible for doing so legally in your jurisdiction. Kora stores nothing — it just loads whatever link or file you point it at (EPUB, PDF, MOBI, AZW3) and reads it.",
+      a: "Kora is a reader, not a file host. Its discovery tools can query catalogs including LibGen, Anna's Archive, Rave, and Z-Library, some of which host copyrighted material. You decide what to open, and you're responsible for doing so legally in your jurisdiction. Kora itself stores nothing — it just loads whatever link or file you point it at (EPUB, PDF, MOBI, AZW3) and reads it.",
     },
     {
       q: "How does the Voice Narrator / audiobook feature work?",
@@ -1473,7 +1442,7 @@ export default function InstallView() {
       editions: ["EPUB", "EN", "Unknown", "ANNA'S"],
       mirrors: [
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "online" },
-        { name: "Anna's Archive", url: "https://annas-archive.gl/md5/8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "fast" },
+        { name: "Anna's Archive", url: "https://annas-archive.org/md5/8391ab7228dbf0be62701dd7c639107a", format: "EPUB", size: "1.4 MB", status: "fast" },
         { name: "Anna's Archive (Slow/Manual)", url: "https://annas-archive.gl/slow_download/8391ab7228dbf0be62701dd7c639107a", format: "PDF", size: "3.2 MB", status: "slow" },
       ],
       audioTracks: [
@@ -1497,7 +1466,7 @@ export default function InstallView() {
       color: "text-amber-500",
       editions: ["EPUB", "EN", "Penguin", "FAST CDN"],
       mirrors: [
-        { name: "Anna's Archive Node 1", url: "https://annas-archive.gl/md5/71829bc81726a7182736152", format: "EPUB", size: "890 KB", status: "fast" },
+        { name: "Anna's Archive Node 1", url: "https://annas-archive.org/md5/71829bc81726a7182736152", format: "EPUB", size: "890 KB", status: "fast" },
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=71829bc81726a7182736152", format: "PDF", size: "2.1 MB", status: "online" },
       ],
       audioTracks: [
@@ -1557,7 +1526,7 @@ export default function InstallView() {
       color: "text-rose-500",
       editions: ["EPUB", "EN", "HarperCollins"],
       mirrors: [
-        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.gl/md5/98127391283719", format: "EPUB", size: "780 KB", status: "fast" },
+        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.org/md5/98127391283719", format: "EPUB", size: "780 KB", status: "fast" },
       ],
       audioTracks: [
         "Tahereh Mafi – Shatter Me Audiobook (Part 1)",
@@ -1594,7 +1563,7 @@ export default function InstallView() {
       color: "text-teal-500",
       editions: ["EPUB", "EN", "HarperTeen"],
       mirrors: [
-        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.gl/md5/812739128371", format: "EPUB", size: "950 KB", status: "fast" },
+        { name: "Anna's Archive Fast Mirror", url: "https://annas-archive.org/md5/812739128371", format: "EPUB", size: "950 KB", status: "fast" },
       ],
       audioTracks: [
         "Becky Albertalli & Adam Silvera – What If It's Us Audiobook (Track 1)",
@@ -1614,7 +1583,7 @@ export default function InstallView() {
       editions: ["EPUB", "EN", "Penguin Press", "BEST SELLER"],
       mirrors: [
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=38192739128371", format: "EPUB", size: "2.1 MB", status: "online" },
-        { name: "Anna's Archive", url: "https://annas-archive.gl/md5/38192739128371", format: "EPUB", size: "2.1 MB", status: "fast" },
+        { name: "Anna's Archive", url: "https://annas-archive.org/md5/38192739128371", format: "EPUB", size: "2.1 MB", status: "fast" },
       ],
       audioTracks: [
         "Rick Rubin – The Creative Act: A Way of Being Audiobook (Narrated by Rick Rubin - Part 1)",
@@ -1633,7 +1602,7 @@ export default function InstallView() {
       color: "text-emerald-500",
       editions: ["EPUB", "EN", "Hay House"],
       mirrors: [
-        { name: "Anna's Archive Fast Node", url: "https://annas-archive.gl/md5/19283719283719", format: "EPUB", size: "1.6 MB", status: "fast" },
+        { name: "Anna's Archive Fast Node", url: "https://annas-archive.org/md5/19283719283719", format: "EPUB", size: "1.6 MB", status: "fast" },
       ],
       audioTracks: [
         "Mel Robbins – The Let Them Theory Audiobook (Full Stream)",
@@ -1688,7 +1657,7 @@ export default function InstallView() {
       color: "text-amber-500",
       editions: ["EPUB", "EN", "Workman"],
       mirrors: [
-        { name: "Anna's Archive Fast Node", url: "https://annas-archive.gl/md5/912837192837", format: "EPUB", size: "1.5 MB", status: "fast" },
+        { name: "Anna's Archive Fast Node", url: "https://annas-archive.org/md5/912837192837", format: "EPUB", size: "1.5 MB", status: "fast" },
       ],
       audioTracks: [
         "Ramit Sethi – I Will Teach You To Be Rich Audiobook (Full Narration)",
@@ -1707,7 +1676,7 @@ export default function InstallView() {
       editions: ["EPUB", "EN", "Avery", "BEST SELLER"],
       mirrors: [
         { name: "Libgen Mirror (libgen.li)", url: "https://libgen.li/get.php?md5=712839182739182", format: "EPUB", size: "1.8 MB", status: "online" },
-        { name: "Anna's Archive", url: "https://annas-archive.gl/md5/712839182739182", format: "EPUB", size: "1.8 MB", status: "fast" },
+        { name: "Anna's Archive", url: "https://annas-archive.org/md5/712839182739182", format: "EPUB", size: "1.8 MB", status: "fast" },
       ],
       audioTracks: [
         "James Clear – Atomic Habits Audiobook (Narrated by James Clear)",
@@ -1794,7 +1763,7 @@ export default function InstallView() {
         editions: ["EPUB", "EN", "Primary Mirror"],
         mirrors: [
           { name: "Libgen Fast Mirror (libgen.li)", url: `https://libgen.li/get.php?md5=${b.id}`, format: "EPUB", size: "1.2 MB", status: "online" as const },
-          { name: "Anna's Archive Node 1", url: `https://annas-archive.gl/md5/${b.id}`, format: "EPUB", size: "1.2 MB", status: "fast" as const },
+          { name: "Anna's Archive Node 1", url: `https://annas-archive.org/md5/${b.id}`, format: "EPUB", size: "1.2 MB", status: "fast" as const },
         ],
         audioTracks: [
           `${b.author} – ${b.title} Audiobook (Part 1)`,
@@ -1852,13 +1821,6 @@ export default function InstallView() {
               className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
             >
               Voice Reader
-            </button>
-            <button
-              type="button"
-              onClick={() => scrollToSection("write")}
-              className="hover:text-kindle-text transition cursor-pointer whitespace-nowrap relative after:absolute after:bottom-0 after:left-0 after:w-full after:h-[1.5px] after:bg-kindle-accent after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-250 after:origin-left"
-            >
-              Write
             </button>
             <button
               type="button"
@@ -2548,68 +2510,12 @@ export default function InstallView() {
           </div>
         </div>
 
-        {/* Kora Write: Annotations & Notebook Pillar Section */}
-        <div id="write" className="pt-4 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
-          <Reveal className="flex-1 flex flex-col">
-            <div className="bg-kindle-card border border-kindle-border rounded-3xl p-5 sm:p-6 space-y-4 flex flex-col justify-start flex-grow">
-              <div className="flex flex-col items-start justify-between gap-4 border-b border-kindle-border pb-5">
-                <div className="space-y-2">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-kindle-accent/10 text-kindle-accent text-[10px] font-bold uppercase tracking-widest chromatic-amber">
-                    <PenLine className="w-3.5 h-3.5" /> Write &amp; Annotate
-                  </div>
-                  <h3 className="text-xl font-serif font-bold text-kindle-text">
-                    Annotations &amp; Notebook
-                  </h3>
-                  <p className="text-xs text-kindle-text-muted leading-relaxed">
-                    Turn every book into your own working notebook — highlight, color-code, and capture chapter notes, all kept private on your device.
-                  </p>
-                </div>
-
-                <a
-                  href="/"
-                  className="w-full justify-center px-4 py-2.5 bg-kindle-accent text-kindle-bg font-bold text-[10px] uppercase tracking-wider rounded-xl hover:bg-opacity-90 transition shadow-sm cursor-pointer flex items-center gap-2 shrink-0"
-                >
-                  <NotebookPen className="w-3.5 h-3.5" /> Open Annotations Hub
-                </a>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  { icon: Highlighter, label: "Highlights", desc: "Select any passage and color-code it." },
-                  { icon: NotebookPen, label: "Chapter Notes", desc: "Jot thoughts per chapter in a private notebook." },
-                  { icon: FileDown, label: "Export", desc: "Send notes to Markdown or JSON anytime." },
-                ].map(({ icon: Icon, label, desc }) => (
-                  <div key={label} className="bg-kindle-bg border border-kindle-border rounded-2xl p-4 space-y-2">
-                    <Icon className="w-5 h-5 text-kindle-accent" />
-                    <h4 className="text-sm font-bold text-kindle-text">{label}</h4>
-                    <p className="text-[11px] text-kindle-text-muted leading-relaxed">{desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Reveal>
-        </div>
-
         {/* Kora Workshop: Interactive Tools & Games Section (Unified) */}
         <div id="workshop" className="pt-4 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
           <Reveal>
             {/* Workshop Lounge Header Card */}
             <div className="bg-gradient-to-r from-amber-600 via-[#e0533c] to-amber-700 border border-amber-500/30 rounded-3xl p-6 sm:p-8 flex flex-col justify-center items-center text-center space-y-4 relative overflow-hidden group shadow-xl min-h-[160px]">
               <div className="absolute inset-0 bg-black/20 z-0" />
-              {/* Dither overlay. A wide amber→red ramp across a large area hits
-                  the 8-bit colour limit and renders as visible horizontal
-                  banding. A pixel-scale noise layer breaks the steps up so the
-                  ramp reads as a smooth wash. Scoped to this banner because the
-                  page-level paper grain sits behind it and cannot reach it. */}
-              <div
-                aria-hidden
-                className="absolute inset-0 z-0 pointer-events-none opacity-[0.16] mix-blend-overlay"
-                style={{
-                  backgroundImage:
-                    "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='d'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23d)'/%3E%3C/svg%3E\")",
-                  backgroundSize: "120px 120px"
-                }}
-              />
               <div className="absolute -top-12 -left-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
               <div className="absolute -bottom-12 -right-12 w-48 h-48 bg-amber-300/20 rounded-full blur-2xl pointer-events-none" />
               <div className="relative z-10 space-y-3 flex flex-col items-center">
@@ -2755,7 +2661,7 @@ export default function InstallView() {
                   </div>
 
                   <div className="mt-2 w-full">
-                    <SearchableDictionaryDemo onOpenReal={openRealDictionary} />
+                    <SearchableDictionaryDemo />
                   </div>
                 </div>
               </Reveal>
@@ -2971,10 +2877,7 @@ export default function InstallView() {
               <span key={i} className="w-3 h-3 rounded-full border-2 border-kindle-border bg-kindle-bg" />
             ))}
           </div>
-          {/* replay: this section sits below the fold and is scrolled past, so the
-              ink reveal is meant to re-trigger on the way back up. The boot
-              screen (KoraLoading) deliberately opts out — see KoraWordmarkReveal. */}
-          <KoraWordmarkReveal replay>
+          <KoraWordmarkReveal>
             <div className="relative space-y-3 max-w-lg mx-auto">
               <p className="text-base font-sans font-bold uppercase tracking-[0.25em] text-kindle-accent">
                 A Chaos Studio Project

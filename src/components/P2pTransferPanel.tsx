@@ -100,7 +100,7 @@ export default function P2pTransferPanel({ open, onClose }: P2pTransferPanelProp
       const code = await sessionRef.current!.createRoom();
       toast.success(`Room ${code} ready — share this code`);
     } catch (err) {
-      toast.error("Could not create room. Tap Retry.");
+      toast.error(err instanceof Error ? err.message : "Could not create room");
     } finally {
       setBusy(false);
     }
@@ -114,7 +114,7 @@ export default function P2pTransferPanel({ open, onClose }: P2pTransferPanelProp
       await sessionRef.current!.joinRoom(joinCode);
       toast.success("Connected");
     } catch (err) {
-      toast.error("Could not join room. Tap Retry.");
+      toast.error(err instanceof Error ? err.message : "Could not join room");
     } finally {
       setBusy(false);
     }
@@ -127,7 +127,7 @@ export default function P2pTransferPanel({ open, onClose }: P2pTransferPanelProp
       await sessionRef.current!.sendFiles(files);
       toast.success(`Sent ${files.length} file${files.length === 1 ? "" : "s"}`);
     } catch (err) {
-      toast.error("Send failed. Tap Retry.");
+      toast.error(err instanceof Error ? err.message : "Send failed");
     } finally {
       setBusy(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

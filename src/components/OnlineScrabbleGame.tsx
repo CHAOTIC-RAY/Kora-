@@ -25,6 +25,7 @@ import {
   Volume2,
   VolumeX,
   Award,
+  Search,
 } from "lucide-react";
 import { db, auth, isRealFirebase } from "../lib/firebase";
 import { doc, onSnapshot, setDoc, getDoc, updateDoc } from "firebase/firestore";
@@ -757,6 +758,10 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     }
 
     const primaryWord = wordLetters.map((wl) => wl.letter).join("");
+    if (primaryWord.length < 2) {
+      setInvalidMsg("Words must be at least 2 letters long.");
+      return;
+    }
 
     const isFirstWord = Object.values(board).filter((c) => !c.isTemp).length === 0;
     if (isFirstWord) {
@@ -1197,14 +1202,14 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                         onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                         placeholder="6-Digit Code"
                         maxLength={6}
+                        aria-label="6-Digit Room Code"
                         className="flex-1 bg-kindle-card border-2 border-kindle-border rounded-xl px-3 py-2 text-center font-mono text-sm tracking-widest text-kindle-text dark:text-white uppercase outline-none focus:border-kindle-accent"
-                        disabled={!roomCode || roomCode.length < 6}
                         aria-invalid={roomCode.length > 0 && roomCode.length < 6}
                       />
                       <button
                         type="button"
                         onClick={joinOnlineRoom}
-                        className="px-4 py-2 rounded-xl bg-amber-800 dark:bg-white text-white dark:text-black font-bold text-xs uppercase tracking-wider hover:brightness-110 transition"
+                        className="px-4 py-2 rounded-xl bg-amber-800 dark:bg-white text-white dark:text-black font-bold text-xs uppercase tracking-wider hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
                         disabled={!roomCode || roomCode.length < 6}
                       >
                         Join
@@ -1261,7 +1266,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                     onPointerMove={wordDrag.boardHandlers.onPointerMove}
                     onPointerUp={wordDrag.boardHandlers.onPointerUp}
                     onPointerCancel={wordDrag.boardHandlers.onPointerCancel}
-                    className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card  p-1.5 sm:p-2.5 rounded-2xl border-2 border-kindle-border  shadow-2xl grid grid-cols-12 gap-1 sm:gap-2 select-none touch-none">
+                    className="w-full max-w-md sm:max-w-lg aspect-square bg-kindle-card p-1 sm:p-2 rounded-2xl border-2 border-kindle-border shadow-2xl grid grid-cols-[repeat(15,minmax(0,1fr))] gap-[1px] sm:gap-[2px] select-none touch-none">
                     {Array.from({ length: 15 }).map((_, r) =>
                       Array.from({ length: 15 }).map((_, c) => {
                         const key = `${r},${c}`;
@@ -1426,60 +1431,33 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                     Without this the player has no way to see, or correct, the
                     order they chose before the letters are on the board.
                     */}
+                    {/* Word Preview & Controls Bar */}
                     {(letterQueue.length > 0 || tempPlaced.length > 0) && (
-                      <div className="flex flex-wrap items-center justify-center gap-1.5 mb-2">
-                        {letterQueue.map((ql, qi) => (
-                          <button
-                            key={ql.rackIdx}
-                            onClick={() =>
-                              setLetterQueue((prev) => removeQueuedAt(prev, qi))
-                            }
-                            aria-label={`Remove ${ql.letter} from the word`}
-                            title="Tap to remove"
-                            className="w-8 h-8 rounded-lg bg-kindle-accent text-kindle-bg font-bold font-serif text-sm flex items-center justify-center hover:opacity-80 cursor-pointer border-2 border-amber-300/60"
-                          >
-                            {ql.letter}
-                          </button>
-                        ))}
-                        {letterQueue.length > 0 && tempPlaced.length > 0 && (
-                          <span className="text-white/30 text-xs px-0.5">&rarr;</span>
-                        )}
-                        {tempPlaced.map((t, ti) => (
-                          <span
-                            key={`${t.r},${t.c}`}
-                            className="w-8 h-8 rounded-lg bg-kindle-card border-2 border-amber-400/70 text-kindle-text font-bold font-serif text-sm flex items-center justify-center"
-                          >
-                            {t.letter}
-                          </span>
-                        ))}
-                        {letterQueue.length === 0 && tempPlaced.length === 0 && null}
-                      </div>
-                    )}
-
-                    {/* Per-letter undo. `recallTempTiles` returns the whole
-                    turn, which is the right tool for "wrong word" and the
-                    wrong one for "one letter was a mis-tap". */}
-                    {(letterQueue.length > 0 || tempPlaced.length > 0) && (
-                      <div className="flex items-center justify-center gap-2 mb-2">
-                        <button
-                          onClick={undoQueuedLetter}
-                          disabled={letterQueue.length === 0}
-                          className="text-[9px] uppercase tracking-widest text-white/50 hover:text-white/90 disabled:opacity-25 cursor-pointer px-2 py-1 rounded border border-white/15"
-                        >
-                          Undo letter
-                        </button>
-                        <button
-                          onClick={recallLastPlaced}
-                          disabled={tempPlaced.length === 0}
-                          className="text-[9px] uppercase tracking-widest text-white/50 hover:text-white/90 disabled:opacity-25 cursor-pointer px-2 py-1 rounded border border-white/15"
-                        >
-                          Undo placed
-                        </button>
-                        {letterQueue.length > 0 && (
-                          <span className="text-[10px] font-mono text-amber-300/80">
+                      <div className="bg-kindle-bg/80 border border-kindle-border rounded-xl p-2.5 flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-1.5 overflow-x-auto">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Word:</span>
+                          <span className="text-sm font-serif font-black text-amber-500 tracking-widest px-2 py-0.5 bg-amber-500/10 rounded-lg border border-amber-500/30">
                             {queuedWord(letterQueue)}
                           </span>
-                        )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={undoQueuedLetter}
+                            disabled={letterQueue.length === 0}
+                            className="text-[9px] uppercase tracking-widest text-kindle-text hover:opacity-80 disabled:opacity-30 cursor-pointer px-2 py-1 rounded-lg border border-kindle-border bg-kindle-card font-bold"
+                          >
+                            Undo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={recallTempTiles}
+                            disabled={tempPlaced.length === 0}
+                            className="text-[9px] uppercase tracking-widest text-kindle-text hover:opacity-80 disabled:opacity-30 cursor-pointer px-2 py-1 rounded-lg border border-kindle-border bg-kindle-card font-bold"
+                          >
+                            Recall
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -1523,7 +1501,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                 ? "Tap again to take this letter back"
                                 : `Add ${letter} to your word`
                             }
-                            className={`min-w-44 min-h-44 w-14 h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
+                            className={`min-w-[44px] min-h-[44px] w-10 h-12 sm:w-12 sm:h-14 rounded-xl border flex flex-col items-center justify-center relative select-none transition shadow-md ${
                               isEmpty
                                 ? "bg-kindle-bg border-dashed border-kindle-border text-kindle-text-muted"
                                 : isSelected
@@ -1532,8 +1510,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                                 ? "bg-kindle-accent/15 border-2 border-kindle-accent text-kindle-text"
                                 : "bg-kindle-card border-kindle-accent/40 text-kindle-text hover:-translate-y-0.5"
                             } ${isSpokenFor && !isQueued ? "opacity-45" : ""}`}
-                            initial={{ scale: 0.85, opacity: 0.35, rotate: -14 }}
-                            animate={shake ? { rotate: [-4, 4, -3, 3, 0], scale: [1, 1.05, 1] } : { scale: 1, opacity: 1, rotate: 0 }}
+                            initial={{ scale: 0.85, opacity: 0.35 }}
+                            animate={shake ? { scale: 1.05 } : { scale: 1, opacity: 1 }}
                             transition={shake ? { type: "spring", stiffness: 340, damping: 14, mass: 0.4 } : { type: "spring", stiffness: 520, damping: 24, mass: 0.55 }}
                             whileTap={{ scale: 0.95 }}
                           >

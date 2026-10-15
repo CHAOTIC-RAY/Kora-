@@ -122,13 +122,9 @@ export function useWordDrag(args: UseWordDragArgs): WordDragState {
    */
   const runFrom = useCallback(
     (rackIdx: number): DragTile[] => {
-      const out: DragTile[] = [];
-      for (let i = rackIdx; i < rack.length; i++) {
-        const letter = rack[i];
-        if (!letter) break;
-        out.push({ rackIdx: i, letter });
-      }
-      return out;
+      const letter = rack[rackIdx];
+      if (!letter) return [];
+      return [{ rackIdx, letter }];
     },
     [rack]
   );

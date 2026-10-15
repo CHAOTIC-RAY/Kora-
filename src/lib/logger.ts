@@ -1,8 +1,6 @@
 // Diagnostic Logging System for Kora Reader
 // Captures system operations, downloads, errors, and mirror details.
 
-import { resolveApiUrl, getApiBaseUrl } from "./capacitorNative";
-
 export interface LogEntry {
   timestamp: string;
   type: "info" | "warn" | "error";
@@ -138,49 +136,13 @@ class DiagnosticLogger {
   private setupGlobalHandlers() {
     if (typeof window === "undefined") return;
 
-    // ── Firestore assertion recovery ──────────────────────────────────────
-    // Firestore SDK 12.15.0 can throw internal assertion failures ("Unexpected state (ID: b815)")
-    // when the write queue reaches an invalid state (rapid tab switching, app backgrounding,
-    // network interruption mid-write, or IndexedDB being deleted mid-operation).
-    // These are unhandled rejections that should trigger a Firestore reinit, not crash the app.
-    const isFirestoreAssertionError = (reason: unknown): boolean => {
-      if (!reason || typeof reason !== "object") return false;
-      const s = String(reason);
-      return (
-        s.includes("FIRESTORE") &&
-        s.includes("INTERNAL ASSERTION FAILED") &&
-        (s.includes("b815") || s.includes("b7de") || s.includes("cursor that doesn't exist"))
-      );
-    };
-
-    // Capture unhandled promise rejections — specifically recover from Firestore assertion failures
-    window.addEventListener("unhandledrejection", async (event) => {
+    // Capture unhandled promise rejections
+    window.addEventListener("unhandledrejection", (event) => {
       this.addLog(
         "error",
         `Unhandled Promise Rejection: ${event.reason?.message || event.reason}`,
         event.reason?.stack || event.reason
       );
-
-      // If this is a Firestore assertion failure, attempt recovery by terminating and
-      // re-initializing Firebase. The next Firestore call will create a fresh client.
-      if (isFirestoreAssertionError(event.reason)) {
-        try {
-          const mod = await import("./firebase");
-          if (mod.initFirebase && typeof mod.initFirebase === "function") {
-            // Reset module-level state so createFirestoreInstance creates a fresh client
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const fb = mod as any;
-            if (fb.db) fb.db = null;
-            if (fb.app) fb.app = null;
-            fb.initialized = false;
-            fb.isRealFirebase = false;
-            mod.initFirebase();
-            this.addLog("info", "Firestore recovered from assertion failure — reinitialized");
-          }
-        } catch (recoveryErr) {
-          this.addLog("error", "Firestore recovery attempt failed", recoveryErr);
-        }
-      }
     });
 
     // Capture general runtime errors
@@ -244,86 +206,68 @@ class DiagnosticLogger {
       // ignore malformed download log
     }
 
-    // Live self-diagnostic: hit the exact endpoints the app uses, so the exported
-    // file reveals WHY feeds/search fail (URL, HTTP status, or the JS error).
-    const diag: string[] = [];
-    const apiBase = getApiBaseUrl();
-    const feedUrl = resolveApiUrl("/api/feed/fetch");
-    const searchUrl = resolveApiUrl("/api/search/stream?q=dune&page=1");
-    diag.push(`API base (getApiBaseUrl): ${apiBase || "(empty -> same-origin)"}`);
-    diag.push(`Resolved feed URL:   ${feedUrl}`);
-    diag.push(`Resolved search URL: ${searchUrl}`);
-    diag.push(`window.location.origin: ${typeof window !== "undefined" ? window.location.origin : "n/a"}`);
-
-    const probe = async (label: string, url: string, body?: string) => {
-      try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 12000);
-        const r = await fetch(url, {
-          method: body ? "POST" : "GET",
-          headers: body ? { "Content-Type": "application/json" } : undefined,
-          body,
-          signal: ctrl.signal,
-        });
-        clearTimeout(t);
-        const txt = await r.text();
-        diag.push(`${label}: HTTP ${r.status} | len=${txt.length} | head=${txt.slice(0, 160).replace(/\n/g, " ")}`);
-      } catch (e: any) {
-        diag.push(`${label}: ERROR ${e?.name || ""} ${e?.message || String(e)}`);
-      }
-    };
-    await probe("FEED", feedUrl, JSON.stringify({ feedUrl: "https://feeds.npr.org/1001/rss.xml" }));
-    await probe("SEARCH", searchUrl);
-
-    const content =
-      logsText + downloadLogSection +
-      "\n\n" + "=".repeat(60) + "\nLIVE API DIAGNOSTIC\n" + "=".repeat(60) + "\n\n" +
-      diag.join("\n") + "\n";
-
+    const content = logsText + downloadLogSection;
     const fileName = `kora-diagnostic-logs-${new Date().toISOString().slice(0, 10)}.txt`;
+
+    // 1) Native: if a Kora SAF folder is chosen, drop the file straight into it
+    //    so the user can find it in their system Files app.
     const isNative = typeof (window as any).Capacitor !== "undefined" &&
       (window as any).Capacitor.isNativePlatform?.();
 
     if (isNative) {
-      // Write a clean UTF-8 .txt to device Documents and share the real file.
+      try {
+        const { writeKoraText } = await import("./koraStorage");
+        const ok = await writeKoraText("data", fileName, content);
+        if (ok) {
+          // Surface via the share sheet too (best-effort) so the user sees it now.
+          try {
+            const { Share } = await import("@capacitor/share");
+            await Share.share({ title: "Kora Diagnostic Logs", text: content, dialogTitle: "Save Kora logs" });
+          } catch { /* share optional */ }
+          return;
+        }
+      } catch {
+        // fall through to Filesystem path
+      }
+
+      // 2) Native fallback: write the file to app Documents and open the share
+      //    sheet with the actual file (not just text). Write flat to the
+      //    Documents root — Capacitor's writeFile rejects `recursive:true`
+      //    together with `directory`, so we drop both and use an absolute path.
       try {
         const { Filesystem, Directory } = await import("@capacitor/filesystem");
-        const res = await Filesystem.writeFile({
+        await Filesystem.writeFile({
           path: fileName,
           data: content,
           directory: Directory.Documents,
-          encoding: "utf8" as any,
-          recursive: false,
         });
         try {
           const { Share } = await import("@capacitor/share");
           await Share.share({
             title: "Kora Diagnostic Logs",
             text: "Kora diagnostic logs",
-            files: [res.uri],
+            files: [`file://${fileName}`],
             dialogTitle: "Save Kora logs",
           });
-        } catch { /* share optional */ }
+        } catch {
+          // Share cancelled — file is already written, that's fine.
+        }
         return;
       } catch (err) {
-        console.warn("[Kora/Logs] Native export failed:", err);
+        console.warn("[Kora/Logs] Native export failed, falling back:", err);
       }
     }
 
-    // Web fallback: trigger a download via a Blob anchor.
-    try {
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      if (a && a.parentNode) document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.warn("[Kora/Logs] Web download failed:", err);
-    }
+    // 3) Web fallback.
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 }
 

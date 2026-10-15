@@ -1,12 +1,10 @@
 import {
   parseAudiobookDetailHtml,
   extractBestBookLinkFromSearch,
-  extractFirstBookLinkFromSearch,
   isAudiobookSearchUrl,
   titlesRoughlyMatch,
   type AudiobookDetail,
 } from "./audiobookScraper";
-import { SEARCHABLE_AUDIOBOOK_SOURCES, audiobookSearchUrl } from "./audiobookSources";
 
 const DETAIL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const SEARCH_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -63,34 +61,22 @@ export function buildAudiobookProbeUrls(input: {
   const uniqueDirect = [...new Set(direct)];
   if (uniqueDirect.length > 0) return uniqueDirect;
 
-  // Derived from the registry. These were a hardcoded two-host list, so a book
-  // found on one of the eight new sources could not have its detail resolved —
-  // search worked and then the player page 404'd.
-  return SEARCHABLE_AUDIOBOOK_SOURCES.map((src) => {
-    const url = audiobookSearchUrl(src, input.title || "");
-    return url || "";
-  }).filter(Boolean);
+  return [
+    input.title ? `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
+    input.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(input.title)}` : "",
+  ].filter(Boolean) as string[];
 }
 
-function isValidDetail(
-  detail: AudiobookDetail | null,
-  expectedTitle?: string,
-  expectedAuthor?: string
-): detail is AudiobookDetail {
+function isValidDetail(detail: AudiobookDetail | null, expectedTitle?: string): detail is AudiobookDetail {
   if (!detail?.tracks?.length) return false;
   if (!expectedTitle) return true;
-  return titlesRoughlyMatch(
-    expectedTitle,
-    detail.title,
-    expectedAuthor || detail.author
-  );
+  return titlesRoughlyMatch(expectedTitle, detail.title);
 }
 
 export async function resolveAudiobookDetailFromPage(
   pageUrl: string,
   fetchHtml: (url: string) => Promise<string>,
-  expectedTitle?: string,
-  expectedAuthor?: string
+  expectedTitle?: string
 ): Promise<AudiobookDetail | null> {
   const cacheKey = pageUrl.split("?")[0];
   const cached = getCachedAudiobookDetail(cacheKey);
@@ -102,33 +88,21 @@ export async function resolveAudiobookDetailFromPage(
 
   if (detail.tracks.length === 0 && isAudiobookSearchUrl(pageUrl)) {
     const baseUrl = new URL(pageUrl).origin;
-    // Don't blindly follow the FIRST link on a search page — that's how
-    // "Out of the Dawn Light" ends up on a "Clare Alys" page. Use the
-    // title-aware extractor, falling back to the first plausible link only
-    // when nothing matches the expected book.
-    const bookLink =
-      expectedTitle
-        ? (() => {
-            const best = extractBestBookLinkFromSearch(html, baseUrl, expectedTitle);
-            if (best) return best;
-            // extractBestBookLinkFromSearch already falls back to
-            // extractFirstBookLinkFromSearch internally — if it returned null,
-            // there is genuinely nothing on the page.
-            return null;
-          })()
-        : extractFirstBookLinkFromSearch(html, baseUrl);
-    if (!bookLink) return null;
-    const bookHtml = await fetchHtml(bookLink);
-    resolvedUrl = bookLink;
-    detail = parseAudiobookDetailHtml(bookHtml, bookLink);
+    const bookLink = expectedTitle
+      ? extractBestBookLinkFromSearch(html, baseUrl, expectedTitle)
+      : null;
+    if (bookLink) {
+      const bookHtml = await fetchHtml(bookLink);
+      resolvedUrl = bookLink;
+      detail = parseAudiobookDetailHtml(bookHtml, bookLink);
+    }
   }
 
-  if (!isValidDetail(detail, expectedTitle, expectedAuthor)) return null;
+  if (!isValidDetail(detail, expectedTitle)) return null;
 
   const result = { ...detail, sourceUrl: resolvedUrl };
   setCachedAudiobookDetail(cacheKey, result);
-  if (resolvedUrl !== pageUrl)
-    setCachedAudiobookDetail(resolvedUrl.split("?")[0], result);
+  if (resolvedUrl !== pageUrl) setCachedAudiobookDetail(resolvedUrl.split("?")[0], result);
   return result;
 }
 
@@ -136,36 +110,22 @@ export async function resolveAudiobookDetailFromPage(
 export async function resolveAudiobookDetailParallel(
   urls: string[],
   fetchHtml: (url: string) => Promise<string>,
-  expectedTitle?: string,
-  expectedAuthor?: string
+  expectedTitle?: string
 ): Promise<AudiobookDetail | null> {
   const unique = [...new Set(urls.filter(Boolean))];
   if (unique.length === 0) return null;
 
-  // Score each URL: 0 = title match, >0 = no title (search URL), high = presumptively wrong
-  const scored = unique.map((u) => ({
-    url: u,
-    score: expectedTitle && isAudiobookSearchUrl(u) ? 0 : 1,
-  }));
+  const directUrls = unique.filter((u) => !isAudiobookSearchUrl(u));
+  const searchUrls = unique.filter((u) => isAudiobookSearchUrl(u));
+  const ordered = [...directUrls, ...searchUrls];
 
-  // Search URLs without a title parameter are the most likely to return the wrong book.
-  // Sort so exact/title-bearing URLs are tried first; fall back to search URLs only
-  // when nothing else resolves.
-  scored.sort((a, b) => a.score - b.score);
-
-  for (const { url } of scored) {
-    const cacheKey = url.split("?")[0];
-    const cached = getCachedAudiobookDetail(cacheKey);
-    if (isValidDetail(cached, expectedTitle, expectedAuthor)) return cached;
+  for (const url of ordered) {
+    const cached = getCachedAudiobookDetail(url.split("?")[0]);
+    if (isValidDetail(cached, expectedTitle)) return cached;
 
     try {
-      const detail = await resolveAudiobookDetailFromPage(
-        url,
-        fetchHtml,
-        expectedTitle,
-        expectedAuthor
-      );
-      if (isValidDetail(detail, expectedTitle, expectedAuthor)) return detail;
+      const detail = await resolveAudiobookDetailFromPage(url, fetchHtml, expectedTitle);
+      if (isValidDetail(detail, expectedTitle)) return detail;
     } catch {
       /* try next URL */
     }

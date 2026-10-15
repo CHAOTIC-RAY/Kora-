@@ -1,5 +1,4 @@
 import React, {useEffect, useRef, useState, useMemo} from"react";
-import DOMPurify from 'dompurify';
 import {createPortal} from"react-dom";
 import {
  ChevronDown,
@@ -290,7 +289,7 @@ export default function DailyBriefTikTokView({
  className="inline-flex items-center gap-1 text-[11px] text-kindle-text-muted hover:text-kindle-text :text-white transition cursor-pointer"
  >
  <ChevronDown className="w-4 h-4 text-amber-700 animate-bounce"/>
- <span>Swipe down for TikTok Feed</span>
+ <span>Swipe down to read more</span>
  </button>
  </div>
  </div>
@@ -424,7 +423,7 @@ export default function DailyBriefTikTokView({
  return (
  <div
  className="prose prose-xs max-w-none space-y-2 leading-relaxed text-kindle-text"
- dangerouslySetInnerHTML={{__html: DOMPurify.sanitize(cleanHtml || originalItem.summary ||"", { USE_PROFILES: { html: true } })}}
+ dangerouslySetInnerHTML={{__html: cleanHtml || originalItem.summary ||""}}
  />
  );
 })()}
@@ -441,14 +440,14 @@ export default function DailyBriefTikTokView({
  <div className="pt-6 pb-12 text-center space-y-3">
  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/15 text-neutral-300 text-xs font-medium">
  <ChevronDown className="w-4 h-4 text-kindle-accent animate-bounce"/>
- <span>Swipe down or tap back to return to TikTok Feed</span>
+ <span>Swipe down to read more</span>
  </div>
  <div>
  <button
  onClick={onClose}
  className="px-6 py-2.5 rounded-xl bg-white text-black font-bold text-xs uppercase tracking-wider hover:bg-neutral-200 transition"
  >
- Back to TikTok Scroll
+ Back to News Scroll
  </button>
  </div>
  </div>

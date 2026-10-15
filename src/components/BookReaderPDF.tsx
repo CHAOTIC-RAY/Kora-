@@ -133,7 +133,7 @@ export default function BookReaderPDF({ book, userId, onClose, onProgressUpdate 
       setLoading(false);
     } catch (err: any) {
       console.error("PDF Loader Error:", err);
-      setError("Failed to load PDF. Tap Retry to try again.");
+      setError(err.message || "Failed to load PDF file.");
       setLoading(false);
     }
   }

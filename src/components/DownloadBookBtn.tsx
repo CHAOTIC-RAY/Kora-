@@ -12,7 +12,7 @@ export default function DownloadBookBtn({ book }: { book: BookMetadata }) {
       setDownloading(true);
       const fileData = await getBookFile(book.id);
       if (!fileData) {
-        toast.error("File not found in local cache. Try re-downloading from Discover.");
+        alert("File not found in local cache. Try re-downloading it from Discover.");
         return;
       }
       const url = URL.createObjectURL(fileData.blob);
@@ -25,7 +25,7 @@ export default function DownloadBookBtn({ book }: { book: BookMetadata }) {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
       console.error("Failed to download book", err);
-      toast.error("Error downloading the book. Tap Retry.");
+      alert("Error downloading the book.");
     } finally {
       setDownloading(false);
     }

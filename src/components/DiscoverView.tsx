@@ -1,21 +1,28 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import ReactDOM from "react-dom";
 import JSZip from "jszip";
 import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
+import { filterDownloadableBooks, filterFeedByDownloadability } from "../lib/bookAvailability";
+import { shareBookLink } from "../lib/bookShare";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
+import { getDiscoverablePlugins, getInstalledPlugins, isUnreadableSource } from "../lib/sources/store";
+import ComicDetailView from "./ComicDetailView";
+import { createSourceClient } from "../lib/sources/client";
+import { resolveBookFileUrl } from "../lib/sources/bookFile";
+import { proxyUrlForMirror } from "../lib/downloadProxy";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
-import { escapeHtml } from "../lib/relay/sanitize";
 import KoraLoading from "./KoraLoading";
 import SourcePluginsHub from "./SourcePluginsHub";
 import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "../lib/audiobookDetailClient";
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
 import { titlesRoughlyMatch } from "../lib/audiobookScraper";
+import { isRelevantMirrorResult, matchesEditionStrictly } from "../lib/mirrorRelevance";
 import {
   createSearchSignal,
   abortActiveSearch,
@@ -24,9 +31,33 @@ import {
   getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import { classifyDownloadLink } from "../lib/downloadLinkKind";
+import {
+  emptySnapshot,
+  fetchMirrorHealth,
+  orderMirrorsByHealth,
+  reliabilityTone,
+  reportMirrorOutcome,
+  type MirrorHealthSnapshot,
+} from "../lib/mirrorHealthClient";
+import { detectFormat } from "../lib/formats/detect";
+import { isFileUrl } from "../lib/bookIdentity";
+import {
+  hostOf,
+  orderByReliability,
+  reliabilityForUrl,
+  type ReliabilityEntry,
+} from "../lib/mirrorReliability";
+import { judgeMirrorDownload } from "../lib/mirrorOutcome";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
+import {
+  canonicalMirrorKey,
+  DOWNLOAD_SEARCH_SOURCES,
+  isValidIsbn,
+  pickRealIsbn,
+} from "../lib/discoverDetailHelpers";
 
 function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
   const display = getDisplayRating(book);
@@ -53,12 +84,28 @@ interface DiscoverViewProps {
   zlibConfig?: any;
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
+  /** Book id from a shared /book?id=.. link. */
+  initialBookId?: string | null;
+  /** "Title Author" search text from a shared /book?q=.. link. */
+  initialBookQuery?: string | null;
+  /** Book title from a shared /book?t=.. link (preferred over q). */
+  initialBookTitle?: string | null;
+  /** Book author from a shared /book?a=.. link. */
+  initialBookAuthor?: string | null;
+  onClearInitialBookLink?: () => void;
   onOpenBrowser?: (url: string) => void;
   onTriggerDownload?: (book: any, mirrors: any | any[], variant: any) => void;
   onPlayAudiobook?: (book: BookMetadata) => void;
   showFirstBookNudge?: boolean;
   onDismissFirstBookNudge?: () => void;
   onOpenCreateView?: () => void;
+  /**
+   * A saved series opened from the Library, carrying the plugin id and series
+   * path needed to rebuild it. Consumed once on mount so returning to
+   * Discover later does not re-open a series the user already closed.
+   */
+  initialComicBook?: any | null;
+  onInitialComicBookConsumed?: () => void;
 }
 
 async function injectMetadataIntoEpub(
@@ -206,12 +253,19 @@ function DiscoverView({
   zlibConfig,
   initialQuery = null,
   onClearInitialQuery,
+  initialBookId = null,
+  initialBookQuery = null,
+  initialBookTitle = null,
+  initialBookAuthor = null,
+  onClearInitialBookLink,
   onOpenBrowser,
   onTriggerDownload,
   onPlayAudiobook,
   showFirstBookNudge = false,
   onDismissFirstBookNudge,
   onOpenCreateView,
+  initialComicBook,
+  onInitialComicBookConsumed,
 }: DiscoverViewProps) {
   const getAudiobookCoverSrc = (coverUrl?: string | null) => resolveCoverImageSrc(coverUrl);
   const stripHtml = (html: string) => {
@@ -228,8 +282,11 @@ function DiscoverView({
   const [results, setResults] = useState<any[]>([]);
   const observerTargetRef = React.useRef<HTMLDivElement | null>(null);
   const [searchMode, setSearchMode] = useState<boolean>(false);
+
   const [featuredData, setFeaturedData] = useState<Record<string, any[]>>({});
   const [selectedFeaturedBook, setSelectedFeaturedBook] = useState<any | null>(null);
+  // A shared /book link opens the detail view full screen (no dimmed page behind it).
+  const [fullscreenDetail, setFullscreenDetail] = useState(false);
   const [featuredAudiobookSource, setFeaturedAudiobookSource] = useState<any | null>(null);
   const [audiobookDetail, setAudiobookDetail] = useState<any | null>(null);
   const [audiobookDetailLoading, setAudiobookDetailLoading] = useState(false);
@@ -242,6 +299,10 @@ function DiscoverView({
   // Opening book B while book A's requests are still in flight must not let A's
   // slower response overwrite B's title/overview/editions/mirrors.
   const detailFetchGen = React.useRef(0);
+  // Which Rave API last answered a search, exactly as the Worker reported it
+  // ("v1" | "legacy" | "none"). Rave branding is rendered only when this is
+  // "v1"; see raveEngineLabel() and buildInstantMirrors().
+  const lastRaveEngineRef = React.useRef<string>("none");
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
@@ -255,6 +316,186 @@ function DiscoverView({
 
   const [error, setError] = useState<string | null>(null);
   const [activeSource, setActiveSource] = useState<string>("all");
+
+  /**
+   * Chips for sources the user has installed *and* enabled.
+   *
+   * A restricted source stays out until it is switched on, so it gets no chip
+   * either — the chip is an affordance, not a privacy reminder, and offering
+   * one here for a source the user has not opted into would undercut the
+   * whole point of that opt-in.
+   */
+  const [pluginChips, setPluginChips] = useState<
+    { id: string; name: string; icon?: string; unreadable: boolean }[]
+  >([]);
+
+  /**
+   * The source currently being browsed, or null.
+   *
+   * Resolved as a value rather than an inline `find(...)?.name ?? "source"`,
+   * because that fallback is what produced a header reading "Browsing
+   * source" with no name once the chip was deselected. Every surface that
+   * mentions the active source reads this, so the row cannot render at all
+   * unless there is a real plugin behind it.
+   */
+  const activeSourceName = useMemo(
+    () => (activeSource === "all" ? null : pluginChips.find((c) => c.id === activeSource)?.name || null),
+    [activeSource, pluginChips]
+  );
+
+  /**
+   * The series whose comic detail view is open, or null.
+   *
+   * Separate from `selectedBook`, which drives the *ebook* download sheet.
+   * A plugin result is a series to be read, not a file to be downloaded, so
+   * it must not share that modal.
+   */
+  const [comicBook, setComicBook] = useState<any | null>(null);
+  /** Series url currently being verified before a library add, or null. */
+  const [verifyingSeriesId, setVerifyingSeriesId] = useState<string | null>(null);
+
+  // A series opened from the Library arrives as an entry rather than a
+  // search result. Seed it into the same slot a tapped result uses, then
+  // clear it upstream — otherwise the detail view re-opens every time the
+  // Library tab is visited.
+  useEffect(() => {
+    if (!initialComicBook) return;
+    setComicBook(initialComicBook);
+    onInitialComicBookConsumed?.();
+  }, [initialComicBook, onInitialComicBookConsumed]);
+
+  /**
+   * True while the feed is showing one source's own catalogue rather than
+   * search results. The header reads differently in the two cases, because
+   * a user who tapped a chip is browsing, not searching.
+   */
+  const [pluginFeedMode, setPluginFeedMode] = useState(false);
+  // True once a source browse has walked every page the site offers, so the
+  // footer can say so instead of inviting a scroll that will fetch nothing.
+  const [pluginFeedExhausted, setPluginFeedExhausted] = useState(false);
+
+  const refreshPluginChips = useCallback(() => {
+    try {
+      setPluginChips(
+        getDiscoverablePlugins().map((p) => ({
+          id: p.id,
+          name: p.name,
+          icon: p.icon,
+          // Carried onto the chip so the source is marked BEFORE the user
+          // taps through to chapters that will 404. Finding out afterwards is
+          // what made this feel like the app was broken rather than honest.
+          unreadable: isUnreadableSource(p),
+        }))
+      );
+    } catch {
+      setPluginChips([]);
+    }
+  }, []);
+
+  /**
+   * Load a source's own catalogue into the feed.
+   *
+   * Used when a chip is tapped with an empty search box: a blank search
+   * returns nothing, so the useful action is the site's own popular/latest
+   * listing — the books are then downloadable into the library like any
+   * other result.
+   */
+  const browseSource = useCallback(async (sourceId: string) => {
+    const plugin = getDiscoverablePlugins().find((p) => p.id === sourceId);
+    if (!plugin) return;
+    setLoading(true);
+    setPluginFeedMode(true);
+    setPluginFeedExhausted(false);
+    setSearchMode(false);
+    setIsAdvancedSearch(false);
+    setQuery("");
+    try {
+      const client = createSourceClient(plugin);
+      // Walk several pages rather than stopping at the first. The old code
+      // fetched page 1 and declared "no more results in this archive"
+      // unconditionally, which is how a browsable source looked empty
+      // after twelve titles.
+      //
+      // Pages are fetched one at a time and the grid is repainted after
+      // each, so the first screenful appears in about a second instead of
+      // the user staring at a spinner while six round-trips finish.
+      const seen = new Set<string>();
+      const all: any[] = [];
+      const MAX_PAGES = 6;
+      const toItems = (list: any[]) =>
+        list.map((m) => ({
+          title: m.title,
+          // Left unset when the source publishes no author. Printing
+          // "Unknown" asserted a lookup failed, when the truth is the site
+          // simply does not list one on its cards — MangaReadOrg does, the
+          // other two do not.
+          author: m.author || "",
+          source: plugin.name,
+          // `coverUrl`, not `cover`: every card renders `book.coverUrl`, and
+          // `cover` is not a field any of them read. Naming it `cover` left
+          // every plugin cover undefined, so the grid rendered no <img> at
+          // all — the covers only reappeared on the detail screen, which
+          // fetches its own cover from `details()`.
+          coverUrl: m.thumbnailUrl || "",
+          description: m.description || "",
+          sourceId: m.url,
+          pluginId: plugin.id,
+          kind: "manga",
+        }));
+
+      let reachedLastPage = false;
+      for (let p = 1; p <= MAX_PAGES; p++) {
+        const page = await client.popular(p);
+        const fresh = (page.mangas || []).filter((m) => {
+          const key = m.url || (m as unknown as { id?: string }).id;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        all.push(...fresh);
+        // A page that adds nothing new is the last page, whatever the
+        // source's own next-page signal says.
+        if (!page.hasNextPage || fresh.length === 0) {
+          reachedLastPage = true;
+          break;
+        }
+        if (p < MAX_PAGES) {
+          setResults(toItems(all));
+          setTotalResults(all.length);
+          setLoading(false);
+        }
+      }
+      setResults(toItems(all));
+      setTotalResults(all.length);
+      setSearchMeta({});
+      setPluginFeedExhausted(reachedLastPage || all.length > 0);
+      if (all.length === 0) {
+        toast("No listings returned by this source", { icon: "📭" });
+      }
+    } catch {
+      toast(`Could not reach ${plugin.name}`, { icon: "⚠️" });
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshPluginChips();
+    const onChange = () => refreshPluginChips();
+    window.addEventListener("kora-sources-changed", onChange);
+    return () => window.removeEventListener("kora-sources-changed", onChange);
+  }, [refreshPluginChips]);
+
+  // Clear a source filter that no longer exists, e.g. after an uninstall.
+  useEffect(() => {
+    if (
+      activeSource !== "all" &&
+      !pluginChips.some((c) => c.id === activeSource)
+    ) {
+      setActiveSource("all");
+    }
+  }, [pluginChips, activeSource]);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalResults, setTotalResults] = useState<number>(0);
   const [searchMeta, setSearchMeta] = useState<any>({});
@@ -263,8 +504,6 @@ function DiscoverView({
   const [selectedTopic, setSelectedTopic] = useState<string>("all");
 
   const [hasMore, setHasMore] = useState<boolean>(false);
-  // Community (Hardcover) data fetched alongside search results
-  const [communityBook, setCommunityBook] = useState<any | null>(null);
   // Background prefetch cache: page number → results
   const prefetchCache = React.useRef(new Map<number, any[]>());
   const prefetchingPage = React.useRef<number | null>(null);
@@ -291,13 +530,23 @@ function DiscoverView({
     return orderedCats.map(cat => {
       const rawBooks = featuredData[cat.id];
       if (!Array.isArray(rawBooks) || rawBooks.length === 0) return null;
-      // Filter out books with unknown/missing authors
+      // Drop placeholder authors, but never at the cost of emptying a lane.
+      //
+      // This used to return `null` when every row was filtered out, which is
+      // what made the Audiobook Library load and then vanish: measured on a live
+      // search, 26 of 50 rows arrive with no author, so a lane could end up
+      // entirely "Unknown" and disappear with no error and no explanation
+      // ("its loading and even after loading it disappears"). A lane with real
+      // rows is now shown regardless; rows without an author simply render as
+      // such, which is honest.
       const books = rawBooks.filter((b: any) => {
         const author = (b.author || b.contributor || "").trim().toLowerCase();
         return author && author !== "unknown" && author !== "unknown author";
       });
-      if (books.length === 0) return null;
-      return { cat, books };
+      // Prefer rows with an author, but fall back to the full set rather than
+      // showing an empty lane.
+      const usable = books.length > 0 ? books : rawBooks;
+      return { cat, books: usable };
     }).filter(Boolean) as { cat: any; books: any[] }[];
   }, [featuredData, feedFilter]);
 
@@ -307,6 +556,10 @@ function DiscoverView({
   const [categoryPreviousDate, setCategoryPreviousDate] = useState<string | null>(null);
   const [loadingCategoryMore, setLoadingCategoryMore] = useState<boolean>(false);
   const [loadingCategory, setLoadingCategory] = useState<boolean>(false);
+  // Per-view error, distinct from the page-level `error`. Without it a failed
+  // category load rendered "No books found", which reads as "genuinely empty"
+  // and gives the user nothing to act on.
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   // Download states
   const [downloadProgress, setDownloadProgress] = useState<{
@@ -316,6 +569,15 @@ function DiscoverView({
   }>({ step: "idle", percent: 0, error: null });
   const [fetchingMirrors, setFetchingMirrors] = useState<boolean>(false);
   const [mirrors, setMirrors] = useState<any[]>([]);
+  /**
+   * Measured reliability per mirror host. Starts EMPTY (every mirror
+   * UNVERIFIED) and is filled asynchronously, so the sheet never blocks on it:
+   * the user can tap a mirror the instant it appears, and a failed check shows
+   * as "unverified" rather than being silently omitted or shown as healthy.
+   */
+  const [mirrorHealth, setMirrorHealth] = useState<MirrorHealthSnapshot>(() => emptySnapshot());
+  /** Epoch ms when the current mirror list changed; drives the one health fetch. */
+  const healthFetchKeyRef = useRef<string>("");
   const [mirrorError, setMirrorError] = useState<string | null>(null);
 
   // Detailed book explorer popup states
@@ -349,6 +611,14 @@ function DiscoverView({
   // Editions are ranked best-first; only the top 2 show until expanded.
   const [showAllEditions, setShowAllEditions] = useState(false);
   const [loadingFeaturedDownloads, setLoadingFeaturedDownloads] = useState<boolean>(false);
+  /**
+   * Goodreads / audiobook / NetGalley lanes load AFTER the NYT feed has already
+   * painted. They had no flag at all, so the shelves simply sat empty and then
+   * filled in — reported 2026-10-05 as "its loading and even after loading it
+   * disappears". `loadingSecondaryFeatured` lets the panel say so, and stops an
+   * empty shelf being mistaken for "there is nothing here".
+   */
+  const [loadingSecondaryFeatured, setLoadingSecondaryFeatured] = useState<boolean>(false);
   const [selectedFeaturedVariant, setSelectedFeaturedVariant] = useState<any | null>(null);
   const [featuredMirrors, setFeaturedMirrors] = useState<any[]>([]);
   const [fetchingFeaturedMirrors, setFetchingFeaturedMirrors] = useState<boolean>(false);
@@ -388,81 +658,181 @@ function DiscoverView({
     return l.slice(0, 3).toUpperCase();
   }
 
-  /** Instant mirrors from known md5 / directUrl — shown before the API finishes. */
-  function buildInstantMirrors(variant: any): any[] {
-    if (!variant) return [];
-    const links: any[] = [];
-    const directUrl = variant.downloadUrl || "";
-    if (directUrl && /get\.php\?md5=.+&key=/i.test(directUrl)) {
-      links.push({
-        label: "Rave Direct (LibGen CDN)",
-        url: directUrl,
-        isDirect: true,
-        sourceId: "rave"
-      });
-    } else if (directUrl && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
-      const isMobilismUrl = directUrl.toLowerCase().includes("mobilism.org") || directUrl.toLowerCase().includes("mobilism");
-      if (isMobilismUrl) {
+  /**
+     * Instant mirrors from known md5 / directUrl — shown before the API finishes.
+     *
+     * `engine` is the Worker's own signal of which Rave API actually produced the
+     * search these variants came from ("v1" | "legacy" | "none"). Rave branding is
+     * only ever rendered when that is "v1" — never inferred from the URL shape or
+     * from a configured key.
+     */
+    function raveEngineLabel(engine: string | undefined | null, opts: { isSearch?: boolean } = {}) {
+      if (engine === "v1") return opts.isSearch ? "Search Rave for this book" : "Rave Direct Download";
+      if (engine === "legacy") return opts.isSearch ? "Search open catalogs for this book" : "Open Catalog Mirror";
+      // engine unknown or "none": neutral wording, no Rave claim at all.
+      return opts.isSearch ? "Search open catalogs" : "Open Catalog Mirror";
+    }
+
+    function buildInstantMirrors(variant: any): any[] {
+      if (!variant) return [];
+      const links: any[] = [];
+      const directUrl = variant.downloadUrl || "";
+      const engine = variant.raveEngine || lastRaveEngineRef.current;
+      if (directUrl && /get\.php\?md5=.+&key=/i.test(directUrl)) {
         links.push({
-          label: "Mobilism Forum Mirror",
-          url: directUrl,
-          isDirect: false,
-          sourceId: variant.sourceId || "rave"
-        });
-      } else {
-        links.push({
-          label: "Direct Download",
+          label: engine === "v1" ? "Rave Direct (LibGen CDN)" : "LibGen CDN Direct",
           url: directUrl,
           isDirect: true,
-          sourceId: variant.sourceId || "rave"
+          sourceId: "rave"
+        });
+      } else if (directUrl && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
+        const isMobilismUrl = directUrl.toLowerCase().includes("mobilism.org") || directUrl.toLowerCase().includes("mobilism");
+        if (isMobilismUrl) {
+          links.push({
+            label: "Mobilism Forum Mirror",
+            url: directUrl,
+            isDirect: false,
+            sourceId: variant.sourceId || "rave"
+          });
+        } else {
+          links.push({
+            label: "Direct Download",
+            url: directUrl,
+            isDirect: true,
+            sourceId: variant.sourceId || "rave"
+          });
+        }
+      }
+      const md5 = (variant.md5 || "").toLowerCase();
+      if (/^[a-f0-9]{32}$/.test(md5)) {
+        links.push({
+          label: "Libgen Mirror (libgen.li)",
+          url: `https://libgen.li/get.php?md5=${md5}`,
+          isDirect: true,
+          sourceId: "libgen"
         });
       }
+      if (variant.iaId) {
+        links.push({
+          label: "Internet Archive",
+          url: `https://archive.org/details/${variant.iaId}`,
+          isDirect: false,
+          sourceId: "ia"
+        });
+      }
+      // Last resort: hand off to Rave, the engine that already aggregates every
+      // source, carrying the book so the search actually lands on it. Replaces
+      // the old "Anna's Archive" entry, which linked an unscoped homepage and
+      // surfaced above the real mirrors.
+      //
+      // Only ever one Rave row: the Worker can also return a Rave search link for
+      // the same variant, so pushing this unconditionally produced a duplicate
+      // pair (one with the query, one bare). Anything already on the list that
+      // resolves to Rave is skipped.
+      const alreadyHasRave = links.some(
+        (l) => l.sourceId === "rave" || /ravebooksearch\.com/i.test(l.url || "")
+      );
+      if (!alreadyHasRave) {
+        const searchText = [variant.title, variant.author].filter(Boolean).join(" ").trim();
+        links.push({
+          label: searchText ? raveEngineLabel(engine, { isSearch: true }) : raveEngineLabel(engine, { isSearch: true }),
+          url: searchText
+            ? `https://ravebooksearch.com/search?q=${encodeURIComponent(searchText)}`
+            : "https://ravebooksearch.com",
+          isDirect: false,
+          // A search hand-off is not a file. `isSearch` hides the download
+          // affordance so it reads as "go and look" rather than "fetch this".
+          isSearch: true,
+          sourceId: "rave"
+        });
+      }
+      return links;
     }
-    const md5 = (variant.md5 || "").toLowerCase();
-    if (/^[a-f0-9]{32}$/.test(md5)) {
-      links.push({
-        label: "Libgen Mirror (libgen.li)",
-        url: `https://libgen.li/get.php?md5=${md5}`,
-        isDirect: true,
-        sourceId: "libgen"
-      });
-      links.push({
-        label: "Anna's Archive",
-        url: `https://annas-archive.gl/md5/${md5}`,
-        isDirect: false,
-        sourceId: "annas"
-      });
-    }
-    if (variant.iaId) {
-      links.push({
-        label: "Internet Archive",
-        url: `https://archive.org/details/${variant.iaId}`,
-        isDirect: false,
-        sourceId: "ia"
-      });
-    }
-    return links;
-  }
 
   /** Race fast archive sources; fall back to full "all" search with a hard timeout. */
   async function searchDownloadVariants(query: string): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
     const q = query.trim();
     if (!q) return { books: [], totalCount: 0, hasMore: false };
 
+    // A leg only "hits" if it returns at least one book. Empty throws, so an
+    // empty-but-successful response is discarded rather than winning the race.
     const firstHit = async (source: string) => {
       const page = await fetchPage(q, source, 1);
       if (!page.books?.length) throw new Error(`empty:${source}`);
       return page;
     };
 
-    try {
-      return await Promise.any([firstHit("libgen"), firstHit("annas-archive")]);
-    } catch {
+    // ── `all` races as a FIRST-CLASS leg, not a late fallback ──
+    //
+    // Manual search queries source=all (broad). This function used to race only
+    // the two narrow filters (libgen, annas-archive) and consult `all` only
+    // AFTERWARD, inside the same 16s shared deadline that the two failing narrow
+    // legs had already consumed. Two 14s fetches left the broad query roughly 2s,
+    // and the legacy Rave rung takes 7-24s — so `all` never got to answer, and
+    // the panel reported "No direct files discovered for this edition yet" for a
+    // book that manual search resolves instantly. Reported for "The Munich
+    // Affair"; a timing probe reproduces it (old: 0 books at 16.0s).
+    //
+    // That deadline starvation is the WHOLE root cause. An earlier draft of this
+    // comment also blamed the Worker treating an empty HTTP 200 as a real
+    // answer, which is wrong for this path: `firstHit` throws on an empty page
+    // and `Promise.any` only settles on a FULFILLED promise, so an empty leg
+    // cannot win the race — before this change or after. That behaviour belongs
+    // to the Worker's own v1-vs-legacy race, which the client cannot influence.
+    //
+    // Cost note: all three legs hit the same /api/annas-archive/search endpoint
+    // and the same Rave upstream — `source=libgen` / `source=annas-archive` /
+    // `source=all` are query-string filters on one engine. So this is 3 requests
+    // to one upstream where the old shape used 2 in the happy path and 4 at worst
+    // (2 legs plus the fallback). `Promise.any` resolves on first fulfilment, so
+    // an unfiltered hit can win over a narrow one purely on latency; that is
+    // acceptable here because every candidate is subsequently gated by
+    // `matchesEditionStrictly` (see loadFeaturedDownloads), so a wider winner
+    // cannot surface a wrong book — it only widens the candidate pool.
+    //
+    // `all` is a peer here, not a rescue mission: `firstHit("all")` (not bare
+    // `fetchPage`) so an empty broad answer is also treated as a miss and the race
+    // keeps waiting for a leg that actually found something. The list lives in
+    // discoverDetailHelpers so a test can pin that `all` stays in it.
+    const EMPTY: { books: any[]; totalCount: number; hasMore: boolean } = { books: [], totalCount: 0, hasMore: false };
+    const deadline = Date.now() + 16000;
+    const budgetLeft = () => Math.max(0, deadline - Date.now());
+
+    /** Race `work` against whatever remains of the shared deadline. */
+    const withDeadline = async <T,>(work: Promise<T>): Promise<T> => {
+      const remaining = budgetLeft();
+      if (remaining <= 0) throw new Error("download-variant-deadline-exceeded");
+      let timerId: ReturnType<typeof setTimeout> | undefined;
       try {
-        return await fetchPage(q, "all", 1);
-      } catch {
-        return { books: [], totalCount: 0, hasMore: false };
+        // The timer is cleared on every exit path. Un-cleared, each call leaked a
+        // live 16s handle — and this runs in a loop over several query shapes per
+        // book, so a feed load stranded hundreds of them.
+        return await Promise.race([
+          work,
+          new Promise<never>((_resolve, reject) => {
+            timerId = setTimeout(
+              () => reject(new Error("download-variant-deadline-exceeded")),
+              remaining
+            );
+          }),
+        ]);
+      } finally {
+        if (timerId !== undefined) clearTimeout(timerId);
       }
+    };
+
+    // `all` is a peer here, not a rescue mission. `firstHit("all")` (not bare
+    // `fetchPage`) so an empty broad answer is also treated as a miss and the
+    // race keeps waiting for a leg that actually found something. The list lives
+    // in discoverDetailHelpers so a test can pin that `all` stays in it.
+    try {
+      return await withDeadline(
+        Promise.any(DOWNLOAD_SEARCH_SOURCES.map((source) => firstHit(source)))
+      );
+    } catch {
+      // Every leg failed or the deadline passed. An honest empty result beats a
+      // spinner that never resolves.
+      return EMPTY;
     }
   }
 
@@ -476,10 +846,39 @@ function DiscoverView({
   //   3. Reader-friendly format (EPUB > AZW3 > MOBI > FB2 > PDF)
   // Ties keep their original relative order (Array.prototype.sort is stable).
   function rankVariants(variants: any[]): any[] {
+    /**
+     * English-first, measured against real API values rather than assumed ones.
+     *
+     * Anna's Archive returns a wide spread: "English", "eng", "en",
+     * "English;Undetermined", "English Français", "French", "fr", "fra", "fre",
+     * "Romanian", "Dutch", and 24 rows with no language at all. The old test was
+     * an exact match on en/eng/english, so "English;Undetermined" and
+     * "English Français" — both English records — were ranked BELOW plain French.
+     *
+     * Ranks: 0 English, 1 unknown, 2 other. Matching is prefix/substring based so
+     * multi-valued and ISO-639-2 style codes are handled; the non-English check
+     * looks for a known other-language token so a mixed string that starts with
+     * "English" is not mistaken for a foreign record.
+     */
+    const OTHER_LANGUAGES = [
+      "fre", "fra", "french", "ita", "italian", "spa", "spanish", "por", "portuguese",
+      "deu", "ger", "german", "rus", "russian", "rum", "romanian", "nld", "dutch",
+      "dan", "danish", "swe", "swedish", "nor", "norwegian", "pol", "polish",
+      "tur", "turkish", "ara", "arabic", "hin", "hindi", "chi", "chinese",
+      "jpn", "japanese", "kor", "korean", "heb", "hebrew", "gre", "greek",
+      "cze", "czech", "hun", "hungarian", "ron", "rum", "ukr", "ukrainian",
+      "vie", "vietnamese", "tha", "thai", "ind", "indonesian", "msa", "malay",
+      "fin", "finnish", "nob", "norwegian", "cat", "catalan", "lat", "latin",
+    ];
     const langRank = (v: any): number => {
-      const l = (v.language || "").trim().toLowerCase();
-      if (!l) return 1; // unlabelled — probably English, but below an explicit match
-      if (l === "en" || l === "eng" || l === "english") return 0;
+      const raw = (v.language || "").trim().toLowerCase();
+      if (!raw) return 1; // unlabelled — probably English, but below an explicit match
+      // Any recognisable English token, including inside a multi-valued string.
+      if (/(^|[^a-z])en(g|gl)?([^a-z]|$)/.test(raw) || raw.includes("english")) return 0;
+      // A known other language present means this is not simply an English record.
+      const tokens = raw.split(/[^a-z]+/).filter(Boolean);
+      if (tokens.some((t) => OTHER_LANGUAGES.includes(t))) return 2;
+      // Some other label entirely (an unrecognised language name).
       return 2;
     };
     const sourceRank = (v: any): number => {
@@ -502,44 +901,182 @@ function DiscoverView({
     return variants;
   }
 
-  function sortMirrors(mirrors: any[]): any[] {
+  /**
+   * Fetch mirror reliability ONCE per distinct mirror set.
+   *
+   * Deliberately one request for all hosts, and deliberately never awaited
+   * before the sheet renders: a probe must not be able to delay or block a
+   * download. `fetchMirrorHealth` dedupes in-flight calls and caches for
+   * HEALTH_CACHE_TTL_MS, so re-opening the sheet costs nothing.
+   */
+  useEffect(() => {
+    const urls = [...new Set((mirrors || [])
+      .map((m: any) => typeof m === "string" ? m : m?.url)
+      .filter((u: any) => typeof u === "string" && u.startsWith("http")))] as string[];
+    if (urls.length === 0) return;
+    const key = urls.slice().sort().join("|");
+    if (healthFetchKeyRef.current === key) return;
+    healthFetchKeyRef.current = key;
+    let cancelled = false;
+    fetchMirrorHealth(urls)
+      .then((snap) => { if (!cancelled) setMirrorHealth(snap); })
+      .catch(() => { if (!cancelled) setMirrorHealth(emptySnapshot("Mirror checks could not be reached.")); });
+    return () => { cancelled = true; };
+  }, [mirrors]);
+
+  /**
+   * Tell the Worker what this mirror ACTUALLY delivered.
+   *
+   * The verdict comes from the shared detector over the real bytes, which is
+   * the ground truth the ranking is built on — our own probe can only ever be a
+   * proxy for it. `host` + `verdict` is all that is sent: no title, filename,
+   * author, ISBN or size, because a reliability counter has no business
+   * recording what someone read.
+   *
+   * Best-effort: a failed report must never surface as a download error.
+   */
+  function reportOutcomeForDownload(mirrorUrl: string, bytes: Uint8Array | null, interrupted = false) {
+    if (!mirrorUrl) return;
+    if (interrupted) {
+      reportMirrorOutcome(mirrorUrl, "interrupted");
+      return;
+    }
+    if (!bytes || bytes.length === 0) {
+      reportMirrorOutcome(mirrorUrl, "empty");
+      return;
+    }
+    try {
+      const detection = detectFormat(bytes);
+      if (detection.rejected) {
+        reportMirrorOutcome(mirrorUrl, detection.format === "php-error" ? "php-error" : detection.format === "html" ? "html-page" : "corrupt");
+      } else {
+        reportMirrorOutcome(mirrorUrl, "real-book");
+      }
+    } catch (_) {
+      // No measurement -> no report. Never guess a verdict.
+    }
+  }
+
+  /**
+   * Rank mirrors for a specific book.
+   *
+   * `context` supplies the book this list belongs to so mirrors that are NOT
+   * actually about that book can be dropped. Without it the function cannot
+   * tell a genuine mirror from a keyword coincidence.
+   */
+  /**
+   * Canonical identity of a mirror URL, for de-duplication.
+   *
+   * See `canonicalMirrorKey` in `../lib/discoverDetailHelpers`. It is re-exported
+   * through this module's local alias so the dedupe below and the tests share
+   * exactly one implementation.
+   */
+
+  function sortMirrors(
+    mirrors: any[],
+    context?: { query?: string; title?: string; author?: string }
+  ): any[] {
     // Filter out library.lol as it is reportedly taken down
-    // Also filter duplicates by exact URL
+    // Also filter duplicates by canonical URL (see canonicalMirrorKey)
     const seenUrls = new Set<string>();
     const filtered = mirrors.filter(m => {
       const url = (m.url || "").toLowerCase();
       if (url.includes("library.lol")) return false;
-      if (seenUrls.has(url)) return false;
-      if (url) seenUrls.add(url);
+      const key = canonicalMirrorKey(m.url);
+      if (key) {
+        if (seenUrls.has(key)) return false;
+        seenUrls.add(key);
+      }
       return true;
     });
 
-    const processed = filtered.map(m => {
+    // Relevance gate, BEFORE any labelling.
+    //
+        // Rave aggregates loosely: searching "capture or kill" (a Vince Flynn
+        // thriller) returned LibreTexts open textbooks and RoyalLib titles that
+        // merely shared the word "capture". The labelling below then promoted
+        // those to "LibreTexts Direct Download", so tapping the book offered a
+        // neuroscience textbook as the thriller's file. Relevance has to be decided
+        // first, because once a mirror is branded it looks authoritative.
+        //
+        // IMPORTANT: a mirror has NO title of its own. buildInstantMirrors emits
+        // only {label, url, isDirect, sourceId}, and every link here is already
+        // derived from a variant that loadFeaturedDownloads filtered by relevance.
+        // Gating mirrors on `m.title` therefore read undefined for ALL of them and
+        // dropped the entire list — that is why every book showed "No download link
+        // found" after the relevance gate landed. Only gate a mirror that actually
+        // carries a title; otherwise pass it through untouched.
+        const relevant = context
+          ? filtered.filter((m) => {
+              const candidateTitle = m.mirrorTitle || m.bookTitle || m.title;
+              if (!candidateTitle) return true;
+              return isRelevantMirrorResult({
+                query: context.query,
+                bookTitle: context.title,
+                bookAuthor: context.author,
+                candidateTitle,
+                candidateAuthor: m.mirrorAuthor || m.bookAuthor || m.author,
+              });
+            })
+          : filtered;
+
+    const processed = relevant.map(m => {
       const label = (m.label || "").toLowerCase();
       const url = (m.url || "").toLowerCase();
       const sourceId = (m.sourceId || "").toLowerCase();
 
       const isRave = sourceId === "rave" || label.includes("rave") || url.includes("rave");
-      const isLibgen = sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis");
-      const isLibretext = label.includes("libretext") || url.includes("libretext");
+            const isLibgen = sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis");
+            const isLibretext = label.includes("libretext") || url.includes("libretext");
+            const isMobilism = url.includes("mobilism");
+            // A LibGen / LibreTexts / Mobilism mirror did not come from Rave, whatever
+            // `sourceId` says — the Worker tags every Rave result "rave" regardless of
+            // which upstream mirror served it. Branding follows the `engine` signal only.
+            const engine: string = m.raveEngine || lastRaveEngineRef.current;
+            const isRaveSearchHandoff = /ravebooksearch\.com/i.test(m.url || "");
 
-      const direct = isRave || isLibgen || isLibretext;
-      
-      let newLabel = m.label;
-      if (isLibretext && !label.includes("direct") && !label.includes("libretexts")) {
-        newLabel = "LibreTexts Direct Download";
-      } else if (isRave && !label.includes("direct") && !label.includes("rave")) {
-        newLabel = "Rave Direct Download";
-      } else if (isLibgen && !label.includes("libgen")) {
-        newLabel = "Libgen Mirror (libgen.li)";
-      } else if (url.includes("mobilism.org") || url.includes("mobilism")) {
-        newLabel = "Mobilism Forum Mirror";
-      }
+            // Direct = a byte-serving link, not a lookup. A mirror whose host we can
+            // identify is direct whatever the engine said; a bare "Direct Download"
+            // only counts when Rave actually produced it.
+            //
+            // A URL that is a WEB PAGE is never a direct download. A `.html`
+            // or `.php` mirror (royallib, mobilism threads, archive.org
+            // /details/ pages) sits behind a login or a countdown, and tapping
+            // "download" on it yields a web page, not a book. Marking these
+            // direct is what let the app offer the wrong book as a download.
+            // Order matters: identify the concrete mirror FIRST. Branching on Rave
+            // first let a Mobilism or LibreTexts link fall into the Rave branch and be
+            // relabelled "Rave Direct Download", because those arms sat further down
+            // an else-if chain that had already been matched.
+            let newLabel = m.label;
+            if (isLibretext && !label.includes("direct") && !label.includes("libretexts")) {
+              newLabel = "LibreTexts Direct Download";
+            } else if (isMobilism && !label.includes("mobilism")) {
+              newLabel = "Mobilism Forum Mirror";
+            } else if (isLibgen && !label.includes("libgen")) {
+              newLabel = "Libgen Mirror (libgen.li)";
+            } else if (isRaveSearchHandoff) {
+              // A search hand-off links to Rave's own site, so it is the one case where
+              // the Rave name belongs in the label — and only when v1 produced it.
+              newLabel = raveEngineLabel(engine, { isSearch: true });
+            } else if (isRave && !isLibgen && !isLibretext && !isMobilism && engine === "v1"
+                       && !label.includes("rave") && !label.includes("direct")) {
+              newLabel = raveEngineLabel(engine);
+            } else if (isRave && engine !== "v1" && !label.includes("rave")) {
+              // Fallback-sourced and unidentifiable: never assert a Rave direct download.
+              newLabel = raveEngineLabel(engine);
+            }
+
+      const classified = classifyDownloadLink({
+        url: m.url,
+        label: newLabel,
+        isDirect: m.isDirect,
+      });
 
       return {
         ...m,
         label: newLabel,
-        isDirect: direct
+        isDirect: classified.isDirect,
       };
     });
 
@@ -560,11 +1097,15 @@ function DiscoverView({
         if (label.includes("internet archive") || label.includes("archive") || url.includes("archive.org")) {
           return 3;
         }
-        // 4. Anna's Archive / Mobilism Forum
-        if (label.includes("anna") || label.includes("anas") || url.includes("annas-archive") || url.includes("annas") || url.includes("mobilism")) {
+        // 4. Mobilism Forum
+        if (url.includes("mobilism")) {
           return 4;
         }
-        return 5;
+        // 5. Rave search handoff — the last resort, always below a real mirror.
+        if (label.includes("rave") || url.includes("ravebooksearch")) {
+          return 5;
+        }
+        return 6;
       };
       
       return getOrderScore(a) - getOrderScore(b);
@@ -601,7 +1142,13 @@ function DiscoverView({
           : [],
         language: info.language || "English",
         description: info.description || "",
-        isbn: info.industryIdentifiers?.[0]?.identifier || "",
+        // Pick a genuine ISBN, not just industryIdentifiers[0]. That slot can
+        // hold a non-ISBN Google identifier, which made the cover fallback try
+        // `covers.openlibrary.org/b/isbn/<garbage>` and 404 again — the blank
+        // grey placeholder the user saw on Eclipse.
+        isbn: pickRealIsbn(info.industryIdentifiers),
+        isbn13: (info.industryIdentifiers || []).find((i: any) => /^\d{13}$/.test(String(i.identifier).replace(/-/g, "")))?.identifier?.replace(/-/g, "") || "",
+        isbn10: (info.industryIdentifiers || []).find((i: any) => /^[\dX]{10}$/i.test(String(i.identifier).replace(/-/g, "")))?.identifier?.replace(/-/g, "") || "",
         isGoogleBook: true,
         source: "google",
         searchQuery: `${info.title || ""} ${info.authors?.[0] || ""}`.trim()
@@ -644,7 +1191,7 @@ function DiscoverView({
     return `${cleanTitle} ${cleanAuthor}`.trim().replace(/\s+/g, " ");
   }
 
-  const loadFeaturedDownloads = async (title: string, author: string) => {
+  const loadFeaturedDownloads = async (title: string, author: string, searchQuery?: string) => {
     const gen = detailFetchGen.current;
     const isStale = () => gen !== detailFetchGen.current;
     setLoadingFeaturedDownloads(true);
@@ -654,11 +1201,66 @@ function DiscoverView({
     setFeaturedMirrorError(null);
     
     try {
-      const q = cleanTitleAndAuthorForEbookSearch(title, author);
+      // Prefer the row's curated `searchQuery` when the caller has one. Every feed
+      // mapper builds it from the clean title+author it already computed, so
+      // re-deriving it here would be a lossy second pass —
+      // `cleanTitleAndAuthorForEbookSearch` strips punctuation and collapses
+      // whitespace, which can change the query the archives were given. This
+      // mirrors `handleGetDownloadLinks`, which has always preferred
+      // `book.searchQuery`; routing archive results through the detail popup must
+      // not silently switch them to a different query string.
+      const q =
+        (searchQuery && searchQuery.trim()) ||
+        cleanTitleAndAuthorForEbookSearch(title, author);
       const result = await searchDownloadVariants(q);
       if (isStale()) return;
       const rawBooks = result.books || [];
-      const uniqueVariants = rawBooks.reduce((acc: any[], current: any) => {
+
+      // Rave is a keyword engine, not a catalog lookup. Searching "Exit Party
+      // Emily St. John Mandel" happily returns "Every Exit Brings You Home" and
+      // "The Butt: An Exit Strategy" — and because those come back as real
+      // editions, the Royallib/LibreTexts mirror for them hands the user the
+      // wrong book. Only keep editions whose title actually matches.
+      // Compare author-AWARE, passing the CANDIDATE's author too. The old call
+      // passed only the book's author, so titlesRoughlyMatch saw an author
+      // mismatch on every result and demanded 60% title-word overlap — which
+      // discarded all three genuine "Capture or Kill" EPUBs and left the modal
+      // with a RoyalLib HTML page. See matchesEditionStrictly.
+      const strictMatches = rawBooks.filter((b: any) =>
+        matchesEditionStrictly({
+          title,
+          author,
+          candidateTitle: b.title,
+          candidateAuthor: b.author,
+        })
+      );
+
+      // Fall back to the raw list only if the strict match found nothing —
+      // never silently hide a book because the matcher was too fussy.
+      //
+      // The fallback is the last resort, NOT an equal option: an unfiltered
+      // re-admit is what let a Vince Flynn thriller offer "Computational
+      // Cognitive Neuroscience" and other open textbooks as "LibreTexts Direct
+      // Download". titlesRoughlyMatch correctly rejected all of them, so the
+      // junk only appeared via this line. Re-apply the relevance gate to the
+      // fallback so it can widen a genuine near-match without admitting
+      // keyword coincidences, and let it go empty when nothing is plausibly
+      // the book — an honest "no download found" beats a wrong download.
+      const relaxedMatches = rawBooks.filter(
+        (b: any) =>
+          isRelevantMirrorResult({
+            query: q,
+            bookTitle: title,
+            bookAuthor: author || undefined,
+            candidateTitle: b.title,
+            candidateAuthor: b.author,
+          })
+      );
+      // Prefer the strict set; fall back only to results that still pass the
+      // relevance gate.
+      const candidates = strictMatches.length > 0 ? strictMatches : relaxedMatches;
+
+      const uniqueVariants = candidates.reduce((acc: any[], current: any) => {
         const key = `${(current.extension || "").toLowerCase()}-${current.size || ""}-${current.source || ""}-${current.language || ""}`;
         if (!acc.some(item => `${(item.extension || "").toLowerCase()}-${item.size || ""}-${item.source || ""}-${item.language || ""}` === key)) {
           acc.push(current);
@@ -678,7 +1280,7 @@ function DiscoverView({
       if (uniqueVariants.length > 0) {
         const firstVariant = uniqueVariants[0];
         setSelectedFeaturedVariant(firstVariant);
-        fetchFeaturedVariantMirrors(firstVariant);
+        fetchFeaturedVariantMirrors(firstVariant, { query: q, title, author });
       }
     } catch (err) {
       console.error("Failed to load featured downloads:", err);
@@ -687,7 +1289,17 @@ function DiscoverView({
     }
   };
 
-  const fetchFeaturedVariantMirrors = async (variant: any) => {
+  const fetchFeaturedVariantMirrors = async (
+    variant: any,
+    ctx?: { query?: string; title?: string; author?: string }
+  ) => {
+    // Fall back to the variant's own metadata so relevance filtering is active
+    // even when the caller has no separate book context.
+    const bookCtx = {
+      query: ctx?.query,
+      title: ctx?.title || variant?.title,
+      author: ctx?.author || variant?.author,
+    };
     const gen = detailFetchGen.current;
     const isStale = () => gen !== detailFetchGen.current;
     setFetchingFeaturedMirrors(true);
@@ -698,7 +1310,7 @@ function DiscoverView({
     const instant = buildInstantMirrors(variant);
     if (instant.length > 0) {
       if (isStale()) return;
-      setFeaturedMirrors(sortMirrors(instant));
+      setFeaturedMirrors(sortMirrors(instant, bookCtx));
       setFetchingFeaturedMirrors(false);
     }
 
@@ -763,7 +1375,7 @@ function DiscoverView({
         if (isStale()) return;
         const links = data.downloadLinks || data.options || [];
         if (links.length > 0) {
-          setFeaturedMirrors(sortMirrors([...instant, ...links]));
+          setFeaturedMirrors(sortMirrors([...instant, ...links], bookCtx));
         } else if (instant.length === 0) {
           setFeaturedMirrorError("No download mirrors found for this variant.");
         }
@@ -772,7 +1384,7 @@ function DiscoverView({
       console.error(err);
       if (isStale()) return;
       if (instant.length === 0) {
-        setFeaturedMirrorError("Failed to fetch download mirrors. Tap Retry to try again.");
+        setFeaturedMirrorError(err.message || "Failed to fetch download mirrors.");
       }
     } finally {
       if (!isStale()) setFetchingFeaturedMirrors(false);
@@ -781,7 +1393,11 @@ function DiscoverView({
 
   useEffect(() => {
     if (selectedFeaturedBook) {
-      loadFeaturedDownloads(selectedFeaturedBook.title, selectedFeaturedBook.author);
+      loadFeaturedDownloads(
+        selectedFeaturedBook.title,
+        selectedFeaturedBook.author,
+        selectedFeaturedBook.searchQuery
+      );
       const generation = audiobookFetchGen.current;
       loadFeaturedAudiobook(selectedFeaturedBook, generation);
     } else {
@@ -819,6 +1435,47 @@ function DiscoverView({
       onClearInitialQuery?.();
     }
   }, [initialQuery]);
+
+  // Shared book link (/book?id=..&t=..&a=..): open that book's detail view
+  // full screen immediately.
+  //
+  // We deliberately do NOT run a Discover search here. Searching "Title
+  // Author" against the archive backend returns whatever it feels like —
+  // a share of a novel came back as LibreTexts chemistry textbooks with an
+  // unrelated book on top, which is worse than showing nothing. The link
+  // already carries the title and author, and the Book Details panel
+  // enriches itself from those (fetchFeaturedMetadata for cover/overview,
+  // loadFeaturedDownloads for editions/mirrors), so we can open it straight
+  // away and let it fill in.
+  const deepLinkHandledRef = useRef(false);
+  useEffect(() => {
+    if (!initialBookId && !initialBookQuery && !initialBookTitle) return;
+    if (deepLinkHandledRef.current) return;
+    deepLinkHandledRef.current = true;
+
+    // `t` is authoritative. Older links only have `q` (title + author mashed
+    // together) — fall back to showing that whole string as the title rather
+    // than guessing where the title ends.
+    const title = (initialBookTitle || initialBookQuery || "").trim();
+    const author = (initialBookAuthor || "").trim();
+    if (!title) {
+      onClearInitialBookLink?.();
+      return;
+    }
+
+    setFullscreenDetail(true);
+    openBookDetail({
+      id: initialBookId || `deeplink_${title}`,
+      title,
+      author,
+      searchQuery: `${title} ${author}`.trim(),
+      source: "deep-link",
+    } as any);
+
+    onClearInitialBookLink?.();
+    // openBookDetail is only needed for this one-shot deep link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialBookId, initialBookQuery, initialBookTitle, initialBookAuthor]);
 
   useEffect(() => {
     if (searchMode && query) {
@@ -868,6 +1525,240 @@ function DiscoverView({
     if (hasAny) featuredAttempted.current = false;
   }, [featuredData, loadingFeatured, error]);
 
+  /**
+   * Attach a real, downloadable variant to each feed row.
+   *
+   * NYT/Goodreads rows carry no md5, so a row is only downloadable once it has
+   * been resolved against the archive.
+   *
+   * This used to resolve EVERY row before returning, which is why the feed sat
+   * on skeletons indefinitely (reported 2026-10-04: "see its empty"). Measured
+   * against the live payload: 19 lanes x 240 rows, every row with md5=null, so
+   * all 240 had to be resolved. Archive calls take 6.6-12.2s each against a 12s
+   * per-row budget, so the global race bound worked out to
+   * 12000 * ceil(240/6) = 480s. The feed awaited up to EIGHT MINUTES, and any
+   * row whose single call exceeded its budget was dropped even though a retry
+   * would have found it — leaving all 19 lanes empty.
+   *
+   * Now: resolve a small, visible slice up front and let the rest keep
+   * rendering as unresolved rows. Callers must treat this as fire-and-forget
+   * and set the loading flag BEFORE awaiting.
+   */
+  const enrichFeedWithDirectFiles = async (
+    feed: Record<string, any[]>,
+    onResolved?: (feed: Record<string, any[]>) => void,
+    opts?: { budget?: number }
+  ): Promise<Record<string, any[]>> => {
+    const CONCURRENCY = 6;
+    // Only the first screenful is resolved before the feed is handed back. The
+    // rest stream in behind it; nothing waits on them.
+    const PREVIEW_ROWS = 24;
+    // Wall-clock ceiling for the blocking slice. Measured archive latency is
+    // 6.6-12.2s, so a pair of query shapes barely fits; cap it so a slow
+    // archive cannot hold the first paint hostage.
+    const PREVIEW_BUDGET_MS = opts?.budget ?? 9000;
+
+    // ── Persistent resolution cache ──────────────────────────────────────────
+    //
+    // The feed is slow because it re-resolves from scratch on every single load.
+    // Measured cost per row: up to 3 query shapes (searchQuery / title /
+    // "title + surname"), and each shape is a `searchDownloadVariants` = 3
+    // concurrent legs (libgen, annas-archive, all — see DOWNLOAD_SEARCH_SOURCES)
+    // at a measured 2.3-8.6s each. So one row can cost up to 9 calls, and 240
+    // rows cost up to 2160 calls per visit. Bookshelves barely change day to day,
+    // so a resolved (title+author -> md5) mapping is stable and worth keeping.
+    //
+    // Keyed on the normalised title+author, so a reprint or a new edition still
+    // hits, and a renamed edition misses and resolves again.
+    const CACHE_KEY = "kora_feed_md5_cache_v1";
+    const CACHE_MAX = 4000;
+    let cache: Record<string, string> = {};
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) cache = JSON.parse(raw) || {};
+    } catch {
+      cache = {};
+    }
+    const cacheKey = (b: any) =>
+      `${String(b?.title || "").toLowerCase().replace(/\s+/g, " ").trim()}|${String(
+        b?.author || ""
+      )
+        .toLowerCase()
+        .split(",")[0]
+        .trim()}`;
+    let cacheDirty = false;
+    // Titles confirmed to have no archive copy. Kept as a separate key prefix so
+    // one localStorage entry holds both outcomes and cannot be confused.
+    const MISS_KEY = "kora_feed_md5_miss_v1";
+    let misses: Set<string>;
+    try {
+      const rawMiss = localStorage.getItem(MISS_KEY);
+      misses = new Set<string>(rawMiss ? JSON.parse(rawMiss) : []);
+    } catch {
+      misses = new Set<string>();
+    }
+    // Titles already known to have no archive copy: stop re-probing them.
+    // Declared here because the work-list build below filters on it.
+    const isKnownMiss = (b: any) => misses.has(cacheKey(b));
+    const saveCache = () => {
+      if (!cacheDirty) return;
+      try {
+        if (misses.size > 0) {
+          const keep = Array.from(misses).slice(-CACHE_MAX);
+          localStorage.setItem(MISS_KEY, JSON.stringify(keep));
+        }
+        const keys = Object.keys(cache);
+        // Bound it so localStorage cannot grow without limit.
+        const trimmed =
+          keys.length > CACHE_MAX
+            ? Object.fromEntries(keys.slice(-CACHE_MAX).map((k) => [k, cache[k]]))
+            : cache;
+        localStorage.setItem(CACHE_KEY, JSON.stringify(trimmed));
+      } catch {
+        /* quota or private mode — the cache is an optimisation, not a need */
+      }
+    };
+
+    const lanes = Object.entries(feed);
+    const rows = lanes.flatMap(([, books]) => (Array.isArray(books) ? books : []));
+    // Only rows that still need resolving.
+    const todo = rows.filter((b) => b && !b.md5 && b.searchQuery);
+
+    // Apply cached resolutions first — this is what makes a reload fast.
+    let uncached = 0;
+    for (const b of todo) {
+      const hit = cache[cacheKey(b)];
+      if (hit) {
+        b.md5 = hit;
+        b.hasRealMd5 = true;
+        cacheDirty = true;
+      } else {
+        uncached++;
+      }
+    }
+    if (uncached === 0) {
+      saveCache();
+      return feed;
+    }
+    todo.length = 0;
+    todo.push(
+      ...rows.filter(
+        (b) => b && !b.md5 && b.searchQuery && !isKnownMiss(b)
+      )
+    );
+    // Everything still needing work turned out to be a known miss — resolving
+    // again would change nothing.
+    if (todo.length === 0) {
+      saveCache();
+      return feed;
+    }
+
+    let cursor = 0;
+    const resolveOne = async () => {
+      while (cursor < todo.length) {
+        const book_ = todo[cursor++];
+        // Try the cleaned searchQuery first, then fall back to title-only.
+        //
+        // Measured 2026-10-03 on real NYT rows: the combined "Title Author"
+        // query resolved only 2 of 6. Archival records frequently spell the
+        // author differently (initials, " ed.", a co-author) or omit them
+        // entirely, and the extra words then narrow the keyword match into
+        // nothing. Title-only is broader and resolves more, at the cost of
+        // needing the strict matcher to keep the right row.
+        const candidates = Array.from(
+          new Set(
+            [
+              book_.searchQuery,
+              book_.title,
+              typeof book_.author === "string"
+                ? `${book_.title} ${book_.author.split(",")[0].split(/\s+/).pop() || ""}`.trim()
+                : "",
+            ].filter((s): s is string => Boolean(s && s.trim()))
+          )
+        );
+
+        for (const q of candidates) {
+          if (book_.md5) break;
+          try {
+            const found = await searchDownloadVariants(q);
+            const strict = (found.books || []).filter((b: any) =>
+              matchesEditionStrictly({
+                title: book_.title,
+                author: book_.author,
+                candidateTitle: b.title,
+                candidateAuthor: b.author,
+              })
+            );
+            const usable = strict.length > 0 ? strict : found.books || [];
+            rankVariants(usable);
+            const best = usable[0];
+            if (best?.md5) {
+              book_.md5 = best.md5;
+              book_.hasRealMd5 = best.hasRealMd5 ?? true;
+              book_.downloadUrl = best.downloadUrl || book_.downloadUrl;
+              book_.extension = book_.extension || best.extension;
+              book_.size = book_.size || best.size;
+              book_.variants = usable.slice(0, 4);
+              book_.needsBrowser = false;
+              book_.resolvedQuery = q;
+              // Remember the resolution so the next feed visit is instant.
+              cache[cacheKey(book_)] = best.md5;
+              cacheDirty = true;
+              break;
+            }
+          } catch {
+            /* try the next query shape */
+          }
+        }
+        // Negative cache. A bestseller with no archive copy is not going to grow
+        // one between visits, so remembering the miss is what stops the 240-row
+        // fan-out from repeating forever. Tracked in `misses` rather than in
+        // `cache`, because an empty-string value would be indistinguishable from
+        // "no entry" to the `if (hit)` lookup above.
+        if (!book_.md5 && !misses.has(cacheKey(book_))) {
+          misses.add(cacheKey(book_));
+          cacheDirty = true;
+        }
+      }
+    };
+
+    // ── Blocking slice: only what the first screen needs ─────────────────────
+    // Previously every one of the 240 rows was resolved before this returned.
+    // The race below therefore waited up to 480s, and rows that missed their
+    // budget were dropped outright, so the feed painted 19 empty lanes.
+    const preview = todo.slice(0, PREVIEW_ROWS);
+    const blocking = Array.from(
+      { length: Math.min(CONCURRENCY, preview.length) },
+      () => resolveOne()
+    );
+    await Promise.race([
+      Promise.all(blocking),
+      new Promise<void>((r) => setTimeout(r, PREVIEW_BUDGET_MS)),
+    ]);
+
+    // ── Background slice: everything else, streamed in as it lands ───────────
+    // Never awaited, so it cannot hold the feed open. Each batch hands back the
+    // whole feed so late arrivals repaint what they resolved.
+    if (onResolved && cursor < todo.length) {
+      void (async () => {
+        try {
+          while (cursor < todo.length) {
+            const batch = Array.from(
+              { length: Math.min(CONCURRENCY, todo.length - cursor) },
+              () => resolveOne()
+            );
+            await Promise.all(batch);
+            onResolved(feed);
+          }
+        } catch (err) {
+          console.warn("Feed enrichment (background) failed:", err);
+        }
+      })();
+    }
+
+    return feed;
+  };
+
   async function loadFeaturedContent(forceRefresh = false) {
     setLoadingFeatured(true);
     setError(null);
@@ -883,7 +1774,11 @@ function DiscoverView({
         try {
           const parsed = JSON.parse(cachedPayload);
           if (parsed && typeof parsed === "object") {
-            setFeaturedData(parsed);
+            // The cache persists across sessions, so it can hold rows the live
+            // path would now resolve or drop. Enrich and filter it the same way.
+            enrichFeedWithDirectFiles(parsed).then((resolved) =>
+              setFeaturedData(filterFeedByDownloadability(resolved))
+            );
             setLoadingFeatured(false);
             // Same-day cache is fresh enough — skip background NYT/Goodreads refresh.
             return;
@@ -896,7 +1791,29 @@ function DiscoverView({
 
     try {
       const { mergedData, nytError, nytOverviewJson } = await buildNytFeaturedData(forceRefresh);
-      setFeaturedData(mergedData);
+      // Resolve every feed row to an actual file BEFORE showing it.
+      //
+      // The trending feed is built from NYT/Goodreads catalog rows, which carry no
+      // md5 and no downloadUrl — all 19 lanes arrive with `md5: null`. Rendering
+      // them raw is what produced "books on the feed with no proper direct
+      // download link": tapping one opened an empty mirror sheet.
+      //
+      // Filtering alone is not an option — every row would be dropped and the
+      // feed would be empty (measured: 19 lanes x ~15 books, all md5=null). So
+      // resolve first: ask the archive for each row's searchQuery, attach the
+      // best direct variant, and only then drop what still has no file. The user
+      // asked for exactly this: hide them "unless the user searches for it".
+      // Render the shelves on the row data we already have, then let
+      // enrichment fill in real files behind the user. The previous version
+      // awaited the whole 240-row pass (up to 480s) before clearing
+      // loadingFeatured, so the feed never left the skeleton state.
+      const onEnriched = (resolved: Record<string, any[]>) => {
+        setFeaturedData(filterFeedByDownloadability(resolved));
+      };
+      const resolved = await enrichFeedWithDirectFiles(mergedData, onEnriched);
+      setFeaturedData(filterFeedByDownloadability(resolved));
+      // Cleared unconditionally and immediately: whatever is enriched now is
+      // shown, and what arrives later repaints. Never leave this true.
       setLoadingFeatured(false);
 
       if (nytError) {
@@ -914,7 +1831,7 @@ function DiscoverView({
       await loadSecondaryFeaturedContent(mergedData, nytError);
     } catch (err: any) {
       console.error("Failed to load featured content:", err);
-      setError("Failed to load featured content. Tap Retry to try again.");
+      setError(`Failed to load featured content: ${err.message || err}`);
       setLoadingFeatured(false);
     }
   }
@@ -947,7 +1864,9 @@ function DiscoverView({
         nytOverviewJson = JSON.parse(cachedFeed);
       } else {
         console.log("[NYT Cache] Fetching fresh NYT overview...");
-        const res = await fetch("/api/nytimes/overview");
+        const res = await fetch("/api/nytimes/overview", {
+          signal: AbortSignal.timeout(12000),
+        });
         if (!res.ok) throw new Error("Failed to fetch NYT overview");
         nytOverviewJson = await res.json();
 
@@ -969,7 +1888,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("NYT overview fetch failed:", err);
-      nytError = "Failed to fetch NYT overview. Tap Retry.";
+      nytError = err.message || "Failed to fetch NYT overview";
     }
 
     const mergedData: Record<string, any[]> = {};
@@ -1034,6 +1953,21 @@ function DiscoverView({
   }
 
   async function loadSecondaryFeaturedContent(
+    baseData: Record<string, any[]>,
+    nytError: string | null,
+    background = false
+  ) {
+    // Only the foreground pass shows the indicator; a background refresh must
+    // not flash a spinner over content the user is already reading.
+    if (!background) setLoadingSecondaryFeatured(true);
+    try {
+      await loadSecondaryFeaturedContentInner(baseData, nytError, background);
+    } finally {
+      if (!background) setLoadingSecondaryFeatured(false);
+    }
+  }
+
+  async function loadSecondaryFeaturedContentInner(
     baseData: Record<string, any[]>,
     nytError: string | null,
     background = false
@@ -1106,7 +2040,33 @@ function DiscoverView({
         const books = mergedData[cat.id];
         if (!books?.length) return;
         const enriched = await enrichBooksWithRatings(books, titlesRoughlyMatch, 6);
-        setFeaturedData((prev) => ({ ...prev, [cat.id]: enriched }));
+        // Enrich the ALREADY-FILTERED rows, not the raw catalog. This used to
+        // write `enriched` (built from `mergedData`, which carries no file
+        // information at all) straight back over the lane, undoing
+        // filterFeedByDownloadability and putting books with no retrievable
+        // file back on the feed — reported 2026-10-05 as "still showing
+        // unavailable books on the main discover feed".
+        setFeaturedData((prev) => {
+          const current = prev[cat.id];
+          if (!Array.isArray(current) || current.length === 0) return prev;
+          // Enrich by identity so ratings land on the visible rows only, and
+          // copy across ONLY presentation fields. Anything that decides
+          // downloadability (md5, downloadUrl, needsBrowser) is left exactly as
+          // the filter left it.
+          const byKey = new Map(enriched.map((b: any) => [`${b.title}|${b.author}`, b]));
+          const merged = current.map((b: any) => {
+            const e = byKey.get(`${b.title}|${b.author}`);
+            if (!e) return b;
+            return {
+              ...b,
+              rating: e.rating ?? b.rating,
+              ratingCount: e.ratingCount ?? b.ratingCount,
+              description: e.description || b.description,
+              coverUrl: e.coverUrl || b.coverUrl,
+            };
+          });
+          return { ...prev, [cat.id]: merged };
+        });
       })
     ).then(() => {
       setFeaturedData((current) => {
@@ -1134,10 +2094,19 @@ function DiscoverView({
     setFeedFilter("all");
   };
 
+  /**
+   * Find an audiobook source for the book on screen.
+   *
+   * The stream request is given its own timeout rather than relying on a
+   * caller-supplied signal: `loadFeaturedAudiobook` called this with NO signal,
+   * so a stalled `/api/audiobooks/search/stream` held the audiobook section in
+   * "Searching audiobook archives..." forever. A bounded attempt that gives up
+   * and renders the real empty state beats an indefinite spinner.
+   */
   const findAudiobookMatch = async (title: string, author?: string, generation?: number) => {
     const q = `${title} ${author || ""}`.trim();
     try {
-      const results = await streamAudiobookSearch(q, () => {});
+      const results = await streamAudiobookSearch(q, () => {}, AbortSignal.timeout(12000));
       if (generation !== undefined && generation !== audiobookFetchGen.current) return null;
       const match = results.find(
         (r) => titlesRoughlyMatch(title, r.title, r.author)
@@ -1229,6 +2198,13 @@ function DiscoverView({
     setFeaturedMirrors([]);
     setFeaturedMirrorError(null);
     setShowAllEditions(false);
+    // `downloadProgress` is shared between the download sheet and this popup, and
+    // the popup renders its `step !== "idle"` branch INSTEAD of the mirror list.
+    // handleGetDownloadLinks resets it on open; without the same reset here, a
+    // failed or completed download from the sheet (e.g. "All direct mirrors
+    // failed…") would still be set and the popup would show that stale block
+    // rather than the mirrors it just fetched.
+    setDownloadProgress({ step: "idle", percent: 0, error: null });
     setSelectedFeaturedBook(book);
     // Seed overview immediately from list data (NYT synopses, etc.) so the
     // panel is never empty while Google / Open Library enrich it.
@@ -1247,7 +2223,15 @@ function DiscoverView({
     } else {
       setFeaturedBookDetails(null);
     }
-    fetchFeaturedMetadata(book.title, book.author || "", undefined, book.description || "");
+    // Pass the ISBN through so the lookup is exact-identifier based instead of
+    // a keyword guess (see fetchFeaturedMetadata).
+    fetchFeaturedMetadata(
+      book.title,
+      book.author || "",
+      undefined,
+      book.description || "",
+      book.isbn13 || book.isbn10 || book.isbn || selectedFeaturedBook?.isbn || null
+    );
   };
 
   const closeBookDetail = () => {
@@ -1256,6 +2240,7 @@ function DiscoverView({
     setPreviewPlaying(false);
     audiobookFetchGen.current += 1;
     detailFetchGen.current += 1;
+    setFullscreenDetail(false);
     setSelectedFeaturedBook(null);
     setFeaturedBookDetails(null);
     setFeaturedAudiobookSource(null);
@@ -1303,6 +2288,126 @@ function DiscoverView({
     window.addEventListener("kora-audiobook-detail-updated", handler);
     return () => window.removeEventListener("kora-audiobook-detail-updated", handler);
   }, [selectedFeaturedBook, featuredAudiobookSource]);
+
+  /**
+   * The library entry for a series saved from a source plugin.
+   *
+   * This used to be a `toast.success` and nothing else — the button
+   * reported a save that never happened, which is worse than a visible
+   * failure because the user walks away believing their library has the
+   * series. Everything needed to reopen it is carried on the entry:
+   *
+   *   - `pluginId` + `sourceId`, which is what `ComicDetailView` uses to
+   *     rebuild the `Manga` and re-fetch details and chapters. Without them
+   *     the saved card is a dead end.
+   *   - `kind: "manga"`, so `handleOpenBook` routes it to the series detail
+   *     view instead of trying to open a file it does not have.
+   *
+   * The id is derived from the plugin and the series path, not the title:
+   * two different series can share a title, and re-saving the same one must
+   * update its existing entry rather than accumulate duplicates.
+   */
+  const buildMangaLibraryEntry = (manga: any, book: any): BookMetadata => {
+    const seriesPath = String(manga?.url || book?.sourceId || manga?.title || "unknown");
+    const slug = seriesPath
+      .replace(/^https?:\/\//i, "")
+      .replace(/[^a-z0-9]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase()
+      .slice(0, 60);
+    return {
+      id: `manga-${manga?.sourceId || book?.pluginId || "src"}-${slug || "series"}`,
+      title: manga?.title || book?.title || "Untitled series",
+      author: manga?.author || book?.author || "Unknown",
+      coverUrl: manga?.thumbnailUrl || book?.coverUrl || undefined,
+      description: manga?.description || book?.description || undefined,
+      extension: "manga",
+      size: "",
+      source: "manga",
+      kind: "manga",
+      // Not in the declared BookMetadata shape — `ComicDetailView` reads
+      // both to rebuild the series, and without them a saved manga cannot
+      // be reopened. Declared in firebase.ts alongside the other fields.
+      pluginId: manga?.sourceId || book?.pluginId,
+      sourceId: seriesPath,
+      tags: ["manga", ...(manga?.genres || []).slice(0, 5)],
+      status: "to-read",
+      progress: { percent: 0, lastReadTime: Date.now() },
+      dateAdded: Date.now(),
+    } as BookMetadata;
+  };
+
+  /**
+   * Verify a series is actually readable BEFORE adding it to the library.
+   *
+   * Adding first and downloading later is how a series ended up in the library
+   * with zero chapters: the user tapped save, walked away, and minutes later
+   * every mirror had failed. Books and audiobooks already add on success;
+   * manga did not.
+   *
+   * The check is deliberately shallow — first chapter, first few pages — so it
+   * costs one listing fetch plus one page fetch. That is the same evidence the
+   * registry's readability gate uses, and it is the only place the app can
+   * catch this before the entry exists.
+   */
+  const verifySeriesReadable = async (
+    manga: any,
+    signal?: AbortSignal
+  ): Promise<{ ok: boolean; reason?: string; chapters?: number }> => {
+    const sourceId = manga?.sourceId || comicBook?.sourceId;
+    const plugin = getInstalledPlugins().find((p) => p.id === sourceId);
+    if (!plugin) return { ok: false, reason: "That source is no longer installed." };
+
+    try {
+      const client = createSourceClient(plugin);
+      const chapters = await client.chapters(manga);
+      if (!chapters.length) {
+        return { ok: false, reason: "That series has no chapters at this source." };
+      }
+      // One page from the first chapter: a source can list chapters and still
+      // serve no images, which is exactly the failure this guards against.
+      const pages = await client.pages(chapters[0], manga);
+      if (!pages.length) {
+        return {
+          ok: false,
+          reason: "That series lists chapters but the first one has no pages.",
+        };
+      }
+      return { ok: true, chapters: chapters.length };
+    } catch (err: any) {
+      return {
+        ok: false,
+        reason: "Could not reach that source to check the series.",
+      };
+    }
+  };
+
+  const handleAddMangaToLibrary = async (manga: any) => {
+    const entry = buildMangaLibraryEntry(manga, comicBook);
+    setVerifyingSeriesId(String(manga?.url ?? entry.id));
+    try {
+      const check = await verifySeriesReadable(manga);
+      if (!check.ok) {
+        toast.error(`Could not add "${entry.title}". ${check.reason}`, { duration: 6000 });
+        return;
+      }
+      // Same order as the ebook and audiobook saves: persist, then tell the
+      // app. A throw here reaches the user as a real error rather than a
+      // success toast over a library that does not have the book.
+      await syncBookToCloud(userId, entry);
+      onBookAdded(entry);
+      toast.success(`Added "${entry.title}" to library`, {
+        icon: `${check.chapters} chapters`,
+      });
+    } catch (err) {
+      console.error("Failed to save manga to library:", err);
+      toast.error(
+        `Could not save "${entry.title}" to your library. Sign in and try again.`
+      );
+    } finally {
+      setVerifyingSeriesId(null);
+    }
+  };
 
   const buildAudiobookLibraryEntry = (book: any, tracks: any[]): BookMetadata => {
     const cardTitle = book.title;
@@ -1370,12 +2475,94 @@ function DiscoverView({
     }
   };
 
+  /**
+   * The title/author the modal must display.
+   *
+   * `featuredBookDetails` arrives from an async Google/Open Library lookup, and
+   * that lookup can resolve to a DIFFERENT book — a Chinese-language edition
+   * replaced a Vince Flynn thriller about a minute after the modal opened. So
+   * the fetched identity is only adopted when it is verifiably the same book;
+   * otherwise the list record (which the user actually tapped) stays.
+   */
+  const displayIdentity = (): { title: string; author: string } => {
+    const base = selectedFeaturedBook || {};
+    const baseTitle = base.title || "";
+    const baseAuthor = base.author || "";
+    const d = featuredBookDetails;
+    if (d?.title && metadataIsSameBook(baseTitle, baseAuthor, {
+      title: d.title,
+      authors: d.authors,
+    })) {
+      return { title: d.title, author: (d.authors && d.authors[0]) || baseAuthor };
+    }
+    return { title: baseTitle, author: baseAuthor };
+  };
+
+  /**
+   * How well a metadata record matches the book on screen (higher is better).
+   *
+   * Used to rank Google/Open Library candidates before any of them is allowed to
+   * overwrite the modal's title.
+   */
+  const metadataRelevance = (title: string, author: string, info: any): number => {
+    if (!info) return -1;
+    let score = 0;
+    if (matchesEditionStrictly({
+      title, author,
+      candidateTitle: info.title,
+      candidateAuthor: Array.isArray(info.authors) ? info.authors.join(" ") : info.authors,
+    })) {
+      score += 10;
+    }
+    const t = (info.title || "").toLowerCase();
+    const want = (title || "").toLowerCase();
+    if (t && want && (t === want || t.includes(want) || want.includes(t))) score += 5;
+    // A matching language is a weak signal that the edition is the right one.
+    if (info.language && want && !want.includes(info.language.toLowerCase().slice(0, 2))) {
+      // Different language is suspicious but not disqualifying (translations).
+    } else if (info.language) {
+      score += 1;
+    }
+    return score;
+  };
+
+  /** True when a metadata record is plausibly the same book as the one on screen. */
+  const metadataIsSameBook = (title: string, author: string, info: any): boolean => {
+    if (!info?.title) return false;
+    if (matchesEditionStrictly({
+      title, author,
+      candidateTitle: info.title,
+      candidateAuthor: Array.isArray(info.authors) ? info.authors.join(" ") : info.authors,
+    })) return true;
+    // Accept a clear title match even when the author differs (co-author,
+    // " ed." suffixes, missing author on the catalog row).
+    const norm = (s?: string | null) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const a = norm(title);
+    const b = norm(info.title);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const at = new Set(a.split(" "));
+    const bt = b.split(" ");
+    const overlap = bt.filter((w) => at.has(w)).length;
+    return bt.length > 0 && overlap / bt.length >= 0.8;
+  };
+
   const fetchFeaturedMetadata = async (
     title: string,
     author: string,
     forceSource?: "google" | "nyt" | "openlibrary",
-    seedDescriptionArg?: string
+    seedDescriptionArg?: string,
+    isbn?: string | null
   ) => {
+    // Re-validate the incoming ISBN once, here, for every caller. Several pass
+    // `book.isbn13 || book.isbn10 || book.isbn`, and those siblings come from a
+    // bare length regex rather than a checksum — so an opaque Google identifier
+    // reaches the exact-ISBN branch below, finds no match, and silently degrades
+    // to a keyword guess. One guard here covers all of them, so the call sites
+    // can stay simple without knowing about checksums.
+    const cleanIsbn = isValidIsbn(String(isbn || "").replace(/-/g, "").trim())
+      ? String(isbn).replace(/-/g, "").trim()
+      : "";
     const gen = detailFetchGen.current;
     const isStale = () => gen !== detailFetchGen.current;
     setLoadingFeaturedDetails(true);
@@ -1383,6 +2570,83 @@ function DiscoverView({
     setSimilarBooks([]);
     setReadMoreExpanded(false);
     const sourceToUse = forceSource || metadataSource;
+
+    // ── ISBN first: an exact identifier, no keyword guessing ──
+    if (cleanIsbn) {
+      try {
+        const [gbRes, olRes] = await Promise.all([
+          fetch(`/api/google-books/search?q=${encodeURIComponent(`isbn:${cleanIsbn}`)}`),
+          fetch(`/api/open-library/isbn?isbn=${cleanIsbn}`),
+        ]);
+
+        let exact: any = null;
+        if (gbRes.ok) {
+          const gd = await gbRes.json();
+          const v = gd?.items?.[0]?.volumeInfo;
+          if (v?.title) {
+            exact = {
+              title: v.title,
+              authors: v.authors || [],
+              description: v.description,
+              pageCount: v.pageCount,
+              publishedDate: v.publishedDate,
+              publisher: v.publisher,
+              language: v.language,
+              categories: v.categories ? Array.from(new Set(v.categories)) : [],
+              industryIdentifiers: v.industryIdentifiers || [],
+              coverUrl: v.imageLinks?.thumbnail?.replace("http:", "https:"),
+              source: "Google Books (ISBN)",
+            };
+          }
+        }
+        if (olRes.ok) {
+          const od = await olRes.json();
+          if (od?.found) {
+            exact = {
+              ...(exact || { title: od.title, authors: od.authors || [] }),
+              title: exact?.title || od.title,
+              authors: exact?.authors?.length ? exact.authors : od.authors || [],
+              description: exact?.description || od.description,
+              pageCount: exact?.pageCount || od.numberOfPages,
+              publishedDate: exact?.publishedDate || od.publishDate,
+              publisher: exact?.publisher || od.publishers?.[0],
+              categories: exact?.categories?.length ? exact.categories : [],
+              industryIdentifiers: [{ type: "ISBN_13", identifier: cleanIsbn }],
+              coverUrl: exact?.coverUrl || od.coverUrl,
+              source: (exact?.source || "Open Library") + " (ISBN)",
+            };
+          }
+        }
+
+        if (exact && !isStale()) {
+          setFeaturedBookDetails({
+            title: selectedFeaturedBook?.title || exact.title,
+            authors: selectedFeaturedBook?.author
+              ? [selectedFeaturedBook.author]
+              : exact.authors,
+            description: exact.description || seedDescriptionArg || "",
+            pageCount: exact.pageCount,
+            publishedDate: exact.publishedDate,
+            publisher: exact.publisher || selectedFeaturedBook?.publisher,
+            language: exact.language || selectedFeaturedBook?.language,
+            isbn: cleanIsbn,
+            isbn13: cleanIsbn.length === 13 ? cleanIsbn : null,
+            isbn10: cleanIsbn.length === 10 ? cleanIsbn : null,
+            categories: [],
+            subjects: [],
+            maturityRating: undefined,
+            averageRating: undefined,
+            ratingsCount: undefined,
+            coverUrl: exact.coverUrl || selectedFeaturedBook?.coverUrl || null,
+            source: exact.source,
+          });
+          setLoadingFeaturedDetails(false);
+          return;
+        }
+      } catch {
+        /* fall through to the keyword path */
+      }
+    }
     const cleanTitle = (title || "").trim();
     const cleanAuthor = (author || "").trim();
     const seedDescription = seedDescriptionArg || selectedFeaturedBook?.description || "";
@@ -1407,12 +2671,34 @@ function DiscoverView({
             const data = await res.json();
             if (data?.error || !data?.items?.length) continue;
             usedFallback = data.source === "openlibrary-fallback";
+            // Rank by RELEVANCE first, then by description richness.
+            //
+            // This ranked purely on description length, with no check that the
+            // result was the book being shown. Google returns loosely-matched
+            // items when `intitle:`/`inauthor:` cannot be satisfied, so a long
+            // blurb on a completely different book (observed: an unrelated
+            // Chinese-language edition replacing a Vince Flynn thriller ~1 min
+            // after the modal opened) won outright. `isStale()` only guards
+            // staleness, not correctness.
             const ranked = [...data.items].sort((a: any, b: any) => {
+              const aRel = metadataRelevance(cleanTitle, cleanAuthor, a.volumeInfo);
+              const bRel = metadataRelevance(cleanTitle, cleanAuthor, b.volumeInfo);
+              if (aRel !== bRel) return bRel - aRel;
               const ad = (a.volumeInfo?.description || "").length;
               const bd = (b.volumeInfo?.description || "").length;
               return bd - ad;
             });
-            info = ranked[0]?.volumeInfo;
+            // Never adopt a title/author that is not the book on screen.
+            const chosen = ranked[0]?.volumeInfo;
+            if (
+              chosen &&
+              !metadataIsSameBook(cleanTitle, cleanAuthor, chosen)
+            ) {
+              // Keep the blurb if we can find one, but never the identity.
+              info = { ...chosen, title: cleanTitle, authors: cleanAuthor ? [cleanAuthor] : chosen.authors };
+            } else {
+              info = chosen;
+            }
             if (info?.description) break;
             if (info) break;
           } catch (err) {
@@ -1593,7 +2879,13 @@ function DiscoverView({
     tempStorage.set("preferred_source", newSource, 168); // 1 week TTL but helper handles daily reset if desired, though user said "resets daily" for source? Wait, "saved in a temporary local storage which resets daily"
     // Actually the tempStorage helper I wrote has 24h default.
     if (selectedFeaturedBook) {
-      fetchFeaturedMetadata(selectedFeaturedBook.title, selectedFeaturedBook.author || "", newSource);
+      fetchFeaturedMetadata(
+        selectedFeaturedBook.title,
+        selectedFeaturedBook.author || "",
+        newSource,
+        undefined,
+        selectedFeaturedBook.isbn13 || selectedFeaturedBook.isbn10 || selectedFeaturedBook.isbn || null
+      );
     }
   };
 
@@ -1620,14 +2912,20 @@ function DiscoverView({
       { signal: AbortSignal.timeout(14000) }
     );
     if (!res.ok) throw new Error(`Search failed with status: ${res.status}`);
-    const data = await res.json();
-    const books = (data.books || data.results || []).map((b: any) => ({
-      ...b,
-      sourceId: b.sourceId || "rave",
-      coverUrl: b.coverUrl || b.image?.url || null,
-    }));
-    return { books, totalCount: data.totalCount || 0, hasMore: !!data.hasMore };
-  }
+        const data = await res.json();
+        // The Worker reports which Rave API actually answered. Record it as the
+        // single source of truth for Rave labelling — never infer v1 from a
+        // configured key or from the URL shape of a returned mirror.
+        const engine: string = data.engine || (data.fallback ? "legacy" : "none");
+        lastRaveEngineRef.current = engine;
+        const books = (data.books || data.results || []).map((b: any) => ({
+          ...b,
+          sourceId: b.sourceId || "rave",
+          raveEngine: engine,
+          coverUrl: b.coverUrl || b.image?.url || null,
+        }));
+        return { books, totalCount: data.totalCount || 0, hasMore: !!data.hasMore };
+      }
 
   async function fetchNYTCategory(listName: string, date: string = "current"): Promise<{ books: any[]; previousDate: string | null }> {
     const cacheKey = `nyt_list_opt_${listName}_${date}`;
@@ -1638,12 +2936,25 @@ function DiscoverView({
 
     try {
       // Fetch current week
-      const res = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(date)}`);
+      // Bounded: the logs showed "NYT overview fetch failed: TypeError: Failed
+      // to fetch" with no time attached, i.e. an unbounded hang. A stalled
+      // request must not hold the feed open.
+      const res = await fetch(
+        `/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(date)}`,
+        { signal: AbortSignal.timeout(12000) }
+      );
       if (!res.ok) throw new Error(`NYT list fetch failed with status: ${res.status}`);
       const data = await res.json();
-      
+
       if (data?.status !== "OK" || !data?.results?.books) {
-        return { books: [], previousDate: null };
+        // Distinguish "the list is genuinely empty" from "the API refused".
+        // Returning a silent empty list here made the UI render "No books found
+        // in this category" for rate limits, a bad key, or a malformed list —
+        // a dead end with no way to retry. Surface the status text instead.
+        const why = data?.status === "OK"
+          ? "response contained no books array"
+          : `API responded with status "${data?.status ?? "unknown"}"`;
+        throw new Error(`NYT list "${listName}" unavailable: ${why}`);
       }
 
       let books = data.results.books;
@@ -1652,7 +2963,10 @@ function DiscoverView({
       // Optimize: Fetch previous week as well to get more books
       if (previousDate) {
         try {
-          const resPrev = await fetch(`/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(previousDate)}`);
+            const resPrev = await fetch(
+            `/api/nytimes/list?list=${encodeURIComponent(listName)}&date=${encodeURIComponent(previousDate)}`,
+            { signal: AbortSignal.timeout(12000) }
+          );
           if (resPrev.ok) {
             const dataPrev = await resPrev.json();
             if (dataPrev?.results?.books) {
@@ -1706,8 +3020,14 @@ function DiscoverView({
       const enrichedBooks = await enrichBooksWithRatings(mappedBooks, titlesRoughlyMatch, 10);
       return { books: enrichedBooks, previousDate };
     } catch (err) {
+      // Rethrow. A silent empty list here is indistinguishable from a genuinely
+      // empty category, so the panel rendered "No books found in this category"
+      // for a rate limit, a bad key, or a stalled request — a dead end with
+      // nothing to retry and no signal that anything went wrong. Letting the
+      // error reach `handleCategoryClick` lets it show the reason plus a retry.
       console.error("Failed to fetch NYT category:", err);
-      return { books: [], previousDate: null };
+      logger.error("[discover] nyt category fetch failed", { error: (err as Error)?.message || String(err) });
+      throw err;
     }
   }
 
@@ -1735,6 +3055,7 @@ function DiscoverView({
       }));
     } catch (err) {
       console.error("Failed to fetch audiobook category:", err);
+      logger.error("[discover] audiobook category fetch failed", { error: (err as Error)?.message || String(err) });
       return [];
     }
   }
@@ -1787,6 +3108,7 @@ function DiscoverView({
       return mappedBooks;
     } catch (err) {
       console.error("Failed to fetch Goodreads category:", err);
+      logger.error("[discover] goodreads category fetch failed", { query, error: (err as Error)?.message || String(err) });
       return [];
     }
   }
@@ -1797,7 +3119,7 @@ function DiscoverView({
     if (cached && cached.length > 0) return cached;
 
     try {
-      const res = await fetch(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
+      const res = await fetchWithRetry(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
       if (!res.ok) throw new Error("Failed to load NetGalley category");
       const data = await res.json();
       const results = data.results || [];
@@ -1816,17 +3138,33 @@ function DiscoverView({
       return mapped;
     } catch (err) {
       console.error("NetGalley category fetch error:", err);
+      logger.error("[discover] netgalley category fetch failed", { category: category?.query || category?.id, error: (err as Error)?.message || String(err) });
       return [];
     }
   }
 
+  async function fetchWithRetry(input: RequestInfo | URL, init?: RequestInit, attempts = 2): Promise<Response> {
+    let lastErr: any;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const res = await fetch(input, init);
+        if (res.ok) return res;
+        lastErr = new Error(`HTTP ${res.status}`);
+      } catch (err: any) {
+        lastErr = err;
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 300 * (i + 1)));
+      }
+    }
+    throw lastErr || new Error('fetch failed');
+  }
+
   async function handleCategoryClick(category: any) {
-    setLoadingCategory(true);
     setViewingCategory(category);
     setSearchMode(false);
     setCategoryPreviousDate(null);
     setCategoryBooks([]);
     setError(null);
+    setCategoryError(null);
 
     try {
       if (category.source === "goodreads") {
@@ -1848,7 +3186,11 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("Failed to load category:", err);
-      setError("Failed to load category. Tap Retry.");
+      logger.error("[discover] category load failed", { source: viewingCategory?.source, query: viewingCategory?.query, error: err?.message || String(err) });
+      // Show the reason in the panel AND clear the stale global banner: the page
+      // error belongs to the search surface, not this category view.
+      setCategoryError(err?.message ? `Couldn't load this list. ${err.message}` : "Couldn't load this list.");
+      setError(null);
     } finally {
       setLoadingCategory(false);
     }
@@ -1999,6 +3341,60 @@ function DiscoverView({
       const source = sourceOverride || activeSource;
       const signal = createSearchSignal();
 
+      // A chip-scoped search must hit only that source. Folding it into the
+      // default engines would mix in results the user explicitly filtered
+      // out, so the plugin path takes over entirely while a chip is active.
+      if (source !== "all") {
+        const plugin = getDiscoverablePlugins().find((p) => p.id === source);
+        if (plugin) {
+          setPluginFeedMode(false);
+          setSearchMode(true);
+          setLoading(true);
+          try {
+            const client = createSourceClient(plugin);
+            const found = term.trim()
+              ? await client.search(term, 1)
+              : await client.popular(1);
+            // Honour the plugin's declared kind. This was hardcoded "manga",
+            // which silently mislabelled every book source: a `kind: "book"`
+            // plugin's results were routed to the chapter-by-chapter comic
+            // reader below, where they have no chapters and no pages, so the
+            // user got an empty series screen instead of a book.
+            //
+            // `mixed` is routed to the book sheet rather than the comic reader:
+            // a series screen needs chapters and pages, which this source has
+            // none of, so it rendered empty. Anything not explicitly `manga`
+            // takes the ebook sheet, which can still offer the online copy.
+            const kind = plugin.kind === "manga" ? "manga" : "book";
+            const items = (found.mangas || []).map((m) => ({
+              title: m.title,
+              author: m.author || "Unknown",
+              source: plugin.name,
+              // See the note in the plugin feed: cards read `coverUrl`.
+              coverUrl: m.thumbnailUrl || "",
+              description: m.description || "",
+              sourceId: m.url,
+              pluginId: plugin.id,
+              kind,
+            }));
+            setResults(items);
+            setTotalResults(items.length);
+            setSearchMeta({});
+            if (items.length === 0) {
+              toast(`No results in ${plugin.name} for “${term}”`, { icon: "🔍" });
+            }
+          } catch {
+            toast(`Could not search ${plugin.name}`, { icon: "⚠️" });
+            setResults([]);
+          } finally {
+            setLoading(false);
+          }
+          return;
+        }
+      } else {
+        setPluginFeedMode(false);
+      }
+
       let mappedBooks: any[];
       let totalCount: number;
       let more: boolean;
@@ -2030,8 +3426,10 @@ function DiscoverView({
               if (page === 1) {
                 setResults((prev) => {
                   const seen = new Set(prev.map((b) => b.title + b.author));
-                  const merged = [...prev, ...books.filter((b) => !seen.has(b.title + b.author))];
-                  return merged;
+                  const incoming = filterDownloadableBooks(books).filter(
+                    (b: any) => !seen.has(b.title + b.author)
+                  );
+                  return [...prev, ...incoming];
                 });
                 setLoading(false);
               }
@@ -2048,6 +3446,31 @@ function DiscoverView({
             totalCount = result.totalCount;
             more = result.hasMore;
           }
+        }
+      }
+
+      // Hide anything we could never actually hand a file for. A result with
+      // no download URL, no catalog hash, and nothing to re-search on opens
+      // into an empty mirror sheet, so it should not be offered in the first
+      // place. Applied before grouping so a dropped row can't resurface via a
+      // sibling variant, and so page 1 + the streaming callback agree.
+      mappedBooks = filterDownloadableBooks(mappedBooks);
+
+      // Same keyword-engine problem as the featured variants, one level up:
+      // LibreTexts is an open-textbook corpus, so searching a novel title
+      // surfaces unrelated chemistry/maths textbooks. Those are real, valid,
+      // downloadable rows — they are simply not the book that was asked for.
+      //
+      // We only narrow the visible list here (it is still keyword search, so a
+      // strict-only list would hide legitimate partial matches). Any book whose
+      // title genuinely matches survives untouched. When nothing matches at
+      // all we keep the unfiltered list rather than showing an empty page.
+      if (query.trim()) {
+        const titleMatched = mappedBooks.filter((b: any) =>
+          titlesRoughlyMatch(query, b.title || "", undefined)
+        );
+        if (titleMatched.length > 0) {
+          mappedBooks = titleMatched;
         }
       }
 
@@ -2148,19 +3571,13 @@ function DiscoverView({
         setAvailableSourcesFromResults(sources);
         }
 
-        // Surface community (Hardcover) reviews for the top match alongside results
-        setCommunityBook(uniqueGroupedBooks[0] ? {
-          title: uniqueGroupedBooks[0].title,
-          author: uniqueGroupedBooks[0].author
-        } : null);
-
         // Background prefetch next page
       if (more) {
         prefetchPage(term, source, page + 1);
       }
     } catch (err: any) {
       console.error("Search error:", err);
-      setError("Search failed. Tap Retry to search again.");
+      setError(err.message || "Search failed. Mirrors may be temporarily unavailable.");
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -2170,6 +3587,12 @@ function DiscoverView({
   function clearSearch() {
     abortActiveSearch();
     setSearchMode(false);
+    // The source feed has to be closed with the source, not just the
+    // selection. Resetting only `activeSource` left `pluginFeedMode` true,
+    // so the header kept reading "Browsing <source>" — and, once the chip
+    // was deselected, with no chip left to name it.
+    setPluginFeedMode(false);
+    setPluginFeedExhausted(false);
     setViewingCategory(null);
     setCategoryBooks([]);
     setResults([]);
@@ -2179,7 +3602,6 @@ function DiscoverView({
     setHasMore(false);
     setTotalResults(0);
     setActiveSource("all");
-    setCommunityBook(null);
     prefetchCache.current.clear();
     lastSearchedTerm.current = "";
   }
@@ -2276,17 +3698,65 @@ function DiscoverView({
 
     // Featured/catalog books need an archive search before mirrors exist.
     // Race fast sources instead of blocking on a full multi-source "all" scan.
-    if ((activeBook.isNYTBook || activeBook.isGoogleBook || activeBook.source === 'nyt' || activeBook.source === 'google' || activeBook.source === 'goodreads' || activeBook.source === 'audiobook') && (activeBook.searchQuery || activeBook.title)) {
+    //
+    // This block used to be gated on `isNYTBook || isGoogleBook || source ===
+    // 'nyt' | 'google' | ...`, so the search, relevance filter and ranking only
+    // ran for books that arrived from those catalogs. A book discovered any
+    // other way (e.g. an Anna's Archive / Rave result opened straight from
+    // Discover) skipped it entirely and kept whatever `variants[0]` it was
+    // handed — typically a RoyalLib HTML page with no md5. Mirrors are built from
+    // the active variant, so no md5 meant the sheet could only ever offer
+    // "Search open catalogs". That is the bug reported 2026-10-03 for
+    // "Vince Flynn Capture or Kill": editions listed, mirrors empty.
+    //
+    // Search whenever we have a title and no usable variant yet. `variants` may
+    // legitimately be empty, and re-searching an existing list is cheap.
+    if (activeBook.title || activeBook.searchQuery) {
       try {
         const q = activeBook.searchQuery || cleanTitleAndAuthorForEbookSearch(activeBook.title, activeBook.author);
         const searchResult = await searchDownloadVariants(q);
         if (searchResult.books.length > 0) {
+          // Filter and rank BEFORE choosing the active variant.
+          //
+          // This used `searchResult.books[0]` — raw API order. Rave returns
+          // RoyalLib HTML pages first for most queries, so the modal opened on a
+          // search page with no md5 and could only ever offer "Search open
+          // catalogs" — even though the same response contained three real
+          // LibGen EPUBs further down. Reported 2026-10-03 for "Vince Flynn
+          // Capture or Kill": editions were listed but the mirrors were a
+          // search page.
+          const TITLE = activeBook.title;
+          const AUTHOR = activeBook.author || undefined;
+          const strict = searchResult.books.filter((b: any) =>
+            matchesEditionStrictly({
+              title: TITLE,
+              author: AUTHOR,
+              candidateTitle: b.title,
+              candidateAuthor: b.author,
+            })
+          );
+          const relaxed = searchResult.books.filter((b: any) =>
+            isRelevantMirrorResult({
+              query: q,
+              bookTitle: TITLE,
+              bookAuthor: AUTHOR,
+              candidateTitle: b.title,
+              candidateAuthor: b.author,
+            })
+          );
+          const usable = strict.length > 0 ? strict : relaxed;
+          // Fall back to the raw list ONLY if relevance rejected everything, so
+          // the sheet is never empty for an unusual title.
+          const chosen = usable.length > 0 ? usable : searchResult.books;
+
+          rankVariants(chosen);
+
           activeBook = {
             ...activeBook,
-            variants: searchResult.books,
-            downloadLinks: searchResult.books
+            variants: chosen,
+            downloadLinks: chosen
           };
-          activeVariant = searchResult.books[0];
+          activeVariant = chosen[0];
           onSelectedBookChange(activeBook);
           setSelectedVariant(activeVariant);
         }
@@ -2352,7 +3822,7 @@ function DiscoverView({
       } else {
         const instant = buildInstantMirrors(activeVariant);
         if (instant.length > 0) {
-          const sortedInstant = sortMirrors(instant);
+          const sortedInstant = sortMirrors(instant, { title: book.title, author: book.author });
           setMirrors(sortedInstant);
           hadUsableMirrors = true;
           setFetchingMirrors(false);
@@ -2372,7 +3842,7 @@ function DiscoverView({
         if (data.error) throw new Error(data.error);
 
         const links = data.downloadLinks || data.options || [];
-        const sorted = sortMirrors([...instant, ...links]);
+        const sorted = sortMirrors([...instant, ...links], { title: book.title, author: book.author });
         if (links.length > 0 || instant.length === 0) {
           setMirrors(sorted);
         }
@@ -2387,7 +3857,7 @@ function DiscoverView({
       }
     } catch (err: any) {
       if (!hadUsableMirrors) {
-        setMirrorError("Failed to retrieve download mirrors. Tap Retry.");
+        setMirrorError(err.message || "Failed to retrieve download mirrors.");
       }
     } finally {
       setFetchingMirrors(false);
@@ -2432,7 +3902,9 @@ function DiscoverView({
           error: null 
         });
 
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        // Already-proxied mirror URLs must not be wrapped again — see
+        // proxyUrlForMirror for what a proxy-of-a-proxy costs.
+        const proxyUrl = proxyUrlForMirror(mirror.url);
         const response = await fetch(proxyUrl);
         if (!response.ok) {
           let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
@@ -2447,17 +3919,54 @@ function DiscoverView({
               if (errText && errText.length < 200) errMsg = errText;
             } catch (e2) {}
           }
+          // Count the dead attempt. Throttling is excluded from the score: it
+          // measures load, not the mirror's honesty.
+          void judgeMirrorDownload({
+            mirrorUrl: mirror.url,
+            bytes: null,
+            requestedTitle: book.title,
+            transportFailure:
+              response.status === 429 || response.status === 503 ? "rate-limited" : "unreachable",
+          });
           throw new Error(errMsg);
         }
 
         const contentType = response.headers.get("content-type") || "";
         if (contentType.includes("text/html")) {
+          // Record the attempt: this host answered with a web page, which is a
+          // mirror failure and must drag its score down.
+          await judgeMirrorDownload({
+            mirrorUrl: mirror.url,
+            bytes: null,
+            requestedTitle: book.title,
+            transportFailure: null,
+            sawHtmlContentType: true,
+          });
           throw new Error("The server returned a webpage instead of the book file. Please try another mirror.");
         }
 
         const contentLength = response.headers.get('Content-Length');
         const total = contentLength ? parseInt(contentLength, 10) : 0;
         let loaded = 0;
+        // Report progress even without Content-Length. A 30MB LibGen file
+        // arrives at roughly 0.26MB/s, so it legitimately takes ~2 minutes;
+        // with `total === 0` the old code updated nothing for the whole
+        // transfer and the UI looked hung. Without a total we show loaded
+        // megabytes and a moving step label instead of a percentage.
+        let lastReport = 0;
+        const reportProgress = (force = false) => {
+          const now = performance.now();
+          // Throttle to ~4/s so a fast stream cannot flood React state.
+          if (!force && now - lastReport < 250) return;
+          lastReport = now;
+          setDownloadProgress({
+            step: total
+              ? `downloading (Mirror ${index + 1}/${directMirrors.length})`
+              : `downloading ${(loaded / 1048576).toFixed(1)} MB (Mirror ${index + 1}/${directMirrors.length})`,
+            percent: total ? Math.min(Math.floor((loaded / total) * 100), 95) : 30,
+            error: null
+          });
+        };
 
         const reader = response.body?.getReader();
         if (!reader) {
@@ -2470,15 +3979,7 @@ function DiscoverView({
           if (done) break;
           chunks.push(value);
           loaded += value.length;
-          
-          if (total) {
-            const percent = Math.floor((loaded / total) * 100);
-            setDownloadProgress({
-              step: `downloading (Mirror ${index + 1}/${directMirrors.length})`,
-              percent: Math.min(percent, 95),
-              error: null
-            });
-          }
+          reportProgress();
         }
 
         setDownloadProgress({ 
@@ -2702,7 +4203,7 @@ function DiscoverView({
         });
       } else {
         const mirrorUrl = typeof mirror === "string" ? mirror : mirror.url;
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirrorUrl)}`;
+        const proxyUrl = proxyUrlForMirror(mirrorUrl);
         setDownloadProgress({ step: "downloading", percent: 30, error: null });
         response = await fetch(proxyUrl);
       }
@@ -2719,6 +4220,14 @@ function DiscoverView({
             const errText = await response.text();
             if (errText && errText.length < 200) errMsg = errText;
           } catch (e2) {}
+        }
+        // Throttling is a distinct outcome from a broken mirror; conflating
+        // the two would drag a healthy mirror's score down during a busy hour.
+        if (typeof mirror === "string" || mirror?.url) {
+          reportMirrorOutcome(
+            typeof mirror === "string" ? mirror : mirror.url,
+            response.status === 429 || response.status === 503 ? "rate-limited" : "unreachable"
+          );
         }
         throw new Error(errMsg);
       }
@@ -2777,6 +4286,37 @@ function DiscoverView({
             fileExtension = bookFile.name.split('.').pop()?.toLowerCase() || "epub";
           }
         } catch (e) { /* ignore ZIP parse error */ }
+      }
+
+      // Report what this mirror ACTUALLY delivered, judged from the bytes we
+      // just received. This is the ground truth the mirror ranking is built on:
+      // our own probe only ever sees a head chunk from one server, whereas
+      // this is the whole file on the user's own connection. Fire-and-forget —
+      // a reporting failure must never fail the user's download.
+      if (typeof mirror === "string" || mirror?.url) {
+        try {
+          const buf = new Uint8Array(await fileBlob.slice(0, 65536).arrayBuffer());
+          reportOutcomeForDownload(typeof mirror === "string" ? mirror : mirror.url, buf);
+        } catch (e) { /* reporting is best-effort */ }
+      }
+
+      // Identity gate: refuse to import a valid file of the WRONG book.
+      // The mirror list is built from a loose search, so a row can belong to a
+      // different title than the one on screen. Reading the embedded title is
+      // the only way to know. A wrong book is not saved, and the host is
+      // recorded as having failed rather than merely "not matched".
+      const judged = await judgeMirrorDownload({
+        mirrorUrl: mirrorUrl,
+        bytes: new Uint8Array(await fileBlob.arrayBuffer()),
+        requestedTitle: book.title,
+        claimedExtension: fileExtension,
+      });
+      if (!judged.ok) {
+        throw new Error(
+          judged.mismatched
+            ? `This mirror served a different book. ${judged.detail}`
+            : judged.detail
+        );
       }
 
       // Check if downloading using normal discovery search (non-advanced Google Book based search)
@@ -2886,7 +4426,7 @@ function DiscoverView({
       }, 1200);
     } catch (err: any) {
       // If proxy download failed (CAPTCHA, Cloudflare, etc), open in in-app browser
-      const errMsg = "Failed to download from this mirror. Tap Retry.";
+      const errMsg = err.message || "Failed to download from this mirror.";
       if (errMsg.toLowerCase().includes("captcha") ||
           errMsg.toLowerCase().includes("cloudflare") ||
           errMsg.toLowerCase().includes("verification") ||
@@ -2915,8 +4455,16 @@ function DiscoverView({
         return;
       }
 
-      // 2. Pick the best result - prioritize those already havingrave source
-      const firstBookResult = searchResult.books.find((b: any) => b.sourceId === "rave") || searchResult.books[0];
+      // 2. Pick the best result — prioritize a Rave-sourced row, then rank.
+      //    Never take raw index 0: Rave returns RoyalLib HTML pages first for
+      //    most queries, and a page with no md5 cannot produce a download link.
+      //    Same defect as the modal's `books[0]`, fixed in 88104b0's follow-up.
+      const ranked = [...searchResult.books];
+      rankVariants(ranked);
+      const firstBookResult =
+        ranked.find((b: any) => b.sourceId === "rave") ||
+        ranked.find((b: any) => b.md5) ||
+        ranked[0];
       
       // 3. Fetch mirrors for this book
       const res = await fetch(`/api/annas-archive/details?md5=${firstBookResult.md5}`);
@@ -2950,12 +4498,18 @@ function DiscoverView({
       }
     } catch (err: any) {
       console.error("Background auto-download failed:", err);
-      toast.error("Auto-download failed. Tap Retry to try again.", { id: tId });
+      toast.error(`Auto-download failed: ${err.message}`, { id: tId });
     }
   }
 
   function handleMirrorClick(m: any) {
     console.log("[DiscoverView] handleMirrorClick called for:", m.label, m.url);
+    // A search hand-off (e.g. Rave) is a lookup, not a file. Never try to fetch
+    // it as a download — just send the user to the search results in a new tab.
+    if (m.isSearch) {
+      window.open(m.url, "_blank");
+      return;
+    }
     // If it is a Mobilism URL, we cannot download directly in-app, so open it in a new tab
     if (m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"))) {
       console.log("[DiscoverView] Mobilism link detected. Opening in a new tab.");
@@ -2982,9 +4536,6 @@ function DiscoverView({
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <h2 className="text-3xl font-lexend font-bold tracking-tight text-kindle-text">Discover</h2>
-              <p className="text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono">
-                Explore global archives or browse trending best sellers.
-              </p>
             </div>
             {!searchMode && !viewingCategory && (
               <button
@@ -3051,7 +4602,14 @@ function DiscoverView({
               </div>
             </form>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Mode chips and source chips, all on ONE line.
+                These were two stacked rows, which on desktop left a wide
+                empty gap between "Advanced Search" on the left and the
+                sources pushed to the right. One `flex-nowrap` scroller keeps
+                them together at any width: inline and gap-free on desktop,
+                horizontally scrollable on a phone so nothing wraps. */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-none max-w-full w-full pb-0.5 flex-nowrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -3061,7 +4619,7 @@ function DiscoverView({
                       openAudiobookLibrary();
                     }
                   }}
-                  className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                  className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
                     audiobookLibraryMode
                       ? "bg-kindle-text text-kindle-bg border-kindle-text"
                       : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text hover:border-kindle-accent/50"
@@ -3099,6 +4657,78 @@ function DiscoverView({
                   <Database className="w-3 h-3" />
                   Advanced Search
                 </button>
+
+                {/* Installed source chips, in the SAME scroller as the mode
+                    chips above. Only `category === "source"` plugins get
+                    here — a theme or an integration is not a place to browse
+                    books, and `dir="rtl"` orders them so the newest sits
+                    next to the buttons while still scrolling LTR. */}
+                {/* An unreadable source is marked on its chip, in slate rather
+                    than amber: amber is the piracy/NSFW signal and this source
+                    may well be both, so it needs a colour of its own on the one
+                    control the user is about to tap. */}
+                {pluginChips.length > 0 &&
+                  pluginChips.map((c) => {
+                    const on = activeSource === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        title={
+                          c.unreadable
+                            ? `${c.name} serves no page images — its listings and chapter list work, but every panel 404s.`
+                            : on
+                              ? `Show every source again`
+                              : `${c.name}: browse its full catalogue, or search only it`
+                        }
+                        data-unreadable={c.unreadable ? "true" : undefined}
+                        onClick={() => {
+                          // With no query, clicking a chip browses that
+                          // source's own catalogue instead of searching a
+                          // blank string, which would return nothing.
+                          if (on) {
+                            // Deselecting closes the source feed entirely;
+                            // leaving it open showed a nameless header.
+                            setActiveSource("all");
+                            setPluginFeedMode(false);
+                            setPluginFeedExhausted(false);
+                            setSearchMode(false);
+                            setResults([]);
+                            setError(null);
+                            prefetchCache.current.clear();
+                          } else {
+                            setActiveSource(c.id);
+                            if (!query.trim()) browseSource(c.id);
+                          }
+                        }}
+                        className={`px-2.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap max-w-[170px] shrink-0 ${
+                          c.unreadable
+                            ? "bg-slate-500/15 border-slate-500/50 text-slate-700 dark:text-slate-200 hover:border-slate-500"
+                            : on
+                              ? "bg-kindle-accent text-white border-kindle-accent"
+                              : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:border-kindle-accent/50 hover:text-kindle-text"
+                        }`}
+                      >
+                        {c.unreadable && (
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                        )}
+                        {c.icon && !c.unreadable ? (
+                          <img
+                            src={c.icon}
+                            alt=""
+                            className="w-3 h-3 rounded-full object-cover shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        ) : (
+                          <Puzzle className="w-3 h-3 shrink-0" />
+                        )}
+                        <span className="truncate">{c.name}</span>
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
 
             {/* Source & Topic Filters - Positioned directly under search bar */}
@@ -3253,20 +4883,31 @@ function DiscoverView({
         </section>
       )}
 
-      {/* Search Results */}
-      {searchMode && !isAudiobookSearch && (
+      {/* Search Results — also covers browsing a source's own catalogue,
+          which renders into the same grid with the same download action. */}
+      {(searchMode || pluginFeedMode) && !isAudiobookSearch && (
         <section className="space-y-6" data-guide="discover-results">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-lexend font-bold">
-              {loading ? "Searching archives…" : `Results for "${query}"`}
-            </h3>
-            <button
-              onClick={clearSearch}
-              className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition flex items-center gap-1"
-            >
-              <X className="w-3 h-3" /> Clear
-            </button>
-          </div>
+          {/* The source header + Clear only exist while a source is really
+              selected. Gating on the resolved name (not on
+              `activeSource !== "all"`, and not on `pluginFeedMode`) is what
+              stops a nameless "Browsing source" row surviving a deselect. */}
+          {(activeSourceName || !pluginFeedMode) && (
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-lexend font-bold">
+                {loading
+                  ? "Searching archives…"
+                  : activeSourceName
+                    ? `Browsing ${activeSourceName}`
+                    : `Results for "${query}"`}
+              </h3>
+              <button
+                onClick={clearSearch}
+                className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition flex items-center gap-1"
+              >
+                <X className="w-3 h-3" /> Clear
+              </button>
+            </div>
+          )}
 
           {loading ? (
             <div className="py-24 flex flex-col items-center justify-center">
@@ -3294,10 +4935,72 @@ function DiscoverView({
                       : "border-transparent hover:bg-kindle-card/50"
                   }`}
                   onClick={() => {
-                    if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
+                    // A `kind: "book"` source plugin hands back a FILE, not a
+                    // series — LibreTexts returns a page id whose PDF is a
+                    // direct download. Route those to the ebook sheet with the
+                    // PDF already attached, so the user gets the download they
+                    // came for. Manga/mixed sources keep the chapter list.
+                    if (book.pluginId && book.kind === "book") {
+                      // Resolve the plugin's declared file path rather than
+                      // knowing anything about the source here. A plugin with
+                      // no `file` rule falls through to the plain book sheet,
+                      // which still offers the online copy.
+                      const plugin = getDiscoverablePlugins().find((p) => p.id === book.pluginId);
+                      const fileUrl = resolveBookFileUrl(plugin, String(book.sourceId ?? ""), book.title);
+                      openBookDetail({
+                        ...book,
+                        ...(fileUrl
+                          ? {
+                              downloadLinks: [
+                                {
+                                  url: fileUrl,
+                                  label: `${book.source || plugin?.name || "Source"} PDF`,
+                                  isDirect: true,
+                                  sourceId: book.pluginId,
+                                },
+                              ],
+                            }
+                          : {}),
+                      });
+                    } else if (book.pluginId && book.kind === "manga") {
+                      // A result from an installed MANGA source plugin is a
+                      // series, not a downloadable file. It gets its own detail
+                      // view with the chapter list — sending it to the ebook
+                      // sheet offered an EPUB download and Rave mirrors for a
+                      // title that is read chapter by chapter from its source
+                      // site.
+                      //
+                      // The `kind === "manga"` guard is the fix for Ocean of
+                      // EPUB, reported 2026-10-05 as "cant read or download".
+                      // This branch tested only `book.pluginId`, so a `kind:
+                      // "book"` or `"mixed"` plugin landed in the comic reader
+                      // too — a screen that needs chapters and pages this
+                      // source never publishes, hence its notice that "this
+                      // site does not publish its chapter list in the page
+                      // HTML". Book-kind plugins fall through to the ebook
+                      // sheet, which can still show the online copy.
+                      setComicBook(book);
+                    } else if (book.pluginId) {
+                      // A book-kind source plugin: no chapter list exists, so
+                      // give it the book sheet rather than an empty reader.
+                      handleGetDownloadLinks(book);
+                    } else if (book.isGoogleBook || book.isNYTBook || book.isNYTBestseller || book.source === "nyt" || book.source === "librarything") {
                       openBookDetail(book);
                     } else {
-                      handleGetDownloadLinks(book);
+                      // Archive/Rave results open the FULL book detail popup, not
+                      // the download sheet.
+                      //
+                      // This branch used to call `handleGetDownloadLinks`, which
+                      // sets `selectedBook` and therefore renders the download
+                      // modal — so a manually searched book showed a bare mirror
+                      // list with no overview, author profile, or editions, and
+                      // the user read that as "the book detail popup doesn't show".
+                      //
+                      // `openBookDetail` sets `selectedFeaturedBook`, and the effect
+                      // at ~1391 already runs `loadFeaturedDownloads` +
+                      // `loadFeaturedAudiobook` for it, so the popup gets the same
+                      // editions and mirrors — plus everything the sheet never had.
+                      openBookDetail(book);
                     }
                   }}
                 >
@@ -3313,11 +5016,19 @@ function DiscoverView({
                           const attempt = parseInt(target.dataset.attempt || "0");
                           target.dataset.attempt = String(attempt + 1);
 
-                          // Attempt 1: if we have a real ISBN, try OpenLibrary by ISBN
-                          if (attempt === 0 && book.isbn && /^\d{10,13}$/.test(book.isbn)) {
+                          // Attempt 1: try OpenLibrary by ISBN.
+                          //
+                          // `book.isbn` ONLY, never `isbn13`/`isbn10`. Those
+                          // siblings are captured by a bare length regex, so an
+                          // opaque 13-digit Google identifier outranks the
+                          // checksum-validated `pickRealIsbn` result here and
+                          // 404s into a blank card — a previously-working cover
+                          // broken by the very validation added to fix it.
+                          const fallbackIsbn = book.isbn || "";
+                          if (attempt === 0 && /^\d{9}[\dXx]$|^\d{13}$/.test(fallbackIsbn)) {
                             target.src =
                               resolveCoverImageSrc(
-                                `https://covers.openlibrary.org/b/isbn/${book.isbn}-M.jpg`
+                                `https://covers.openlibrary.org/b/isbn/${fallbackIsbn}-M.jpg`
                               ) || "";
                             return;
                           }
@@ -3338,8 +5049,8 @@ function DiscoverView({
                             const div = document.createElement("div");
                             div.className = "kora-typo-cover w-full h-full flex flex-col items-center justify-center p-4 text-center bg-kindle-card absolute inset-0";
                             div.innerHTML = `
-                              <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;margin-bottom:6px;">${escapeHtml((book.author || "Author").substring(0, 30))}</div>
-                              <div style="font-size:11px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(book.title)}</div>
+                              <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;opacity:0.3;margin-bottom:6px;">${(book.author || "Author").substring(0, 30)}</div>
+                              <div style="font-size:11px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${book.title}</div>
                             `;
                             parent.style.position = "relative";
                             parent.appendChild(div);
@@ -3364,12 +5075,11 @@ function DiscoverView({
                         <span style={{color:'#d4af37'}}>★</span> NYT
                       </div>
                     )}
-                    {/* Hover overlay */}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300">
-                      <div className="bg-kindle-bg text-kindle-text p-3.5 rounded-full shadow-2xl scale-75 group-hover:scale-100 transition duration-500">
-                        <Download className="w-5 h-5" />
-                      </div>
-                    </div>
+                    {/* No hover overlay here on purpose. A download icon that
+                        only appears on hover is unreachable on touch — this
+                        app is a PWA used on a phone — and it duplicated the
+                        card's own tap action, which already routes to the
+                        detail view or the download sheet. */}
                   </div>
                   <div className="space-y-0.5 pr-1">
                     <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
@@ -3453,6 +5163,25 @@ function DiscoverView({
                     Loading more results...
                   </p>
                 </div>
+              ) : pluginFeedMode && !pluginFeedExhausted ? (
+                // More pages are still being fetched, so a scroll would not
+                // load anything new. Say what is happening instead.
+                <div className="py-6 text-center flex flex-col items-center gap-2">
+                  <Loader2 className="w-4 h-4 text-kindle-accent animate-spin" />
+                  <p className="text-[10px] text-kindle-text-muted font-semibold uppercase tracking-widest">
+                    Loading more of this archive&hellip; {results.length} so far
+                  </p>
+                </div>
+              ) : pluginFeedMode ? (
+                // Browse already walked every page the source offers, so
+                // there is nothing left to scroll for. Saying "no more
+                // results" here used to imply the source was exhausted,
+                // when in truth only page 1 had ever been requested.
+                <div className="py-6 text-center">
+                  <p className="text-[10px] text-kindle-text-muted font-semibold uppercase tracking-widest">
+                    End of this archive&rsquo;s listing &middot; {results.length} titles
+                  </p>
+                </div>
               ) : hasMore ? (
                 <div ref={observerTargetRef} className="h-10 w-full flex items-center justify-center">
                   <p className="text-[9px] text-kindle-text-muted/50 font-semibold uppercase tracking-wider">
@@ -3473,6 +5202,7 @@ function DiscoverView({
       )}
 
 
+
       {!searchMode && viewingCategory && (
         <section className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="flex items-center justify-between">
@@ -3480,6 +5210,11 @@ function DiscoverView({
               onClick={() => {
                 setViewingCategory(null);
                 setCategoryBooks([]);
+                // Reset the error too, matching every other exit path out of the
+                // category view. Leaving it set hides the message (the section is
+                // gated on viewingCategory) but strands it in state for whatever
+                // renders next.
+                setCategoryError(null);
               }}
               className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-accent transition"
             >
@@ -3503,9 +5238,25 @@ function DiscoverView({
             <div className="py-24 flex flex-col items-center justify-center">
               <KoraLoading context="category" categorySource={viewingCategory?.source} compact />
             </div>
+          ) : categoryError ? (
+            <div className="py-16 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
+              <p className="text-xs text-kindle-text-muted italic">{categoryError}</p>
+              <button
+                onClick={() => viewingCategory && handleCategoryClick(viewingCategory)}
+                className="mt-4 text-[10px] font-bold uppercase tracking-widest text-kindle-accent hover:underline"
+              >
+                Try again
+              </button>
+            </div>
           ) : categoryBooks.length === 0 ? (
             <div className="py-16 text-center border border-dashed border-kindle-border rounded-2xl bg-kindle-card/30">
               <p className="text-xs text-kindle-text-muted italic">No books found in this category.</p>
+              <button
+                onClick={() => viewingCategory && handleCategoryClick(viewingCategory)}
+                className="mt-4 text-[10px] font-bold uppercase tracking-widest text-kindle-accent hover:underline"
+              >
+                Refresh list
+              </button>
             </div>
           ) : (
             <>
@@ -3650,8 +5401,17 @@ function DiscoverView({
             </div>
           )}
 
-          {/* Feed Filter Tabs */}
-          <div id="discover-feeds" className="flex items-center justify-between border-b border-kindle-border/40 pb-2">
+          {/* Feed Filter Tabs
+              Hidden while a plugin chip is active. Tapping a chip means the
+              user already chose a source, so "Archives & Curated Feeds" and
+              the NYT shelf below it are contradictory clutter under the
+              results they asked for. `hidden` keeps the markup and its
+              state intact — the IIFE below makes a JSX wrapper awkward. */}
+          <div
+            id="discover-feeds"
+            hidden={activeSource !== "all"}
+            className="flex items-center justify-between border-b border-kindle-border/40 pb-2"
+          >
             <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1">
               <button
                 onClick={() => setFeedFilter("all")}
@@ -3683,6 +5443,9 @@ function DiscoverView({
             </div>
           </div>
 
+          {/* Curated shelves — same reasoning as the tab row above; they
+              belong to "Archives", not to browsing a single plugin. */}
+          <div hidden={activeSource !== "all"}>
           {feedFilter === "plugins" ? (
             <SourcePluginsHub />
           ) : loadingFeatured ? (
@@ -3705,7 +5468,11 @@ function DiscoverView({
                     {error ? (
                       <p className="text-sm font-bold text-kindle-text-muted">{error}</p>
                     ) : (
-                      <p className="text-sm font-bold text-kindle-text-muted">No trending titles right now</p>
+                      <p className="text-sm font-bold text-kindle-text-muted">
+                        {loadingSecondaryFeatured
+                          ? "Loading shelves…"
+                          : "No trending titles right now"}
+                      </p>
                     )}
                     <p className="text-xs text-kindle-text-muted/70 max-w-sm">
                       {error
@@ -3822,7 +5589,7 @@ function DiscoverView({
                                 if (parent && !parent.querySelector(".kora-typo-cover")) {
                                   const div = document.createElement("div");
                                   div.className = "kora-typo-cover w-full h-full flex flex-col items-center justify-center p-3 bg-kindle-card absolute inset-0";
-                                  div.innerHTML = `<div style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;opacity:0.3;margin-bottom:4px;">${escapeHtml((book.author||"").substring(0,25))}</div><div style="font-size:9px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(book.title)}</div>`;
+                                  div.innerHTML = `<div style="font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;opacity:0.3;margin-bottom:4px;">${(book.author||"").substring(0,25)}</div><div style="font-size:9px;font-weight:700;font-family:serif;line-height:1.3;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;">${book.title}</div>`;
                                   parent.style.position = "relative";
                                   parent.appendChild(div);
                                 }
@@ -3849,10 +5616,12 @@ function DiscoverView({
             });
           })()
           )}
+          </div>
 
-          {/* Explore Categories Dashboard */}
+          {/* Explore Categories Dashboard — also "Archives", so also hidden
+              while a single plugin is being browsed. */}
           {!audiobookLibraryMode && (
-          <div className="space-y-8 pt-4">
+          <div hidden={activeSource !== "all"} className="space-y-8 pt-4">
             <div className="space-y-1">
               <h3 className="text-xl font-lexend font-bold tracking-tight text-kindle-text">Explore Archives</h3>
               <p className="text-xs text-kindle-text-muted font-sans">
@@ -3910,6 +5679,20 @@ function DiscoverView({
         </div>
       )}
       </div>
+
+      {/* Comic/manga detail — for results from an installed source plugin.
+          Rendered instead of the ebook download sheet above, which offers an
+          EPUB and Rave mirrors and is meaningless for a chaptered series. */}
+      {comicBook &&
+        ReactDOM.createPortal(
+          <ComicDetailView
+            book={comicBook}
+            onClose={() => setComicBook(null)}
+            onAddToLibrary={handleAddMangaToLibrary}
+            verifyingSeriesId={verifyingSeriesId}
+          />,
+          document.body
+        )}
 
       {/* Download Modal - Simplified Download Link Selector */}
       {selectedBook && ReactDOM.createPortal(
@@ -4033,33 +5816,82 @@ function DiscoverView({
                     </div>
                   ) : (
                     <div className="space-y-1.5">
-                      {mirrors.map((m, i) => {
-                        const isMobilismReal = m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"));
+                      {/*
+                        Best-first by MEASURED reliability. Unverified mirrors
+                        sort to the bottom rather than being hidden or shown
+                        as though they were fine — but they stay clickable,
+                        because validation is advisory and the user must
+                        always be able to try a mirror themselves.
+                      */}
+                      {orderByReliability(mirrors, (m: any) =>
+                        typeof m === "string" ? m : m?.url
+                      ).map((m, i) => {
+                        // One classification drives the title, the badge and
+                        // the subtext, so they cannot contradict each other.
+                        const link = classifyDownloadLink(m);
+                        // The percentage shown is this device's OWN measured
+                        // history for this host — not a server aggregate that
+                        // resets with the Worker's in-memory store. A host with
+                        // no attempts reads "Not measured"; it never reads 0%
+                        // and never reads 100%.
+                        const rel: ReliabilityEntry | null = reliabilityForUrl(
+                          typeof m === "string" ? m : m?.url
+                        );
+                        const tone = reliabilityTone(rel?.percent ?? null);
                         return (
                           <div
                             key={i}
                             onClick={() => handleMirrorClick(m)}
                             className={`w-full p-3 rounded-xl border transition text-left group flex items-center justify-between cursor-pointer ${
-                              m.isDirect 
-                                ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card" 
+                              link.isDirect
+                                ? "border-kindle-border hover:border-emerald-500/40 bg-kindle-bg hover:bg-kindle-card"
                                 : "border-kindle-border/60 hover:border-amber-500/40 bg-kindle-bg/40 hover:bg-kindle-card/60"
                             }`}
                           >
                             <div className="overflow-hidden flex-1 min-w-0 pr-2">
                               <div className="flex items-center gap-2">
-                                <p className="text-sm font-bold font-sans truncate pr-2">{m.label}</p>
-                                {m.isDirect ? (
-                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-emerald-600 bg-emerald-500/10 rounded uppercase tracking-wider shrink-0">Direct</span>
-                                ) : (
-                                  <span className="px-1.5 py-0.5 text-[8px] font-bold text-amber-600 bg-amber-500/10 rounded uppercase tracking-wider shrink-0">External</span>
-                                )}
+                                <p className="text-sm font-bold font-sans truncate pr-2">{link.title}</p>
+                                <span
+                                  className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider shrink-0 ${
+                                    link.tone === "emerald"
+                                      ? "text-emerald-600 bg-emerald-500/10"
+                                      : link.tone === "slate"
+                                        ? "text-kindle-text-muted bg-kindle-border/30"
+                                        : "text-amber-600 bg-amber-500/10"
+                                  }`}
+                                >
+                                  {link.badge}
+                                </span>
                               </div>
                               <p className="text-[9px] text-kindle-text-muted truncate font-mono mt-0.5 opacity-60">
-                                {isMobilismReal ? "Mobilism Forum link (requires external browser login)" : m.url}
+                                {link.subtext}
+                              </p>
+                              {/*
+                                Provenance is shown, never just a bare number:
+                                a percentage the user cannot interrogate is a
+                                lie by omission. "Reliability" — it measures how
+                                often a mirror hands over a real file, nothing
+                                more. An unverified mirror says so outright.
+                              */}
+                              <p className="text-[9px] text-kindle-text-muted font-sans mt-0.5">
+                                {rel?.reason || "Not measured yet — no download attempt from this mirror on this device."}
                               </p>
                             </div>
 
                             <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              {/*
+                                The badge is a claim about RELIABILITY, not about
+                                trust or accuracy, and it never replaces the
+                                download controls — an unverified mirror is
+                                fully clickable.
+                              */}
+                              <span
+                                title={rel?.reason || "No measured history yet"}
+                                className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider shrink-0 ${tone.text} ${tone.bg}`}
+                              >
+                                {rel?.badge || "Not measured"}
+                              </span>
+
                               {/* Always show Open in New Tab button for all mirrors */}
                               <button
                                 type="button"
@@ -4152,9 +5984,18 @@ function DiscoverView({
 
       {/* Featured Book Details Preview Modal */}
       {selectedFeaturedBook && ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => dismissDiscoverDetail()} />
-          <div className="relative bg-kindle-card kindle-card w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200">
+        <div className={`fixed inset-0 z-[9999] flex justify-center ${fullscreenDetail ? "items-stretch p-0" : "items-center p-4"}`}>
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            onClick={() => dismissDiscoverDetail()}
+          />
+          <div
+            className={`relative bg-kindle-card kindle-card w-full overflow-y-auto border border-kindle-border/40 animate-in fade-in zoom-in-95 duration-200 ${
+              fullscreenDetail
+                ? "max-w-none h-full rounded-none border-0 shadow-none"
+                : "max-w-4xl max-h-[90vh] rounded-3xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]"
+            }`}
+          >
             {/* Modal Header */}
             <div className="sticky top-0 z-10 flex items-center justify-between p-4 md:p-6 bg-kindle-card/95 backdrop-blur-md border-b border-kindle-border">
               <h2 className="text-sm font-bold uppercase tracking-widest text-kindle-text font-sans">Book Details</h2>
@@ -4173,7 +6014,7 @@ function DiscoverView({
                   <div className="w-full md:w-64 shrink-0 flex flex-col items-center md:items-start">
                     <div className="w-full max-w-[240px] aspect-[2/3] rounded-xl overflow-hidden shadow-[0_20px_40px_rgba(0,0,0,0.2)] bg-black/5 relative group mb-6">
                       {selectedFeaturedBook.coverUrl ? (
-                        <img loading="lazy" decoding="async" src={selectedFeaturedBook.coverUrl} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
+                        <img loading="lazy" decoding="async" src={resolveCoverImageSrc(selectedFeaturedBook.coverUrl) || ""} alt={selectedFeaturedBook.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-kindle-text-muted">
                           <BookOpen className="w-12 h-12" />
@@ -4195,21 +6036,21 @@ function DiscoverView({
                         Download Book
                       </button>
 
-                      <button 
-                        onClick={() => {
-                          const queryText = `${selectedFeaturedBook.title} ${selectedFeaturedBook.author || ""}`.trim();
-                          closeBookDetail();
-                          setIsAdvancedSearch(true);
-                          setSearchMode(true);
-                          handleSearch(queryText);
-                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                      {/* Share lives in the DETAIL view only. The grid cards
+                          have no share affordance: sharing is a deliberate
+                          action on one book, not a per-row control. */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void shareBookLink(selectedFeaturedBook);
                         }}
                         className="w-full py-3.5 px-5 bg-kindle-card border border-kindle-border hover:border-kindle-accent text-kindle-text rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        title="Share this book with a friend"
                       >
-                        <Database className="w-4 h-4" />
-                        Advanced Search
+                        <Share2 className="w-4 h-4" />
+                        Share Book
                       </button>
-                      
+
                       <div className="hidden md:block mt-8 space-y-8">
                         <section>
                           <h4 className="text-[10px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted mb-4 border-b border-kindle-border pb-2">Quick Stats</h4>
@@ -4286,7 +6127,7 @@ function DiscoverView({
                   <div className="flex-1 min-w-0">
                     <div className="mb-8">
                       <h2 className="text-3xl md:text-5xl font-serif text-kindle-text mb-3 leading-tight tracking-tight">
-                        {featuredBookDetails?.title || selectedFeaturedBook.title}
+                        {displayIdentity().title}
                       </h2>
                       <div className="text-xl text-kindle-text-muted font-sans flex flex-wrap items-center gap-2">
                         <span>By</span>
@@ -4439,6 +6280,35 @@ function DiscoverView({
                               )}
                             </div>
 
+                            {/* One-tap import, mirroring the download sheet.
+                                Archive results used to open that sheet, which had a
+                                "Recommended Direct Download" button; routing them to
+                                this popup instead silently removed the only one-tap
+                                path, leaving per-mirror clicks as the sole option. */}
+                            {!fetchingFeaturedMirrors &&
+                              !featuredMirrorError &&
+                              featuredMirrors.some((m: any) => m.isDirect) &&
+                              downloadProgress.step === "idle" && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAutoDownload(featuredMirrors)}
+                                  className="w-full p-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 transition-all duration-300 text-left flex items-center justify-between group shadow-lg shadow-emerald-600/10 hover:shadow-emerald-500/20 text-white cursor-pointer"
+                                >
+                                  <div>
+                                    <p className="text-xs font-bold font-sans flex items-center gap-1.5 text-white">
+                                      <Loader2 className="w-3.5 h-3.5 text-neutral-300 animate-spin" />
+                                      Recommended Direct Download
+                                    </p>
+                                    <p className="text-[10px] text-emerald-100/80 font-medium font-sans mt-0.5">
+                                      Import high-quality{" "}
+                                      {selectedFeaturedVariant?.extension || "epub"} copy to
+                                      library.
+                                    </p>
+                                  </div>
+                                  <Download className="w-4 h-4 text-emerald-100 group-hover:scale-110 transition shrink-0 ml-2 animate-bounce" />
+                                </button>
+                              )}
+
                             {/* Mirrors for selected variant */}
                             {selectedFeaturedVariant && (
                               <div className="space-y-3 bg-kindle-card/50 rounded-2xl border border-kindle-border/40 p-5">
@@ -4491,24 +6361,37 @@ function DiscoverView({
                                 ) : (
                                   <div className="space-y-2">
                                     {featuredMirrors.map((m, i) => {
-                                      const isMobilismReal = m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"));
+                                      // Same helper as the sheet above, so the
+                                      // two surfaces cannot drift apart.
+                                      const link = classifyDownloadLink(m);
                                       return (
                                         <div
                                           key={i}
                                           onClick={() => handleMirrorClick(m)}
                                           className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between group ${
-                                            m.isDirect 
-                                              ? "border-kindle-border hover:border-emerald-500/40 hover:bg-emerald-500/5 bg-kindle-bg shadow-sm" 
+                                            link.isDirect
+                                              ? "border-kindle-border hover:border-emerald-500/40 hover:bg-emerald-500/5 bg-kindle-bg shadow-sm"
                                               : "border-kindle-border hover:border-amber-500/40 hover:bg-amber-500/5 bg-kindle-bg shadow-sm"
                                           }`}
                                         >
                                           <div className="min-w-0 flex-1 pr-4">
                                             <div className="flex items-center gap-2 mb-1">
-                                              <span className={`w-1.5 h-1.5 rounded-full ${m.isDirect ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                              <p className="text-sm font-bold text-kindle-text group-hover:text-kindle-accent transition-colors">{m.label}</p>
+                                              <span className={`w-1.5 h-1.5 rounded-full ${link.isDirect ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                              <p className="text-sm font-bold text-kindle-text group-hover:text-kindle-accent transition-colors">{link.title}</p>
+                                              <span
+                                                className={`px-1.5 py-0.5 text-[8px] font-bold rounded uppercase tracking-wider shrink-0 ${
+                                                  link.tone === "emerald"
+                                                    ? "text-emerald-600 bg-emerald-500/10"
+                                                    : link.tone === "slate"
+                                                      ? "text-kindle-text-muted bg-kindle-border/30"
+                                                      : "text-amber-600 bg-amber-500/10"
+                                                }`}
+                                              >
+                                                {link.badge}
+                                              </span>
                                             </div>
                                             <p className="text-[10px] text-kindle-text-muted/60 truncate font-mono">
-                                              {isMobilismReal ? "Mobilism Forum link (requires external browser login)" : m.url}
+                                              {link.subtext}
                                             </p>
                                           </div>
                                           <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -4525,20 +6408,23 @@ function DiscoverView({
                                               <ExternalLink className="w-4 h-4" />
                                             </button>
 
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleMirrorClick(m);
-                                              }}
-                                              className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
-                                                m.isDirect
-                                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
-                                                  : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
-                                              }`}
-                                            >
-                                              {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
-                                            </button>
+                                            {/* Search hand-offs have no file to fetch, so no download button. */}
+                                            {!m.isSearch && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleMirrorClick(m);
+                                                }}
+                                                className={`p-2.5 rounded-xl border transition-transform group-active:scale-95 ${
+                                                  m.isDirect
+                                                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white"
+                                                    : "bg-amber-500/10 border-amber-500/20 text-amber-600 group-hover:bg-amber-500 group-hover:text-white"
+                                                }`}
+                                              >
+                                                {m.isDirect ? <Download className="w-4 h-4" /> : <BookOpen className="w-4 h-4" />}
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
                                       );
@@ -4687,7 +6573,7 @@ function DiscoverView({
                                   handleSearch(`${book.title} ${book.author}`);
                                 }}>
                                   <div className="aspect-[2/3] rounded-lg shadow-sm overflow-hidden mb-2 bg-kindle-card border border-kindle-border group-hover:shadow-md transition-all group-hover:-translate-y-1">
-                                    {book.coverUrl && <img loading="lazy" decoding="async" src={book.coverUrl} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
+                                    {book.coverUrl && <img loading="lazy" decoding="async" src={resolveCoverImageSrc(book.coverUrl) || ""} alt={book.title} className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />}
                                   </div>
                                   <p className="text-[10px] font-bold text-kindle-text line-clamp-2 leading-tight group-hover:text-kindle-accent transition-colors">{book.title}</p>
                                 </div>
@@ -4696,7 +6582,6 @@ function DiscoverView({
                           )}
                         </section>
                       </div>
-
                     </div>
                   </div>
                 </div>

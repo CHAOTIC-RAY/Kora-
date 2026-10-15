@@ -24,15 +24,7 @@ export function isNativeApp(): boolean {
 
 /** Production Worker / API origin for Capacitor builds (no trailing slash). */
 export function getApiBaseUrl(): string {
-  // `import.meta.env` only exists under Vite. This module is also loaded by
-  // the plain-`tsx` test harness and by any non-Vite script, where it is
-  // `undefined` — and an unguarded property read there throws a TypeError
-  // that takes down whatever imported it, rather than falling back to the
-  // native-origin default below. Optional chaining makes "no Vite" mean
-  // "unset" instead of "crash".
-  const fromEnv = ((import.meta as any)?.env?.VITE_API_BASE_URL || "")
-    .trim()
-    .replace(/\/$/, "");
+  const fromEnv = (import.meta.env.VITE_API_BASE_URL || "").trim().replace(/\/$/, "");
   if (fromEnv) return fromEnv;
   // Capacitor APK must never fall back to relative /api (that hits https://localhost).
   if (isNativeApp()) return "https://kora.chaoticstudio.workers.dev";
@@ -211,66 +203,25 @@ export async function ensureNotificationChannel(): Promise<void> {
 export async function initCapacitorShell(): Promise<void> {
   if (!isNativeApp()) return;
 
-  // Route /api/* requests through the native HTTP bridge to bypass Android
-  // WebView's localhost→external-origin exception (Chromium 128+). The native
-  // bridge uses HttpURLConnection, not the WebView, so CORS/origin policies do
-  // not block the requests. When the native plugin is unavailable (or fails to
-  // install), fall back to the URL-rewriting shim below.
-  let nativeHttpInstalled = false;
-  try {
-    const { installNativeHttpShim, isNativeHttpAvailable } = await import("./nativeHttp");
-    if (isNativeHttpAvailable()) {
-      installNativeHttpShim();
-      nativeHttpInstalled = true;
-    }
-  } catch (err) {
-    console.warn("[Kora/Capacitor] native HTTP shim install failed", err);
-  }
-
-  // Fallback URL-rewriting shim: rewrites relative /api/* to the absolute
-  // worker origin. Only installed when the native bridge is unavailable, to
-  // avoid wrapping fetch twice (the native shim already rewrites /api URLs).
-  if (!nativeHttpInstalled) {
-    installCapacitorApiFetchShim();
-  }
+  installCapacitorApiFetchShim();
 
   try {
     const { StatusBar, Style } = await import("@capacitor/status-bar");
-    // Mirror the app's display theme on the system status bar + WebView
-    // background. Previously these were hard-coded to the dark #18181B, which
-    // forced a dark background on EVERY theme — so light modes (mint, green,
-    // paper, sepia) all rendered dark in the APK. Now we read the current
-    // theme from <body class="theme-*"> and re-sync whenever it changes.
-    const syncChromeToTheme = () => {
-      const isDark =
-        document.body.classList.contains("dark") ||
-        document.body.className.includes("theme-dark") ||
-        document.body.className.includes("theme-night") ||
-        document.body.className.includes("theme-oled") ||
-        document.body.className.includes("theme-dark-grey") ||
-        document.body.className.includes("theme-dark-blue");
-      const chromeBg = isDark ? "#18181B" : "#FAFAFA";
-      const statusStyle = isDark ? Style.Dark : Style.Light;
-      try {
-        StatusBar.setOverlaysWebView({ overlay: false });
-        StatusBar.setStyle({ style: statusStyle });
-        StatusBar.setBackgroundColor({ color: chromeBg });
-      } catch { /* ignore */ }
-      // Keep the WebView document background in sync with the theme so the
-      // app never shows a dark frame behind a light theme (or vice-versa).
-      try {
-        const themeBg = getComputedStyle(document.body)
-          .getPropertyValue("--theme-bg")
-          .trim();
-        document.documentElement.style.backgroundColor = themeBg || chromeBg;
-        if (document.body) document.body.style.backgroundColor = themeBg || chromeBg;
-      } catch { /* ignore */ }
-    };
+    // Keep the WebView below the system status bar (don't draw behind it),
+    // so the notification/clock strip never overlaps app content.
+    await StatusBar.setOverlaysWebView({ overlay: false });
+    await StatusBar.setStyle({ style: Style.Dark });
+    await StatusBar.setBackgroundColor({ color: "#18181B" });
+  } catch {
+    /* ignore */
+  }
 
-    await syncChromeToTheme();
-    // Re-sync whenever the display theme or skin changes (<body class updates).
-    const mo = new MutationObserver(syncChromeToTheme);
-    mo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  // Mirror dark chrome on the system navigation bar (gesture indicator strip).
+  // Capacitor has no NavigationBar plugin here — use the CSS/env insets +
+  // MainActivity Java theme. Also ensure the WebView document fills the bar area.
+  try {
+    document.documentElement.style.backgroundColor = "#18181B";
+    if (document.body) document.body.style.backgroundColor = "#18181B";
   } catch {
     /* ignore */
   }

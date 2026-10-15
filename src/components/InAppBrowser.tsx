@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { proxyUrlForMirror } from "../lib/downloadProxy";
 import { storeBookFile } from "../db/indexedDB";
 import { syncBookToCloud, BookMetadata } from "../lib/firebase";
 import { inferBookTags } from "../lib/tagsHelper";
@@ -31,9 +30,9 @@ interface QuickLink {
 const QUICK_LINKS: QuickLink[] = [
   {
     name: "Anna's Archive",
-    url: "https://annas-archive.gl/",
+    url: "https://annas-archive.org/",
     description: "The largest shadow library of books, papers, and comics.",
-    domain: "annas-archive.gl",
+    domain: "annas-archive.org",
     badge: "Recommended",
     color: "from-emerald-500/10 to-teal-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
   },
@@ -204,7 +203,7 @@ export default function InAppBrowser({ userId, onBookAdded, grayscaleCovers, ini
 
     try {
       // 1. Fetch file through our proxy to bypass CORS
-      const downloadProxyUrl = proxyUrlForMirror(proxyUrl);
+      const downloadProxyUrl = `/api/proxy-file?url=${encodeURIComponent(proxyUrl)}`;
       const response = await fetch(downloadProxyUrl);
       if (!response.ok) {
         let errMsg = `Server returned HTTP ${response.status} during book retrieval.`;
@@ -300,7 +299,7 @@ export default function InAppBrowser({ userId, onBookAdded, grayscaleCovers, ini
         status: "error",
         filename,
         progress: 0,
-        errorText: "Failed to process the downloaded file. Tap Retry."
+        errorText: err.message || "Failed to process the downloaded file."
       });
     }
   }

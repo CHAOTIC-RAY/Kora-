@@ -6,9 +6,9 @@ import {
   Clock, LogIn, Type, AlignLeft, AlignCenter, Baseline,
   Database, Trash2, Search as SearchIcon, Globe, Layout,
   Info, Download, HardDrive, Bell, Volume2, Plus, BookMarked, HelpCircle, ChevronDown, Github, Headphones,
-  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, Search, PieChart, Radio, Hammer, X,
+  FileText, Files, Scissors, Wrench, FolderOpen, Newspaper, RefreshCw, Grid3X3, PieChart, Radio, Hammer, X,
   Flame, Calendar, Trophy, Sparkles, Award, TrendingUp, Swords, Mouse, Wind, Layers, Library as LibraryIcon,
-  Bug, TableOfContents, Rss, Sliders, ToggleLeft
+  Bug, TableOfContents, Rss, Sliders, ToggleLeft, Crown
 } from "lucide-react";
 
 // Icons for each app skin in the Settings skin selector
@@ -79,6 +79,7 @@ import GameScoreTracker from "./GameScoreTracker";
 import LinguistGuardian from "./LinguistGuardian";
 import OnlineScrabbleGame from "./OnlineScrabbleGame";
 import UnoGame from "./UnoGame";
+import ChessGame from "./chess/ChessGame";
 import ReadingInsightsTool from "./ReadingInsightsTool";
 import FluidOverlay from "./FluidOverlay";
 import WikipediaWidget from "./WikipediaWidget";
@@ -408,6 +409,7 @@ function SettingsView({
   const [showGuardian, setShowGuardian] = useState<boolean>(false);
   const [showScrabble, setShowScrabble] = useState<boolean>(false);
   const [showUno, setShowUno] = useState<boolean>(false);
+  const [showChess, setShowChess] = useState<boolean>(false);
   const [showInsights, setShowInsights] = useState<boolean>(false);
   const [showP2p, setShowP2p] = useState<boolean>(false);
   const [showClipper, setShowClipper] = useState<boolean>(false);
@@ -427,6 +429,7 @@ function SettingsView({
       showGuardian ||
       showScrabble ||
       showUno ||
+      showChess ||
       showInsights ||
       showP2p ||
       showClipper ||
@@ -503,6 +506,7 @@ function SettingsView({
       else if (tool === "guardian" || tool === "linguist-guardian") setShowGuardian(true);
       else if (tool === "scrabble") setShowScrabble(true);
       else if (tool === "uno" || tool === "kora-uno") setShowUno(true);
+      else if (tool === "chess" || tool === "kora-chess") setShowChess(true);
       else if (tool === "p2p") setShowP2p(true);
       else if (tool === "wikipedia" || tool === "wiki") setShowWikipedia(true);
     };
@@ -1352,7 +1356,7 @@ function SettingsView({
                 className="bg-kindle-card border border-kindle-border hover:border-kindle-accent/40 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
               >
                 <div className="p-3.5 bg-kindle-bg border border-kindle-border text-kindle-accent rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
-                  <Search className="w-6 h-6" />
+                  <SearchIcon className="w-6 h-6" />
                 </div>
                 <div className="space-y-2 min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
@@ -1429,6 +1433,28 @@ function SettingsView({
                   </p>
                   <div className="text-[9px] font-bold uppercase tracking-wider text-rose-500 flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
                     Launch Clash →
+                  </div>
+                </div>
+              </button>
+
+              {/* Kora Chess Card */}
+              <button
+                type="button"
+                onClick={() => setShowChess(true)}
+                className="bg-kindle-card border border-kindle-border hover:border-amber-600/50 rounded-2xl p-6 text-left transition duration-300 flex flex-col gap-4 items-start group cursor-pointer shadow-xs hover:shadow-md"
+              >
+                <div className="p-3.5 bg-kindle-bg border border-kindle-border text-amber-600 dark:text-amber-400 rounded-xl shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Crown className="w-6 h-6" />
+                </div>
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold tracking-tight text-kindle-text group-hover:text-amber-600 transition">Kora Chess</h4>
+                  </div>
+                  <p className="text-[10px] text-kindle-text-muted leading-relaxed">
+                    Classic strategy on the 64-square board. Challenge tactical bots or pass-and-play with responsive move validation.
+                  </p>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1 mt-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-1 transition">
+                    Play Chess →
                   </div>
                 </div>
               </button>
@@ -3103,6 +3129,7 @@ function SettingsView({
       <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} onOpenScores={() => setShowScoreTracker(true)} />
       <OnlineScrabbleGame open={showScrabble} onClose={() => setShowScrabble(false)} />
       <UnoGame open={showUno} onClose={() => setShowUno(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
+      <ChessGame open={showChess} onClose={() => setShowChess(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <ReadingInsightsTool
         open={showInsights}
         onClose={() => setShowInsights(false)}

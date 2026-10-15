@@ -1,8 +1,3 @@
-// Re-resolves an *expired* LibGen signed link. RAVE supplies get.php?md5=<h>&key=<t>
-// URLs whose `key` expires; when such a link returns an HTML interstitial (no embedded
-// fresh key), we mint a new signed key so the download can actually proceed.
-import { resolveLibgenSigned } from "./libgenSigned";
-
 export const LIBGEN_MIRRORS = [
   "https://libgen.li",
   "https://libgen.be",
@@ -11,22 +6,6 @@ export const LIBGEN_MIRRORS = [
   "https://libgen.st",
   "https://libgen.rocks",
 ];
-
-/**
- * Ceiling on outbound fetches for ONE /api/proxy-file request.
- *
- * Cloudflare caps a Worker invocation at 50 subrequests and answers 522
- * ("Too many subrequests by single Worker invocation") past that. The mirror
- * ladder was structurally over budget: 6 mirrors x 2 protocols = 12 candidate
- * URLs, each costing up to 3 fetches (landing page, re-minted key, binary),
- * and the re-mint races 4 more hosts x 2 protos on top. An unsigned landing
- * page therefore never reached the fix — the invocation died at 522 first.
- * Measured 2026-10-03: 66s then 502, with the tail showing 522.
- *
- * Kept well under the cap so there is headroom for the re-mint and the follow-up
- * binary fetch. Happy path still returns on the first or second candidate.
- */
-const MAX_SUBREQUESTS = 24;
 
 export function extractLibgenMd5Key(url: string): { md5: string; key?: string } | null {
   const md5Match = url.match(/md5=([a-fA-F0-9]{32})/i);
@@ -95,29 +74,16 @@ export async function fetchBinaryWithLibgenMirrors(
   let lastStatus = 0;
   let lastError = "";
 
-  // Every outbound fetch costs a subrequest, and Cloudflare kills the whole
-  // invocation at 50 with a 522. Count them so the ladder degrades gracefully
-  // (a real "mirrors failed") instead of dying opaquely mid-fallback.
-  let spent = 0;
-  const fetchBounded = async (target: string, init: RequestInit): Promise<Response> => {
-    if (spent >= MAX_SUBREQUESTS) {
-      throw new Error(`subrequest budget exhausted (${spent})`);
-    }
-    spent++;
-    return fetch(target, init);
-  };
-
   for (const candidate of candidates) {
     const attempts = candidate.startsWith("https://")
       ? [candidate, candidate.replace(/^https:\/\//i, "http://")]
       : [candidate];
 
     for (const attemptUrl of attempts) {
-      if (spent >= MAX_SUBREQUESTS) break;
       try {
         // Already-signed CDN links go straight to the file — use the long stream budget.
         const alreadySigned = /[?&]key=/i.test(attemptUrl);
-        const response = await fetchBounded(attemptUrl, {
+        const response = await fetch(attemptUrl, {
           headers: {
             ...headers,
             Referer: `${new URL(attemptUrl).origin}/`,
@@ -134,57 +100,22 @@ export async function fetchBinaryWithLibgenMirrors(
         if (contentType.includes("text/html")) {
           const html = await response.text();
           const signed = signedUrlFromLibgenHtml(html, attemptUrl);
-          if (signed) {
-            const bin = await fetchBounded(signed, {
-              headers: {
-                ...headers,
-                Referer: `${new URL(signed).origin}/`,
-                Accept: "application/octet-stream,application/epub+zip,application/pdf,*/*",
-              },
-              redirect: "follow",
-              // Must not use a short timeout — AbortSignal aborts the whole body stream.
-              signal: AbortSignal.timeout(LIBGEN_STREAM_MS),
-            });
-            lastStatus = bin.status;
-            if (!bin.ok) continue;
-            const binType = (bin.headers.get("content-type") || "").toLowerCase();
-            if (binType.includes("text/html")) continue;
-            return bin;
-          }
-          // The HTML is a landing/ad page rather than the file. Two distinct
-          // cases, and BOTH need a fresh key:
-          //
-          //  (a) the URL carried a `key=` that has since expired — its HTML
-          //      embeds no usable link, so mint a new one from the md5;
-          //  (b) the URL is an unsigned landing page (`ads.php?md5=`, or a bare
-          //      `get.php?md5=` with no key) — Rave returns exactly this shape,
-          //      and it was never signed in the first place, so the old
-          //      `alreadySigned` guard skipped the repair and the request fell
-          //      through to "all mirrors failed". Verified 2026-10-03: an
-          //      `ads.php?md5=649CBE…` returns 20,872 B of text/html.
-          //
-          // Re-mint on either. The md5 is all that is needed either way.
-          const landingMd5 = attemptUrl.match(/md5=([a-fA-F0-9]{32})/i)?.[1]?.toLowerCase();
-          if (landingMd5) {
-            const fresh = await resolveLibgenSigned(landingMd5, 8000);
-            if (fresh && fresh !== attemptUrl) {
-              const bin = await fetchBounded(fresh, {
-                headers: {
-                  ...headers,
-                  Referer: `${new URL(fresh).origin}/`,
-                  Accept: "application/octet-stream,application/epub+zip,application/pdf,*/*",
-                },
-                redirect: "follow",
-                signal: AbortSignal.timeout(LIBGEN_STREAM_MS),
-              });
-              lastStatus = bin.status;
-              if (!bin.ok) continue;
-              const binType = (bin.headers.get("content-type") || "").toLowerCase();
-              if (binType.includes("text/html")) continue;
-              return bin;
-            }
-          }
-          continue;
+          if (!signed) continue;
+          const bin = await fetch(signed, {
+            headers: {
+              ...headers,
+              Referer: `${new URL(signed).origin}/`,
+              Accept: "application/octet-stream,application/epub+zip,application/pdf,*/*",
+            },
+            redirect: "follow",
+            // Must not use a short timeout — AbortSignal aborts the whole body stream.
+            signal: AbortSignal.timeout(LIBGEN_STREAM_MS),
+          });
+          lastStatus = bin.status;
+          if (!bin.ok) continue;
+          const binType = (bin.headers.get("content-type") || "").toLowerCase();
+          if (binType.includes("text/html")) continue;
+          return bin;
         }
         return response;
       } catch (err: any) {

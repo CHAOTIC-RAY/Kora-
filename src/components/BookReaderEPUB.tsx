@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
-import DOMPurify from 'dompurify';
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
@@ -503,17 +502,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
   const contentHeightRef = React.useRef<number>(0);
   const viewportHeightRef = React.useRef<number>(0);
   const [doubleColumns, setDoubleColumns] = useState<boolean>(readerPrefs?.doubleColumns ?? false); // Dual page mode
-  const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 2); // KOReader-style page overlap (px repeated across page turns)
+  const [pageOverlap, setPageOverlap] = useState<number>(readerPrefs?.pageOverlap ?? 0); // KOReader-style page overlap (px repeated across page turns)
   const [letterSpacing, setLetterSpacing] = useState<string>(readerPrefs?.letterSpacing ?? "tracking-normal"); // tracking-normal, tracking-wide, tracking-wider
   const [hyphenation, setHyphenation] = useState<boolean>(readerPrefs?.hyphenation ?? true);
   const [pageTurnMode, setPageTurnMode] = useState<string>(() => {
     const mode = readerPrefs?.pageTurnMode ?? "fifty-fifty";
-    // Legacy renames: swipe-only → keys-only, and floating-buttons → keys-only
-    // (the floating-buttons option was removed; it behaved the same as keys-only
-    // for tap-to-turn purposes, and leaving it set would strand users on an
-    // option no longer offered in the UI).
-    if (mode === "swipe-only" || mode === "floating-buttons") return "keys-only";
-    return mode;
+    // Legacy rename: swipe-only → keys-only
+    return mode === "swipe-only" ? "keys-only" : mode;
   });
   const [pageTransitionEffect, setPageTransitionEffect] = useState<string>(() => {
     const saved = readerPrefs?.pageTransitionEffect;
@@ -1024,25 +1019,16 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
     return () => clearInterval(interval);
   }, [book.id]);
 
-  // Restore page within chapter from saved progress.
-  // Fires on open (loading clears) and whenever the incoming book prop updates,
-  // so in-session progress saves that update `activeBook` re-populate the page
-  // position without a full reopen. Restores both chapter index and page number
-  // so reopening lands on the exact spot rather than chapter 1 / page 1.
+  // Restore page within chapter from saved progress
   useEffect(() => {
-    if (loading || !chapters.length) return;
-    const savedChapter = book.progress?.chapterIndex;
     const savedPage = book.progress?.pageNumber;
-    if (typeof savedChapter === "number" && savedChapter >= 0 && savedChapter < chapters.length) {
-      setCurrentChapterIdx(savedChapter);
-    }
-    if (typeof savedPage === "number" && savedPage > 1) {
+    if (typeof savedPage === "number" && savedPage > 1 && !loading && chapters.length) {
       const t = setTimeout(() => {
         setCurrentPageNum(Math.min(savedPage, totalPages || savedPage));
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [loading, chapters.length, book.progress?.chapterIndex, book.progress?.pageNumber, totalPages]);
+  }, [loading, chapters.length]);
 
   // Persist page position + estimate time left
   useEffect(() => {
@@ -1075,16 +1061,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       onProgressUpdate(updated);
       void syncBookToCloud(userId, updated);
     }, 800);
-    return () => {
-      // Flush pending progress save on cleanup/unmount (reader close, swipe-back, etc.)
-      // without waiting for the 800ms debounce. We still try/fail silently so a user
-      // navigating away fast never loses their last page turn.
-      clearTimeout(t);
-      onProgressUpdate(updated);
-      void syncBookToCloud(userId, updated).catch((e) => {
-        console.warn("[Kora/reader] progress save on cleanup failed:", e);
-      });
-    };
+    return () => clearTimeout(t);
   }, [currentPageNum, currentChapterIdx, totalPages, chapters.length, loading]);
 
   // Track page turns for pages/day stats
@@ -1848,38 +1825,6 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
     }
   }, [isDraggingSelection]);
 
-  // Continuous scroll: actually be continuous. Previously reaching the end of a
-  // chapter just stopped, and the user had to tap to advance — which defeats the
-  // point of the mode. Watch the scroller and roll into the next readable
-  // chapter automatically once the bottom is reached.
-  useEffect(() => {
-    if (!useScrollLayout) return;
-    const el = pageCanvasRef.current;
-    if (!el || loading) return;
-
-    let advancing = false;
-    const onScroll = () => {
-      if (advancing) return;
-      // ~48px of slack so it fires on the last flick rather than demanding a
-      // pixel-perfect landing at the exact bottom.
-      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 48;
-      if (!atBottom) return;
-      if (currentChapterIdx >= chapters.length - 1) return;
-      const next = nextReadableChapterIndex(chapters, currentChapterIdx, 1);
-      if (next === currentChapterIdx) return;
-      advancing = true;
-      updateProgress(next, false);
-      // Land at the top of the new chapter instead of inheriting the old
-      // scroll offset (which would look like content was skipped).
-      requestAnimationFrame(() => {
-        if (pageCanvasRef.current) pageCanvasRef.current.scrollTop = 0;
-      });
-    };
-
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [useScrollLayout, loading, currentChapterIdx, chapters, updateProgress]);
-
   const handleNextPage = () => {
     playFlipSound();
     setTapFeedback("next");
@@ -2158,16 +2103,11 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
     return () => el.removeEventListener("wheel", onWheel);
   }, [currentChapterIdx, chapters.length, currentPageNum, totalPages, useScrollLayout, loading]);
 
-  const closeDictionary = useCallback(() => {
-    setDictionaryWord(null);
-    setDictionaryData(null);
-    dismissSelection();
-  }, []);
-
   async function lookupDictionary(word: string) {
     const clean = extractLookupWord(word);
     if (!clean) {
-      closeDictionary();
+      setDictionaryWord(null);
+      setDictionaryData(null);
       return;
     }
     try {
@@ -2175,7 +2115,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       setDictionaryWord(clean);
       setDictionaryData(null);
       
-      // 1. Check custom / bundled / online dictionary via dictionary.ts
+      // 1. Check custom / bundled dictionary first
       const localDef = await lookupWord(clean);
       if (localDef) {
         setDictionaryData({
@@ -2196,31 +2136,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
         return;
       }
 
-      // 2. Additional fallback: Free Dictionary API
-      try {
-        const freeRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(clean)}`);
-        if (freeRes.ok) {
-          const freeData = await freeRes.json();
-          if (Array.isArray(freeData) && freeData[0]?.meanings?.length) {
-            const entry = freeData[0];
-            setDictionaryData({
-              word: entry.word || clean,
-              phonetic: entry.phonetic || entry.phonetics?.find((p: any) => p.text)?.text || "Free Dictionary",
-              meanings: (entry.meanings || []).map((m: any) => ({
-                partOfSpeech: m.partOfSpeech || "noun",
-                definitions: (m.definitions || []).map((d: any) => ({
-                  definition: d.definition,
-                  example: d.example
-                }))
-              }))
-            });
-            return;
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-
+      // Built-in / personal dictionary only — no online Oxford / free-dict fallback
       setDictionaryData(null);
     } catch (err) {
       console.error("Dictionary error:", err);
@@ -2411,7 +2327,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       playBookOpenSound();
     } catch (err: any) {
       console.error("EPUB Loader Error:", err);
-      setError("Failed to parse EPUB. Tap Retry to try again.");
+      setError(err.message || "Failed to parse EPUB reader file.");
       setLoading(false);
     }
   }
@@ -3277,7 +3193,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
         {/* Sidebar: Reader Settings panel */}
         {showSettings && (
           <>
-            <button className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} aria-label="Close settings" type="button" />
+            <div className="absolute inset-0 z-30 bg-black/10 md:hidden" onClick={() => setShowSettings(false)} />
             <aside data-guide="reader-settings-panel" className={`w-full md:w-80 h-[min(70vh,32rem)] md:h-auto border-t md:border-t-0 md:border-r ${activeTheme.border} ${activeTheme.card} p-5 pb-[max(1.25rem,var(--kora-safe-bottom))] overflow-y-auto z-40 flex flex-col shadow-[0_-10px_40px_rgba(0,0,0,0.1)] md:shadow-none animate-in slide-in-from-bottom md:slide-in-from-left duration-200 shrink-0`}>
             <div className={`pb-3 mb-4 border-b ${activeTheme.border} flex justify-between items-center`}>
               <span className="font-sans font-semibold text-sm flex items-center gap-2 text-[#5c5346] dark:text-neutral-300">
@@ -3659,6 +3575,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                         { label: "Classic 50/50 Split", val: "fifty-fifty", desc: "Left half goes backward, right half goes forward." },
                         { label: "Classic E-Reader", val: "classic-ereader", desc: "Left 25% goes backward, right 75% goes forward." },
                         { label: "Margins Only (15%)", val: "margins-only", desc: "Only tapping outer 15% edges turns pages." },
+                        { label: "Floating Buttons", val: "floating-buttons", desc: "Use on-screen circular buttons to turn pages." },
                         { label: "Keys Only", val: "keys-only", desc: "Disable tap-to-turn entirely. Use keyboard arrows or space." }
                       ].map((mode) => (
                         <button
@@ -4170,7 +4087,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
             <div className="absolute inset-0 z-[70] pointer-events-none">
               <div
                 className="absolute inset-0 bg-black/25 pointer-events-auto"
-                onClick={closeDictionary}
+                onClick={() => setDictionaryWord(null)}
               />
               <div
                 className={`pointer-events-auto absolute left-1/2 w-[min(100%-1.5rem,22rem)] max-h-[min(52dvh,22rem)] ${activeTheme.card} ${activeTheme.text} border ${activeTheme.border} rounded-2xl shadow-2xl p-4 sm:p-5 overflow-y-auto animate-in fade-in zoom-in-95 duration-200`}
@@ -4205,7 +4122,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                     <span className="text-[8px] uppercase tracking-widest font-bold font-sans text-amber-600 dark:text-amber-400">Oxford Dictionary</span>
                     <h3 className="text-xl font-extrabold font-serif leading-tight mt-0.5 break-words">{dictionaryWord}</h3>
                   </div>
-                  <button onClick={closeDictionary} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition shrink-0">
+                  <button onClick={() => setDictionaryWord(null)} className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition shrink-0">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -4292,7 +4209,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                         setDictFeedback("Saved highlight to personal dictionary!");
                         setTimeout(() => setDictFeedback(null), 2500);
                       }
-                      closeDictionary();
+                      setDictionaryWord(null);
                     }}
                     className="flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-700 dark:text-yellow-300 border border-yellow-500/30 text-[10px] font-bold uppercase tracking-widest transition min-w-0"
                     title="Highlight selection"
@@ -4300,7 +4217,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                     <Highlighter className="w-3.5 h-3.5 shrink-0" /> Highlight
                   </button>
                   <button
-                    onClick={closeDictionary}
+                    onClick={() => setDictionaryWord(null)}
                     className="flex items-center justify-center px-2 py-2 rounded-lg bg-kindle-text text-kindle-bg text-[10px] font-bold uppercase tracking-widest hover:opacity-80 transition min-w-0"
                     title="Close"
                   >
@@ -4560,7 +4477,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                             </div>
                             <div 
                               className={`epub-content reader-select-surface leading-relaxed space-y-5 ${fontFamily} break-words`}
-                              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(chapterHtmlWithHighlights, { USE_PROFILES: { html: true } }) }}
+                              dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
                               onClick={handleEpubContentClick}
                             />
                           </div>
@@ -4670,7 +4587,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                     <div 
                       id="epub-text-viewer"
                       className={`epub-content reader-select-surface leading-relaxed ${fontFamily} break-words ${showAudiobook ? "cursor-pointer" : ""}`}
-                      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(chapterHtmlWithHighlights, { USE_PROFILES: { html: true } }) }}
+                      dangerouslySetInnerHTML={{ __html: chapterHtmlWithHighlights }}
                       onClick={handleEpubContentClick}
                     />
 
@@ -4771,7 +4688,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                 {/* Offline Selection Analyzer Sheet */}
                 {showAnalyzer && (
                   <div className="absolute inset-0 z-[80] flex items-end justify-center p-0 md:p-6 animate-in fade-in duration-200">
-                    <button className="absolute inset-0 bg-black/60" onClick={() => setShowAnalyzer(false)} aria-label="Close analyzer" type="button" />
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowAnalyzer(false)} />
                     <div className={`relative w-full md:max-w-2xl h-[75vh] md:h-auto md:max-h-[85vh] ${activeTheme.card} ${activeTheme.text} border-t md:border ${activeTheme.border} rounded-t-3xl md:rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300`}>
                       
                       {/* Panel Header */}
@@ -5053,7 +4970,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       </div>
 
       {/* Kindle-Style Selection Pin Handles rendered at top level to avoid overflow clipping and CSS transform offsets */}
-      {selectedText && selectionPins.start && !dictionaryWord && (
+      {selectedText && selectionPins.start && (
         <div 
           data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
@@ -5080,7 +4997,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
           </div>
         </div>
       )}
-      {selectedText && selectionPins.end && !dictionaryWord && (
+      {selectedText && selectionPins.end && (
         <div 
           data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
@@ -5109,7 +5026,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       )}
 
       {/* Native-style floating selection menu */}
-      {selectedText && selectionCoords && !isDraggingSelection && !dictionaryWord && (() => {
+      {selectedText && selectionCoords && !isDraggingSelection && (() => {
         const preferTop = selectionCoords.bottom > window.innerHeight * 0.62;
         const pos = clampSelectionMenuPosition(
           selectionCoords.x,

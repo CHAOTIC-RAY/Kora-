@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { resolveCoverImageSrc } from "../lib/coverImage";
 import { BookMetadata, getLocalLibrary, syncBookToCloud } from "../lib/firebase";
 import { X, Save, BookOpen, RefreshCw, Search, Loader2, Library } from "lucide-react";
+import HardcoverCommunity from "./HardcoverCommunity";
 import { enrichBookMetadata } from "../lib/metadataEnricher";
 import {
   ensureSeriesFields,
@@ -202,9 +202,9 @@ export default function BookMetadataEditor({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-label="Close" type="button" />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-2xl bg-kindle-card border border-kindle-border rounded-3xl shadow-2xl p-6 md:p-8 animate-in zoom-in fade-in duration-200 overflow-y-auto max-h-[90vh]">
-        <div className="flex justify-between items-center mb-6 pt-[var(--kora-safe-top)]">
+        <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-lexend font-bold">Book Details</h2>
           <div className="flex items-center gap-2">
             <button
@@ -243,7 +243,7 @@ export default function BookMetadataEditor({
 
               {showResults && (
                 <>
-                  <button className="fixed inset-0 z-10" onClick={() => setShowResults(false)} aria-label="Close results" type="button" />
+                  <div className="fixed inset-0 z-10" onClick={() => setShowResults(false)} />
                   <div className="absolute left-0 right-0 top-full mt-2 bg-kindle-card border border-kindle-border rounded-2xl shadow-2xl z-20 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 max-h-[300px] overflow-y-auto">
                     <div className="p-2 border-b border-kindle-border bg-kindle-bg/50 flex justify-between items-center">
                       <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted px-2">Search Results</span>
@@ -261,7 +261,7 @@ export default function BookMetadataEditor({
                           >
                             <div className="w-10 h-14 bg-kindle-bg rounded overflow-hidden shrink-0 shadow-sm">
                               {result.volumeInfo.imageLinks?.thumbnail ? (
-                                <img src={resolveCoverImageSrc(result.volumeInfo.imageLinks.thumbnail) || ""} alt="" className="w-full h-full object-cover" />
+                                <img src={result.volumeInfo.imageLinks.thumbnail} alt="" className="w-full h-full object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-kindle-text-muted">
                                   <BookOpen className="w-4 h-4" />
@@ -365,7 +365,7 @@ export default function BookMetadataEditor({
                       </span>
                       <div className="w-8 h-11 rounded overflow-hidden bg-kindle-border shrink-0">
                         {b.coverUrl ? (
-                          <img src={resolveCoverImageSrc(b.coverUrl) || ""} alt="" className="w-full h-full object-cover" />
+                          <img src={b.coverUrl} alt="" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <BookOpen className="w-3 h-3 opacity-40" />
@@ -419,6 +419,7 @@ export default function BookMetadataEditor({
             <label className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Download URL</label>
             <input value={downloadUrl} onChange={(e) => setDownloadUrl(e.target.value)} placeholder="e.g. https://example.com/book.epub" className="w-full bg-kindle-bg border border-kindle-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-kindle-accent" />
           </div>
+          <HardcoverCommunity book={book} />
         </div>
         <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-kindle-border">
           <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-xs font-bold font-sans uppercase tracking-widest hover:bg-kindle-bg transition">

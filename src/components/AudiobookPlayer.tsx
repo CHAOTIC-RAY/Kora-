@@ -11,7 +11,6 @@ import {
   SkipForward,
   X,
 } from "lucide-react";
-import { resolveCoverImageSrc } from "../lib/coverImage";
 import type { BookMetadata } from "../lib/firebase";
 import { syncBookToCloud } from "../lib/firebase";
 import {
@@ -701,7 +700,7 @@ export default function AudiobookPlayer({
       }
     } catch (err) {
       console.error("Download failed:", err);
-      toast.error("Some tracks failed to download. Tap Retry to try again.");
+      alert("Some tracks failed to download. Check your connection and try again.");
     } finally {
       setDownloading(false);
     }
@@ -802,7 +801,7 @@ export default function AudiobookPlayer({
                 <button onClick={onExpand} className="min-w-0 flex-1 flex items-center gap-3 text-left">
                   <div className="w-10 h-10 rounded-xl overflow-hidden bg-kindle-bg border border-kindle-border shrink-0">
                     {book.coverUrl ? (
-                      <img src={resolveCoverImageSrc(book.coverUrl) || ""} alt="" className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
+                      <img src={book.coverUrl} alt="" className={`w-full h-full object-cover ${grayscaleCovers ? "grayscale" : ""}`} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-[10px] font-bold">AB</div>
                     )}

@@ -449,6 +449,7 @@ export default function FeedTikTokScroll({
   };
 
   const go = (dir: 1 | -1) => {
+    setExpandedIndex(null);
     const el = ref.current;
     if (!el) return;
     const next = Math.min(items.length - 1, Math.max(0, active + dir));
@@ -562,6 +563,9 @@ export default function FeedTikTokScroll({
       <div
         ref={ref}
         tabIndex={0}
+        onScroll={() => {
+          if (expandedIndex !== null) setExpandedIndex(null);
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" || e.key === " ") {
             e.preventDefault();

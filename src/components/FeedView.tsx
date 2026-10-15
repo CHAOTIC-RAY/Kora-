@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Rss,
   Settings2,
-  GalleryVertical,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -42,7 +42,6 @@ import { isFeedItemWithinRetention } from "../lib/feedNormalize";
 import { getItemThumbnail, markFeedImageBroken, prefetchFeedPreviews } from "../lib/feedPreview";
 import { briefPayloadFromFeeds, syncAndroidHomeWidgets } from "../lib/androidWidgets";
 import { textDirection } from "../lib/textDirection";
-import { logger } from "../lib/logger";
 import FeedArticleReader from "./FeedArticleReader";
 import NewsInBriefPanel from "./NewsInBriefPanel";
 import TodayNewsBriefCard from "./TodayNewsBriefCard";
@@ -389,8 +388,7 @@ function FeedView({
   const [feedLayout, setFeedLayout] = useState<FeedLayout>(() => {
     const v = localStorage.getItem("kora_feed_layout");
     if (v === "scroll" || v === "grid") return v;
-    // Mobile defaults to the immersive vertical scroll feed; desktop to grid.
-    return window.innerWidth < 768 ? "scroll" : "grid";
+    return isMobile ? "scroll" : "grid";
   });
 
   const persistFeedLayout = (next: FeedLayout) => {
@@ -452,9 +450,7 @@ function FeedView({
       );
       void enrichFeedItems(merged);
     } catch (error) {
-      const err = error instanceof Error ? error.message : String(error);
       console.error("Feed refresh failed:", error);
-      logger.error("[feed] refresh failed", { error: err });
       setRefreshError("Feed refresh failed. Check your connection and try again.");
     } finally {
       setRefreshing(false);
@@ -713,7 +709,7 @@ function FeedView({
             Maldives news and more — tap to read fullscreen.
           </p>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-start sm:justify-end flex-wrap">
+        <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-between sm:justify-end">
           <div className="flex items-center gap-1 bg-kindle-bg p-1 rounded-xl border border-kindle-border">
             <button
               onClick={() => persistFeedLayout("grid")}
@@ -736,7 +732,7 @@ function FeedView({
               }`}
               title="TikTok Scroll View"
             >
-              <GalleryVertical className="w-3 h-3" />
+              <Sparkles className="w-3 h-3 text-amber-500" />
               <span>Scroll</span>
             </button>
           </div>

@@ -494,7 +494,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
         )}
 
         {/* Content Viewer viewport */}
-        <button className="flex-1 overflow-auto p-4 md:p-8 bg-transparent" onClick={() => { if (showSettings) setShowSettings(false); }} aria-label="Close settings" type="button">
+        <div className="flex-1 overflow-auto p-4 md:p-8 bg-transparent" onClick={() => { if (showSettings) setShowSettings(false); }}>
           {loading ? (
             <div className="flex justify-center py-20">
               <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -522,7 +522,7 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
               <pre className="whitespace-pre-wrap font-inherit">{content}</pre>
             </div>
           )}
-        </button>
+        </div>
       </div>
     </div>
   );

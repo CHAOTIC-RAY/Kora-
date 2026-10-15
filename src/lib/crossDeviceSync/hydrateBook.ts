@@ -4,7 +4,6 @@
  */
 
 import type { BookMetadata } from "../firebase";
-import { proxyUrlForMirror } from "../downloadProxy";
 import { checkBookFileCached, storeBookFile } from "../../db/indexedDB";
 import { loadSyncPrefs } from "./syncPrefs";
 import { webdavDownloadBook, webdavUploadBook } from "./webdavClient";
@@ -37,8 +36,7 @@ export function hydrateCapabilityLabel(book: BookMetadata, cached: boolean): str
 }
 
 async function fetchViaProxy(url: string, signal?: AbortSignal): Promise<Blob> {
-  const proxyUrl = proxyUrlForMirror(url);
-  const res = await fetch(proxyUrl, { signal });
+  const res = await fetch(`/api/proxy-file?url=${encodeURIComponent(url)}`, { signal });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {

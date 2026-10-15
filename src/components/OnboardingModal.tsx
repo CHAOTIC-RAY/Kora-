@@ -1,11 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   Book,
   BookOpen,
   Check,
   ChevronRight,
   ChevronLeft,
-  Contrast,
   Headphones,
   Heart,
   ShieldCheck,
@@ -17,7 +16,6 @@ import {
   Sun,
   Smartphone,
   Flame,
-  ChevronDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "react-hot-toast";
@@ -26,8 +24,7 @@ import {
   TOPIC_FEED_GROUPS,
 } from "../lib/feedStorage";
 import { DEFAULT_APP_SKIN, type AppSkinId } from "../lib/appSkin";
-import { COUNTRY_FEEDS, COUNTRY_OPTIONS, feedsForCountry, countryName } from "../lib/countryFeeds";
-
+import { getTimeOfDayAutoTheme } from "../lib/readerThemes";
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -53,10 +50,15 @@ interface OnboardingModalProps {
   onReaderPrefsChange?: (prefs: { theme?: string; autoAdjustTheme?: boolean; themeManuallySet?: boolean }) => void;
 }
 
-// Each archetype is a BUNDLE of both an app skin and an app display theme
-// preset. Selecting one applies both so the whole app (chrome + palette)
-// transforms, not just the reader. displayTheme is a real app theme token
-// (the value stored in kora_display_theme / applied to <body> as theme-<x>).
+const READER_THEME_TO_DISPLAY: Record<string, string> = {
+  sepia: "sepia",
+  paper: "paper",
+  light: "light",
+  night: "night",
+  oled: "oled",
+  green: "green",
+  dark: "dark",
+};
 
 const ARCHETYPES = [
   {
@@ -64,63 +66,85 @@ const ARCHETYPES = [
     title: "The Midnight Reader",
     desc: "Reads until 3 AM under a warm blanket. Drinks black coffee, loves mysterious thrillers, and lives in dark mode.",
     icon: MoonIcon,
-    skin: "soft",
-    displayTheme: "theme-night",
+    defaultTheme: "night",
     quote: "Just one more chapter...",
+  },
+  {
+    id: "cozy-tea-sipper",
+    title: "The Cozy Tea Sipper",
+    desc: "Enjoys warm sepia lighting, a hot cup of chamomile tea, and peaceful, timeless classics.",
+    icon: CoffeeIcon,
+    defaultTheme: "sepia",
+    quote: "A cup of tea and a good book is bliss.",
+  },
+  {
+    id: "curator-bibliophile",
+    title: "The Bibliophile Curator",
+    desc: "Loves cataloging, keeping shelves perfectly organized, and tracking fine literary details.",
+    icon: BookmarkIcon,
+    defaultTheme: "light",
+    quote: "My library is my sanctuary.",
   },
   {
     id: "speed-scholar",
     title: "The Speed Scholar",
     desc: "Inhales textbooks and non-fiction at light speed. Uses clean sans-serif layouts to optimize focus.",
     icon: GlassesIcon,
-    skin: "studio",
-    displayTheme: "theme-light-yellow",
+    defaultTheme: "oled",
     quote: "Knowledge is the ultimate superpower.",
   },
   {
     id: "auto-riser",
     title: "Auto-Riser",
-    desc: "Lets the app adapt from dawn to dusk. Skin + theme shift with the sun so morning pages stay soft and late-night chapters stay dark.",
+    desc: "Lets the app adapt from dawn to dusk. Reader theme shifts with the sun so morning pages stay soft and late-night chapters stay dark.",
     icon: Sun,
-    skin: "kora",
-    displayTheme: "theme-dark-blue",
+    defaultTheme: getTimeOfDayAutoTheme(),
     autoTheme: true,
     quote: "I let the day pick my palette.",
   },
   {
     id: "glass-minimalist",
     title: "Glass Minimalist",
-    desc: "Wants the lightest chrome possible. iOS Glass skin with the crisp Light theme and zero distractions.",
+    desc: "Wants the lightest chrome possible. Picks the iOS Glass skin with the Light theme and zero distractions.",
     icon: Smartphone,
+    defaultTheme: "light",
     skin: "ios-glass",
-    displayTheme: "theme-light-white",
     quote: "Less chrome, more content.",
   },
   {
     id: "neon-archivist",
     title: "Neon Archivist",
-    desc: "Cyberpunk shelving: dark neon grid skin, OLED theme, and synthwave vibes for late-night browsing.",
+    desc: "Cyberpunk shelving: dark neon grid skin, OLED reader theme, and synthwave vibes for late-night browsing.",
     icon: Flame,
+    defaultTheme: "oled",
     skin: "cyberpunk",
-    displayTheme: "theme-oled",
     quote: "Neon on the shelf, dark in the head.",
+  },
+  {
+    id: "bibliophile-classic",
+    title: "Bibliophile Classic",
+    desc: "Walnut shelves, paper textures, warm amber light. The Library skin turns the app into a timeless reading room.",
+    icon: BookmarkIcon,
+    defaultTheme: "sepia",
+    skin: "library",
+    quote: "Like a library from another century.",
   },
   {
     id: "material-maven",
     title: "Material Maven",
-    desc: "Loves tonal palettes and expressive motion. Material Expressive skin with a clean, modern Paper theme.",
+    desc: "Loves tonal palettes and expressive motion. Material Expressive skin with Paper theme for a clean, modern feel.",
     icon: Target,
+    defaultTheme: "paper",
     skin: "material-ex",
-    displayTheme: "theme-green",
     quote: "Motion with meaning.",
   },
   {
     id: "monochrome-purist",
     title: "Monochrome Purist",
     desc: "Nothing OS aesthetic: NDOT fonts, monochrome chrome, and transparent layers. OLED theme for maximum contrast.",
-    icon: Contrast,
+    icon: Smartphone,
+    defaultTheme: "oled",
     skin: "nothing",
-    displayTheme: "theme-dark",
     quote: "No color, just clarity.",
   },
 ];
@@ -178,6 +202,14 @@ function CoffeeIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+function BookmarkIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z" />
+    </svg>
+  );
+}
+
 function GlassesIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -220,7 +252,7 @@ export default function OnboardingModal({
 }: OnboardingModalProps) {
   const [step, setStep] = useState(1);
   const [nickname, setNickname] = useState("");
-  const [selectedArchetype, setSelectedArchetype] = useState(ARCHETYPES[0].id);
+  const [selectedArchetype, setSelectedArchetype] = useState("curator-bibliophile");
   const [dailyGoal, setDailyGoal] = useState(30);
   const [autoCache, setAutoCache] = useState(true);
   const [dailyReminders, setDailyReminders] = useState(false);
@@ -231,125 +263,28 @@ export default function OnboardingModal({
   // Track display theme locally so completion payload stays valid
   const [currentDisplayTheme, setCurrentDisplayTheme] = useState(() => localStorage.getItem("kora_display_theme") || "theme-light-white");
 
-  // Which country's news the "Local" topic means. Remembered across sessions
-  // so the choice does not have to be made again on every onboarding.
-  const [localCountry, setLocalCountry] = useState<string>(
-    () => localStorage.getItem("kora_local_country") || ""
-  );
-  /** True when the user asked Kora to use their device location. */
-  const [useDeviceLocation, setUseDeviceLocation] = useState<boolean>(
-    () => localStorage.getItem("kora_local_auto") === "1"
-  );
-  const [detecting, setDetecting] = useState(false);
-  const [geoError, setGeoError] = useState("");
-
-  const chooseCountry = (code: string) => {
-    setLocalCountry(code);
-    if (code) localStorage.setItem("kora_local_country", code);
-    else localStorage.removeItem("kora_local_country");
-  };
-
-  /**
-   * Ask the browser where the user is and match it to a curated country.
-   *
-   * Geolocation needs an explicit grant, so this only runs from a click.
-   * A denied permission or an uncurated country falls back to whatever the
-   * user picked by hand rather than leaving them stuck.
-   */
-  const detectCountry = () => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setGeoError("This browser cannot share your location.");
-      return;
-    }
-    setDetecting(true);
-    setGeoError("");
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          // Reverse-geocode the actual fix rather than the IP: the user
-          // granted location, so use it. ipapi-style IP lookups are also
-          // rate-limited on the free tier and answer with the wrong country
-          // for anyone travelling.
-          const r = await fetch(
-            `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&localityLanguage=en`
-          );
-          const d = await r.json();
-          const code = String(d?.countryCode || "").toUpperCase();
-          if (code && COUNTRY_FEEDS.some((c) => c.code === code)) {
-            chooseCountry(code);
-          } else if (code) {
-            // A real country we have no curated set for: keep the worldwide
-            // fallback but say so, rather than silently ignoring the user.
-            chooseCountry("");
-            setGeoError(`${d.countryName || code} isn't in the list yet — using worldwide news.`);
-          } else {
-            setGeoError("Couldn't work out your country from that location.");
-          }
-        } catch {
-          setGeoError("Couldn't look up your country. Pick one below.");
-        } finally {
-          setDetecting(false);
-        }
-      },
-      () => {
-        setDetecting(false);
-        setGeoError("Location permission denied — pick your country below.");
-      },
-      { timeout: 10000, maximumAge: 600000 }
-    );
-  };
-
   // Feed URLs derived from selected topics (each topic bundles multiple site feeds).
   const selectedFeedUrls = React.useMemo(() => {
     const urls = new Set<string>();
     for (const topicId of selectedTopics) {
-      // "local" resolves through the chosen country rather than the shared
-      // default list, which is what makes the topic local to the user.
-      if (topicId === "local") {
-        feedsForCountry(localCountry).forEach((f) => urls.add(f.feedUrl));
-        continue;
-      }
       const group = TOPIC_FEED_GROUPS.find((g) => g.id === topicId);
       group?.feeds.forEach((f) => urls.add(f.feedUrl));
     }
     return Array.from(urls);
-  }, [selectedTopics, localCountry]);
-
-  /** Feed count for a topic, resolved the same way the URLs are. */
-  const topicFeedCount = (topicId: string) =>
-    topicId === "local"
-      ? feedsForCountry(localCountry).length
-      : (TOPIC_FEED_GROUPS.find((g) => g.id === topicId)?.feeds.length ?? 0);
-
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
+  }, [selectedTopics]);
 
   if (!isOpen) return null;
 
   const handleArchetypeSelect = (arc: (typeof ARCHETYPES)[0]) => {
     setSelectedArchetype(arc.id);
-    // Apply the bundled skin + app display theme preset together.
+    const display = READER_THEME_TO_DISPLAY[arc.defaultTheme] || arc.defaultTheme;
+    setCurrentDisplayTheme(display);
+    onThemeChange(display);
+    if (onReaderPrefsChange) {
+      onReaderPrefsChange({ theme: arc.defaultTheme, autoAdjustTheme: Boolean((arc as any).autoTheme), themeManuallySet: true });
+    }
     if (arc.skin && onAppSkinChange) {
       onAppSkinChange(arc.skin as any);
-    }
-    if (arc.displayTheme) {
-      setCurrentDisplayTheme(arc.displayTheme);
-      onThemeChange(arc.displayTheme);
-    }
-    if (onReaderPrefsChange) {
-      onReaderPrefsChange({
-        theme: arc.displayTheme,
-        autoAdjustTheme: Boolean((arc as any).autoTheme),
-        themeManuallySet: true,
-      });
     }
   };
 
@@ -491,37 +426,34 @@ export default function OnboardingModal({
                   <label className="text-[11px] uppercase tracking-wider font-bold text-kindle-text-muted block">
                     Reader Archetype
                   </label>
-                  <div className="grid grid-cols-2 auto-rows-[minmax(0,1fr)] gap-2.5">
-                    {ARCHETYPES.map((arc, idx) => {
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {ARCHETYPES.map((arc) => {
                       const IconComponent = arc.icon;
                       const isSelected = selectedArchetype === arc.id;
-                      // Compact bento: first two are wide (full-width row), the
-                      // rest tile in a 2-col grid. Keeps it dense, not a loose grid.
-                      const wide = idx < 2;
                       return (
                         <button
                           key={arc.id}
                           type="button"
                           onClick={() => handleArchetypeSelect(arc)}
-                          className={`${wide ? "col-span-2" : "col-span-1"} p-3 rounded-xl border text-left transition-all duration-300 flex gap-2.5 cursor-pointer relative overflow-hidden ${
+                          className={`p-4 rounded-xl border text-left transition-all duration-300 flex gap-3 cursor-pointer ${
                             isSelected
-                              ? "bg-kindle-accent/10 border-kindle-accent shadow-xs"
+                              ? "bg-kindle-card border-kindle-accent shadow-xs scale-[1.01]"
                               : "bg-kindle-card/50 border-kindle-border hover:border-kindle-text-muted"
                           }`}
                         >
                           <div
-                            className={`p-2 rounded-lg shrink-0 h-9 w-9 flex items-center justify-center ${
+                            className={`p-2 rounded-lg shrink-0 h-10 w-10 flex items-center justify-center ${
                               isSelected ? "bg-kindle-accent text-kindle-bg" : "bg-kindle-border/40 text-kindle-text-muted"
                             }`}
                           >
-                            <IconComponent className="w-4.5 h-4.5" />
+                            <IconComponent className="w-5 h-5" />
                           </div>
-                          <div className="space-y-0.5 min-w-0">
-                            <h4 className="font-display font-bold text-xs text-kindle-text flex items-center gap-1.5 truncate">
+                          <div className="space-y-1">
+                            <h4 className="font-display font-bold text-xs text-kindle-text flex items-center gap-1.5">
                               {arc.title}
-                              {isSelected && <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+                              {isSelected && <Check className="w-3.5 h-3.5 text-emerald-500" />}
                             </h4>
-                            <p className="text-[10px] text-kindle-text-muted leading-relaxed line-clamp-2">{arc.desc}</p>
+                            <p className="text-[10px] text-kindle-text-muted leading-relaxed">{arc.desc}</p>
                           </div>
                         </button>
                       );
@@ -547,7 +479,7 @@ export default function OnboardingModal({
                         </h3>
                       </div>
                       <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-                        Pick topics you care about — each one loads several trusted site feeds into your Paper tab. Your Daily News Brief uses these.
+                        Pick topics you care about — each one loads several trusted site feeds into your Read tab. Your Daily News Brief uses these.
                       </p>
                     </div>
                     <span className="text-[10px] font-mono text-kindle-text-muted shrink-0 pt-0.5">
@@ -558,7 +490,7 @@ export default function OnboardingModal({
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {TOPIC_FEED_GROUPS.map((group) => {
                       const selected = selectedTopics.includes(group.id);
-                      const count = topicFeedCount(group.id);
+                      const count = group.feeds.length;
                       return (
                         <button
                           key={group.id}
@@ -585,63 +517,6 @@ export default function OnboardingModal({
                       );
                     })}
                   </div>
-
-                  {/* Country picker — only meaningful once Local is on. */}
-                  {selectedTopics.includes("local") && (
-                    <div className="rounded-xl border border-kindle-border bg-kindle-bg/40 p-3">
-                      <div className="flex items-center justify-between gap-3 mb-2.5">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">
-                          Your country
-                        </span>
-                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                          <input
-                            type="checkbox"
-                            checked={useDeviceLocation}
-                            onChange={(e) => {
-                              const on = e.target.checked;
-                              setUseDeviceLocation(on);
-                              localStorage.setItem("kora_local_auto", on ? "1" : "0");
-                              if (on) detectCountry();
-                            }}
-                            className="accent-kindle-accent w-3.5 h-3.5"
-                          />
-                          <span className="text-[10px] text-kindle-text-muted">
-                            Use my device location
-                          </span>
-                        </label>
-                      </div>
-
-                      <div className="relative">
-                        <select
-                          value={localCountry}
-                          onChange={(e) => chooseCountry(e.target.value)}
-                          aria-label="Select your country for local news"
-                          className="w-full appearance-none px-3 py-2 pr-8 rounded-lg border border-kindle-border bg-kindle-card text-xs font-bold text-kindle-text outline-none focus:border-kindle-accent"
-                        >
-                          <option value="">
-                            Worldwide — no specific country
-                          </option>
-                          {COUNTRY_OPTIONS.map((c) => (
-                            <option key={c.code} value={c.code}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-kindle-text-muted pointer-events-none" />
-                      </div>
-
-                      <p className="text-[10px] text-kindle-text-muted mt-2">
-                        {detecting
-                          ? "Detecting your country…"
-                          : localCountry
-                            ? `Local news from ${countryName(localCountry)} — ${feedsForCountry(localCountry).length} feeds.`
-                            : "Pick a country, or tick the box and let Kora detect it."}
-                      </p>
-                      {geoError && (
-                        <p className="text-[10px] text-amber-600 mt-1">{geoError}</p>
-                      )}
-                    </div>
-                  )}
 
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -824,6 +699,34 @@ export default function OnboardingModal({
                       third-party indices.
                     </span>
                   </label>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {onOpenAuth && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAuth()}
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card hover:bg-kindle-bg text-kindle-text text-[11px] font-bold transition"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+                          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                        </svg>
+                        Google
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleFinish()}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-card hover:bg-kindle-bg text-kindle-text text-[11px] font-bold transition"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="currentColor"/>
+                      </svg>
+                      Guest
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -854,47 +757,18 @@ export default function OnboardingModal({
               <ChevronRight className="w-4 h-4" />
             </button>
           ) : (
-            <div className="flex items-center gap-2 ml-auto">
-              {onOpenAuth && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!agreedToLicenses) {
-                      toast.error("Please review and agree to the legal terms and copyright guidelines before continuing.");
-                      return;
-                    }
-                    onOpenAuth();
-                  }}
-                  className={`py-2.5 px-4 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-sm ${
-                    agreedToLicenses
-                      ? "border-kindle-border bg-kindle-card hover:bg-kindle-bg text-kindle-text"
-                      : "border-neutral-200 bg-neutral-100 text-neutral-400 opacity-60"
-                  }`}
-                >
-                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                  </svg>
-                  Google
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={handleFinish}
-                className={`py-2.5 px-5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-md ${
-                  agreedToLicenses
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                    : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
-                }`}
-              >
-                <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="currentColor"/>
-                </svg>
-                Guest
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleFinish}
+              className={`py-2.5 px-6 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ml-auto shadow-md ${
+                agreedToLicenses
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                  : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+              }`}
+            >
+              <ChevronRight className="w-4 h-4" />
+              Enter Kora
+            </button>
           )}
         </div>
       </div>

@@ -1,5 +1,4 @@
 import type { AudiobookDetail } from "./audiobookScraper";
-import { SEARCHABLE_AUDIOBOOK_SOURCES, audiobookSearchUrl } from "./audiobookSources";
 import { titlesRoughlyMatch } from "./audiobookScraper";
 import { normalizeMediaUrl } from "./mediaUrl";
 
@@ -52,7 +51,7 @@ function normalizeDetailTracks(detail: AudiobookDetail): AudiobookDetail {
 function isValidCachedDetail(book: any, detail: AudiobookDetail | null): detail is AudiobookDetail {
   if (!detail?.tracks?.length) return false;
   if (!book?.title) return true;
-  return titlesRoughlyMatch(book.title, detail.title, book.author);
+  return titlesRoughlyMatch(book.title, detail.title);
 }
 
 export function getCachedAudiobookDetailClient(book: any): AudiobookDetail | null {
@@ -84,13 +83,10 @@ export function buildProbeUrls(book: any): string[] {
   const direct = [book.link, book.listenUrl, book.listenUrlAlt].filter(Boolean);
   if (direct.length > 0) return [...new Set(direct)];
 
-  // Derived from the registry. These were a hardcoded two-host list, so a book
-  // found on one of the eight new sources could not have its detail resolved —
-  // search worked and then the player page 404'd.
-  return SEARCHABLE_AUDIOBOOK_SOURCES.map((src) => {
-    const url = audiobookSearchUrl(src, book.title || "");
-    return url || "";
-  }).filter(Boolean);
+  return [
+    book.title ? `https://fulllengthaudiobooks.com/?s=${encodeURIComponent(book.title)}` : "",
+    book.title ? `https://hdaudiobooks.com/?s=${encodeURIComponent(book.title)}` : "",
+  ].filter(Boolean);
 }
 
 export async function fetchAudiobookDetail(
