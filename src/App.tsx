@@ -936,7 +936,7 @@ export default function App() {
       conversionStatesRef.current.delete(downloadId);
       setGlobalDownloads((prev) => {
         const updated = prev.map((download) => download.id === downloadId
-          ? { ...download, status: "converting", percent: 0, conversionOnly: false, conversionStatus: "queued", error: undefined }
+          ? { ...download, status: "converting", percent: 0, conversionOnly: true, conversionStatus: "queued", error: undefined }
           : download);
         persistDownloadsLogNow(updated);
         return updated;
@@ -1703,7 +1703,7 @@ export default function App() {
           ...dl,
           status: conversionFailed ? "error" : conversionStillRunning ? "converting" : "completed",
           percent: conversionStillRunning ? (conversionState?.percent || 0) : 100,
-          conversionOnly: conversionFailed,
+          conversionOnly: conversionFailed || conversionStillRunning,
           conversionStatus: conversionState?.status,
           error: conversionFailed ? conversionState?.error : undefined,
         } : dl);
@@ -1829,9 +1829,9 @@ export default function App() {
           const exists = prev.some((download) => download.id === data.downloadId);
           const updated = exists
             ? prev.map((download) => download.id === data.downloadId
-              ? { ...download, status: "converting", percent, conversionOnly: false, conversionStatus: status, conversionStage: status, transferred: "Converting to EPUB…", error: undefined }
+              ? { ...download, status: "converting", percent, conversionOnly: true, conversionStatus: status, conversionStage: status, transferred: "Converting to EPUB…", error: undefined }
               : download)
-            : [...prev, { id: data.downloadId, title: data.title || "PDF book", author: data.author || "Unknown", status: "converting", percent, conversionOnly: false, conversionStatus: status, conversionStage: status, transferred: "Converting to EPUB…" }];
+            : [...prev, { id: data.downloadId, title: data.title || "PDF book", author: data.author || "Unknown", status: "converting", percent, conversionOnly: true, conversionStatus: status, conversionStage: status, transferred: "Converting to EPUB…" }];
           persistDownloadsLogNow(updated);
           return updated;
         });
@@ -1983,7 +1983,7 @@ export default function App() {
                 percent,
                 conversionStatus: status,
                 conversionStage: status,
-                conversionOnly: status === "failed",
+                conversionOnly: status === "failed" || ["queued", "extracting", "building", "validating"].includes(status),
                 status: status === "failed" ? "error"
                   : status === "completed" ? "completed"
                   : ["queued", "extracting", "building", "validating"].includes(status) ? "converting" : "completed",
