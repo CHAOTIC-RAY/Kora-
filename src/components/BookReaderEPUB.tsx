@@ -1551,15 +1551,15 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       const text = textNode.textContent || "";
 
       let start = offset;
-      while (start > 0 && /[\w'’\-]/.test(text[start - 1])) start--;
+      while (start > 0 && /[\p{L}\p{N}_'’\-]/u.test(text[start - 1])) start--;
       let end = offset;
-      while (end < text.length && /[\w'’\-]/.test(text[end])) end++;
+      while (end < text.length && /[\p{L}\p{N}_'’\-]/u.test(text[end])) end++;
       if (end <= start) return false;
 
       const word = text
         .slice(start, end)
         .replace(/[’‘]/g, "'")
-        .replace(/^[^a-zA-Z0-9\-']+|[^a-zA-Z0-9\-']+$/g, "");
+        .replace(/^[^\p{L}\p{N}\-']+|[^\p{L}\p{N}\-']+$/gu, "");
       if (!word) return false;
 
       const newRange = document.createRange();
@@ -1710,7 +1710,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
           // Don't hijack an in-progress drag selection
           if (movedDuringPress || !isPointerDownRef.current) return;
           selectWordAtPoint(pressStartX, pressStartY);
-        }, 320);
+        }, 420);
       }
     };
 
@@ -4970,7 +4970,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       </div>
 
       {/* Kindle-Style Selection Pin Handles rendered at top level to avoid overflow clipping and CSS transform offsets */}
-      {selectedText && selectionPins.start && (
+      {selectedText && !dictionaryWord && selectionPins.start && (
         <div 
           data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
@@ -4997,7 +4997,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
           </div>
         </div>
       )}
-      {selectedText && selectionPins.end && (
+      {selectedText && !dictionaryWord && selectionPins.end && (
         <div 
           data-kora-selection-ui
           className="fixed bg-[#3390ff] z-[9999] pointer-events-none transition-all duration-75"
@@ -5026,7 +5026,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       )}
 
       {/* Native-style floating selection menu */}
-      {selectedText && selectionCoords && !isDraggingSelection && (() => {
+      {selectedText && selectionCoords && !dictionaryWord && !isDraggingSelection && (() => {
         const preferTop = selectionCoords.bottom > window.innerHeight * 0.62;
         const pos = clampSelectionMenuPosition(
           selectionCoords.x,
