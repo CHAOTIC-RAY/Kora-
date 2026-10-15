@@ -236,7 +236,7 @@ if (WRITE) {
   // not only this run's console output.
   for (const r of results) {
     if (!r.file) continue;
-    const f = r.file;
+    const f = join(SOURCES, r.file);
     let def: any;
     try {
       def = JSON.parse(await readFile(f, "utf8"));
