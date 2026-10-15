@@ -49,6 +49,72 @@ export interface UnoGameProps {
   onOpenScores?: () => void;
 }
 
+const UNO_CARD_COLORS: Record<Exclude<UnoColor, "wild">, string> = {
+  red: "#f04452",
+  blue: "#2588ff",
+  green: "#20b979",
+  yellow: "#f8c844",
+};
+
+function unoSymbol(value: UnoCard["value"]): string {
+  if (value === "skip") return "⊘";
+  if (value === "reverse") return "⇄";
+  if (value === "draw2") return "+2";
+  if (value === "wild4") return "+4";
+  if (value === "wild") return "✦";
+  return value;
+}
+
+/** Bespoke card artwork: custom color field, ivory inset, diagonal oval and corner indices. */
+function UnoCardArt({ card, compact = false }: { card: UnoCard; compact?: boolean }) {
+  const wild = card.color === "wild";
+  const color = wild ? "#171923" : UNO_CARD_COLORS[card.color];
+  return (
+    <div
+      className={`relative h-full w-full overflow-hidden rounded-[0.8rem] border-[3px] border-white/95 shadow-[0_8px_18px_rgba(0,0,0,.28)] ${compact ? "rounded-[0.65rem]" : ""}`}
+      style={{ background: color, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.1), 0 8px 18px rgba(0,0,0,.28)" }}
+    >
+      {wild ? (
+        <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 rotate-[-12deg] scale-125">
+          <span style={{ background: UNO_CARD_COLORS.red }} />
+          <span style={{ background: UNO_CARD_COLORS.blue }} />
+          <span style={{ background: UNO_CARD_COLORS.yellow }} />
+          <span style={{ background: UNO_CARD_COLORS.green }} />
+        </div>
+      ) : (
+        <div className="absolute inset-[9%] rounded-[50%] border-[2px] border-white/90 bg-white/10 rotate-[-24deg]" />
+      )}
+      <span className={`absolute left-[7%] top-[5%] z-[1] font-black leading-none text-white drop-shadow ${compact ? "text-[8px]" : "text-[10px] sm:text-xs"}`}>
+        {unoSymbol(card.value)}
+      </span>
+      <span className={`absolute inset-0 z-[1] flex items-center justify-center font-black italic leading-none text-white drop-shadow-[0_2px_2px_rgba(0,0,0,.4)] ${compact ? "text-2xl" : "text-3xl sm:text-4xl"}`}>
+        {unoSymbol(card.value)}
+      </span>
+      <span className={`absolute bottom-[5%] right-[7%] z-[1] rotate-180 font-black leading-none text-white drop-shadow ${compact ? "text-[8px]" : "text-[10px] sm:text-xs"}`}>
+        {unoSymbol(card.value)}
+      </span>
+      {wild && <span className="absolute inset-[22%] z-[1] rounded-full border-2 border-white/90 bg-[#171923] shadow-lg" />}
+      {wild && <span className="absolute inset-[22%] z-[2] flex items-center justify-center text-xl font-black text-white sm:text-2xl">{unoSymbol(card.value)}</span>}
+    </div>
+  );
+}
+
+function UnoCardBack({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={`relative h-full w-full overflow-hidden rounded-[0.8rem] border-[3px] border-white bg-[#171923] shadow-[0_8px_18px_rgba(0,0,0,.35)] ${compact ? "rounded-[0.65rem]" : ""}`}
+      style={{ backgroundImage: "radial-gradient(circle at 20% 20%, rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(135deg,#25283a,#11131d)", backgroundSize: "9px 9px, auto" }}
+    >
+      <div className="absolute inset-[9%] rotate-[-18deg] rounded-[50%] border-[3px] border-white bg-gradient-to-br from-rose-500 via-orange-400 to-yellow-300 shadow-xl" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="rounded-full border-2 border-white px-2 py-1 text-[10px] font-black italic tracking-tight text-white shadow-lg sm:px-3 sm:py-1.5 sm:text-sm">KORA</span>
+      </div>
+      <span className="absolute bottom-1 right-1 text-[7px] font-black tracking-widest text-white/80">UNO</span>
+    </div>
+  );
+}
+
+
 export default function UnoGame({
   open,
   onClose,
@@ -583,84 +649,54 @@ export default function UnoGame({
 
           {/* SCREEN 1: MENU / MODE SELECTION */}
           {screen === "menu" && (
-            <main className="flex-1 p-6 flex flex-col items-center justify-center max-w-xl mx-auto w-full space-y-6 text-center">
-              <div className="p-4 rounded-3xl bg-rose-500/10 text-rose-500 ring-8 ring-rose-500/5">
-                <Flame className="w-12 h-12" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-serif font-bold text-kindle-text">
-                  Choose Game Arena
-                </h3>
-                <p className="text-xs text-kindle-text-muted leading-relaxed max-w-md">
-                  Play peer-to-peer with friends on the same Wi-Fi network, or practice solo offline against intelligent bots.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full pt-2">
-                {/* Solo Offline Mode */}
-                <button
-                  type="button"
-                  onClick={startSoloGame}
-                  className="p-5 rounded-2xl border border-kindle-border hover:border-amber-500/50 bg-kindle-card/50 text-left transition duration-200 group cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-500 w-fit">
-                      <Cpu className="w-5 h-5" />
+            <main className="relative flex-1 overflow-y-auto bg-[#11131d] px-4 py-7 text-white sm:px-8 sm:py-10">
+              <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(244,63,94,.22), transparent 45%), radial-gradient(ellipse at 0% 100%, rgba(37,136,255,.16), transparent 40%)" }} />
+              <div className="relative mx-auto flex min-h-full w-full max-w-4xl flex-col items-center justify-center gap-7 text-center">
+                <div className="relative">
+                  <div className="absolute -inset-5 rounded-full bg-rose-500/20 blur-2xl" />
+                  <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] border border-white/15 bg-[#1c2030] shadow-2xl rotate-[-7deg]">
+                    <div className="h-16 w-12 rotate-[7deg] rounded-xl border-[3px] border-white bg-gradient-to-br from-rose-500 via-orange-400 to-yellow-300 shadow-xl flex items-center justify-center">
+                      <span className="text-2xl font-black italic text-white">K</span>
                     </div>
-                    <h4 className="text-sm font-bold text-kindle-text group-hover:text-amber-500 transition">
-                      Solo vs Bots
-                    </h4>
-                    <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-                      Instant offline match against 3 tactical CPU scholars. Zero network needed.
-                    </p>
                   </div>
-                  <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest mt-4 flex items-center gap-1">
-                    Play Solo →
-                  </span>
-                </button>
-
-                {/* Same-Network P2P Mode */}
-                <button
-                  type="button"
-                  onClick={hostP2pRoom}
-                  className="p-5 rounded-2xl border border-kindle-border hover:border-rose-500/50 bg-kindle-card/50 text-left transition duration-200 group cursor-pointer shadow-xs hover:shadow-md flex flex-col justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-500 w-fit">
-                      <Wifi className="w-5 h-5" />
+                </div>
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-[.35em] text-rose-300">Kora Originals · Card Arena</p>
+                  <h3 className="text-4xl font-black italic tracking-tight sm:text-6xl">WILDCARD <span className="text-rose-400">CLASH</span></h3>
+                  <p className="mx-auto max-w-lg text-sm leading-relaxed text-white/60">
+                    Outplay the table. Save your wild card. Call UNO before they catch you.
+                  </p>
+                </div>
+                <div className="grid w-full gap-4 pt-1 sm:grid-cols-2">
+                  <button type="button" onClick={startSoloGame} className="group relative overflow-hidden rounded-3xl border border-emerald-300/20 bg-[#153a32] p-5 text-left shadow-xl transition hover:-translate-y-1 hover:border-emerald-200/60 hover:shadow-2xl sm:p-6">
+                    <div className="absolute -right-5 -top-8 h-32 w-28 rotate-12 opacity-80 transition group-hover:rotate-6 group-hover:scale-110">
+                      <UnoCardArt card={{ id: "menu-green", color: "green", value: "7", scoreValue: 7 }} compact />
                     </div>
-                    <h4 className="text-sm font-bold text-kindle-text group-hover:text-rose-500 transition">
-                      Host P2P Arena
-                    </h4>
-                    <p className="text-[11px] text-kindle-text-muted leading-relaxed">
-                      Create a room. Connect phones and laptops over the same Wi-Fi via WebRTC.
-                    </p>
-                  </div>
-                  <span className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mt-4 flex items-center gap-1">
-                    Create Room →
-                  </span>
-                </button>
-              </div>
-
-              {/* Join Existing Room Bar */}
-              <div className="w-full pt-4 border-t border-kindle-border/60">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter 6-letter room code (e.g. AB3X9Z)"
-                    value={joinInput}
-                    onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
-                    maxLength={6}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-kindle-border bg-kindle-card text-xs font-mono text-kindle-text focus:outline-none focus:border-kindle-accent uppercase"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => joinP2pRoom(joinInput)}
-                    className="px-5 py-2.5 rounded-xl bg-kindle-accent text-kindle-bg font-bold text-xs hover:opacity-90 transition cursor-pointer"
-                  >
-                    Join
+                    <div className="relative z-10 flex h-full min-h-36 flex-col items-start justify-between gap-6">
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-300/15 text-emerald-200"><Cpu className="h-5 w-5" /></span>
+                      <div><h4 className="text-lg font-black">Solo Showdown</h4><p className="mt-1 max-w-[230px] text-xs leading-relaxed text-white/60">Jump straight into a match against tactical offline bots.</p></div>
+                      <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-200">Play now <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
+                    </div>
+                  </button>
+                  <button type="button" onClick={hostP2pRoom} className="group relative overflow-hidden rounded-3xl border border-rose-300/20 bg-[#3a202b] p-5 text-left shadow-xl transition hover:-translate-y-1 hover:border-rose-200/60 hover:shadow-2xl sm:p-6">
+                    <div className="absolute -right-5 -top-8 h-32 w-28 rotate-12 opacity-80 transition group-hover:rotate-6 group-hover:scale-110">
+                      <UnoCardArt card={{ id: "menu-wild", color: "wild", value: "wild4", scoreValue: 50 }} compact />
+                    </div>
+                    <div className="relative z-10 flex h-full min-h-36 flex-col items-start justify-between gap-6">
+                      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-rose-300/15 text-rose-200"><Wifi className="h-5 w-5" /></span>
+                      <div><h4 className="text-lg font-black">Friend Arena</h4><p className="mt-1 max-w-[230px] text-xs leading-relaxed text-white/60">Create a room and invite a friend with a six-character code.</p></div>
+                      <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-rose-200">Host a game <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" /></span>
+                    </div>
                   </button>
                 </div>
+                <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-white/[.04] p-3 sm:p-4">
+                  <div className="mb-3 flex items-center gap-2 px-1 text-left text-[10px] font-black uppercase tracking-[.2em] text-white/45"><Users className="h-3.5 w-3.5" /> Have a room code?</div>
+                  <div className="flex gap-2">
+                    <input type="text" placeholder="ENTER ROOM CODE" value={joinInput} onChange={(e) => setJoinInput(e.target.value.toUpperCase())} maxLength={6} aria-label="Room code" className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 font-mono text-sm tracking-[.2em] text-white outline-none placeholder:text-white/25 focus:border-rose-400" />
+                    <button type="button" onClick={() => joinP2pRoom(joinInput)} className="rounded-xl bg-white px-5 py-3 text-xs font-black uppercase tracking-widest text-[#171923] transition hover:bg-rose-100">Join</button>
+                  </div>
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-[.2em] text-white/30">108 cards · 2–4 players · Offline ready</p>
               </div>
             </main>
           )}
@@ -752,169 +788,84 @@ export default function UnoGame({
 
           {/* SCREEN 3: ACTIVE PLAYING ARENA */}
           {screen === "playing" && publicState && (
-            <main className="flex-1 relative flex flex-col justify-between p-3 sm:p-5 overflow-hidden select-none">
-              {/* Top Ring: Opponents */}
-              <div className="flex justify-around items-center gap-2 pb-2">
-                {publicState.players
-                  .filter((p) => p.id !== myId)
-                  .map((p) => {
+            <main className="relative flex-1 overflow-hidden p-3 text-white sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, rgba(244,63,94,.17), transparent 48%), linear-gradient(145deg,#11131d,#191d2b 55%,#10131b)" }}>
+              <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(rgba(255,255,255,.16) .7px, transparent .7px)", backgroundSize: "15px 15px" }} />
+              <div className="relative z-10 flex h-full min-h-[470px] flex-col gap-3 sm:gap-4">
+                {/* Opponent seats */}
+                <div className="flex shrink-0 items-center justify-center gap-2 overflow-x-auto pb-1">
+                  {publicState.players.filter((p) => p.id !== myId).map((p, i) => {
                     const isActive = p.id === activePlayer?.id;
+                    const accents = ["#f04452", "#2588ff", "#20b979", "#f8c844"];
                     return (
-                      <div
-                        key={p.id}
-                        className={`px-3 py-2 rounded-2xl border transition-all flex items-center gap-2.5 ${
-                          isActive
-                            ? "border-rose-500 bg-rose-500/10 shadow-md ring-2 ring-rose-500/20"
-                            : "border-kindle-border bg-kindle-card/60"
-                        }`}
-                      >
-                        <div className="w-7 h-7 rounded-full bg-kindle-border flex items-center justify-center text-xs font-bold text-kindle-text shrink-0">
-                          {p.name.charAt(0)}
+                      <div key={p.id} className={`flex min-w-0 items-center gap-2 rounded-2xl border px-3 py-2 transition-all ${isActive ? "border-white/35 bg-white/10 shadow-lg ring-2 ring-white/10" : "border-white/10 bg-black/20"}`}>
+                        <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-black text-white shadow-inner" style={{ background: `linear-gradient(145deg,${accents[i % accents.length]},#202334)` }}>
+                          {p.name.charAt(0).toUpperCase()}
+                          {isActive && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-[#171923] bg-emerald-300" />}
                         </div>
-                        <div className="text-left min-w-0">
-                          <p className="text-xs font-bold text-kindle-text truncate max-w-[90px]">
-                            {p.name}
-                          </p>
-                          <div className="flex items-center gap-1.5 text-[10px] text-kindle-text-muted">
-                            <span>🎴 {p.cardCount} cards</span>
-                            {p.cardCount === 1 && !p.hasCalledUno && (
-                              <button
-                                type="button"
-                                onClick={() => handleCatchUno(p.id)}
-                                className="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-bold uppercase animate-pulse"
-                              >
-                                Catch!
-                              </button>
-                            )}
-                          </div>
+                        <div className="min-w-0 text-left">
+                          <p className="max-w-[100px] truncate text-[11px] font-black sm:text-xs">{p.name}</p>
+                          <p className="mt-0.5 text-[10px] text-white/50">{p.cardCount} cards{p.isCpu ? " · CPU" : ""}</p>
                         </div>
+                        {p.cardCount === 1 && !p.hasCalledUno && <button type="button" onClick={() => handleCatchUno(p.id)} className="rounded-lg bg-amber-300 px-2 py-1 text-[9px] font-black uppercase text-black animate-pulse">Catch!</button>}
                       </div>
                     );
                   })}
-              </div>
+                </div>
 
-              {/* Center Table: Deck, Top Discard, Active Color & Status */}
-              <div className="my-auto flex flex-col items-center justify-center space-y-4">
-                <div className="flex items-center justify-center gap-6 sm:gap-10">
-                  {/* Draw Deck */}
-                  <button
-                    type="button"
-                    onClick={handleDrawCard}
-                    disabled={!isMyTurn}
-                    className={`w-20 h-28 sm:w-24 sm:h-36 rounded-2xl border-2 border-dashed border-kindle-border flex flex-col items-center justify-center text-center p-2 transition cursor-pointer shadow-md ${
-                      isMyTurn
-                        ? "bg-kindle-card hover:border-kindle-accent hover:scale-105"
-                        : "opacity-60 cursor-not-allowed bg-kindle-card/40"
-                    }`}
-                  >
-                    <span className="text-2xl mb-1">🎴</span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-kindle-text">
-                      Draw
-                    </span>
-                  </button>
-
-                  {/* Top Discard Pile */}
-                  {publicState.topDiscard && (
-                    <div
-                      className={`w-20 h-28 sm:w-24 sm:h-36 rounded-2xl border-2 shadow-xl flex flex-col justify-between p-2.5 transition-transform duration-300 ${
-                        getCardColorStyle(publicState.topDiscard.color).bg
-                      } ${getCardColorStyle(publicState.topDiscard.color).border}`}
-                    >
-                      <div className="text-[10px] font-bold text-white uppercase tracking-wider">
-                        {publicState.topDiscard.value}
-                      </div>
-                      <div className="text-2xl sm:text-3xl font-black text-white text-center drop-shadow-md">
-                        {publicState.topDiscard.value === "skip"
-                          ? "⊘"
-                          : publicState.topDiscard.value === "reverse"
-                          ? "⇄"
-                          : publicState.topDiscard.value === "draw2"
-                          ? "+2"
-                          : publicState.topDiscard.value === "wild4"
-                          ? "+4"
-                          : publicState.topDiscard.value === "wild"
-                          ? "★"
-                          : publicState.topDiscard.value}
-                      </div>
-                      <div className="text-[9px] font-bold text-white text-right uppercase">
-                        {publicState.currentColor}
-                      </div>
+                {/* Custom felt table */}
+                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-emerald-100/20 shadow-[inset_0_0_45px_rgba(0,0,0,.38),0_18px_50px_rgba(0,0,0,.25)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, #176b52 0%, #0d4a39 52%, #073427 100%)" }}>
+                  <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-white/10 sm:inset-5 sm:rounded-[2rem]" />
+                  <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[60%]" />
+                  <div className="pointer-events-none absolute left-1/2 top-1/2 h-[62%] w-[56%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[40%]" />
+                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-emerald-50/65 sm:left-6 sm:top-6">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_#6ee7b7]" /> Live table
+                  </div>
+                  <div className="relative z-10 flex w-full items-center justify-center gap-5 px-3 sm:gap-9">
+                    <div className="flex flex-col items-center gap-2">
+                      <button type="button" onClick={handleDrawCard} disabled={!isMyTurn} aria-label="Draw a card" className={`relative h-28 w-[4.6rem] transition sm:h-36 sm:w-24 ${isMyTurn ? "hover:-translate-y-2" : "opacity-75"}`}>
+                        <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[8deg]"><UnoCardBack compact /></span>
+                        <span className="absolute inset-0 -translate-x-1 translate-y-1 rotate-[-5deg]"><UnoCardBack compact /></span>
+                        <span className="absolute inset-0"><UnoCardBack compact /></span>
+                      </button>
+                      <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-[9px] font-black uppercase tracking-[.2em] text-white/75">Draw pile</span>
                     </div>
-                  )}
-                </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="relative h-28 w-[4.6rem] sm:h-36 sm:w-24">
+                        {publicState.topDiscard && <motion.div key={publicState.topDiscard.id} initial={{ opacity: 0, y: -12, rotate: -9, scale: .9 }} animate={{ opacity: 1, y: 0, rotate: 2, scale: 1 }} transition={{ type: "spring", stiffness: 260, damping: 20 }} className="absolute inset-0"><UnoCardArt card={publicState.topDiscard} /></motion.div>}
+                      </div>
+                      <span className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-[9px] font-black uppercase tracking-[.2em] text-white/75">Discard pile</span>
+                    </div>
+                  </div>
+                  <div className="relative z-10 mt-4 flex flex-col items-center gap-2 px-4 text-center">
+                    <div className="flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest">
+                      <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white/25" style={{ background: UNO_CARD_COLORS[publicState.currentColor as Exclude<UnoColor, "wild">] || "#fff" }} />
+                      {publicState.currentColor} active
+                    </div>
+                    <p className="max-w-xl text-xs font-semibold text-white/75 sm:text-sm">{publicState.lastActionDescription}</p>
+                    <p className={`text-[10px] font-black uppercase tracking-[.2em] sm:text-xs ${isMyTurn ? "text-amber-200" : "text-emerald-100/60"}`}>
+                      {isMyTurn ? "Your turn — play a matching card" : `Waiting for ${activePlayer?.name || "opponent"}`}
+                    </p>
+                  </div>
+                </section>
 
-                {/* Status Bar: Last Action & Turn Prompt */}
-                <div className="text-center space-y-1">
-                  <p className="text-xs text-kindle-text font-medium">
-                    {publicState.lastActionDescription}
-                  </p>
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-kindle-accent">
-                    {isMyTurn ? "👉 It's your turn!" : `Waiting for ${activePlayer?.name || "opponent"}...`}
-                  </p>
-                </div>
-              </div>
-
-              {/* Bottom: Player's Hand Carousel & Uno Button */}
-              <div className="pt-2 space-y-2 shrink-0">
-                <div className="flex items-center justify-between px-2">
-                  <span className="text-xs font-bold text-kindle-text">
-                    Your Hand ({myHand.length})
-                  </span>
-                  {myHand.length <= 2 && (
-                    <button
-                      type="button"
-                      onClick={handleCallUno}
-                      className="px-4 py-1.5 rounded-full bg-rose-600 text-white font-bold text-xs shadow-lg animate-bounce hover:bg-rose-700 transition cursor-pointer"
-                    >
-                      SHOUT UNO!
-                    </button>
-                  )}
-                </div>
-
-                {/* Hand Cards */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 px-1 scrollbar-thin">
-                  {myHand.map((card) => {
-                    const playable =
-                      isMyTurn && canPlayCard(card, publicState.topDiscard, publicState.currentColor);
-                    const colorStyle = getCardColorStyle(card.color);
-
-                    return (
-                      <motion.button
-                        key={card.id}
-                        type="button"
-                        whileHover={{ y: -8, scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => handleCardClick(card)}
-                        disabled={!playable}
-                        className={`w-14 h-20 sm:w-16 sm:h-24 rounded-xl border-2 flex flex-col justify-between p-1.5 shrink-0 transition-shadow shadow-md cursor-pointer ${
-                          colorStyle.bg
-                        } ${colorStyle.border} ${
-                          playable ? "ring-2 ring-white/60" : "opacity-45 cursor-not-allowed"
-                        }`}
-                      >
-                        <span className="text-[9px] font-bold text-white uppercase">
-                          {card.value}
-                        </span>
-                        <span className="text-lg sm:text-xl font-black text-white text-center">
-                          {card.value === "skip"
-                            ? "⊘"
-                            : card.value === "reverse"
-                            ? "⇄"
-                            : card.value === "draw2"
-                            ? "+2"
-                            : card.value === "wild4"
-                            ? "+4"
-                            : card.value === "wild"
-                            ? "★"
-                            : card.value}
-                        </span>
-                        <span className="text-[8px] font-bold text-white text-right uppercase">
-                          {card.color}
-                        </span>
-                      </motion.button>
-                    );
-                  })}
-                </div>
+                {/* Hand and action bar */}
+                <section className="shrink-0 rounded-[1.7rem] border border-white/10 bg-white/[.045] p-3 sm:p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                    <div><p className="text-xs font-black sm:text-sm">YOUR HAND <span className="ml-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-white/70">{myHand.length}</span></p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.18em] text-white/35">Tap a glowing card to play</p></div>
+                    {myHand.length <= 2 && <motion.button type="button" whileTap={{ scale: .94 }} onClick={handleCallUno} className="rounded-full border border-amber-200/50 bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2 text-[10px] font-black italic tracking-widest text-[#171923] shadow-[0_0_22px_rgba(251,191,36,.22)] sm:text-xs"><Flame className="mr-1 inline h-3.5 w-3.5" /> CALL UNO!</motion.button>}
+                  </div>
+                  <div className="flex min-h-[118px] items-end gap-2 overflow-x-auto overflow-y-hidden px-1 pb-2 pt-1 scrollbar-thin sm:min-h-[142px] sm:gap-2.5">
+                    {myHand.map((card, index) => {
+                      const playable = isMyTurn && canPlayCard(card, publicState.topDiscard, publicState.currentColor);
+                      return (
+                        <motion.button key={card.id} type="button" aria-label={`Play ${card.color} ${card.value}`} title={`${card.color} ${card.value}`} whileHover={{ y: playable ? -12 : -2, rotate: playable ? 0 : index % 2 ? 2 : -2, scale: playable ? 1.04 : 1.01 }} whileTap={{ scale: .95 }} onClick={() => handleCardClick(card)} disabled={!playable} className={`relative h-[108px] w-[70px] shrink-0 transition-all duration-150 sm:h-[132px] sm:w-[86px] ${playable ? "cursor-pointer drop-shadow-[0_8px_12px_rgba(255,255,255,.12)]" : "cursor-not-allowed opacity-45 grayscale-[.25]"} `}>
+                          {playable && <span className="pointer-events-none absolute -inset-1 rounded-2xl bg-white/10 blur-md" />}
+                          <span className="relative block h-full w-full"><UnoCardArt card={card} compact /></span>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </section>
               </div>
             </main>
           )}
