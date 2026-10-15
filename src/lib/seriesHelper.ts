@@ -197,9 +197,13 @@ export interface LibraryGroup {
   title: string;
   total: number;
   volumes: BookMetadata[];
+  /** Main cover and metadata record for the grouped shelf tile. */
+  representative: BookMetadata;
   completed: number;
   reading: number;
   toRead: number;
+  /** Completion ratio from 0 to 1. */
+  fraction: number;
   furthestCompletedNumber: number;
   highestNumber: number;
 }
@@ -282,9 +286,11 @@ export function buildLibraryGroups(library: BookMetadata[]): LibraryGroup[] {
       title,
       total: sortedVolumes.length,
       volumes: sortedVolumes,
+      representative: sortedVolumes[0]!,
       completed,
       reading,
       toRead,
+      fraction: sortedVolumes.length ? completed / sortedVolumes.length : 0,
       furthestCompletedNumber,
       highestNumber,
     });
