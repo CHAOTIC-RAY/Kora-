@@ -1097,7 +1097,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
               <button
                 type="button"
                 onClick={() => setSoundEnabled(!soundEnabled)}
-                className="p-2 rounded-full border border-kindle-border hover:bg-white/5 text-kindle-accent"
+                className="p-2 rounded-full border border-kindle-border hover:bg-[var(--theme-card)] text-kindle-accent"
                 title={soundEnabled ? "Mute Sound" : "Enable Sound"}
               >
                 {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -1105,7 +1105,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 rounded-full border border-kindle-border hover:bg-white/5 text-neutral-300"
+                className="p-2 rounded-full border border-kindle-border hover:bg-[var(--theme-card)] text-[var(--theme-text-muted)]"
                 title="Close Scrabble"
               >
                 <X className="w-4 h-4" />
@@ -1209,7 +1209,7 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
                       <button
                         type="button"
                         onClick={joinOnlineRoom}
-                        className="px-4 py-2 rounded-xl bg-amber-800 dark:bg-white text-white dark:text-black font-bold text-xs uppercase tracking-wider hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-4 py-2 rounded-xl bg-[var(--theme-accent)] text-[var(--theme-bg)] font-bold text-xs uppercase tracking-wider hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
                         disabled={!roomCode || roomCode.length < 6}
                       >
                         Join
