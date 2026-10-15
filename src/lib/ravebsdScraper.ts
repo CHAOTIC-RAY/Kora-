@@ -110,6 +110,71 @@ async function searchOpenLibrary(query: string): Promise<ScrapedBook[]> {
   }).filter((x: ScrapedBook | null): x is ScrapedBook => !!x);
 }
 
+
+/** OpenStax's public catalogue; the detail record exposes the official PDF URL. */
+async function searchOpenStax(query: string, mode: string): Promise<ScrapedBook[]> {
+  if (mode === "audiobooks") return [];
+  try {
+    const data = await getJson("https://openstax.org/apps/cms/api/v2/pages/?type=books.Book&limit=250");
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const q = norm(query);
+    const matches = items.filter((b: any) => relevance(clean(b.title), "", query) >= 0.45 || norm(clean(b.title)).includes(q)).slice(0, 5);
+    const details = await Promise.all(matches.map(async (b: any) => {
+      const url = safeHttp(b?.meta?.detail_url);
+      if (!url || new URL(url).hostname !== "openstax.org") return null;
+      return getJson(url);
+    }));
+    return details.filter((d: any) => d && safeHttp(d.pdf_url)).map((d: any): ScrapedBook => ({
+      title: clean(d.title) || "Unknown Title",
+      author: Array.isArray(d.authors) ? d.authors.map((a: any) => clean(a?.value?.name)).filter(Boolean).join(", ") : "",
+      year: String(d.publish_date || "").slice(0, 4),
+      format: "pdf", filesize: 0, language: "en", source: "OpenStax (open textbook)",
+      downloadUrl: safeHttp(d.pdf_url), directUrl: safeHttp(d.pdf_url), directReady: true,
+      coverUrl: safeHttp(d.cover_url), identifier: String(d.id || d.meta?.html_url || "")
+    }));
+  } catch { return []; }
+}
+
+/** LibreTexts' public book catalogue returns official generated PDFs when available. */
+async function searchLibreTexts(query: string, mode: string): Promise<ScrapedBook[]> {
+  if (mode === "audiobooks") return [];
+  const url = "https://commons.libretexts.org/api/v1/search/books-v2?searchQuery=" + encodeURIComponent(query) + "&limit=10&page=1";
+  try {
+    const data = await getJson(url);
+    const books = Array.isArray(data?.results) ? data.results : [];
+    return books.filter((b: any) => safeHttp(b?.links?.pdf)).map((b: any): ScrapedBook => ({
+      title: clean(b.title) || "Unknown Title", author: clean(b.author), year: "",
+      format: "pdf", filesize: 0, language: "", source: "LibreTexts (open textbook)",
+      downloadUrl: safeHttp(b.links.pdf), directUrl: safeHttp(b.links.pdf), directReady: true,
+      coverUrl: safeHttp(b.thumbnail), identifier: safeHttp(b.links.online)
+    }));
+  } catch { return []; }
+}
+
+/** LibriVox's public-domain audiobook API exposes a ZIP containing its chapter MP3s. */
+async function searchLibriVox(query: string, mode: string): Promise<ScrapedBook[]> {
+  if (mode !== "audiobooks") return [];
+  const titleQuery = query.trim().replace(/^(the|a|an)\\s+/i, "");
+  const url = "https://librivox.org/api/feed/audiobooks/?" + new URLSearchParams({
+    title: "^" + titleQuery, format: "json", limit: "12"
+  }).toString();
+  try {
+    const data = await getJson(url);
+    const rows = Array.isArray(data?.books) ? data.books : [];
+    return rows.map((b: any): ScrapedBook | null => {
+      const download = safeHttp(b.url_zip_file);
+      const title = clean(b.title);
+      if (!title || !download) return null;
+      return {
+        title, author: Array.isArray(b.authors) ? b.authors.map((a: any) => clean([a.first_name, a.last_name].filter(Boolean).join(" "))).filter(Boolean).join(", ") : "",
+        year: "", format: "zip", filesize: 0, language: clean(b.language), source: "LibriVox (public-domain audiobook)",
+        downloadUrl: download, directUrl: download, directReady: true,
+        coverUrl: safeHttp(b.url_cover), identifier: String(b.id || "")
+      };
+    }).filter((x: ScrapedBook | null): x is ScrapedBook => !!x);
+  } catch { return []; }
+}
+
 export async function searchIndependentBookSources(query: string, mode = "ebooks", source = "all"): Promise<{ results: ScrapedBook[]; meta: Record<string, any> }> {
   const q = query.trim();
   if (!q) return { results: [], meta: { sources: {}, fallback: true } };
@@ -117,6 +182,9 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
   const jobs: Array<[string, Promise<ScrapedBook[]>]> = [];
   if (requested === "all" || ["archive","internet-archive","ia"].includes(requested)) jobs.push(["archive", searchInternetArchive(q, mode)]);
   if (mode !== "audiobooks" && (requested === "all" || ["gutenberg","project-gutenberg"].includes(requested))) jobs.push(["gutenberg", searchGutenberg(q)]);
+  if (mode !== "audiobooks" && (requested === "all" || ["openstax","open-stax"].includes(requested))) jobs.push(["openstax", searchOpenStax(q, mode)]);
+  if (mode !== "audiobooks" && (requested === "all" || ["libretexts","libre-texts"].includes(requested))) jobs.push(["libretexts", searchLibreTexts(q, mode)]);
+  if (mode === "audiobooks" && (requested === "all" || ["librivox","libri-vox"].includes(requested))) jobs.push(["librivox", searchLibriVox(q, mode)]);
   if (mode !== "audiobooks" && (requested === "all" || ["openlibrary","open-library","metadata"].includes(requested))) jobs.push(["openlibrary", searchOpenLibrary(q)]);
   const settled = await Promise.all(jobs.map(async ([id, promise]) => {
     try { return [id, await promise] as [string, ScrapedBook[]]; } catch { return [id, []] as [string, ScrapedBook[]]; }
