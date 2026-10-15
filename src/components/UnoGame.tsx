@@ -650,10 +650,10 @@ export default function UnoGame({
           {/* SCREEN 1: MENU / MODE SELECTION */}
           {screen === "menu" && (
             <main className="relative flex-1 overflow-y-auto bg-[var(--theme-bg)] px-4 py-7 text-[var(--theme-text)] sm:px-8 sm:py-10">
-              <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(244,63,94,.22), transparent 45%), radial-gradient(ellipse at 0% 100%, rgba(37,136,255,.16), transparent 40%)" }} />
+              <div className="pointer-events-none absolute inset-0 opacity-70" style={{ background: "radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 45%), radial-gradient(ellipse at 0% 100%, color-mix(in srgb, var(--theme-accent) 10%, transparent), transparent 40%)" }} />
               <div className="relative mx-auto flex min-h-full w-full max-w-4xl flex-col items-center justify-center gap-7 text-center">
                 <div className="relative">
-                  <div className="absolute -inset-5 rounded-full bg-rose-500/20 blur-2xl" />
+                  <div className="absolute -inset-5 rounded-full bg-[var(--theme-accent)]/15 blur-2xl" />
                   <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] border border-[var(--theme-border)] bg-[var(--theme-card)] shadow-2xl rotate-[-7deg]">
                     <div className="h-16 w-12 rotate-[7deg] rounded-xl border-[3px] border-white bg-gradient-to-br from-rose-500 via-orange-400 to-yellow-300 shadow-xl flex items-center justify-center">
                       <span className="text-2xl font-black italic text-white">K</span>
@@ -813,11 +813,11 @@ export default function UnoGame({
                 </div>
 
                 {/* Custom felt table */}
-                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-emerald-100/20 shadow-[inset_0_0_45px_rgba(0,0,0,.38),0_18px_50px_rgba(0,0,0,.25)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
+                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-[var(--theme-border)] shadow-[inset_0_0_45px_rgba(0,0,0,.38),0_18px_50px_rgba(0,0,0,.25)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
                   <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-[var(--theme-border)] sm:inset-5 sm:rounded-[2rem]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[60%]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[62%] w-[56%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[40%]" />
-                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-emerald-50/65 sm:left-6 sm:top-6">
+                  <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-[var(--theme-text-muted)] sm:left-6 sm:top-6">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_#6ee7b7]" /> Live table
                   </div>
                   <div className="relative z-10 flex w-full items-center justify-center gap-5 px-3 sm:gap-9">
