@@ -829,6 +829,10 @@ export default function App() {
   /** Download IDs that have received real SW byte progress (not just "Starting…"). */
   const swMadeProgressRef = useRef<Set<string>>(new Set());
   const swWatchdogTimersRef = useRef<Map<string, number>>(new Map());
+  const conversionStatesRef = useRef<Map<string, { status: string; percent: number; error?: string }>>(new Map());
+  const conversionFailedDownloadsRef = useRef<Set<string>>(
+    new Set(loadDownloadsLog().filter((download: any) => download.conversionOnly).map((download: any) => String(download.id)))
+  );
 
   const removeDownloadEntry = useCallback((downloadId: string) => {
     setGlobalDownloads((prev) => {
@@ -928,6 +932,19 @@ export default function App() {
   );
 
   const retryFailedDownload = useCallback((downloadId: string) => {
+    if (conversionFailedDownloadsRef.current.has(downloadId)) {
+      conversionStatesRef.current.delete(downloadId);
+      setGlobalDownloads((prev) => {
+        const updated = prev.map((download) => download.id === downloadId
+          ? { ...download, status: "converting", percent: 0, conversionOnly: false, conversionStatus: "queued", error: undefined }
+          : download);
+        persistDownloadsLogNow(updated);
+        return updated;
+      });
+      navigator.serviceWorker?.controller?.postMessage({ type: "retry-pdf-conversion", downloadId });
+      toast.loading("Retrying EPUB conversion…", { id: downloadId });
+      return;
+    }
     let fallback = swDownloadFallbackRef.current.get(downloadId);
     if (!fallback) {
       try {
@@ -1638,7 +1655,7 @@ export default function App() {
   // Pick up a finished blob from the SW store, store it in the library, then
   // tell the SW to delete its copy. Shared by the completion handler and the
   // on-launch leftover sweep (C7).
-  async function ingestDownload(downloadId: string, fallbackTitle: string, fallbackSize?: string) {
+  async function ingestDownload(downloadId: string, fallbackTitle: string, fallbackSize?: string, conversionExpected = false) {
     try {
       const res = await fetch(`/__kora_sw_pickup__?id=${encodeURIComponent(downloadId)}`);
       if (!res.ok) throw new Error("pickup failed");
@@ -1676,12 +1693,24 @@ export default function App() {
       };
       void maybePushBookToWebDav(newBook, blob).catch(() => undefined);
       await syncBookToCloud(user?.uid || "", newBook);
+      const conversionState = conversionStatesRef.current.get(downloadId);
+      const conversionStillRunning = conversionExpected && (
+        !conversionState || ["queued", "extracting", "building", "validating"].includes(conversionState.status)
+      );
+      const conversionFailed = conversionExpected && conversionState?.status === "failed";
       setGlobalDownloads(prev => {
-        const updated = prev.map(dl => dl.id === downloadId ? { ...dl, status: "completed", percent: 100 } : dl);
+        const updated = prev.map(dl => dl.id === downloadId ? {
+          ...dl,
+          status: conversionFailed ? "error" : conversionStillRunning ? "converting" : "completed",
+          percent: conversionStillRunning ? (conversionState?.percent || 0) : 100,
+          conversionOnly: conversionFailed,
+          conversionStatus: conversionState?.status,
+          error: conversionFailed ? conversionState?.error : undefined,
+        } : dl);
         persistDownloadsLogNow(updated);
         return updated;
       });
-      toast.success(`${finalTitle} downloaded!`, { id: downloadId });
+      toast.success(String(finalTitle) + " downloaded!", { id: downloadId });
       refreshLibrary();
       navigator.serviceWorker.controller?.postMessage({ type: "pickup-complete", downloadId });
     } catch (err) {
@@ -1698,6 +1727,59 @@ export default function App() {
 
   const ingestDownloadRef = useRef(ingestDownload);
   ingestDownloadRef.current = ingestDownload;
+
+  // Store the generated EPUB as a separate library item; never replace the source PDF.
+  async function ingestConvertedEpub(downloadId: string, fallbackTitle: string, fallbackAuthor?: string) {
+    try {
+      const response = await fetch("/__kora_sw_conversion_pickup__?id=" + encodeURIComponent(downloadId));
+      if (!response.ok) throw new Error("Converted EPUB is not available yet.");
+      const blob = await response.blob();
+      const payloads = JSON.parse(localStorage.getItem("kora_sw_payloads") || "{}");
+      const mirror = payloads[downloadId] || {};
+      const book = mirror.book || {};
+      const variant = mirror.variant || {};
+      const parentBookId = variant.md5 || downloadId;
+      const title = book.title || fallbackTitle || "Converted book";
+      const author = book.author || fallbackAuthor || "Unknown";
+      const epubBookId = parentBookId + "::converted-epub";
+      const coverUrl = book.coverUrl || "";
+      const tags = Array.from(new Set([...(book.tags || []), ...inferBookTags(title, author, "epub"), "Converted EPUB"]));
+
+      if (!(await checkBookFileCached(epubBookId))) {
+        await storeBookFile(epubBookId, blob, title + " (EPUB).epub", "epub");
+      }
+      const epubBook: BookMetadata = {
+        id: epubBookId,
+        title: title + " (EPUB)",
+        author,
+        extension: "epub",
+        size: Math.max(1, Math.round(blob.size / 1024)) + " KB",
+        language: book.language || variant.language || "English",
+        coverUrl,
+        md5: variant.md5,
+        source: "Kora PDF Conversion",
+        tags,
+        status: "to-read",
+        progress: { percent: 0, lastReadTime: Date.now() },
+        dateAdded: Date.now(),
+        description: "Converted from the original PDF. The PDF file remains available in your library." + (book.description ? "\n\n" + book.description : ""),
+        publisher: book.publisher || "",
+        year: book.year || "",
+        downloadUrl: variant.downloadUrl || variant.directUrl,
+        kind: "converted-epub",
+        derivedFromBookId: parentBookId,
+      };
+      await syncBookToCloud(user?.uid || "", epubBook);
+      navigator.serviceWorker.controller?.postMessage({ type: "conversion-pickup-complete", downloadId });
+      refreshLibrary();
+    } catch (error) {
+      console.error("[PDF conversion] EPUB pickup failed:", error);
+      toast.error("EPUB was created but could not be added to the library. It will be retried next time.");
+    }
+  }
+
+  const ingestConvertedEpubRef = useRef(ingestConvertedEpub);
+  ingestConvertedEpubRef.current = ingestConvertedEpub;
 
   // Listen for download progress / completion from the service worker (stable listener).
   useEffect(() => {
@@ -1737,7 +1819,51 @@ export default function App() {
         clearSwDownloadWatchdog(data.downloadId);
         swMadeProgressRef.current.delete(data.downloadId);
         swDownloadFallbackRef.current.delete(data.downloadId);
-        await ingestDownloadRef.current(data.downloadId, data.title, data.size);
+        await ingestDownloadRef.current(data.downloadId, data.title, data.size, Boolean(data.conversionExpected));
+      } else if (data.type === "conversion-progress") {
+        const status = String(data.status || data.stage || "extracting");
+        const percent = Math.max(0, Math.min(100, Number(data.percent) || 0));
+        conversionStatesRef.current.set(data.downloadId, { status, percent });
+        conversionFailedDownloadsRef.current.delete(String(data.downloadId));
+        setGlobalDownloads((prev) => {
+          const exists = prev.some((download) => download.id === data.downloadId);
+          const updated = exists
+            ? prev.map((download) => download.id === data.downloadId
+              ? { ...download, status: "converting", percent, conversionOnly: false, conversionStatus: status, conversionStage: status, transferred: "Converting to EPUB…", error: undefined }
+              : download)
+            : [...prev, { id: data.downloadId, title: data.title || "PDF book", author: data.author || "Unknown", status: "converting", percent, conversionOnly: false, conversionStatus: status, conversionStage: status, transferred: "Converting to EPUB…" }];
+          persistDownloadsLogNow(updated);
+          return updated;
+        });
+      } else if (data.type === "conversion-complete") {
+        conversionStatesRef.current.set(data.downloadId, { status: "completed", percent: 100 });
+        conversionFailedDownloadsRef.current.delete(String(data.downloadId));
+        await ingestConvertedEpubRef.current(data.downloadId, data.title, data.author);
+        setGlobalDownloads((prev) => {
+          const updated = prev.map((download) => download.id === data.downloadId
+            ? { ...download, status: "completed", percent: 100, conversionOnly: false, conversionStatus: "completed", conversionStage: "completed", error: undefined }
+            : download);
+          persistDownloadsLogNow(updated);
+          return updated;
+        });
+        toast.success("EPUB ready in Library: " + (data.title || "book"), { id: "conversion-" + data.downloadId });
+      } else if (data.type === "conversion-error") {
+        const error = String(data.error || "PDF conversion failed");
+        conversionStatesRef.current.set(data.downloadId, { status: "failed", percent: 0, error });
+        conversionFailedDownloadsRef.current.add(String(data.downloadId));
+        setGlobalDownloads((prev) => {
+          const exists = prev.some((download) => download.id === data.downloadId);
+          const updated = exists
+            ? prev.map((download) => download.id === data.downloadId
+              ? { ...download, status: "error", percent: 0, conversionOnly: true, conversionStatus: "failed", error }
+              : download)
+            : [...prev, { id: data.downloadId, title: data.title || "Downloaded PDF", status: "error", percent: 0, conversionOnly: true, conversionStatus: "failed", error }];
+          persistDownloadsLogNow(updated);
+          return updated;
+        });
+        toast.error(error.startsWith("PDF_OCR_REQUIRED:")
+          ? "PDF downloaded, but this scanned PDF needs OCR that the service worker cannot run."
+          : "PDF downloaded, but EPUB conversion failed.", { id: "conversion-" + data.downloadId });
       } else if (data.type === "audiobook-track-complete") {
         handleAudiobookSwMessage(data);
       } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
@@ -1819,22 +1945,72 @@ export default function App() {
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
   }, [removeDownloadEntry, switchTab]);
 
-  // On launch, sweep any blobs the SW finished while the app was closed and
-  // ingest them into the library (C7).
+  // Recover source downloads, conversion status, and completed EPUBs after a reload.
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !navigator.serviceWorker.controller) return;
+    navigator.serviceWorker.controller.postMessage({ type: "resume-pdf-conversions" });
     (async () => {
       try {
-        const res = await fetch("/__kora_sw_list__");
-        if (!res.ok) return;
-        const pending: string[] = await res.json();
-        for (const id of pending) {
-          // Skip audiobook track pickups (handled by audiobookSyncQueue).
-          if (String(id).includes("::") || String(id).startsWith("audiobook-")) continue;
-          await ingestDownloadRef.current(id, "Downloaded book");
+        const response = await fetch("/__kora_sw_list__");
+        if (response.ok) {
+          const pending: string[] = await response.json();
+          for (const id of pending) {
+            if (String(id).includes("::") || String(id).startsWith("audiobook-")) continue;
+            await ingestDownloadRef.current(id, "Downloaded book");
+          }
         }
-      } catch (e) {
-        /* SW not ready yet; will retry on next launch */
+      } catch {
+        /* Retried on next launch if the service worker is temporarily unavailable. */
+      }
+      try {
+        const response = await fetch("/__kora_sw_conversion_status__");
+        if (response.ok) {
+          const jobs: any[] = await response.json();
+          for (const job of jobs) {
+            const downloadId = String(job.downloadId || "");
+            if (!downloadId) continue;
+            const status = String(job.status || "queued");
+            const percent = Math.max(0, Math.min(100, Number(job.progress) || 0));
+            conversionStatesRef.current.set(downloadId, { status, percent, error: job.error });
+            if (status === "failed") conversionFailedDownloadsRef.current.add(downloadId);
+            else conversionFailedDownloadsRef.current.delete(downloadId);
+            setGlobalDownloads((prev) => {
+              const exists = prev.some((download) => download.id === downloadId);
+              const record = {
+                id: downloadId,
+                title: job.title || "Downloaded PDF",
+                author: job.author || "Unknown",
+                percent,
+                conversionStatus: status,
+                conversionStage: status,
+                conversionOnly: status === "failed",
+                status: status === "failed" ? "error"
+                  : status === "completed" ? "completed"
+                  : ["queued", "extracting", "building", "validating"].includes(status) ? "converting" : "completed",
+                error: status === "failed" ? job.error : undefined,
+              };
+              const updated = exists
+                ? prev.map((download) => download.id === downloadId ? { ...download, ...record } : download)
+                : status === "failed" || ["queued", "extracting", "building", "validating"].includes(status)
+                  ? [...prev, record]
+                  : prev;
+              persistDownloadsLogNow(updated);
+              return updated;
+            });
+          }
+        }
+      } catch {
+        /* Job recovery is best-effort; the worker retains durable status records. */
+      }
+      try {
+        const response = await fetch("/__kora_sw_conversion_list__");
+        if (!response.ok) return;
+        const pending: Array<{ downloadId: string; title: string; author?: string }> = await response.json();
+        for (const item of pending) {
+          if (item.downloadId) await ingestConvertedEpubRef.current(item.downloadId, item.title, item.author);
+        }
+      } catch {
+        /* Completed outputs remain in IndexedDB for the next launch. */
       }
     })();
   }, [user?.uid]);
