@@ -6,6 +6,8 @@ import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
+import { proxyUrlForMirror } from "../lib/downloadProxy";
+import { judgeMirrorDownload } from "../lib/mirrorOutcome";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
 import { logger } from "../lib/logger";
@@ -2504,7 +2506,7 @@ function DiscoverView({
           error: null 
         });
 
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirror.url)}`;
+        const proxyUrl = proxyUrlForMirror(mirror.url);
         const response = await fetch(proxyUrl);
         if (!response.ok) {
           let errMsg = `Mirror unresponsive (HTTP ${response.status}).`;
@@ -2652,6 +2654,15 @@ function DiscoverView({
         }
 
         setDownloadProgress({ step: "saving", percent: 90, error: null });
+        const identityCheck = await judgeMirrorDownload({
+          mirrorUrl: mirror.url,
+          bytes: new Uint8Array(await fileBlob.arrayBuffer()),
+          requestedTitle: book.title,
+          claimedExtension: fileExtension,
+          sawHtmlContentType: contentType.toLowerCase().includes("text/html") || contentType.toLowerCase().includes("application/xhtml"),
+        });
+        if (!identityCheck.ok) throw new Error(identityCheck.detail);
+
         const id = activeVariant.md5 || Math.random().toString(36).substring(7);
         await storeBookFile(id, fileBlob, `${finalTitle}.${fileExtension}`, fileExtension);
 
@@ -2745,6 +2756,7 @@ function DiscoverView({
     const book = selectedBook || selectedFeaturedBook;
     if (!book) return;
     const activeVariant = selectedVariant || selectedFeaturedVariant || book;
+    const sourceMirrorUrl = typeof mirror === "string" ? mirror : mirror.url;
 
     if (onTriggerDownload) {
       onTriggerDownload(book, mirror, activeVariant);
@@ -2773,8 +2785,7 @@ function DiscoverView({
           })
         });
       } else {
-        const mirrorUrl = typeof mirror === "string" ? mirror : mirror.url;
-        const proxyUrl = `/api/proxy-file?url=${encodeURIComponent(mirrorUrl)}`;
+        const proxyUrl = proxyUrlForMirror(sourceMirrorUrl);
         setDownloadProgress({ step: "downloading", percent: 30, error: null });
         response = await fetch(proxyUrl);
       }
@@ -2889,6 +2900,15 @@ function DiscoverView({
       }
 
       setDownloadProgress({ step: "saving", percent: 90, error: null });
+      const identityCheck = await judgeMirrorDownload({
+        mirrorUrl: sourceMirrorUrl,
+        bytes: new Uint8Array(await fileBlob.arrayBuffer()),
+        requestedTitle: book.title,
+        claimedExtension: fileExtension,
+        sawHtmlContentType: contentType.toLowerCase().includes("text/html") || contentType.toLowerCase().includes("application/xhtml"),
+      });
+      if (!identityCheck.ok) throw new Error(identityCheck.detail);
+
       const id = activeVariant.md5 || Math.random().toString(36).substring(7);
       await storeBookFile(id, fileBlob, `${finalTitle}.${fileExtension}`, fileExtension);
 
