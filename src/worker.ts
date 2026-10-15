@@ -2295,14 +2295,28 @@ export default {
       if (raveDirect) {
         try {
           const parsed = new URL(raveDirect);
-          const isDirectLink = /get\.php\?md5=.+&key=/.test(parsed.pathname + parsed.search) ||
-                              parsed.hostname.includes("archive.org");
-          if (isDirectLink) {
+          const host = parsed.hostname.toLowerCase();
+          const isLegacyResolvedLink =
+            /get\.php\?md5=.+&key=/i.test(parsed.pathname + parsed.search) ||
+            host === "archive.org" || host.endsWith(".archive.org");
+          // Source-native direct links from providers that publish open/public-domain files.
+          // Do not turn this endpoint into an arbitrary-URL proxy.
+          const openDownloadHosts = [
+            "gutenberg.org", "openstax.org", "libretexts.org", "librivox.org", "archive.org"
+          ];
+          const isAuthorizedOpenSource = parsed.protocol === "https:" &&
+            openDownloadHosts.some(domain => host === domain || host.endsWith("." + domain));
+          if (isLegacyResolvedLink || isAuthorizedOpenSource) {
+            const label = host.includes("gutenberg.org") ? "Project Gutenberg (direct)" :
+              host.includes("openstax.org") ? "OpenStax (direct)" :
+              host.includes("libretexts.org") ? "LibreTexts (direct)" :
+              host.includes("librivox.org") ? "LibriVox (direct)" :
+              host.includes("archive.org") ? "Internet Archive (direct)" : "Resolved source link";
             downloadLinks.push({
-              label: "Rave Direct (LibGen CDN)",
+              label,
               url: parsed.toString(),
               isDirect: true,
-              sourceId: "rave"
+              sourceId: isAuthorizedOpenSource ? host : "rave"
             });
           }
         } catch (_) { /* ignore malformed url */ }
@@ -2356,12 +2370,12 @@ export default {
             isDirect: false
           }
         ];
-      } else {
-        // SHA-256 pseudo-ID with no iaId — generic fallback
+      } else if (downloadLinks.length === 0) {
+        // No source-native download URL could be resolved; return a catalogue fallback.
         downloadLinks = [
           {
-            label: "Search Anna's Archive",
-            url: `https://annas-archive.org/search`,
+            label: "Search catalogue",
+            url: "https://openlibrary.org/search",
             isDirect: false
           }
         ];
