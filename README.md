@@ -117,6 +117,7 @@ The production Worker and the local server have overlapping responsibilities but
 - [Architecture and request flow](https://chaotic-ray.github.io/Kora-/architecture.html)
 - [Self-hosting and deployment](https://chaotic-ray.github.io/Kora-/self-hosting.html)
 - [Plugin development](https://chaotic-ray.github.io/Kora-/plugins.html)
+- [UX and codebase improvement audit](./docs/UX_AND_CODEBASE_AUDIT.md)
 - [Source plugin registry](https://github.com/CHAOTIC-RAY/Kora-Plugins)
 
 ## Testing and quality checks
