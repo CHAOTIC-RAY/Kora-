@@ -3217,7 +3217,7 @@ function DiscoverView({
                     <>
                       <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Recent searches · this session</div>
                       {recentSearches.map((item) => (
-                        <button key={item} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => { void handleSearch(item); searchInputRef.current?.blur(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-kindle-text hover:bg-kindle-bg transition">
+                        <button key={item} type="button" role="option" onPointerDown={(event) => event.preventDefault()} onClick={() => { void handleSearch(item); searchInputRef.current?.blur(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-kindle-text hover:bg-kindle-bg transition">
                           <RefreshCw className="h-4 w-4 shrink-0 text-kindle-text-muted" />
                           <span className="min-w-0 flex-1 truncate">{item}</span>
                           <span className="text-[10px] text-kindle-text-muted">Search again</span>
@@ -3228,7 +3228,7 @@ function DiscoverView({
                     <>
                       <div className="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted">Suggested titles · Google Books</div>
                       {searchSuggestions.map((item) => (
-                        <button key={item.title + item.author} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => { void handleSearch(`${item.title} ${item.author}`.trim()); searchInputRef.current?.blur(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-kindle-bg transition">
+                        <button key={item.title + item.author} type="button" role="option" onPointerDown={(event) => event.preventDefault()} onClick={() => { void handleSearch(`${item.title} ${item.author}`.trim()); searchInputRef.current?.blur(); }} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-kindle-bg transition">
                           <div className="h-10 w-7 shrink-0 overflow-hidden rounded bg-kindle-bg border border-kindle-border">
                             {item.coverUrl ? <img src={resolveCoverImageSrc(item.coverUrl) || item.coverUrl} alt="" className="h-full w-full object-cover" loading="lazy" /> : <BookOpen className="m-1 h-5 w-5 text-kindle-text-muted" />}
                           </div>
@@ -3241,7 +3241,7 @@ function DiscoverView({
                       ))}
                     </>
                   )}
-                  <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => setShowSearchAssist(false)} className="w-full border-t border-kindle-border px-4 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text">Dismiss</button>
+                  <button type="button" onPointerDown={(event) => event.preventDefault()} onClick={() => setShowSearchAssist(false)} className="w-full border-t border-kindle-border px-4 py-2 text-right text-[10px] font-bold uppercase tracking-widest text-kindle-text-muted hover:text-kindle-text">Dismiss</button>
                 </div>
               )}
             </form>
