@@ -39,18 +39,101 @@ function relevance(title: string, author: string, query: string): number {
   if (a && (a === q || a.includes(q))) return 1.35;
   return titleCoverage * 0.9 + allCoverage * 0.1;
 }
+type SourceHealth = { failures: number; retryAfter: number; lastStatus?: number; lastError?: string; lastOkAt?: number; lastLatencyMs?: number };
+const sourceHealth = new Map<string, SourceHealth>();
+const responseCache = new Map<string, { expiresAt: number; value: unknown }>();
+const CACHE_LIMIT = 160;
+const CACHE_TTL_MS = 45_000;
+const HEALTH_COOLDOWN_MS = 20_000;
+
+function cacheRead<T>(key: string): T | undefined {
+  const hit = responseCache.get(key);
+  if (!hit) return undefined;
+  if (hit.expiresAt <= Date.now()) { responseCache.delete(key); return undefined; }
+  // Refresh insertion order for a small LRU-like cache.
+  responseCache.delete(key);
+  responseCache.set(key, hit);
+  return hit.value as T;
+}
+function cacheWrite(key: string, value: unknown): void {
+  responseCache.delete(key);
+  responseCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  while (responseCache.size > CACHE_LIMIT) responseCache.delete(responseCache.keys().next().value as string);
+}
+function noteSource(url: string, ok: boolean, latency: number, status?: number, error?: unknown): void {
+  let host = "";
+  try { host = new URL(url).hostname; } catch { return; }
+  const previous = sourceHealth.get(host) || { failures: 0, retryAfter: 0 };
+  if (ok) {
+    sourceHealth.set(host, { failures: 0, retryAfter: 0, lastOkAt: Date.now(), lastLatencyMs: latency, lastStatus: status });
+  } else {
+    const failures = previous.failures + 1;
+    sourceHealth.set(host, {
+      ...previous, failures, retryAfter: failures >= 3 ? Date.now() + HEALTH_COOLDOWN_MS : 0,
+      lastStatus: status, lastError: String((error as any)?.message || error || "request failed").slice(0, 120)
+    });
+  }
+}
+async function fetchSourceText(url: string, accept: string): Promise<{ text: string; status: number } | null> {
+  const cached = cacheRead<{ text: string; status: number }>("text:" + url);
+  if (cached) return cached;
+  let host = "";
+  try { host = new URL(url).hostname; } catch { return null; }
+  const health = sourceHealth.get(host);
+  // Cooldowns prevent a broken upstream from being hit repeatedly during one burst.
+  // A single half-open probe is allowed after the cooldown.
+  if (health?.retryAfter && health.retryAfter > Date.now()) return null;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const started = Date.now();
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": UA, "Accept": accept },
+        signal: timeout(attempt === 0 ? 8000 : 11000)
+      });
+      if (res.ok) {
+        const text = await res.text();
+        noteSource(url, true, Date.now() - started, res.status);
+        const result = { text, status: res.status };
+        cacheWrite("text:" + url, result);
+        return result;
+      }
+      lastError = new Error("HTTP " + res.status);
+      noteSource(url, false, Date.now() - started, res.status, lastError);
+      if (res.status < 500 && res.status !== 408 && res.status !== 429) break;
+    } catch (error) {
+      lastError = error;
+      noteSource(url, false, Date.now() - started, undefined, error);
+    }
+    if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 120 * (attempt + 1)));
+  }
+  return null;
+}
 async function getJson(url: string): Promise<any | null> {
+  const cached = cacheRead<any>("json:" + url);
+  if (cached !== undefined) return cached;
+  const response = await fetchSourceText(url, "application/json");
+  if (!response) return null;
   try {
-    const res = await fetch(url, { headers: { "User-Agent": UA, "Accept": "application/json" }, signal: timeout() });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch { return null; }
+    const data = JSON.parse(response.text);
+    cacheWrite("json:" + url, data);
+    return data;
+  } catch {
+    noteSource(url, false, 0, response.status, "invalid JSON response");
+    return null;
+  }
 }
 async function getText(url: string, accept = "application/atom+xml,application/xml,text/plain,*/*;q=0.8"): Promise<string> {
-  try {
-    const res = await fetch(url, { headers: { "User-Agent": UA, "Accept": accept }, signal: timeout() });
-    return res.ok ? await res.text() : "";
-  } catch { return ""; }
+  const response = await fetchSourceText(url, accept);
+  return response?.text || "";
+}
+
+/** Lightweight health diagnostics for source adapters; never includes credentials or query contents. */
+export function getIndependentSourceHealth(): Record<string, { state: string; failures: number; lastStatus?: number; lastLatencyMs?: number; lastError?: string }> {
+  return Object.fromEntries([...sourceHealth.entries()].map(([host, value]) => [host, {
+    state: value.retryAfter > Date.now() ? "cooldown" : value.lastOkAt ? "ok" : value.failures ? "degraded" : "unknown",
+    failures: value.failures, lastStatus: value.lastStatus, lastLatencyMs: value.lastLatencyMs, lastError: value.lastError
+  }]));
 }
 
 async function searchInternetArchive(query: string, mode: string, page = 1): Promise<ScrapedBook[]> {
