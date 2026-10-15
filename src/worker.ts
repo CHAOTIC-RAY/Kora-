@@ -1764,20 +1764,24 @@ export default {
             const raveBooks = Array.isArray((rave as any)?.results) ? (rave as any).results : [];
             const merged = new Map<string, any>();
 
-            // Add source-native results first so their real download/resolve metadata survives.
+            // Preserve separate source/format copies (RaveBSD does this too), because an
+            // Internet Archive PDF and a Gutenberg EPUB are distinct useful download options.
+            // Google Books is metadata/catalogue enrichment, not a replacement download source.
             for (const book of raveBooks) {
-              const key = keyFor(book);
-              if (!key) continue;
-              merged.set(key, { ...book, isRaveBook: true, isGoogleBook: false });
+              const baseKey = keyFor(book);
+              if (!baseKey) continue;
+              const sourceKey = baseKey + "|" + normalize(book.source || "source") + "|" + normalize(book.format || "");
+              merged.set(sourceKey, { ...book, isRaveBook: true, isGoogleBook: false });
             }
             for (const book of google.books) {
-              const key = keyFor(book);
-              if (!key) continue;
-              const existing = merged.get(key);
-              if (existing) {
-                // Google metadata enriches the source result, but must never overwrite a usable
-                // source URL, MD5/identifier, direct-file flag, or download resolver metadata.
-                merged.set(key, {
+              const baseKey = keyFor(book);
+              if (!baseKey) continue;
+              const existingEntry = [...merged.entries()].find(([key]) => key.startsWith(baseKey + "|"));
+              if (existingEntry) {
+                const [existingKey, existing] = existingEntry;
+                // Enrich only one matching source row. Keep every source-specific download row
+                // and never overwrite its direct URL, identifier, or resolver metadata.
+                merged.set(existingKey, {
                   ...book,
                   ...existing,
                   title: existing.title || book.title,
@@ -1792,7 +1796,7 @@ export default {
                   isRaveBook: true,
                 });
               } else {
-                merged.set(key, book);
+                merged.set(baseKey + "|google", book);
               }
             }
 
