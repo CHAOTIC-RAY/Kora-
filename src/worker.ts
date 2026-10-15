@@ -4167,7 +4167,7 @@ async function resolveLibgenAdsKey(md5: string, onBotCheck?: (text: string) => v
         headers: {
           "User-Agent": UA,
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
-          "Referer": \`\${adsUrl}/\`,
+          "Referer": mirror + "/",
         },
         redirect: "follow",
         signal: AbortSignal.timeout(8000),
@@ -4181,7 +4181,7 @@ async function resolveLibgenAdsKey(md5: string, onBotCheck?: (text: string) => v
       if (keyMatch) {
         const key = keyMatch[1];
         // Verify the key matches this md5
-        const fullUrl = \`\${mirror}/get.php?md5=\${md5.toLowerCase()}&key=\${key}\`;
+        const fullUrl = mirror + "/get.php?md5=" + md5.toLowerCase() + "&key=" + key;
         return fullUrl;
       }
     } catch (e) {
