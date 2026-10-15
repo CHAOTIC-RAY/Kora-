@@ -197,6 +197,8 @@ export interface BookMetadata {
   downloadId?: string;
   /** Optional source/content kind used by manga and series grouping. */
   kind?: string;
+  /** Local EPUB variant generated from a preserved PDF file. */
+  derivedFromBookId?: string;
   /** Transient download-card state; persisted as part of local UI records only. */
   isDownloadingCard?: boolean;
   activeDownload?: { id: string; status?: string } | null;
