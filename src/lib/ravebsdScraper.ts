@@ -25,10 +25,19 @@ const clean = (value: unknown): string => String(value ?? "").replace(/<[^>]*>/g
 const norm = (value: string) => value.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
 const words = (value: string) => norm(value).split(/\s+/).filter(w => w.length > 1 && !["the","and","for","with","from","into","book"].includes(w));
 function relevance(title: string, author: string, query: string): number {
-  const wanted = words(query), hay = new Set(words(title + " " + author));
+  const q = norm(query), t = norm(title), a = norm(author);
+  const wanted = words(query);
   if (!wanted.length) return 0.5;
-  const overlap = wanted.filter(w => hay.has(w)).length / wanted.length;
-  return norm(title) === norm(query) ? 2 : overlap;
+  const titleWords = new Set(words(title));
+  const allWords = new Set(words(title + " " + author));
+  const titleCoverage = wanted.filter(word => titleWords.has(word)).length / wanted.length;
+  const allCoverage = wanted.filter(word => allWords.has(word)).length / wanted.length;
+  // Exact/phrase title hits rank ahead of scattered token matches, while author terms
+  // still contribute enough to rescue "title author" queries.
+  if (t === q) return 2;
+  if (t.startsWith(q) || t.includes(q)) return 1.6 + titleCoverage * 0.2;
+  if (a && (a === q || a.includes(q))) return 1.35;
+  return titleCoverage * 0.9 + allCoverage * 0.1;
 }
 async function getJson(url: string): Promise<any | null> {
   try {
