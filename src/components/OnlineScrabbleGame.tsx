@@ -126,14 +126,32 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
   const [invalidMsg, setInvalidMsg] = useState<string | null>(null);
 
   const unsubRef = useRef<(() => void) | undefined>(undefined);
+  const cpuTurnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const myUid = () => auth?.currentUser?.uid || "guest_" + Math.random().toString(36).substr(2, 6);
   const myName = () => auth?.currentUser?.displayName || "You";
 
   const roomRef = (code: string) => doc(db, "scrabbleRooms", code.toUpperCase());
 
   useEffect(() => {
-    return () => unsubRef.current?.();
+    return () => {
+      unsubRef.current?.();
+      if (cpuTurnTimerRef.current) clearTimeout(cpuTurnTimerRef.current);
+      cpuTurnTimerRef.current = null;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!open && cpuTurnTimerRef.current) {
+      clearTimeout(cpuTurnTimerRef.current);
+      cpuTurnTimerRef.current = null;
+    }
+    return () => {
+      if (cpuTurnTimerRef.current) {
+        clearTimeout(cpuTurnTimerRef.current);
+        cpuTurnTimerRef.current = null;
+      }
+    };
+  }, [open]);
 
   const playClickSound = () => {
     if (!soundEnabled || !isSoundEffectsEnabled()) return;
@@ -646,7 +664,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
     if (gameMode === "cpu") {
       setTurnIdx(nextTurn);
       setLog(nextLog);
-      setTimeout(() => triggerCpuTurn(nextTurn, board, bag, undefined, nextLog), 1200);
+      if (cpuTurnTimerRef.current) clearTimeout(cpuTurnTimerRef.current);
+      cpuTurnTimerRef.current = setTimeout(() => { cpuTurnTimerRef.current = null; if (open) triggerCpuTurn(nextTurn, board, bag, undefined, nextLog); }, 1200);
     } else {
       try {
         await updateDoc(roomRef(roomCode), {
@@ -682,7 +701,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
       setBag(drawRes.remaining);
       setTurnIdx(nextTurn);
       setLog(nextLog);
-      setTimeout(() => triggerCpuTurn(nextTurn, board, drawRes.remaining, updatedPlayers, nextLog), 1200);
+      if (cpuTurnTimerRef.current) clearTimeout(cpuTurnTimerRef.current);
+      cpuTurnTimerRef.current = setTimeout(() => { cpuTurnTimerRef.current = null; if (open) triggerCpuTurn(nextTurn, board, drawRes.remaining, updatedPlayers, nextLog); }, 1200);
     } else {
       try {
         await updateDoc(roomRef(roomCode), {
@@ -849,7 +869,8 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
       setTurnIdx(nextTurn);
       setLog(nextLog);
 
-      setTimeout(() => triggerCpuTurn(nextTurn, updatedBoard, drawRes.remaining, updatedPlayers, nextLog), 1500);
+      if (cpuTurnTimerRef.current) clearTimeout(cpuTurnTimerRef.current);
+      cpuTurnTimerRef.current = setTimeout(() => { cpuTurnTimerRef.current = null; if (open) triggerCpuTurn(nextTurn, updatedBoard, drawRes.remaining, updatedPlayers, nextLog); }, 1500);
     } else {
       try {
         await updateDoc(roomRef(roomCode), {
