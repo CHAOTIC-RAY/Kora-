@@ -846,7 +846,7 @@ export default function ChessGame({
 
   return createPortal(
     <AnimatePresence>
-      <div className="fixed inset-0 z-[9999] bg-kindle-bg text-kindle-text flex flex-col p-0 sm:items-center sm:justify-center sm:p-4 select-none overflow-hidden">
+      <div className="kora-game-theme fixed inset-0 z-[9999] bg-kindle-bg text-kindle-text flex flex-col p-0 sm:items-center sm:justify-center sm:p-4 select-none overflow-hidden">
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
