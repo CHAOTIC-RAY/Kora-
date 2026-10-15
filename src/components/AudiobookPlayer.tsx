@@ -285,8 +285,9 @@ export default function AudiobookPlayer({
   );
 
   const loadTtsTrack = useCallback(
-    async (index: number, autoPlay = false, resumeTime?: number) => {
+    async (index: number, autoPlay = false, resumeTime?: number, generation?: number) => {
       if (!tracks[index]) return;
+      const requestGeneration = generation ?? ++trackLoadGeneration.current;
       setLoadingTrack(true);
       setPlaybackError(null);
       outroSkipTriggered.current = false;
@@ -307,6 +308,7 @@ export default function AudiobookPlayer({
 
       try {
         const text = await loadTtsChapterText(book, index);
+        if (requestGeneration !== trackLoadGeneration.current) return;
         if (!ttsPlayerRef.current) {
           ttsPlayerRef.current = new BrowserTtsPlayer({
             onTimeUpdate: (time, trackDuration, remaining) => {
@@ -362,6 +364,7 @@ export default function AudiobookPlayer({
           chapterTitle: tracks[index]?.title,
           quality: getTtsSettings().qualityPreset,
         });
+        if (requestGeneration !== trackLoadGeneration.current) return;
         setTranscriberReady(false);
         setSubtitle("");
         setTtsVoiceName(ttsPlayerRef.current.voiceName);
@@ -386,7 +389,7 @@ export default function AudiobookPlayer({
         setPlaybackError((err as Error).message || "Could not load this chapter.");
         setIsPlaying(false);
       } finally {
-        setLoadingTrack(false);
+        if (requestGeneration === trackLoadGeneration.current) setLoadingTrack(false);
       }
     },
     [
@@ -421,7 +424,7 @@ export default function AudiobookPlayer({
       if (!tracks[index]) return;
       const requestGeneration = ++trackLoadGeneration.current;
       if (isTtsBook) {
-        await loadTtsTrack(index, autoPlay, resumeTime);
+        await loadTtsTrack(index, autoPlay, resumeTime, requestGeneration);
         return;
       }
       if (!audioRef.current) return;
@@ -473,7 +476,7 @@ export default function AudiobookPlayer({
         setPlaybackError("Could not load this track. Try downloading for offline playback.");
         setIsPlaying(false);
       } finally {
-        setLoadingTrack(false);
+        if (requestGeneration === trackLoadGeneration.current) setLoadingTrack(false);
       }
     },
     [
