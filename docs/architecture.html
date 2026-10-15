@@ -409,82 +409,58 @@
     </section>
 
     <section id="search">
-      <h2>Search engines</h2>
+      <h2>Catalog search and metadata</h2>
       <p>
-        Book search is served by the Rave search engine. Several other engines
-        exist alongside it and each reports itself honestly.
+        Discovery is composed from separate responsibilities rather than one
+        universal catalog. The Worker exposes catalog and search endpoints;
+        Google Books supplies structured metadata when available, with Open
+        Library used as a metadata fallback in supported paths. Other source
+        adapters can contribute downloadable editions, audio items, or reading
+        material according to their own contracts.
       </p>
       <div class="tw">
         <table>
-          <caption class="sr">Search engines and what each one covers</caption>
-          <thead><tr><th>Engine</th><th>Covers</th></tr></thead>
+          <caption class="sr">Search and metadata responsibilities</caption>
+          <thead><tr><th>Component</th><th>Responsibility</th><th>Important boundary</th></tr></thead>
           <tbody>
-            <tr><td>Rave v1 <code>/api/v1/search</code></td><td>The primary index when a key is configured and the host answers</td></tr>
-            <tr><td>Rave legacy <code>/search/all</code></td><td>The same aggregator over many mirrors; needs no key</td></tr>
-            <tr><td>Google Books</td><td>Covers, publishers and descriptions; falls back to Open Library when the daily quota is gone</td></tr>
-            <tr><td>Open Library</td><td>Descriptions and metadata, including when Google Books has no blurb</td></tr>
-            <tr><td>Internet Archive</td><td>Direct items surfaced as their own mirror</td></tr>
-            <tr><td>LibGen mirrors</td><td>Resolved through signed CDN links, which expire and are re-minted per request</td></tr>
-            <tr><td>LibreTexts</td><td>Open textbook mirrors</td></tr>
+            <tr><td>Discover UI</td><td>Query entry, result grouping, duplicate reduction, detail panels, and download actions</td><td>Does not own upstream credentials</td></tr>
+            <tr><td>Google Books adapter</td><td>Titles, authors, descriptions, publication data, ratings, and cover metadata</td><td>Catalog metadata does not guarantee a downloadable copy</td></tr>
+            <tr><td>Open Library fallback</td><td>Supplemental book metadata and covers where supported</td><td>Coverage and identifiers can differ from Google Books</td></tr>
+            <tr><td>Source adapters</td><td>Source-specific search, editions, chapters, audio, and file URLs</td><td>Each source can fail independently or change its response format</td></tr>
+            <tr><td>Download validator</td><td>Checks returned bytes and rejects common HTML/error pages or title mismatches</td><td>Validation reduces bad files; it cannot prove every file is safe or correct</td></tr>
           </tbody>
         </table>
       </div>
 
-      <h3>The engine ladder</h3>
-      <p>
-        A search races three rungs at once and reports which one won, in an
-        <code>engine</code> field:
-      </p>
+      <h3>Request and result flow</h3>
       <ol class="steps">
-        <li><code>v1</code> on <code>api.ravebooksearch.com</code> → <code>engine: "v1"</code></li>
-        <li><code>v1</code> on the legacy Worker host → <code>engine: "v1"</code></li>
-        <li>legacy <code>/search/all</code>, no key required → <code>engine: "legacy"</code></li>
+        <li>The user enters a query. Discover can show temporary session history and title recommendations sourced from Google Books without silently overwriting the typed text.</li>
+        <li>The client requests metadata or source results through the same-origin API, using bounded retries and caches where implemented.</li>
+        <li>Results are normalized into the view model and deduplicated using available identifiers and title/author identity.</li>
+        <li>Opening a result uses the shared detail panel. Metadata enrichment, edition lookup, and mirror resolution can finish asynchronously and must be scoped to the currently selected book.</li>
+        <li>Downloads are streamed through the configured proxy path where needed. A candidate must be treated as untrusted until its response type and file content are checked.</li>
       </ol>
-      <p>
-        Every response also carries <code>fallback</code>, true whenever
-        <code>engine</code> is not <code>v1</code>.
-      </p>
 
-      <h3>Why a race and not a sequence</h3>
-      <p>
-        Both endpoints are genuinely slow and bursty upstream. A single legacy
-        <code>/search/all</code> request has been measured anywhere from 7 to 24
-        seconds, and v1 fails outright on roughly half of queries while its two
-        hosts fail independently of each other. A sequential ladder spends one
-        full timeout per rung, so a search could burn 24 seconds and still return
-        nothing. Racing means one shared budget — currently 28 seconds, sized
-        from the slowest healthy response observed — and the search is answered by
-        whichever rung is healthy first.
-      </p>
-      <div class="note">
-        <p class="note-t">Measured in production</p>
+      <div class="note warn">
+        <p class="note-t">Upstream availability is not guaranteed</p>
         <p>
-          Across a ten-query sample against the deployed Worker, nine returned
-          real books and one failed every rung. v1 answered six of the ten, on
-          either host, and the legacy endpoint answered the rest. The failure is
-          upstream burstiness rather than a broken rung: the query that failed all
-          three returned 80 results from v1 on each of three immediate retries.
+          Search metadata, file hosts, and audio sources are independent
+          services. CORS restrictions, quotas, anti-bot responses, expired
+          links, network interruptions, and source-side changes can all cause a
+          request to fail. A useful failure should identify the failing source,
+          preserve the user's query, and offer retry or another available result
+          rather than presenting an empty or misleading success state.
         </p>
       </div>
-      <p>
-        The same <code>User-Agent</code> constant is used on every call site.
-        Cloudflare's WAF answers a request without one with Error 1010,
-        "browser signature banned", which is not a 401 — so a missing header made
-        every v1 call fail before authentication and silently drop to the legacy
-        endpoint, which is why <code>fallback</code> used to be permanently true.
-      </p>
-      <p>
-        A Service Binding named <code>RAVE_BOOK_SEARCH</code> is supported and
-        used when present. <code>wrangler.toml</code> does not declare one, so
-        requests currently go out as ordinary fetches.
-      </p>
 
       <h3>Mirror validation</h3>
       <p>
-        Signed LibGen links carry a <code>key</code> that expires, so a fresh one
-        is minted per request by racing multiple mirrors. Mirror health is
-        intended to be recorded in KV so dead mirrors sort last; as noted above,
-        that store is still in-memory.
+        Some file hosts return landing pages, interstitials, or expired-link
+        pages instead of the requested file. The download path checks MIME
+        information and file signatures where available, isolates partial bytes
+        between mirrors, and can move to another candidate after a failed
+        validation. These checks are a reliability feature, not a malware
+        scanner or a guarantee of copyright status.
       </p>
     </section>
 
