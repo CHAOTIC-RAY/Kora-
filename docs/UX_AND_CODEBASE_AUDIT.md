@@ -273,7 +273,7 @@ This is a static repository review supplemented by GitHub Actions output. It can
 ## Current implementation notes (2026-10-16)
 
 - Discover search results now route through the shared book-detail opener, and Google Books recommendations are explicit selections rather than silent replacements of the typed query. Suggestion requests are debounced and aborted when the query changes or the assist panel closes.
-- Recent Discover searches are intentionally temporary to the current browser session, bounded to the latest six distinct terms, and tolerate storage being unavailable.
+- Recent Discover searches are intentionally temporary to the current browser session, bounded to the latest ten distinct terms, and tolerate storage being unavailable.
 - Audiobook track loading uses a generation token to prevent stale chapter URL lookups and stale autoplay completions from taking over a newer selection. Android WebView playback and real upstream media failures still require device testing.
 - Chess CPU scheduling no longer depends on its own transient thinking flag, which previously risked cleaning up its timer before a move could run.
 - Scrabble CPU moves use a pure scoring helper with regression cases for repeated letters, premium squares, and the seven-tile bonus; delayed CPU turns are tracked so they can be invalidated during lifecycle changes.
