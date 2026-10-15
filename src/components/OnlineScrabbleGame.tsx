@@ -995,7 +995,10 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
 
     if (chosenWord && placedCoords.length > 0) {
       const nextBoard = { ...currentBoard };
-      let turnScore = 0;
+      // Score the complete word, then apply premiums only to newly placed
+      // tiles. Comparing by letter alone is incorrect for repeated letters
+      // (e.g. a new E could accidentally hide an existing E from the score).
+      let turnScore = chosenWord.split("").reduce((sum, letter) => sum + (TILE_VALUES[letter] || 1), 0);
       let wordMult = 1;
 
       placedCoords.forEach((p) => {
@@ -1003,18 +1006,10 @@ export default function OnlineScrabbleGame({ open, onClose, variant = "fullscree
 
         const cellVal = TILE_VALUES[p.letter] || 1;
         const mult = getCellMultiplier(p.r, p.c);
-        if (mult.type === "TLS") turnScore += cellVal * 3;
-        else if (mult.type === "DLS") turnScore += cellVal * 2;
-        else turnScore += cellVal;
-
+        if (mult.type === "TLS") turnScore += cellVal * 2;
+        else if (mult.type === "DLS") turnScore += cellVal;
         if (mult.type === "TWS") wordMult *= 3;
         if (mult.type === "DWS") wordMult *= 2;
-      });
-
-      chosenWord.split("").forEach((char) => {
-        if (!placedCoords.some((p) => p.letter === char)) {
-          turnScore += TILE_VALUES[char] || 1;
-        }
       });
 
       let finalCpuScore = turnScore * wordMult;
