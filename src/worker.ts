@@ -21,7 +21,7 @@ import {
   resolveAudiobookDetailFromPage,
 } from "./lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
-import { searchIndependentBookSources, searchIndependentPopularBooks } from "./lib/ravebsdScraper";
+import { searchIndependentBookSources, searchIndependentPopularBooks, getIndependentSourceHealth } from "./lib/ravebsdScraper";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
@@ -1708,6 +1708,18 @@ export default {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }
+    }
+
+    // Provider health is intentionally diagnostic-only: no credentials, full URLs, or query strings.
+    if (path === "/api/search/health") {
+      return new Response(JSON.stringify({
+        status: "ok",
+        engine: "independent-fallbacks",
+        sources: getIndependentSourceHealth(),
+        cache: "short-lived in-memory response cache"
+      }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" }
+      });
     }
 
     if (path === "/api/search/stream") {
