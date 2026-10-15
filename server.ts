@@ -3693,7 +3693,7 @@ app.get("/api/annas-archive/download", async (req, res) => {
     }
 
     // 3. Third Priority: Standard Libgen / Library.lol mirrors
-    if (isRealMd5) {
+    if (isRealMd5 || md5Str) {
       // Direct Mirror (library.lol)
       directLinks.push({
         label: "Library.lol (Recommended)",
