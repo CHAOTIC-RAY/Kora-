@@ -156,7 +156,7 @@ async function searchLibreTexts(query: string, mode: string): Promise<ScrapedBoo
 /** LibriVox's public-domain audiobook API exposes a ZIP containing its chapter MP3s. */
 async function searchLibriVox(query: string, mode: string): Promise<ScrapedBook[]> {
   if (mode !== "audiobooks") return [];
-  const titleQuery = query.trim().replace(/^(the|a|an)\\s+/i, "");
+  const titleQuery = query.trim().replace(/^(the|a|an)\s+/i, "");
   const url = "https://librivox.org/api/feed/audiobooks/?" + new URLSearchParams({
     title: "^" + titleQuery, format: "json", extended: "1", limit: "10"
   }).toString();
@@ -167,7 +167,7 @@ async function searchLibriVox(query: string, mode: string): Promise<ScrapedBook[
       const download = safeHttp(b.url_zip_file);
       const title = clean(b.title);
       if (!title || !download) return null;
-      const archiveId = String(b.url_iarchive || "").match(/archive\\.org\\/details\\/([^/?#]+)/i)?.[1] || "";
+      const archiveId = String(b.url_iarchive || "").match(/archive\.org\/details\/([^/?#]+)/i)?.[1] || "";
       const readers = Array.isArray(b.sections) ? [...new Set(b.sections.flatMap((section: any) =>
         (Array.isArray(section.readers) ? section.readers : []).map((reader: any) => clean(reader.display_name)).filter(Boolean)
       ))].slice(0, 3).join(", ") : "";
@@ -230,7 +230,7 @@ export async function searchIndependentPopularBooks(): Promise<any> {
       downloadUrl: b.directUrl || b.downloadUrl, format: b.format || "",
       pageUrl: b.pageUrl || ""
     }));
-    return { list_name: topic.q, display_name: topic.name, list_name_encoded: topic.name.toLowerCase().replace(/\\s+/g, "-"), books };
+    return { list_name: topic.q, display_name: topic.name, list_name_encoded: topic.name.toLowerCase().replace(/\s+/g, "-"), books };
   }));
   return { status: "OK", results: { lists: lists.filter(x => x.books.length) } };
 }
