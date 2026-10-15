@@ -1,3 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Orbitron:wght@600;800&family=Rajdhani:wght@500;700&family=DotGothic16&family=Share+Tech+Mono&family=VT323&display=swap');
+@import "tailwindcss";
+@import "./styles/app-skins.css";
+
 @font-face {
   font-family: "OpenDyslexic";
   src: url("/fonts/opendyslexic-regular.woff2") format("woff2");
@@ -95,8 +99,6 @@
 }
 
 
-
-
 @font-face {
   font-family: "Nata Sans";
   src: local("Lexend"), local("Lexend Regular");
@@ -113,9 +115,6 @@
   font-display: swap;
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Lexend:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Thaana:wght@400;500;600;700&family=Merriweather:ital,wght@0,400;0,700;1,400&family=Orbitron:wght@600;800&family=Rajdhani:wght@500;700&family=DotGothic16&family=Share+Tech+Mono&family=VT323&display=swap');
-@import "tailwindcss";
-@import "./styles/app-skins.css";
 
 /* Hover styles only on devices with a fine pointer (not touch/mobile) */
 @custom-variant hover {
@@ -1130,13 +1129,6 @@ h1, h2, h3, h4 {
   transform-style: preserve-3d;
 }
 
-
-
-.dark 
-
-
-
-.dark 
 
 /* Hide scroll bar on mobile view */
 @media (max-width: 768px) {
