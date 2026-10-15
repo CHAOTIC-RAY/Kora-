@@ -24,6 +24,7 @@ import {
   getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
+import { dedupeGoogleBooks } from "../lib/googleBooksIdentity";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
@@ -618,7 +619,7 @@ function DiscoverView({
     const data = await res.json();
     
     const items = data.items || [];
-    const books = items.map((item: any) => {
+    const books = dedupeGoogleBooks(items.map((item: any) => {
       const info = item.volumeInfo || {};
       const imageLinks = info.imageLinks || {};
       const coverUrl = imageLinks.thumbnail || imageLinks.smallThumbnail || null;
@@ -645,7 +646,7 @@ function DiscoverView({
         source: "google",
         searchQuery: `${info.title || ""} ${info.authors?.[0] || ""}`.trim()
       };
-    });
+    }));
     
     return {
       books,
