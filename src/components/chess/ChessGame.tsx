@@ -794,7 +794,6 @@ export default function ChessGame({
     playerColor,
     board,
     gameOverResult,
-    isBotThinking,
     executeMove,
   ]);
 
