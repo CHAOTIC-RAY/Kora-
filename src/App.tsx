@@ -1701,13 +1701,16 @@ export default function App() {
         const fallback = swDownloadFallbackRef.current.get(downloadId);
         if (fallback) {
           swDownloadFallbackRef.current.delete(downloadId);
-          logger.warn(`SW mirror returned an invalid or mismatched book (${identityCheck.detail}); retrying the mirror ladder in the foreground.`);
-          toast.loading(`Retrying ${fallback.book.title} with another source…`, { id: downloadId });
-          void startBackgroundDownload(fallback.book, fallback.mirrors, fallback.variant, {
-            reuseDownloadId: downloadId,
-            skipServiceWorker: true,
-          });
-          return;
+          const remainingMirrors = fallback.mirrors.filter((candidate: any) => candidate.url !== actualMirrorUrl);
+          if (remainingMirrors.length > 0) {
+            logger.warn(`SW mirror returned an invalid or mismatched book (${identityCheck.detail}); retrying with ${remainingMirrors.length} untried source(s).`);
+            toast.loading(`Trying another source for ${fallback.book.title}…`, { id: downloadId });
+            void startBackgroundDownload(fallback.book, remainingMirrors, fallback.variant, {
+              reuseDownloadId: downloadId,
+              skipServiceWorker: true,
+            });
+            return;
+          }
         }
         throw new Error(identityCheck.detail);
       }
