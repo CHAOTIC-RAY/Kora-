@@ -29,6 +29,45 @@ import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
 
+/** Retry transient same-origin API/network failures without letting a whole feed load fail. */
+async function fetchDiscoverApi(input: RequestInfo | URL, init: RequestInit = {}, attempts = 2): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const response = await fetch(input, {
+        ...init,
+        signal: init.signal ?? AbortSignal.timeout(15000),
+        credentials: "same-origin",
+      });
+      if (response.ok || response.status < 500 || attempt === attempts - 1) return response;
+      lastError = new Error(`Discover API returned HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) break;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+  }
+  throw lastError instanceof Error ? lastError : new Error("Discover API request failed");
+}
+
+/** Keep optional feeds from opening a burst of requests that can fail on mobile networks. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(Math.max(1, concurrency), items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      results[index] = await mapper(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 function BookRatingBadge({ book, className = "" }: { book: any; className?: string }) {
   const display = getDisplayRating(book);
   if (!display) return null;
@@ -1081,8 +1120,8 @@ function DiscoverView({
     const mergedData = { ...baseData };
 
     const goodreadsCats = ALL_CATEGORIES.filter((cat) => cat.source === "goodreads");
-    const goodreadsResults = await Promise.all(
-      goodreadsCats.map(async (cat) => {
+    const goodreadsResults = await mapWithConcurrency(
+      goodreadsCats, 3, async (cat) => {
         try {
           const gBooks = await fetchGoodreadsCategory(cat.query);
           return { id: cat.id, books: gBooks };
@@ -1090,7 +1129,7 @@ function DiscoverView({
           console.error(`Failed to background fetch Goodreads ${cat.title}:`, err);
           return { id: cat.id, books: [] };
         }
-      })
+      }
     );
     goodreadsResults.forEach((res) => {
       mergedData[res.id] = res.books;
@@ -1098,8 +1137,8 @@ function DiscoverView({
     setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(goodreadsResults.map((res) => [res.id, res.books])) }));
 
     const audiobookCats = ALL_CATEGORIES.filter((cat) => cat.source === "audiobook");
-    const audiobookResults = await Promise.all(
-      audiobookCats.map(async (cat) => {
+    const audiobookResults = await mapWithConcurrency(
+      audiobookCats, 2, async (cat) => {
         try {
           const books = await fetchAudiobookCategory(cat);
           return { id: cat.id, books };
@@ -1107,7 +1146,7 @@ function DiscoverView({
           console.error(`Failed to load audiobooks for ${cat.title}:`, err);
           return { id: cat.id, books: [] };
         }
-      })
+      }
     );
     audiobookResults.forEach((res) => {
       mergedData[res.id] = res.books;
@@ -1115,8 +1154,8 @@ function DiscoverView({
     setFeaturedData((prev) => ({ ...prev, ...Object.fromEntries(audiobookResults.map((res) => [res.id, res.books])) }));
 
     const netgalleyCats = ALL_CATEGORIES.filter((cat) => cat.source === "netgalley");
-    const netgalleyResults = await Promise.all(
-      netgalleyCats.map(async (cat) => {
+    const netgalleyResults = await mapWithConcurrency(
+      netgalleyCats, 3, async (cat) => {
         try {
           const books = await fetchNetgalleyCategory(cat);
           return { id: cat.id, books };
@@ -1124,7 +1163,7 @@ function DiscoverView({
           console.error(`Failed to load NetGalley category ${cat.title}:`, err);
           return { id: cat.id, books: [] };
         }
-      })
+      }
     );
     netgalleyResults.forEach((res) => {
       mergedData[res.id] = res.books;
@@ -1756,8 +1795,8 @@ function DiscoverView({
     try {
       const usePopular = category.mode === "popular" || category.query === "popular";
       const res = usePopular
-        ? await fetch("/api/audiobooks/popular")
-        : await fetch(`/api/audiobooks/search?q=${encodeURIComponent(category.query)}`);
+        ? await fetchDiscoverApi("/api/audiobooks/popular")
+        : await fetchDiscoverApi(`/api/audiobooks/search?q=${encodeURIComponent(category.query)}`);
       if (!res.ok) return [];
       const books = await res.json();
       if (!Array.isArray(books)) return [];
@@ -1837,7 +1876,7 @@ function DiscoverView({
     if (cached && cached.length > 0) return cached;
 
     try {
-      const res = await fetch(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
+      const res = await fetchDiscoverApi(`/api/netgalley/category?cat=${encodeURIComponent(category.query || category.id)}`);
       if (!res.ok) throw new Error("Failed to load NetGalley category");
       const data = await res.json();
       const results = data.results || [];
