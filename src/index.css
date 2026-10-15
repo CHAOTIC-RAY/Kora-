@@ -1173,3 +1173,16 @@ h1, h2, h3, h4 {
   transition: opacity 0.25s ease, letter-spacing 0.25s ease;
 }
 
+/* Games inherit the active reader/app palette. Game-piece colors (UNO cards,
+   Scrabble premium squares, and chess highlights) remain semantic accents. */
+.kora-game-theme {
+  color: var(--theme-text);
+  background-color: var(--theme-bg);
+  border-color: var(--theme-border);
+}
+.kora-game-theme .kora-chess-square-light {
+  background-color: color-mix(in srgb, var(--theme-card) 88%, var(--theme-text) 12%);
+}
+.kora-game-theme .kora-chess-square-dark {
+  background-color: color-mix(in srgb, var(--theme-card) 66%, var(--theme-text) 34%);
+}
