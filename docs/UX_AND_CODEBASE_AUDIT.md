@@ -144,7 +144,7 @@ Kora covers ebooks, PDF conversion, a local library, discovery, audiobooks, news
 
 ## A. Component architecture
 
-1. **P0 — Keep type-check green.** The Android workflow exposed duplicate recent-search state declarations in DiscoverView. The duplicate state was consolidated; the latest CI run must confirm the fix.
+1. **P0 — Keep type-check green.** A duplicate recent-search state declaration in DiscoverView was consolidated, and the search history now uses one bounded session-storage path. The workflow type-check has passed on the prior run; rerun the full latest workflow after follow-up changes.
 2. **P1 — Split DiscoverView.** At review time it was roughly 239 KB and combined search, categories, audiobook discovery, details, downloads, and rendering. Extract hooks and view components incrementally.
 3. **P1 — Split OnlineScrabbleGame.** Separate pure rules, CPU strategy, state reducer, multiplayer adapter, and presentation.
 4. **P1 — Split ChessGame.** Separate rules, move generation, evaluation/search, game controller, and board components.
@@ -268,3 +268,15 @@ Kora covers ebooks, PDF conversion, a local library, discovery, audiobooks, news
 ## Review limitations
 
 This is a static repository review supplemented by GitHub Actions output. It cannot establish that the production app works on a particular device or that third-party services are currently available. The audit separates code observations and priorities from behavior that still needs to be reproduced.
+
+
+## Current implementation notes (2026-10-16)
+
+- Discover search results now route through the shared book-detail opener, and Google Books recommendations are explicit selections rather than silent replacements of the typed query. Suggestion requests are debounced and aborted when the query changes or the assist panel closes.
+- Recent Discover searches are intentionally temporary to the current browser session, bounded to the latest six distinct terms, and tolerate storage being unavailable.
+- Audiobook track loading uses a generation token to prevent stale chapter URL lookups and stale autoplay completions from taking over a newer selection. Android WebView playback and real upstream media failures still require device testing.
+- Chess CPU scheduling no longer depends on its own transient thinking flag, which previously risked cleaning up its timer before a move could run.
+- Scrabble CPU moves use a pure scoring helper with regression cases for repeated letters, premium squares, and the seven-tile bonus; delayed CPU turns are tracked so they can be invalidated during lifecycle changes.
+- Uno's modal, lobby, active table, and wildcard chooser are being migrated to the selected theme variables. UNO card-face colors remain semantic game colors; the dim backdrop behind the modal intentionally remains dark.
+- CI's Android workflow type-check and web build steps completed successfully on the Uno surface commit; the regression-test and APK stages were still running when this note was prepared. See [GitHub Actions](https://github.com/CHAOTIC-RAY/Kora-/actions).
+- Live browser testing could not be performed in the current connected-browser context. Treat this document as a prioritized static audit and validate behavior on desktop and Android before marking device-sensitive items complete.
