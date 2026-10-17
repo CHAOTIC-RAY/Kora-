@@ -1389,3 +1389,23 @@ body.skin-nothing ::-webkit-scrollbar-thumb {
 .snap-carousel-item {
   scroll-snap-align: start;
 }
+
+
+/* ── Display-theme contract: light palettes must win over legacy skin colors ──
+   Skins may change shape/material, but never force dark surfaces or white text
+   when a light display theme is active. Keep these rules after every skin rule. */
+body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .theme-sepia, .theme-green) {
+  background-color: var(--theme-bg) !important;
+  color: var(--theme-text) !important;
+}
+body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .theme-sepia, .theme-green) :is(.bg-black, .bg-neutral-950, .bg-zinc-950, .bg-slate-950, .bg-gray-950, .bg-neutral-900, .bg-zinc-900, .bg-slate-900, .bg-gray-900, .bg-neutral-800, .bg-zinc-800, .bg-slate-800, .bg-gray-800) {
+  background-color: var(--theme-card) !important;
+  color: var(--theme-text) !important;
+  border-color: var(--theme-border) !important;
+}
+body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .theme-sepia, .theme-green) :is(.text-white, .text-neutral-50, .text-zinc-50, .text-slate-50, .text-gray-50, .text-neutral-100, .text-zinc-100, .text-slate-100, .text-gray-100) {
+  color: var(--theme-text) !important;
+}
+body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .theme-sepia, .theme-green) :is(.kora-app-header, .kora-desktop-nav, .kora-mobile-footer, .kora-tab-pill, .kindle-card, .bg-kindle-card) {
+  color: var(--theme-text);
+}
