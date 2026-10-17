@@ -122,7 +122,7 @@ function needsBrowserUrl(url: string): boolean {
   if (/^https?:\/\/(?:books\.)?google\.[^/]+\/books(?:\/|\?|$)/i.test(url)) return true;
   if (/^https?:\/\/(?:www\.)?archive\.org\/details\//i.test(url)) return true;
   // An API route is a file only when it is one of Kora's own download endpoints.
-  if (/^\/api\/(?:proxy-file|annas-archive\/download|download|download-options)(?:\?|$)/i.test(url)) return false;
+  if (/^(https?:\/\/[^/]+)?\/api\/(?:proxy-file|annas-archive\/download|download|download-options)(?:\?|$)/i.test(url)) return false;
   if (/^(https?:\/\/[^/]+)?\/api\//i.test(url)) return true;
   return !FILE_URL_RE.test(url);
 }
@@ -151,8 +151,8 @@ function isArchiveLendingOnly(book: AvailabilityBook, url: string): boolean {
   if (!/archive\.org\//i.test(url)) return false;
   // Already trusted: a real id came with it.
   const hasRealId =
-    (typeof book.md5 === "string" && book.md5.trim()) ||
-    (typeof book.hash === "string" && book.hash.trim());
+    (typeof book.md5 === "string" && /^[a-f0-9]{32}$/i.test(book.md5.trim())) ||
+    (typeof book.hash === "string" && /^[a-f0-9]{32}$/i.test(book.hash.trim()));
   if (hasRealId) return false;
   // Archive scan accessions look like `title0000suffix`; ids ending in 4 digits
   // are controlled-lending placeholders, not LibGen md5s.
