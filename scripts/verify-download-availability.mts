@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { hasDirectFile, hasDownloadableSource, filterDownloadableBooks } from "../src/lib/bookAvailability";
 
 const pseudo = "54f2e7e36fe67f3189182621277f92b29a17715bc2d586487918457306333345";
-const realMd5 = "54f2e7e36fe67f3189182621277f92b";
+const realMd5 = "54f2e7e36fe67f3189182621277f92b2";
 
 assert.equal(
   hasDirectFile({ title: "Master of the Game", md5: pseudo, downloadUrl: "https://openlibrary.org/works/OL123W" }),
