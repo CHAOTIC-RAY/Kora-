@@ -118,7 +118,7 @@ function needsBrowserUrl(url: string): boolean {
   // or appear in a field named downloadUrl. The user must resolve an edition
   // with an actual file endpoint before Kora offers a download.
   if (/royallib\.com|z-lib\.|\/book\/.+\.html$/i.test(url)) return true;
-  if (/^https?:\/\/(?:www\.)?openlibrary\.org\/(?:works|authors|search)(?:\/|\?|$)/i.test(url)) return true;
+  if (/^https?:\/\/(?:www\.)?openlibrary\.org\/(?:works|books|authors|search)(?:\/|\?|$)/i.test(url)) return true;
   if (/^https?:\/\/(?:books\.)?google\.[^/]+\/books(?:\/|\?|$)/i.test(url)) return true;
   if (/^https?:\/\/(?:www\.)?archive\.org\/details\//i.test(url)) return true;
   // An API route is a file only when it is one of Kora's own download endpoints.
