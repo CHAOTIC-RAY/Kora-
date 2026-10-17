@@ -40,5 +40,26 @@ export default function CachedCoverImage({ coverUrl, bookTitle, alt, ...rest }: 
     );
   }
 
-  return <img src={src} alt={alt || bookTitle || "Book cover"} loading="lazy" decoding="async" {...rest} />;
+  const displaySrc = resolveCoverImageSrc(coverUrl);
+
+  return (
+    <img
+      src={src}
+      alt={alt || bookTitle || "Book cover"}
+      loading="lazy"
+      decoding="async"
+      {...rest}
+      onError={(event) => {
+        // IndexedDB object URLs can become stale if another cache lifecycle
+        // revokes them while a card is still mounted. Retry the canonical
+        // network URL once instead of leaving a broken-image icon on screen.
+        const image = event.currentTarget;
+        if (displaySrc && image.src !== displaySrc && src !== displaySrc) {
+          setSrc(displaySrc);
+          return;
+        }
+        rest.onError?.(event);
+      }}
+    />
+  );
 }
