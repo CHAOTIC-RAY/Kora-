@@ -4175,7 +4175,7 @@ export default {
         // is invalid HTTP framing and can make Chromium report ERR_FAILED (200 OK)
         // while reading otherwise valid PDFs such as LibreTexts downloads.
         const upstreamLength = response.headers.get("content-length");
-        if (upstreamLength && /^\\d+$/.test(upstreamLength)) {
+        if (upstreamLength && /^\d+$/.test(upstreamLength)) {
           resHeaders.set("Content-Length", upstreamLength);
         } else {
           resHeaders.delete("content-length");
