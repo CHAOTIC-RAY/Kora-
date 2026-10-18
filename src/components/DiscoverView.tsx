@@ -643,14 +643,11 @@ function DiscoverView({
 
       const isRave = sourceId === "rave" || label.includes("rave") || url.includes("rave");
       const isLibgen = sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis");
-      const isLibretext = label.includes("libretext") || url.includes("libretext");
 
-      const direct = isRave || isLibgen || isLibretext;
-      
+      const direct = isRave || isLibgen;
+
       let newLabel = m.label;
-      if (isLibretext && !label.includes("direct") && !label.includes("libretexts")) {
-        newLabel = "LibreTexts Direct Download";
-      } else if (isRave && !label.includes("direct") && !label.includes("rave")) {
+      if (isRave && !label.includes("direct") && !label.includes("rave")) {
         newLabel = "Rave Direct Download";
       } else if (isLibgen && !label.includes("libgen")) {
         newLabel = "Libgen Mirror (libgen.li)";
@@ -1528,7 +1525,6 @@ function DiscoverView({
             if (!res.ok) continue;
             const data = await res.json();
             if (data?.error || !data?.items?.length) continue;
-            usedFallback = data.source === "openlibrary-fallback";
             const ranked = [...data.items].sort((a: any, b: any) => {
               const ad = (a.volumeInfo?.description || "").length;
               const bd = (b.volumeInfo?.description || "").length;

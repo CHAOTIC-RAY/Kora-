@@ -297,9 +297,13 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
   if (requested === "all" || ["archive","internet-archive","ia"].includes(requested)) jobs.push(["archive", searchInternetArchive(q, mode, page)]);
   if (mode !== "audiobooks" && (requested === "all" || ["gutenberg","project-gutenberg"].includes(requested))) jobs.push(["gutenberg", searchGutenberg(q, page)]);
   if (mode !== "audiobooks" && (requested === "all" || ["openstax","open-stax"].includes(requested))) jobs.push(["openstax", searchOpenStax(q, mode)]);
-  if (mode !== "audiobooks" && (requested === "all" || ["libretexts","libre-texts"].includes(requested))) jobs.push(["libretexts", searchLibreTexts(q, mode, page)]);
   if (mode === "audiobooks" && (requested === "all" || ["librivox","libri-vox"].includes(requested))) jobs.push(["librivox", searchLibriVox(q, mode, page)]);
-  if (mode !== "audiobooks" && (requested === "all" || ["openlibrary","open-library","metadata"].includes(requested))) jobs.push(["openlibrary", searchOpenLibrary(q, page)]);
+  // Open Library is opt-in only — excluded from default "all" fan-out and
+  // from download fallbacks. It remains available as a metadata source when
+  // explicitly requested.
+  if (mode !== "audiobooks" && ["openlibrary","open-library","metadata"].includes(requested)) {
+    jobs.push(["openlibrary", searchOpenLibrary(q, page)]);
+  }
   const settled = await Promise.all(jobs.map(async ([id, promise]) => {
     try { return [id, await promise] as [string, ScrapedBook[]]; } catch { return [id, []] as [string, ScrapedBook[]]; }
   }));
@@ -322,7 +326,6 @@ export async function searchIndependentPopularBooks(): Promise<any> {
   const topics = [
     { name: "Public-Domain Classics", q: "classic novels", mode: "ebooks", source: "gutenberg" },
     { name: "Open Textbooks", q: "biology", mode: "ebooks", source: "openstax" },
-    { name: "Science & Learning", q: "physics", mode: "ebooks", source: "libretexts" },
     { name: "Free Audiobooks", q: "Sherlock Holmes", mode: "audiobooks", source: "librivox" }
   ];
   const lists = await Promise.all(topics.map(async topic => {

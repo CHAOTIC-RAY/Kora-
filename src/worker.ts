@@ -84,104 +84,6 @@ async function buildRaveFallbackFeed(): Promise<any> {
   return { status: "OK", results: { lists } };
 }
 
-/** When Google Books is quota-limited, return an Open Library result shaped like a volumes response. */
-async function googleBooksFallbackFromOpenLibrary(q: string, maxResults = 5): Promise<any | null> {
-  try {
-    const intitle =
-      q.match(/intitle:"([^"]+)"/i)?.[1] ||
-      q.match(/intitle:(\S+)/i)?.[1] ||
-      "";
-    const inauthor =
-      q.match(/inauthor:"([^"]+)"/i)?.[1] ||
-      q.match(/inauthor:(.+)$/i)?.[1]?.trim() ||
-      "";
-    const bare = q
-      .replace(/intitle:"[^"]+"/gi, " ")
-      .replace(/intitle:\S+/gi, " ")
-      .replace(/inauthor:"[^"]+"/gi, " ")
-      .replace(/inauthor:.+$/gi, " ")
-      .replace(/[+\s]+/g, " ")
-      .trim();
-
-    const olUrl = new URL("https://openlibrary.org/search.json");
-    if (intitle) olUrl.searchParams.set("title", intitle);
-    if (inauthor) olUrl.searchParams.set("author", inauthor);
-    if (!intitle && !inauthor) olUrl.searchParams.set("q", bare || q);
-    olUrl.searchParams.set("limit", String(Math.min(Math.max(maxResults, 1), 10)));
-
-    const searchRes = await fetch(olUrl.toString(), { signal: AbortSignal.timeout(10000) });
-    if (!searchRes.ok) return null;
-    const searchData = await searchRes.json();
-    const docs = searchData?.docs || [];
-    if (!docs.length) return null;
-
-    const items = [];
-    for (const doc of docs.slice(0, maxResults)) {
-      let description = "";
-      if (doc.key) {
-        try {
-          const workRes = await fetch(`https://openlibrary.org${doc.key}.json`, {
-            signal: AbortSignal.timeout(8000),
-          });
-          if (workRes.ok) {
-            const work = await workRes.json();
-            description =
-              typeof work.description === "string"
-                ? work.description
-                : work.description?.value || "";
-          }
-        } catch {
-          /* skip description */
-        }
-      }
-
-      const coverId = doc.cover_i;
-      const isbn = doc.isbn?.[0];
-      items.push({
-        id: `ol:${doc.key || doc.edition_key?.[0] || doc.title}`,
-        volumeInfo: {
-          title: doc.title,
-          authors: doc.author_name || [],
-          description,
-          pageCount: doc.number_of_pages_median || doc.number_of_pages || undefined,
-          publishedDate: doc.first_publish_year ? String(doc.first_publish_year) : undefined,
-          publisher: doc.publisher?.[0],
-          language: doc.language?.[0],
-          categories: (doc.subject || []).slice(0, 8),
-          industryIdentifiers: (doc.isbn || []).slice(0, 4).map((id: string) => ({
-            type: id.length === 13 ? "ISBN_13" : "ISBN_10",
-            identifier: id,
-          })),
-          imageLinks: coverId
-            ? {
-                thumbnail: `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`,
-                smallThumbnail: `https://covers.openlibrary.org/b/id/${coverId}-S.jpg`,
-              }
-            : isbn
-              ? {
-                  thumbnail: `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`,
-                  smallThumbnail: `https://covers.openlibrary.org/b/isbn/${isbn}-S.jpg`,
-                }
-              : undefined,
-          previewLink: doc.key ? `https://openlibrary.org${doc.key}` : undefined,
-          infoLink: doc.key ? `https://openlibrary.org${doc.key}` : undefined,
-          sourceNote: "openlibrary-fallback",
-        },
-      });
-    }
-
-    if (!items.length) return null;
-    return {
-      kind: "books#volumes",
-      totalItems: searchData.numFound || items.length,
-      items,
-      source: "openlibrary-fallback",
-    };
-  } catch {
-    return null;
-  }
-}
-
 function parseCookies(cookieHeader: string | null | undefined): Record<string, string> {
   const list: Record<string, string> = {};
   if (!cookieHeader) return list;
@@ -1765,53 +1667,92 @@ export default {
             const google = googleOutcome.status === "fulfilled" ? googleOutcome.value : { books: [], total: 0 };
             const rave = raveOutcome.status === "fulfilled" ? raveOutcome.value : { results: [], meta: {} };
             const raveBooks = Array.isArray((rave as any)?.results) ? (rave as any).results : [];
-            const merged = new Map<string, any>();
 
-            // Preserve separate source/format copies (RaveBSD does this too), because an
-            // Internet Archive PDF and a Gutenberg EPUB are distinct useful download options.
-            // Google Books is metadata/catalogue enrichment, not a replacement download source.
-            for (const book of raveBooks) {
-              const baseKey = keyFor(book);
-              if (!baseKey) continue;
-              const sourceKey = baseKey + "|" + normalize(book.source || "source") + "|" + normalize(book.format || "");
-              merged.set(sourceKey, { ...book, isRaveBook: true, isGoogleBook: false });
-            }
+            // Google Books is the metadata authority: canonical title, author, ISBN,
+            // cover, description. Independent sources provide download options.
+            // Match independent results to Google Books by ISBN first, then by
+            // normalized title+author. Never merge on title alone when ISBNs
+            // contradict.
+            const byIsbn = new Map<string, any>();
             for (const book of google.books) {
-              const baseKey = keyFor(book);
-              if (!baseKey) continue;
-              const existingEntry = [...merged.entries()].find(([key]) => key.startsWith(baseKey + "|"));
-              if (existingEntry) {
-                const [existingKey, existing] = existingEntry;
-                // Enrich only one matching source row. Keep every source-specific download row
-                // and never overwrite its direct URL, identifier, or resolver metadata.
-                merged.set(existingKey, {
+              if (book.isbn) byIsbn.set(book.isbn.toUpperCase().replace(/[^0-9X]/g, ""), book);
+              book.downloadOptions = [];
+              book.source = "Google Books";
+              book.isGoogleBook = true;
+            }
+
+            const matchedIndependent = new Set<number>();
+            const unmatchedIndependent: any[] = [];
+
+            const norm = (value: string) => String(value || "")
+              .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+            for (let i = 0; i < raveBooks.length; i++) {
+              const book = raveBooks[i];
+              const normIsbn = (book.isbn || "").toUpperCase().replace(/[^0-9X]/g, "");
+              let googleMatch: any = null;
+
+              // ISBN match is authoritative — never override on title alone.
+              if (normIsbn && byIsbn.has(normIsbn)) {
+                googleMatch = byIsbn.get(normIsbn);
+              } else {
+                // Fall back to normalized title+author match.
+                const title = norm(book.title || "");
+                const author = norm(book.author || "");
+                if (title) {
+                  for (const gb of google.books) {
+                    if (norm(gb.title) === title && norm(gb.author) === author) {
+                      googleMatch = gb;
+                      break;
+                    }
+                  }
+                }
+              }
+
+              if (googleMatch) {
+                matchedIndependent.add(i);
+                googleMatch.downloadOptions.push({
                   ...book,
-                  ...existing,
-                  title: existing.title || book.title,
-                  author: existing.author || book.author,
-                  coverUrl: existing.coverUrl || book.coverUrl,
-                  year: existing.year || book.year,
-                  publisher: existing.publisher || book.publisher,
-                  description: existing.description || book.description,
-                  isbn: existing.isbn || book.isbn,
-                  googleId: book.googleId,
-                  isGoogleBook: true,
+                  isGoogleBook: false,
                   isRaveBook: true,
+                  matchedBy: normIsbn ? "isbn" : "title-author",
                 });
               } else {
-                merged.set(baseKey + "|google", book);
+                unmatchedIndependent.push({ ...book, isGoogleBook: false, isRaveBook: true });
               }
             }
 
-            const books = [...merged.values()];
-            if (books.length) write({ source: "merged", books });
+            // Build output: Google Books entries first (with attached download
+            // options), then unmatched independent results.
+            const output: any[] = [];
+
+            for (const gb of google.books) {
+              output.push({
+                ...gb,
+                downloadOptions: gb.downloadOptions,
+                hasDownloadOptions: gb.downloadOptions.length > 0,
+              });
+            }
+
+            for (const book of unmatchedIndependent) {
+              output.push({
+                ...book,
+                downloadOptions: [],
+                hasDownloadOptions: false,
+              });
+            }
+
+            if (output.length) write({ source: "merged", books: output });
             const raveTotal = Number((rave as any)?.meta?.total ?? (rave as any)?.meta?.totalCount) || 0;
-            const totalCount = Math.max(books.length, google.total + raveTotal);
+            const totalCount = Math.max(output.length, google.total + raveTotal);
             const googleHasMore = google.books.length >= googlePageSize || (google.total > page * googlePageSize);
             const raveHasMore = raveBooks.length >= 25 || (raveTotal > page * 25);
             write({ done: true, totalCount, hasMore: googleHasMore || raveHasMore, sources: {
               google: google.books.length,
               ravebsd: raveBooks.length,
+              matchedIndependent: matchedIndependent.size,
+              unmatchedIndependent: unmatchedIndependent.length,
               failed: [
                 ...(googleOutcome.status === "rejected" ? ["google"] : []),
                 ...(raveOutcome.status === "rejected" ? ["ravebsd"] : [])
@@ -2226,35 +2167,14 @@ export default {
           return out;
         }
 
-        // Google is often 429/503 without a key — synthesize a volumes-like payload from Open Library.
-        const olFallback = await googleBooksFallbackFromOpenLibrary(q, Number(maxResults) || 5);
-        if (olFallback) {
-          const payload = JSON.stringify(olFallback);
-          try {
-            await (caches as any).default.put(
-              cacheKey,
-              new Response(payload, {
-                status: 200,
-                headers: { ...jsonHeaders, "Cache-Control": "public, max-age=3600" },
-              })
-            );
-          } catch {
-            /* ignore */
-          }
-          return new Response(payload, { status: 200, headers: jsonHeaders });
-        }
-
-        // Surface Google's error so the client can show a useful message / try another source.
+        // Google unavailable — surface the error so the client can try another
+        // source. Open Library is no longer used as a fallback here.
         const status = data?.error?.code && Number(data.error.code) >= 400 ? Number(data.error.code) : response.ok ? 404 : response.status;
         return new Response(JSON.stringify(data?.error ? data : { error: "No Google Books results", details: data }), {
           status: status === 429 || status === 403 ? status : status >= 400 ? status : 502,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
       } catch (err: any) {
-        const olFallback = await googleBooksFallbackFromOpenLibrary(q, Number(maxResults) || 5);
-        if (olFallback) {
-          return new Response(JSON.stringify(olFallback), { status: 200, headers: jsonHeaders });
-        }
         return new Response(JSON.stringify({ error: "Failed to fetch from Google Books", details: err.message }), {
           status: 500,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
@@ -2293,14 +2213,13 @@ export default {
           // Source-native direct links from providers that publish open/public-domain files.
           // Do not turn this endpoint into an arbitrary-URL proxy.
           const openDownloadHosts = [
-            "gutenberg.org", "openstax.org", "libretexts.org", "librivox.org", "archive.org"
+            "gutenberg.org", "openstax.org", "librivox.org", "archive.org"
           ];
           const isAuthorizedOpenSource = parsed.protocol === "https:" &&
             openDownloadHosts.some(domain => host === domain || host.endsWith("." + domain));
           if (isLegacyResolvedLink || isAuthorizedOpenSource) {
             const label = host.includes("gutenberg.org") ? "Project Gutenberg (direct)" :
               host.includes("openstax.org") ? "OpenStax (direct)" :
-              host.includes("libretexts.org") ? "LibreTexts (direct)" :
               host.includes("librivox.org") ? "LibriVox (direct)" :
               host.includes("archive.org") ? "Internet Archive (direct)" : "Resolved source link";
             downloadLinks.push({
