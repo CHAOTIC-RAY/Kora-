@@ -9,7 +9,7 @@
  *
  * Run: npx tsx scripts/verify-proxy-url.mts
  */
-import { proxyUrlForMirror, isProxyUrl } from "../src/lib/downloadProxy";
+import { proxyUrlForMirror, isProxyUrl, isCatalogPageUrl } from "../src/lib/downloadProxy";
 
 let failures = 0;
 const check = (label: string, got: string, want: string) => {
@@ -57,7 +57,27 @@ const once = proxyUrlForMirror(upstream);
 const twice = proxyUrlForMirror(once);
 check("wrapping is idempotent", twice, once);
 
-// 6. Empty input must not throw.
+// 6. Catalogue pages are external references, never binary download candidates.
+for (const page of [
+  "https://openlibrary.org/works/OL1881658W",
+  "/api/proxy-file?url=https%3A%2F%2Fopenlibrary.org%2Fworks%2FOL1881658W",
+  "https://books.google.com/books?id=example",
+  "https://archive.org/details/example"
+]) {
+  const ok = isCatalogPageUrl(page);
+  console.log(`${ok ? "PASS" : "FAIL"}  catalogue page rejected: ${page.slice(0, 60)}…`);
+  if (!ok) failures++;
+}
+for (const file of [
+  "https://archive.org/download/example/book.epub",
+  "https://libgen.li/get.php?md5=0123456789abcdef0123456789abcdef"
+]) {
+  const ok = !isCatalogPageUrl(file);
+  console.log(`${ok ? "PASS" : "FAIL"}  file URL remains eligible: ${file.slice(0, 60)}…`);
+  if (!ok) failures++;
+}
+
+// 7. Empty input must not throw.
 check("empty string is passthrough", proxyUrlForMirror(""), "");
 check("isProxyUrl('') is false", String(isProxyUrl("")), "false");
 
