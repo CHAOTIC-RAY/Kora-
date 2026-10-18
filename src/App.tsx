@@ -19,7 +19,7 @@ import {
 import { signInWithGoogle, signOutGoogle } from "./lib/googleAuth";
 import { clearAllCachedBooks, storeBookFile, listCachedBookIds, checkBookFileCached } from "./db/indexedDB";
 import { inferBookTags } from "./lib/tagsHelper";
-import { proxyUrlForMirror } from "./lib/downloadProxy";
+import { isCatalogPageUrl, proxyUrlForMirror } from "./lib/downloadProxy";
 import { judgeMirrorDownload } from "./lib/mirrorOutcome";
 const LibraryManager = lazy(() => import("./components/LibraryManager"));
 const DiscoverView = lazy(() => import("./components/DiscoverView"));
@@ -996,6 +996,10 @@ export default function App() {
     for (const m of seed) {
       const url = m?.url;
       if (!url) continue;
+      // Catalogue pages (Open Library works/books, Google Books, Archive details)
+      // are valid external references but never binary download candidates.
+      // Trying them produced HTTP 500 because the proxy correctly received HTML.
+      if (isCatalogPageUrl(url)) continue;
       // Prefer the original URL first; only expand LibGen hosts for alternates.
       const candidates = isLibgenUrl(url) ? libgenMirrorCandidates(url) : [url];
       for (const candidate of candidates) {
