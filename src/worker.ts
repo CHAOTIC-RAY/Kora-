@@ -3703,11 +3703,11 @@ export default {
         // so clients get a clear 422 instead of a generic 500 after HTML detection.
         try {
           const requested = new URL(downloadUrl);
-          const host = requested.hostname.toLowerCase().replace(/^www\\./, "");
+          const host = requested.hostname.toLowerCase().replace(/^www\./, "");
           const pathname = requested.pathname.toLowerCase();
           if (
-            (host === "openlibrary.org" && /^\\/(works|books|authors|search)(\\/|$)/.test(pathname)) ||
-            (/^(?:books\\.)?google\\.[a-z.]+$/.test(host) && pathname.startsWith("/books"))
+            (host === "openlibrary.org" && /^\/(works|books|authors|search)(\/|$)/.test(pathname)) ||
+            (/^(?:books\.)?google\.[a-z.]+$/.test(host) && pathname.startsWith("/books"))
           ) {
             return new Response(JSON.stringify({
               error: "This is a catalogue page, not a downloadable book file. Resolve a direct file URL first.",
