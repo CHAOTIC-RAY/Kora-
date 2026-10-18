@@ -27,6 +27,8 @@ import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedIm
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
+import { describeScore, rankMirrors, reliabilityBadge, normalizeHost } from "./lib/mirrorHealth";
+import { readOutcomePayload, recordUserOutcome, resolveMirrorStore } from "./lib/mirrorHealthStore";
 import {
   getNetgalleyCoverUrl,
   searchNetgalleyCatalog,
@@ -555,6 +557,67 @@ export default {
           "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
           "Access-Control-Allow-Credentials": "true"
         }
+      });
+    }
+
+    // Mirror health API. Outcomes contain only a normalized host and a byte-level
+    // verdict; never accept or persist book titles, authors, filenames, or user IDs.
+    if (path === "/api/mirror-outcome" && request.method === "POST") {
+      try {
+        let raw: unknown;
+        try {
+          raw = await request.json();
+        } catch {
+          return new Response(null, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+        }
+        const payload = readOutcomePayload(raw);
+        if (!payload) {
+          return new Response(null, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+        }
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        await recordUserOutcome(resolveMirrorStore(env), new Map(), payload, ip, Date.now());
+        return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
+      } catch {
+        return new Response(null, { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
+      }
+    }
+
+    if (path === "/api/mirror-health" && request.method === "GET") {
+      const requestedHosts = (url.searchParams.get("hosts") || "")
+        .split(",")
+        .map((host) => host.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 40);
+      const hosts = requestedHosts.map((host) => normalizeHost(host) || host);
+      const store = resolveMirrorStore(env);
+      const records = new Map<string, any>();
+      for (const host of hosts) {
+        const normalized = normalizeHost(host);
+        if (!normalized) continue;
+        const record = await store.get(normalized);
+        if (record) records.set(normalized, record);
+      }
+      const ranked = rankMirrors(hosts, records, Date.now());
+      const mirrors = ranked.map((score) => ({
+        host: score.host,
+        percent: score.percent,
+        badge: reliabilityBadge(score),
+        basis: score.basis,
+        reason: describeScore(score),
+        userWeight: score.userWeight,
+        userGood: score.user.rawGood,
+        userBad: score.user.rawBad,
+        probeGood: score.probe.rawGood,
+        probeBad: score.probe.rawBad,
+        verified: score.percent !== null,
+      }));
+      return new Response(JSON.stringify({ mirrors, skipped: 0 }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+        },
       });
     }
 
