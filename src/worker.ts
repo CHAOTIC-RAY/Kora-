@@ -3699,6 +3699,31 @@ export default {
 
         downloadUrl = normalizeMediaUrl(downloadUrl);
 
+        // A catalogue/work page is not a file. Reject it before fetching upstream
+        // so clients get a clear 422 instead of a generic 500 after HTML detection.
+        try {
+          const requested = new URL(downloadUrl);
+          const host = requested.hostname.toLowerCase().replace(/^www\\./, "");
+          const pathname = requested.pathname.toLowerCase();
+          if (
+            (host === "openlibrary.org" && /^\\/(works|books|authors|search)(\\/|$)/.test(pathname)) ||
+            (/^(?:books\\.)?google\\.[a-z.]+$/.test(host) && pathname.startsWith("/books"))
+          ) {
+            return new Response(JSON.stringify({
+              error: "This is a catalogue page, not a downloadable book file. Resolve a direct file URL first.",
+              code: "CATALOG_PAGE_NOT_DOWNLOADABLE"
+            }), {
+              status: 422,
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            });
+          }
+        } catch {
+          return new Response(JSON.stringify({ error: "Invalid download URL" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
         // Fast path: stream audiobook/audio files with Range support
         const wantsAudio =
           url.searchParams.get("audio") === "1" ||
