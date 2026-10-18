@@ -38,6 +38,10 @@ import {
 } from "./lib/netgalley";
 declare const HTMLRewriter: any;
 
+// Per-isolate abuse clamp for mirror outcome reports. MirrorHealthStore is also
+// in-memory today; both are intentionally bounded to this Worker isolate.
+const mirrorOutcomeAllowances = new Map<string, { stamps: number[] }>();
+
 async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
@@ -575,7 +579,7 @@ export default {
           return new Response(null, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
         }
         const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-        await recordUserOutcome(resolveMirrorStore(env), new Map(), payload, ip, Date.now());
+        await recordUserOutcome(resolveMirrorStore(env), mirrorOutcomeAllowances, payload, ip, Date.now());
         return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
       } catch {
         return new Response(null, { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
