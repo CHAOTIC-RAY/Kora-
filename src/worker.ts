@@ -4104,9 +4104,16 @@ export default {
         resHeaders.delete("transfer-encoding");
         resHeaders.delete("content-security-policy");
 
-        // Removed arrayBuffer buffering to allow streaming progress in frontend
-        resHeaders.set("Content-Length", response.headers.get("content-length") || "");
-        
+        // Preserve a real upstream length when present. An empty Content-Length
+        // is invalid HTTP framing and can make Chromium report ERR_FAILED (200 OK)
+        // while reading otherwise valid PDFs such as LibreTexts downloads.
+        const upstreamLength = response.headers.get("content-length");
+        if (upstreamLength && /^\\d+$/.test(upstreamLength)) {
+          resHeaders.set("Content-Length", upstreamLength);
+        } else {
+          resHeaders.delete("content-length");
+        }
+
         const contentDisposition = response.headers.get("content-disposition");
         if (!contentDisposition) {
           try {
@@ -4118,7 +4125,7 @@ export default {
         }
         
         return new Response(response.body, {
-          status: 200,
+          status: response.status,
           headers: resHeaders
         });
       } catch (err: any) {
