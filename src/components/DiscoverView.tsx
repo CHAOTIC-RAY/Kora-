@@ -6,7 +6,7 @@ import { BookMetadata, syncBookToCloud } from "../lib/firebase";
 import { tempStorage } from "../lib/tempStorage";
 import { storeBookFile, checkBookFileCached } from "../db/indexedDB";
 import { inferBookTags } from "../lib/tagsHelper";
-import { proxyUrlForMirror } from "../lib/downloadProxy";
+import { isCatalogPageUrl, proxyUrlForMirror } from "../lib/downloadProxy";
 import { judgeMirrorDownload } from "../lib/mirrorOutcome";
 import { Search, BookOpen, Download, Globe, Puzzle, CircleCheck as CheckCircle2, Loader as Loader2, TriangleAlert as AlertTriangle, Circle as HelpCircle, ArrowRight, Database, Zap, ExternalLink, Compass, TrendingUp, BookMarked, ChevronRight, ChevronLeft, RefreshCw, X, Layers, Library, Users, Headphones, Play, Pause, Heart, MessageSquare, Eye, Feather, Sparkles, Send, Share2 } from "lucide-react";
 import toast from "react-hot-toast";
@@ -3089,6 +3089,13 @@ function DiscoverView({
 
   function handleMirrorClick(m: any) {
     console.log("[DiscoverView] handleMirrorClick called for:", m.label, m.url);
+    // Catalogue pages are useful for reading/borrowing/searching, but are not
+    // ebook files. Open them as external references instead of sending them
+    // through the binary download proxy.
+    if (m.url && isCatalogPageUrl(m.url)) {
+      window.open(m.url, "_blank", "noopener,noreferrer");
+      return;
+    }
     // If it is a Mobilism URL, we cannot download directly in-app, so open it in a new tab
     if (m.url && (m.url.toLowerCase().includes("mobilism.org") || m.url.toLowerCase().includes("mobilism"))) {
       console.log("[DiscoverView] Mobilism link detected. Opening in a new tab.");
