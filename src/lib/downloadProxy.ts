@@ -25,12 +25,12 @@ export function isCatalogPageUrl(url: string): boolean {
   const raw = unwrapProxyTarget(url);
   try {
     const parsed = new URL(raw);
-    const host = parsed.hostname.toLowerCase().replace(/^www\\./, "");
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
     const path = parsed.pathname.toLowerCase();
-    if (host === "openlibrary.org" && /^\\/(works|books|authors|search)(\\/|$)/.test(path)) return true;
-    if (/^(?:books\\.)?google\\.[a-z.]+$/.test(host) && path.startsWith("/books")) return true;
+    if (host === "openlibrary.org" && /^\/(works|books|authors|search)(\/|$)/.test(path)) return true;
+    if (/^(?:books\.)?google\.[a-z.]+$/.test(host) && path.startsWith("/books")) return true;
     if (host === "archive.org" && path.startsWith("/details/")) return true;
-    if (/^(?:www\\.)?goodreads\\.com$/.test(host) && /\\/(book|author)\\//.test(path)) return true;
+    if (/^(?:www\.)?goodreads\.com$/.test(host) && /\/(book|author)\//.test(path)) return true;
     return false;
   } catch {
     return false;
