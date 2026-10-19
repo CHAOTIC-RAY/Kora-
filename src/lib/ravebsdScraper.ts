@@ -322,6 +322,10 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
   const queryTerms = words(q);
   const matching = ranked.filter(({ book, score }) => {
     if (score < 0.25 || !queryTerms.length) return false;
+    const requestedDocumentTerms = new Set(queryTerms);
+    const archiveDocumentTitle = /\b(letter|collection|cia|reading room|document|memo|report|transcript|correspondence|intelligence file)\b/i.test(book.title);
+    const queryRequestsDocument = [...requestedDocumentTerms].some(term => /^(letter|collection|cia|document|memo|report|transcript|correspondence)$/.test(term));
+    if (/internet archive/i.test(book.source) && archiveDocumentTitle && !queryRequestsDocument) return false;
     const searchable = new Set(words(`${book.title} ${book.author}`));
     const coverage = queryTerms.filter(term => searchable.has(term)).length / queryTerms.length;
     // Multiword searches often contain both title and author. Require most of
