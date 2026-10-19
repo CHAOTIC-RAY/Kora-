@@ -28,6 +28,7 @@ import {
 } from "./src/lib/audiobookServer";
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./src/lib/libgenProxy";
+import { searchShadowBooks } from "./src/lib/shadowSources";
 import {
   getNetgalleyCoverUrl,
   getNetgalleyBookDetails,
@@ -2204,7 +2205,7 @@ app.get("/api/search/stream", async (req, res) => {
   const annasPromise = fetch(`http://127.0.0.1:${PORT}/api/annas-archive/search?q=${encodeURIComponent(q)}&page=${page}`)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
-      const rawBooks = (data?.results || data || []).slice(0, 12);
+      const rawBooks = (data?.results || data || []).slice(0, 25);
       const books = rawBooks.filter(hasKnownAuthor);
       if (books.length) {
         all.push(...books);
@@ -3534,6 +3535,32 @@ app.get("/api/annas-archive/search", async (req, res) => {
     }
 
     console.log(`Executing Rave Book Search for query: "${q}", source: ${searchSource}, page: ${searchPage}`);
+
+    // Search direct catalog mirrors first. The retired public relay cannot be
+    // reached reliably from Cloudflare/local edge egress; keep the source
+    // parsers and mirror race as the primary route, with open catalogs below.
+    try {
+      const shadow = await searchShadowBooks(q as string, "ebooks", searchSource, searchPage);
+      if (shadow.results.length) {
+        const responseData = {
+          books: shadow.results,
+          results: shadow.results,
+          source: searchSource,
+          page: searchPage,
+          pageSize: shadow.results.length,
+          meta: shadow.meta,
+          totalCount: shadow.meta.total ?? shadow.results.length,
+          hasMore: Boolean(shadow.meta.hasMore),
+          mirror: "Shadow Sources",
+          parsedBy: "Parallel Mirror Scraper"
+        };
+        shadow.results.forEach((book: any) => { if (book.md5) bookCache.set(book.md5, book); });
+        raveSearchCache.set(cacheKey, { data: responseData, timestamp: now });
+        return res.json(responseData);
+      }
+    } catch (e) {
+      console.warn("Shadow-source search failed; using open catalog fallback:", e);
+    }
     
     // Run Rave Search directly
     let raveResults: any[] = [];

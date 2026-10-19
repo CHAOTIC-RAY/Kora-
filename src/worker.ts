@@ -127,9 +127,34 @@ function resolveUrl(href: string, base: string): string {
 async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "ebooks", source: string = "all", page: string = "1") {
   const configuredUrl = String(env?.RAVE_BOOK_SEARCH_URL || "").trim();
   const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
+  const fetchIndependentFallbacks = async () => {
+    const [shadowOutcome, openOutcome] = await Promise.allSettled([
+      searchShadowBooks(query, mode, source, pageNumber, env),
+      searchIndependentBookSources(query, mode, source, pageNumber)
+    ]);
+    const shadow = shadowOutcome.status === "fulfilled" ? shadowOutcome.value : { results: [], meta: {} };
+    const open = openOutcome.status === "fulfilled" ? openOutcome.value : { results: [], meta: {} };
+    const seen = new Set<string>();
+    const results = [...shadow.results, ...open.results].filter((book: any) => {
+      const key = [String(book.md5 || book.identifier || ""), String(book.title || "").toLowerCase(), String(book.author || "").toLowerCase(), String(book.source || "").toLowerCase(), String(book.format || "").toLowerCase()].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 25);
+    return {
+      results,
+      meta: {
+        ...open.meta,
+        ...shadow.meta,
+        sources: { ...(open.meta?.sources || {}), ...(shadow.meta?.sources || {}) },
+        total: Math.max(Number(open.meta?.total) || 0, Number(shadow.meta?.total) || 0, results.length),
+        fallback: true
+      }
+    };
+  };
   // The former public Rave deployment is retired. Use independent source adapters unless an operator explicitly configures a self-hosted engine.
   if (!configuredUrl && !env?.RAVE_BOOK_SEARCH) {
-    return searchIndependentBookSources(query, mode, source, pageNumber);
+    return fetchIndependentFallbacks();
   }
   let endpointKind: "legacy" | "ravebsd" = "legacy";
   let endpoint: URL;
@@ -174,7 +199,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
     }
     if (!res.ok) {
       console.warn("Configured book-search engine returned HTTP " + res.status + "; using independent scrapers.");
-      return searchIndependentBookSources(query, mode, source, pageNumber);
+      return fetchIndependentFallbacks();
     }
     const data = await res.json() as any;
     const rawResults: any[] = Array.isArray(data.results) ? data.results : [];
@@ -182,7 +207,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
 
     if (rawResults.length === 0) {
       console.warn("Configured book-search engine returned no results; using independent scrapers.");
-      const fallback = await searchIndependentBookSources(query, mode, source, pageNumber);
+      const fallback = await fetchIndependentFallbacks();
       return fallback.results.length ? fallback : { results: [], meta: { ...meta, ...fallback.meta } };
     }
 
@@ -269,7 +294,7 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
     return { results: mapped, meta };
   } catch (err) {
     console.error("Configured book-search engine failed; using independent scrapers:", err);
-    return searchIndependentBookSources(query, mode, source, pageNumber);
+    return fetchIndependentFallbacks();
   }
 }
 
