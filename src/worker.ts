@@ -261,6 +261,18 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         coverUrl = `/api/cover-redirect?md5=${md5}`;
       }
 
+      const sourceName = String(r.source || "");
+      const rawDownloadUrl = String(r.directUrl || r.downloadUrl || "");
+      const isCataloguePage = /open\s*library|catalogue/i.test(sourceName) ||
+        /(?:openlibrary\.org\/(?:works|search)|archive\.org\/details\/)/i.test(rawDownloadUrl) ||
+        /annas-archive\.[^/]+\/md5\//i.test(rawDownloadUrl);
+      const isSignedLibgenFile = /get\.php\?[^#]*md5=[a-f0-9]{16,}[^#]*&key=/i.test(rawDownloadUrl);
+      const hasFileExtension = /\.(?:epub|pdf|mobi|azw3?|djvu|cbz|cbr|zip|txt|mp3|m4a|m4b|flac)(?:[?#]|$)/i.test(rawDownloadUrl);
+      const directReady = !isCataloguePage && (r.directReady === true || isSignedLibgenFile || hasFileExtension);
+      const iaId = /internet archive/i.test(sourceName)
+        ? String(r.identifier || rawDownloadUrl.match(/archive\.org\/(?:details|download)\/([^/?#]+)/i)?.[1] || "")
+        : "";
+
       mapped.push({
         id: md5,
         md5,
@@ -269,18 +281,18 @@ async function fetchFromRaveBookSearch(env: any, query: string, mode: string = "
         author,
         extension: extension.toUpperCase(),
         size: size,
-        source: r.source || "Independent source",
+        source: sourceName || "Independent source",
         language: r.language || r.lang || r.language_code || r.language_names || r.info?.language || undefined,
-        downloadUrl: r.directUrl || r.downloadUrl || "",
-        pageUrl: r.pageUrl || "",
+        downloadUrl: directReady ? rawDownloadUrl : "",
+        pageUrl: r.pageUrl || (isCataloguePage ? r.downloadUrl : "") || "",
         format: r.format || extension.toLowerCase(),
-        directReady: !!(r.directReady || r.directUrl),
+        directReady,
         length: r.length || "",
         narrator: r.narrator || "",
         bitrate: r.bitrate || "",
         publisher: r.publisher || "",
         description: r.description || "",
-        iaId: /internet archive/i.test(r.source || "") ? ((r.directUrl || r.downloadUrl || "").split("/details/")[1]?.split("/")[0]?.split("?")[0] || "") : "",
+        iaId,
         coverUrl
       });
     }

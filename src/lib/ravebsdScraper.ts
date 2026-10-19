@@ -160,11 +160,12 @@ async function searchInternetArchive(query: string, mode: string, page = 1): Pro
       title, author: Array.isArray(d.creator) ? d.creator.map(clean).join(", ") : clean(d.creator),
       year: String(d.year || ""), format: file?.name?.split(".").pop()?.toLowerCase() || "",
       filesize: Number(file?.size || 0), language: Array.isArray(d.language) ? clean(d.language[0]) : clean(d.language),
-      source: "Internet Archive (open access)", downloadUrl: "https://archive.org/details/" + encodeURIComponent(id),
+      source: "Internet Archive (open access)", downloadUrl: fileUrl,
+      pageUrl: "https://archive.org/details/" + encodeURIComponent(id),
       ...(fileUrl ? { directUrl: fileUrl, directReady: true } : {}),
       coverUrl: safeHttp("https://archive.org/services/img/" + encodeURIComponent(id)), identifier: id
     };
-  })).then(rows => rows.filter((x): x is ScrapedBook => !!x));
+  })).then(rows => rows.filter((x): x is ScrapedBook => !!x?.directUrl));
 }
 
 async function searchGutenberg(query: string, page = 1): Promise<ScrapedBook[]> {
@@ -209,7 +210,8 @@ async function searchOpenLibrary(query: string, page = 1): Promise<ScrapedBook[]
       title, author: Array.isArray(d.author_name) ? d.author_name.map(clean).join(", ") : "",
       year: d.first_publish_year ? String(d.first_publish_year) : "",
       format: "", filesize: 0, language: Array.isArray(d.language) ? clean(d.language[0]) : "",
-      source: "Open Library (catalogue)", downloadUrl: key ? "https://openlibrary.org" + key : "https://openlibrary.org/search?q=" + encodeURIComponent(title),
+      source: "Open Library (catalogue)", downloadUrl: "",
+      pageUrl: key ? "https://openlibrary.org" + key : "https://openlibrary.org/search?q=" + encodeURIComponent(title),
       coverUrl: safeHttp(cover), identifier: key
     };
   }).filter((x: ScrapedBook | null): x is ScrapedBook => !!x);
@@ -317,8 +319,16 @@ export async function searchIndependentBookSources(query: string, mode = "ebooks
     seen.add(key); return true;
   }).map(book => ({ book, score: relevance(book.title, book.author, q) }))
     .sort((a, b) => b.score - a.score || Number(!!b.book.directReady) - Number(!!a.book.directReady));
-  const matching = ranked.filter(x => x.score >= 0.25);
-  const results = (matching.length ? matching : ranked).slice(0, 25).map(x => x.book);
+  const queryTerms = words(q);
+  const matching = ranked.filter(({ book, score }) => {
+    if (score < 0.25 || !queryTerms.length) return false;
+    const searchable = new Set(words(`${book.title} ${book.author}`));
+    const coverage = queryTerms.filter(term => searchable.has(term)).length / queryTerms.length;
+    // Multiword searches often contain both title and author. Require most of
+    // those terms to be present so Archive full-text hits do not leak through.
+    return coverage >= (queryTerms.length >= 3 ? 0.75 : 1);
+  });
+  const results = matching.slice(0, 25).map(x => x.book);
   return { results, meta: { fallback: true, sources: counts, total: results.length, mode, query: q, page, hasMore: results.length >= 25 } };
 }
 

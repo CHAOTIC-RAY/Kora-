@@ -27,6 +27,7 @@ import {
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
 import { dedupeGoogleBooks } from "../lib/googleBooksIdentity";
+import { classifyDownloadLink } from "../lib/downloadLinkKind";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
 import { GoodreadsIcon, NytIcon, NetgalleyIcon } from "./BrandIcons";
@@ -514,7 +515,8 @@ function DiscoverView({
   function buildInstantMirrors(variant: any): any[] {
     if (!variant) return [];
     const links: any[] = [];
-    const directUrl = variant.downloadUrl || "";
+    const directUrl = variant.directUrl || variant.downloadUrl || "";
+    const isDirectFile = classifyDownloadLink({ url: directUrl }).isDirect && !/\/ads\.php(?:\?|$)/i.test(directUrl);
     if (directUrl && /get\.php\?md5=.+&key=/i.test(directUrl)) {
       links.push({
         label: "Rave Direct (LibGen CDN)",
@@ -522,7 +524,7 @@ function DiscoverView({
         isDirect: true,
         sourceId: "rave"
       });
-    } else if (directUrl && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
+    } else if (directUrl && isDirectFile && !directUrl.includes("annas-archive") && !directUrl.includes("/slow_download/")) {
       const isMobilismUrl = directUrl.toLowerCase().includes("mobilism.org") || directUrl.toLowerCase().includes("mobilism");
       if (isMobilismUrl) {
         links.push({
@@ -644,10 +646,12 @@ function DiscoverView({
       const isRave = sourceId === "rave" || label.includes("rave") || url.includes("rave");
       const isLibgen = sourceId === "libgen" || label.includes("libgen") || url.includes("libgen") || url.includes("genesis");
 
-      const direct = isRave || isLibgen;
+      const direct = classifyDownloadLink(m).isDirect && !/\/ads\.php(?:\?|$)/i.test(url);
 
       let newLabel = m.label;
-      if (isRave && !label.includes("direct") && !label.includes("rave")) {
+      if (!direct && /\bdirect\b/i.test(label)) {
+        newLabel = isLibgen ? "LibGen link" : "External page";
+      } else if (isRave && direct && !label.includes("direct") && !label.includes("rave")) {
         newLabel = "Rave Direct Download";
       } else if (isLibgen && !label.includes("libgen")) {
         newLabel = "Libgen Mirror (libgen.li)";
@@ -1741,7 +1745,15 @@ function DiscoverView({
     const data = await res.json();
     const books = (data.books || data.results || []).map((b: any) => ({
       ...b,
-      sourceId: b.sourceId || "rave",
+      sourceId: b.sourceId || (() => {
+        const source = String(b.source || "").toLowerCase();
+        if (source.includes("libgen") || source.includes("library genesis")) return "libgen";
+        if (source.includes("anna")) return "annas";
+        if (source.includes("internet archive")) return "ia";
+        if (source.includes("open library")) return "openlibrary";
+        if (source.includes("rave")) return "rave";
+        return "";
+      })(),
       coverUrl: b.coverUrl || b.image?.url || null,
     }));
     return { books, totalCount: data.totalCount || 0, hasMore: !!data.hasMore };
