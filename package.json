@@ -26,7 +26,9 @@
     "lint": "tsc --noEmit",
     "parse-dict": "tsx parse-stardict.ts",
     "size": "vite build && node scripts/measure-bundle.mjs",
-    "test:scrabble-scoring": "tsx scripts/verify-scrabble-scoring.mts"
+    "test:scrabble-scoring": "tsx scripts/verify-scrabble-scoring.mts",
+    "test:download-availability": "tsx scripts/verify-download-availability.mts",
+    "test:proxy-url": "tsx scripts/verify-proxy-url.mts"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.3.0",

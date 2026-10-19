@@ -16,6 +16,40 @@
  * One rule, in one place, so the four call sites cannot drift apart again.
  */
 
+/**
+ * True when a URL is a catalogue/detail page, not a file endpoint.
+ * These pages are useful as external links, but must never enter the automatic
+ * binary download ladder (e.g. Open Library /works/ pages return HTML).
+ */
+export function isCatalogPageUrl(url: string): boolean {
+  const raw = unwrapProxyTarget(url);
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const path = parsed.pathname.toLowerCase();
+    if (host === "openlibrary.org" && /^\/(works|books|authors|search)(\/|$)/.test(path)) return true;
+    if (/^(?:books\.)?google\.[a-z.]+$/.test(host) && path.startsWith("/books")) return true;
+    if (host === "archive.org" && path.startsWith("/details/")) return true;
+    if (/^(?:www\.)?goodreads\.com$/.test(host) && /\/(book|author)\//.test(path)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function unwrapProxyTarget(url: string): string {
+  if (!url) return url;
+  try {
+    const parsed = new URL(url, "https://kora.invalid");
+    if (parsed.pathname === "/api/proxy-file" || parsed.pathname === "/api/proxy-file/") {
+      return parsed.searchParams.get("url") || url;
+    }
+  } catch {
+    /* leave malformed URLs for the normal request error path */
+  }
+  return url;
+}
+
 /** True when the URL already points at our own proxy and must not be re-wrapped. */
 export function isProxyUrl(url: string): boolean {
   if (!url) return false;

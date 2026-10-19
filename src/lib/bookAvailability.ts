@@ -67,9 +67,12 @@ function isDirectlyFetchable(book: AvailabilityBook): boolean {
   // fetched 2,055,605 B of valid EPUB through the proxy. Trusting the flag
   // blindly dropped all 14 real EPUBs from the "capture or kill" feed and left
   // only LibreTexts — strictly worse than before.
-  const hasLibgenId =
-    (typeof book.md5 === "string" && book.md5.trim()) ||
-    (typeof book.hash === "string" && book.hash.trim()) ||
+  // Only a real 32-hex provider hash can identify a LibGen file. Kora's
+  // locally generated 64-hex SHA-256 is a stable UI identity, NOT a provider
+  // identifier; treating it as one sends impossible IDs to the download resolver.
+  const hasProviderHash =
+    (typeof book.md5 === "string" && /^[a-f0-9]{32}$/i.test(book.md5.trim())) ||
+    (typeof book.hash === "string" && /^[a-f0-9]{32}$/i.test(book.hash.trim())) ||
     (typeof book.iaId === "string" && book.iaId.trim());
 
   // Authoritative: an id we can resolve to a file, regardless of URL shape.
@@ -86,7 +89,7 @@ function isDirectlyFetchable(book: AvailabilityBook): boolean {
   // resolves to a real file, so it does not match either rejection.
   if (isArchiveLendingOnly(book, url)) return false;
   if (needsBrowserUrl(url) && url) return false;
-  if (hasLibgenId) return true;
+  if (hasProviderHash) return true;
 
   if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
   if (Array.isArray(book.audiobookTracks) && book.audiobookTracks.length > 0) return true;
@@ -110,12 +113,17 @@ const FILE_URL_RE =
   /\.(epub|pdf|mobi|azw3?|djvu|cbz|cbr|zip)(\?|$)|\/(pdf|epub|full|zip)$|get\.php\?[^#]*\bmd5=|ads\.php\?[^#]*\bmd5=|\/download\//i;
 
 function needsBrowserUrl(url: string): boolean {
+  if (!url) return false;
+  // Catalog/detail pages are not downloadable files even when they have an ID
+  // or appear in a field named downloadUrl. The user must resolve an edition
+  // with an actual file endpoint before Kora offers a download.
   if (/royallib\.com|z-lib\.|\/book\/.+\.html$/i.test(url)) return true;
-  // A Worker-relative or same-origin `/api/...` URL is an endpoint this Worker
-  // serves itself — it is a file route, not a scraped page, so it must not be
-  // judged by the extension heuristic. Rejecting these would silently drop
-  // legitimate rows (measured: /api/download-options?md5=... has no extension).
-  if (/^\/api\//.test(url) || /^(https?:\/\/[^/]+)?\/api\//i.test(url)) return false;
+  if (/^https?:\/\/(?:www\.)?openlibrary\.org\/(?:works|books|authors|search)(?:\/|\?|$)/i.test(url)) return true;
+  if (/^https?:\/\/(?:books\.)?google\.[^/]+\/books(?:\/|\?|$)/i.test(url)) return true;
+  if (/^https?:\/\/(?:www\.)?archive\.org\/details\//i.test(url)) return true;
+  // An API route is a file only when it is one of Kora's own download endpoints.
+  if (/^(https?:\/\/[^/]+)?\/api\/(?:proxy-file|annas-archive\/download|download|download-options)(?:\?|$)/i.test(url)) return false;
+  if (/^(https?:\/\/[^/]+)?\/api\//i.test(url)) return true;
   return !FILE_URL_RE.test(url);
 }
 
@@ -143,8 +151,8 @@ function isArchiveLendingOnly(book: AvailabilityBook, url: string): boolean {
   if (!/archive\.org\//i.test(url)) return false;
   // Already trusted: a real id came with it.
   const hasRealId =
-    (typeof book.md5 === "string" && book.md5.trim()) ||
-    (typeof book.hash === "string" && book.hash.trim());
+    (typeof book.md5 === "string" && /^[a-f0-9]{32}$/i.test(book.md5.trim())) ||
+    (typeof book.hash === "string" && /^[a-f0-9]{32}$/i.test(book.hash.trim()));
   if (hasRealId) return false;
   // Archive scan accessions look like `title0000suffix`; ids ending in 4 digits
   // are controlled-lending placeholders, not LibGen md5s.
@@ -225,8 +233,8 @@ export function hasDirectFile(book: AvailabilityBook | null | undefined): boolea
   // text/html, ending in "Proxy download failed. Please try again later."
   // An id proves a record EXISTS; it does not prove this URL is the file.
   if (needsBrowserUrl(url) && url) return false;
-  if (typeof book.md5 === "string" && book.md5.trim()) return true;
-  if (typeof book.hash === "string" && book.hash.trim()) return true;
+  if (typeof book.md5 === "string" && /^[a-f0-9]{32}$/i.test(book.md5.trim())) return true;
+  if (typeof book.hash === "string" && /^[a-f0-9]{32}$/i.test(book.hash.trim())) return true;
   if (typeof book.iaId === "string" && book.iaId.trim()) return true;
   if (book.audiobookSourceUrl && String(book.audiobookSourceUrl).trim()) return true;
   if (Array.isArray(book.audiobookTracks) && book.audiobookTracks.length > 0) return true;

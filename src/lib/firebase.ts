@@ -1,8 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
   initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
   collection,
   doc,
   setDoc,
@@ -49,19 +48,20 @@ function createFirestoreInstance(app: ReturnType<typeof initializeApp>) {
     ignoreUndefinedProperties: true,
   };
 
-  try {
-    return initializeFirestore(
-      app,
-      {
-        ...settings,
-        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-      },
-      dbId || "(default)"
-    );
-  } catch (cacheError) {
-    console.warn("Firestore persistent cache unavailable, using memory cache.", cacheError);
-    return initializeFirestore(app, settings, dbId || "(default)");
-  }
+  // Use memory cache instead of persistent IndexedDB. The persistent cache can
+  // fail after browser storage is interrupted/corrupted, and its runtime
+  // INTERNAL ASSERTION failures cannot be caught by the initialization try/catch.
+  // Kora already persists its reader/library state locally, so this avoids
+  // Firestore's fragile multi-tab IndexedDB target cache without removing the
+  // app's local offline library.
+  return initializeFirestore(
+    app,
+    {
+      ...settings,
+      localCache: memoryLocalCache(),
+    },
+    dbId || "(default)"
+  );
 }
 
 function isRecoverableFirestoreError(error: unknown): boolean {

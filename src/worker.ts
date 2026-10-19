@@ -27,6 +27,8 @@ import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedIm
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
 import { normalizeMediaUrl, refererForMediaUrl } from "./lib/mediaUrl";
+import { describeScore, rankMirrors, reliabilityBadge, normalizeHost } from "./lib/mirrorHealth";
+import { readOutcomePayload, recordUserOutcome, resolveMirrorStore } from "./lib/mirrorHealthStore";
 import {
   getNetgalleyCoverUrl,
   searchNetgalleyCatalog,
@@ -35,6 +37,10 @@ import {
   fetchNetgalleyCategoryListings
 } from "./lib/netgalley";
 declare const HTMLRewriter: any;
+
+// Per-isolate abuse clamp for mirror outcome reports. MirrorHealthStore is also
+// in-memory today; both are intentionally bounded to this Worker isolate.
+const mirrorOutcomeAllowances = new Map<string, { stamps: number[] }>();
 
 async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
@@ -494,6 +500,67 @@ export default {
           "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
           "Access-Control-Allow-Credentials": "true"
         }
+      });
+    }
+
+    // Mirror health API. Outcomes contain only a normalized host and a byte-level
+    // verdict; never accept or persist book titles, authors, filenames, or user IDs.
+    if (path === "/api/mirror-outcome" && request.method === "POST") {
+      try {
+        let raw: unknown;
+        try {
+          raw = await request.json();
+        } catch {
+          return new Response(null, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+        }
+        const payload = readOutcomePayload(raw);
+        if (!payload) {
+          return new Response(null, { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+        }
+        const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+        await recordUserOutcome(resolveMirrorStore(env), mirrorOutcomeAllowances, payload, ip, Date.now());
+        return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*" } });
+      } catch {
+        return new Response(null, { status: 500, headers: { "Access-Control-Allow-Origin": "*" } });
+      }
+    }
+
+    if (path === "/api/mirror-health" && request.method === "GET") {
+      const requestedHosts = (url.searchParams.get("hosts") || "")
+        .split(",")
+        .map((host) => host.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 40);
+      const hosts = requestedHosts.map((host) => normalizeHost(host) || host);
+      const store = resolveMirrorStore(env);
+      const records = new Map<string, any>();
+      for (const host of hosts) {
+        const normalized = normalizeHost(host);
+        if (!normalized) continue;
+        const record = await store.get(normalized);
+        if (record) records.set(normalized, record);
+      }
+      const ranked = rankMirrors(hosts, records, Date.now());
+      const mirrors = ranked.map((score) => ({
+        host: score.host,
+        percent: score.percent,
+        badge: reliabilityBadge(score),
+        basis: score.basis,
+        reason: describeScore(score),
+        userWeight: score.userWeight,
+        userGood: score.user.rawGood,
+        userBad: score.user.rawBad,
+        probeGood: score.probe.rawGood,
+        probeBad: score.probe.rawBad,
+        verified: score.percent !== null,
+      }));
+      return new Response(JSON.stringify({ mirrors, skipped: 0 }), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*",
+        },
       });
     }
 
@@ -3655,6 +3722,31 @@ export default {
 
         downloadUrl = normalizeMediaUrl(downloadUrl);
 
+        // A catalogue/work page is not a file. Reject it before fetching upstream
+        // so clients get a clear 422 instead of a generic 500 after HTML detection.
+        try {
+          const requested = new URL(downloadUrl);
+          const host = requested.hostname.toLowerCase().replace(/^www\./, "");
+          const pathname = requested.pathname.toLowerCase();
+          if (
+            (host === "openlibrary.org" && /^\/(works|books|authors|search)(\/|$)/.test(pathname)) ||
+            (/^(?:books\.)?google\.[a-z.]+$/.test(host) && pathname.startsWith("/books"))
+          ) {
+            return new Response(JSON.stringify({
+              error: "This is a catalogue page, not a downloadable book file. Resolve a direct file URL first.",
+              code: "CATALOG_PAGE_NOT_DOWNLOADABLE"
+            }), {
+              status: 422,
+              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+            });
+          }
+        } catch {
+          return new Response(JSON.stringify({ error: "Invalid download URL" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          });
+        }
+
         // Fast path: stream audiobook/audio files with Range support
         const wantsAudio =
           url.searchParams.get("audio") === "1" ||
@@ -4035,9 +4127,16 @@ export default {
         resHeaders.delete("transfer-encoding");
         resHeaders.delete("content-security-policy");
 
-        // Removed arrayBuffer buffering to allow streaming progress in frontend
-        resHeaders.set("Content-Length", response.headers.get("content-length") || "");
-        
+        // Preserve a real upstream length when present. An empty Content-Length
+        // is invalid HTTP framing and can make Chromium report ERR_FAILED (200 OK)
+        // while reading otherwise valid PDFs such as LibreTexts downloads.
+        const upstreamLength = response.headers.get("content-length");
+        if (upstreamLength && /^\d+$/.test(upstreamLength)) {
+          resHeaders.set("Content-Length", upstreamLength);
+        } else {
+          resHeaders.delete("content-length");
+        }
+
         const contentDisposition = response.headers.get("content-disposition");
         if (!contentDisposition) {
           try {
@@ -4049,7 +4148,7 @@ export default {
         }
         
         return new Response(response.body, {
-          status: 200,
+          status: response.status,
           headers: resHeaders
         });
       } catch (err: any) {
