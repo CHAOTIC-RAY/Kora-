@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="https://raw.githubusercontent.com/CHAOTIC-RAY/Kora-/main/public/kora-wordmark.gif" alt="Kora" width="100%" />
+  [Kora banner video](./public/kora-banner-v3.mp4)
 
   # Kora
 
