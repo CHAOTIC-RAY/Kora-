@@ -1,6 +1,6 @@
 <div align="center">
 
-  <a href="./public/kora-banner-v3.mp4">▶ Watch the Kora banner video</a>
+  <a href="./public/kora-banner-v3.mp4"><img src="./public/kora-banner-preview.gif" alt="Kora banner animation" width="100%" /></a>
 
   # Kora
 
