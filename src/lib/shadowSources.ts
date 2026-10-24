@@ -128,6 +128,7 @@ export function parseLibgenTitleCell(html: string): { title: string; isbn: strin
     if (color.includes("green")) $(el).remove();
   });
   container.find("font[size='1'], small").remove();
+  container.find(".badge, nobr").remove();
   const segments = container.html().split(/<br\s*\/?>/i).map((line) => clean(line)).filter(Boolean);
   const unique = segments.filter((line, index) => !segments.slice(index + 1).some((later) => norm(later) === norm(line)));
   const title = unique.filter((line) => !isbnOf(line)).join(" · ").trim();
@@ -161,7 +162,7 @@ export function parseLibgenResultsHtml(html: string, baseUrl: string): ShadowBoo
     if (cells.length < 7) return;
     const titleIndex = cells.toArray().findIndex((cell) => {
       const text = clean($(cell).text());
-      return !!text && $(cell).find("a[href*='book/index.php']").length > 0;
+      return !!text && $(cell).find("a[href*='book/index.php'], a[href*='edition.php']").length > 0;
     });
     if (titleIndex < 0) return;
     const titleCell = cells.eq(titleIndex);
@@ -186,7 +187,7 @@ export function parseLibgenResultsHtml(html: string, baseUrl: string): ShadowBoo
     const sizeMatch = sizeText.match(/([\d,.]+)\s*([a-z]+)/i);
     const filesize = sizeMatch ? parseFilesizeBytes(sizeMatch[1], sizeMatch[2]) : 0;
     const format = cellText(/^(?:ext|extension|format)$/, 7).replace(/^\./, "").toLowerCase();
-    const idHref = titleCell.find("a[href*='book/index.php']").first().attr("href") || "";
+    const idHref = titleCell.find("a[href*='book/index.php'], a[href*='edition.php']").first().attr("href") || "";
     const identifier = titleCell.find("a[id]").first().attr("id") || new URL(idHref, baseUrl).searchParams.get("id") || "";
     const md5Link = $(row).find("a[href*='md5=']").first().attr("href") || "";
     const md5 = md5Link.match(/md5=([a-f0-9]{32})/i)?.[1]?.toUpperCase() || "";
@@ -380,15 +381,18 @@ export function resetShadowSourceState(): void {
 export async function resolveLibgenDirectLinks(books: ShadowBook[], timeoutMs = 5000): Promise<ShadowBook[]> {
   return Promise.all(books.map(async (book) => {
     if (!/(?:libgen|library\s+genesis)/i.test(book.source) || !book.md5 || book.directReady) return book;
-    for (const mirror of LIBGEN_MIRRORS) {
-      try {
-        const html = await fetchHtml(`${mirror}/ads.php?md5=${encodeURIComponent(book.md5)}`, timeout(Math.max(timeoutMs, 1000)));
-        let directUrl = "";
-        const links = [...html.matchAll(/href=["']([^"']*get\.php\?md5=[^"']+)["']/gi)];
-        for (const [, href] of links) if (href.toLowerCase().includes(book.md5.toLowerCase()) && /[?&]key=[^&]+/i.test(href)) directUrl = new URL(href.replace(/&amp;/g, "&"), mirror).toString();
-        if (directUrl) return { ...book, directUrl, directReady: true };
-      } catch { /* try the next mirror */ }
-    }
+    const resolved = await Promise.allSettled(LIBGEN_MIRRORS.map(async (mirror) => {
+      const html = await fetchHtml(`${mirror}/ads.php?md5=${encodeURIComponent(book.md5!)}`, timeout(Math.max(timeoutMs, 1000)));
+      const links = [...html.matchAll(/href=["']([^"']*get\.php\?md5=[^"']+)["']/gi)];
+      for (const [, href] of links) {
+        if (href.toLowerCase().includes(book.md5!.toLowerCase()) && /[?&]key=[^&]+/i.test(href)) return new URL(href.replace(/&amp;/g, "&"), mirror).toString();
+      }
+      return "";
+    }));
+    const directUrl = resolved.find((result) => result.status === "fulfilled" && result.value)?.status === "fulfilled"
+      ? (resolved.find((result) => result.status === "fulfilled" && result.value) as PromiseFulfilledResult<string>).value
+      : "";
+    if (directUrl) return { ...book, directUrl, directReady: true };
     return book;
   }));
 }
@@ -447,13 +451,17 @@ export async function searchShadowBooks(
   });
 
   const relevant = deduped.filter((book) => relevance(book, q) > 0);
-  const resolved = await resolveLibgenDirectLinks(relevant);
+  const firstLibgen = relevant.findIndex((book) => /(?:libgen|library\s+genesis)/i.test(book.source));
+  const resolved = firstLibgen >= 0
+    ? await resolveLibgenDirectLinks([relevant[firstLibgen]])
+    : [];
+  if (firstLibgen >= 0 && resolved[0]) relevant[firstLibgen] = resolved[0];
   const directResolved = resolved.filter((book) => book.directReady).length;
   return {
-    results: resolved.slice(0, 25),
+    results: relevant.slice(0, 25),
     meta: {
       sources: counts,
-      total: resolved.length,
+      total: relevant.length,
       mode,
       query: q,
       page,
