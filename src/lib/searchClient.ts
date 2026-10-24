@@ -1,4 +1,6 @@
-const SEARCH_CACHE_KEY = "kora_search_cache_v2";
+// v3 switches ebook results from Google Books-first catalog records to
+// source-native editions, so prior result entries must not mask that search.
+const SEARCH_CACHE_KEY = "kora_search_cache_v3";
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 

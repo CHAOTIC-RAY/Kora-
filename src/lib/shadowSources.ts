@@ -30,10 +30,13 @@ const ANNAS_ARCHIVE_HOSTS = [
   "https://annas-archive.li",
 ];
 
-type ShadowBook = {
+export type ShadowBook = {
   title: string;
   author: string;
   year?: string;
+  publisher?: string;
+  pages?: string;
+  isbn?: string;
   format?: string;
   filesize?: number;
   language?: string;
@@ -49,6 +52,7 @@ type ShadowBook = {
 };
 
 const timeout = (ms: number) => AbortSignal.timeout(ms);
+const sourceHealth = new Map<string, { failures: number; lastError?: string }>();
 
 function clean(value: unknown): string {
   return String(value ?? "")
@@ -70,6 +74,74 @@ function norm(value: string): string {
     .trim();
 }
 
+export function isbnOf(value: string): string {
+  const candidates = String(value || "").match(/(?:97[89][\s-]?[0-9\s-]{10,15}|[0-9][\s-]?[0-9\s-]{8}[0-9Xx])/g) || [];
+  for (const candidate of candidates) {
+    const isbn = candidate.replace(/[\s-]/g, "").toUpperCase();
+    if (isbn.length === 13 && /^97[89]\d{10}$/.test(isbn)) {
+      const check = [...isbn.slice(0, 12)].reduce((sum, digit, index) => sum + Number(digit) * (index % 2 ? 3 : 1), 0);
+      if ((10 - (check % 10)) % 10 === Number(isbn[12])) return isbn;
+    }
+    if (isbn.length === 10 && /^\d{9}[\dX]$/.test(isbn)) {
+      const check = [...isbn.slice(0, 9)].reduce((sum, digit, index) => sum + Number(digit) * (10 - index), 0);
+      const expected = (11 - (check % 11)) % 11;
+      if ((expected === 10 ? "X" : String(expected)) === isbn[9]) return isbn;
+    }
+  }
+  return "";
+}
+
+export function libgenSearchParams(query: string, mode = "ebooks"): URLSearchParams {
+  const params = new URLSearchParams();
+  const isbn = isbnOf(query);
+  params.set("req", isbn || query.trim());
+  for (const topic of (mode === "audiobooks" ? ["a", "m"] : ["l", "c", "f", "a", "m", "r", "s"])) {
+    params.append("topics[]", topic);
+  }
+  for (const column of (isbn ? ["i"] : ["t", "a"])) params.append("columns[]", column);
+  params.set("res", "50");
+  params.set("page", "1");
+  return params;
+}
+
+export function parseFilesizeBytes(value: string, unit: string): number {
+  const number = Number.parseFloat(String(value || "").replace(",", "."));
+  if (!Number.isFinite(number) || number < 0) return 0;
+  const normalizedUnit = String(unit || "").trim().toLowerCase();
+  const multiplier = normalizedUnit.startsWith("g") ? 1_000_000_000
+    : normalizedUnit.startsWith("m") ? 1_000_000
+      : normalizedUnit.startsWith("b") ? 1
+        : 1_000;
+  return Math.round(number * multiplier);
+}
+
+export function parseLibgenTitleCell(html: string): { title: string; isbn: string } {
+  const source = String(html || "").replace(/\s+title=(['"])[\s\S]*?\1/gi, "");
+  const $ = cheerio.load(`<div>${source}</div>`);
+  const container = $("div").first();
+  const isbn = isbnOf(container.find("font[color], span[style*='color']").filter((_, el) => {
+    const color = `${$(el).attr("color") || ""} ${$(el).attr("style") || ""}`.toLowerCase();
+    return color.includes("green");
+  }).text()) || isbnOf(container.text());
+  container.find("font[color], span[style*='color']").each((_, el) => {
+    const color = `${$(el).attr("color") || ""} ${$(el).attr("style") || ""}`.toLowerCase();
+    if (color.includes("green")) $(el).remove();
+  });
+  container.find("font[size='1'], small").remove();
+  const segments = container.html().split(/<br\s*\/?>/i).map((line) => clean(line)).filter(Boolean);
+  const unique = segments.filter((line, index) => !segments.slice(index + 1).some((later) => norm(later) === norm(line)));
+  const title = unique.filter((line) => !isbnOf(line)).join(" · ").trim();
+  return { title: title.replace(/\s+/g, " "), isbn };
+}
+
+export function relevance(book: { title?: string; author?: string }, query: string): number {
+  const stop = new Set(["the", "a", "an", "of", "and", "to", "in", "for"]);
+  const terms = norm(query).split(/\s+/).filter((term) => term && !stop.has(term));
+  if (!terms.length) return 0;
+  const searchable = new Set(norm(`${book.title || ""} ${book.author || ""}`).split(/\s+/).filter(Boolean));
+  return terms.filter((term) => searchable.has(term)).length / terms.length;
+}
+
 function fetchHtml(url: string, signal?: AbortSignal): Promise<string> {
   return fetch(url, { headers: { "User-Agent": UA }, signal })
     .then(async (res) => {
@@ -78,52 +150,77 @@ function fetchHtml(url: string, signal?: AbortSignal): Promise<string> {
     });
 }
 
-function parseLibgenSearch(html: string, baseUrl: string): ShadowBook[] {
+export function parseLibgenResultsHtml(html: string, baseUrl: string): ShadowBook[] {
   const $ = cheerio.load(html);
   const books: ShadowBook[] = [];
+  const table = $("#tablelibgen");
+  if (!table.length) return books;
 
-  // LibGen search results table rows
-  $("table tr").each((_, row) => {
-    const cells = $(row).find("td");
+  table.find("tr").each((_, row) => {
+    const cells = $(row).children("td");
     if (cells.length < 7) return;
+    const titleIndex = cells.toArray().findIndex((cell) => {
+      const text = clean($(cell).text());
+      return !!text && $(cell).find("a[href*='book/index.php']").length > 0;
+    });
+    if (titleIndex < 0) return;
+    const titleCell = cells.eq(titleIndex);
+    const parsedTitle = parseLibgenTitleCell(titleCell.html() || titleCell.text());
+    if (!parsedTitle.title) return;
 
-    // Column structure varies by mirror; look for the MD5 in a link
-    const md5Link = $(row).find("a[href*='md5=']").first();
-    const md5Href = md5Link.attr("href") || "";
-    const md5Match = md5Href.match(/md5=([a-fA-F0-9]{32})/i);
-    if (!md5Match) return;
-
-    const title = clean(cells.eq(2).text()) || clean($(row).find("a").first().text());
-    if (!title) return;
-
-    const author = clean(cells.eq(1).text());
-    const year = clean(cells.eq(3).text()) || undefined;
-    const publisher = clean(cells.eq(4).text());
-    const format = clean(cells.eq(5).text());
-    const sizeText = clean(cells.eq(6).text());
-    const filesize = parseSize(sizeText);
-
-    const downloadUrl = new URL(md5Href, baseUrl).toString();
-    const mirrorHost = new URL(baseUrl).hostname;
+    const headers = table.find("tr").first().children("td, th").map((_, cell) => norm(clean($(cell).text()))).get();
+    const headerTitle = headers.findIndex((header) => header === "title");
+    const shiftedLegacyColumns = headerTitle >= titleIndex + 2;
+    const indexFor = (pattern: RegExp, relativeOffset: number) => {
+      if (shiftedLegacyColumns) return titleIndex + relativeOffset;
+      const index = headers.findIndex((header) => pattern.test(header));
+      return index >= 0 ? index : titleIndex + relativeOffset;
+    };
+    const cellText = (pattern: RegExp, relativeOffset: number) => clean(cells.eq(indexFor(pattern, relativeOffset)).text());
+    const author = cellText(/author|creator/, 1);
+    const publisher = cellText(/publisher/, 2) || undefined;
+    const year = cellText(/^year$|publication year/, 3) || undefined;
+    const language = cellText(/^language$|lang/, 4) || undefined;
+    const pages = cellText(/^pages?$|page count/, 5) || undefined;
+    const sizeText = cellText(/size|filesize/, 6);
+    const sizeMatch = sizeText.match(/([\d,.]+)\s*([a-z]+)/i);
+    const filesize = sizeMatch ? parseFilesizeBytes(sizeMatch[1], sizeMatch[2]) : 0;
+    const format = cellText(/^(?:ext|extension|format)$/, 7).replace(/^\./, "").toLowerCase();
+    const idHref = titleCell.find("a[href*='book/index.php']").first().attr("href") || "";
+    const identifier = titleCell.find("a[id]").first().attr("id") || new URL(idHref, baseUrl).searchParams.get("id") || "";
+    const md5Link = $(row).find("a[href*='md5=']").first().attr("href") || "";
+    const md5 = md5Link.match(/md5=([a-f0-9]{32})/i)?.[1]?.toUpperCase() || "";
+    const adsUrl = md5 ? new URL(`/ads.php?md5=${md5}`, baseUrl).toString() : "";
+    const pagePath = idHref.replace(/(?:book\/)?index\.php/i, "index.php");
+    const pageUrl = idHref ? new URL(pagePath, baseUrl).toString() : "";
+    const imageSrc = $(row).find("img").first().attr("src") || "";
+    const coverUrl = imageSrc ? new URL(imageSrc, baseUrl).toString() : "";
 
     books.push({
-      title,
+      title: parsedTitle.title,
       author,
       year,
+      publisher,
+      pages,
+      language: language || undefined,
+      isbn: parsedTitle.isbn || isbnOf(clean($(row).text())) || undefined,
       format,
       filesize,
-      source: `LibGen (${mirrorHost})`,
-      md5: md5Match[1].toLowerCase(),
-      downloadUrl,
-      directUrl: downloadUrl,
+      source: "Library Genesis",
+      md5,
+      downloadUrl: adsUrl,
       directReady: false,
-      extension: format ? format.toUpperCase() : undefined,
-      pageUrl: downloadUrl,
-      identifier: md5Match[1].toLowerCase(),
+      coverUrl,
+      pageUrl,
+      identifier: String(identifier),
     });
   });
 
   return books;
+}
+
+function parseLibgenSearch(html: string, baseUrl: string): ShadowBook[] {
+  return parseLibgenResultsHtml(html, baseUrl);
 }
 
 function parseAnnasArchiveSearch(html: string, baseUrl: string): ShadowBook[] {
@@ -154,9 +251,8 @@ function parseAnnasArchiveSearch(html: string, baseUrl: string): ShadowBook[] {
       format,
       filesize,
       source: "Anna's Archive",
-      md5: md5Match[1].toLowerCase(),
+      md5: md5Match[1].toUpperCase(),
       downloadUrl: `https://annas-archive.org/md5/${md5Match[1]}`,
-      directUrl: pageUrl,
       directReady: false,
       extension: format ? format.toUpperCase() : undefined,
       pageUrl,
@@ -177,18 +273,20 @@ function parseSize(text: string): number | undefined {
   return Math.round(num * (multipliers[unit] || 1));
 }
 
-async function searchLibgen(query: string, page = 1): Promise<ShadowBook[]> {
+async function searchLibgen(query: string, page = 1, mode = "ebooks"): Promise<ShadowBook[]> {
   const results: ShadowBook[] = [];
-  const errors: string[] = [];
+  let responded = false;
 
   // Race mirrors — first one to return valid results wins.
   const mirrorPromises = LIBGEN_MIRRORS.map(async (mirror) => {
     try {
-      const url = `${mirror}/search.php?req=${encodeURIComponent(query)}&view=detailed&res=25`;
+      const params = libgenSearchParams(query, mode);
+      params.set("page", String(Math.max(1, page)));
+      const url = `${mirror}/index.php?${params.toString()}`;
       const html = await fetchHtml(url, timeout(12000));
+      responded = true;
       return parseLibgenSearch(html, mirror);
-    } catch (err: any) {
-      errors.push(`${mirror}: ${err?.message || String(err)}`);
+    } catch {
       return [];
     }
   });
@@ -198,6 +296,7 @@ async function searchLibgen(query: string, page = 1): Promise<ShadowBook[]> {
     results.push(...books);
     if (results.length >= 25) break;
   }
+  if (!responded) throw new Error("Library Genesis mirrors are unavailable");
 
   // Deduplicate by MD5
   const seen = new Set<string>();
@@ -206,71 +305,137 @@ async function searchLibgen(query: string, page = 1): Promise<ShadowBook[]> {
     seen.add(b.md5);
     return true;
   });
+}
+
+export function parseAnnasResultsHtml(html: string, baseUrl: string): ShadowBook[] {
+  const $ = cheerio.load(html);
+  const books: ShadowBook[] = [];
+  const seen = new Set<string>();
+  $("a[href*='/md5/']").each((_, anchor) => {
+    const href = $(anchor).attr("href") || "";
+    const md5 = href.match(/\/md5\/([a-f0-9]{32})/i)?.[1]?.toUpperCase();
+    if (!md5 || seen.has(md5)) return;
+    const card = $(anchor).closest("div.flex");
+    const links = card.find("a[href*='/md5/']").toArray();
+    const titleLink = links.find((link) => clean($(link).text())) || anchor;
+    const title = clean($(titleLink).text());
+    if (!title) return;
+    const author = clean(card.find("a[href*='/search?q=']").first().text());
+    const metaText = clean(card.find("div").last().text());
+    const parts = metaText.split(/[·•]/).map((part) => clean(part)).filter(Boolean);
+    const language = parts.find((part) => /^[a-z][a-z -]*(?:\s+\[[a-z-]+\])?$/i.test(part))?.replace(/\s*\[[^\]]+\]/, "").trim();
+    const format = parts.find((part) => /^(?:epub|pdf|mobi|azw3?|fb2|djvu|txt|zip)$/i.test(part))?.toLowerCase();
+    const sizePart = parts.find((part) => /^[\d,.]+\s*(?:kb|mb|gb|b)$/i.test(part)) || "";
+    const sizeMatch = sizePart.match(/([\d,.]+)\s*([a-z]+)/i);
+    const year = parts.find((part) => /^\d{4}$/.test(part));
+    const imageSrc = card.find("img").first().attr("src") || "";
+    const pageUrl = `https://annas-archive.org/md5/${md5}`;
+    seen.add(md5);
+    books.push({
+      title,
+      author,
+      year,
+      publisher: parts.find((part) => part !== language && part.toLowerCase() !== format && part !== sizePart && part !== year && !/^[a-z]+\s*\[[a-z-]+\]$/i.test(part)),
+      language,
+      format,
+      filesize: sizeMatch ? parseFilesizeBytes(sizeMatch[1], sizeMatch[2]) : 0,
+      source: "Anna's Archive",
+      md5,
+      downloadUrl: pageUrl,
+      pageUrl,
+      directReady: false,
+      coverUrl: imageSrc ? new URL(imageSrc, baseUrl).toString() : "",
+    });
+  });
+  return books;
 }
 
 async function searchAnnasArchive(query: string, page = 1): Promise<ShadowBook[]> {
   const results: ShadowBook[] = [];
-
+  let responded = false;
   for (const host of ANNAS_ARCHIVE_HOSTS) {
     try {
-      const url = `${host}/search?q=${encodeURIComponent(query)}`;
+      const url = `${host}/search?q=${encodeURIComponent(query)}&page=${Math.max(1, page)}`;
       const html = await fetchHtml(url, timeout(12000));
-      const books = parseAnnasArchiveSearch(html, host);
-      results.push(...books);
+      responded = true;
+      results.push(...parseAnnasResultsHtml(html, host));
       if (results.length >= 25) break;
-    } catch (err: any) {
-      // Try next host
+    } catch {
       continue;
     }
   }
-
-  // Deduplicate by MD5
+  if (!responded) throw new Error("Anna's Archive search mirrors are unavailable");
   const seen = new Set<string>();
-  return results.filter((b) => {
-    if (!b.md5 || seen.has(b.md5)) return false;
-    seen.add(b.md5);
+  return results.filter((book) => {
+    if (!book.md5 || seen.has(book.md5)) return false;
+    seen.add(book.md5);
     return true;
   });
 }
 
+export function resetShadowSourceState(): void {
+  sourceHealth.clear();
+}
+
+export async function resolveLibgenDirectLinks(books: ShadowBook[], timeoutMs = 5000): Promise<ShadowBook[]> {
+  return Promise.all(books.map(async (book) => {
+    if (!/(?:libgen|library\s+genesis)/i.test(book.source) || !book.md5 || book.directReady) return book;
+    for (const mirror of LIBGEN_MIRRORS) {
+      try {
+        const html = await fetchHtml(`${mirror}/ads.php?md5=${encodeURIComponent(book.md5)}`, timeout(Math.max(timeoutMs, 1000)));
+        let directUrl = "";
+        const links = [...html.matchAll(/href=["']([^"']*get\.php\?md5=[^"']+)["']/gi)];
+        for (const [, href] of links) if (href.toLowerCase().includes(book.md5.toLowerCase()) && /[?&]key=[^&]+/i.test(href)) directUrl = new URL(href.replace(/&amp;/g, "&"), mirror).toString();
+        if (directUrl) return { ...book, directUrl, directReady: true };
+      } catch { /* try the next mirror */ }
+    }
+    return book;
+  }));
+}
+
 /**
- * Search Anna's Archive and LibGen independently. Each source is fetched in
+ * Search LibGen and Anna's Archive independently. Each source is fetched in
  * parallel; failures on one source do not prevent results from the other.
  */
 export async function searchShadowBooks(
   query: string,
-  mode: string,
-  source: string,
-  page: number,
-  _env: unknown,
+  mode = "ebooks",
+  source = "all",
+  page = 1,
+  _env: unknown = null,
   _headers: Record<string, string> = {}
 ): Promise<{ results: ShadowBook[]; meta: Record<string, any> }> {
   const q = query.trim();
-  if (!q) return { results: [], meta: {} };
+  if (!q) return { results: [], meta: { sources: {}, total: 0, degraded: true, notes: ["Enter a search query."], directResolved: 0 } };
 
   const requested = source.toLowerCase();
   const jobs: Array<[string, Promise<ShadowBook[]>]> = [];
 
   const isEbooks = mode !== "audiobooks";
 
-  if (requested === "all" || ["annas", "annas-archive", "anna"].includes(requested)) {
-    jobs.push(["annas-archive", searchAnnasArchive(q, page)]);
-  }
   if (isEbooks && (requested === "all" || ["libgen", "genesis"].includes(requested))) {
-    jobs.push(["libgen", searchLibgen(q, page)]);
+    jobs.push(["libgen", searchLibgen(q, page, mode)]);
+  }
+  if (requested === "all" || ["annas", "annas-archive", "anna"].includes(requested)) {
+    jobs.push(["annas", searchAnnasArchive(q, page)]);
   }
 
   const settled = await Promise.allSettled(jobs.map(([id, promise]) => promise.then((rows) => [id, rows] as const)));
 
   const counts: Record<string, number> = {};
+  const notes: string[] = [];
   const all: ShadowBook[] = [];
-  for (const result of settled) {
+  for (let resultIndex = 0; resultIndex < settled.length; resultIndex++) {
+    const result = settled[resultIndex];
     if (result.status === "fulfilled") {
       const [id, rows] = result.value;
       counts[id] = rows.length;
       all.push(...rows);
+    } else {
+      const id = jobs[resultIndex]?.[0] || "source";
+      counts[id] = 0;
+      notes.push(`${id} search failed: ${String(result.reason?.message || result.reason || "unavailable")}`);
     }
-    // Rejected jobs are silently dropped — one source failing does not block another.
   }
 
   // Deduplicate by MD5 across sources
@@ -281,15 +446,21 @@ export async function searchShadowBooks(
     return true;
   });
 
+  const relevant = deduped.filter((book) => relevance(book, q) > 0);
+  const resolved = await resolveLibgenDirectLinks(relevant);
+  const directResolved = resolved.filter((book) => book.directReady).length;
   return {
-    results: deduped.slice(0, 25),
+    results: resolved.slice(0, 25),
     meta: {
       sources: counts,
-      total: deduped.length,
+      total: resolved.length,
       mode,
       query: q,
       page,
       hasMore: deduped.length >= 25,
+      degraded: notes.length === jobs.length && jobs.length > 0,
+      notes,
+      directResolved,
     },
   };
 }

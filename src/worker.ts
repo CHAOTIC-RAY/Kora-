@@ -1105,7 +1105,7 @@ export default {
       );
     }
 
-    // 1. Anna's Archive Search (Shadow Sources + Rave fallback)
+    // 1. Direct book search across LibGen, Anna's Archive, and open sources.
     if (path === "/api/annas-archive/search") {
       const query = url.searchParams.get("q");
       const mode = url.searchParams.get("mode") || "ebooks";
@@ -1119,68 +1119,42 @@ export default {
         });
       }
 
-      // Try shadow sources first (LibGen + Anna's Archive).
-      // Uses a static import; the dynamic import() the child left here broke the
-      // module graph (bundler could not resolve it at runtime in the Worker).
       const cookieHeader = request.headers.get("Cookie") || "";
-      try {
-        const shadowResults = await searchShadowBooks(query, mode, source, Number(page), env, { Cookie: cookieHeader });
-        if (shadowResults.results.length > 0) {
-          const RESULTS_PER_PAGE = 25;
-          const searchPage = Math.max(1, Number(page));
-          const totalCount = shadowResults.meta.total ?? shadowResults.results.length;
-          const hasMore = shadowResults.results.length >= RESULTS_PER_PAGE ||
-            (shadowResults.meta.total && searchPage * RESULTS_PER_PAGE < shadowResults.meta.total);
-          return new Response(JSON.stringify({
-            books: shadowResults.results,
-            results: shadowResults.results,
-            source: source,
-            page: searchPage,
-            pageSize: shadowResults.results.length,
-            meta: shadowResults.meta,
-            totalCount,
-            hasMore,
-            mirror: "Shadow Sources",
-            parsedBy: "Shadow Sources Proxy"
-          }), {
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-          });
-        }
-      } catch (_) {
-        // Fall through to independent sources below
-      }
+      const searchPage = Math.max(1, Number(page) || 1);
+      const [shadowOutcome, independentOutcome] = await Promise.allSettled([
+        searchShadowBooks(query, mode, source, searchPage, env, { Cookie: cookieHeader }),
+        searchIndependentBookSources(query, mode, source, searchPage),
+      ]);
+      const shadow = shadowOutcome.status === "fulfilled" ? shadowOutcome.value : { results: [], meta: {} };
+      const independent = independentOutcome.status === "fulfilled" ? independentOutcome.value : { results: [], meta: {} };
+      const normalize = (value: unknown) => String(value || "")
+        .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const seen = new Set<string>();
+      const results = [...shadow.results, ...independent.results].filter((book: any) => {
+        const key = book.md5 || [normalize(book.title), normalize(book.author), normalize(book.year), normalize(book.source), normalize(book.format)].join("|");
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      const sources = { ...(shadow.meta.sources || {}), ...(independent.meta.sources || {}) };
+      const totalCount = Math.max(results.length, (Number(shadow.meta.total) || 0) + (Number(independent.meta.total) || 0));
+      const hasMore = !!shadow.meta.hasMore || !!independent.meta.hasMore;
 
-      // Shadow sources returned nothing (mirrors blocked / challenged) — use the
-      // independent open-source scrapers, which always answer something.
-      try {
-        const { results: raveResults, meta } = await fetchFromRaveBookSearch(env, query, mode, source, page);
-        const RESULTS_PER_PAGE = 25;
-        const totalFromMeta = meta.total && meta.total > 0 ? meta.total : null;
-        const searchPage = parseInt(page) || 1;
-        const hasMore = raveResults.length >= RESULTS_PER_PAGE ||
-          (totalFromMeta !== null && searchPage * RESULTS_PER_PAGE < totalFromMeta);
-        const totalCount = totalFromMeta ?? (hasMore ? (searchPage * RESULTS_PER_PAGE) + RESULTS_PER_PAGE : raveResults.length);
-
-        return new Response(JSON.stringify({
-          books: raveResults,
-          results: raveResults,
-          source: source,
-          page: searchPage,
-          pageSize: raveResults.length,
-          meta: meta,
-          totalCount,
-          hasMore,
-          mirror: "Independent Sources",
-          parsedBy: "Edge API Proxy"
-        }), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      } catch (err: any) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
+      return new Response(JSON.stringify({
+        books: results,
+        results,
+        source,
+        page: searchPage,
+        pageSize: results.length,
+        meta: { sources, total: totalCount, mode, query, page: searchPage },
+        totalCount,
+        hasMore,
+        mirror: "Direct Sources",
+        parsedBy: "Source Adapters"
+      }), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+      });
     }
 
     // 2. NYT Best Sellers API
@@ -1655,7 +1629,6 @@ export default {
     if (path === "/api/search/stream") {
       const q = (url.searchParams.get("q") || "").trim();
       const page = Math.max(1, Number.parseInt(url.searchParams.get("page") || "1", 10) || 1);
-      const googlePageSize = 12;
       if (!q) return new Response(JSON.stringify({ error: "Missing query" }), { status: 400 });
 
       const stream = new ReadableStream({
@@ -1665,134 +1638,68 @@ export default {
             try { controller.enqueue(enc.encode(JSON.stringify(obj) + "\n")); }
             catch { /* The client closed the stream. */ }
           };
-          const normalize = (value: unknown) => String(value || "")
-            .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-          const keyFor = (book: any) => {
-            const title = normalize(book?.title);
-            const author = normalize(book?.author || book?.authors);
-            return title ? title + "|" + author : "";
-          };
           try {
-            const startIndex = (page - 1) * googlePageSize;
-            const googleUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=${googlePageSize}&startIndex=${startIndex}`;
-            const [googleOutcome, raveOutcome] = await Promise.allSettled([
-              (async () => {
-                const res = await fetch(googleUrl, { signal: AbortSignal.timeout(10000) });
-                if (!res.ok) throw new Error("Google Books returned HTTP " + res.status);
-                const data = await res.json() as any;
-                const books = (data.items || []).map((item: any) => {
-                  const info = item.volumeInfo || {};
-                  return {
-                    title: info.title || "Unknown Title",
-                    author: (info.authors || []).join(", "),
-                    coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:"),
-                    year: info.publishedDate?.split("-")[0],
-                    publisher: info.publisher,
-                    description: info.description,
-                    isbn: (info.industryIdentifiers || []).find((v: any) => v.type === "ISBN_13")?.identifier,
-                    googleId: item.id,
-                    isGoogleBook: true,
-                    source: "Google Books",
-                  };
-                });
-                return { books, total: Number(data.totalItems) || 0 };
-              })(),
-              fetchFromRaveBookSearch(env, q, "ebooks", "all", String(page))
+            const [shadowOutcome, independentOutcome] = await Promise.allSettled([
+              searchShadowBooks(q, "ebooks", "all", page, env),
+              searchIndependentBookSources(q, "ebooks", "all", page),
             ]);
-
-            const google = googleOutcome.status === "fulfilled" ? googleOutcome.value : { books: [], total: 0 };
-            const rave = raveOutcome.status === "fulfilled" ? raveOutcome.value : { results: [], meta: {} };
-            const raveBooks = Array.isArray((rave as any)?.results) ? (rave as any).results : [];
-
-            // Google Books is the metadata authority: canonical title, author, ISBN,
-            // cover, description. Independent sources provide download options.
-            // Match independent results to Google Books by ISBN first, then by
-            // normalized title+author. Never merge on title alone when ISBNs
-            // contradict.
-            const byIsbn = new Map<string, any>();
-            for (const book of google.books) {
-              if (book.isbn) byIsbn.set(book.isbn.toUpperCase().replace(/[^0-9X]/g, ""), book);
-              book.downloadOptions = [];
-              book.source = "Google Books";
-              book.isGoogleBook = true;
-            }
-
-            const matchedIndependent = new Set<number>();
-            const unmatchedIndependent: any[] = [];
-
-            const norm = (value: string) => String(value || "")
+            const shadow = shadowOutcome.status === "fulfilled" ? shadowOutcome.value : { results: [], meta: {} };
+            const independent = independentOutcome.status === "fulfilled" ? independentOutcome.value : { results: [], meta: {} };
+            const normalize = (value: unknown) => String(value || "")
               .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
               .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-
-            for (let i = 0; i < raveBooks.length; i++) {
-              const book = raveBooks[i];
-              const normIsbn = (book.isbn || "").toUpperCase().replace(/[^0-9X]/g, "");
-              let googleMatch: any = null;
-
-              // ISBN match is authoritative — never override on title alone.
-              if (normIsbn && byIsbn.has(normIsbn)) {
-                googleMatch = byIsbn.get(normIsbn);
-              } else {
-                // Fall back to normalized title+author match.
-                const title = norm(book.title || "");
-                const author = norm(book.author || "");
-                if (title) {
-                  for (const gb of google.books) {
-                    if (norm(gb.title) === title && norm(gb.author) === author) {
-                      googleMatch = gb;
-                      break;
-                    }
-                  }
-                }
-              }
-
-              if (googleMatch) {
-                matchedIndependent.add(i);
-                googleMatch.downloadOptions.push({
-                  ...book,
-                  isGoogleBook: false,
-                  isRaveBook: true,
-                  matchedBy: normIsbn ? "isbn" : "title-author",
-                });
-              } else {
-                unmatchedIndependent.push({ ...book, isGoogleBook: false, isRaveBook: true });
-              }
-            }
-
-            // Build output: Google Books entries first (with attached download
-            // options), then unmatched independent results.
-            const output: any[] = [];
-
-            for (const gb of google.books) {
-              output.push({
-                ...gb,
-                downloadOptions: gb.downloadOptions,
-                hasDownloadOptions: gb.downloadOptions.length > 0,
-              });
-            }
-
-            for (const book of unmatchedIndependent) {
-              output.push({
+            const formatSize = (bytes: unknown) => {
+              const value = Number(bytes);
+              if (!Number.isFinite(value) || value <= 0) return "Unknown";
+              return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MB` : `${Math.round(value / 1024)} KB`;
+            };
+            const output = [...shadow.results, ...independent.results].map((book: any) => {
+              const md5 = String(book.md5 || "").toLowerCase();
+              const extension = String(book.extension || book.format || "").replace(/^\./, "").toUpperCase();
+              const source = String(book.source || "Independent source");
+              const sourceLower = source.toLowerCase();
+              const sourceId = sourceLower.includes("libgen") ? "libgen"
+                : sourceLower.includes("anna") ? "annas"
+                  : sourceLower.includes("internet archive") ? "ia"
+                    : sourceLower.includes("gutenberg") ? "gutenberg"
+                      : sourceLower.includes("openstax") ? "openstax" : "";
+              return {
                 ...book,
-                downloadOptions: [],
-                hasDownloadOptions: false,
-              });
-            }
+                id: md5 || book.identifier || `${normalize(book.title)}|${normalize(book.author)}|${sourceLower}`,
+                md5,
+                title: book.title || "Unknown Title",
+                author: book.author || "Unknown Author",
+                year: book.year || "",
+                publisher: book.publisher || "",
+                pages: book.pages || book.pageCount || "",
+                size: typeof book.filesize === "number" ? formatSize(book.filesize) : book.size || "Unknown",
+                extension,
+                format: book.format || extension.toLowerCase(),
+                source,
+                sourceId,
+                coverUrl: book.coverUrl || null,
+                description: book.description || "",
+                downloadUrl: book.directReady === false ? "" : book.directUrl || book.downloadUrl || "",
+                isGoogleBook: false,
+              };
+            });
+            const seen = new Set<string>();
+            const combined = output.filter((book: any) => {
+              const key = book.md5 || [normalize(book.title), normalize(book.author), normalize(book.year), normalize(book.source), normalize(book.extension)].join("|");
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
 
-            if (output.length) write({ source: "merged", books: output });
-            const raveTotal = Number((rave as any)?.meta?.total ?? (rave as any)?.meta?.totalCount) || 0;
-            const totalCount = Math.max(output.length, google.total + raveTotal);
-            const googleHasMore = google.books.length >= googlePageSize || (google.total > page * googlePageSize);
-            const raveHasMore = raveBooks.length >= 25 || (raveTotal > page * 25);
-            write({ done: true, totalCount, hasMore: googleHasMore || raveHasMore, sources: {
-              google: google.books.length,
-              ravebsd: raveBooks.length,
-              matchedIndependent: matchedIndependent.size,
-              unmatchedIndependent: unmatchedIndependent.length,
+            if (combined.length) write({ source: "direct-sources", books: combined });
+            const shadowTotal = Number(shadow.meta?.total) || shadow.results.length;
+            const independentTotal = Number(independent.meta?.total) || independent.results.length;
+            write({ done: true, totalCount: Math.max(combined.length, shadowTotal + independentTotal), hasMore: !!shadow.meta?.hasMore || !!independent.meta?.hasMore, sources: {
+              ...(shadow.meta?.sources || {}),
+              ...(independent.meta?.sources || {}),
               failed: [
-                ...(googleOutcome.status === "rejected" ? ["google"] : []),
-                ...(raveOutcome.status === "rejected" ? ["ravebsd"] : [])
+                ...(shadowOutcome.status === "rejected" ? ["shadow-sources"] : []),
+                ...(independentOutcome.status === "rejected" ? ["open-sources"] : [])
               ]
             } });
           } catch (error: any) {

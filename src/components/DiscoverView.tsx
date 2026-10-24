@@ -26,7 +26,6 @@ import {
   getCachedSearch,
 } from "../lib/searchClient";
 import { resolveCoverImageSrc } from "../lib/coverImage";
-import { dedupeGoogleBooks } from "../lib/googleBooksIdentity";
 import { classifyDownloadLink } from "../lib/downloadLinkKind";
 import { canHover } from "../lib/canHover";
 import { enrichBooksWithRatings, getDisplayRating } from "../lib/bookRating";
@@ -762,50 +761,6 @@ function DiscoverView({
       
       return getOrderScore(a) - getOrderScore(b);
     });
-  }
-
-  async function fetchGoogleBooks(term: string, page: number): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
-    const maxResults = 20;
-    const startIndex = (page - 1) * maxResults;
-    const res = await fetch(`/api/google-books/search?q=${encodeURIComponent(term.trim())}&maxResults=${maxResults}&startIndex=${startIndex}`);
-    if (!res.ok) throw new Error(`Google Books search failed with status: ${res.status}`);
-    const data = await res.json();
-    
-    const items = data.items || [];
-    const books = dedupeGoogleBooks(items.map((item: any) => {
-      const info = item.volumeInfo || {};
-      const imageLinks = info.imageLinks || {};
-      const coverUrl = imageLinks.thumbnail || imageLinks.smallThumbnail || null;
-      
-      return {
-        id: item.id,
-        title: info.title || "Untitled Book",
-        author: info.authors?.join(", ") || "Unknown Author",
-        coverUrl: coverUrl ? coverUrl.replace("http:", "https:") : null,
-        year: info.publishedDate ? info.publishedDate.split("-")[0] : "",
-        publisher: info.publisher || "",
-        pages: info.pageCount ? info.pageCount.toString() : "",
-        topic: info.categories?.[0] || "",
-        categories: info.categories 
-          ? Array.from(new Set(info.categories.flatMap((cat: string) => {
-              const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
-              return [cat, ...parts]; // Keep full path and parts
-            })))
-          : [],
-        language: info.language || "English",
-        description: info.description || "",
-        isbn: info.industryIdentifiers?.[0]?.identifier || "",
-        isGoogleBook: true,
-        source: "google",
-        searchQuery: `${info.title || ""} ${info.authors?.[0] || ""}`.trim()
-      };
-    }));
-    
-    return {
-      books,
-      totalCount: data.totalItems || 0,
-      hasMore: startIndex + maxResults < (data.totalItems || 0)
-    };
   }
 
   function cleanTitleAndAuthorForEbookSearch(title: string, author: string): string {
@@ -2226,12 +2181,6 @@ function DiscoverView({
         mappedBooks = streamResult.books;
         totalCount = streamResult.totalCount;
         more = streamResult.hasMore;
-        if (!mappedBooks.length) {
-          const result = await fetchGoogleBooks(term, page);
-          mappedBooks = result.books;
-          totalCount = result.totalCount;
-          more = result.hasMore;
-        }
       }
 
       mappedBooks = rankSearchResults(mappedBooks, term);
@@ -2256,6 +2205,7 @@ function DiscoverView({
             publisher: b.publisher,
             pages: b.pages,
             topic: b.topic,
+            description: b.description,
             language: b.language,
             isbn: b.isbn,
             exactMatch: b.exactMatch,
@@ -2265,6 +2215,9 @@ function DiscoverView({
             extension: b.extension,
             md5: b.md5,
             downloadUrl: b.downloadUrl,
+            directUrl: b.directUrl,
+            directReady: b.directReady,
+            pageUrl: b.pageUrl,
             iaId: b.iaId,
             hash: b.hash,
             isGoogleBook: b.isGoogleBook,
@@ -2369,72 +2322,87 @@ function DiscoverView({
     lastSearchedTerm.current = "";
   }
 
-  async function fetchVerifiedDetails(title: string, author: string) {
+  async function fetchVerifiedDetails(book: any) {
+    const title = String(book?.title || "").trim();
+    const author = String(book?.author || "").trim();
+    const pagesValue = book?.pages || book?.pageCount;
+    const pageValues = String(pagesValue || "").match(/\d+/g) || [];
+    const pageCount = Number.parseInt(pageValues[pageValues.length - 1] || "", 10) || undefined;
+    const sourceDetails = {
+      description: book?.description || undefined,
+      pageCount,
+      publishYear: book?.year ? String(book.year) : undefined,
+      publisher: book?.publisher || undefined,
+      language: book?.language || undefined,
+      coverUrl: book?.coverUrl || undefined,
+      industryIdentifiers: book?.isbn ? [{ type: "ISBN", identifier: book.isbn }] : undefined,
+      subjects: book?.topic ? [book.topic] : undefined,
+    };
+    const hasSourceDetails = Object.values(sourceDetails).some((value) =>
+      Array.isArray(value) ? value.length > 0 : Boolean(value)
+    );
     setLoadingDetails(true);
-    setVerifiedDetails(null);
+    setVerifiedDetails(hasSourceDetails ? {
+      ...sourceDetails,
+      source: String(book?.source || "").toLowerCase().includes("libgen") ? "LibGen" : String(book?.source || "Search source"),
+    } : null);
     setReadMoreExpanded(false);
     try {
-      // 1. Try Google Books first
-      const gRes = await fetch(`/api/google-books/search?q=${encodeURIComponent(`intitle:${title} inauthor:${author}`)}`);
+      // Search metadata only after source-native fields are available. Google
+      // fills gaps, but never replaces details from the selected LibGen record.
+      const gRes = await fetch(`/api/google-books/search?q=${encodeURIComponent(`intitle:${title} inauthor:${author}`)}&maxResults=10`);
       if (gRes.ok) {
         const gData = await gRes.json();
-        if (gData.items && gData.items[0]) {
-          const info = gData.items[0].volumeInfo;
+        const normalize = (value: unknown) => String(value || "")
+          .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const titleKey = normalize(title);
+        const authorKey = normalize(author);
+        const items = Array.isArray(gData.items) ? gData.items : [];
+        const ranked = [...items].sort((a: any, b: any) => {
+          const score = (item: any) => {
+            const info = item.volumeInfo || {};
+            const candidateTitle = normalize(info.title);
+            const candidateAuthors = normalize((info.authors || []).join(" "));
+            return (candidateTitle === titleKey ? 4 : candidateTitle.includes(titleKey) || titleKey.includes(candidateTitle) ? 2 : 0) +
+              (candidateAuthors === authorKey ? 3 : candidateAuthors.includes(authorKey) || authorKey.includes(candidateAuthors) ? 1 : 0);
+          };
+          return score(b) - score(a);
+        });
+        const info = ranked[0]?.volumeInfo;
+        if (info) {
+          const googleSubjects = info.categories
+            ? Array.from(new Set(info.categories.flatMap((cat: string) => {
+                const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
+                return [cat, ...parts];
+              })))
+            : undefined;
+          const googleDetails = {
+            description: info.description || undefined,
+            pageCount: info.pageCount || undefined,
+            publishYear: info.publishedDate?.split("-")[0] || undefined,
+            publisher: info.publisher || undefined,
+            language: info.language || undefined,
+            coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:") || info.imageLinks?.smallThumbnail?.replace(/^http:/i, "https:") || undefined,
+            industryIdentifiers: info.industryIdentifiers || undefined,
+            subjects: googleSubjects,
+          };
+          const merged = Object.fromEntries(Object.keys(googleDetails).map((key) => [
+            key,
+            (sourceDetails as any)[key] || (sourceDetails as any)[key] === 0
+              ? (sourceDetails as any)[key]
+              : (googleDetails as any)[key],
+          ]));
+          const isLibgen = String(book?.source || "").toLowerCase().includes("libgen");
+          const usedGoogleFallback = Object.keys(googleDetails).some((key) =>
+            !(sourceDetails as any)[key] && Boolean((googleDetails as any)[key])
+          );
           setVerifiedDetails({
-            description: info.description,
-            pageCount: info.pageCount,
-            publishYear: info.publishedDate?.split("-")[0],
-            publisher: info.publisher,
-            language: info.language,
-            coverUrl: info.imageLinks?.thumbnail?.replace("http:", "https:"),
-            industryIdentifiers: info.industryIdentifiers || [],
-            subjects: info.categories 
-              ? Array.from(new Set(info.categories.flatMap((cat: string) => {
-                  const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
-                  return [cat, ...parts]; // Keep full path and parts
-                })))
-              : [],
-            source: "Google Books"
+            ...merged,
+            source: hasSourceDetails && usedGoogleFallback
+              ? `${isLibgen ? "LibGen" : String(book?.source || "Search source")} + Google Books`
+              : hasSourceDetails ? (isLibgen ? "LibGen" : String(book?.source || "Search source")) : "Google Books",
           });
-          setLoadingDetails(false);
-          return;
-        }
-      }
-
-      // 2. Try Open Library
-      const olRes = await fetch(`/api/open-library/search?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`);
-      if (olRes.ok) {
-        const olData = await olRes.json();
-        const doc = olData.docs?.[0];
-        if (doc) {
-          let description = "";
-          if (doc.key) {
-            try {
-              const workRes = await fetch(`https://openlibrary.org${doc.key}.json`);
-              if (workRes.ok) {
-                const workData = await workRes.json();
-                description = typeof workData.description === "string" ? workData.description : (workData.description?.value || "");
-              }
-            } catch (e) {}
-          }
-          setVerifiedDetails({
-            description: description || doc.first_sentence || "No description available.",
-            pageCount: doc.number_of_pages_median || doc.number_of_pages,
-            publishYear: doc.first_publish_year?.toString(),
-            publisher: doc.publisher?.[0],
-            language: doc.language?.[0],
-            coverUrl: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : undefined,
-            industryIdentifiers: doc.isbn?.map((i: string) => ({ type: "ISBN", identifier: i })),
-            subjects: doc.subject 
-              ? Array.from(new Set(doc.subject.slice(0, 10).flatMap((cat: string) => {
-                  const parts = cat.split("/").map(s => s.trim()).filter(Boolean);
-                  return [cat, ...parts];
-                })))
-              : [],
-            source: "Open Library"
-          });
-          setLoadingDetails(false);
-          return;
         }
       }
     } catch (err) {
@@ -2457,7 +2425,7 @@ function DiscoverView({
     setDownloadProgress({ step: "idle", percent: 0, error: null });
 
     // Grab details from verified source asynchronously
-    fetchVerifiedDetails(activeBook.title, activeBook.author);
+    fetchVerifiedDetails(activeBook);
 
     // Featured/catalog books need an archive search before mirrors exist.
     // Race fast sources instead of blocking on a full multi-source "all" scan.
@@ -4176,6 +4144,12 @@ function DiscoverView({
                 <p className="text-sm text-kindle-text-muted font-sans font-medium">
                   {selectedBook.author}
                 </p>
+                {loadingDetails && (
+                  <p className="text-[9px] text-kindle-text-muted">Loading book details…</p>
+                )}
+                {!loadingDetails && verifiedDetails?.source && (
+                  <p className="text-[9px] text-kindle-text-muted">Details from {verifiedDetails.source}</p>
+                )}
                 
                 <div className="flex items-center justify-center gap-2 mt-4">
                   <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-kindle-text-muted bg-kindle-bg px-2 py-0.5 rounded border border-kindle-border">
