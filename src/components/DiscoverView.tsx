@@ -568,26 +568,51 @@ function DiscoverView({
     return links;
   }
 
-  /** Race fast archive sources; fall back to full "all" search with a hard timeout. */
+  /** Search LibGen and Anna's Archive together so a fast partial hit cannot hide better matches. */
   async function searchDownloadVariants(query: string): Promise<{ books: any[]; totalCount: number; hasMore: boolean }> {
     const q = query.trim();
     if (!q) return { books: [], totalCount: 0, hasMore: false };
 
-    const firstHit = async (source: string) => {
-      const page = await fetchPage(q, source, 1);
-      if (!page.books?.length) throw new Error(`empty:${source}`);
-      return page;
-    };
+    const sources = await Promise.allSettled([
+      fetchPage(q, "libgen", 1),
+      fetchPage(q, "annas-archive", 1),
+    ]);
+    const pages = sources.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : []
+    );
+    const books = pages.flatMap((page) => page.books || []);
 
-    try {
-      return await Promise.any([firstHit("libgen"), firstHit("annas-archive")]);
-    } catch {
+    // Use the combined endpoint as a fallback only when both source-specific
+    // searches failed or returned no files; it also includes open catalogues.
+    if (books.length === 0) {
       try {
         return await fetchPage(q, "all", 1);
       } catch {
         return { books: [], totalCount: 0, hasMore: false };
       }
     }
+
+    const normalize = (value: unknown) => String(value || "")
+      .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const seen = new Set<string>();
+    const combined = books.filter((book) => {
+      const md5 = normalize(book.md5 || book.hash || book.id);
+      const key = md5 || [
+        normalize(book.title), normalize(book.author), normalize(book.year),
+        normalize(book.extension || book.format), normalize(book.size),
+        normalize(book.language), normalize(book.source),
+      ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return {
+      books: combined,
+      totalCount: combined.length,
+      hasMore: pages.some((page) => page.hasMore),
+    };
   }
 
   // Rank download editions in place so the best one is index 0.
@@ -596,10 +621,29 @@ function DiscoverView({
   //   1. English (or unlabelled — LibGen often omits the language on English
   //      uploads, so treating "unknown" as a near-English tier avoids burying
   //      perfectly good entries below a tagged foreign edition)
-  //   2. Direct/known-good sources — Rave direct first, then LibGen
+  //   2. Direct/known-good sources — direct file links first, then LibGen
   //   3. Reader-friendly format (EPUB > AZW3 > MOBI > FB2 > PDF)
   // Ties keep their original relative order (Array.prototype.sort is stable).
-  function rankVariants(variants: any[]): any[] {
+  function rankVariants(variants: any[], title = "", author = ""): any[] {
+    const normalize = (value: unknown) => String(value || "")
+      .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const titleKey = normalize(title);
+    const authorKey = normalize(author);
+    const words = (value: string) => value.split(/\s+/).filter(Boolean);
+    const matchRank = (actual: unknown, expected: string): number => {
+      if (!expected) return 0;
+      const value = normalize(actual);
+      if (!value) return 3;
+      if (value === expected) return 0;
+      if (value.includes(expected) || expected.includes(value)) return 1;
+      const expectedWords = words(expected);
+      const actualWords = new Set(words(value));
+      const coverage = expectedWords.length
+        ? expectedWords.filter((word) => actualWords.has(word)).length / expectedWords.length
+        : 0;
+      return coverage >= 0.75 ? 2 : 3;
+    };
     const langRank = (v: any): number => {
       const l = (v.language || "").trim().toLowerCase();
       if (!l) return 1; // unlabelled — probably English, but below an explicit match
@@ -608,8 +652,8 @@ function DiscoverView({
     };
     const sourceRank = (v: any): number => {
       const s = (v.source || "").trim().toLowerCase();
-      // A direct URL means no mirror-resolution round trip and no dead link.
-      if (v.directUrl || s.includes("rave")) return 0;
+      // A direct URL means no mirror-resolution round trip.
+      if (v.directUrl || v.downloadUrl) return 0;
       if (s.includes("libgen")) return 1;
       return 2;
     };
@@ -619,11 +663,37 @@ function DiscoverView({
       return idx === -1 ? FORMATS.length : idx;
     };
     variants.sort((a, b) =>
+      matchRank(a.title, titleKey) - matchRank(b.title, titleKey) ||
+      matchRank(a.author, authorKey) - matchRank(b.author, authorKey) ||
       langRank(a) - langRank(b) ||
       sourceRank(a) - sourceRank(b) ||
       formatRank(a) - formatRank(b)
     );
     return variants;
+  }
+
+  function rankSearchResults(books: any[], query: string): any[] {
+    const normalize = (value: unknown) => String(value || "")
+      .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const queryKey = normalize(query);
+    const queryWords = new Set(queryKey.split(/\s+/).filter(Boolean));
+    const coverage = (value: unknown) => {
+      const words = normalize(value).split(/\s+/).filter(Boolean);
+      return words.length ? words.filter((word) => queryWords.has(word)).length / words.length : 0;
+    };
+    const score = (book: any) => {
+      const title = normalize(book.title);
+      const exactTitlePhrase = title && queryKey.includes(title) ? 1 : 0;
+      // A file result carries edition/download metadata; surface it ahead of a
+      // catalogue-only record when both describe the same title and author.
+      const isFileResult = !book.isGoogleBook && !!(book.md5 || book.downloadUrl || book.variants?.length);
+      return exactTitlePhrase * 6 + coverage(book.title) * 3 + coverage(book.author) * 4 + (isFileResult ? 0.15 : 0);
+    };
+    return books
+      .map((book, index) => ({ book, index, score: score(book) }))
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map(({ book }) => book);
   }
 
   function sortMirrors(mirrors: any[]): any[] {
@@ -781,20 +851,10 @@ function DiscoverView({
       const result = await searchDownloadVariants(q);
       if (isStale()) return;
       const rawBooks = result.books || [];
-      const uniqueVariants = rawBooks.reduce((acc: any[], current: any) => {
-        const key = `${(current.extension || "").toLowerCase()}-${current.size || ""}-${current.source || ""}-${current.language || ""}`;
-        if (!acc.some(item => `${(item.extension || "").toLowerCase()}-${item.size || ""}-${item.source || ""}-${item.language || ""}` === key)) {
-          acc.push(current);
-        }
-        return acc;
-      }, []);
+      const uniqueVariants = rawBooks;
 
-      // Rank editions so the one we auto-select (and the two we show before the
-      // "show more" fold) is the one a user actually wants: English first, then
-      // a direct/known-good source (Rave direct or LibGen), then a sane format.
-      // Previously this was raw API order, which is why a Korean LibGen EPUB
-      // could end up selected by default.
-      rankVariants(uniqueVariants);
+      // Prefer exact title and author matches, then language, source, and format.
+      rankVariants(uniqueVariants, title, author);
 
       setFeaturedDownloadVariants(uniqueVariants);
       
@@ -2174,6 +2234,8 @@ function DiscoverView({
         }
       }
 
+      mappedBooks = rankSearchResults(mappedBooks, term);
+
       // Group search results by simplified Title + Author + Year + Series to completely avoid duplicates of the same book
       const groupedBooksMap = new Map<string, any>();
 
@@ -2404,6 +2466,7 @@ function DiscoverView({
         const q = activeBook.searchQuery || cleanTitleAndAuthorForEbookSearch(activeBook.title, activeBook.author);
         const searchResult = await searchDownloadVariants(q);
         if (searchResult.books.length > 0) {
+          rankVariants(searchResult.books, activeBook.title, activeBook.author);
           activeBook = {
             ...activeBook,
             variants: searchResult.books,
