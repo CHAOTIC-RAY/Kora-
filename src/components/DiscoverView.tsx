@@ -919,7 +919,23 @@ function DiscoverView({
 
   useEffect(() => {
     if (selectedFeaturedBook) {
-      loadFeaturedDownloads(selectedFeaturedBook.title, selectedFeaturedBook.author);
+      // A result opened from the direct-source search already is a concrete
+      // edition. Show it immediately and resolve links from its MD5 instead of
+      // forcing a second title search that may time out or return nothing.
+      const source = String(selectedFeaturedBook.source || "").toLowerCase();
+      const selectedEditions = Array.isArray(selectedFeaturedBook.variants) && selectedFeaturedBook.variants.length
+        ? selectedFeaturedBook.variants
+        : selectedFeaturedBook.md5 && (source.includes("libgen") || source.includes("genesis") || source.includes("anna"))
+          ? [selectedFeaturedBook]
+          : [];
+      if (selectedEditions.length) {
+        setFeaturedDownloadVariants(selectedEditions);
+        setLoadingFeaturedDownloads(false);
+        setSelectedFeaturedVariant(selectedEditions[0]);
+        fetchFeaturedVariantMirrors(selectedEditions[0]);
+      } else {
+        loadFeaturedDownloads(selectedFeaturedBook.title, selectedFeaturedBook.author);
+      }
       const generation = audiobookFetchGen.current;
       loadFeaturedAudiobook(selectedFeaturedBook, generation);
     } else {
