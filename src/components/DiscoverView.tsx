@@ -1368,23 +1368,25 @@ function DiscoverView({
     setFeaturedMirrorError(null);
     setShowAllEditions(false);
     setSelectedFeaturedBook(book);
-    // Seed overview immediately from list data (NYT synopses, etc.) so the
-    // panel is never empty while Google / Open Library enrich it.
-    if (book?.description) {
-      setFeaturedBookDetails({
-        title: book.title,
-        authors: book.author ? [book.author] : [],
-        description: book.description,
-        publisher: book.publisher,
-        industryIdentifiers: [
-          book.isbn13 ? { type: "ISBN_13", identifier: book.isbn13 } : null,
-          book.isbn10 ? { type: "ISBN_10", identifier: book.isbn10 } : null,
-        ].filter(Boolean),
-        source: book.source === "nyt" ? "New York Times" : book.source || "Catalog",
-      });
-    } else {
-      setFeaturedBookDetails(null);
-    }
+    // Seed with the clicked edition so external catalog lookups can enrich
+    // details without ever changing which book the user opened.
+    const pageCount = Number.parseInt(String(book?.pages || "").match(/\d+/)?.[0] || "", 10) || undefined;
+    setFeaturedBookDetails({
+      title: book.title,
+      authors: book.author ? [book.author] : [],
+      description: book.description || "",
+      pageCount,
+      publishedDate: book.year ? String(book.year) : undefined,
+      publisher: book.publisher,
+      language: book.language,
+      industryIdentifiers: [
+        book.isbn ? { type: "ISBN", identifier: book.isbn } : null,
+        book.isbn13 ? { type: "ISBN_13", identifier: book.isbn13 } : null,
+        book.isbn10 ? { type: "ISBN_10", identifier: book.isbn10 } : null,
+      ].filter(Boolean),
+      categories: book.topic ? [book.topic] : [],
+      source: book.source === "nyt" ? "New York Times" : book.source || "Catalog",
+    });
     fetchFeaturedMetadata(book.title, book.author || "", undefined, book.description || "");
   };
 
@@ -1482,7 +1484,20 @@ function DiscoverView({
       );
       if (!olRes.ok) return { description: "" };
       const data = await olRes.json();
-      const doc = data.docs?.[0];
+      const normalize = (value: unknown) => String(value || "")
+        .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      const titleTokens = normalize(title).split(/\s+/).filter(Boolean);
+      const doc = [...(data.docs || [])].map((candidate: any) => {
+        const candidateTokens = new Set(normalize(candidate.title).split(/\s+/).filter(Boolean));
+        const titleScore = titleTokens.length
+          ? titleTokens.filter((token) => candidateTokens.has(token)).length / titleTokens.length
+          : 0;
+        const candidateAuthors = normalize((candidate.author_name || []).join(" "));
+        const authorScore = author && candidateAuthors.includes(normalize(author)) ? 1 : 0;
+        return { candidate, titleScore, score: titleScore * 4 + authorScore };
+      }).filter((entry: any) => entry.titleScore >= 0.6)
+        .sort((a: any, b: any) => b.score - a.score)[0]?.candidate;
       if (!doc) return { description: "" };
       let description = "";
       if (doc.key) {
@@ -1536,6 +1551,19 @@ function DiscoverView({
 
         let info: any = null;
         let usedFallback = false;
+        const normalize = (value: unknown) => String(value || "")
+          .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const titleTokens = normalize(cleanTitle).split(/\s+/).filter(Boolean);
+        const scoreVolume = (volume: any) => {
+          const candidateTokens = new Set(normalize(volume?.title).split(/\s+/).filter(Boolean));
+          const titleScore = titleTokens.length
+            ? titleTokens.filter((token) => candidateTokens.has(token)).length / titleTokens.length
+            : 0;
+          const candidateAuthors = normalize((volume?.authors || []).join(" "));
+          const authorScore = cleanAuthor && candidateAuthors.includes(normalize(cleanAuthor)) ? 1 : 0;
+          return { titleScore, score: titleScore * 4 + authorScore };
+        };
         for (const query of queries) {
           try {
             const res = await fetch(
@@ -1544,12 +1572,11 @@ function DiscoverView({
             if (!res.ok) continue;
             const data = await res.json();
             if (data?.error || !data?.items?.length) continue;
-            const ranked = [...data.items].sort((a: any, b: any) => {
-              const ad = (a.volumeInfo?.description || "").length;
-              const bd = (b.volumeInfo?.description || "").length;
-              return bd - ad;
-            });
-            info = ranked[0]?.volumeInfo;
+            const ranked = [...data.items]
+              .map((item: any) => ({ item, ...scoreVolume(item.volumeInfo) }))
+              .filter((entry: any) => entry.titleScore >= 0.6)
+              .sort((a: any, b: any) => b.score - a.score || (b.item.volumeInfo?.description || "").length - (a.item.volumeInfo?.description || "").length);
+            info = ranked[0]?.item.volumeInfo;
             if (info?.description) break;
             if (info) break;
           } catch (err) {
@@ -1591,8 +1618,8 @@ function DiscoverView({
             info.description || seedDescription || selectedFeaturedBook?.description || "";
           setFeaturedBookDetails({
             ...info,
-            title: info.title || cleanTitle,
-            authors: info.authors || (cleanAuthor ? [cleanAuthor] : []),
+            title: cleanTitle,
+            authors: cleanAuthor ? [cleanAuthor] : (info.authors || []),
             description,
             pageCount: info.pageCount,
             publishedDate: info.publishedDate,
@@ -1644,28 +1671,41 @@ function DiscoverView({
         if (nytRes.ok) {
           const data = await nytRes.json();
           if (data && data.results && data.results.length > 0) {
-            const book = data.results[0];
-            if (isStale()) return;
-            let description = book.description || selectedFeaturedBook?.description || "";
-            if (!description) {
-              const ol = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
-              description = ol.description;
+            const normalize = (value: unknown) => String(value || "")
+              .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+            const titleTokens = normalize(cleanTitle).split(/\s+/).filter(Boolean);
+            const book = [...data.results].map((candidate: any) => {
+              const candidateTokens = new Set(normalize(candidate.title).split(/\s+/).filter(Boolean));
+              const score = titleTokens.length
+                ? titleTokens.filter((token) => candidateTokens.has(token)).length / titleTokens.length
+                : 0;
+              return { candidate, score };
+            }).filter((entry: any) => entry.score >= 0.6)
+              .sort((a: any, b: any) => b.score - a.score)[0]?.candidate;
+            if (book) {
+              if (isStale()) return;
+              let description = book.description || selectedFeaturedBook?.description || "";
+              if (!description) {
+                const ol = await fetchOpenLibraryDescription(cleanTitle, cleanAuthor);
+                description = ol.description;
+              }
+              if (isStale()) return;
+              setFeaturedBookDetails({
+                title: cleanTitle,
+                authors: cleanAuthor ? [cleanAuthor] : [book.author].filter(Boolean),
+                description,
+                pageCount: null,
+                publishedDate: null,
+                publisher: book.publisher,
+                language: "en",
+                industryIdentifiers: book.isbns?.map((i: any) => ({ type: "ISBN", identifier: i.isbn13 || i.isbn10 })),
+                categories: [selectedFeaturedBook?.category || "General"],
+                source: "New York Times (Verified Raw)"
+              });
+              setLoadingFeaturedDetails(false);
+              return;
             }
-            if (isStale()) return;
-            setFeaturedBookDetails({
-              title: book.title,
-              authors: [book.author],
-              description,
-              pageCount: null, 
-              publishedDate: null,
-              publisher: book.publisher,
-              language: "en",
-              industryIdentifiers: book.isbns?.map((i: any) => ({ type: "ISBN", identifier: i.isbn13 || i.isbn10 })),
-              categories: [selectedFeaturedBook?.category || "General"],
-              source: "New York Times (Verified Raw)"
-            });
-            setLoadingFeaturedDetails(false);
-            return;
           }
         }
       }
@@ -1676,8 +1716,8 @@ function DiscoverView({
         if (doc) {
           if (isStale()) return;
           setFeaturedBookDetails({
-            title: doc.title,
-            authors: doc.author_name,
+            title: cleanTitle,
+            authors: cleanAuthor ? [cleanAuthor] : doc.author_name,
             description: description || selectedFeaturedBook?.description || "",
             pageCount: doc.number_of_pages_median || doc.number_of_pages,
             publishedDate: doc.first_publish_year?.toString(),
