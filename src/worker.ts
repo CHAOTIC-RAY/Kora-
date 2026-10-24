@@ -3231,7 +3231,7 @@ export default {
         }
       }
 
-      // 1. FOR AUDIOBOOKS: NetGalley is the MAIN (Primary) source for audiobook covers
+      // NetGalley is the first catalog backup after the archive's exact cover.
       if (isAudiobook && title) {
         try {
           const ngCover = await getNetgalleyCoverUrl(title, author || "", { isAudiobook: true });
@@ -3242,34 +3242,43 @@ export default {
         } catch (_) {}
       }
 
-      // 2. Try OpenLibrary by title/author
-      if (title) {
-        try {
-          const searchUrl = new URL("https://openlibrary.org/search.json");
-          searchUrl.searchParams.append("title", title);
-          if (author) searchUrl.searchParams.append("author", author);
-          searchUrl.searchParams.append("limit", "1");
-
-          const olRes = await fetch(searchUrl.toString());
-          if (olRes.ok) {
-            const olData = await olRes.json();
-            const firstBook = olData.docs?.[0];
-            if (firstBook?.cover_i) {
-              const coverUrl = `https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`;
-              const proxied = await proxyImage(coverUrl);
-              if (proxied) return proxied;
-            }
-          }
-        } catch (_) {}
-      }
-
-      // 3. SECONDARY MAIN SOURCE FOR BOOK COVERS: NetGalley catalog
-      if (title) {
+      if (!isAudiobook && title) {
         try {
           const ngCover = await getNetgalleyCoverUrl(title, author || "");
           if (ngCover) {
             const proxied = await proxyImage(ngCover);
             if (proxied) return proxied;
+          }
+        } catch (_) {}
+      }
+
+      // Google Books is the second backup. Check several candidates and reject
+      // obvious title/author mismatches instead of taking the first search hit.
+      if (title) {
+        try {
+          const query = `intitle:${title}${author ? ` inauthor:${author}` : ""}`;
+          const gUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`;
+          const gRes = await fetch(gUrl);
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+            const expectedTitle = normalize(title);
+            const expectedAuthor = normalize(author || "");
+            const candidates = (gData.items || []).filter((item: any) => {
+              const info = item.volumeInfo || {};
+              const candidateTitle = normalize(String(info.title || ""));
+              const candidateAuthors = normalize((info.authors || []).join(" "));
+              const titleMatches = candidateTitle === expectedTitle || candidateTitle.includes(expectedTitle) || expectedTitle.includes(candidateTitle);
+              const authorMatches = !expectedAuthor || candidateAuthors.includes(expectedAuthor) || expectedAuthor.includes(candidateAuthors);
+              return titleMatches && authorMatches;
+            });
+            for (const item of candidates) {
+              const links = item.volumeInfo?.imageLinks || {};
+              const thumb = links.thumbnail || links.smallThumbnail;
+              if (!thumb) continue;
+              const proxied = await proxyImage(thumb.replace(/^http:/i, "https:"));
+              if (proxied) return proxied;
+            }
           }
         } catch (_) {}
       }
@@ -3282,41 +3291,20 @@ export default {
         } catch (_) {}
       }
 
-      if (md5) {
-        const domains = ["annas-archive.org", "annas-archive.se", "annas-archive.li", "annas-archive.gl"];
-        for (const domain of domains) {
-          try {
-            const coverUrl = `https://${domain}/covers/${md5}.jpg`;
-            const res = await fetch(coverUrl, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-                "Referer": `https://${domain}/`
-              }
-            });
-            if (res.ok) {
-              const body = await res.arrayBuffer();
-              return new Response(body, {
-                headers: {
-                  "Content-Type": res.headers.get("Content-Type") || "image/jpeg",
-                  "Cache-Control": "public, max-age=604800, immutable",
-                  "Access-Control-Allow-Origin": "*"
-                }
-              });
-            }
-          } catch (_) {}
-        }
-      }
-
-      // Try Google Books API fallback
+      // OpenLibrary title search remains the final metadata fallback.
       if (title) {
         try {
-          const gUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(`intitle:${title} ${author ? `inauthor:${author}` : ""}`)}&maxResults=1`;
-          const gRes = await fetch(gUrl);
-          if (gRes.ok) {
-            const gData = await gRes.json();
-            const thumb = gData.items?.[0]?.volumeInfo?.imageLinks?.thumbnail?.replace("http:", "https:");
-            if (thumb) {
-              const proxied = await proxyImage(thumb);
+          const searchUrl = new URL("https://openlibrary.org/search.json");
+          searchUrl.searchParams.append("title", title);
+          if (author) searchUrl.searchParams.append("author", author);
+          searchUrl.searchParams.append("limit", "1");
+
+          const olRes = await fetch(searchUrl.toString());
+          if (olRes.ok) {
+            const olData = await olRes.json();
+            const firstBook = olData.docs?.[0];
+            if (firstBook?.cover_i) {
+              const proxied = await proxyImage(`https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`);
               if (proxied) return proxied;
             }
           }
