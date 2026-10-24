@@ -1,96 +1,58 @@
 import React, { useEffect, useRef, useState } from "react";
-import { KORA_WORDMARK_PATHS } from "../lib/koraBrandPaths";
 
-/**
- * Kora ink reveal (v2) - drop-in replacement for the old KoraWordmarkReveal.
- *
- *   1. Pencil sketch: the "kora" outline is drawn letter by letter in a doubled,
- *      wobbling line (the "boil" is done on the canvas - no SVG filters needed).
- *   2. Zoom-out: the wordmark settles from 1.14x to 1x, like the original.
- *   3. Ink fill: thousands of short pen strokes (random direction and thickness
- *      at ~60-80% opacity, the same technique as v1) pile up into a grainy,
- *      hand-inked mass. Improvements over v1: a consistent hatching angle,
- *      extra strokes along the contours so the edges read as crisply inked,
- *      mottled opacity, and a seeded layout so every load looks identical.
- *
- * Props are backwards compatible with v1 (`children`, `replay`).
- *   - children  revealed (fade + slide) once the ink has finished.
- *   - replay    replay when the element scrolls back into view (InstallView).
- *   - onDone    called once when the reveal completes.
- *   - speed     playback speed, 1 = ~5 s (default 1.5 = ~3.3 s).
- *   - color     ink colour override; defaults to --theme-text, then a dark/light fallback.
- */
+// "kora" wordmark glyph paths (same source as KoraLogo.KoraWordmark).
+const KORA_PATHS = [
+  "M287.6,104.25c-1.64,4.59-5.45,6.69-10,7.53-8.61,1.57-11.14-.13-16.94-11-4.9,6.39-10.94,10.55-19,11.62-9.95,1.31-19.48-3.36-22.59-11.64-3.59-9.57-.58-19.55,9.17-24.2,9.2-4.38,19.27-7,29.1-10,3-.9,4.36-1.9,3.94-5-.58-4.27-.66-8.66-1.78-12.78-1.63-6-6.3-9-12.29-8.95s-9.29,3-11.31,9.37c-1,3-.55,7-5,7.73-3.67.56-7.22.11-9-3.68s-.78-7.18,2.33-9.9c6.48-5.68,14.43-7.47,22.66-7.93a48.52,48.52,0,0,1,12.88,1.12c10.13,2.22,15.8,8.93,16.21,19.42.43,11,.28,22,.38,33,0,1.66,0,3.33,0,5C276.63,102.86,278.61,104.64,287.6,104.25Zm-26.6-34c-8.44,2.41-16.47,4.43-22.9,10.05-4.55,4-5.81,10.76-3.44,16.45a11.76,11.76,0,0,0,12,7c5.67-.42,13.76-5.58,14.15-10.21C261.46,86,261,78.4,261,70.24Z",
+  "M24.18,0V6.78c0,29.14,0,58.28-.07,87.42,0,6,.3,11.44,7.51,13.29.7.19,1.09,1.61,2,3.05H.64l-.64-1c1.19-1,2.24-2.37,3.61-2.9,3.94-1.53,5.62-4.17,5.61-8.4q-.13-40,0-79.93c0-4.73-1.93-7.46-6.26-9C1.9,9,1.15,7.79.27,7,1.2,6.27,2,5.18,3.09,4.92,9.84,3.24,16.64,1.74,24.18,0Z",
+  "M193.44,110.51H159.7l-.57-1c1.07-.9,2-2.13,3.25-2.62,4.54-1.79,6-5,5.94-9.79-.2-14-.28-28,0-42,.13-5.65-1.58-9.3-7.11-11a3.26,3.26,0,0,1-1.77-2c-.13-.38.8-1.52,1.4-1.67,7-1.75,14.08-3.37,21.77-5.18V51.06l1.11.4,2.54-4.36c3.51-6,8.15-10.58,15.32-11.7,7.35-1.15,12.17,3.38,10.85,10-1,5.16-4.11,6.91-9.13,5.17-12.43-4.32-19.44.57-19.59,13.8-.12,10.66.14,21.33-.21,32-.19,5.71,1.76,9.21,7.35,10.72,1.23.33,2.23,1.52,3.34,2.31Z",
+  "M78.32,110.77c-7.1,0-14.2.08-21.29-.1a4.78,4.78,0,0,1-3-2Q40.66,90.3,27.46,71.89c5.26-5.49,10.61-11.09,16-16.65,2.08-2.15,4.31-4.16,6.37-6.33,3.77-4,3.34-5.72-1.66-8.06a4.92,4.92,0,0,1-2.57-3.51H73.37l.76,1.25C70.3,40.71,66.22,42.48,62.71,45a109.36,109.36,0,0,0-11.2,9.9C48.05,58.27,44.85,61.86,41,66,53.4,80.35,61.76,98.66,79,109.66Z",
+  "M151.77,74.1h0a45.46,45.46,0,0,0-3.51-17.51,33.2,33.2,0,0,0-4.87-8.34l-.23-.28c-.23-.29-.47-.58-.71-.86a29.45,29.45,0,0,0-5.49-5,37.39,37.39,0,0,0-43.9,0,29.71,29.71,0,0,0-5.48,5c-.25.28-.48.57-.72.86l-.22.28a33.2,33.2,0,0,0-4.87,8.34,45.27,45.27,0,0,0-3.51,17.51h0A42.74,42.74,0,0,0,82.47,93a32.76,32.76,0,0,0,15.32,15.69,37.5,37.5,0,0,0,15.86,4.09h.07l1.29,0,1.3,0h.07a37.5,37.5,0,0,0,15.86-4.09A32.73,32.73,0,0,0,147.55,93,42.61,42.61,0,0,0,151.77,74.1ZM133,90.13A66.71,66.71,0,0,1,129.34,99a15.55,15.55,0,0,1-14.18,9h-.29a15.56,15.56,0,0,1-14.19-9A66.63,66.63,0,0,1,97,90.13c-.9-3.49-1.64-7-2.42-10.56a51.39,51.39,0,0,1-.4-8.67c1.25-8.9,3.25-16.72,6.32-21.79,3.52-5.81,9-8.92,14.48-9.21,5.47.29,11,3.4,14.49,9.21,3.07,5.07,5.06,12.89,6.31,21.79a51.39,51.39,0,0,1-.4,8.67C134.63,83.1,133.89,86.64,133,90.13Z",
+];
 
 const VIEW_W = 287.6;
 const VIEW_H = 112.78;
-const SVG_NS = "http://www.w3.org/2000/svg";
+const FILL_THRESHOLD = 8000;
 
-// Timeline in seconds at speed 1.
-const OUTLINE_START = 0.35;
-const OUTLINE_STAGGER = 0.2;
-const OUTLINE_DUR = 1.2;
-const ZOOM_FROM = 2.3;
-const ZOOM_TO = 2.9;
-const ZOOM_SCALE = 1.14;
-const FILL_START = 2.6;
-const FILL_SPAN = 2.3;
-const END = FILL_START + FILL_SPAN + 0.15;
+// Helper to reliably check if dark mode is active in the document
+function getIsDarkMode(): boolean {
+  if (typeof document === "undefined") return false;
+  const rootDark = document.documentElement.classList.contains("dark");
+  const bodyDark = document.body.classList.contains("dark");
+  const dataTheme = document.documentElement.getAttribute("data-theme");
+  if (rootDark || bodyDark || dataTheme === "dark") return true;
+  if (dataTheme === "light") return false;
 
-// Stroke-width buckets (in px on a 1400px-wide canvas; scaled to the real size).
-const WIDTH_BUCKETS = [1.7, 3.2, 5.0, 6.8, 8.8];
-
-type Stroke = [number, number, number, number, number]; // x0, y0, x1, y1, appearsAt
-
-const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
-const easeInOut = (x: number) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
-
-function mulberry32(seed: number) {
-  let a = seed | 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function resolveInk(override?: string): string {
-  if (override) return override;
   try {
-    const v = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
-    if (v) return v;
+    const bodyBg = getComputedStyle(document.body).backgroundColor;
+    if (bodyBg && bodyBg !== "transparent" && !bodyBg.includes("rgba(0, 0, 0, 0)")) {
+      const m = bodyBg.match(/(\d+\.?\d*)/g);
+      if (m && m.length >= 3) {
+        const [r, g, b] = m.slice(0, 3).map(Number);
+        const a = m[3] !== undefined ? Number(m[3]) : 1;
+        if (a > 0.1) {
+          const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+          if (lum < 0.35) return true;
+        }
+      }
+    }
   } catch {
-    /* ignore */
+    // Ignore
   }
-  const dark =
-    document.documentElement.classList.contains("dark") ||
-    document.body.classList.contains("dark") ||
-    document.documentElement.getAttribute("data-theme") === "dark" ||
-    (typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches);
-  return dark ? "#f3f1ea" : "#111116";
+
+  return false;
 }
 
-export interface KoraWordmarkRevealProps {
-  children?: React.ReactNode;
-  replay?: boolean;
-  onDone?: () => void;
-  speed?: number;
-  color?: string;
-}
-
-export default function KoraWordmarkReveal({
-  children,
-  replay = false,
-  onDone,
-  speed = 1.5,
-  color,
-}: KoraWordmarkRevealProps) {
+/**
+ * Realistic-ink "kora" wordmark, ported 1:1 from the reference HTML:
+ * a canvas sized to its own box hand-draws the glyph outline, then fills it
+ * with thousands of ink-drop strokes; an SVG feTurbulence filter gives the
+ * wobble. After the fill completes, the children (subtitle) fade up.
+ */
+export default function KoraWordmarkReveal({ children }: { children?: React.ReactNode }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [done, setDone] = useState(false);
   const doneRef = useRef(false);
-  const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -99,273 +61,271 @@ export default function KoraWordmarkReveal({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const reduceMotion =
-      typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const svg = document.getElementById("kora-ink-source") as unknown as SVGSVGElement | null;
+    const paths = svg ? Array.from(svg.querySelectorAll("path")) : [];
 
-    const letters = KORA_WORDMARK_PATHS.map((d) => {
-      const el = document.createElementNS(SVG_NS, "path");
-      el.setAttribute("d", d);
-      return { d, len: el.getTotalLength(), path: new Path2D(d) };
-    });
-
-    let W = 0;
-    let H = 0;
-    let sc = 1;
-    let strokes: Stroke[][][] = [];
-    let drops: Stroke[] = [];
-    let ink = resolveInk(color);
     let raf = 0;
-    let t0 = -1;
-    let running = false;
-    let finished = false;
-    let lastT = 0;
     let cancelled = false;
-
-    // --- geometry + stroke layout (rebuilt when the canvas size changes) -----------
-    const prepare = () => {
-      const cssW = canvas.clientWidth || 420;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const nW = Math.max(240, Math.round(cssW * dpr));
-      if (nW === W && strokes.length) return;
-      W = nW;
-      H = Math.round((W * VIEW_H) / VIEW_W);
-      sc = W / VIEW_W;
-      canvas.width = W;
-      canvas.height = H;
-      const k = W / 1400;
-
-      const glyphs = new Path2D();
-      const m = new DOMMatrix([sc, 0, 0, sc, 0, 0]);
-      letters.forEach((l) => glyphs.addPath(new Path2D(l.d), m));
-      const off = document.createElement("canvas");
-      off.width = W;
-      off.height = H;
-      const octx = off.getContext("2d", { willReadFrequently: true });
-      if (!octx) return;
-      octx.fillStyle = "#000";
-      octx.fill(glyphs);
-      const fillMask = octx.getImageData(0, 0, W, H).data;
-      octx.globalCompositeOperation = "destination-out";
-      octx.lineWidth = 4.4 * sc;
-      octx.stroke(glyphs);
-      const innerMask = octx.getImageData(0, 0, W, H).data;
-      const at = (a: Uint8ClampedArray, x: number, y: number) => {
-        const px = Math.round(x);
-        const py = Math.round(y);
-        return px >= 0 && py >= 0 && px < W && py < H && a[(py * W + px) * 4 + 3] > 128;
-      };
-
-      const R = mulberry32(20261);
-      strokes = WIDTH_BUCKETS.map(() => [[], []]);
-      drops = [];
-      const add = (x: number, y: number, hatch: number) => {
-        const w = 0.5 + R() * 2.5;
-        const wi = Math.min(4, Math.floor((w - 0.5) / 0.5));
-        const th = R() < hatch ? -0.72 + (R() - 0.5) * 0.95 : R() * 6.283;
-        const len = (R() < 0.5 ? 3 + R() * 9 : R() * 13) * k;
-        const ts = FILL_START + (0.8 * R() + 0.2 * (x / W)) * FILL_SPAN;
-        strokes[wi][R() < 0.45 ? 0 : 1].push([x, y, x + Math.cos(th) * len, y + Math.sin(th) * len, ts]);
-        if (R() > 0.985) drops.push([x, y, (0.6 + R() * 2.8) * 3.1 * k, 0, ts + 0.02]);
-      };
-      for (let n = 0; n < 9400; ) {
-        const x = R() * W;
-        const y = R() * H;
-        if (!at(fillMask, x, y)) continue;
-        n++;
-        add(x, y, 0.6);
-      }
-      for (let n = 0; n < 3200; ) {
-        const x = R() * W;
-        const y = R() * H;
-        if (!at(fillMask, x, y) || at(innerMask, x, y)) continue;
-        n++;
-        add(x, y, 0.35);
-      }
-      strokes.forEach((g) => g.forEach((a) => a.sort((p, q) => p[4] - q[4])));
-      drops.sort((p, q) => p[4] - q[4]);
-    };
-
-    // --- one frame ------------------------------------------------------------------
-    const draw = (t: number) => {
-      lastT = t;
-      const k = W / 1400;
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-
-      // zoom-out (CSS transform on the wrapper: no layout shift)
-      const z = t < ZOOM_FROM ? ZOOM_SCALE : t > ZOOM_TO ? 1 : ZOOM_SCALE + (1 - ZOOM_SCALE) * easeInOut((t - ZOOM_FROM) / (ZOOM_TO - ZOOM_FROM));
-      wrap.style.transform = `scale(${z})`;
-
-      // pencil outline (boil is quantised so it flickers like hand-drawn animation)
-      const olAlpha = t < 4.6 ? 1 : t < 5.4 ? 1 - (0.6 * (t - 4.6)) / 0.8 : 0.4;
-      const boil = Math.floor(t / 0.14);
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = ink;
-      for (let pass = 0; pass < 2; pass++) {
-        const rj = mulberry32(boil * 31 + pass * 977);
-        const jx = (rj() - 0.5) * 0.9 + (pass ? 0.8 : 0);
-        const jy = (rj() - 0.5) * 0.9 + (pass ? -0.6 : 0);
-        ctx.setTransform(sc, 0, 0, sc, jx * sc, jy * sc);
-        ctx.lineWidth = 0.85;
-        ctx.globalAlpha = olAlpha * (pass ? 0.55 : 1);
-        letters.forEach((l, i) => {
-          const p = easeInOut(clamp01((t - (OUTLINE_START + i * OUTLINE_STAGGER + pass * 0.18)) / OUTLINE_DUR));
-          if (p <= 0) return;
-          ctx.setLineDash([l.len, l.len + 2]);
-          ctx.lineDashOffset = l.len * (1 - p);
-          ctx.stroke(l.path);
-        });
-      }
-      ctx.setLineDash([]);
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-      // ink fill: short pen strokes
-      if (t >= FILL_START) {
-        ctx.strokeStyle = ink;
-        ctx.fillStyle = ink;
-        strokes.forEach((g, wi) =>
-          g.forEach((a, ai) => {
-            if (!a.length || a[0][4] > t) return;
-            ctx.beginPath();
-            for (const s of a) {
-              if (s[4] > t) break;
-              ctx.moveTo(s[0], s[1]);
-              ctx.lineTo(s[2], s[3]);
-            }
-            ctx.lineWidth = WIDTH_BUCKETS[wi] * k;
-            ctx.globalAlpha = ai ? 0.8 : 0.58;
-            ctx.stroke();
-          }),
-        );
-        ctx.globalAlpha = 0.92;
-        ctx.beginPath();
-        for (const d of drops) {
-          if (d[4] > t) break;
-          ctx.moveTo(d[0] + d[2], d[1]);
-          ctx.arc(d[0], d[1], d[2], 0, 6.283);
-        }
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    };
+    let started = false;
+    let revealArmed = { current: false };
+    let revealTimer: number | undefined;
+    const inkRef = { current: "#111116" };
 
     const markDone = () => {
       if (doneRef.current) return;
       doneRef.current = true;
       setDone(true);
-      onDoneRef.current?.();
     };
 
-    const loop = (now: number) => {
-      if (cancelled || !running) return;
-      if (t0 < 0) t0 = now;
-      const t = ((now - t0) / 1000) * speed;
-      if (t >= END) {
-        draw(END + 1);
-        running = false;
-        finished = true;
-        markDone();
-        return;
-      }
-      draw(t);
-      raf = requestAnimationFrame(loop);
-    };
+    // Detect mobile for dynamic animation scale down
+    const isMobileDevice = typeof window !== "undefined" && window.innerWidth < 768;
+    const activeFillThreshold = isMobileDevice ? 3200 : 7500;
+    const activeFillIterations = isMobileDevice ? 100 : 250;
 
     const start = () => {
-      if (cancelled) return;
-      cancelAnimationFrame(raf);
-      prepare();
+      cancelled = false;
       doneRef.current = false;
       setDone(false);
-      finished = false;
-      if (reduceMotion) {
-        draw(END + 1);
-        finished = true;
-        markDone();
-        return;
+      revealArmed.current = false;
+      wrap.classList.remove("kora-ink-zoomed");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Size the canvas to its displayed box (capped so the wordmark stays sane).
+      const DISPLAY_W = Math.min(wrap.clientWidth || 420, 420);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(DISPLAY_W * dpr);
+      canvas.height = Math.round(DISPLAY_W * (VIEW_H / VIEW_W) * dpr);
+      canvas.style.width = `${DISPLAY_W}px`;
+      canvas.style.height = `${(DISPLAY_W * (VIEW_H / VIEW_W)).toFixed(1)}px`;
+
+      const scale = (canvas.width / VIEW_W) * 0.92;
+      const offsetX = (canvas.width - VIEW_W * scale) / 2;
+      const offsetY = (canvas.height - VIEW_H * scale) / 2;
+
+      const path2D: Path2D[] = [];
+      const outlinePoints: ({ x: number; y: number } | null)[] = [];
+      paths.forEach((p) => {
+        path2D.push(new Path2D(p.getAttribute("d") || ""));
+        const len = p.getTotalLength();
+        outlinePoints.push(null);
+        for (let i = 0; i <= len; i += 2) {
+          const pt = p.getPointAtLength(i);
+          outlinePoints.push({ x: pt.x * scale + offsetX, y: pt.y * scale + offsetY });
+        }
+      });
+    const applyInkForCurrentColor = () => {
+      try {
+        const computedColor = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
+        if (computedColor) {
+          inkRef.current = computedColor;
+          return;
+        }
+      } catch {
+        // ignore
       }
-      t0 = -1;
-      running = true;
+      inkRef.current = getIsDarkMode() ? "#f3f1ea" : "#111116";
+    };
+    applyInkForCurrentColor();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = inkRef.current;
+    ctx.fillStyle = inkRef.current;
+
+      const STATE_OUTLINE = 0,
+        STATE_ZOOM = 1,
+        STATE_FILL = 2,
+        STATE_FINISHED = 3;
+      let state = STATE_OUTLINE;
+      let outlineIdx = 0;
+      let fillCount = 0;
+      let lastX: number | null = null;
+      let lastY: number | null = null;
+
+      const drawOutline = () => {
+        const step = isMobileDevice ? 15 : 20;
+        for (let i = 0; i < step; i++) {
+          if (outlineIdx >= outlinePoints.length) {
+            state = STATE_ZOOM;
+            wrap.classList.add("kora-ink-zoomed");
+            setTimeout(() => {
+              if (!cancelled) state = STATE_FILL;
+            }, 180); // Quicker zoom transition on mobile
+            return;
+          }
+          const pt = outlinePoints[outlineIdx++];
+          if (!pt) {
+            lastX = lastY = null;
+          } else {
+            if (lastX !== null) {
+              ctx.beginPath();
+              ctx.lineWidth = 1.8 * dpr;
+              ctx.moveTo(lastX, lastY as number);
+              ctx.lineTo(pt.x, pt.y);
+              ctx.stroke();
+            }
+            lastX = pt.x;
+            lastY = pt.y;
+          }
+        }
+      };
+
+      const drawFill = () => {
+        if (fillCount >= activeFillThreshold) {
+          state = STATE_FINISHED;
+          markDone();
+          return;
+        }
+        for (let i = 0; i < activeFillIterations; i++) {
+          const rx = Math.random() * VIEW_W;
+          const ry = Math.random() * VIEW_H;
+          if (path2D.some((p) => ctx.isPointInPath(p, rx, ry))) {
+            fillCount++;
+            const sx = rx * scale + offsetX;
+            const sy = ry * scale + offsetY;
+            ctx.beginPath();
+            ctx.lineWidth = (Math.random() * 2.5 + 0.5) * dpr;
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx + (Math.random() - 0.5) * 8 * dpr, sy + (Math.random() - 0.5) * 8 * dpr);
+            ctx.globalAlpha = getIsDarkMode() ? 0.9 : 0.7;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            if (Math.random() > 0.99) {
+              ctx.beginPath();
+              ctx.arc(sx, sy, Math.random() * 3 * dpr, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+      };
+
+      const loop = () => {
+        if (cancelled) return;
+        if (state === STATE_OUTLINE) drawOutline();
+        else if (state === STATE_FILL) drawFill();
+        if (state !== STATE_FINISHED) raf = requestAnimationFrame(loop);
+      };
+      // Fallback: reveal the text after a grace period even if the canvas fill
+      // loop keeps getting reset by mobile scroll-resize events. Armed once.
+      if (!revealArmed.current) {
+        revealArmed.current = true;
+        revealTimer = window.setTimeout(markDone, 1200);
+      }
       raf = requestAnimationFrame(loop);
     };
 
-    const reset = () => {
-      running = false;
-      finished = false;
-      cancelAnimationFrame(raf);
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-      wrap.style.transform = `scale(${ZOOM_SCALE})`;
-      doneRef.current = false;
-      setDone(false);
+    let t: number | undefined;
+    let lastWidth = wrap.clientWidth;
+
+    const onResize = () => {
+      const currentWidth = wrap.clientWidth;
+      // Critical optimization: ignore resizes where width did not change (e.g. mobile virtual keyboard or browser address bar toggling)
+      if (currentWidth === lastWidth && lastWidth > 0) return;
+      lastWidth = currentWidth;
+
+      clearTimeout(t);
+      t = window.setTimeout(() => {
+        if (!cancelled) start();
+      }, 300);
+    };
+    window.addEventListener("resize", onResize);
+
+    // Start the animation when the wrapper enters the screen, and reset on scroll away so it re-triggers when scrolled back down
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            if (!started) {
+              started = true;
+              start();
+            }
+          } else {
+            if (started) {
+              started = false;
+              cancelled = true;
+              cancelAnimationFrame(raf);
+              if (revealTimer) clearTimeout(revealTimer);
+              doneRef.current = false;
+              setDone(false);
+              revealArmed.current = false;
+              wrap.classList.remove("kora-ink-zoomed");
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+          }
+        });
+      },
+      { threshold: 0.05 }
+    );
+    io.observe(wrap);
+
+    const getThemeKey = () => {
+      const dark = getIsDarkMode();
+      const computedColor = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
+      return dark && computedColor ? "dark" : dark ? "dark" : "light";
+    };
+    let lastTheme = getThemeKey();
+
+    const applyInkForTheme = (theme: string) => {
+      const isDark = theme === "dark";
+      try {
+        const computedColor = getComputedStyle(document.body).getPropertyValue("--theme-text").trim();
+        if (computedColor) {
+          inkRef.current = computedColor;
+          ctx.strokeStyle = inkRef.current;
+          ctx.fillStyle = inkRef.current;
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      inkRef.current = isDark ? "#f3f1ea" : "#111116";
+      ctx.strokeStyle = inkRef.current;
+      ctx.fillStyle = inkRef.current;
     };
 
-    // --- lifecycle ------------------------------------------------------------------
-    let io: IntersectionObserver | null = null;
-    if (replay && typeof IntersectionObserver !== "undefined") {
-      let visible = false;
-      io = new IntersectionObserver((entries) => {
-        const e = entries[entries.length - 1];
-        if (e.isIntersecting && !visible) {
-          visible = true;
-          start();
-        } else if (!e.isIntersecting && visible) {
-          visible = false;
-          reset();
+    const observer = new MutationObserver(() => {
+      if (!cancelled && started) {
+        const currentTheme = getThemeKey();
+        if (currentTheme !== lastTheme) {
+          lastTheme = currentTheme;
+          applyInkForTheme(currentTheme);
         }
-      }, { threshold: 0.2 });
-      io.observe(wrap);
-    } else {
-      start();
-    }
-
-    // keep crisp on resize, and follow theme changes
-    let lastW = canvas.clientWidth;
-    const ro = typeof ResizeObserver !== "undefined"
-      ? new ResizeObserver(() => {
-          if (Math.abs(canvas.clientWidth - lastW) < 8) return;
-          lastW = canvas.clientWidth;
-          prepare();
-          if (finished || running) draw(finished ? END + 1 : lastT);
-        })
-      : null;
-    ro?.observe(canvas);
-
-    const mo = new MutationObserver(() => {
-      const next = resolveInk(color);
-      if (next === ink) return;
-      ink = next;
-      if (finished) draw(END + 1);
+      }
     });
-    mo.observe(document.body, { attributes: true, attributeFilter: ["class", "style"] });
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
+    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
-      io?.disconnect();
-      ro?.disconnect();
-      mo.disconnect();
+      clearTimeout(t);
+      clearTimeout(revealTimer);
+      io.disconnect();
+      observer.disconnect();
+      window.removeEventListener("resize", onResize);
     };
-  }, [replay, speed, color]);
+  }, []);
 
   return (
     <div className="relative flex flex-col items-center gap-4">
+      <svg id="kora-ink-source" viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} style={{ display: "none" }} aria-hidden>
+        {KORA_PATHS.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </svg>
+
+      <svg style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }} aria-hidden="true">
+        <filter id="kora-realistic-ink">
+          <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves={2} result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale={2.5} xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </svg>
+
       <div
         ref={wrapRef}
         className="kora-ink-wrapper w-full flex justify-center"
-        style={{ transform: `scale(${ZOOM_SCALE})`, willChange: "transform" }}
+        style={{ filter: "url(#kora-realistic-ink)" }}
       >
-        {/* Height is pinned by CSS so the layout box is stable before, during and
-            after the animation (a bare canvas would jump from 300x150). */}
-        <canvas
-          ref={canvasRef}
-          className="block"
-          role="img"
-          aria-label="Kora"
-          style={{ width: "min(86vw, 420px)", aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
-        />
+        <canvas ref={canvasRef} className="block" style={{ width: "min(86vw, 420px)", height: "auto", aspectRatio: "287.6 / 112.78" }} />
       </div>
 
       <div
@@ -374,6 +334,11 @@ export default function KoraWordmarkReveal({
       >
         {children}
       </div>
+
+      <style>{`
+        .kora-ink-wrapper { transition: transform 1.5s cubic-bezier(0.45,0.05,0.55,0.95); }
+        .kora-ink-zoomed { transform: scale(0.7); }
+      `}</style>
     </div>
   );
 }
