@@ -34,6 +34,7 @@ import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
 const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
+const BookReaderMOBI = lazy(() => import("./components/BookReaderMOBI"));
 const BookReaderText = lazy(() => import("./components/BookReaderText"));
 const CreateView = lazy(() => import("./components/CreateView"));
 const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
@@ -3507,6 +3508,13 @@ export default function App() {
               setLastReadBook(updatedBook);
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
+          />
+        ) : activeBook.extension?.toLowerCase() === "mobi" ? (
+          <BookReaderMOBI
+            book={activeBook}
+            readerPrefs={readerPrefs}
+            onReaderPrefsChange={setReaderPrefs}
+            onClose={dismissReader}
           />
         ) : (activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
           <BookReaderEPUB

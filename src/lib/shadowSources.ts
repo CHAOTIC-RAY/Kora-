@@ -195,7 +195,9 @@ export function parseLibgenResultsHtml(html: string, baseUrl: string): ShadowBoo
     const pagePath = idHref.replace(/(?:book\/)?index\.php/i, "index.php");
     const pageUrl = idHref ? new URL(pagePath, baseUrl).toString() : "";
     const imageSrc = $(row).find("img").first().attr("src") || "";
-    const coverUrl = imageSrc ? new URL(imageSrc, baseUrl).toString() : "";
+    const coverUrl = imageSrc
+      ? new URL(imageSrc, baseUrl).toString()
+      : md5 ? new URL(`/covers/0/${md5.toLowerCase()}-s.jpg`, baseUrl).toString() : "";
 
     books.push({
       title: parsedTitle.title,

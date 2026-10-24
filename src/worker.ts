@@ -1136,7 +1136,10 @@ export default {
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-      });
+      }).map((book: any) => ({
+        ...book,
+        coverUrl: book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${book.md5 ? `&md5=${encodeURIComponent(book.md5)}` : ""}`,
+      }));
       const sources = { ...(shadow.meta.sources || {}), ...(independent.meta.sources || {}) };
       const totalCount = Math.max(results.length, (Number(shadow.meta.total) || 0) + (Number(independent.meta.total) || 0));
       const hasMore = !!shadow.meta.hasMore || !!independent.meta.hasMore;
@@ -1677,7 +1680,7 @@ export default {
                 format: book.format || extension.toLowerCase(),
                 source,
                 sourceId,
-                coverUrl: book.coverUrl || null,
+                coverUrl: book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${md5 ? `&md5=${encodeURIComponent(md5)}` : ""}`,
                 description: book.description || "",
                 downloadUrl: book.directReady === false ? "" : book.directUrl || book.downloadUrl || "",
                 isGoogleBook: false,
@@ -3210,6 +3213,23 @@ export default {
         } catch (_) {}
         return null;
       };
+
+      // Prefer the archive's MD5-specific cover for search results. A broad
+      // title search can return a different edition or even a different book.
+      if (md5 && /^[a-f0-9]{32}$/i.test(md5)) {
+        const normalizedMd5 = md5.toLowerCase();
+        const libgenCoverDomains = ["libgen.li", "libgen.vg", "libgen.la", "libgen.gl"];
+        for (const domain of libgenCoverDomains) {
+          const proxied = await proxyImage(`https://${domain}/covers/0/${normalizedMd5}-s.jpg`);
+          if (proxied) return proxied;
+        }
+
+        const annasCoverDomains = ["annas-archive.org", "annas-archive.se", "annas-archive.li", "annas-archive.gl"];
+        for (const domain of annasCoverDomains) {
+          const proxied = await proxyImage(`https://${domain}/covers/${normalizedMd5}.jpg`);
+          if (proxied) return proxied;
+        }
+      }
 
       // 1. FOR AUDIOBOOKS: NetGalley is the MAIN (Primary) source for audiobook covers
       if (isAudiobook && title) {

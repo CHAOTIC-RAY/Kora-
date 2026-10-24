@@ -6,6 +6,7 @@ import { getTimeOfDayAutoTheme } from "../lib/readerThemes";
 interface BookReaderTextProps {
   book: any;
   onClose: () => void;
+  contentOverride?: string;
   readerPrefs?: {
     fontSize: number;
     lineSpacing: number;
@@ -178,7 +179,7 @@ function injectReaderStyles(
   }
 }
 
-export default function BookReaderText({ book, onClose, readerPrefs, onReaderPrefsChange }: BookReaderTextProps) {
+export default function BookReaderText({ book, onClose, readerPrefs, onReaderPrefsChange, contentOverride }: BookReaderTextProps) {
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -236,8 +237,14 @@ export default function BookReaderText({ book, onClose, readerPrefs, onReaderPre
   }
 
   useEffect(() => {
+    if (contentOverride !== undefined) {
+      setContent(contentOverride);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     load();
-  }, [book.id]);
+  }, [book.id, contentOverride]);
 
   useEffect(() => {
     if (onReaderPrefsChange) {
