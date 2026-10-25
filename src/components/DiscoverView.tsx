@@ -18,6 +18,7 @@ import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
 import { titlesRoughlyMatch } from "../lib/audiobookScraper";
+import { ensureSeriesFields, normalizeSeriesKey, parseSeriesNumber } from "../lib/seriesHelper";
 import {
   createSearchSignal,
   abortActiveSearch,
@@ -367,6 +368,7 @@ function DiscoverView({
   // slower response overwrite B's title/overview/editions/mirrors.
   const detailFetchGen = React.useRef(0);
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
+  const [seriesDetailBook, setSeriesDetailBook] = useState<any | null>(null);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
@@ -385,6 +387,18 @@ function DiscoverView({
   const [availableSourcesFromResults, setAvailableSourcesFromResults] = useState<Set<string>>(new Set());
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>("all");
+
+  const seriesDetailBooks = useMemo(() => {
+    if (!seriesDetailBook?.series) return [];
+    const key = normalizeSeriesKey(seriesDetailBook.series);
+    return books
+      .map(ensureSeriesFields)
+      .filter((book) => normalizeSeriesKey(book.series || "") === key)
+      .sort((a, b) => {
+        const order = parseSeriesNumber(a.seriesNumber) - parseSeriesNumber(b.seriesNumber);
+        return Number.isNaN(order) || order === 0 ? a.title.localeCompare(b.title) : order;
+      });
+  }, [books, seriesDetailBook]);
 
   const [hasMore, setHasMore] = useState<boolean>(false);
   // Community (Hardcover) data fetched alongside search results
@@ -1364,6 +1378,17 @@ function DiscoverView({
         setAudiobookDetailLoading(false);
       }
     }
+  };
+
+  const openSeriesDetail = (book: any) => {
+    const series = String(book?.series || "").trim();
+    if (!series) return;
+    setSeriesDetailBook({
+      series,
+      title: String(book?.title || ""),
+      author: String(book?.author || ""),
+      year: book?.year,
+    });
   };
 
   const openBookDetail = (book: any) => {
@@ -3659,18 +3684,15 @@ function DiscoverView({
                   <div className="space-y-0.5 pr-1">
                     <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
                     {book.series && (
-                      <a
-                        href={book.seriesUrl || undefined}
-                        target={book.seriesUrl ? "_blank" : undefined}
-                        rel={book.seriesUrl ? "noopener noreferrer" : undefined}
-                        onClick={(e) => e.stopPropagation()}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); openSeriesDetail(book); }}
                         className="inline-flex max-w-full items-center gap-1 pt-0.5 text-[8px] font-bold uppercase tracking-wider text-kindle-accent hover:underline"
-                        title={book.seriesUrl ? `Open ${book.series} series on LibGen` : `Series: ${book.series}`}
+                        title={`View ${book.series} series details in Kora`}
                       >
                         <Layers className="h-2.5 w-2.5 shrink-0" />
                         <span className="truncate">Series · {book.series}</span>
-                        {book.seriesUrl && <ExternalLink className="h-2 w-2 shrink-0" />}
-                      </a>
+                      </button>
                     )}
                     {book.topic && (
                       <p className="text-[8px] text-kindle-accent font-bold uppercase tracking-wider mt-1 truncate">
@@ -4210,6 +4232,91 @@ function DiscoverView({
       )}
       </div>
 
+      {seriesDetailBook && ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4" role="presentation">
+          <button
+            type="button"
+            aria-label="Close series details"
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setSeriesDetailBook(null)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kora-series-detail-title"
+            className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-kindle-border bg-kindle-card shadow-2xl animate-in zoom-in-95 duration-200"
+          >
+            <header className="flex items-start justify-between gap-4 border-b border-kindle-border px-6 py-5">
+              <div className="min-w-0">
+                <p className="mb-1 flex items-center gap-2 text-[9px] font-bold uppercase tracking-[0.2em] text-kindle-text-muted">
+                  <Layers className="h-3.5 w-3.5" /> Series details
+                </p>
+                <h2 id="kora-series-detail-title" className="truncate text-xl font-lexend font-bold text-kindle-text">
+                  {seriesDetailBook.series}
+                </h2>
+                <p className="mt-1 text-xs text-kindle-text-muted">
+                  {seriesDetailBooks.length} {seriesDetailBooks.length === 1 ? "book" : "books"} in your library
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setSeriesDetailBook(null)}
+                className="shrink-0 rounded-full border border-kindle-border bg-kindle-bg p-2 text-kindle-text-muted transition hover:text-kindle-text"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+            <div className="overflow-y-auto p-5 md:p-6">
+              {seriesDetailBooks.length ? (
+                <ol className="space-y-3">
+                  {seriesDetailBooks.map((book, index) => {
+                    const cover = resolveCoverImageSrc(book.coverUrl) || book.coverUrl;
+                    const progress = Math.max(0, Math.min(100, Number(book.progress?.percent || 0)));
+                    return (
+                      <li key={book.id} className="flex items-center gap-4 rounded-2xl border border-kindle-border bg-kindle-bg/60 p-3">
+                        <span className="w-8 shrink-0 text-center font-mono text-xs font-bold text-kindle-text-muted">
+                          {book.seriesNumber || index + 1}
+                        </span>
+                        {cover ? (
+                          <img src={cover} alt="" loading="lazy" className="h-16 w-11 shrink-0 rounded-lg border border-kindle-border object-cover" />
+                        ) : (
+                          <div className="flex h-16 w-11 shrink-0 items-center justify-center rounded-lg border border-kindle-border bg-kindle-card">
+                            <BookOpen className="h-5 w-5 text-kindle-text-muted" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <h3 className="truncate text-sm font-bold text-kindle-text">{book.title}</h3>
+                          <p className="mt-1 truncate text-xs text-kindle-text-muted">{book.author || "Unknown author"}</p>
+                          <div className="mt-2 flex items-center gap-2">
+                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-kindle-border">
+                              <div className="h-full rounded-full bg-kindle-accent" style={{ width: `${progress}%` }} />
+                            </div>
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                              {book.status === "completed" ? "Finished" : progress > 0 ? `${progress}% read` : "To read"}
+                            </span>
+                          </div>
+                        </div>
+                        {book.year && <span className="shrink-0 text-[10px] text-kindle-text-muted">{book.year}</span>}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-kindle-border px-6 py-12 text-center">
+                  <BookOpen className="mx-auto mb-3 h-8 w-8 text-kindle-text-muted/60" />
+                  <p className="text-sm font-semibold text-kindle-text">No books from this series are in your library yet.</p>
+                  <p className="mt-1 text-xs text-kindle-text-muted">
+                    Add a book to your library and Kora will show it here when its series is identified.
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>,
+        document.body
+      )}
+
       {/* Download Modal - Simplified Download Link Selector */}
       {selectedBook && ReactDOM.createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
@@ -4234,17 +4341,15 @@ function DiscoverView({
                   {selectedBook.author}
                 </p>
                 {selectedBook.series && (
-                  <a
-                    href={selectedBook.seriesUrl || undefined}
-                    target={selectedBook.seriesUrl ? "_blank" : undefined}
-                    rel={selectedBook.seriesUrl ? "noopener noreferrer" : undefined}
-                    onClick={(e) => e.stopPropagation()}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); openSeriesDetail(selectedBook); }}
                     className="mx-auto inline-flex items-center gap-1 rounded-full border border-kindle-accent/25 bg-kindle-accent/5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-kindle-accent hover:bg-kindle-accent/10"
+                    title={`View ${selectedBook.series} series details in Kora`}
                   >
                     <Layers className="h-3 w-3" />
                     Series · {selectedBook.series}
-                    {selectedBook.seriesUrl && <ExternalLink className="h-2.5 w-2.5" />}
-                  </a>
+                  </button>
                 )}
                 {loadingDetails && (
                   <p className="text-[9px] text-kindle-text-muted">Loading book details…</p>
