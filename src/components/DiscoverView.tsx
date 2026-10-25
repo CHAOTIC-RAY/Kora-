@@ -480,6 +480,7 @@ function DiscoverView({
 
   // New Search & Modal States
   const [isAdvancedSearch, setIsAdvancedSearch] = useState<boolean>(false);
+  const [showFilterOptions, setShowFilterOptions] = useState<boolean>(false);
   const [isAudiobookSearch, setIsAudiobookSearch] = useState<boolean>(false);
   const [audiobookResults, setAudiobookResults] = useState<any[]>([]);
   const [audiobookLoading, setAudiobookLoading] = useState<boolean>(false);
@@ -994,7 +995,7 @@ function DiscoverView({
     if (searchMode && query) {
       handleSearch(query);
     }
-  }, [activeSource, currentPage, isAdvancedSearch]);
+  }, [activeSource, currentPage]);
 
   useEffect(() => {
     if (!hasMore || loading || loadingMore) return;
@@ -2195,7 +2196,9 @@ function DiscoverView({
     const page = isNewTerm ? 1 : currentPage;
     if (page === 1) {
       setLoading(true);
-      setResults([]);
+      // Keep a successful same-query result set visible while retrying. A
+      // transient source 503 should not turn the current page blank.
+      if (isNewTerm || results.length === 0) setResults([]);
     } else {
       setLoadingMore(true);
     }
@@ -3377,26 +3380,9 @@ function DiscoverView({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    const newVal = !isAdvancedSearch;
-                    setIsAdvancedSearch(newVal);
-                    setIsAudiobookSearch(false);
-                    setAudiobookLibraryMode(false);
-                    setAudiobookResults([]);
-                    if (newVal) {
-                      setSearchMode(true);
-                      setCurrentPage(1);
-                      setResults([]);
-                      prefetchCache.current.clear();
-                      if (activeSource !== "all") setActiveSource("all");
-                    } else {
-                      setCurrentPage(1);
-                      setResults([]);
-                      prefetchCache.current.clear();
-                    }
-                  }}
+                  onClick={() => setShowFilterOptions((open) => !open)}
                   className={`px-3.5 py-1.5 rounded-full border text-[9px] font-bold uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                    isAdvancedSearch
+                    showFilterOptions
                       ? "bg-kindle-text text-kindle-bg border-kindle-text"
                       : "bg-kindle-card border-kindle-border text-kindle-text-muted hover:text-kindle-text"
                   }`}
@@ -3407,7 +3393,7 @@ function DiscoverView({
             </div>
 
             {/* Source & Topic Filters - Positioned directly under search bar */}
-            {searchMode && isAdvancedSearch && (
+            {searchMode && showFilterOptions && (
               <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="flex flex-wrap items-center gap-2">
                   {[
@@ -4622,7 +4608,7 @@ function DiscoverView({
                         onClick={() => {
                           const queryText = `${selectedFeaturedBook.title} ${selectedFeaturedBook.author || ""}`.trim();
                           closeBookDetail();
-                          setIsAdvancedSearch(true);
+                          setShowFilterOptions(true);
                           setSearchMode(true);
                           handleSearch(queryText);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
