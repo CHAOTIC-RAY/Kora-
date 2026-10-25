@@ -2267,6 +2267,9 @@ function DiscoverView({
             exactMatch: b.exactMatch,
             sourceId: b.sourceId,
             source: b.source,
+            series: b.series,
+            seriesUrl: b.seriesUrl,
+            seriesId: b.seriesId,
             size: b.size,
             extension: b.extension,
             md5: b.md5,
@@ -2291,6 +2294,9 @@ function DiscoverView({
           if (!existing.publisher && b.publisher) existing.publisher = b.publisher;
           if (!existing.pages && b.pages) existing.pages = b.pages;
           if (!existing.topic && b.topic) existing.topic = b.topic;
+          if (!existing.series && b.series) existing.series = b.series;
+          if (!existing.seriesUrl && b.seriesUrl) existing.seriesUrl = b.seriesUrl;
+          if (!existing.seriesId && b.seriesId) existing.seriesId = b.seriesId;
           if (!existing.isbn && b.isbn) existing.isbn = b.isbn;
           if (b.exactMatch) existing.exactMatch = true;
         }
@@ -3651,6 +3657,20 @@ function DiscoverView({
                   </div>
                   <div className="space-y-0.5 pr-1">
                     <h4 className="text-[11px] font-bold font-serif line-clamp-2 leading-tight group-hover:text-kindle-accent transition">{book.title}</h4>
+                    {book.series && (
+                      <a
+                        href={book.seriesUrl || undefined}
+                        target={book.seriesUrl ? "_blank" : undefined}
+                        rel={book.seriesUrl ? "noopener noreferrer" : undefined}
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex max-w-full items-center gap-1 pt-0.5 text-[8px] font-bold uppercase tracking-wider text-kindle-accent hover:underline"
+                        title={book.seriesUrl ? `Open ${book.series} series on LibGen` : `Series: ${book.series}`}
+                      >
+                        <Layers className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">Series · {book.series}</span>
+                        {book.seriesUrl && <ExternalLink className="h-2 w-2 shrink-0" />}
+                      </a>
+                    )}
                     {book.topic && (
                       <p className="text-[8px] text-kindle-accent font-bold uppercase tracking-wider mt-1 truncate">
                         {book.topic}
@@ -4212,6 +4232,19 @@ function DiscoverView({
                 <p className="text-sm text-kindle-text-muted font-sans font-medium">
                   {selectedBook.author}
                 </p>
+                {selectedBook.series && (
+                  <a
+                    href={selectedBook.seriesUrl || undefined}
+                    target={selectedBook.seriesUrl ? "_blank" : undefined}
+                    rel={selectedBook.seriesUrl ? "noopener noreferrer" : undefined}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mx-auto inline-flex items-center gap-1 rounded-full border border-kindle-accent/25 bg-kindle-accent/5 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-kindle-accent hover:bg-kindle-accent/10"
+                  >
+                    <Layers className="h-3 w-3" />
+                    Series · {selectedBook.series}
+                    {selectedBook.seriesUrl && <ExternalLink className="h-2.5 w-2.5" />}
+                  </a>
+                )}
                 {loadingDetails && (
                   <p className="text-[9px] text-kindle-text-muted">Loading book details…</p>
                 )}

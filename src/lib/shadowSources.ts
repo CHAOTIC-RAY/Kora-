@@ -41,6 +41,9 @@ export type ShadowBook = {
   filesize?: number;
   language?: string;
   source: string;
+  series?: string;
+  seriesUrl?: string;
+  seriesId?: string;
   md5?: string;
   downloadUrl: string;
   directUrl?: string;
@@ -129,6 +132,15 @@ export function parseLibgenTitleCell(html: string): { title: string; isbn: strin
   });
   container.find("font[size='1'], small").remove();
   container.find(".badge, nobr").remove();
+  const hasSeriesLink = container.find("a[href*='series.php']").length > 0;
+  container.find("a[href*='series.php']").remove();
+  if (hasSeriesLink) {
+    const titleLink = container.find("a[href*='edition.php']").toArray().reverse().find((el) => {
+      const text = clean($(el).text());
+      return text && !isbnOf(text) && !/^(?:\d{4}[-/ ]|.*\b(?:vol(?:ume)?|iss(?:ue)?|pp\.?\s*\d)\b)/i.test(text);
+    });
+    if (titleLink) return { title: clean($(titleLink).text()), isbn };
+  }
   const segments = container.html().split(/<br\s*\/?>/i).map((line) => clean(line)).filter(Boolean);
   const unique = segments.filter((line, index) => !segments.slice(index + 1).some((later) => norm(later) === norm(line)));
   const title = unique.filter((line) => !isbnOf(line)).join(" · ").trim();
@@ -168,6 +180,11 @@ export function parseLibgenResultsHtml(html: string, baseUrl: string): ShadowBoo
     const titleCell = cells.eq(titleIndex);
     const parsedTitle = parseLibgenTitleCell(titleCell.html() || titleCell.text());
     if (!parsedTitle.title) return;
+    const seriesLink = titleCell.find("a[href*='series.php']").first();
+    const series = clean(seriesLink.text()) || undefined;
+    const seriesHref = seriesLink.attr("href") || "";
+    const seriesUrl = seriesHref ? new URL(seriesHref, baseUrl).toString() : undefined;
+    const seriesId = seriesHref ? new URL(seriesHref, baseUrl).searchParams.get("id") || undefined : undefined;
 
     const headers = table.find("tr").first().children("td, th").map((_, cell) => norm(clean($(cell).text()))).get();
     const headerTitle = headers.findIndex((header) => header === "title");
@@ -210,6 +227,9 @@ export function parseLibgenResultsHtml(html: string, baseUrl: string): ShadowBoo
       format,
       filesize,
       source: "Library Genesis",
+      series,
+      seriesUrl,
+      seriesId,
       md5,
       downloadUrl: adsUrl,
       directReady: false,
