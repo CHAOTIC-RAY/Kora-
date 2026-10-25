@@ -4,6 +4,8 @@ export interface NetgalleyBookResult {
   bookId: string;
   title: string;
   author: string;
+  /** True only when a title was read from this result's catalog card. */
+  titleIsParsed?: boolean;
   publisher?: string;
   description?: string;
   coverUrl: string;
@@ -65,6 +67,7 @@ export async function searchNetgalleyCatalog(
         bookId,
         title: cardTitle || query,
         author: cardAuthor,
+        titleIsParsed: !!cardTitle,
         publisher: cardPub,
         description: cardDesc,
         coverUrl,
@@ -98,22 +101,25 @@ export async function getNetgalleyCoverUrl(
     limit: 3
   });
 
-  if (results.length > 0) {
-    return results[0].coverUrl;
-  }
+  const words = (value: string) => value.toLowerCase()
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/)
+    .filter((word) => word && !["a", "an", "the", "of", "and"].includes(word));
+  const expectedTitle = words(cleanTitle);
+  const expectedAuthor = words(author || "");
 
-  // Fallback try title alone
-  if (author) {
-    const titleOnlyResults = await searchNetgalleyCatalog(cleanTitle, {
-      isAudiobook: options?.isAudiobook,
-      limit: 1
-    });
-    if (titleOnlyResults.length > 0) {
-      return titleOnlyResults[0].coverUrl;
-    }
-  }
+  const exactTitleAndAuthor = results.find((book) => {
+    if (!book.titleIsParsed) return false;
+    const candidateTitle = words(book.title);
+    const candidateAuthor = words(book.author || "");
+    const titleMatches = expectedTitle.length > 0 && candidateTitle.length >= expectedTitle.length &&
+      expectedTitle.every((word, index) => candidateTitle[index] === word);
+    const authorMatches = expectedAuthor.length === 0 ||
+      (candidateAuthor.length > 0 && expectedAuthor.every((word) => candidateAuthor.includes(word)));
+    return titleMatches && authorMatches;
+  });
 
-  return null;
+  return exactTitleAndAuthor?.coverUrl || null;
 }
 
 /**

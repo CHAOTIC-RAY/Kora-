@@ -1139,8 +1139,8 @@ export default {
       }).map((book: any) => ({
         ...book,
         coverUrl: book.md5 && /libgen|library\s+genesis/i.test(book.source || "")
-          ? `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}&md5=${encodeURIComponent(book.md5)}`
-          : book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${book.md5 ? `&md5=${encodeURIComponent(book.md5)}` : ""}`,
+          ? `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}&md5=${encodeURIComponent(book.md5)}&v=2`
+          : book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${book.md5 ? `&md5=${encodeURIComponent(book.md5)}` : ""}&v=2`,
       }));
       const sources = { ...(shadow.meta.sources || {}), ...(independent.meta.sources || {}) };
       const totalCount = Math.max(results.length, (Number(shadow.meta.total) || 0) + (Number(independent.meta.total) || 0));
@@ -1683,8 +1683,8 @@ export default {
                 source,
                 sourceId,
                 coverUrl: md5 && /libgen|library\s+genesis/i.test(source)
-                  ? `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}&md5=${encodeURIComponent(md5)}`
-                  : book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${md5 ? `&md5=${encodeURIComponent(md5)}` : ""}`,
+                  ? `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}&md5=${encodeURIComponent(md5)}&v=2`
+                  : book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${md5 ? `&md5=${encodeURIComponent(md5)}` : ""}&v=2`,
                 description: book.description || "",
                 downloadUrl: book.directReady === false ? "" : book.directUrl || book.downloadUrl || "",
                 isGoogleBook: false,
@@ -3217,6 +3217,21 @@ export default {
         } catch (_) {}
         return null;
       };
+      const coverWords = (value: string) => value.toLowerCase()
+        .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/)
+        .filter((word) => word && !["a", "an", "the", "of", "and"].includes(word));
+      const coverTitleMatches = (candidate: string, expected: string) => {
+        const wanted = coverWords(expected);
+        const actual = coverWords(candidate);
+        return wanted.length >= 2 && actual.length >= wanted.length &&
+          wanted.every((word, index) => actual[index] === word);
+      };
+      const coverAuthorMatches = (candidate: string[], expected: string) => {
+        const wanted = coverWords(expected);
+        const actual = coverWords(candidate.join(" "));
+        return wanted.length === 0 || (actual.length > 0 && wanted.every((word) => actual.includes(word)));
+      };
 
       // Prefer the archive's MD5-specific cover for search results. A broad
       // title search can return a different edition or even a different book.
@@ -3265,16 +3280,9 @@ export default {
           const gRes = await fetch(gUrl);
           if (gRes.ok) {
             const gData = await gRes.json();
-            const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-            const expectedTitle = normalize(title);
-            const expectedAuthor = normalize(author || "");
             const candidates = (gData.items || []).filter((item: any) => {
               const info = item.volumeInfo || {};
-              const candidateTitle = normalize(String(info.title || ""));
-              const candidateAuthors = normalize((info.authors || []).join(" "));
-              const titleMatches = candidateTitle === expectedTitle || candidateTitle.includes(expectedTitle) || expectedTitle.includes(candidateTitle);
-              const authorMatches = !expectedAuthor || candidateAuthors.includes(expectedAuthor) || expectedAuthor.includes(candidateAuthors);
-              return titleMatches && authorMatches;
+              return coverTitleMatches(String(info.title || ""), title) && coverAuthorMatches(info.authors || [], author || "");
             });
             for (const item of candidates) {
               const links = item.volumeInfo?.imageLinks || {};
@@ -3301,14 +3309,17 @@ export default {
           const searchUrl = new URL("https://openlibrary.org/search.json");
           searchUrl.searchParams.append("title", title);
           if (author) searchUrl.searchParams.append("author", author);
-          searchUrl.searchParams.append("limit", "1");
+          searchUrl.searchParams.append("limit", "5");
 
           const olRes = await fetch(searchUrl.toString());
           if (olRes.ok) {
             const olData = await olRes.json();
-            const firstBook = olData.docs?.[0];
-            if (firstBook?.cover_i) {
-              const proxied = await proxyImage(`https://covers.openlibrary.org/b/id/${firstBook.cover_i}-M.jpg`);
+            const candidates = (olData.docs || []).filter((book: any) =>
+              coverTitleMatches(String(book.title || ""), title) && coverAuthorMatches(book.author_name || [], author || "")
+            );
+            for (const candidate of candidates) {
+              if (!candidate.cover_i) continue;
+              const proxied = await proxyImage(`https://covers.openlibrary.org/b/id/${candidate.cover_i}-M.jpg`);
               if (proxied) return proxied;
             }
           }

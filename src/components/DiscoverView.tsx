@@ -3591,7 +3591,7 @@ function DiscoverView({
                             target.dataset.md5Fallback = "1";
                             target.src =
                               resolveCoverImageSrc(
-                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${encodeURIComponent(book.md5)}`
+                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${encodeURIComponent(book.md5)}&v=2`
                               ) || "";
                             return;
                           }
@@ -3610,7 +3610,7 @@ function DiscoverView({
                           if (target.dataset.titleFallback !== "1") {
                             target.dataset.titleFallback = "1";
                             target.src = resolveCoverImageSrc(
-                              `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}`
+                              `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&v=2`
                             ) || "";
                             return;
                           }
