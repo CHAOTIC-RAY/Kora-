@@ -127,6 +127,7 @@ interface SearchPrefs {
   defaultSource: string;
   autoCacheDownloads: boolean;
   openInNewTab: boolean;
+  coverBackupProvider?: string;
 }
 
 interface SettingsViewProps {
@@ -2488,6 +2489,22 @@ function SettingsView({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="cover-backup-provider" className="text-[9px] uppercase tracking-widest font-bold text-kindle-text-muted">Backup Cover Provider</label>
+                <select
+                  id="cover-backup-provider"
+                  value={searchPrefs.coverBackupProvider || "netgalley"}
+                  onChange={(event) => setSP({ coverBackupProvider: event.target.value })}
+                  className="w-full rounded-xl border border-kindle-border bg-kindle-bg px-3 py-2 text-xs text-kindle-text"
+                >
+                  <option value="netgalley">NetGalley</option>
+                  <option value="googlebooks">Google Books</option>
+                  <option value="openlibrary">Open Library</option>
+                  <option value="none">No catalog backup</option>
+                </select>
+                <p className="text-[10px] leading-relaxed text-kindle-text-muted">Used when an exact archive cover is unavailable. Other enabled catalog providers are tried afterward.</p>
               </div>
 
               <Row title="Auto-cache Downloads" desc="Save opened books to this device automatically">

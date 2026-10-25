@@ -3192,6 +3192,7 @@ export default {
       const md5 = url.searchParams.get("md5");
       const title = url.searchParams.get("title");
       const author = url.searchParams.get("author");
+      const backupProvider = url.searchParams.get("backup") || "netgalley";
       const type = url.searchParams.get("type");
       const isAudiobook = url.searchParams.get("isAudiobook") === "true" || type === "audiobook" || url.searchParams.get("media") === "audio";
 
@@ -3250,80 +3251,68 @@ export default {
         }
       }
 
-      // NetGalley is the first catalog backup after the archive's exact cover.
-      if (isAudiobook && title) {
+      const tryNetgalley = async () => {
+        if (!title) return null;
         try {
-          const ngCover = await getNetgalleyCoverUrl(title, author || "", { isAudiobook: true });
-          if (ngCover) {
-            const proxied = await proxyImage(ngCover);
-            if (proxied) return proxied;
-          }
-        } catch (_) {}
-      }
-
-      if (!isAudiobook && title) {
-        try {
-          const ngCover = await getNetgalleyCoverUrl(title, author || "");
-          if (ngCover) {
-            const proxied = await proxyImage(ngCover);
-            if (proxied) return proxied;
-          }
-        } catch (_) {}
-      }
-
-      // Google Books is the second backup. Check several candidates and reject
-      // obvious title/author mismatches instead of taking the first search hit.
-      if (title) {
+          const cover = await getNetgalleyCoverUrl(title, author || "", isAudiobook ? { isAudiobook: true } : undefined);
+          return cover ? await proxyImage(cover) : null;
+        } catch { return null; }
+      };
+      const tryGoogleBooks = async () => {
+        if (!title) return null;
         try {
           const query = `intitle:${title}${author ? ` inauthor:${author}` : ""}`;
-          const gUrl = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`;
-          const gRes = await fetch(gUrl);
-          if (gRes.ok) {
-            const gData = await gRes.json();
-            const candidates = (gData.items || []).filter((item: any) => {
-              const info = item.volumeInfo || {};
-              return coverTitleMatches(String(info.title || ""), title) && coverAuthorMatches(info.authors || [], author || "");
-            });
-            for (const item of candidates) {
-              const links = item.volumeInfo?.imageLinks || {};
-              const thumb = links.thumbnail || links.smallThumbnail;
-              if (!thumb) continue;
-              const proxied = await proxyImage(thumb.replace(/^http:/i, "https:"));
-              if (proxied) return proxied;
-            }
+          const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=5`);
+          if (!response.ok) return null;
+          const data = await response.json() as any;
+          const candidates = (data.items || []).filter((item: any) => {
+            const info = item.volumeInfo || {};
+            return coverTitleMatches(String(info.title || ""), title) && coverAuthorMatches(info.authors || [], author || "");
+          });
+          for (const item of candidates) {
+            const image = item.volumeInfo?.imageLinks?.thumbnail || item.volumeInfo?.imageLinks?.smallThumbnail;
+            if (image) { const proxied = await proxyImage(image.replace(/^http:/i, "https:")); if (proxied) return proxied; }
           }
-        } catch (_) {}
-      }
-
-      if (isbn && /^\d{10,13}$/.test(isbn)) {
+        } catch {}
+        return null;
+      };
+      const tryOpenLibrary = async () => {
         try {
-          const openLibraryUrl = `https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`;
-          const proxied = await proxyImage(openLibraryUrl);
-          if (proxied) return proxied;
-        } catch (_) {}
-      }
-
-      // OpenLibrary title search remains the final metadata fallback.
-      if (title) {
-        try {
+          if (isbn && /^\d{10,13}$/.test(isbn)) {
+            const exact = await proxyImage(`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`);
+            if (exact) return exact;
+          }
+          if (!title) return null;
           const searchUrl = new URL("https://openlibrary.org/search.json");
           searchUrl.searchParams.append("title", title);
           if (author) searchUrl.searchParams.append("author", author);
           searchUrl.searchParams.append("limit", "5");
-
-          const olRes = await fetch(searchUrl.toString());
-          if (olRes.ok) {
-            const olData = await olRes.json();
-            const candidates = (olData.docs || []).filter((book: any) =>
-              coverTitleMatches(String(book.title || ""), title) && coverAuthorMatches(book.author_name || [], author || "")
-            );
-            for (const candidate of candidates) {
-              if (!candidate.cover_i) continue;
-              const proxied = await proxyImage(`https://covers.openlibrary.org/b/id/${candidate.cover_i}-M.jpg`);
-              if (proxied) return proxied;
-            }
+          const response = await fetch(searchUrl.toString());
+          if (!response.ok) return null;
+          const data = await response.json() as any;
+          const candidates = (data.docs || []).filter((book: any) =>
+            coverTitleMatches(String(book.title || ""), title) && coverAuthorMatches(book.author_name || [], author || "")
+          );
+          for (const candidate of candidates) {
+            if (!candidate.cover_i) continue;
+            const proxied = await proxyImage(`https://covers.openlibrary.org/b/id/${candidate.cover_i}-M.jpg`);
+            if (proxied) return proxied;
           }
-        } catch (_) {}
+        } catch {}
+        return null;
+      };
+
+      const providers: Record<string, () => Promise<Response | null>> = {
+        netgalley: tryNetgalley,
+        googlebooks: tryGoogleBooks,
+        openlibrary: tryOpenLibrary,
+      };
+      const providerOrder = backupProvider === "none"
+        ? []
+        : [backupProvider, "netgalley", "googlebooks", "openlibrary"].filter((name, index, all) => providers[name] && all.indexOf(name) === index);
+      for (const provider of providerOrder) {
+        const result = await providers[provider]();
+        if (result) return result;
       }
 
       // If all fails, return a 404

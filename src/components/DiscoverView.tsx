@@ -93,6 +93,7 @@ interface DiscoverViewProps {
   grayscaleCovers?: boolean;
   hideCovers?: boolean;
   zlibConfig?: any;
+  coverBackupProvider?: string;
   initialQuery?: string | null;
   onClearInitialQuery?: () => void;
   /** Book id from a shared /book?id=.. link. */
@@ -268,6 +269,7 @@ function DiscoverView({
   showFirstBookNudge = false,
   onDismissFirstBookNudge,
   onOpenCreateView,
+  coverBackupProvider = "netgalley",
 }: DiscoverViewProps) {
   const getAudiobookCoverSrc = (coverUrl?: string | null) => resolveCoverImageSrc(coverUrl);
   const stripHtml = (html: string) => {
@@ -3584,14 +3586,13 @@ function DiscoverView({
                           const target = e.target as HTMLImageElement;
                           const encodedTitle = encodeURIComponent(book.title || "");
                           const encodedAuthor = encodeURIComponent(book.author || "");
-                          // Send archive covers through the cover resolver first. It
-                          // tries mirrors and then NetGalley/Google Books when the
-                          // MD5-specific source image is missing.
+                          // Send archive covers through the resolver first, with the
+                          // user's selected catalog provider as its first fallback.
                           if (book.md5 && target.dataset.md5Fallback !== "1") {
                             target.dataset.md5Fallback = "1";
                             target.src =
                               resolveCoverImageSrc(
-                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${encodeURIComponent(book.md5)}&v=2`
+                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${encodeURIComponent(book.md5)}&backup=${encodeURIComponent(coverBackupProvider)}&v=2`
                               ) || "";
                             return;
                           }
@@ -3610,7 +3611,7 @@ function DiscoverView({
                           if (target.dataset.titleFallback !== "1") {
                             target.dataset.titleFallback = "1";
                             target.src = resolveCoverImageSrc(
-                              `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&v=2`
+                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&backup=${encodeURIComponent(coverBackupProvider)}&v=2`
                             ) || "";
                             return;
                           }

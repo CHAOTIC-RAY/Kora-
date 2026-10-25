@@ -738,6 +738,7 @@ export default function App() {
       defaultSource: "all",
       autoCacheDownloads: true,
       openInNewTab: false,
+      coverBackupProvider: "netgalley",
     };
   });
 
@@ -3291,6 +3292,7 @@ export default function App() {
             userId={user?.uid || ""}
             books={books}
             zlibConfig={zlibConfig}
+            coverBackupProvider={searchPrefs.coverBackupProvider || "netgalley"}
             selectedBook={selectedBookForDownload}
             onSelectedBookChange={setSelectedBookForDownload}
             showFirstBookNudge={showFirstBookNudge && books.length === 0}
