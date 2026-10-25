@@ -277,37 +277,36 @@ function parseSize(text: string): number | undefined {
 }
 
 async function searchLibgen(query: string, page = 1, mode = "ebooks"): Promise<ShadowBook[]> {
-  const results: ShadowBook[] = [];
   let responded = false;
+  const controller = new AbortController();
 
   // Race mirrors — first one to return valid results wins.
   const mirrorPromises = LIBGEN_MIRRORS.map(async (mirror) => {
-    try {
-      const params = libgenSearchParams(query, mode);
-      params.set("page", String(Math.max(1, page)));
-      const url = `${mirror}/index.php?${params.toString()}`;
-      const html = await fetchHtml(url, timeout(12000));
-      responded = true;
-      return parseLibgenSearch(html, mirror);
-    } catch {
-      return [];
-    }
+    const params = libgenSearchParams(query, mode);
+    params.set("page", String(Math.max(1, page)));
+    const url = `${mirror}/index.php?${params.toString()}`;
+    const html = await fetchHtml(url, AbortSignal.any([timeout(9000), controller.signal]));
+    responded = true;
+    const books = parseLibgenSearch(html, mirror);
+    if (!books.length) throw new Error("Mirror returned no matching books");
+    return books;
   });
 
-  const settled = await Promise.all(mirrorPromises);
-  for (const books of settled) {
-    results.push(...books);
-    if (results.length >= 25) break;
+  try {
+    const results = await Promise.any(mirrorPromises);
+    controller.abort();
+    // Deduplicate by MD5.
+    const seen = new Set<string>();
+    return results.filter((book) => {
+      if (!book.md5 || seen.has(book.md5)) return false;
+      seen.add(book.md5);
+      return true;
+    });
+  } catch {
+    controller.abort();
+    if (!responded) throw new Error("Library Genesis mirrors are unavailable");
+    return [];
   }
-  if (!responded) throw new Error("Library Genesis mirrors are unavailable");
-
-  // Deduplicate by MD5
-  const seen = new Set<string>();
-  return results.filter((b) => {
-    if (!b.md5 || seen.has(b.md5)) return false;
-    seen.add(b.md5);
-    return true;
-  });
 }
 
 export function parseAnnasResultsHtml(html: string, baseUrl: string): ShadowBook[] {
@@ -354,26 +353,31 @@ export function parseAnnasResultsHtml(html: string, baseUrl: string): ShadowBook
 }
 
 async function searchAnnasArchive(query: string, page = 1): Promise<ShadowBook[]> {
-  const results: ShadowBook[] = [];
   let responded = false;
-  for (const host of ANNAS_ARCHIVE_HOSTS) {
-    try {
+  const controller = new AbortController();
+  const hostPromises = ANNAS_ARCHIVE_HOSTS.map(async (host) => {
       const url = `${host}/search?q=${encodeURIComponent(query)}&page=${Math.max(1, page)}`;
-      const html = await fetchHtml(url, timeout(12000));
+      const html = await fetchHtml(url, AbortSignal.any([timeout(9000), controller.signal]));
       responded = true;
-      results.push(...parseAnnasResultsHtml(html, host));
-      if (results.length >= 25) break;
-    } catch {
-      continue;
-    }
-  }
-  if (!responded) throw new Error("Anna's Archive search mirrors are unavailable");
-  const seen = new Set<string>();
-  return results.filter((book) => {
-    if (!book.md5 || seen.has(book.md5)) return false;
-    seen.add(book.md5);
-    return true;
+      const books = parseAnnasResultsHtml(html, host);
+      if (!books.length) throw new Error("Mirror returned no matching books");
+      return books;
   });
+
+  try {
+    const results = await Promise.any(hostPromises);
+    controller.abort();
+    const seen = new Set<string>();
+    return results.filter((book) => {
+      if (!book.md5 || seen.has(book.md5)) return false;
+      seen.add(book.md5);
+      return true;
+    });
+  } catch {
+    controller.abort();
+    if (!responded) throw new Error("Anna's Archive search mirrors are unavailable");
+    return [];
+  }
 }
 
 export function resetShadowSourceState(): void {
@@ -455,7 +459,7 @@ export async function searchShadowBooks(
   const relevant = deduped.filter((book) => relevance(book, q) > 0);
   const firstLibgen = relevant.findIndex((book) => /(?:libgen|library\s+genesis)/i.test(book.source));
   const resolved = firstLibgen >= 0
-    ? await resolveLibgenDirectLinks([relevant[firstLibgen]])
+    ? await resolveLibgenDirectLinks([relevant[firstLibgen]], 1200)
     : [];
   if (firstLibgen >= 0 && resolved[0]) relevant[firstLibgen] = resolved[0];
   const directResolved = resolved.filter((book) => book.directReady).length;
