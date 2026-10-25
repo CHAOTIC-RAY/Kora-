@@ -3402,7 +3402,7 @@ function DiscoverView({
                   }`}
                 >
                   <Database className="w-3 h-3" />
-                  Advanced Search
+                  Filters
                 </button>
             </div>
 
@@ -4630,7 +4630,7 @@ function DiscoverView({
                         className="w-full py-3.5 px-5 bg-kindle-card border border-kindle-border hover:border-kindle-accent text-kindle-text rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <Database className="w-4 h-4" />
-                        Advanced Search
+                        Search with filters
                       </button>
                       
                       <div className="hidden md:block mt-8 space-y-8">
