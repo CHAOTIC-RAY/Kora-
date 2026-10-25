@@ -3576,27 +3576,39 @@ function DiscoverView({
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           const target = e.target as HTMLImageElement;
-                          const attempt = parseInt(target.dataset.attempt || "0");
-                          target.dataset.attempt = String(attempt + 1);
+                          const encodedTitle = encodeURIComponent(book.title || "");
+                          const encodedAuthor = encodeURIComponent(book.author || "");
+                          // Send archive covers through the cover resolver first. It
+                          // tries mirrors and then NetGalley/Google Books when the
+                          // MD5-specific source image is missing.
+                          if (book.md5 && target.dataset.md5Fallback !== "1") {
+                            target.dataset.md5Fallback = "1";
+                            target.src =
+                              resolveCoverImageSrc(
+                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${encodeURIComponent(book.md5)}`
+                              ) || "";
+                            return;
+                          }
 
-                          // Attempt 1: if we have a real ISBN, try OpenLibrary by ISBN
-                          if (attempt === 0 && book.isbn && /^\d{10,13}$/.test(book.isbn)) {
+                          // If the MD5 resolver or original cover failed, try the
+                          // exact ISBN image before the title-only catalog fallback.
+                          if (book.isbn && /^\d{10,13}$/.test(book.isbn) && target.dataset.isbnFallback !== "1") {
+                            target.dataset.isbnFallback = "1";
                             target.src =
                               resolveCoverImageSrc(
                                 `https://covers.openlibrary.org/b/isbn/${book.isbn}-M.jpg`
                               ) || "";
                             return;
                           }
-                          // Attempt 2: try cover redirect API (NYT + OpenLibrary title search)
-                          if (attempt === 1) {
-                            const encodedTitle = encodeURIComponent(book.title);
-                            const encodedAuthor = encodeURIComponent(book.author || "");
-                            target.src =
-                              resolveCoverImageSrc(
-                                `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}&md5=${book.md5}`
-                              ) || "";
+
+                          if (target.dataset.titleFallback !== "1") {
+                            target.dataset.titleFallback = "1";
+                            target.src = resolveCoverImageSrc(
+                              `/api/cover-redirect?title=${encodedTitle}&author=${encodedAuthor}`
+                            ) || "";
                             return;
                           }
+
                           // All fallbacks exhausted: show typography placeholder
                           target.style.display = "none";
                           const parent = target.parentElement;

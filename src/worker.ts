@@ -1138,7 +1138,9 @@ export default {
         return true;
       }).map((book: any) => ({
         ...book,
-        coverUrl: book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${book.md5 ? `&md5=${encodeURIComponent(book.md5)}` : ""}`,
+        coverUrl: book.md5 && /libgen|library\s+genesis/i.test(book.source || "")
+          ? `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}&md5=${encodeURIComponent(book.md5)}`
+          : book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${book.md5 ? `&md5=${encodeURIComponent(book.md5)}` : ""}`,
       }));
       const sources = { ...(shadow.meta.sources || {}), ...(independent.meta.sources || {}) };
       const totalCount = Math.max(results.length, (Number(shadow.meta.total) || 0) + (Number(independent.meta.total) || 0));
@@ -1680,7 +1682,9 @@ export default {
                 format: book.format || extension.toLowerCase(),
                 source,
                 sourceId,
-                coverUrl: book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${md5 ? `&md5=${encodeURIComponent(md5)}` : ""}`,
+                coverUrl: md5 && /libgen|library\s+genesis/i.test(source)
+                  ? `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}&md5=${encodeURIComponent(md5)}`
+                  : book.coverUrl || `/api/cover-redirect?title=${encodeURIComponent(book.title || "")}&author=${encodeURIComponent(book.author || "")}${md5 ? `&md5=${encodeURIComponent(md5)}` : ""}`,
                 description: book.description || "",
                 downloadUrl: book.directReady === false ? "" : book.directUrl || book.downloadUrl || "",
                 isGoogleBook: false,
