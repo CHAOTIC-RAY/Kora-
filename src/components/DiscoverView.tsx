@@ -18,7 +18,7 @@ import { fetchAudiobookDetail, prefetchAudiobookDetail, cacheKeyForBook } from "
 import { getProxiedAudioUrl } from "../lib/audiobookStorage";
 import { refererForMediaUrl } from "../lib/mediaUrl";
 import { titlesRoughlyMatch } from "../lib/audiobookScraper";
-import { ensureSeriesFields, normalizeSeriesKey, parseSeriesNumber } from "../lib/seriesHelper";
+import { ensureSeriesFields, normalizeSeriesKey, parseSeriesNumber, parseSeriesFromTitle } from "../lib/seriesHelper";
 import {
   createSearchSignal,
   abortActiveSearch,
@@ -387,6 +387,8 @@ function DiscoverView({
   const [availableSourcesFromResults, setAvailableSourcesFromResults] = useState<Set<string>>(new Set());
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
   const [selectedTopic, setSelectedTopic] = useState<string>("all");
+  const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
+  const [availableSeries, setAvailableSeries] = useState<Set<string>>(new Set());
 
   const seriesDetailBooks = useMemo(() => {
     if (!seriesDetailBook?.series) return [];
@@ -2190,6 +2192,7 @@ function DiscoverView({
     lastSearchedTerm.current = term.trim();
     if (isNewTerm) {
       setCurrentPage(1);
+      setSeriesFilter(null);
       prefetchCache.current.clear();
     }
 
@@ -2362,6 +2365,14 @@ function DiscoverView({
       });
       setAvailableTopics(Array.from(topics).sort());
 
+      // Update available series from results (LibGen exposes series; Google Books
+      // series is parsed client-side in fetchVerifiedDetails)
+      const seriesSet = new Set<string>();
+      mappedBooks.forEach((b: any) => {
+        if (b.series && b.series.trim()) seriesSet.add(b.series.trim());
+      });
+      setAvailableSeries(seriesSet);
+
       // Update available sources from results
       if (activeSource === "all") {
         const sources = new Set<string>();
@@ -2409,6 +2420,7 @@ function DiscoverView({
     setHasMore(false);
     setTotalResults(0);
     setActiveSource("all");
+    setSeriesFilter(null);
     setCommunityBook(null);
     prefetchCache.current.clear();
     lastSearchedTerm.current = "";
@@ -2478,6 +2490,12 @@ function DiscoverView({
             coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:") || info.imageLinks?.smallThumbnail?.replace(/^http:/i, "https:") || undefined,
             industryIdentifiers: info.industryIdentifiers || undefined,
             subjects: googleSubjects,
+            series: (() => {
+              // Google Books has no dedicated series field; parse it from title/subtitle
+              const full = [info.title, info.subtitle].filter(Boolean).join(": ");
+              const parsed = parseSeriesFromTitle(full);
+              return parsed?.series || undefined;
+            })(),
           };
           const merged = Object.fromEntries(Object.keys(googleDetails).map((key) => [
             key,
@@ -2918,9 +2936,8 @@ function DiscoverView({
   }
 
   const filteredResults = results.filter(b => {
-    if (selectedTopic !== "all") {
-      return b.topic === selectedTopic;
-    }
+    if (selectedTopic !== "all" && b.topic !== selectedTopic) return false;
+    if (seriesFilter && b.series !== seriesFilter) return false;
     return true;
   });
 
@@ -3451,6 +3468,34 @@ function DiscoverView({
                         }`}
                       >
                         {topic}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {availableSeries.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 max-h-32 overflow-y-auto pr-2 scrollbar-hide">
+                    <button
+                      onClick={() => setSeriesFilter(null)}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border ${
+                        seriesFilter === null
+                          ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
+                          : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
+                      }`}
+                    >
+                      All Series
+                    </button>
+                    {Array.from(availableSeries).sort().map((series) => (
+                      <button
+                        key={series}
+                        onClick={() => setSeriesFilter(series)}
+                        className={`px-3 py-1 rounded-lg text-[9px] font-bold uppercase tracking-widest transition border truncate max-w-[150px] ${
+                          seriesFilter === series
+                            ? "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30"
+                            : "bg-kindle-card text-kindle-text-muted border-kindle-border hover:border-kindle-accent/30"
+                        }`}
+                      >
+                        {series}
                       </button>
                     ))}
                   </div>
