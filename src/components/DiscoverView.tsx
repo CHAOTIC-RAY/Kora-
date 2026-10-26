@@ -372,8 +372,6 @@ function DiscoverView({
   const [seriesCatalog, setSeriesCatalog] = useState<any | null>(null);
   const [seriesCatalogLoading, setSeriesCatalogLoading] = useState(false);
   const [seriesCatalogError, setSeriesCatalogError] = useState<string | null>(null);
-  const [seriesVolumeMirrors, setSeriesVolumeMirrors] = useState<Map<string, any[]>>(new Map());
-  const [resolvingVolumeMirrors, setResolvingVolumeMirrors] = useState<Set<string>>(new Set());
   const seriesFetchGen = useRef(0);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
@@ -1456,40 +1454,6 @@ function DiscoverView({
       if (generation === seriesFetchGen.current) setSeriesCatalogError(error?.message || "Could not load catalog series details.");
     } finally {
       if (generation === seriesFetchGen.current) setSeriesCatalogLoading(false);
-    }
-  };
-
-  /** Resolve instant download mirrors (LibGen + Anna's Archive) for a series volume
-   *  by searching its title + author, then building direct mirror links from the MD5.
-   *  Falls back to opening the full download modal when no instant mirror is available. */
-  async function resolveVolumeDownload(book: any) {
-    const bookId = String(book.id || "");
-    if (!bookId || resolvingVolumeMirrors.has(bookId)) return;
-    setResolvingVolumeMirrors((prev) => new Set(prev).add(bookId));
-    try {
-      const q = cleanTitleAndAuthorForEbookSearch(book.title, book.author);
-      const result = await searchDownloadVariants(q);
-      let instant: any[] = [];
-      if (result.books.length) {
-        const variants = rankVariants(result.books, book.title, book.author);
-        instant = buildInstantMirrors(variants[0]);
-        setSelectedFeaturedVariant(variants[0]);
-        setFeaturedDownloadVariants(variants);
-      }
-      setSeriesVolumeMirrors((prev) => new Map(prev).set(bookId, instant));
-      // No instant mirror (no md5 / direct file URL) — open the full download modal instead.
-      if (!instant.length) {
-        handleGetDownloadLinks(book);
-      }
-    } catch (err) {
-      console.error("Failed to resolve series volume download:", err);
-      handleGetDownloadLinks(book);
-    } finally {
-      setResolvingVolumeMirrors((prev) => {
-        const next = new Set(prev);
-        next.delete(bookId);
-        return next;
-      });
     }
   };
 
@@ -4505,86 +4469,34 @@ function DiscoverView({
         {[book.publisher, book.year, book.pages ? `${book.pages} pp` : "", book.format?.toUpperCase(), book.filesize ? `${(book.filesize / 1_000_000).toFixed(1)} MB` : "", book.isbn ? `ISBN ${book.isbn}` : ""].filter(Boolean).join(" · ")}
                           </p>
                           {book.description && <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-kindle-text-muted">{stripHtml(book.description)}</p>}
-                          <div className="mt-2 flex items-center gap-2">
-                            {book.inLibrary ? (
-                              <>
-                                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-kindle-border">
-                                  <div className="h-full rounded-full bg-kindle-accent" style={{ width: `${progress}%` }} />
-                                </div>
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
-                                  {book.status === "completed" ? "Finished" : progress > 0 ? `${progress}% read` : "To read"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(ev) => { ev.stopPropagation(); openBookDetail(book); }}
-                                  className="px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest transition border bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30 hover:bg-kindle-accent/20 ml-2"
-                                  title="Open in library"
-                                >
-                                  <BookOpen className="h-3 w-3 shrink-0" /> Read
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
-                                  {book.metadataSource || "Catalog entry"} · Missing from your library
-                                </span>
-                                {seriesVolumeMirrors.has(String(book.id)) ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={(ev) => {
-                                        ev.stopPropagation();
-                                        const mirrors = seriesVolumeMirrors.get(String(book.id));
-                                        if (mirrors?.[0]?.url) onOpenBrowser?.(mirrors[0].url);
-                                      }}
-                                      className="px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest transition border bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20 ml-2"
-                                      title="Direct LibGen download"
-                                    >
-                                      <Download className="h-3 w-3 shrink-0" /> LibGen
-                                    </button>
-                                    {seriesVolumeMirrors.get(String(book.id))!.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={(ev) => {
-                                          ev.stopPropagation();
-                                          const mirrors = seriesVolumeMirrors.get(String(book.id));
-                                          if (mirrors?.[1]?.url) onOpenBrowser?.(mirrors[1].url);
-                                        }}
-                                        className="px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest transition border bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text ml-2"
-                                        title="Anna's Archive"
-                                      >
-                                        Anna's
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={(ev) => { ev.stopPropagation(); handleGetDownloadLinks(book); }}
-                                      className="px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest transition border bg-kindle-card text-kindle-text-muted border-kindle-border hover:text-kindle-text ml-2"
-                                      title="All download options"
-                                    >
-                                      <Layers className="h-3 w-3 shrink-0" />
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={(ev) => { ev.stopPropagation(); resolveVolumeDownload(book); }}
-                                    disabled={resolvingVolumeMirrors.has(String(book.id))}
-                                    className={`px-2 py-1 rounded-lg text-[8px] font-bold uppercase tracking-widest transition border ml-2 ${
-                                      resolvingVolumeMirrors.has(String(book.id))
-                                        ? "bg-kindle-bg text-kindle-text-muted border-kindle-border cursor-not-allowed"
-                                        : "bg-kindle-accent/10 text-kindle-accent border-kindle-accent/30 hover:bg-kindle-accent/20"
-                                    }`}
-                                  >
-                                    {resolvingVolumeMirrors.has(String(book.id)) ? (
-                                      <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-                                    ) : (
-                                      <Download className="h-3 w-3 shrink-0" />
-                                    )}
-                                  </button>
-                                )}
-                              </>
+                          <div className="mt-2 flex items-center justify-between gap-3">
+                            <span className="min-w-0 truncate text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                              {book.inLibrary
+                                ? (book.status === "completed" ? "Finished" : progress > 0 ? `${progress}% read` : "In your library")
+                                : `${book.metadataSource || "Catalog entry"} · Missing from your library`}
+                            </span>
+                            {book.inLibrary && (
+                              <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-kindle-border">
+                                <div className="h-full rounded-full bg-kindle-accent" style={{ width: `${progress}%` }} />
+                              </div>
                             )}
+                            <button
+                              type="button"
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                setSeriesDetailBook(null);
+                                openBookDetail({
+                                  ...book,
+                                  source: book.source || book.metadataSource || "Series catalog",
+                                  isGoogleBook: Boolean(book.googleVolumeId),
+                                  series: book.series || seriesDetailBook?.series,
+                                });
+                              }}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-kindle-accent/30 bg-kindle-accent/10 px-2.5 py-1.5 text-[8px] font-bold uppercase tracking-widest text-kindle-accent transition hover:bg-kindle-accent/20"
+                              title={`Open details for ${book.title}`}
+                            >
+                              <BookOpen className="h-3 w-3 shrink-0" /> Details
+                            </button>
                           </div>
                         </div>
                       </li>

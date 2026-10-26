@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { useAndroidBackLayer } from "../hooks/useAndroidBackLayer";
 import JSZip from "jszip";
+import { parseMobiBytes } from "../lib/formats/mobiReader";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   BookMetadata, 
@@ -1953,11 +1954,12 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
         handleNextPage();
       }
     } else if (effectivePageTurnMode === "margins-only") {
-      // Wider dead-zone in the middle for comfortable touch selection on mobile.
-      const edge = isMobile ? 0.22 : 0.15;
-      if (ratio < edge) {
+      // Kindle-like touch zones on phones: the left side goes back and the
+      // rest of the page advances, so taps never land in a wide dead zone.
+      const previousZone = isMobile ? 0.3 : 0.15;
+      if (ratio < previousZone) {
         handlePrevPage();
-      } else if (ratio > 1 - edge) {
+      } else if (isMobile || ratio > 1 - previousZone) {
         handleNextPage();
       }
     }
@@ -2155,6 +2157,44 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
       const fileData = await getBookFile(book.id);
       if (!fileData) {
         throw new Error("Book file not cached locally on this device. Please sync or re-download.");
+      }
+
+      // MOBI is parsed into the same chapter model the EPUB reader already
+      // uses, so it gets the identical pagination, themes, notes, highlights,
+      // narration, and navigation controls without a conversion step.
+      if (book.extension?.toLowerCase() === "mobi") {
+        zipRef.current = null;
+        zipImageMapRef.current = null;
+        rootDirRef.current = "";
+        hrefToIndexRef.current.clear();
+        const bytes = new Uint8Array(await fileData.blob.arrayBuffer());
+        const parsed = parseMobiBytes(bytes, fileData.fileName || `${book.title}.mobi`);
+        const mobiDoc = new DOMParser().parseFromString(parsed.text, "text/html");
+        mobiDoc.querySelectorAll("script, iframe, object, embed, form, input, button").forEach((node) => node.remove());
+        mobiDoc.querySelectorAll("*").forEach((node) => {
+          for (const attr of Array.from(node.attributes)) {
+            if (/^on/i.test(attr.name) || ((attr.name === "href" || attr.name === "src") && /^\s*javascript:/i.test(attr.value))) {
+              node.removeAttribute(attr.name);
+            }
+          }
+        });
+        let mobiContent = mobiDoc.body.innerHTML.trim();
+        if (!mobiContent || !/<[a-z][^>]*>/i.test(parsed.text)) {
+          const escaped = parsed.text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          mobiContent = escaped.split(/\n\s*\n+/).filter(Boolean).map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br>")}</p>`).join("");
+        }
+        setChapters([{
+          id: "mobi-content",
+          href: "mobi-content.html",
+          title: parsed.meta.title || book.title,
+          content: mobiContent,
+          fullPath: "mobi-content.html",
+        }]);
+        setCurrentChapterIdx(0);
+        setCurrentPageNum(Math.max(1, book.progress?.pageNumber || 1));
+        setLoading(false);
+        playBookOpenSound();
+        return;
       }
 
       // 2. Load Zip

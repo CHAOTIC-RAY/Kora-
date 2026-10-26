@@ -32,6 +32,8 @@ import {
 import type { LibraryGroup } from "../lib/seriesHelper";
 import { logger } from "../lib/logger";
 import { openArchive } from "../lib/formats/archive";
+import { convertPdfToEpub } from "../lib/pdfToEpub";
+import toast from "react-hot-toast";
 
 /**
  * What the Workshop file picker will even offer to import.
@@ -876,6 +878,8 @@ function LibraryManager({
   const [deletingBookIds, setDeletingBookIds] = useState<Set<string>>(new Set());
   const [editingCoverBook, setEditingCoverBook] = useState<BookMetadata | null>(null);
   const [savingBookId, setSavingBookId] = useState<string | null>(null);
+  const [convertingBookId, setConvertingBookId] = useState<string | null>(null);
+  const [pdfConversionProgress, setPdfConversionProgress] = useState(0);
   const [editingMetadataBook, setEditingMetadataBook] = useState<BookMetadata | null>(null);
   const [longPressedBook, setLongPressedBook] = useState<BookMetadata | null>(null);
 
@@ -972,6 +976,55 @@ function LibraryManager({
     setCalculatedStreak(calculateStreak(stats));
     setShowLogModal(false);
   };
+
+  async function handleConvertPdfToEpub(book: BookMetadata) {
+    const toastId = toast.loading("Preparing PDF conversion…");
+    setConvertingBookId(book.id);
+    setPdfConversionProgress(0);
+    setLongPressedBook(null);
+    try {
+      const cached = await getBookFile(book.id);
+      if (!cached?.blob) throw new Error("Download this PDF to the device before converting it.");
+      const result = await convertPdfToEpub(cached.blob, {
+        title: book.title,
+        author: book.author,
+        language: book.language,
+        onProgress: ({ percent }) => {
+          setPdfConversionProgress(percent);
+          toast.loading(`Converting PDF to EPUB… ${percent}%`, { id: toastId });
+        },
+      });
+      const epubId = `${book.id}::converted-epub`;
+      const epubName = `${(result.title || book.title).replace(/[\\/:*?"<>|]+/g, "_")}.epub`;
+      await storeBookFile(epubId, result.blob, epubName, "epub");
+      const convertedBook: BookMetadata = {
+        ...book,
+        id: epubId,
+        title: result.title || book.title,
+        author: result.author || book.author,
+        filename: epubName,
+        extension: "epub",
+        size: `${(result.blob.size / (1024 * 1024)).toFixed(1)} MB`,
+        kind: "converted-epub",
+        derivedFromBookId: book.id,
+        tags: Array.from(new Set([...(book.tags || []), "converted", "epub"])),
+        status: "to-read",
+        progress: { percent: 0, lastReadTime: Date.now() },
+        dateAdded: Date.now(),
+        dateModified: Date.now(),
+      };
+      await syncBookToCloud(userId, convertedBook);
+      await onCachedIdsChanged();
+      onRefreshLibrary();
+      const warning = result.warnings.length ? ` ${result.warnings[0]}` : "";
+      toast.success(`Created EPUB from ${result.extractedPages} of ${result.pageCount} PDF pages.${warning}`, { id: toastId, duration: 7000 });
+    } catch (error: any) {
+      toast.error(error?.message || "Could not convert this PDF to EPUB.", { id: toastId, duration: 7000 });
+    } finally {
+      setConvertingBookId(null);
+      setPdfConversionProgress(0);
+    }
+  }
 
   // Long press refs & helpers
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -2667,6 +2720,22 @@ function LibraryManager({
 
                   {!(isWalkthroughBook(longPressedBook) && !walkthroughAdvancedMenu) && (
                     <>
+                  {longPressedBook.extension?.toLowerCase() === "pdf" && (
+                    <button
+                      onClick={() => void handleConvertPdfToEpub(longPressedBook)}
+                      disabled={convertingBookId === longPressedBook.id}
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kindle-bg rounded-xl text-left text-xs font-semibold transition-colors disabled:opacity-60"
+                    >
+                      {convertingBookId === longPressedBook.id ? (
+                        <RefreshCw className="w-4 h-4 text-kindle-text-muted animate-spin" />
+                      ) : (
+                        <FileText className="w-4 h-4 text-kindle-text-muted" />
+                      )}
+                      {convertingBookId === longPressedBook.id
+                        ? `Converting to EPUB… ${pdfConversionProgress}%`
+                        : "Convert to EPUB"}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setEditingCoverBook(longPressedBook);

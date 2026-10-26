@@ -34,7 +34,6 @@ import { canHydrateBook } from "./lib/crossDeviceSync";
 import { isLoungeEnabled, setLoungeEnabled } from "./lib/loungePrefs";
 const BookReaderEPUB = lazy(() => import("./components/BookReaderEPUB"));
 const BookReaderPDF = lazy(() => import("./components/BookReaderPDF"));
-const BookReaderMOBI = lazy(() => import("./components/BookReaderMOBI"));
 const BookReaderText = lazy(() => import("./components/BookReaderText"));
 const CreateView = lazy(() => import("./components/CreateView"));
 const AudiobookPlayer = lazy(() => import("./components/AudiobookPlayer"));
@@ -62,6 +61,7 @@ import {
   syncServiceWorkerPrefs,
 } from "./lib/swBridge";
 import { applySelectedFeedSources, DEFAULT_FEED_SUBSCRIPTIONS } from "./lib/feedStorage";
+import { saveNewsCountry } from "./lib/countryFeeds";
 import { getTimeOfDayAutoTheme } from "./lib/readerThemes";
 import Quote from "./components/Quote";
 const FeedView = lazy(() => import("./components/FeedView"));
@@ -598,6 +598,7 @@ export default function App() {
     dailyReminders: boolean;
     dailyBriefNotification?: boolean;
     selectedFeedUrls?: string[];
+    countryCode?: string;
   }) => {
     localStorage.setItem("kora_onboarding_completed", "true");
     localStorage.setItem("kora_user_nickname", prefs.nickname);
@@ -617,6 +618,7 @@ export default function App() {
     localStorage.setItem("kora_reader_prefs", JSON.stringify(updatedPrefs));
     
     localStorage.setItem("kora_reading_goal", String(prefs.dailyGoal));
+    saveNewsCountry(prefs.countryCode || "");
     
     const updatedSearch = {
       ...searchPrefs,
@@ -3527,14 +3529,7 @@ export default function App() {
               localStorage.setItem("kindle_last_read", JSON.stringify(updatedBook));
             }}
           />
-        ) : activeBook.extension?.toLowerCase() === "mobi" ? (
-          <BookReaderMOBI
-            book={activeBook}
-            readerPrefs={readerPrefs}
-            onReaderPrefsChange={setReaderPrefs}
-            onClose={dismissReader}
-          />
-        ) : (activeBook.extension?.toLowerCase() === "epub" || !activeBook.extension) ? (
+        ) : (["epub", "mobi"].includes(activeBook.extension?.toLowerCase() || "") || !activeBook.extension) ? (
           <BookReaderEPUB
             book={activeBook}
             userId={user?.uid || ""}
