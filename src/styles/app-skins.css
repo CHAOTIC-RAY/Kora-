@@ -1414,18 +1414,39 @@ body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .th
 body.skin-cyberui {
   --cyberui-line: color-mix(in srgb, var(--theme-border) 78%, transparent);
   --cyberui-glow: color-mix(in srgb, var(--theme-border) 24%, transparent);
+  --cyberui-coral-glow: color-mix(in srgb, var(--theme-accent) 38%, transparent);
   background-color: var(--theme-bg) !important;
   background-image:
+    radial-gradient(ellipse at 50% -18%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 56%),
     linear-gradient(color-mix(in srgb, var(--theme-border) 7%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--theme-border) 7%, transparent) 1px, transparent 1px) !important;
-  background-size: 28px 28px !important;
+  background-size: auto, 28px 28px, 28px 28px !important;
   background-attachment: fixed !important;
   font-family: "Rajdhani", "Share Tech Mono", sans-serif !important;
+  color: var(--theme-text) !important;
+  scrollbar-color: var(--theme-border) var(--theme-bg);
 }
 
 body.skin-cyberui :is(h1, h2, h3, h4, .font-display) {
   font-family: "Orbitron", "Rajdhani", sans-serif !important;
   letter-spacing: 0.04em !important;
+  text-wrap: balance;
+}
+
+/* Thin signal line ties the existing Kora header into the operator HUD. */
+body.skin-cyberui .kora-app-header {
+  position: relative;
+  isolation: isolate;
+}
+
+body.skin-cyberui .kora-app-header::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--theme-accent) 0 18%, var(--theme-border) 18% 82%, var(--theme-accent) 82%);
+  box-shadow: 0 0 12px var(--cyberui-glow);
 }
 
 body.skin-cyberui .kora-app-header,
@@ -1433,7 +1454,7 @@ body.skin-cyberui .kora-desktop-nav,
 body.skin-cyberui .kora-mobile-footer {
   background: color-mix(in srgb, var(--theme-bg) 94%, black) !important;
   border-color: var(--theme-border) !important;
-  border-radius: 0.35rem !important;
+  border-radius: 0.3rem !important;
   box-shadow: 0 0 18px var(--cyberui-glow), inset 0 0 14px rgba(0, 0, 0, 0.16) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
@@ -1458,6 +1479,74 @@ body.skin-cyberui .kora-tab-pill * {
   color: #211417 !important;
 }
 
+body.skin-cyberui .kora-desktop-nav-item {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-radius: 0.2rem !important;
+}
+
+body.skin-cyberui .kora-desktop-nav-item:not(.is-active):hover,
+body.skin-cyberui .kora-tab-item:not(.is-active):hover {
+  color: var(--theme-text) !important;
+  background: color-mix(in srgb, var(--theme-border) 12%, transparent) !important;
+}
+
+/* The status rail makes every app surface feel like one coherent console. */
+body.skin-cyberui .kora-main-mobile::before {
+  content: "CYBR//DECK     PERSONAL ARCHIVE SYSTEM     OPERATOR ACCESS";
+  display: block;
+  width: 100%;
+  margin: 0 auto 1.25rem;
+  padding: 0.35rem 0.55rem;
+  color: var(--theme-border);
+  border-bottom: 1px solid var(--cyberui-line);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--theme-border) 10%, transparent), transparent 70%);
+  font: 600 0.58rem/1.2 "Share Tech Mono", monospace;
+  letter-spacing: 0.16em;
+  text-shadow: 0 0 8px var(--cyberui-glow);
+}
+
+body.skin-cyberui .cyberui-lounge > header {
+  padding: 0.9rem 1rem 1rem;
+  border: 1px solid var(--cyberui-line);
+  border-left: 3px solid var(--theme-accent);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--theme-card) 94%, transparent), transparent);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.14);
+}
+
+body.skin-cyberui .cyberui-lounge > header h2 {
+  max-width: 48rem;
+  color: var(--theme-border) !important;
+  font-style: normal !important;
+  font-size: clamp(1.35rem, 3.5vw, 2.35rem) !important;
+  line-height: 1.12 !important;
+  text-transform: uppercase;
+  text-shadow: 0 0 18px var(--cyberui-glow);
+}
+
+body.skin-cyberui .cyberui-lounge-hero {
+  border-radius: 0.35rem !important;
+  border: 1px solid var(--cyberui-line) !important;
+  border-left: 3px solid var(--theme-accent) !important;
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.32), inset 0 0 28px color-mix(in srgb, var(--theme-border) 5%, transparent) !important;
+}
+
+body.skin-cyberui .cyberui-lounge-hero img {
+  border-color: var(--theme-border) !important;
+  border-radius: 0.18rem !important;
+  box-shadow: 0 0 14px var(--cyberui-glow) !important;
+}
+
+body.skin-cyberui .cyberui-lounge-hero h4 {
+  font-family: "Orbitron", "Rajdhani", sans-serif !important;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+body.skin-cyberui .cyberui-lounge-hero .bg-kindle-accent {
+  box-shadow: 0 0 12px var(--cyberui-coral-glow);
+}
+
 body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
   background: color-mix(in srgb, var(--theme-card) 94%, black) !important;
   border: 1px solid var(--cyberui-line) !important;
@@ -1465,8 +1554,13 @@ body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
   box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.12), 0 0 12px rgba(0, 0, 0, 0.16) !important;
 }
 
+body.skin-cyberui :is([class*="rounded-3xl"], [class*="rounded-2xl"]) {
+  border-radius: 0.45rem !important;
+}
+
 body.skin-cyberui :is(.kora-chrome-btn, button) {
-  border-radius: 0.25rem;
+  border-radius: 0.22rem;
+  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
 }
 
 body.skin-cyberui .kora-chrome-btn {
@@ -1475,10 +1569,17 @@ body.skin-cyberui .kora-chrome-btn {
   box-shadow: 0 0 8px var(--cyberui-glow) !important;
 }
 
+body.skin-cyberui button:hover:not(:disabled) {
+  border-color: var(--theme-border);
+}
+
 body.skin-cyberui :is(button.bg-kindle-text, button.bg-neutral-900, button.bg-black) {
   color: #211417 !important;
   background: var(--theme-accent) !important;
   border-color: var(--theme-accent) !important;
+  box-shadow: 0 0 14px var(--cyberui-coral-glow) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 body.skin-cyberui :is(input, textarea, select) {
@@ -1493,6 +1594,149 @@ body.skin-cyberui :is(.uppercase, [class*="tracking-widest"]) {
   letter-spacing: 0.12em;
 }
 
+body.skin-cyberui :is(hr, .border-t, .border-b) {
+  border-color: var(--cyberui-line) !important;
+}
+
+body.skin-cyberui :is(.text-kindle-accent, .text-kindle-text-muted) {
+  text-shadow: 0 0 8px color-mix(in srgb, currentColor 20%, transparent);
+}
+
+body.skin-cyberui :focus-visible {
+  outline: 2px solid var(--theme-border) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 12px var(--cyberui-glow) !important;
+}
+
 body.skin-cyberui ::-webkit-scrollbar { width: 6px; height: 6px; }
 body.skin-cyberui ::-webkit-scrollbar-track { background: var(--theme-bg); }
 body.skin-cyberui ::-webkit-scrollbar-thumb { background: var(--theme-border); border-radius: 2px; }
+
+@media (max-width: 640px) {
+  body.skin-cyberui .kora-main-mobile::before {
+    content: "CYBR//DECK      PERSONAL ARCHIVE";
+    font-size: 0.52rem;
+    letter-spacing: 0.12em;
+  }
+  body.skin-cyberui .kora-mobile-footer {
+    border-top: 2px solid var(--theme-border) !important;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body.skin-cyberui .kora-desktop-nav-item.is-active,
+  body.skin-cyberui .kora-tab-pill {
+    animation: cyberui-signal 3.2s ease-in-out infinite;
+  }
+}
+
+@keyframes cyberui-signal {
+  0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent) 24%, transparent); }
+  50% { box-shadow: 0 0 16px color-mix(in srgb, var(--theme-accent) 42%, transparent); }
+}
+
+/* UNO table: the cards sit in a real hand fan, with depth and a playable-card
+   lift. This is scoped to the game overlay, independent of the active app skin. */
+.kora-game-theme .uno-game-arena {
+  background-color: var(--theme-bg);
+  background-image:
+    radial-gradient(ellipse at 50% 35%, color-mix(in srgb, var(--theme-border) 7%, transparent), transparent 62%),
+    linear-gradient(90deg, transparent 0 calc(50% - 1px), color-mix(in srgb, var(--theme-border) 8%, transparent) 50%, transparent calc(50% + 1px));
+}
+
+.kora-game-theme .uno-felt-table {
+  border-radius: 1.15rem !important;
+  border-width: 1px !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-border) 12%, transparent), inset 0 0 48px color-mix(in srgb, var(--theme-border) 6%, transparent), 0 12px 32px rgba(0, 0, 0, 0.28) !important;
+}
+
+.kora-game-theme .uno-hand-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.1rem !important;
+  border-color: color-mix(in srgb, var(--theme-border) 72%, transparent) !important;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--theme-card) 96%, var(--theme-border)), var(--theme-card) 55%, color-mix(in srgb, var(--theme-bg) 78%, var(--theme-card))) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-border) 24%, transparent), 0 12px 26px rgba(0, 0, 0, 0.24) !important;
+}
+
+.kora-game-theme .uno-hand-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--theme-border), var(--theme-accent), transparent);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.kora-game-theme .uno-hand-fan {
+  position: relative;
+  gap: 0 !important;
+  justify-content: safe center;
+  align-items: flex-end;
+  min-height: 150px !important;
+  padding: 0.7rem 1.1rem 1rem !important;
+  perspective: 900px;
+  isolation: isolate;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--theme-border) 60%, transparent) transparent;
+}
+
+.kora-game-theme .uno-hand-card {
+  margin-left: -1.15rem;
+  transform-origin: 50% 150%;
+  rotate: var(--uno-hand-angle, 0deg);
+  translate: 0 var(--uno-hand-drop, 0px);
+  z-index: 1;
+  filter: drop-shadow(2px 4px 2px rgba(0, 0, 0, 0.32));
+  transition: translate 170ms ease, rotate 170ms ease, scale 170ms ease, filter 170ms ease;
+}
+
+.kora-game-theme .uno-hand-card:first-child { margin-left: 0; }
+
+.kora-game-theme .uno-hand-card > span.relative > div {
+  border-radius: 0.58rem !important;
+  border-width: 2px !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.24), 2px 3px 0 color-mix(in srgb, var(--theme-card) 84%, black), 4px 5px 0 color-mix(in srgb, var(--theme-border) 30%, var(--theme-bg)), 0 10px 16px rgba(0, 0, 0, 0.34) !important;
+}
+
+.kora-game-theme .uno-hand-card:hover:not(:disabled),
+.kora-game-theme .uno-hand-card:focus-visible:not(:disabled) {
+  z-index: 24;
+  rotate: 0deg;
+  translate: 0 -0.8rem;
+  scale: 1.08;
+  filter: drop-shadow(0 0 12px color-mix(in srgb, var(--theme-border) 42%, transparent));
+}
+
+.kora-game-theme .uno-hand-card:disabled {
+  filter: saturate(0.62) brightness(0.75) drop-shadow(1px 3px 2px rgba(0, 0, 0, 0.3));
+}
+
+body.skin-cyberui .kora-game-theme .uno-felt-table {
+  border-color: var(--theme-border) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-border) 28%, transparent), inset 0 0 72px color-mix(in srgb, var(--theme-border) 9%, transparent), 0 0 28px color-mix(in srgb, var(--theme-border) 9%, transparent) !important;
+}
+
+body.skin-cyberui .kora-game-theme .uno-hand-panel {
+  border-radius: 0.5rem !important;
+  border-color: var(--theme-border) !important;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.22), 0 0 18px var(--cyberui-glow) !important;
+}
+
+@media (max-width: 640px) {
+  .kora-game-theme .uno-hand-fan {
+    min-height: 132px !important;
+    padding-inline: 0.65rem !important;
+  }
+
+  .kora-game-theme .uno-hand-card { margin-left: -1.45rem; }
+  .kora-game-theme .uno-hand-card:first-child { margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kora-game-theme .uno-hand-card,
+  .kora-game-theme .uno-hand-card:hover:not(:disabled) {
+    transition: none !important;
+  }
+}

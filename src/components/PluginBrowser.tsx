@@ -179,7 +179,7 @@ export default function PluginBrowser({
     all.push(cyberUiRegistryEntry(builtinInstalled));
     // Render bundled plugins immediately. Registry requests can be slow or
     // unreachable, but must never hold back themes shipped with Kora itself.
-    setEntries(all);
+    setEntries([...all]);
     const seen = new Set<string>([CYBERUI_THEME.id]);
     const failed: string[] = [];
     for (const repo of getRepos()) {
@@ -199,7 +199,10 @@ export default function PluginBrowser({
         failed.push(`${repo} — ${err instanceof Error ? err.message : "unreachable"}`);
       }
     }
-    setEntries(all);
+    // `all` was already published above for immediate built-in rendering.
+    // Publish a fresh array so React and the memoized category groups see the
+    // registry entries appended during the fetch loop.
+    setEntries([...all]);
     setRepos(getRepos());
     setInstalled(getInstalledPlugins());
     setExtensions(getInstalledExtensions());

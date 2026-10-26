@@ -789,7 +789,7 @@ export default function UnoGame({
 
           {/* SCREEN 3: ACTIVE PLAYING ARENA */}
           {screen === "playing" && publicState && (
-            <main className="kora-game-theme relative flex-1 overflow-hidden p-3 text-[var(--theme-text)] sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 48%), var(--theme-bg)" }}>
+            <main className="kora-game-theme uno-game-arena relative flex-1 overflow-hidden p-3 text-[var(--theme-text)] sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 48%), var(--theme-bg)" }}>
               <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(color-mix(in srgb, var(--theme-text) 10%, transparent) .7px, transparent .7px)", backgroundSize: "15px 15px" }} />
               <div className="relative z-10 flex h-full min-h-[470px] flex-col gap-3 sm:gap-4">
                 {/* Opponent seats */}
@@ -814,7 +814,7 @@ export default function UnoGame({
                 </div>
 
                 {/* Custom felt table */}
-                <section className="relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-[var(--theme-border)] shadow-[inset_0_0_28px_color-mix(in_srgb,var(--theme-text)_7%,transparent),0_12px_32px_color-mix(in_srgb,var(--theme-text)_10%,transparent)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
+                <section className="uno-felt-table relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-[var(--theme-border)] shadow-[inset_0_0_28px_color-mix(in_srgb,var(--theme-text)_7%,transparent),0_12px_32px_color-mix(in_srgb,var(--theme-text)_10%,transparent)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
                   <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-[var(--theme-border)] sm:inset-5 sm:rounded-[2rem]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[60%]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[62%] w-[56%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[40%]" />
@@ -850,16 +850,20 @@ export default function UnoGame({
                 </section>
 
                 {/* Hand and action bar */}
-                <section className="shrink-0 rounded-[1.7rem] border border-[var(--theme-border)] bg-[var(--theme-card)] p-3 sm:p-4">
+                <section className="uno-hand-panel shrink-0 rounded-[1.7rem] border border-[var(--theme-border)] bg-[var(--theme-card)] p-3 sm:p-4">
                   <div className="mb-3 flex items-center justify-between gap-3 px-1">
                     <div><p className="text-xs font-black sm:text-sm">YOUR HAND <span className="ml-1 rounded-full bg-[var(--theme-bg)] px-2 py-0.5 text-[10px] text-[var(--theme-text-muted)]">{myHand.length}</span></p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.18em] text-[var(--theme-text-muted)]">Tap a glowing card to play</p></div>
                     {myHand.length <= 2 && <motion.button type="button" whileTap={{ scale: .94 }} onClick={handleCallUno} className="rounded-full border border-amber-200/50 bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2 text-[10px] font-black italic tracking-widest text-[#171923] shadow-[0_0_22px_rgba(251,191,36,.22)] sm:text-xs"><Flame className="mr-1 inline h-3.5 w-3.5" /> CALL UNO!</motion.button>}
                   </div>
-                  <div className="flex min-h-[118px] items-end gap-2 overflow-x-auto overflow-y-hidden px-1 pb-2 pt-1 scrollbar-thin sm:min-h-[142px] sm:gap-2.5">
+                  <div className="uno-hand-fan flex min-h-[118px] items-end gap-2 overflow-x-auto overflow-y-hidden px-1 pb-2 pt-1 scrollbar-thin sm:min-h-[142px] sm:gap-2.5">
                     {myHand.map((card, index) => {
                       const playable = isMyTurn && canPlayCard(card, publicState.topDiscard, publicState.currentColor);
+                      const fanCenter = (myHand.length - 1) / 2;
+                      const fanLimit = Math.min(16, Math.max(0, fanCenter * 3));
+                      const fanAngle = fanCenter ? ((index - fanCenter) / fanCenter) * fanLimit : 0;
+                      const fanDrop = Math.abs(index - fanCenter) * 3;
                       return (
-                        <motion.button key={card.id} type="button" aria-label={`Play ${card.color} ${card.value}`} title={`${card.color} ${card.value}`} whileHover={{ y: playable ? -12 : -2, rotate: playable ? 0 : index % 2 ? 2 : -2, scale: playable ? 1.04 : 1.01 }} whileTap={{ scale: .95 }} onClick={() => handleCardClick(card)} disabled={!playable} className={`relative h-[108px] w-[70px] shrink-0 transition-all duration-150 sm:h-[132px] sm:w-[86px] ${playable ? "cursor-pointer drop-shadow-[0_8px_12px_rgba(255,255,255,.12)]" : "cursor-not-allowed opacity-45 grayscale-[.25]"} `}>
+                        <motion.button key={card.id} type="button" aria-label={`Play ${card.color} ${card.value}`} title={`${card.color} ${card.value}`} style={{ "--uno-hand-angle": `${fanAngle}deg`, "--uno-hand-drop": `${fanDrop}px` } as React.CSSProperties} whileHover={{ y: playable ? -12 : -2, rotate: playable ? 0 : index % 2 ? 2 : -2, scale: playable ? 1.04 : 1.01 }} whileTap={{ scale: .95 }} onClick={() => handleCardClick(card)} disabled={!playable} className={`uno-hand-card relative h-[108px] w-[70px] shrink-0 transition-all duration-150 sm:h-[132px] sm:w-[86px] ${playable ? "cursor-pointer drop-shadow-[0_8px_12px_rgba(255,255,255,.12)]" : "cursor-not-allowed opacity-45 grayscale-[.25]"} `}>
                           {playable && <span className="pointer-events-none absolute -inset-1 rounded-2xl bg-[var(--theme-bg)] blur-md" />}
                           <span className="relative block h-full w-full"><UnoCardArt card={card} compact /></span>
                         </motion.button>

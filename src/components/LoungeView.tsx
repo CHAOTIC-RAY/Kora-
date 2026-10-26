@@ -596,7 +596,7 @@ export default function LoungeView({
   };
 
   return (
-    <div className="pb-6 md:pb-10 space-y-4 md:space-y-5">
+    <div className="cyberui-lounge pb-6 md:pb-10 space-y-4 md:space-y-5">
       <header className="relative overflow-hidden pb-1">
         <div className="flex items-center gap-2.5">
           <span
@@ -668,7 +668,7 @@ export default function LoungeView({
         <div className="contents md:flex md:flex-col md:gap-5 md:min-w-0">
           <TileShell
             delay={0.02}
-            className="relative bg-kindle-card order-1 md:order-none"
+            className="cyberui-lounge-hero relative bg-kindle-card order-1 md:order-none"
             onClick={openContinue}
             label={continueBook ? `Continue ${continueBook.title}` : "Continue reading"}
           >
