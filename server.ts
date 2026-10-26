@@ -29,6 +29,7 @@ import {
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./src/lib/libgenProxy";
 import { searchShadowBooks } from "./src/lib/shadowSources";
+import { fetchSeriesCatalog } from "./src/lib/seriesCatalog";
 import {
   getNetgalleyCoverUrl,
   getNetgalleyBookDetails,
@@ -4621,6 +4622,20 @@ app.get("/api/nytimes/book-details-raw", async (req, res) => {
   } catch (err) {
     console.error("NYT Raw Details Error:", err);
     res.status(500).json({ error: "Failed to fetch raw NYT details" });
+  }
+});
+
+app.get("/api/series/detail", async (req, res) => {
+  const series = String(req.query.series || "").trim();
+  const author = String(req.query.author || "").trim();
+  const seriesId = String(req.query.seriesId || "").trim();
+  if (!series) return res.status(400).json({ error: "Missing series title" });
+  try {
+    const result = await fetchSeriesCatalog({ series, author, seriesId, googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY || "" });
+    res.setHeader("Cache-Control", "public, max-age=1800");
+    res.json(result);
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message || "Series lookup failed" });
   }
 });
 

@@ -369,6 +369,10 @@ function DiscoverView({
   const detailFetchGen = React.useRef(0);
   const [featuredBookDetails, setFeaturedBookDetails] = useState<any | null>(null);
   const [seriesDetailBook, setSeriesDetailBook] = useState<any | null>(null);
+  const [seriesCatalog, setSeriesCatalog] = useState<any | null>(null);
+  const [seriesCatalogLoading, setSeriesCatalogLoading] = useState(false);
+  const [seriesCatalogError, setSeriesCatalogError] = useState<string | null>(null);
+  const seriesFetchGen = useRef(0);
   const [similarBooks, setSimilarBooks] = useState<any[]>([]);
   const [loadingFeaturedDetails, setLoadingFeaturedDetails] = useState<boolean>(false);
   const [loadingSimilar, setLoadingSimilar] = useState<boolean>(false);
@@ -393,14 +397,51 @@ function DiscoverView({
   const seriesDetailBooks = useMemo(() => {
     if (!seriesDetailBook?.series) return [];
     const key = normalizeSeriesKey(seriesDetailBook.series);
-    return books
+    const local = books
       .map(ensureSeriesFields)
       .filter((book) => normalizeSeriesKey(book.series || "") === key)
-      .sort((a, b) => {
+      .map((book) => ({ ...book, inLibrary: true } as any));
+    const catalogBooks = normalizeSeriesKey(seriesCatalog?.series || "") === key && Array.isArray(seriesCatalog?.books)
+      ? seriesCatalog.books as any[]
+      : [];
+    if (!catalogBooks.length) return local.sort((a, b) => {
         const order = parseSeriesNumber(a.seriesNumber) - parseSeriesNumber(b.seriesNumber);
         return Number.isNaN(order) || order === 0 ? a.title.localeCompare(b.title) : order;
       });
-  }, [books, seriesDetailBook]);
+
+    const usedLocalIds = new Set<string>();
+    const merged = catalogBooks.map((catalogBook) => {
+      const isbn = String(catalogBook.isbn || "").replace(/[^0-9X]/gi, "").toUpperCase();
+      const localBook = local.find((candidate) => {
+        const candidateIsbn = String((candidate as any).isbn || "").replace(/[^0-9X]/gi, "").toUpperCase();
+        if (isbn && candidateIsbn) return isbn === candidateIsbn;
+        const titleMatch = normalizeSeriesKey(candidate.title || "") === normalizeSeriesKey(catalogBook.title || "");
+        const authorA = normalizeSeriesKey(candidate.author || "");
+        const authorB = normalizeSeriesKey(catalogBook.author || "");
+        return titleMatch && (!authorA || !authorB || authorA === authorB || authorA.includes(authorB) || authorB.includes(authorA));
+      });
+      if (!localBook) return catalogBook;
+      usedLocalIds.add(String(localBook.id));
+      return {
+        ...catalogBook,
+        ...localBook,
+        seriesNumber: catalogBook.seriesNumber || localBook.seriesNumber,
+        coverUrl: localBook.coverUrl || catalogBook.coverUrl,
+        description: localBook.description || catalogBook.description,
+        pages: localBook.pages || catalogBook.pages,
+        publisher: localBook.publisher || catalogBook.publisher,
+        year: localBook.year || catalogBook.year,
+        isbn: localBook.isbn || catalogBook.isbn,
+        metadataSource: catalogBook.metadataSource,
+        inLibrary: true,
+      };
+    });
+    merged.push(...local.filter((book) => !usedLocalIds.has(String(book.id))).map((book) => ({ ...book, inLibrary: true })));
+    return merged.sort((a, b) => {
+      const order = parseSeriesNumber(a.seriesNumber) - parseSeriesNumber(b.seriesNumber);
+      return Number.isNaN(order) || order === 0 ? String(a.title || "").localeCompare(String(b.title || "")) : order;
+    });
+  }, [books, seriesDetailBook, seriesCatalog]);
 
   const [hasMore, setHasMore] = useState<boolean>(false);
   // Community (Hardcover) data fetched alongside search results
@@ -1383,15 +1424,33 @@ function DiscoverView({
     }
   };
 
-  const openSeriesDetail = (book: any) => {
+  const openSeriesDetail = async (book: any) => {
     const series = String(book?.series || "").trim();
     if (!series) return;
+    const generation = ++seriesFetchGen.current;
     setSeriesDetailBook({
       series,
       title: String(book?.title || ""),
       author: String(book?.author || ""),
       year: book?.year,
+      seriesId: String(book?.seriesId || ""),
+      source: String(book?.source || ""),
     });
+    setSeriesCatalog(null);
+    setSeriesCatalogError(null);
+    setSeriesCatalogLoading(true);
+    const params = new URLSearchParams({ series, author: String(book?.author || "") });
+    if (/^\d{1,12}$/.test(String(book?.seriesId || ""))) params.set("seriesId", String(book.seriesId));
+    try {
+      const response = await fetchDiscoverApi(`/api/series/detail?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Series lookup failed (${response.status})`);
+      if (generation === seriesFetchGen.current) setSeriesCatalog(data);
+    } catch (error: any) {
+      if (generation === seriesFetchGen.current) setSeriesCatalogError(error?.message || "Could not load catalog series details.");
+    } finally {
+      if (generation === seriesFetchGen.current) setSeriesCatalogLoading(false);
+    }
   };
 
   const openBookDetail = (book: any) => {
@@ -4286,7 +4345,9 @@ function DiscoverView({
                   {seriesDetailBook.series}
                 </h2>
                 <p className="mt-1 text-xs text-kindle-text-muted">
-                  {seriesDetailBooks.length} {seriesDetailBooks.length === 1 ? "book" : "books"} in your library
+                  {seriesDetailBooks.length} catalog {seriesDetailBooks.length === 1 ? "book" : "books"}
+                  {" · "}{seriesDetailBooks.filter((book: any) => book.inLibrary).length} in your library
+                  {seriesCatalog?.source ? ` · ${seriesCatalog.source}` : ""}
                 </p>
               </div>
               <button
@@ -4299,13 +4360,23 @@ function DiscoverView({
               </button>
             </header>
             <div className="overflow-y-auto p-5 md:p-6">
+              {seriesCatalogLoading && (
+                <div className="mb-4 flex items-center gap-2 rounded-xl border border-kindle-border bg-kindle-bg/60 px-4 py-3 text-xs text-kindle-text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Looking up series membership and edition details…
+                </div>
+              )}
+              {seriesCatalogError && (
+                <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-kindle-text-muted">
+                  Catalog lookup failed: {seriesCatalogError}. Showing books already in your library.
+                </div>
+              )}
               {seriesDetailBooks.length ? (
                 <ol className="space-y-3">
                   {seriesDetailBooks.map((book, index) => {
                     const cover = resolveCoverImageSrc(book.coverUrl) || book.coverUrl;
                     const progress = Math.max(0, Math.min(100, Number(book.progress?.percent || 0)));
                     return (
-                      <li key={book.id} className="flex items-center gap-4 rounded-2xl border border-kindle-border bg-kindle-bg/60 p-3">
+                      <li key={book.id || `${book.title}-${book.isbn || index}`} className="flex items-center gap-4 rounded-2xl border border-kindle-border bg-kindle-bg/60 p-3">
                         <span className="w-8 shrink-0 text-center font-mono text-xs font-bold text-kindle-text-muted">
                           {book.seriesNumber || index + 1}
                         </span>
@@ -4319,13 +4390,25 @@ function DiscoverView({
                         <div className="min-w-0 flex-1">
                           <h3 className="truncate text-sm font-bold text-kindle-text">{book.title}</h3>
                           <p className="mt-1 truncate text-xs text-kindle-text-muted">{book.author || "Unknown author"}</p>
+                          <p className="mt-1 truncate text-[10px] text-kindle-text-muted">
+                            {[book.publisher, book.year, book.pages ? `${book.pages} pp` : "", book.isbn ? `ISBN ${book.isbn}` : ""].filter(Boolean).join(" · ")}
+                          </p>
+                          {book.description && <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-kindle-text-muted">{stripHtml(book.description)}</p>}
                           <div className="mt-2 flex items-center gap-2">
-                            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-kindle-border">
-                              <div className="h-full rounded-full bg-kindle-accent" style={{ width: `${progress}%` }} />
-                            </div>
-                            <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
-                              {book.status === "completed" ? "Finished" : progress > 0 ? `${progress}% read` : "To read"}
-                            </span>
+                            {book.inLibrary ? (
+                              <>
+                                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-kindle-border">
+                                  <div className="h-full rounded-full bg-kindle-accent" style={{ width: `${progress}%` }} />
+                                </div>
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                                  {book.status === "completed" ? "Finished" : progress > 0 ? `${progress}% read` : "To read"}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
+                                {book.metadataSource || "Catalog entry"}
+                              </span>
+                            )}
                           </div>
                         </div>
                         {book.year && <span className="shrink-0 text-[10px] text-kindle-text-muted">{book.year}</span>}
@@ -4336,9 +4419,13 @@ function DiscoverView({
               ) : (
                 <div className="rounded-2xl border border-dashed border-kindle-border px-6 py-12 text-center">
                   <BookOpen className="mx-auto mb-3 h-8 w-8 text-kindle-text-muted/60" />
-                  <p className="text-sm font-semibold text-kindle-text">No books from this series are in your library yet.</p>
+                  <p className="text-sm font-semibold text-kindle-text">
+                    {seriesCatalogLoading ? "Looking up series books…" : "No verified books found for this series yet."}
+                  </p>
                   <p className="mt-1 text-xs text-kindle-text-muted">
-                    Add a book to your library and Kora will show it here when its series is identified.
+                    {seriesCatalogLoading
+                      ? "Kora is checking the series catalog and matching available book metadata."
+                      : "Google Books does not provide a structured series list for every title, and catalog coverage can vary."}
                   </p>
                 </div>
               )}

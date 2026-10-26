@@ -23,6 +23,7 @@ import {
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
 import { searchIndependentBookSources, searchIndependentPopularBooks, getIndependentSourceHealth } from "./lib/ravebsdScraper";
 import { searchShadowBooks } from "./lib/shadowSources";
+import { fetchSeriesCatalog } from "./lib/seriesCatalog";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
@@ -1615,6 +1616,27 @@ export default {
         return new Response(JSON.stringify({ error: "Failed to load audiobook details", message: err.message }), {
           status: 500,
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
+    if (path === "/api/series/detail") {
+      const series = (url.searchParams.get("series") || "").trim();
+      const author = (url.searchParams.get("author") || "").trim();
+      const seriesId = (url.searchParams.get("seriesId") || "").trim();
+      if (!series) return new Response(JSON.stringify({ error: "Missing series title" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+      try {
+        const result = await fetchSeriesCatalog({ series, author, seriesId, googleBooksApiKey: env.GOOGLE_BOOKS_API_KEY || "" });
+        return new Response(JSON.stringify(result), {
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=1800" },
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: err?.message || "Series lookup failed" }), {
+          status: 502,
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
       }
     }
