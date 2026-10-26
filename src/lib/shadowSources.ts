@@ -54,6 +54,24 @@ export type ShadowBook = {
   extension?: string;
 };
 
+export type LibgenSeriesVolume = {
+  id: string;
+  title: string;
+  author: string;
+  series: string;
+  seriesNumber?: string;
+  year?: string;
+  publisher?: string;
+  pages?: string;
+  isbn?: string;
+  coverUrl?: string;
+  format?: string;
+  filesize?: number;
+  metadataSource: string;
+};
+
+export type LibgenSeriesResult = { series: string; source: string; books: LibgenSeriesVolume[] };
+
 const timeout = (ms: number) => AbortSignal.timeout(ms);
 const sourceHealth = new Map<string, { failures: number; lastError?: string }>();
 
@@ -240,6 +258,77 @@ export function parseLibgenResultsHtml(html: string, baseUrl: string): ShadowBoo
   });
 
   return books;
+}
+
+/** Fetch and parse the public series catalog page. Returns catalog metadata only. */
+export async function fetchLibgenSeries(seriesId: string, seriesName = "Series"): Promise<LibgenSeriesResult | null> {
+  if (!/^\d{1,12}$/.test(String(seriesId || ""))) return null;
+  const parsePage = (html: string, baseUrl: string): LibgenSeriesVolume[] => {
+    const $ = cheerio.load(html);
+    const table = $("#tablelibgen").first().length ? $("#tablelibgen").first() : $("table").filter((_, node) => /title/i.test($(node).text())).first();
+    if (!table.length) return [];
+    const rows = table.find("tr").toArray();
+    const header = rows.find((row) => /title/i.test($(row).text()) && /author/i.test($(row).text()));
+    const headers = header ? $(header).children("th,td").map((_, cell) => norm(clean($(cell).text()))).get() : [];
+    const col = (pattern: RegExp, fallback: number) => {
+      const index = headers.findIndex((value) => pattern.test(value));
+      return index >= 0 ? index : fallback;
+    };
+    const yearCol = col(/^year$|publication year/, 1);
+    const numberCol = col(/total number|issue|number|volume/, 2);
+    const titleCol = col(/^title$|edition title/, 3);
+    const authorCol = col(/author|creator/, 4);
+    const publisherCol = col(/publisher/, 5);
+    const pagesCol = col(/pages?/, 6);
+    const isbnCol = col(/isbn/, 7);
+    const formatCol = col(/^(?:ext|extension|format)$/, -1);
+    const sizeCol = col(/size|filesize/, -1);
+    const pageTitle = clean($("h1").first().text() || $("title").first().text()) || seriesName;
+    const books: LibgenSeriesVolume[] = [];
+    for (const row of rows) {
+      if (row === header) continue;
+      const cells = $(row).children("td");
+      if (cells.length < 4) continue;
+      const titleCell = cells.eq(titleCol);
+      const title = clean(titleCell.find("a[href*='edition.php'], a[href*='book/index.php']").first().text() || titleCell.text());
+      if (!title || /^title$/i.test(title)) continue;
+      const author = clean(cells.eq(authorCol).text()) || "Unknown author";
+      const isbn = isbnOf(clean(cells.eq(isbnCol).text()) || clean($(row).text()));
+      const image = $(row).find("img").first().attr("src") || "";
+      let coverUrl: string | undefined;
+      try { if (image) coverUrl = new URL(image, baseUrl).toString(); } catch { /* invalid cover */ }
+      const sizeText = sizeCol >= 0 ? clean(cells.eq(sizeCol).text()) : "";
+      const sizeMatch = sizeText.match(/([\d,.]+)\s*([a-z]+)/i);
+      const amount = sizeMatch ? Number.parseFloat(sizeMatch[1].replace(",", ".")) : 0;
+      const unit = sizeMatch?.[2]?.toLowerCase() || "";
+      const filesize = sizeMatch && Number.isFinite(amount) ? Math.round(amount * (unit.startsWith("g") ? 1e9 : unit.startsWith("m") ? 1e6 : unit.startsWith("k") ? 1e3 : 1)) : undefined;
+      const identifier = isbn || `${norm(title)}|${norm(author)}|${clean(cells.eq(yearCol).text())}`;
+      books.push({
+        id: `libgen-series:${identifier}`,
+        title,
+        author,
+        series: pageTitle,
+        seriesNumber: clean(cells.eq(numberCol).text()).match(/\d+(?:\.\d+)?/)?.[0],
+        year: clean(cells.eq(yearCol).text()) || undefined,
+        publisher: clean(cells.eq(publisherCol).text()) || undefined,
+        pages: clean(cells.eq(pagesCol).text()) || undefined,
+        isbn: isbn || undefined,
+        coverUrl,
+        format: formatCol >= 0 ? clean(cells.eq(formatCol).text()).replace(/^\./, "").toLowerCase() || undefined : undefined,
+        filesize,
+        metadataSource: "LibGen series catalog",
+      });
+    }
+    return books;
+  };
+  const attempts = LIBGEN_MIRRORS.map(async (mirror) => {
+    const url = `${mirror}/series.php?id=${encodeURIComponent(seriesId)}`;
+    const html = await fetchHtml(url, timeout(6500));
+    const books = parsePage(html, url);
+    if (!books.length) throw new Error("No series volumes parsed");
+    return { series: books[0].series || seriesName, source: "LibGen series catalog", books };
+  });
+  try { return await Promise.any(attempts); } catch { return null; }
 }
 
 function parseLibgenSearch(html: string, baseUrl: string): ShadowBook[] {

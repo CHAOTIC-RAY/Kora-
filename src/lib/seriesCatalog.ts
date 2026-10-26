@@ -1,5 +1,6 @@
-import * as cheerio from "cheerio";
 import { parseSeriesFromTitle, normalizeSeriesKey } from "./seriesHelper";
+import { fetchLibgenSeries } from "./shadowSources";
+export { fetchLibgenSeries };
 
 export interface SeriesCatalogBook {
   id: string;
@@ -10,6 +11,8 @@ export interface SeriesCatalogBook {
   year?: string;
   publisher?: string;
   pages?: string;
+  format?: string;
+  filesize?: number;
   isbn?: string;
   language?: string;
   coverUrl?: string;
@@ -26,7 +29,6 @@ export interface SeriesCatalogResult {
   books: SeriesCatalogBook[];
 }
 
-const LIBGEN_HOSTS = ["libgen.li", "libgen.be", "libgen.lc", "libgen.gs", "libgen.st", "libgen.rocks"];
 const REQUEST_TIMEOUT_MS = 6500;
 
 function clean(value: unknown): string {
@@ -41,77 +43,6 @@ function isbnOf(value: unknown): string {
   return clean(value).match(/(?:97[89][\d\s-]{10,16}|\d[\d\s-]{8,14}[\dXx])/g)?.map((candidate) => candidate.replace(/[\s-]/g, "").toUpperCase()).find((candidate) =>
     /^97[89]\d{10}$/.test(candidate) || /^\d{9}[\dX]$/.test(candidate)
   ) || "";
-}
-
-function parseSeriesRow(html: string, baseUrl: string, expectedSeries: string): SeriesCatalogBook[] {
-  const $ = cheerio.load(html);
-  const table = $("#tablelibgen").first().length ? $("#tablelibgen").first() : $("table").filter((_, node) => /title/i.test($(node).text())).first();
-  if (!table.length) return [];
-
-  const rows = table.find("tr").toArray();
-  const headerRow = rows.find((row) => /title/i.test($(row).text()) && /author/i.test($(row).text()));
-  const headers = headerRow ? $(headerRow).children("th,td").map((_, cell) => norm($(cell).text())).get() : [];
-  const column = (pattern: RegExp, fallback: number) => {
-    const found = headers.findIndex((header) => pattern.test(header));
-    return found >= 0 ? found : fallback;
-  };
-  const yearCol = column(/^year$|publication year/, 1);
-  const numberCol = column(/total number|issue|number|volume/, 2);
-  const titleCol = column(/^title$|edition title/, 3);
-  const authorCol = column(/author|creator/, 4);
-  const publisherCol = column(/publisher/, 5);
-  const pagesCol = column(/pages?/, 6);
-  const isbnCol = column(/isbn/, 7);
-  const title = clean($("h1").first().text() || $("title").first().text()) || expectedSeries;
-  const books: SeriesCatalogBook[] = [];
-
-  for (const row of rows) {
-    if (row === headerRow) continue;
-    const cells = $(row).children("td");
-    if (cells.length < 4) continue;
-    const titleCell = cells.eq(titleCol);
-    const titleLink = titleCell.find("a[href*='edition.php'], a[href*='book/index.php']").first();
-    const bookTitle = clean(titleLink.text() || titleCell.text());
-    if (!bookTitle || /^title$/i.test(bookTitle)) continue;
-    const author = clean(cells.eq(authorCol).text());
-    const rawOrder = clean(cells.eq(numberCol).text()).match(/\d+(?:\.\d+)?/)?.[0];
-    const isbn = isbnOf(cells.eq(isbnCol).text() || $(row).text());
-    const image = $(row).find("img").first().attr("src") || "";
-    let coverUrl = "";
-    try { if (image) coverUrl = new URL(image, baseUrl).toString(); } catch { /* ignore invalid cover */ }
-    const identifier = isbn || `${norm(bookTitle)}|${norm(author)}|${clean(cells.eq(yearCol).text())}`;
-    books.push({
-      id: `libgen-series:${identifier}`,
-      title: bookTitle,
-      author: author || "Unknown author",
-      series: title || expectedSeries,
-      seriesNumber: rawOrder,
-      year: clean(cells.eq(yearCol).text()) || undefined,
-      publisher: clean(cells.eq(publisherCol).text()) || undefined,
-      pages: clean(cells.eq(pagesCol).text()) || undefined,
-      isbn: isbn || undefined,
-      coverUrl: coverUrl || undefined,
-      metadataSource: "LibGen series catalog",
-    });
-  }
-  return books;
-}
-
-async function fetchLibgenSeries(seriesId: string, seriesName: string): Promise<SeriesCatalogResult | null> {
-  if (!/^\d{1,12}$/.test(seriesId)) return null;
-  const attempts = LIBGEN_HOSTS.map(async (host) => {
-    const url = `https://${host}/series.php?id=${encodeURIComponent(seriesId)}`;
-    const response = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; KoraCatalog/1.0)", Accept: "text/html,application/xhtml+xml" },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    if (!response.ok) throw new Error(`Series catalog returned HTTP ${response.status}`);
-    const html = await response.text();
-    const books = parseSeriesRow(html, url, seriesName);
-    if (!books.length) throw new Error("No series entries parsed");
-    return { series: books[0].series || seriesName, source: "LibGen series catalog", books };
-  });
-  try { return await Promise.any(attempts); } catch { return null; }
 }
 
 function mapGoogleVolume(item: any, series: string, authorHint: string, requireSeriesMatch = true, fallbackNumber = ""): SeriesCatalogBook | null {
@@ -144,18 +75,50 @@ function mapGoogleVolume(item: any, series: string, authorHint: string, requireS
   };
 }
 
-async function fetchGoogleSeries(series: string, author: string, apiKey: string): Promise<SeriesCatalogBook[]> {
-  const query = [series, author].filter(Boolean).join(" ");
-  const url = new URL("https://www.googleapis.com/books/v1/volumes");
-  url.searchParams.set("q", query);
-  url.searchParams.set("maxResults", "40");
-  if (apiKey) url.searchParams.set("key", apiKey);
-  try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    if (!response.ok) return [];
-    const data = await response.json() as { items?: any[] };
-    return (data.items || []).map((item) => mapGoogleVolume(item, series, author)).filter((book): book is SeriesCatalogBook => Boolean(book));
-  } catch { return []; }
+export async function searchGoogleBooksBySeries(series: string, author: string, apiKey = ""): Promise<SeriesCatalogBook[]> {
+  const quotedSeries = `intitle:"${series.replace(/[\"\\]/g, " ").trim()}"`;
+  const queries = [author ? `inauthor:"${author.replace(/[\"\\]/g, " ").trim()}" ${quotedSeries}` : quotedSeries, [series, author].filter(Boolean).join(" ")];
+  const found = new Map<string, SeriesCatalogBook>();
+  for (const query of queries) {
+    for (let startIndex = 0; startIndex < 80; startIndex += 40) {
+      const url = new URL("https://www.googleapis.com/books/v1/volumes");
+      url.searchParams.set("q", query);
+      url.searchParams.set("maxResults", "40");
+      url.searchParams.set("startIndex", String(startIndex));
+      if (apiKey) url.searchParams.set("key", apiKey);
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+        if (!response.ok) break;
+        const data = await response.json() as { items?: any[]; totalItems?: number };
+        for (const item of data.items || []) {
+          const mapped = mapGoogleVolume(item, series, author, false);
+          if (!mapped) continue;
+          const info = item.volumeInfo || {};
+          const parsed = parseSeriesFromTitle([info.title, info.subtitle].filter(Boolean).join(": "));
+          const explicitSeries = clean(info.seriesInfo?.series || info.seriesInfo?.title);
+          const detectedName = normalizeSeriesKey(explicitSeries || parsed?.series || "");
+          const seriesKey = normalizeSeriesKey(series);
+          const titleKey = norm(info.title);
+          const lexicalMatch = Boolean(norm(series)) && titleKey.includes(norm(series));
+          const authors = norm((info.authors || []).join(" "));
+          const authorMatch = !author || authors.includes(norm(author)) || norm(author).includes(authors);
+          if ((detectedName && detectedName !== seriesKey) || (!detectedName && !(lexicalMatch && authorMatch))) continue;
+          const number = clean(info.seriesInfo?.volumeNumber || info.seriesInfo?.bookDisplayNumber || parsed?.seriesNumber);
+          mapped.seriesNumber = number || undefined;
+          mapped.series = series;
+          const key = isbnOf(mapped.isbn) || `${norm(mapped.title)}|${norm(mapped.author)}`;
+          if (!found.has(key)) found.set(key, mapped);
+        }
+        if ((data.totalItems || 0) <= startIndex + 40 || !(data.items || []).length) break;
+      } catch { break; }
+    }
+  }
+  return [...found.values()].sort((a, b) => {
+    const na = Number.parseFloat(a.seriesNumber || "");
+    const nb = Number.parseFloat(b.seriesNumber || "");
+    if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+    return a.title.localeCompare(b.title);
+  });
 }
 
 async function fetchGoogleEdition(book: SeriesCatalogBook, apiKey: string): Promise<SeriesCatalogBook | undefined> {
@@ -211,6 +174,8 @@ function mergeGoogleMetadata(base: SeriesCatalogBook, candidate: SeriesCatalogBo
     publisher: base.publisher || candidate.publisher,
     year: base.year || candidate.year,
     pages: base.pages || candidate.pages,
+    format: base.format || candidate.format,
+    filesize: base.filesize || candidate.filesize,
     isbn: base.isbn || candidate.isbn,
     language: base.language || candidate.language,
     coverUrl: base.coverUrl || candidate.coverUrl,
@@ -240,7 +205,7 @@ export async function fetchSeriesCatalog(options: {
     return { ...libgenResult, author: author || undefined, books: enriched };
   }
 
-  const googleBooks = await fetchGoogleSeries(series, author, options.googleBooksApiKey || "");
+  const googleBooks = await searchGoogleBooksBySeries(series, author, options.googleBooksApiKey || "");
   const unique = new Map<string, SeriesCatalogBook>();
   for (const book of googleBooks) {
     const key = isbnOf(book.isbn) || `${norm(book.title)}|${norm(book.author)}`;

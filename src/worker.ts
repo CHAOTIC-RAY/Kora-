@@ -23,7 +23,7 @@ import {
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./lib/goodreadsTrending";
 import { searchIndependentBookSources, searchIndependentPopularBooks, getIndependentSourceHealth } from "./lib/ravebsdScraper";
 import { searchShadowBooks } from "./lib/shadowSources";
-import { fetchSeriesCatalog } from "./lib/seriesCatalog";
+import { fetchLibgenSeries, fetchSeriesCatalog } from "./lib/seriesCatalog";
 import { discoverFeedFromUrl, fetchArticlePreview, fetchFeedFromUrl, proxyFeedImage } from "./lib/feedServer";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./lib/libgenProxy";
 import { resolveLibgenSigned } from "./lib/libgenSigned";
@@ -1639,6 +1639,23 @@ export default {
           headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
         });
       }
+    }
+
+    if (path === "/api/libgen/series") {
+      const id = (url.searchParams.get("id") || "").trim();
+      const series = (url.searchParams.get("series") || "").trim();
+      if (!/^\d{1,12}$/.test(id)) return new Response(JSON.stringify({ error: "Invalid LibGen series id" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+      const result = await fetchLibgenSeries(id, series || "Series");
+      if (!result) return new Response(JSON.stringify({ error: "LibGen series catalog unavailable" }), {
+        status: 502,
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
+      });
+      return new Response(JSON.stringify(result), {
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=1800" },
+      });
     }
 
     // Provider health is intentionally diagnostic-only: no credentials, full URLs, or query strings.

@@ -393,6 +393,7 @@ function DiscoverView({
   const [selectedTopic, setSelectedTopic] = useState<string>("all");
   const [seriesFilter, setSeriesFilter] = useState<string | null>(null);
   const [availableSeries, setAvailableSeries] = useState<Set<string>>(new Set());
+  const [collapsedSeriesGroups, setCollapsedSeriesGroups] = useState<Set<string>>(new Set());
 
   const seriesDetailBooks = useMemo(() => {
     if (!seriesDetailBook?.series) return [];
@@ -2500,6 +2501,7 @@ function DiscoverView({
       coverUrl: book?.coverUrl || undefined,
       industryIdentifiers: book?.isbn ? [{ type: "ISBN", identifier: book.isbn }] : undefined,
       subjects: book?.topic ? [book.topic] : undefined,
+      seriesNumber: book?.seriesNumber || undefined,
     };
     const hasSourceDetails = Object.values(sourceDetails).some((value) =>
       Array.isArray(value) ? value.length > 0 : Boolean(value)
@@ -2549,6 +2551,7 @@ function DiscoverView({
             coverUrl: info.imageLinks?.thumbnail?.replace(/^http:/i, "https:") || info.imageLinks?.smallThumbnail?.replace(/^http:/i, "https:") || undefined,
             industryIdentifiers: info.industryIdentifiers || undefined,
             subjects: googleSubjects,
+            seriesNumber: info.seriesInfo?.volumeNumber != null ? String(info.seriesInfo.volumeNumber) : undefined,
             series: (() => {
               // Google Books has no dedicated series field; parse it from title/subtitle
               const full = [info.title, info.subtitle].filter(Boolean).join(": ");
@@ -2998,6 +3001,23 @@ function DiscoverView({
     if (selectedTopic !== "all" && b.topic !== selectedTopic) return false;
     if (seriesFilter && b.series !== seriesFilter) return false;
     return true;
+  });
+  const seriesResultGroups = useMemo(() => {
+    const groups = new Map<string, { name: string; volumes: Set<string>; book: any }>();
+    for (const book of filteredResults) {
+      const name = String(book.series || "").trim();
+      const key = normalizeSeriesKey(name);
+      if (!key) continue;
+      const group = groups.get(key);
+      const volumeKey = `${normalizeSeriesKey(String(book.title || ""))}|${normalizeSeriesKey(String(book.author || ""))}`;
+      if (group) group.volumes.add(volumeKey);
+      else groups.set(key, { name, volumes: new Set([volumeKey]), book });
+    }
+    return [...groups.entries()].map(([key, group]) => [key, { ...group, count: group.volumes.size }] as const).filter(([, group]) => group.count > 1);
+  }, [filteredResults]);
+  const visibleResults = filteredResults.filter((book) => {
+    const key = normalizeSeriesKey(String(book.series || ""));
+    return !key || !collapsedSeriesGroups.has(key);
   });
 
   async function handleDownloadFromMirror(mirror: any) {
@@ -3680,7 +3700,32 @@ function DiscoverView({
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-              {filteredResults.map((book) => (
+              {seriesResultGroups.length > 0 && (
+                <div className="col-span-full flex flex-wrap gap-2" aria-label="Series groups in search results">
+                  {seriesResultGroups.map(([key, group]) => {
+                    const collapsed = collapsedSeriesGroups.has(key);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-expanded={!collapsed}
+                        onClick={() => setCollapsedSeriesGroups((previous) => {
+                          const next = new Set(previous);
+                          if (next.has(key)) next.delete(key); else next.add(key);
+                          return next;
+                        })}
+                        className="inline-flex items-center gap-2 rounded-full border border-kindle-border bg-kindle-card px-3 py-2 text-[9px] font-bold uppercase tracking-wider text-kindle-text transition hover:border-kindle-accent/50"
+                      >
+                        <Layers className="h-3 w-3 text-kindle-accent" />
+                        <span>{collapsed ? "▸" : "⌄"} {group.name}</span>
+                        <span className="rounded-full bg-kindle-bg px-1.5 py-0.5 text-kindle-text-muted">{group.count} volumes</span>
+                        <span className="sr-only">{collapsed ? "Expand" : "Collapse"} series results</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {visibleResults.map((book) => (
                 <div 
                   key={book.md5 || book.id || Math.random()} 
                   className={`group cursor-pointer space-y-2.5 p-2 rounded-3xl transition-all duration-300 border-2 ${
@@ -4347,6 +4392,7 @@ function DiscoverView({
                 <p className="mt-1 text-xs text-kindle-text-muted">
                   {seriesDetailBooks.length} catalog {seriesDetailBooks.length === 1 ? "book" : "books"}
                   {" · "}{seriesDetailBooks.filter((book: any) => book.inLibrary).length} in your library
+                  {" · "}{seriesDetailBooks.filter((book: any) => !book.inLibrary).length} missing
                   {seriesCatalog?.source ? ` · ${seriesCatalog.source}` : ""}
                 </p>
               </div>
@@ -4391,7 +4437,7 @@ function DiscoverView({
                           <h3 className="truncate text-sm font-bold text-kindle-text">{book.title}</h3>
                           <p className="mt-1 truncate text-xs text-kindle-text-muted">{book.author || "Unknown author"}</p>
                           <p className="mt-1 truncate text-[10px] text-kindle-text-muted">
-                            {[book.publisher, book.year, book.pages ? `${book.pages} pp` : "", book.isbn ? `ISBN ${book.isbn}` : ""].filter(Boolean).join(" · ")}
+        {[book.publisher, book.year, book.pages ? `${book.pages} pp` : "", book.format?.toUpperCase(), book.filesize ? `${(book.filesize / 1_000_000).toFixed(1)} MB` : "", book.isbn ? `ISBN ${book.isbn}` : ""].filter(Boolean).join(" · ")}
                           </p>
                           {book.description && <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-kindle-text-muted">{stripHtml(book.description)}</p>}
                           <div className="mt-2 flex items-center gap-2">
@@ -4406,7 +4452,7 @@ function DiscoverView({
                               </>
                             ) : (
                               <span className="text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">
-                                {book.metadataSource || "Catalog entry"}
+                                {book.metadataSource || "Catalog entry"} · Missing from your library
                               </span>
                             )}
                           </div>

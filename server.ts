@@ -29,7 +29,7 @@ import {
 import { fetchGoodreadsTrendingBooks, mapGoodreadsTrendingFallback } from "./src/lib/goodreadsTrending";
 import { fetchBinaryWithLibgenMirrors, isLibgenUrl } from "./src/lib/libgenProxy";
 import { searchShadowBooks } from "./src/lib/shadowSources";
-import { fetchSeriesCatalog } from "./src/lib/seriesCatalog";
+import { fetchLibgenSeries, fetchSeriesCatalog } from "./src/lib/seriesCatalog";
 import {
   getNetgalleyCoverUrl,
   getNetgalleyBookDetails,
@@ -4636,6 +4636,20 @@ app.get("/api/series/detail", async (req, res) => {
     res.json(result);
   } catch (err: any) {
     res.status(502).json({ error: err?.message || "Series lookup failed" });
+  }
+});
+
+app.get("/api/libgen/series", async (req, res) => {
+  const id = String(req.query.id || "").trim();
+  const series = String(req.query.series || "").trim();
+  if (!/^\d{1,12}$/.test(id)) return res.status(400).json({ error: "Invalid LibGen series id" });
+  try {
+    const result = await fetchLibgenSeries(id, series || "Series");
+    if (!result) return res.status(502).json({ error: "LibGen series catalog unavailable" });
+    res.setHeader("Cache-Control", "public, max-age=1800");
+    res.json(result);
+  } catch (err: any) {
+    res.status(502).json({ error: err?.message || "LibGen series lookup failed" });
   }
 });
 
