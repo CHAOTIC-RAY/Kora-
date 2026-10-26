@@ -404,7 +404,10 @@ function DiscoverView({
       .map(ensureSeriesFields)
       .filter((book) => normalizeSeriesKey(book.series || "") === key)
       .map((book) => ({ ...book, inLibrary: true } as any));
-    const catalogBooks = normalizeSeriesKey(seriesCatalog?.series || "") === key && Array.isArray(seriesCatalog?.books)
+    // The series.php page title may include a suffix or differently formatted
+    // name. This catalog is scoped to the active modal request, so requiring an
+    // exact title match here incorrectly hid valid LibGen volumes.
+    const catalogBooks = Array.isArray(seriesCatalog?.books)
       ? seriesCatalog.books as any[]
       : [];
     if (!catalogBooks.length) return local.sort((a, b) => {
@@ -2222,7 +2225,10 @@ function DiscoverView({
       if (e) e.preventDefault();
     }
 
-    const term = typeof e === "string" ? e : (typeof e === "number" ? e.toString() : query);
+    const rawTerm = typeof e === "string" ? e : (typeof e === "number" ? e.toString() : query);
+    // Author chips can carry this presentation suffix from source metadata.
+    // It is not part of the actual author name/query.
+    const term = rawTerm.replace(/\s*\(author\)\s*$/i, "").trim();
     if (!term || !term.trim()) return;
 
     const normalizedTerm = term.trim();
@@ -2233,7 +2239,7 @@ function DiscoverView({
     });
     setShowSearchAssist(false);
     setSearchSuggestions([]);
-    if (typeof e === "string") setQuery(e);
+    if (typeof e === "string") setQuery(term);
 
     try {
       window.dispatchEvent(new CustomEvent("kora-guide:search-submitted", { detail: { term: term.trim() } }));
@@ -2323,7 +2329,7 @@ function DiscoverView({
       ).then((res) => setAudiobookResults(res)).catch(() => {});
     }
 
-    if (typeof e === "string") setQuery(e);
+    if (typeof e === "string") setQuery(term);
 
     try {
       const source = sourceOverride || activeSource;
@@ -2342,10 +2348,33 @@ function DiscoverView({
           totalCount = totalResults;
           more = true;
         } else {
-          const result = await fetchPage(term, source, page);
-          mappedBooks = result.books;
-          totalCount = result.totalCount;
-          more = result.hasMore;
+          try {
+            const result = await fetchPage(term, source, page);
+            mappedBooks = result.books;
+            totalCount = result.totalCount;
+            more = result.hasMore;
+          } catch (sourceError) {
+            // Source-specific endpoints can fail independently. Recover with
+            // the unified streaming search, which isolates provider failures.
+            console.warn("Filtered source search failed; retrying unified search:", sourceError);
+            const fallback = await streamEbookSearch(
+              term,
+              (_source, books) => {
+                if (page === 1) {
+                  setResults((previous) => {
+                    const seen = new Set(previous.map((book) => `${book.title}|${book.author}`));
+                    return [...previous, ...books.filter((book) => !seen.has(`${book.title}|${book.author}`))];
+                  });
+                  setLoading(false);
+                }
+              },
+              signal,
+              page
+            );
+            mappedBooks = fallback.books;
+            totalCount = fallback.totalCount;
+            more = fallback.hasMore;
+          }
         }
       } else {
         const streamResult = await streamEbookSearch(
