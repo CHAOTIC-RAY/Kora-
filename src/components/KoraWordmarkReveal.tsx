@@ -313,19 +313,32 @@ export default function KoraWordmarkReveal({
 
     // --- lifecycle ------------------------------------------------------------------
     let io: IntersectionObserver | null = null;
+    let visible = false;
+    let replayArmed = true;
+    const onScrollToTop = () => {
+      // Re-arm only after returning to the top; leaving the animation alone
+      // keeps its completed frame visible.
+      if (window.scrollY <= 8) {
+        replayArmed = true;
+        reset();
+      }
+    };
+
     if (replay && typeof IntersectionObserver !== "undefined") {
-      let visible = false;
       io = new IntersectionObserver((entries) => {
         const e = entries[entries.length - 1];
         if (e.isIntersecting && !visible) {
           visible = true;
-          start();
+          if (replayArmed) {
+            replayArmed = false;
+            start();
+          }
         } else if (!e.isIntersecting && visible) {
           visible = false;
-          reset();
         }
       }, { threshold: 0.2 });
       io.observe(wrap);
+      window.addEventListener("scroll", onScrollToTop, { passive: true });
     } else {
       start();
     }
@@ -356,6 +369,7 @@ export default function KoraWordmarkReveal({
       if (loopTimer !== undefined) window.clearTimeout(loopTimer);
       cancelAnimationFrame(raf);
       io?.disconnect();
+      window.removeEventListener("scroll", onScrollToTop);
       ro?.disconnect();
       mo.disconnect();
     };
