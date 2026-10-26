@@ -78,6 +78,8 @@ export interface KoraWordmarkRevealProps {
   onDone?: () => void;
   speed?: number;
   color?: string;
+  /** Use a compact, parent-constrained wordmark in dense settings surfaces. */
+  compact?: boolean;
 }
 
 export default function KoraWordmarkReveal({
@@ -87,6 +89,7 @@ export default function KoraWordmarkReveal({
   onDone,
   speed = 1.5,
   color,
+  compact = false,
 }: KoraWordmarkRevealProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -372,7 +375,7 @@ export default function KoraWordmarkReveal({
           className="block"
           role="img"
           aria-label="Kora"
-          style={{ width: "min(86vw, 420px)", aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
+          style={{ width: compact ? "100%" : "min(86vw, 420px)", maxWidth: compact ? "280px" : undefined, aspectRatio: `${VIEW_W} / ${VIEW_H}` }}
         />
       </div>
 
