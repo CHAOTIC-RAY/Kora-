@@ -85,6 +85,7 @@ import type {
   SourcePlugin,
 } from "../lib/sources/types";
 import TrustRepoModal, { isKoraDefaultRepoUrl } from "./TrustRepoModal";
+import { CYBERUI_PLUGIN_URL, CYBERUI_THEME, cyberUiRegistryEntry } from "../lib/cyberUiTheme";
 
 export interface PluginBrowserProps {
   /**
@@ -141,7 +142,10 @@ export default function PluginBrowser({
   intro,
   onOpenInWorkshop,
 }: PluginBrowserProps) {
-  const [entries, setEntries] = useState<RepoEntry[]>([]);
+  const [entries, setEntries] = useState<RepoEntry[]>(() => {
+    const builtinInstalled = getInstalledExtensions().some((p) => p.id === CYBERUI_THEME.id);
+    return [cyberUiRegistryEntry(builtinInstalled)];
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [repoInput, setRepoInput] = useState("");
@@ -171,7 +175,12 @@ export default function PluginBrowser({
     setLoading(true);
     setError(null);
     const all: RepoEntry[] = [];
-    const seen = new Set<string>();
+    const builtinInstalled = getInstalledExtensions().some((p) => p.id === CYBERUI_THEME.id);
+    all.push(cyberUiRegistryEntry(builtinInstalled));
+    // Render bundled plugins immediately. Registry requests can be slow or
+    // unreachable, but must never hold back themes shipped with Kora itself.
+    setEntries(all);
+    const seen = new Set<string>([CYBERUI_THEME.id]);
     const failed: string[] = [];
     for (const repo of getRepos()) {
       try {
@@ -286,7 +295,9 @@ export default function PluginBrowser({
     }
     setInstallingId(e.plugin.id);
     try {
-      const manifest = await fetchExtensionDefinition(e.installUrl);
+      const manifest = e.installUrl === CYBERUI_PLUGIN_URL
+        ? CYBERUI_THEME
+        : await fetchExtensionDefinition(e.installUrl);
       if (!manifest) throw new Error("empty response");
       if (manifest.id !== e.plugin.id) throw new Error("Plugin ID mismatch");
       if (!installExtension(manifest)) {
@@ -543,11 +554,13 @@ export default function PluginBrowser({
         </p>
       )}
 
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-12 text-xs uppercase tracking-widest text-kindle-text-muted">
-          <Loader2 className="w-4 h-4 animate-spin" /> Loading plugins
+      {loading && (
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-kindle-text-muted">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Syncing plugin registry
         </div>
-      ) : nothingAtAll ? (
+      )}
+
+      {!loading && nothingAtAll ? (
         <p className="rounded-2xl border border-dashed border-kindle-border px-4 py-10 text-center text-xs text-kindle-text-muted">
           No plugins found in the configured repositories.
         </p>

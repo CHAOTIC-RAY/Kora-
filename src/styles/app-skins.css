@@ -1409,3 +1409,90 @@ body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .th
 body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .theme-sepia, .theme-green) :is(.kora-app-header, .kora-desktop-nav, .kora-mobile-footer, .kora-tab-pill, .kindle-card, .bg-kindle-card) {
   color: var(--theme-text);
 }
+
+/* ── CyberUI Operator theme plugin ── */
+body.skin-cyberui {
+  --cyberui-line: color-mix(in srgb, var(--theme-border) 78%, transparent);
+  --cyberui-glow: color-mix(in srgb, var(--theme-border) 24%, transparent);
+  background-color: var(--theme-bg) !important;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--theme-border) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--theme-border) 7%, transparent) 1px, transparent 1px) !important;
+  background-size: 28px 28px !important;
+  background-attachment: fixed !important;
+  font-family: "Rajdhani", "Share Tech Mono", sans-serif !important;
+}
+
+body.skin-cyberui :is(h1, h2, h3, h4, .font-display) {
+  font-family: "Orbitron", "Rajdhani", sans-serif !important;
+  letter-spacing: 0.04em !important;
+}
+
+body.skin-cyberui .kora-app-header,
+body.skin-cyberui .kora-desktop-nav,
+body.skin-cyberui .kora-mobile-footer {
+  background: color-mix(in srgb, var(--theme-bg) 94%, black) !important;
+  border-color: var(--theme-border) !important;
+  border-radius: 0.35rem !important;
+  box-shadow: 0 0 18px var(--cyberui-glow), inset 0 0 14px rgba(0, 0, 0, 0.16) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.skin-cyberui .kora-app-header {
+  border-bottom-width: 2px !important;
+}
+
+body.skin-cyberui .kora-desktop-nav-item.is-active,
+body.skin-cyberui .kora-tab-pill {
+  color: #211417 !important;
+  background: var(--theme-accent) !important;
+  border: 1px solid var(--theme-accent) !important;
+  border-radius: 0.2rem !important;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--theme-accent) 48%, transparent) !important;
+  font-weight: 800 !important;
+}
+
+body.skin-cyberui .kora-desktop-nav-item.is-active *,
+body.skin-cyberui .kora-tab-pill * {
+  color: #211417 !important;
+}
+
+body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
+  background: color-mix(in srgb, var(--theme-card) 94%, black) !important;
+  border: 1px solid var(--cyberui-line) !important;
+  border-radius: 0.4rem !important;
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.12), 0 0 12px rgba(0, 0, 0, 0.16) !important;
+}
+
+body.skin-cyberui :is(.kora-chrome-btn, button) {
+  border-radius: 0.25rem;
+}
+
+body.skin-cyberui .kora-chrome-btn {
+  border: 1px solid var(--theme-border) !important;
+  background: var(--theme-card) !important;
+  box-shadow: 0 0 8px var(--cyberui-glow) !important;
+}
+
+body.skin-cyberui :is(button.bg-kindle-text, button.bg-neutral-900, button.bg-black) {
+  color: #211417 !important;
+  background: var(--theme-accent) !important;
+  border-color: var(--theme-accent) !important;
+}
+
+body.skin-cyberui :is(input, textarea, select) {
+  color: var(--theme-text) !important;
+  background: color-mix(in srgb, var(--theme-bg) 92%, black) !important;
+  border-color: var(--cyberui-line) !important;
+  border-radius: 0.25rem !important;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.18) !important;
+}
+
+body.skin-cyberui :is(.uppercase, [class*="tracking-widest"]) {
+  letter-spacing: 0.12em;
+}
+
+body.skin-cyberui ::-webkit-scrollbar { width: 6px; height: 6px; }
+body.skin-cyberui ::-webkit-scrollbar-track { background: var(--theme-bg); }
+body.skin-cyberui ::-webkit-scrollbar-thumb { background: var(--theme-border); border-radius: 2px; }

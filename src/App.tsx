@@ -112,6 +112,7 @@ import {
   syncAndroidHomeWidgets,
 } from "./lib/androidWidgets";
 import { isNativeAndroid } from "./lib/capacitorNative";
+import { applyActiveThemePlugin, resolveActiveThemePlugin, syncThemePluginMarker } from "./lib/sources/themeRuntime";
 import { provisionKoraStorage } from "./lib/capacitorNative";
 import { setKoraStorageMode, KoraStorageMode } from "./lib/koraStorage";
 import StorageChoiceModal from "./components/StorageChoiceModal";
@@ -474,6 +475,7 @@ export default function App() {
   const [displayTheme, setDisplayTheme] = useState<string>(() => {
     return localStorage.getItem("kora_display_theme") || "theme-light-white";
   });
+  const [pluginThemeRevision, setPluginThemeRevision] = useState(0);
 
   const [autoDisplayTheme, setAutoDisplayTheme] = useState<boolean>(() => {
     return localStorage.getItem("kora_auto_display_theme") === "true";
@@ -1565,6 +1567,9 @@ export default function App() {
     const cleanTheme = rawTheme.replace(/^theme-/, "");
     const prefixedTheme = rawTheme.startsWith("theme-") ? rawTheme : `theme-${rawTheme}`;
     const activeSkin = isInstallView ? "kora" : appSkin;
+    const activePluginTheme = resolveActiveThemePlugin();
+    const appliedPluginTheme = applyActiveThemePlugin(document);
+    syncThemePluginMarker(appliedPluginTheme.applied);
 
     // Only the `theme-` prefixed token is applied to <body>. The bare theme
     // name (e.g. "sepia") collides with a Tailwind utility class of the same
@@ -1574,6 +1579,9 @@ export default function App() {
     // the page. The `theme-` prefixed class carries the theme CSS variables
     // without that side effect.
     const classes = [prefixedTheme, skinBodyClass(activeSkin)];
+    if (!isInstallView && activePluginTheme?.themeId === "cyberui-operator") {
+      classes.push("skin-cyberui");
+    }
     // Always attach the matching theme-* class so --theme-bg / --theme-text are
     // applied for EVERY known theme. Previously only dark/night/oled/light pushed a
     // theme-* class; themes like green/paper/sepia fell through, leaving <body>
@@ -1601,7 +1609,9 @@ export default function App() {
     if (extra) classes.push(...extra);
 
     const isDark =
-      !isInstallView && (
+      !isInstallView && (activePluginTheme
+        ? activePluginTheme.dark === true
+        : (
         cleanTheme === "night" ||
         cleanTheme === "oled" ||
         cleanTheme === "dark" ||
@@ -1610,7 +1620,7 @@ export default function App() {
         rawTheme.includes("dark") ||
         rawTheme === "theme-night" ||
         rawTheme === "theme-oled"
-      );
+      ));
 
     if (isDark) {
       classes.push("dark");
@@ -1623,11 +1633,12 @@ export default function App() {
     }
     document.body.className = Array.from(new Set(classes.filter(Boolean))).join(" ");
     document.documentElement.dataset.skin = activeSkin;
-  }, [displayTheme, appSkin, window.location.pathname]);
+  }, [displayTheme, appSkin, pluginThemeRevision, window.location.pathname]);
 
   useEffect(() => {
     const handleDisplayThemeChanged = (e: Event) => {
       const customEvent = e as CustomEvent<string>;
+      setPluginThemeRevision((revision) => revision + 1);
       if (customEvent.detail) {
         setDisplayTheme(customEvent.detail);
       }

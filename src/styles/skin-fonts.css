@@ -75,6 +75,11 @@ body.skin-cyberpunk {
   --font-ui-display: "Orbitron", "Rajdhani", sans-serif;
 }
 
+body.skin-cyberui {
+  --font-ui: "Rajdhani", "Share Tech Mono", sans-serif;
+  --font-ui-display: "Orbitron", "Rajdhani", sans-serif;
+}
+
 body.skin-library {
   --font-ui: "Merriweather", "Lora", Georgia, serif;
   --font-ui-display: "Merriweather", "Lora", Georgia, serif;
