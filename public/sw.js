@@ -455,7 +455,7 @@ async function downloadBook(payload, resumeFrom = 0, existingChunks = [], knownC
  * the Worker() constructor inside ServiceWorkerGlobalScope, so a dependable
  * Tesseract worker cannot be started here.
  */
-const PDF_CONVERSION_VERSION = 1;
+const PDF_CONVERSION_VERSION = 3;
 const PDF_CONVERSION_JOB_PREFIX = "pdf-conversion-job:";
 const PDF_CONVERSION_OUTPUT_PREFIX = "pdf-conversion-output:";
 const activePdfConversions = new Set();
@@ -560,9 +560,22 @@ function extractTextFromPdfContent(content) {
       if (match[1]) {
         parts.push(decodePdfStringToken(match[1]));
       } else if (match[2] !== undefined) {
-        const tokenPattern = /\((?:\\[\s\S]|[^\\)])*\)|<[0-9A-Fa-f\s]+>/g;
+        // PDF TJ arrays are commonly split into several strings to apply glyph
+        // kerning. Those strings are fragments of one run, not separate words.
+        // Join them directly; only a substantial negative adjustment usually
+        // represents a visual word gap. (The prior implementation added a
+        // space between every fragment and produced output like "R ock".)
+        const tokenPattern = /\((?:\\[\s\S]|[^\\)])*\)|<[0-9A-Fa-f\s]+>|[-+]?(?:\d+\.?\d*|\.\d+)/g;
         let token;
-        while ((token = tokenPattern.exec(match[2]))) parts.push(decodePdfStringToken(token[0]));
+        let run = "";
+        while ((token = tokenPattern.exec(match[2]))) {
+          if (token[0][0] === "(" || token[0][0] === "<") {
+            run += decodePdfStringToken(token[0]);
+          } else if (Number(token[0]) < -120 && run && !/\s$/.test(run)) {
+            run += " ";
+          }
+        }
+        parts.push(run);
       } else {
         parts.push("\n");
       }
@@ -624,8 +637,18 @@ async function extractPdfText(blob, onProgress) {
   }
   const text = pieces.join("\n\n").replace(/\u0000/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   const meaningful = text.replace(/[^\p{L}\p{N}]/gu, "");
-  if (meaningful.length < 80) {
-    throw new Error("PDF_OCR_REQUIRED: this PDF appears scanned or uses a text encoding this service-worker extractor cannot read. OCR needs a dedicated worker, which browsers do not permit service workers to create.");
+  const lettersAndNumbers = (text.match(/[\p{L}\p{N}]/gu) || []).length;
+  const replacementChars = (text.match(/[\uFFFD\u0000-\u0008\u000B\u000C\u000E-\u001F]/g) || []).length;
+  const isolatedLetterRuns = (text.match(/(?:^|\s)(?:[\p{L}\p{N}]\s){4,}[\p{L}\p{N}](?=\s|$)/gu) || []).join("").length;
+  const suspiciousRatio = meaningful.length ? isolatedLetterRuns / meaningful.length : 0;
+  const replacementRatio = text.length ? replacementChars / text.length : 0;
+  if (meaningful.length < 80 || lettersAndNumbers < 80 || suspiciousRatio > 0.18 || replacementRatio > 0.005) {
+    const reason = meaningful.length < 80
+      ? "very little readable text was extracted"
+      : suspiciousRatio > 0.18
+        ? "the extracted text is fragmented into isolated characters"
+        : "the PDF text encoding produced unreadable characters";
+    throw new Error(`PDF_OCR_REQUIRED: ${reason}. The PDF needs OCR before it can be converted reliably; Kora stopped this conversion to avoid creating a broken EPUB.`);
   }
   return { text, totalPages: totalPages || streams.length };
 }
@@ -854,6 +877,50 @@ async function setPdfConversionState(downloadId, payload, status, progress, extr
   }
   return job;
 }
+async function requestPdfOcrFromPage(blob, downloadId, payload, onProgress) {
+  const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  if (!clients.length) {
+    throw new Error("PDF_OCR_CLIENT_UNAVAILABLE: Open Kora and retry this conversion so it can run OCR in a page worker.");
+  }
+  clients.sort((a, b) => Number(b.focused) - Number(a.focused) || Number(b.visibilityState === "visible") - Number(a.visibilityState === "visible"));
+  const client = clients[0];
+  const requestId = "pdf-ocr:" + downloadId + ":" + Date.now().toString(36);
+  const channel = new MessageChannel();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => finish(new Error("PDF_OCR_TIMEOUT: OCR took too long. Keep Kora open and retry the conversion.")), 30 * 60 * 1000);
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      channel.port1.close();
+      if (error) reject(error);
+      else resolve(result);
+    };
+    channel.port1.onmessage = async (event) => {
+      const data = event.data || {};
+      if (data.type === "progress") {
+        await onProgress?.(data);
+      } else if (data.type === "result" && typeof data.text === "string") {
+        finish(null, { text: data.text, totalPages: Number(data.pageCount) || 0 });
+      } else if (data.type === "error") {
+        finish(new Error(String(data.error || "PDF_OCR_FAILED: OCR failed.")));
+      }
+    };
+    channel.port1.start();
+    try {
+      client.postMessage({
+        type: "pdf-ocr-request",
+        requestId,
+        downloadId,
+        title: (payload && payload.title) || "PDF",
+        blob,
+      }, [channel.port2]);
+    } catch (error) {
+      finish(new Error("PDF_OCR_CLIENT_UNAVAILABLE: Kora could not start the page OCR worker."));
+    }
+  });
+}
 async function runPdfConversion(downloadId, payload, sourceBlob, force) {
   if (activePdfConversions.has(downloadId)) return;
   activePdfConversions.add(downloadId);
@@ -869,16 +936,28 @@ async function runPdfConversion(downloadId, payload, sourceBlob, force) {
     }
     await setPdfConversionState(downloadId, payload, "extracting", 3, { error: null, errorCode: null });
     let lastPercent = 3;
-    const extracted = await extractPdfText(sourceBlob, async (processed, count, pagesTotal) => {
-      const percent = Math.min(58, 5 + Math.round((processed / Math.max(1, count)) * 53));
-      if (percent !== lastPercent) {
-        lastPercent = percent;
-        await setPdfConversionState(downloadId, payload, "extracting", percent, {
-          pagesProcessed: Math.min(processed, pagesTotal || processed),
-          pagesTotal: pagesTotal || count,
-        });
-      }
-    });
+    let extracted;
+    try {
+      extracted = await extractPdfText(sourceBlob, async (processed, count, pagesTotal) => {
+        const percent = Math.min(58, 5 + Math.round((processed / Math.max(1, count)) * 53));
+        if (percent !== lastPercent) {
+          lastPercent = percent;
+          await setPdfConversionState(downloadId, payload, "extracting", percent, {
+            pagesProcessed: Math.min(processed, pagesTotal || processed),
+            pagesTotal: pagesTotal || count,
+          });
+        }
+      });
+    } catch (error) {
+      if (!String(error && error.message || error).startsWith("PDF_OCR_REQUIRED:")) throw error;
+      await setPdfConversionState(downloadId, payload, "ocr", 8, { error: null, errorCode: null, pagesProcessed: 0 });
+      extracted = await requestPdfOcrFromPage(sourceBlob, downloadId, payload, async (progress) => {
+        const page = Math.max(0, Number(progress.page) || 0);
+        const pageCount = Math.max(1, Number(progress.pageCount) || 1);
+        const percent = 8 + Math.round(Math.max(0, Math.min(100, Number(progress.percent) || 0)) * 0.5);
+        await setPdfConversionState(downloadId, payload, "ocr", percent, { pagesProcessed: page, pagesTotal: pageCount });
+      });
+    }
     await setPdfConversionState(downloadId, payload, "building", 65, {
       pagesProcessed: extracted.totalPages,
       pagesTotal: extracted.totalPages,

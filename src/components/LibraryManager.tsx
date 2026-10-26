@@ -456,7 +456,7 @@ function LibraryDownloadOverlay({
               <span className="absolute text-[10px] font-bold font-mono text-kindle-text">{pct}%</span>
             </div>
             <span className="relative mt-2 text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted px-2 text-center">
-              {isPaused ? "Paused" : isConverting ? "Converting to EPUB…" : "Downloading…"}
+              {isPaused ? "Paused" : isConverting && download.conversionStage === "ocr" ? "Recognizing text…" : isConverting ? "Converting to EPUB…" : "Downloading…"}
             </span>
           </>
         )}

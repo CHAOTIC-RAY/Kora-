@@ -1833,7 +1833,21 @@ export default function App() {
     if (!("serviceWorker" in navigator)) return;
     const onMessage = async (event: MessageEvent) => {
       const data = event.data || {};
-      if (data.type === "download-progress") {
+      if (data.type === "pdf-ocr-request") {
+        const port = event.ports?.[0];
+        if (!port) return;
+        try {
+          const { recognizePdfWithOcr } = await import("./lib/pdfOcr");
+          const result = await recognizePdfWithOcr(data.blob, (progress) => {
+            port.postMessage({ type: "progress", ...progress });
+          });
+          port.postMessage({ type: "result", ...result });
+        } catch (error: any) {
+          port.postMessage({ type: "error", error: error?.message || "PDF_OCR_FAILED: OCR failed." });
+        } finally {
+          port.close();
+        }
+      } else if (data.type === "download-progress") {
         const transferred = String(data.transferred || "");
         const percent = typeof data.percent === "number" ? data.percent : 0;
         const realProgress =
@@ -1908,9 +1922,11 @@ export default function App() {
           persistDownloadsLogNow(updated);
           return updated;
         });
-        toast.error(error.startsWith("PDF_OCR_REQUIRED:")
-          ? "PDF downloaded, but this scanned PDF needs OCR that the service worker cannot run."
-          : "PDF downloaded, but EPUB conversion failed.", { id: "conversion-" + data.downloadId });
+        toast.error(error.startsWith("PDF_OCR_CLIENT_UNAVAILABLE:")
+          ? "Open Kora and retry so OCR can run in a page worker."
+          : error.startsWith("PDF_OCR_REQUIRED:")
+            ? "This PDF needs OCR, but its text layer could not be read."
+            : "PDF downloaded, but EPUB conversion failed.", { id: "conversion-" + data.downloadId });
       } else if (data.type === "audiobook-track-complete") {
         handleAudiobookSwMessage(data);
       } else if (data.type === "audiobook-track-progress" || data.type === "audiobook-track-error") {
