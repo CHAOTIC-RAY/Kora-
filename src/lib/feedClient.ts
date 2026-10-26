@@ -1,12 +1,13 @@
 import { ParsedFeedItem, normalizeFeedArticleLink } from "./rssParser";
 import { FeedItem, FeedSubscription } from "./feedStorage";
+import { resolveApiUrl } from "./capacitorNative";
 
 export async function discoverFeed(url: string): Promise<{
   title: string;
   siteUrl: string;
   feedUrl: string;
 }> {
-  const response = await fetch("/api/feed/discover", {
+  const response = await fetch(resolveApiUrl("/api/feed/discover"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
@@ -18,15 +19,16 @@ export async function discoverFeed(url: string): Promise<{
   return response.json();
 }
 
-export async function fetchFeed(feedUrl: string): Promise<{
+export async function fetchFeed(feedUrl: string, signal?: AbortSignal): Promise<{
   title: string;
   link?: string;
   items: ParsedFeedItem[];
 }> {
-  const response = await fetch("/api/feed/fetch", {
+  const response = await fetch(resolveApiUrl("/api/feed/fetch"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ feedUrl }),
+    signal,
   });
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -55,19 +57,32 @@ export function mapParsedItems(
 }
 
 export async function refreshSubscription(subscription: FeedSubscription): Promise<FeedItem[]> {
-  const parsed = await fetchFeed(subscription.feedUrl);
-  return mapParsedItems(subscription, parsed.items);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("Feed request timed out")), 18_000);
+  try {
+    const parsed = await fetchFeed(subscription.feedUrl, controller.signal);
+    return mapParsedItems(subscription, parsed.items);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function refreshAllSubscriptions(subscriptions: FeedSubscription[]): Promise<FeedItem[]> {
   const batches: FeedItem[] = [];
-  for (const subscription of subscriptions) {
-    try {
-      const items = await refreshSubscription(subscription);
-      batches.push(...items);
-    } catch (error) {
-      console.warn(`Feed refresh failed for ${subscription.title}:`, error);
+  const concurrency = Math.min(4, subscriptions.length);
+  let cursor = 0;
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (cursor < subscriptions.length) {
+      const index = cursor++;
+      const subscription = subscriptions[index];
+      try {
+        const items = await refreshSubscription(subscription);
+        batches.push(...items);
+      } catch (error) {
+        console.warn(`Feed refresh failed for ${subscription.title}:`, error);
+      }
     }
-  }
+  });
+  await Promise.all(workers);
   return batches;
 }

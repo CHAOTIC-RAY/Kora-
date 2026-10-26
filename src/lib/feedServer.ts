@@ -8,6 +8,7 @@ import {
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36";
+const FEED_FETCH_TIMEOUT_MS = 12_000;
 
 async function fetchText(url: string): Promise<string> {
   const response = await fetch(url, {
@@ -16,8 +17,9 @@ async function fetchText(url: string): Promise<string> {
       Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html, */*",
     },
     redirect: "follow",
+    signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
   });
-  if (!response.ok) throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`Feed request failed: HTTP ${response.status}`);
   return response.text();
 }
 
@@ -92,7 +94,13 @@ export async function fetchFeedFromUrl(feedUrl: string) {
   }
 
   const xml = await fetchText(feedUrl);
+  if (!/<(?:rss|feed|rdf:RDF|[\w.-]+:RDF)\b/i.test(xml)) {
+    throw new Error("The source returned a web page instead of an RSS or Atom feed.");
+  }
   const feed = parseFeedXml(xml);
+  if (!feed.items.length) {
+    throw new Error("The source returned a feed with no readable stories.");
+  }
   return {
     title: feed.title,
     link: feed.link,
@@ -135,6 +143,7 @@ async function fetchEditionMvFeed(): Promise<{ title: string; link: string; item
         "User-Agent": USER_AGENT,
         Accept: "application/json",
       },
+      signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
     }
   );
   if (!response.ok) throw new Error(`Edition API failed: HTTP ${response.status}`);
@@ -175,6 +184,7 @@ async function fetchMihaaruFeed(): Promise<{ title: string; link: string; items:
       "User-Agent": USER_AGENT,
       Accept: "application/json",
     },
+    signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`Mihaaru API failed: HTTP ${response.status}`);
   const data = await response.json() as { hits?: Array<Record<string, unknown>> };
