@@ -50,6 +50,12 @@ const DIRS: Array<[number, number]> = [
   [-1, -1],
 ];
 
+// Count physical word paths once: only the four forward directions are needed,
+// so a word read backwards is the same physical occurrence rather than a second.
+const UNIQUE_DIRS: Array<[number, number]> = [
+  [0, 1], [1, 0], [1, 1], [1, -1],
+];
+
 function canPlace(
   grid: (string | null)[][],
   word: string,
@@ -82,6 +88,25 @@ function place(
   }
 }
 
+function countWordOccurrences(grid: string[][], word: string): number {
+  const size = grid.length;
+  const reverse = [...word].reverse().join("");
+  let count = 0;
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col < size; col++) {
+      for (const [dr, dc] of UNIQUE_DIRS) {
+        const endRow = row + dr * (word.length - 1);
+        const endCol = col + dc * (word.length - 1);
+        if (endRow < 0 || endCol < 0 || endRow >= size || endCol >= size) continue;
+        let forward = "";
+        for (let i = 0; i < word.length; i++) forward += grid[row + dr * i]![col + dc * i]!;
+        if (forward === word || (reverse !== word && forward === reverse)) count++;
+      }
+    }
+  }
+  return count;
+}
+
 export function generateWordSearch(
   difficulty: WordSearchDifficulty,
   level: number
@@ -94,48 +119,64 @@ export function generateWordSearch(
     WORD_BANK.filter((w) => w.word.length >= cfg.minLen && w.word.length <= cfg.maxLen),
     rand
   );
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const uniquePool = [...new Map(pool.map((entry) => [entry.word.trim().toUpperCase(), entry])).values()];
 
-  const grid: (string | null)[][] = Array.from({ length: cfg.size }, () =>
-    Array.from({ length: cfg.size }, () => null)
-  );
-  const placed: HiddenWord[] = [];
-  const used = new Set<string>();
+  // Random filler can accidentally spell a listed word a second time. Generate
+  // candidate boards until every displayed target has exactly one path.
+  let filled: string[][] = [];
+  let placed: HiddenWord[] = [];
+  for (let attempt = 0; attempt < 256; attempt++) {
+    const grid: (string | null)[][] = Array.from({ length: cfg.size }, () =>
+      Array.from({ length: cfg.size }, () => null)
+    );
+    const candidate: HiddenWord[] = [];
+    const used = new Set<string>();
 
-  for (const entry of pool) {
-    if (placed.length >= cfg.count) break;
-    const word = entry.word.toUpperCase();
-    if (used.has(word) || word.length > cfg.size) continue;
+    for (const entry of uniquePool) {
+      if (candidate.length >= cfg.count) break;
+      const word = entry.word.trim().toUpperCase();
+      if (!/^[A-Z]+$/.test(word) || used.has(word) || word.length > cfg.size) continue;
 
-    const dirs = shuffle(DIRS, rand);
-    let placedOk = false;
-    for (const [dr, dc] of dirs) {
-      const positions: Array<{ row: number; col: number }> = [];
-      for (let r = 0; r < cfg.size; r++) {
-        for (let c = 0; c < cfg.size; c++) {
-          if (canPlace(grid, word, r, c, dr, dc)) positions.push({ row: r, col: c });
+      let placedOk = false;
+      for (const [dr, dc] of shuffle([...DIRS], rand)) {
+        const positions: Array<{ row: number; col: number }> = [];
+        for (let row = 0; row < cfg.size; row++) {
+          for (let col = 0; col < cfg.size; col++) {
+            if (canPlace(grid, word, row, col, dr, dc)) positions.push({ row, col });
+          }
         }
+        if (!positions.length) continue;
+        const pick = positions[Math.floor(rand() * positions.length)]!;
+        place(grid, word, pick.row, pick.col, dr, dc);
+        candidate.push({ word, row: pick.row, col: pick.col, dr, dc });
+        used.add(word);
+        placedOk = true;
+        break;
       }
-      if (!positions.length) continue;
-      const pick = positions[Math.floor(rand() * positions.length)]!;
-      place(grid, word, pick.row, pick.col, dr, dc);
-      placed.push({ word, row: pick.row, col: pick.col, dr, dc });
-      used.add(word);
-      placedOk = true;
+      if (!placedOk) continue;
+    }
+
+    const board = grid.map((row) => row.map((cell) => cell ?? alphabet[Math.floor(rand() * alphabet.length)]!));
+    const exact = candidate.filter((target) => countWordOccurrences(board, target.word) === 1);
+    if (candidate.length === cfg.count && exact.length === candidate.length) {
+      filled = board;
+      placed = candidate;
       break;
     }
-    if (!placedOk) continue;
+    // Keep a safe fallback candidate if the seeded search ever exhausts.
+    if (!placed.length && exact.length) {
+      filled = board;
+      placed = exact;
+    }
   }
 
-  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const filled = grid.map((row) =>
-    row.map((cell) => cell ?? alphabet[Math.floor(rand() * 26)]!)
-  );
-
-  // Ensure at least one word
+  // The seeded fallback board is guaranteed to contain one unique target.
   if (!placed.length) {
+    filled = Array.from({ length: cfg.size }, () => Array.from({ length: cfg.size }, () => "X"));
     const word = "BOOK";
     for (let i = 0; i < word.length; i++) filled[0]![i] = word[i]!;
-    placed.push({ word, row: 0, col: 0, dr: 0, dc: 1 });
+    placed = [{ word, row: 0, col: 0, dr: 0, dc: 1 }];
   }
 
   return {

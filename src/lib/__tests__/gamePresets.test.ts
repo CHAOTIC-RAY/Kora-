@@ -3,8 +3,7 @@
  *
  * Three things this pins:
  *
- *  1. The six added games exist with the right player counts, and the three
- *     removed ones are genuinely gone from the picker.
+ *  1. All supported game modes live in the central catalogue with valid player counts.
  *  2. Teams are declared for exactly the games played as sides. Carrom,
  *     Hukum Thaas and Dihaeh are 2v2; Chess, Digu and Uno are not. Getting
  *     this wrong is silent — the tracker still runs, it just records the wrong
@@ -12,13 +11,10 @@
  *  3. Team roll-up sums members AND keeps each member's own score, because
  *     losing the individual breakdown to get the side total is a regression.
  *
- * Plus the degradation path: a match saved against a preset that has since
- * been removed must still name its game instead of throwing.
+ * Plus the degradation path: old or unknown matches still get a safe label.
  */
 import {
   GAME_PRESETS,
-  REMOVED_PRESET_IDS,
-  REMOVED_PRESET_NAMES,
   addCategory,
   assignTeamsRoundRobin,
   categorySettingsForPreset,
@@ -65,11 +61,12 @@ function mustGet(id: string): GamePreset {
 }
 
 /* -------------------------------------------------------------------------- */
-/* 1. The six added games                                                      */
+/* 1. The supported preset catalogue                                          */
 /* -------------------------------------------------------------------------- */
 
-test("all six new presets exist", () => {
-  for (const id of ["carrom", "chess", "hukum-thaas", "digu", "dihaeh", "uno"]) {
+test("all 13 supported presets exist in the central catalogue", () => {
+  eq(GAME_PRESETS.length, 13, "catalogue size");
+  for (const id of ["carrom", "chess", "hukum-thaas", "digu", "dihaeh", "catan", "ticket-to-ride", "carcassonne", "7wonders", "uno", "scrabble", "wingspan", "custom"]) {
     ok(getPresetById(id), `missing preset ${id}`);
   }
 });
@@ -84,15 +81,19 @@ test("player counts match the rules", () => {
   eq(mustGet("digu").playerCount.default, 4, "digu default");
   eq(mustGet("dihaeh").playerCount.default, 4, "dihaeh default");
   eq(mustGet("uno").playerCount.max, 10, "uno max");
+  eq(mustGet("wingspan").playerCount.min, 1, "wingspan solo minimum");
+  eq(mustGet("catan").targetScore, 10, "catan target");
+  eq(mustGet("wingspan").categories?.length, 5, "wingspan scoring categories");
+  eq(mustGet("7wonders").categories?.length, 7, "7 wonders scoring categories");
 });
 
 test("target scores follow the rules", () => {
   eq(mustGet("carrom").targetScore, 9, "carrom = 9 pieces, Queen is separate");
   eq(mustGet("hukum-thaas").targetScore, 7, "hukum thaas = 7 tricks");
   eq(mustGet("dihaeh").targetScore, 7, "dihaeh = 7 tricks");
-  // Chess, Digu and Uno have no numeric target — first-to-X, not a score.
+  // Digu has no numeric target — first to empty a hand, not a score.
   eq(mustGet("digu").targetScore, undefined, "digu has no numeric target");
-  eq(mustGet("uno").targetScore, undefined, "uno has no numeric target");
+  eq(mustGet("uno").targetScore, 500, "uno ends at 500 points");
   // Chess keeps a deliberate stop-signal of 1 and explains why.
   eq(mustGet("chess").targetScore, 1, "chess stop signal");
   ok(
@@ -103,7 +104,7 @@ test("target scores follow the rules", () => {
 
 test("a preset with no target explains why in its notes", () => {
   // No numeric win target must never read as a silent 0.
-  for (const id of ["digu", "uno"]) {
+  for (const id of ["digu"]) {
     const p = mustGet(id);
     ok(
       (p.notes ?? []).some((n) => /empty hand|no target|first to/i.test(n)),
@@ -113,29 +114,8 @@ test("a preset with no target explains why in its notes", () => {
 });
 
 /* -------------------------------------------------------------------------- */
-/* 2. Removals                                                                 */
+/* 2. Catalogue integrity                                                      */
 /* -------------------------------------------------------------------------- */
-
-test("the three removed presets are gone from the picker", () => {
-  for (const id of ["catan", "ticket-to-ride", "carcassonne"]) {
-    ok(!getPresetById(id), `${id} should not resolve`);
-    ok(
-      !GAME_PRESETS.some((p) => p.id === id),
-      `${id} should not be in GAME_PRESETS`
-    );
-  }
-});
-
-test("no preset anywhere in the catalogue carries a removed id", () => {
-  const ids = new Set(GAME_PRESETS.map((p) => p.id));
-  for (const id of REMOVED_PRESET_IDS) ok(!ids.has(id), `${id} leaked into the catalogue`);
-});
-
-test("removed preset names are retained for historical matches", () => {
-  eq(REMOVED_PRESET_NAMES.catan, "Settlers of Catan");
-  eq(REMOVED_PRESET_NAMES["ticket-to-ride"], "Ticket to Ride");
-  eq(REMOVED_PRESET_NAMES.carcassonne, "Carcassonne");
-});
 
 test("preset ids are unique", () => {
   const seen = new Set<string>();
@@ -175,17 +155,8 @@ test("Chess, Digu and Uno are NOT teams", () => {
   }
 });
 
-test("the existing trick-taking preset was converted to partnerships", () => {
-  // Hearts/Spades/Euchre ARE team games, so leaving them individual would have
-  // been the inconsistency.
-  const p = mustGet("hearts-spades");
-  ok(isTeamGame(p), "hearts/spades/euchre should be two partnerships");
-  eq(getTeams(p).length, 2);
-  eq(getTeams(p).map((t) => t.size), [2, 2]);
-});
-
 test("individual presets stay individual", () => {
-  for (const id of ["7wonders", "scrabble", "custom"]) {
+  for (const id of ["7wonders", "scrabble", "wingspan", "ticket-to-ride", "custom"]) {
     ok(!isTeamGame(mustGet(id)), `${id} should not be a team game`);
   }
 });
@@ -339,6 +310,7 @@ test("every new preset carries its special conditions", () => {
   has("hukum-thaas", /koatey/i);
   has("digu", /run/i);
   has("dihaeh", /baga/i);
+  has("dihaeh", /three or more.*tens/i);
   has("dihaeh", /hukunbunye/i);
   has("uno", /UNO!/i);
 });
@@ -352,7 +324,7 @@ test("instant-win conditions are flagged, not silently listed", () => {
   }
 });
 
-test("Digu and Uno declare no instant win (they end on an empty hand)", () => {
+test("Digu and Uno declare no instant-win condition", () => {
   eq(instantWinConditions(mustGet("digu")), []);
   eq(instantWinConditions(mustGet("uno")), []);
 });
@@ -412,24 +384,10 @@ test("blank category input is ignored", () => {
 /* 8. Stored-match degradation                                                */
 /* -------------------------------------------------------------------------- */
 
-test("a stored match on a removed preset keeps its saved name", () => {
+test("a stored match on a restored preset resolves to the canonical name", () => {
   const resolved = resolveMatchGame({ gameId: "catan", gameName: "Settlers of Catan" });
   eq(resolved.name, "Settlers of Catan");
-  eq(resolved.degraded, true, "flagged as coming from the stored record");
-});
-
-test("every removed preset id degrades without throwing", () => {
-  for (const id of REMOVED_PRESET_IDS) {
-    const stored = REMOVED_PRESET_NAMES[id];
-    let resolved;
-    try {
-      resolved = resolveMatchGame({ gameId: id, gameName: stored });
-    } catch (e) {
-      throw new Error(`resolveMatchGame threw for ${id}: ${e}`);
-    }
-    eq(resolved.name, stored);
-    ok(resolved.name.length > 0, `${id} degraded to an empty name`);
-  }
+  eq(resolved.degraded, false, "restored preset resolves from the catalogue");
 });
 
 test("a live preset id resolves to the current name", () => {

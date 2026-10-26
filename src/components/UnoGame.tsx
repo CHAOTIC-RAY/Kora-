@@ -777,9 +777,9 @@ export default function UnoGame({
 
           {/* SCREEN 3: ACTIVE PLAYING ARENA */}
           {screen === "playing" && publicState && (
-            <main className="kora-game-theme uno-game-arena relative flex-1 overflow-hidden p-3 text-[var(--theme-text)] sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 48%), var(--theme-bg)" }}>
+            <main className="kora-game-theme uno-game-arena relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 text-[var(--theme-text)] sm:p-5" style={{ background: "radial-gradient(ellipse at 50% -10%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 48%), var(--theme-bg)" }}>
               <div className="pointer-events-none absolute inset-0 opacity-30" style={{ backgroundImage: "radial-gradient(color-mix(in srgb, var(--theme-text) 10%, transparent) .7px, transparent .7px)", backgroundSize: "15px 15px" }} />
-              <div className="relative z-10 flex h-full min-h-[470px] flex-col gap-3 sm:gap-4">
+              <div className="relative z-10 flex min-h-full flex-col gap-3 sm:gap-4">
                 {/* Opponent seats */}
                 <div className="flex shrink-0 items-center justify-center gap-2 overflow-x-auto pb-1">
                   {publicState.players.filter((p) => p.id !== myId).map((p, i) => {
@@ -802,14 +802,14 @@ export default function UnoGame({
                 </div>
 
                 {/* Custom felt table */}
-                <section className="uno-felt-table relative flex min-h-[230px] flex-1 flex-col items-center justify-center overflow-hidden rounded-[2rem] border border-[var(--theme-border)] shadow-[inset_0_0_28px_color-mix(in_srgb,var(--theme-text)_7%,transparent),0_12px_32px_color-mix(in_srgb,var(--theme-text)_10%,transparent)] sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
+                <section className="uno-felt-table relative flex min-h-[520px] flex-1 flex-col items-center justify-between gap-3 overflow-visible rounded-[2rem] border border-[var(--theme-border)] px-2 py-5 shadow-[inset_0_0_28px_color-mix(in_srgb,var(--theme-text)_7%,transparent),0_12px_32px_color-mix(in_srgb,var(--theme-text)_10%,transparent)] sm:min-h-[560px] sm:px-5 sm:py-6 sm:rounded-[2.5rem]" style={{ background: "radial-gradient(ellipse at 50% 42%, color-mix(in srgb, var(--theme-card) 86%, var(--theme-accent)), var(--theme-card) 58%, var(--theme-bg))" }}>
                   <div className="pointer-events-none absolute inset-3 rounded-[1.7rem] border border-[var(--theme-border)] sm:inset-5 sm:rounded-[2rem]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[78%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[60%]" />
                   <div className="pointer-events-none absolute left-1/2 top-1/2 h-[62%] w-[56%] -translate-x-1/2 -translate-y-1/2 rounded-[50%] border border-white/[.07] sm:w-[40%]" />
                   <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.2em] text-[var(--theme-text-muted)] sm:left-6 sm:top-6">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_8px_#6ee7b7]" /> Live table
                   </div>
-                  <div className="relative z-10 flex w-full items-center justify-center gap-5 px-3 sm:gap-9">
+                  <div className="relative z-10 flex w-full flex-1 items-center justify-center gap-5 px-3 sm:gap-9">
                     <div className="flex flex-col items-center gap-2">
                       <button type="button" onClick={handleDrawCard} disabled={!isMyTurn} aria-label="Draw a card" className={`relative h-28 w-[4.6rem] transition sm:h-36 sm:w-24 ${isMyTurn ? "hover:-translate-y-2" : "opacity-75"}`}>
                         <span className="absolute inset-0 translate-x-2 translate-y-2 rotate-[8deg]"><UnoCardBack compact /></span>
@@ -825,7 +825,7 @@ export default function UnoGame({
                       <span className="rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1 text-[9px] font-black uppercase tracking-[.2em] text-[var(--theme-text-muted)]">Discard pile</span>
                     </div>
                   </div>
-                  <div className="relative z-10 mt-4 flex flex-col items-center gap-2 px-4 text-center">
+                  <div className="relative z-10 flex flex-col items-center gap-2 px-4 text-center">
                     <div className="flex items-center gap-2 rounded-full border border-[var(--theme-border)] bg-[var(--theme-card)] px-3 py-1.5 text-[10px] font-black uppercase tracking-widest">
                       <span className="h-2.5 w-2.5 rounded-full ring-2 ring-white/25" style={{ background: UNO_CARD_COLORS[publicState.currentColor as Exclude<UnoColor, "wild">] || "#fff" }} />
                       {publicState.currentColor} active
@@ -835,15 +835,13 @@ export default function UnoGame({
                       {isMyTurn ? "Your turn — play a matching card" : `Waiting for ${activePlayer?.name || "opponent"}`}
                     </p>
                   </div>
-                </section>
-
-                {/* Hand and action bar */}
-                <section className="uno-hand-panel shrink-0 rounded-[1.7rem] border border-[var(--theme-border)] bg-[var(--theme-card)] p-3 sm:p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                    <div><p className="text-xs font-black sm:text-sm">YOUR HAND <span className="ml-1 rounded-full bg-[var(--theme-bg)] px-2 py-0.5 text-[10px] text-[var(--theme-text-muted)]">{myHand.length}</span></p><p className="mt-1 text-[9px] font-bold uppercase tracking-[.18em] text-[var(--theme-text-muted)]">Tap a glowing card to play</p></div>
-                    {myHand.length <= 2 && <motion.button type="button" whileTap={{ scale: .94 }} onClick={handleCallUno} className="rounded-full border border-amber-200/50 bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2 text-[10px] font-black italic tracking-widest text-[#171923] shadow-[0_0_22px_rgba(251,191,36,.22)] sm:text-xs"><Flame className="mr-1 inline h-3.5 w-3.5" /> CALL UNO!</motion.button>}
-                  </div>
-                  <div className="uno-hand-fan flex min-h-[118px] items-end gap-2 overflow-x-auto overflow-y-hidden px-1 pb-2 pt-1 scrollbar-thin sm:min-h-[142px] sm:gap-2.5">
+                  {/* The hand floats directly on the felt, like cards spread across the table. */}
+                  <div className="uno-hand-panel relative z-10 w-full shrink-0 border-0 bg-transparent p-0 shadow-none">
+                    <div className="mb-1 flex items-center justify-between gap-3 px-2">
+                      <div className="flex items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[.18em] sm:text-xs">Your hand</p><span className="text-[9px] font-mono text-[var(--theme-text-muted)]">{myHand.length} cards</span></div>
+                      {myHand.length <= 2 && <motion.button type="button" whileTap={{ scale: .94 }} onClick={handleCallUno} className="rounded-full border border-amber-200/50 bg-gradient-to-r from-amber-300 to-orange-400 px-4 py-2 text-[10px] font-black italic tracking-widest text-[#171923] shadow-[0_0_22px_rgba(251,191,36,.22)] sm:text-xs"><Flame className="mr-1 inline h-3.5 w-3.5" /> CALL UNO!</motion.button>}
+                    </div>
+                    <div className="uno-hand-fan flex min-h-[118px] items-end gap-2 overflow-x-auto overflow-y-visible px-1 pb-2 pt-4 scrollbar-thin sm:min-h-[142px] sm:gap-2.5">
                     {myHand.map((card, index) => {
                       const playable = isMyTurn && canPlayCard(card, publicState.topDiscard, publicState.currentColor);
                       const fanCenter = (myHand.length - 1) / 2;
@@ -857,6 +855,7 @@ export default function UnoGame({
                         </motion.button>
                       );
                     })}
+                  </div>
                   </div>
                 </section>
               </div>

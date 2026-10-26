@@ -1635,10 +1635,12 @@ body.skin-cyberui button:active:not(:disabled) {
 }
 
 body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
-  background: color-mix(in srgb, var(--theme-card) 94%, black) !important;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--theme-card) 90%, white 3%), color-mix(in srgb, var(--theme-card) 84%, transparent) 58%, color-mix(in srgb, var(--theme-bg) 70%, var(--theme-card))) !important;
   border: 1px solid var(--cyberui-line) !important;
   border-radius: 0.4rem !important;
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.12), 0 0 12px rgba(0, 0, 0, 0.16) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(1.16);
+  backdrop-filter: blur(12px) saturate(1.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 0 18px rgba(0, 0, 0, 0.12), 0 0 12px rgba(0, 0, 0, 0.16) !important;
 }
 
 body.skin-cyberui :is([class*="rounded-3xl"], [class*="rounded-2xl"]) {
@@ -1695,9 +1697,43 @@ body.skin-cyberui :focus-visible {
   box-shadow: 0 0 12px var(--cyberui-glow) !important;
 }
 
-body.skin-cyberui ::-webkit-scrollbar { width: 6px; height: 6px; }
-body.skin-cyberui ::-webkit-scrollbar-track { background: var(--theme-bg); }
-body.skin-cyberui ::-webkit-scrollbar-thumb { background: var(--theme-border); border-radius: 2px; }
+body.skin-cyberui {
+  scrollbar-width: thin;
+  scrollbar-color: var(--theme-border) color-mix(in srgb, var(--theme-bg) 78%, transparent);
+}
+
+body.skin-cyberui ::-webkit-scrollbar { width: 11px; height: 11px; }
+body.skin-cyberui ::-webkit-scrollbar-track {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--theme-border) 8%, transparent), transparent 42%, color-mix(in srgb, var(--theme-border) 8%, transparent));
+  border: 1px solid color-mix(in srgb, var(--theme-border) 28%, transparent);
+}
+body.skin-cyberui ::-webkit-scrollbar-thumb {
+  min-height: 38px;
+  border: 2px solid var(--theme-bg);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--theme-border) 86%, white), var(--theme-border) 48%, color-mix(in srgb, var(--theme-border) 75%, var(--theme-accent)));
+  box-shadow: inset 0 0 0 1px rgba(8, 12, 16, 0.48), 0 0 10px var(--cyberui-glow);
+}
+body.skin-cyberui ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--theme-border), color-mix(in srgb, var(--theme-border) 72%, var(--theme-accent)));
+  box-shadow: inset 0 0 0 1px rgba(8, 12, 16, 0.35), 0 0 16px var(--cyberui-glow);
+}
+body.skin-cyberui ::-webkit-scrollbar-corner { background: var(--theme-bg); }
+
+/* Glass HUD panels keep readable contrast while adding a subtle acrylic sheen. */
+body.skin-cyberui [role="dialog"] {
+  background-color: color-mix(in srgb, var(--theme-card) 84%, transparent) !important;
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.075), transparent 34%, color-mix(in srgb, var(--theme-border) 5%, transparent)) !important;
+  border-color: color-mix(in srgb, var(--theme-border) 72%, white 8%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.22);
+  backdrop-filter: blur(18px) saturate(1.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.025), 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 28px var(--cyberui-glow) !important;
+}
+
+body.skin-cyberui [role="dialog"] > header {
+  background: linear-gradient(100deg, color-mix(in srgb, var(--theme-card) 76%, var(--theme-border)), color-mix(in srgb, var(--theme-card) 90%, transparent)) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+}
 
 @media (max-width: 640px) {
   body.skin-cyberui .kora-main-mobile::before {
@@ -1739,21 +1775,15 @@ body.skin-cyberui ::-webkit-scrollbar-thumb { background: var(--theme-border); b
 
 .kora-game-theme .uno-hand-panel {
   position: relative;
-  overflow: hidden;
-  border-radius: 1.1rem !important;
-  border-color: color-mix(in srgb, var(--theme-border) 72%, transparent) !important;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--theme-card) 96%, var(--theme-border)), var(--theme-card) 55%, color-mix(in srgb, var(--theme-bg) 78%, var(--theme-card))) !important;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--theme-border) 24%, transparent), 0 12px 26px rgba(0, 0, 0, 0.24) !important;
+  overflow: visible;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 .kora-game-theme .uno-hand-panel::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--theme-border), var(--theme-accent), transparent);
-  opacity: 0.8;
-  pointer-events: none;
+  content: none;
 }
 
 .kora-game-theme .uno-hand-fan {
@@ -1762,7 +1792,7 @@ body.skin-cyberui ::-webkit-scrollbar-thumb { background: var(--theme-border); b
   justify-content: safe center;
   align-items: flex-end;
   min-height: 150px !important;
-  padding: 0.7rem 1.1rem 1rem !important;
+  padding: 1rem 1.1rem 1rem !important;
   perspective: 900px;
   isolation: isolate;
   scrollbar-width: thin;
@@ -1806,9 +1836,10 @@ body.skin-cyberui .kora-game-theme .uno-felt-table {
 }
 
 body.skin-cyberui .kora-game-theme .uno-hand-panel {
-  border-radius: 0.5rem !important;
-  border-color: var(--theme-border) !important;
-  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.22), 0 0 18px var(--cyberui-glow) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 /* Operator console finish for the whole UNO overlay: clipped hardware corners,

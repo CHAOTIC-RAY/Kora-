@@ -113,11 +113,6 @@ const TEAM_1_VS_2: GameTeam[] = [
   { id: "team-2", label: "Team 2", size: 2, color: "#ef4444" },
 ];
 
-const PARTNERSHIP: GameTeam[] = [
-  { id: "partners-a", label: "Partnership", size: 2, color: "#8b5cf6" },
-  { id: "partners-b", label: "Opponents", size: 2, color: "#f59e0b" },
-];
-
 /* -------------------------------------------------------------------------- */
 /* Catalogue                                                                   */
 /* -------------------------------------------------------------------------- */
@@ -251,7 +246,7 @@ export const GAME_PRESETS: GamePreset[] = [
     turnTimerSeconds: 90,
     iconName: "🂠",
     description: "4 individual players. Two 52-card decks combined. Draw, meld, discard, repeat — first to an empty hand wins.",
-    playerCount: { min: 2, max: 4, default: 4, label: "4 individual" },
+    playerCount: { min: 4, max: 4, default: 4, label: "4 individual" },
     specialConditions: [
       {
         id: "digu-loop",
@@ -299,9 +294,9 @@ export const GAME_PRESETS: GamePreset[] = [
       },
       {
         id: "dihaeh-tens-edge",
-        label: "3 of 4 Tens — automatic edge",
-        kind: "rule",
-        detail: "Capturing three of the four Tens puts you ahead on points regardless of the trick count.",
+        label: "3 of 4 Tens — hand win",
+        kind: "instant_win",
+        detail: "Capturing three or more of the four Tens wins the hand regardless of the trick count. End the round from the button below.",
       },
       {
         id: "dihaeh-baga",
@@ -322,16 +317,55 @@ export const GAME_PRESETS: GamePreset[] = [
     ],
   },
   {
-    id: "uno",
-    name: "Uno / Lucky Seven",
-    type: "card",
+    id: "catan",
+    name: "Settlers of Catan",
+    type: "board",
     winCondition: "highest",
-    targetScore: undefined,
-    targetRationale: "No numeric target exists: Uno is won by discarding your last card, not by reaching a score.",
+    targetScore: 10,
+    targetRationale: "First player or team to 10 Victory Points wins.",
+    turnTimerSeconds: 90,
+    iconName: "🏝️",
+    description: "Trade and build settlements, roads, cities, and development cards to reach 10 Victory Points.",
+    playerCount: { min: 3, max: 4, default: 4, label: "3–4" },
+    categories: ["Settlements & Cities", "Longest Road", "Largest Army", "Victory Point Cards"],
+    notes: ["Enter the full Victory Point total, including hidden Victory Point cards."]
+  },
+  {
+    id: "ticket-to-ride",
+    name: "Ticket to Ride",
+    type: "board",
+    winCondition: "highest",
+    turnTimerSeconds: 60,
+    iconName: "🚂",
+    description: "Track route points, completed tickets, unfinished ticket penalties, and the longest route.",
+    playerCount: { min: 2, max: 5, default: 3, label: "2–5" },
+    categories: ["Route Points", "Completed Tickets", "Unfinished Tickets", "Longest Route"],
+    notes: ["Enter unfinished ticket penalties as negative points."]
+  },
+  {
+    id: "carcassonne",
+    name: "Carcassonne",
+    type: "board",
+    winCondition: "highest",
+    turnTimerSeconds: 60,
+    iconName: "🏰",
+    description: "Track points from castles, roads, monasteries, and farmers as the landscape grows.",
+    playerCount: { min: 2, max: 5, default: 3, label: "2–5" },
+    categories: ["Castles", "Roads", "Monasteries", "Farmers"],
+    notes: ["Use the category matrix to record completed features and end-game field scoring."]
+  },
+  {
+    id: "uno",
+    name: "Uno / Crazy Eights",
+    type: "card",
+    winCondition: "lowest",
+    targetScore: 500,
+    targetRationale: "The game ends at the 500-point limit; the player with the lowest accumulated hand-card points wins.",
     turnTimerSeconds: 30,
     iconName: "🃏",
-    description: "2–10 players. First to discard every card wins. Match the top card by number, colour or suit.",
+    description: "2–10 players. Track hand-card points each round; lowest total wins when the 500-point limit is reached.",
     playerCount: { min: 2, max: 10, default: 4, label: "2–10 individual" },
+    categories: ["Number Cards", "Action Cards", "Wild Cards"],
     specialConditions: [
       {
         id: "uno-match-top",
@@ -359,8 +393,8 @@ export const GAME_PRESETS: GamePreset[] = [
       },
     ],
     notes: [
-      "Merged with the old 'Uno / Crazy Eights' preset — both are single-deck shedding games with the same match shape, so two near-identical entries only confused people. House variants (a played 8 acts as a wild, Crazy Eights-style) change the action cards, not the score model.",
-      "The win condition is an empty hand, so there is no target score and the tracker will not call a winner on points. End the round yourself when the first hand empties.",
+      "Merged with the old 'Uno / Lucky Seven' preset. House variants (a played 8 acts as a wild, Crazy Eights-style) change the action cards, not the score model.",
+      "Enter the points left in each opponent's hand at the end of a round. The match ends when a player reaches 500; the player with the lowest total is the winner.",
       "This is an individual game — N players, N scores, no teams.",
     ],
   },
@@ -374,24 +408,8 @@ export const GAME_PRESETS: GamePreset[] = [
     iconName: "🏛️",
     description: "2–7 players. Draft, build wonders, score on military, science, commerce and points symbols.",
     playerCount: { min: 2, max: 7, default: 4, label: "2–7 individual" },
-    categories: ["Military", "Science", "Commerce", "Civilization"],
+    categories: ["Military", "Treasury", "Wonder Stages", "Civilian", "Science", "Commercial", "Guilds"],
     notes: ["Scored individually — no teams."],
-  },
-  {
-    id: "hearts-spades",
-    name: "Hearts / Spades / Euchre",
-    type: "card",
-    winCondition: "lowest",
-    targetScore: 100,
-    turnTimerSeconds: 45,
-    iconName: "❤️",
-    description: "4 players as two partnerships. Trick-taking games scored against you, first side over the limit loses.",
-    playerCount: { min: 4, max: 4, default: 4, label: "4 (2v2)" },
-    teams: PARTNERSHIP,
-    notes: [
-      "Converted to two partnerships: the trick-taking winner is the SIDE, so a single per-player score is the wrong unit. Team totals now decide, and each partner's own score is still shown.",
-      "Stored matches from before the conversion have no team data and keep showing individual scores only — nothing in past history changes.",
-    ],
   },
   {
     id: "scrabble",
@@ -405,6 +423,18 @@ export const GAME_PRESETS: GamePreset[] = [
     playerCount: { min: 2, max: 4, default: 2, label: "2–4 individual" },
     categories: ["Tiles banked", "Word bonuses"],
     notes: ["Scored individually — no teams."],
+  },
+  {
+    id: "wingspan",
+    name: "Wingspan",
+    type: "board",
+    winCondition: "highest",
+    turnTimerSeconds: 75,
+    iconName: "🪶",
+    description: "Score bird cards, eggs, cached food, tucked cards, and end-of-round goals.",
+    playerCount: { min: 1, max: 5, default: 3, label: "1–5" },
+    categories: ["Bird Cards", "Eggs", "Cached Food", "Tucked Cards", "Round Goals"],
+    notes: ["Enter each scoring source in its category; total score decides the winner."]
   },
   {
     id: "custom",
@@ -428,16 +458,6 @@ export const GAME_PRESETS: GamePreset[] = [
  * through `resolveMatchGameName`, which falls back to the stored name, so an
  * old match reads correctly instead of throwing.
  */
-export const REMOVED_PRESET_IDS = ["catan", "ticket-to-ride", "carcassonne"] as const;
-
-export type RemovedPresetId = (typeof REMOVED_PRESET_IDS)[number];
-
-export const REMOVED_PRESET_NAMES: Record<RemovedPresetId, string> = {
-  catan: "Settlers of Catan",
-  "ticket-to-ride": "Ticket to Ride",
-  carcassonne: "Carcassonne",
-};
-
 /* -------------------------------------------------------------------------- */
 /* Category matrix                                                             */
 /* -------------------------------------------------------------------------- */

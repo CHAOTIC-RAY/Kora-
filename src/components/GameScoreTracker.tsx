@@ -34,101 +34,9 @@ import {
   Minimize2
 } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { GAME_PRESETS, categorySettingsForPreset, computeTeamStandings, isTeamGame, normalizeTeamAssignments, type GamePreset } from "../lib/gamePresets";
 
-export interface GamePreset {
-  id: string;
-  name: string;
-  type: "board" | "card" | "custom";
-  winCondition: "highest" | "lowest";
-  targetScore?: number;
-  maxRounds?: number;
-  categories?: string[];
-  turnTimerSeconds?: number;
-  description: string;
-  iconName: string;
-}
-
-export const GAME_PRESETS: GamePreset[] = [
-  {
-    id: "catan",
-    name: "Settlers of Catan",
-    type: "board",
-    winCondition: "highest",
-    targetScore: 10,
-    categories: ["Settlements/Cities", "Longest Road", "Largest Army", "Dev Victory Cards"],
-    turnTimerSeconds: 90,
-    description: "Race to 10 Victory Points through settlements, roads, knights, and developments.",
-    iconName: "🏝️"
-  },
-  {
-    id: "ticket-to-ride",
-    name: "Ticket to Ride",
-    type: "board",
-    winCondition: "highest",
-    categories: ["Route Points", "Completed Tickets", "Longest Continuous Path", "Unfinished Tickets Penalty"],
-    turnTimerSeconds: 60,
-    description: "Build railway routes across continents. Sum points from routes, tickets, and penalties.",
-    iconName: "🚂"
-  },
-  {
-    id: "carcassonne",
-    name: "Carcassonne",
-    type: "board",
-    winCondition: "highest",
-    categories: ["Knights & Castles", "Roads & Thieves", "Monasteries & Monks", "Farmers & Fields"],
-    turnTimerSeconds: 45,
-    description: "Tile-placement scoring for completed features and final farm evaluation.",
-    iconName: "🏰"
-  },
-  {
-    id: "7wonders",
-    name: "7 Wonders",
-    type: "board",
-    winCondition: "highest",
-    categories: ["Military Conflicts", "Treasury Gold", "Wonder Stages", "Civic Structures", "Scientific Symbols", "Commercial / Guilds"],
-    turnTimerSeconds: 60,
-    description: "Card drafting ancient civilization score matrix across 7 distinct categories.",
-    iconName: "🏛️"
-  },
-  {
-    id: "uno",
-    name: "Uno / Crazy Eights",
-    type: "card",
-    winCondition: "lowest",
-    targetScore: 500,
-    turnTimerSeconds: 30,
-    description: "Accumulate points from remaining hand cards. Lowest score wins (or race to 500 max limit).",
-    iconName: "🃏"
-  },
-  {
-    id: "hearts-spades",
-    name: "Hearts / Spades / Euchre",
-    type: "card",
-    winCondition: "lowest",
-    targetScore: 100,
-    turnTimerSeconds: 40,
-    description: "Trick-taking card game. Avoid taking penalty hearts/queen or hit target tricks.",
-    iconName: "♠️"
-  },
-  {
-    id: "scrabble",
-    name: "Scrabble / Boggle",
-    type: "board",
-    winCondition: "highest",
-    turnTimerSeconds: 120,
-    description: "Word building scores with letter tile multipliers and bingo bonuses.",
-    iconName: "🔤"
-  },
-  {
-    id: "custom",
-    name: "Custom Game Tracker",
-    type: "custom",
-    winCondition: "highest",
-    turnTimerSeconds: 60,
-    description: "Tailor custom player counts, win conditions, turn clocks, and custom categories.",
-    iconName: "🎲"
-  }
-];
+export { GAME_PRESETS } from "../lib/gamePresets";
 
 export interface Player {
   id: string;
@@ -136,6 +44,7 @@ export interface Player {
   color: string;
   handicap?: number;
   totalTimeSeconds: number;
+  teamId?: string;
 }
 
 export interface RoundScore {
@@ -172,22 +81,43 @@ const PLAYER_COLORS = [
   "#f97316"  // Orange
 ];
 
+const DEFAULT_PRESET = GAME_PRESETS[0]!;
+
+function makePlayer(index: number, name = `Player ${index + 1}`): Player {
+  return {
+    id: `p${index + 1}`,
+    name,
+    color: PLAYER_COLORS[index % PLAYER_COLORS.length]!,
+    totalTimeSeconds: 0,
+  };
+}
+
+function makeRoster(preset: GamePreset): Player[] {
+  return applyPresetTeams(Array.from({ length: preset.playerCount.default }, (_, index) => makePlayer(index)), preset);
+}
+
+function applyPresetTeams(players: Player[], preset: GamePreset): Player[] {
+  if (!isTeamGame(preset)) return players.map(({ teamId: _teamId, ...player }) => player);
+  const ids = preset.teams!.map((team) => team.id);
+  if (preset.id === "carrom" && players.length === 2) {
+    return players.map((player, index) => ({ ...player, teamId: ids[index] ?? ids[0] }));
+  }
+  const assignments = normalizeTeamAssignments(players, preset);
+  return players.map((player, index) => ({ ...player, teamId: assignments[index]?.teamId }));
+}
+
 export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProps) {
   // Game Configuration State
-  const [selectedPreset, setSelectedPreset] = useState<GamePreset>(GAME_PRESETS[0]);
+  const [selectedPreset, setSelectedPreset] = useState<GamePreset>(DEFAULT_PRESET);
   const [competitionMode, setCompetitionMode] = useState<boolean>(true);
-  const [winCondition, setWinCondition] = useState<"highest" | "lowest">("highest");
-  const [targetScore, setTargetScore] = useState<number | undefined>(10);
-  const [enableCategories, setEnableCategories] = useState<boolean>(false);
-  const [categories, setCategories] = useState<string[]>([]);
+  const [winCondition, setWinCondition] = useState<"highest" | "lowest">(DEFAULT_PRESET.winCondition);
+  const [targetScore, setTargetScore] = useState<number | undefined>(DEFAULT_PRESET.targetScore);
+  const [enableCategories, setEnableCategories] = useState<boolean>(!!DEFAULT_PRESET.categories?.length);
+  const [categories, setCategories] = useState<string[]>(() => [...(DEFAULT_PRESET.categories ?? [])]);
   const [customCategoryInput, setCustomCategoryInput] = useState<string>("");
 
   // Players State
-  const [players, setPlayers] = useState<Player[]>([
-    { id: "p1", name: "Player 1", color: PLAYER_COLORS[0], totalTimeSeconds: 0 },
-    { id: "p2", name: "Player 2", color: PLAYER_COLORS[1], totalTimeSeconds: 0 },
-    { id: "p3", name: "Player 3", color: PLAYER_COLORS[2], totalTimeSeconds: 0 }
-  ]);
+  const [players, setPlayers] = useState<Player[]>(() => makeRoster(DEFAULT_PRESET));
   const [newPlayerName, setNewPlayerName] = useState<string>("");
 
   // Active Match State
@@ -199,8 +129,8 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
   // Turn Clock & Timer
-  const [turnTimerSeconds, setTurnTimerSeconds] = useState<number>(60);
-  const [timeRemaining, setTimeRemaining] = useState<number>(60);
+  const [turnTimerSeconds, setTurnTimerSeconds] = useState<number>(DEFAULT_PRESET.turnTimerSeconds ?? 60);
+  const [timeRemaining, setTimeRemaining] = useState<number>(DEFAULT_PRESET.turnTimerSeconds ?? 60);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(false);
 
   // Round Input Buffer
@@ -209,6 +139,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
   // Navigation Tabs inside Tracker
   const [activeTab, setActiveTab] = useState<"game" | "history" | "tournament">("game");
+  const [setupStep, setSetupStep] = useState<0 | 1>(0);
 
   // View: popup (centered, less overwhelming) or fullscreen takeover.
   // On mobile the tracker always takes the full screen (no room to float a popup).
@@ -241,17 +172,22 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
     setSelectedPreset(preset);
     setWinCondition(preset.winCondition);
     setTargetScore(preset.targetScore);
-    if (preset.categories && preset.categories.length > 0) {
-      setCategories(preset.categories);
-      setEnableCategories(true);
-    } else {
-      setCategories([]);
-      setEnableCategories(false);
-    }
+    const categorySettings = categorySettingsForPreset(preset);
+    setCategories(categorySettings.categories);
+    setEnableCategories(categorySettings.enabled);
     if (preset.turnTimerSeconds) {
       setTurnTimerSeconds(preset.turnTimerSeconds);
       setTimeRemaining(preset.turnTimerSeconds);
     }
+    setPlayers((current) => {
+      const count = Math.min(preset.playerCount.max, Math.max(preset.playerCount.min, current.length));
+      const next = current.slice(0, count);
+      while (next.length < count) {
+        const index = next.length;
+        next.push({ ...makePlayer(index), id: `${preset.id}-${Date.now()}-${index}` });
+      }
+      return applyPresetTeams(next, preset);
+    });
   };
 
   // Turn Timer Effect in Competition Mode
@@ -387,8 +323,8 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
   // Start New Match
   const handleStartMatch = () => {
-    if (players.length < 2) {
-      toast.error("Add at least 2 players to begin!");
+    if (players.length < selectedPreset.playerCount.min || players.length > selectedPreset.playerCount.max) {
+      toast.error(`${selectedPreset.name} supports ${selectedPreset.playerCount.label} players.`);
       return;
     }
     setRounds([]);
@@ -404,35 +340,52 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   };
 
   // Calculate Cumulative Total Scores
-  const getPlayerTotal = (playerId: string): number => {
+  const getPlayerTotal = (playerId: string, scoreRounds: RoundScore[] = rounds): number => {
     const player = players.find((p) => p.id === playerId);
     const handicap = player?.handicap || 0;
-    const roundSum = rounds.reduce((sum, r) => sum + (r.playerScores[playerId] || 0), 0);
+    const roundSum = scoreRounds.reduce((sum, r) => sum + (r.playerScores[playerId] || 0), 0);
     return roundSum + handicap;
   };
 
   // Get Sorted Rankings
-  const getRankedPlayers = () => {
+  const getRankedPlayers = (scoreRounds: RoundScore[] = rounds) => {
     return [...players].sort((a, b) => {
-      const scoreA = getPlayerTotal(a.id);
-      const scoreB = getPlayerTotal(b.id);
+      const scoreA = getPlayerTotal(a.id, scoreRounds);
+      const scoreB = getPlayerTotal(b.id, scoreRounds);
       return winCondition === "highest" ? scoreB - scoreA : scoreA - scoreB;
     });
+  };
+
+  const getRankedTeams = (scoreRounds: RoundScore[] = rounds) => {
+    const totals = Object.fromEntries(players.map((player) => [player.id, getPlayerTotal(player.id, scoreRounds)]));
+    return computeTeamStandings(selectedPreset, players, totals).sort((a, b) =>
+      winCondition === "highest" ? b.total - a.total : a.total - b.total
+    );
   };
 
   // Check for Target Score Winner
   const checkWinnerCondition = (updatedRounds: RoundScore[]) => {
     if (!targetScore) return;
-    const ranked = getRankedPlayers();
-    const leader = ranked[0];
-    const leaderScore = getPlayerTotal(leader.id);
+    if (isTeamGame(selectedPreset)) {
+      const rankedTeams = getRankedTeams(updatedRounds);
+      const bestTeam = rankedTeams[0];
+      const worstTeam = rankedTeams[rankedTeams.length - 1];
+      if (winCondition === "highest" && bestTeam && bestTeam.total >= targetScore) {
+        handleFinishMatch(undefined, updatedRounds, bestTeam.label);
+      } else if (winCondition === "lowest" && worstTeam && worstTeam.total >= targetScore) {
+        handleFinishMatch(undefined, updatedRounds, bestTeam.label);
+      }
+      return;
+    }
+    const ranked = getRankedPlayers(updatedRounds);
+    const best = ranked[0];
+    const worst = ranked[ranked.length - 1];
 
-    if (winCondition === "highest" && leaderScore >= targetScore) {
-      handleFinishMatch(leader);
-    } else if (winCondition === "lowest" && leaderScore >= targetScore) {
-      // In lowest win games (e.g. Uno), game ends when someone hits target max, lowest score wins
-      const winner = ranked[ranked.length - 1];
-      handleFinishMatch(winner);
+    if (winCondition === "highest" && best && getPlayerTotal(best.id, updatedRounds) >= targetScore) {
+      handleFinishMatch(best, updatedRounds);
+    } else if (winCondition === "lowest" && worst && getPlayerTotal(worst.id, updatedRounds) >= targetScore) {
+      // In lowest-score games (e.g. Uno), the limit ends the match; the lowest total wins.
+      handleFinishMatch(best, updatedRounds);
     }
   };
 
@@ -477,10 +430,14 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   };
 
   // Finish & Save Match
-  const handleFinishMatch = (forcedWinner?: Player) => {
-    const ranked = getRankedPlayers();
+  const handleFinishMatch = (forcedWinner?: Player, scoreRounds: RoundScore[] = rounds, forcedWinnerLabel?: string) => {
+    const ranked = getRankedPlayers(scoreRounds);
+    const rankedTeams = getRankedTeams(scoreRounds);
+    const winningTeam = isTeamGame(selectedPreset) ? rankedTeams[0] : undefined;
     const winner = forcedWinner || ranked[0];
-    const winnerScore = getPlayerTotal(winner.id);
+    const winnerScore = forcedWinnerLabel
+      ? rankedTeams.find((team) => team.label === forcedWinnerLabel)?.total ?? 0
+      : winningTeam?.total ?? getPlayerTotal(winner.id, scoreRounds);
     const duration = matchStartTime ? Math.max(1, Math.round((Date.now() - matchStartTime) / 60000)) : 1;
 
     const historyEntry: MatchHistoryEntry = {
@@ -488,11 +445,11 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
       gameName: selectedPreset.name,
       date: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }),
       competitionMode,
-      winnerName: winner.name,
+      winnerName: forcedWinnerLabel ?? winningTeam?.label ?? winner.name,
       winnerScore,
       players: ranked.map((p, idx) => ({
         name: p.name,
-        score: getPlayerTotal(p.id),
+        score: getPlayerTotal(p.id, scoreRounds),
         rank: idx + 1
       })),
       durationMinutes: duration
@@ -515,6 +472,10 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   // Player Management
   const handleAddPlayer = () => {
     if (!newPlayerName.trim()) return;
+    if (players.length >= selectedPreset.playerCount.max) {
+      toast.error(`This game supports up to ${selectedPreset.playerCount.max} players.`);
+      return;
+    }
     const color = PLAYER_COLORS[players.length % PLAYER_COLORS.length];
     const newP: Player = {
       id: "p_" + Date.now(),
@@ -522,17 +483,17 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
       color,
       totalTimeSeconds: 0
     };
-    setPlayers([...players, newP]);
+    setPlayers(applyPresetTeams([...players, newP], selectedPreset));
     setNewPlayerName("");
     toast.success(`Player added: ${newP.name}`);
   };
 
   const handleRemovePlayer = (id: string) => {
-    if (players.length <= 2) {
-      toast.error("Game requires at least 2 players!");
+    if (players.length <= selectedPreset.playerCount.min) {
+      toast.error(`${selectedPreset.name} needs at least ${selectedPreset.playerCount.min} players.`);
       return;
     }
-    setPlayers(players.filter((p) => p.id !== id));
+    setPlayers(applyPresetTeams(players.filter((p) => p.id !== id), selectedPreset));
   };
 
   // Quick Score Adjuster in buffer
@@ -706,309 +667,77 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
               {/* Setup / Configuration Panel when match is NOT active */}
               {!matchActive ? (
                 <div className="space-y-6">
-                  {/* Preset Selector */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                        <Dices className="w-4 h-4 text-kindle-accent" /> Select Game Preset
-                      </h4>
+                  <div className="flex items-center justify-between gap-4 rounded-2xl border border-kindle-border bg-kindle-card px-4 py-3">
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-[.18em] text-kindle-text-muted">Setup · Step {setupStep + 1} of 2</p>
+                      <h3 className="mt-1 text-sm font-bold text-kindle-text">{setupStep === 0 ? "Game & scoring" : "Timer & player roster"}</h3>
                     </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {GAME_PRESETS.map((preset) => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => handleSelectPreset(preset)}
-                          className={`p-3.5 rounded-2xl border text-left transition duration-200 cursor-pointer flex flex-col justify-between space-y-2 ${
-                            selectedPreset.id === preset.id
-                              ? "bg-kindle-card border-kindle-accent ring-1 ring-kindle-accent/40 shadow-xs"
-                              : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted/40"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-2xl">{preset.iconName}</span>
-                            <span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-kindle-bg border border-kindle-border text-kindle-text-muted">
-                              {preset.type}
-                            </span>
-                          </div>
-                          <div>
-                            <h5 className="text-xs font-bold text-kindle-text truncate">{preset.name}</h5>
-                            <p className="text-[9px] text-kindle-text-muted line-clamp-2 mt-0.5">{preset.description}</p>
-                          </div>
-                        </button>
-                      ))}
+                    <div className="flex items-center gap-1.5" aria-label={`Setup step ${setupStep + 1} of 2`}>
+                      {[0, 1].map((step) => <span key={step} className={`h-1.5 w-7 rounded-full ${setupStep >= step ? "bg-kindle-accent" : "bg-kindle-border"}`} />)}
                     </div>
                   </div>
 
-                  {/* Competition Mode Toggle Card - Premium, spacious, and extremely mobile-friendly */}
-                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition duration-200 hover:border-kindle-border/80">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <div className={`p-2.5 rounded-xl border flex items-center justify-center transition-colors shrink-0 ${
-                        competitionMode 
-                          ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" 
-                          : "bg-kindle-bg border-kindle-border text-kindle-text-muted"
-                      }`}>
-                        <Swords className="w-5 h-5" />
-                      </div>
-                      <div className="space-y-0.5 text-left">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-xs sm:text-sm font-bold text-kindle-text">Competition Mode</h4>
-                          {competitionMode && (
-                            <span className="px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-widest bg-[#e0533c]/10 text-[#e0533c] border border-[#e0533c]/20 animate-pulse">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[10px] sm:text-[11px] text-kindle-text-muted leading-snug">
-                          Locks round scores, enforces time limits, tracks blitz speed bonuses, and records tournament placements.
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <button
-                      type="button"
-                      onClick={() => setCompetitionMode(!competitionMode)}
-                      className={`w-12 h-6 rounded-full p-0.5 transition-colors duration-200 cursor-pointer focus:outline-none flex items-center shrink-0 ${
-                        competitionMode ? "bg-[#e0533c]" : "bg-neutral-800"
-                      }`}
-                    >
-                      <motion.div
-                        layout
-                        className="w-5 h-5 rounded-full bg-white shadow-md"
-                        animate={{ x: competitionMode ? 24 : 0 }}
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Mode Settings & Competition Toggles */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Win Condition Box */}
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block">
-                        Win Condition & Target
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setWinCondition("highest")}
-                          className={`py-1.5 text-xs font-bold rounded-xl border transition ${
-                            winCondition === "highest"
-                              ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
-                              : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
-                          }`}
-                        >
-                          Highest Wins
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setWinCondition("lowest")}
-                          className={`py-1.5 text-xs font-bold rounded-xl border transition ${
-                            winCondition === "lowest"
-                              ? "bg-kindle-accent text-kindle-bg border-kindle-accent"
-                              : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
-                          }`}
-                        >
-                          Lowest Wins
-                        </button>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-2 border-t border-kindle-border">
-                        <span className="text-xs font-bold text-kindle-text">Target Points:</span>
-                        <input
-                          type="number"
-                          value={targetScore || ""}
-                          onChange={(e) => setTargetScore(e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                          placeholder="No Limit"
-                          className="w-24 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono text-center font-bold text-kindle-text focus:outline-none focus:border-kindle-accent"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Turn Clock / Competition Settings */}
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                      <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block flex items-center justify-between">
-                        <span>Turn Timer (Seconds)</span>
-                        <Clock className="w-3.5 h-3.5 text-kindle-accent" />
-                      </label>
-                      <div className="grid grid-cols-4 gap-1.5">
-                        {[30, 60, 90, 120].map((sec) => (
-                          <button
-                            key={sec}
-                            type="button"
-                            onClick={() => {
-                              setTurnTimerSeconds(sec);
-                              setTimeRemaining(sec);
-                            }}
-                            className={`py-1.5 text-xs font-mono font-bold rounded-xl border transition ${
-                              turnTimerSeconds === sec
-                                ? "bg-kindle-text text-kindle-bg border-kindle-text"
-                                : "bg-kindle-bg text-kindle-text-muted border-kindle-border"
-                            }`}
-                          >
-                            {sec}s
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[9px] text-kindle-text-muted pt-1">
-                        In Competition Mode, players receive time alarms and speed bonuses.
-                      </p>
-                    </div>
-
-                    {/* Category Scoring Toggle (compact when off) */}
-                    <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">
-                          Multi-Category Matrix
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setEnableCategories(!enableCategories)}
-                          className={`w-9 h-5 rounded-full p-0.5 transition ${
-                            enableCategories ? "bg-kindle-accent" : "bg-kindle-border"
-                          }`}
-                        >
-                          <div
-                            className={`w-4 h-4 rounded-full bg-black transform transition ${
-                              enableCategories ? "translate-x-4" : "translate-x-0"
-                            }`}
-                          />
-                        </button>
-                      </div>
-
-                      {enableCategories && (
-                        <div className="space-y-2">
-                          <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                            {categories.map((cat, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 bg-kindle-bg border border-kindle-border rounded-lg text-[9px] font-bold text-kindle-text flex items-center gap-1"
-                              >
-                                {cat}
-                                <button
-                                  type="button"
-                                  onClick={() => setCategories(categories.filter((_, i) => i !== idx))}
-                                  className="text-kindle-text-muted hover:text-red-400"
-                                >
-                                  ×
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={customCategoryInput}
-                              onChange={(e) => setCustomCategoryInput(e.target.value)}
-                              placeholder="Add custom category..."
-                              className="flex-1 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (customCategoryInput.trim()) {
-                                  setCategories([...categories, customCategoryInput.trim()]);
-                                  setCustomCategoryInput("");
-                                }
-                              }}
-                              className="px-2 py-1 bg-kindle-text text-kindle-bg rounded-xl text-[10px] font-bold"
-                            >
-                              +
+                  {setupStep === 0 ? (
+                    <>
+                      <section className="space-y-3">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5"><Dices className="w-4 h-4 text-kindle-accent" /> Select Game Preset</h4>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                          {GAME_PRESETS.map((preset) => (
+                            <button key={preset.id} type="button" onClick={() => handleSelectPreset(preset)} className={`min-h-32 p-3.5 rounded-2xl border text-left transition duration-200 flex flex-col justify-between gap-2 ${selectedPreset.id === preset.id ? "bg-kindle-card border-kindle-accent ring-1 ring-kindle-accent/40 shadow-xs" : "bg-kindle-bg border-kindle-border hover:border-kindle-text-muted/40"}`}>
+                              <div className="flex items-center justify-between"><span className="text-2xl">{preset.iconName}</span><span className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-kindle-bg border border-kindle-border text-kindle-text-muted">{preset.type}</span></div>
+                              <div><h5 className="text-xs font-bold text-kindle-text">{preset.name}</h5><p className="text-[9px] text-kindle-text-muted line-clamp-2 mt-0.5">{preset.description}</p><p className="mt-1 text-[8px] font-bold uppercase tracking-wider text-kindle-accent">{preset.playerCount.label} players</p></div>
                             </button>
-                          </div>
+                          ))}
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </section>
 
-                  {/* Player Roster Builder */}
-                  <div className="bg-kindle-card border border-kindle-border rounded-2xl p-5 space-y-4">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-kindle-border pb-3 gap-3">
-                      <div>
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5">
-                          <Users className="w-4 h-4 text-kindle-accent" /> Competitor Roster ({players.length} Players)
-                        </h4>
-                        <p className="text-[10px] text-kindle-text-muted">Add players and optional handicap adjustments before launching match.</p>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
+                          <label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted block">Win Condition & Target</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {(["highest", "lowest"] as const).map((condition) => <button key={condition} type="button" onClick={() => setWinCondition(condition)} className={`py-2 text-xs font-bold rounded-xl border transition ${winCondition === condition ? "bg-kindle-accent text-kindle-bg border-kindle-accent" : "bg-kindle-bg text-kindle-text-muted border-kindle-border"}`}>{condition === "highest" ? "Highest Wins" : "Lowest Wins"}</button>)}
+                          </div>
+                          <div className="flex items-center justify-between gap-3 pt-2 border-t border-kindle-border"><span className="text-xs font-bold text-kindle-text">Target Points</span><input type="number" min={0} value={targetScore ?? ""} onChange={(event) => setTargetScore(event.target.value ? Number.parseInt(event.target.value, 10) : undefined)} placeholder="No limit" className="w-24 px-2 py-1 bg-kindle-bg border border-kindle-border rounded-xl text-xs font-mono text-center font-bold text-kindle-text" /></div>
+                        </section>
+
+                        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
+                          <div className="flex items-center justify-between"><label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Scoring Categories</label><button type="button" aria-pressed={enableCategories} onClick={() => setEnableCategories(!enableCategories)} className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase ${enableCategories ? "bg-kindle-accent text-kindle-bg" : "bg-kindle-bg text-kindle-text-muted border border-kindle-border"}`}>{enableCategories ? "On" : "Off"}</button></div>
+                          {enableCategories && <>
+                            <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">{categories.map((category, index) => <span key={`${category}-${index}`} className="inline-flex items-center gap-1 rounded-lg border border-kindle-border bg-kindle-bg px-2 py-1 text-[9px] font-bold text-kindle-text">{category}<button type="button" aria-label={`Remove ${category}`} onClick={() => setCategories((current) => current.filter((_, i) => i !== index))} className="text-kindle-text-muted hover:text-red-400">×</button></span>)}</div>
+                            <div className="flex gap-2"><input type="text" value={customCategoryInput} onChange={(event) => setCustomCategoryInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && customCategoryInput.trim()) { setCategories((current) => current.includes(customCategoryInput.trim()) ? current : [...current, customCategoryInput.trim()]); setCustomCategoryInput(""); } }} placeholder="Add a scoring category" className="min-w-0 flex-1 px-2 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text" /><button type="button" onClick={() => { const value = customCategoryInput.trim(); if (value && !categories.some((item) => item.toLowerCase() === value.toLowerCase())) setCategories([...categories, value]); setCustomCategoryInput(""); }} className="px-3 py-2 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold"><Plus className="h-4 w-4" /></button></div>
+                          </>}
+                          {selectedPreset.specialConditions?.length ? <div className="border-t border-kindle-border pt-2"><p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">Preset rules</p><ul className="space-y-1 text-[9px] text-kindle-text-muted">{selectedPreset.specialConditions.map((condition) => <li key={condition.id}><strong className="text-kindle-text">{condition.label}:</strong> {condition.detail}</li>)}</ul></div> : null}
+                          {selectedPreset.notes?.map((note, index) => <p key={index} className="text-[9px] leading-relaxed text-kindle-text-muted">{note}</p>)}
+                        </section>
                       </div>
 
-                      <div className="flex items-center gap-2 w-full md:w-auto">
-                        <input
-                          type="text"
-                          value={newPlayerName}
-                          onChange={(e) => setNewPlayerName(e.target.value)}
-                          onKeyDown={(e) => e.key === "Enter" && handleAddPlayer()}
-                          placeholder="New competitor name..."
-                          className="flex-1 md:flex-none px-3 py-1.5 bg-kindle-bg border border-kindle-border rounded-xl text-xs text-kindle-text focus:outline-none focus:border-kindle-accent"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleAddPlayer}
-                          className="px-4 py-1.5 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold hover:bg-opacity-90 transition cursor-pointer flex items-center gap-1 shrink-0"
-                        >
-                          <Plus className="w-3.5 h-3.5" /> Add
-                        </button>
+                      <div className="flex justify-end"><button type="button" onClick={() => setSetupStep(1)} className="inline-flex items-center gap-2 rounded-xl bg-kindle-text px-6 py-3 text-xs font-bold uppercase tracking-wider text-kindle-bg">Continue to timer & roster <ChevronRight className="h-4 w-4" /></button></div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3"><span className={`p-2.5 rounded-xl border ${competitionMode ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" : "bg-kindle-bg border-kindle-border text-kindle-text-muted"}`}><Swords className="w-5 h-5" /></span><div><h4 className="text-xs font-bold text-kindle-text">Competition Mode</h4><p className="mt-1 text-[10px] text-kindle-text-muted">Track turn times, lock round scores, and enable the tournament bracket.</p></div></div>
+                        <button type="button" role="switch" aria-checked={competitionMode} onClick={() => setCompetitionMode(!competitionMode)} className={`w-12 h-6 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${competitionMode ? "bg-[#e0533c]" : "bg-neutral-700"}`}><motion.span layout className="w-5 h-5 rounded-full bg-white shadow-md" animate={{ x: competitionMode ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} /></button>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {players.map((p, idx) => (
-                        <div
-                          key={p.id}
-                          className="p-3 bg-kindle-bg border border-kindle-border rounded-xl flex items-center justify-between gap-3 shadow-xs"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div
-                              className="w-4 h-4 rounded-full shrink-0 shadow-xs border border-white/20"
-                              style={{ backgroundColor: p.color }}
-                            />
-                            <span className="text-xs font-bold text-kindle-text truncate">{p.name}</span>
-                          </div>
+                      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(220px,.7fr)_minmax(0,1.3fr)]">
+                        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
+                          <h4 className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted flex items-center gap-2"><Clock className="w-4 h-4 text-kindle-accent" /> Turn Timer</h4>
+                          <div className="grid grid-cols-3 gap-1.5">{[...new Set([30, 60, 90, 120, 180, 300, selectedPreset.turnTimerSeconds].filter((seconds): seconds is number => typeof seconds === "number" && seconds > 0))].sort((a, b) => a - b).map((seconds) => <button key={seconds} type="button" onClick={() => { setTurnTimerSeconds(seconds); setTimeRemaining(seconds); }} className={`py-2 text-xs font-mono font-bold rounded-xl border ${turnTimerSeconds === seconds ? "bg-kindle-text text-kindle-bg border-kindle-text" : "bg-kindle-bg text-kindle-text-muted border-kindle-border"}`}>{seconds >= 60 && seconds % 60 === 0 ? `${seconds / 60}m` : `${seconds}s`}</button>)}</div>
+                          <label className="flex items-center justify-between gap-2 border-t border-kindle-border pt-3 text-[10px] font-bold text-kindle-text-muted">Custom seconds<input type="number" min={5} max={3600} value={turnTimerSeconds} onChange={(event) => { const seconds = Math.min(3600, Math.max(5, Number.parseInt(event.target.value, 10) || 5)); setTurnTimerSeconds(seconds); setTimeRemaining(seconds); }} className="w-20 rounded-lg border border-kindle-border bg-kindle-bg px-2 py-1 text-center font-mono text-kindle-text" /></label>
+                          <label className="flex items-center gap-2 text-[10px] text-kindle-text-muted"><input type="checkbox" checked={soundEnabled} onChange={(event) => setSoundEnabled(event.target.checked)} /> Sound and countdown cues</label>
+                          <p className="text-[9px] text-kindle-text-muted">Default for {selectedPreset.name}: {selectedPreset.turnTimerSeconds ?? 60} seconds.</p>
+                        </section>
 
-                          <div className="flex items-center gap-2">
-                            {/* Handicap Input */}
-                            <div className="flex items-center gap-1 text-[10px] text-kindle-text-muted">
-                              <span>Hdcp:</span>
-                              <input
-                                type="number"
-                                value={p.handicap || 0}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value, 10) || 0;
-                                  setPlayers(players.map((pl) => (pl.id === p.id ? { ...pl, handicap: val } : pl)));
-                                }}
-                                className="w-10 px-1 py-0.5 bg-kindle-card border border-kindle-border rounded font-mono text-center text-kindle-text"
-                              />
-                            </div>
+                        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-4">
+                          <div className="flex flex-col gap-3 border-b border-kindle-border pb-3 sm:flex-row sm:items-center sm:justify-between"><div><h4 className="text-xs font-bold uppercase tracking-wider text-kindle-text flex items-center gap-1.5"><Users className="w-4 h-4 text-kindle-accent" /> Player Roster ({players.length})</h4><p className="mt-1 text-[10px] text-kindle-text-muted">{selectedPreset.name} · {selectedPreset.playerCount.label} players. Add names and handicaps.</p></div><div className="flex w-full items-center gap-2 sm:w-auto"><input type="text" value={newPlayerName} onChange={(event) => setNewPlayerName(event.target.value)} onKeyDown={(event) => event.key === "Enter" && handleAddPlayer()} placeholder="Player name" className="min-w-0 flex-1 px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-xs text-kindle-text sm:w-44" /><button type="button" onClick={handleAddPlayer} disabled={players.length >= selectedPreset.playerCount.max} className="flex shrink-0 items-center gap-1 rounded-xl bg-kindle-text px-4 py-2 text-xs font-bold text-kindle-bg disabled:opacity-40"><Plus className="w-3.5 h-3.5" /> Add</button></div></div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{players.map((player) => <div key={player.id} className="flex items-center justify-between gap-3 rounded-xl border border-kindle-border bg-kindle-bg p-3"><div className="flex min-w-0 items-center gap-2.5"><span className="h-3.5 w-3.5 shrink-0 rounded-full border border-white/20" style={{ backgroundColor: player.color }} /><span className="truncate text-xs font-bold text-kindle-text">{player.name}{player.teamId ? ` · ${selectedPreset.teams?.find((team) => team.id === player.teamId)?.label ?? ""}` : ""}</span></div><div className="flex items-center gap-2"><label className="flex items-center gap-1 text-[9px] text-kindle-text-muted">Hdcp<input type="number" value={player.handicap ?? 0} onChange={(event) => { const handicap = Number.parseInt(event.target.value, 10) || 0; setPlayers((current) => current.map((entry) => entry.id === player.id ? { ...entry, handicap } : entry)); }} className="w-12 rounded border border-kindle-border bg-kindle-card px-1 py-1 text-center font-mono text-kindle-text" /></label><button type="button" disabled={players.length <= selectedPreset.playerCount.min} onClick={() => handleRemovePlayer(player.id)} title="Remove player" className="p-1 text-kindle-text-muted hover:text-red-400 disabled:opacity-30"><Trash2 className="w-3.5 h-3.5" /></button></div></div>)}</div>
+                        </section>
+                      </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleRemovePlayer(p.id)}
-                              className="p-1 text-kindle-text-muted hover:text-red-400 transition cursor-pointer"
-                              title="Remove Competitor"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Launch Match Button */}
-                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="text-[10px] text-kindle-text-muted flex items-center gap-1.5">
-                      <ShieldAlert className="w-4 h-4 text-kindle-accent shrink-0" />
-                      <span>In Competition Mode, scores are locked per round and turn times are logged.</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleStartMatch}
-                      className="w-full sm:w-auto px-8 py-3.5 bg-kindle-text text-kindle-bg font-bold text-xs uppercase tracking-wider rounded-2xl hover:bg-opacity-90 active:scale-98 transition shadow-lg flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Play className="w-4 h-4 fill-current" /> Launch Arena Match
-                    </button>
-                  </div>
+                      <div className="flex flex-col-reverse gap-3 border-t border-kindle-border pt-4 sm:flex-row sm:items-center sm:justify-between"><button type="button" onClick={() => setSetupStep(0)} className="rounded-xl border border-kindle-border px-5 py-3 text-xs font-bold uppercase tracking-wider text-kindle-text">Back to game & scoring</button><button type="button" onClick={handleStartMatch} className="inline-flex items-center justify-center gap-2 rounded-xl bg-kindle-text px-8 py-3.5 text-xs font-bold uppercase tracking-wider text-kindle-bg shadow-lg"><Play className="w-4 h-4 fill-current" /> Launch Arena Match</button></div>
+                    </>
+                  )}
                 </div>
               ) : (
                 /* Active Match Arena */
@@ -1025,6 +754,13 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           Round {rounds.length + 1} • {winCondition === "highest" ? "Highest Score Wins" : "Lowest Score Wins"}
                         </span>
                       </div>
+
+                      {isTeamGame(selectedPreset) && <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {getRankedTeams().map((team, index) => <div key={team.teamId} className={`flex items-center justify-between rounded-xl border px-3 py-2 ${index === 0 ? "border-kindle-accent/50 bg-kindle-accent/10" : "border-kindle-border bg-kindle-bg"}`}>
+                          <div className="min-w-0"><p className="text-[10px] font-bold text-kindle-text">{team.label}</p><p className="truncate text-[9px] text-kindle-text-muted">{team.memberIds.map((id) => players.find((player) => player.id === id)?.name).filter(Boolean).join(" · ")}</p></div>
+                          <span className="ml-3 font-mono text-sm font-bold text-kindle-text">{team.total}</span>
+                        </div>)}
+                      </div>}
 
                       <div className="space-y-2">
                         {rankedPlayers.map((p, rankIdx) => {
