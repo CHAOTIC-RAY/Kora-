@@ -3648,7 +3648,7 @@ function DiscoverView({
                   onClick={() => openBookDetail(book)}
                   className="group block space-y-2 cursor-pointer"
                 >
-                  <div className="cyberui-cover-chip aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-300">
+                  <div className="kora-cover-hardware aspect-[2/3] bg-kindle-card rounded-xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-300">
                     {book.coverUrl ? (
                       <img loading="lazy" decoding="async"
                         src={getAudiobookCoverSrc(book.coverUrl) || book.coverUrl}
@@ -3764,7 +3764,7 @@ function DiscoverView({
                   }`}
                   onClick={() => openBookDetail(book)}
                 >
-                  <div className={`cyberui-cover-chip aspect-[2/3] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
+                  <div className={`kora-cover-hardware aspect-[2/3] bg-kindle-card rounded-2xl border ${book.exactMatch ? "border-kindle-accent/40 shadow-inner" : "border-kindle-border"} overflow-hidden relative shadow-sm group-hover:shadow-xl transition-all duration-500`}>
                     {!hideCovers && book.coverUrl ? (
                       <img loading="lazy" decoding="async"
                         src={resolveCoverImageSrc(book.coverUrl) || ""}
@@ -4003,7 +4003,7 @@ function DiscoverView({
                   onClick={() => openBookDetail(book)}
                   className="group cursor-pointer space-y-2 p-1 sm:p-1.5 rounded-2xl sm:rounded-3xl transition-all duration-300 border border-transparent hover:bg-kindle-card/50"
                 >
-                  <div className="cyberui-cover-chip aspect-[2/3] bg-kindle-card rounded-2xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
+                  <div className="kora-cover-hardware aspect-[2/3] bg-kindle-card rounded-2xl border border-kindle-border overflow-hidden relative shadow-sm group-hover:shadow-lg transition-all duration-500">
                     {!hideCovers && book.coverUrl ? (
                       <img loading="lazy" decoding="async"
                         src={

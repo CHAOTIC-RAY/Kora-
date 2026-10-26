@@ -54,6 +54,7 @@ import { deleteBookFile } from "../db/indexedDB";
 import { deleteAudiobookTracks } from "../lib/audiobookStorage";
 import { clearAudiobookSyncQueue } from "../lib/audiobookSyncQueue";
 import { WALKTHROUGH_BOOK_ID } from "../lib/walkthroughBook";
+import { APP_VERSION } from "../lib/appVersion";
 import { inferBookTags } from "../lib/tagsHelper";
 import {
   BUILT_IN_TXT_PARSERS,
@@ -67,6 +68,7 @@ import {
 import { Cloud, CheckCircle, Upload } from "lucide-react";
 import { logger } from "../lib/logger";
 import BuiltInAudiobookConverter from "./BuiltInAudiobookConverter";
+import KoraWordmarkReveal from "./KoraWordmarkReveal";
 // The plugin HUB is not here — it lives in Discover (SourcePluginsHub). What is
 // here is the other half: one bento tile per installed non-source plugin.
 import PluginBentoTiles from "./PluginBentoTiles";
@@ -2926,7 +2928,7 @@ function SettingsView({
         {view === "settings" && (
         <>
         {/* About */}
-        <section className="bg-kindle-card border border-kindle-border rounded-2xl p-6 shadow-xs space-y-4">
+        <section className="relative overflow-hidden bg-kindle-card border border-kindle-border rounded-2xl p-5 sm:p-6 shadow-xs space-y-5">
           <div className="flex items-center gap-3 border-b border-kindle-border pb-3">
             <div className="p-1.5 bg-kindle-bg rounded-lg border border-kindle-border">
               <Info className="w-4 h-4 text-kindle-text" />
@@ -2935,51 +2937,38 @@ function SettingsView({
           </div>
           
           <div className="space-y-4">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-kindle-text-muted">Version</span>
-              <span className="font-mono font-bold">{isAndroidApk ? apkLabel : "Kora 1.2.0"}</span>
-            </div>
-            <div className="flex items-center justify-between text-[10px]">
-              <span className="text-kindle-text-muted">Search powered by</span>
-              <a
-                href="https://ravebooksearch.com/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-kindle-accent hover:text-accent transition-colors font-semibold"
-              >
-                RaveSearch
-              </a>
-            </div>
-            {/* Documentation. Sits with the other About rows rather than in
-                its own panel: this is the screen a user lands on to find out
-                what the app is, and the docs are the long answer to that. */}
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-kindle-text-muted">Documentation</span>
-              <a
-                href="https://chaotic-ray.github.io/Kora-/"
-                target="_blank"
-                rel="noreferrer"
-                className="font-bold flex items-center gap-1.5 hover:text-kindle-accent transition-colors"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                Open Documentation
-              </a>
-            </div>
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="text-kindle-text-muted">GitHub</span>
-              <a
-                href="https://github.com/CHAOTIC-RAY/Kora-"
-                target="_blank"
-                rel="noreferrer"
-                className="font-bold flex items-center gap-1.5 hover:text-kindle-accent transition-colors"
-              >
-                <Github className="w-3.5 h-3.5" />
-                Kora Repository
-              </a>
+            <div className="rounded-xl border border-kindle-border bg-kindle-bg/50 px-4 py-5 sm:py-6">
+              <KoraWordmarkReveal replay loop speed={1.5} />
             </div>
 
-            <div className="pt-2 border-t border-kindle-border/50">
+            <div className="flex items-center justify-between gap-4 border-b border-kindle-border/60 pb-3 text-[11px]">
+              <span className="text-kindle-text-muted">Version</span>
+              <span className="font-mono font-bold tracking-wide">{isAndroidApk ? apkLabel : `Kora ${APP_VERSION}`}</span>
+            </div>
+
+            <a
+              href="https://chaotic-ray.github.io/Kora-/"
+              target="_blank"
+              rel="noreferrer"
+              className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-kindle-border bg-kindle-bg/40 px-3.5 py-2.5 text-[11px] font-bold transition-all hover:border-kindle-accent/70 hover:bg-kindle-bg"
+            >
+              <span className="flex items-center gap-2.5"><BookOpen className="w-4 h-4 text-kindle-accent" />Documentation</span>
+              <span className="text-kindle-text-muted group-hover:text-kindle-text">Open docs ↗</span>
+            </a>
+
+            <a
+              href="https://github.com/CHAOTIC-RAY/Kora-"
+              target="_blank"
+              rel="noreferrer"
+              className="group flex min-h-12 items-center justify-between gap-3 rounded-xl border border-kindle-border bg-kindle-bg/40 px-3.5 py-2.5 text-[11px] font-bold transition-all hover:border-kindle-accent/70 hover:bg-kindle-bg"
+            >
+              <span className="flex items-center gap-2.5"><Github className="w-4 h-4 text-kindle-accent" />GitHub</span>
+              <span className="text-kindle-text-muted group-hover:text-kindle-text">Kora repository ↗</span>
+            </a>
+
+            <div className="grid gap-2 border-t border-kindle-border/60 pt-4 sm:grid-cols-2">
               <button
+                type="button"
                 onClick={() => {
                   // Opens the Sentry User Feedback form (SDK ≥ 7.85.0)
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -2996,11 +2985,21 @@ function SettingsView({
                     );
                   }
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border border-kindle-border bg-kindle-bg hover:bg-kindle-card hover:border-kindle-accent/50 transition-colors text-sm font-bold text-kindle-text"
+                className="w-full min-h-11 flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-kindle-accent/50 bg-kindle-bg hover:bg-kindle-card hover:border-kindle-accent transition-colors text-xs font-bold text-kindle-text"
               >
                 <Bug className="w-4 h-4 text-kindle-accent shrink-0" />
                 Report a bug
               </button>
+              {onOpenOnboarding && (
+                <button
+                  type="button"
+                  onClick={onOpenOnboarding}
+                  className="w-full min-h-11 flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-kindle-accent text-kindle-bg hover:opacity-90 transition-colors text-xs font-bold"
+                >
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  Restart Kora setup
+                </button>
+              )}
             </div>
 
             {isAndroidApk && (
@@ -3119,21 +3118,6 @@ function SettingsView({
               </div>
             )}
 
-            <div className="pt-2 space-y-2 border-t border-kindle-border/50">
-              <p className="text-[10px] leading-relaxed text-kindle-text-muted italic">
-                A minimal, high-performance reader environment for digital sovereignty.
-              </p>
-              {onOpenOnboarding && (
-                <button
-                  type="button"
-                  onClick={onOpenOnboarding}
-                  className="w-full mt-2 py-2 px-3 bg-kindle-accent text-kindle-bg hover:opacity-90 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  Booknerd Setup & Walkthrough
-                </button>
-              )}
-            </div>
           </div>
         </section>
         </>

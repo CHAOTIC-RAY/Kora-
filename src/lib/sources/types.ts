@@ -375,6 +375,8 @@ export interface PluginManifest {
   themeId?: string;
   /** Only for `theme`: the palette to write. See ThemeTokens. */
   tokens?: ThemeTokens;
+  /** Optional HTTPS stylesheet served by a theme plugin repository. */
+  styleUrl?: string;
   /**
    * Only for `theme`: whether this theme is a dark scheme.
    *

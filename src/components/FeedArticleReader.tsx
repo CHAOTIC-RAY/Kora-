@@ -32,6 +32,17 @@ interface StackEntry {
   error?: string;
 }
 
+function splitLeadImage(html: string): { src: string; alt: string; body: string } | null {
+  if (!html || typeof DOMParser === "undefined") return null;
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const image = parsed.querySelector("img[src]");
+  const src = image?.getAttribute("src")?.trim();
+  if (!image || !src) return null;
+  const alt = image.getAttribute("alt")?.trim() || "Article image";
+  image.remove();
+  return { src, alt, body: parsed.body.innerHTML };
+}
+
 function entryFromCache(feedItem: FeedItem): StackEntry | null {
   const cached = peekFeedArticle(feedItem);
   if (!cached) return null;
@@ -74,6 +85,13 @@ export default function FeedArticleReader({
   const loadingIdsRef = useRef(new Set<string>());
 
   const theme = useMemo(() => newsReaderThemeClasses(prefs.theme), [prefs.theme]);
+  const articleContents = useMemo(() => new Map(stack.map((entry) => {
+    const html = entry.ready
+      ? prepareFeedArticleHtml(entry.html, entry.title || entry.item.title)
+      : "";
+    const leadImage = splitLeadImage(html);
+    return [entry.item.id, { html: leadImage?.body || html, leadImage }] as const;
+  })), [stack]);
 
   const activeEntry = useMemo(
     () => stack.find((entry) => entry.item.id === item.id) || stack[0] || null,
@@ -350,9 +368,9 @@ export default function FeedArticleReader({
           <>
             {stack.map((entry, index) => {
               const isTelegram = isTelegramArticleLink(entry.item.link);
-              const displayHtml = entry.ready
-                ? prepareFeedArticleHtml(entry.html, entry.title || entry.item.title)
-                : "";
+              const articleContent = articleContents.get(entry.item.id);
+              const articleHtml = articleContent?.html || "";
+              const leadImage = articleContent?.leadImage || null;
               const titleDir = textDirection(entry.title || entry.item.title);
 
               return (
@@ -363,9 +381,7 @@ export default function FeedArticleReader({
                     if (node) articleNodeRefs.current.set(entry.item.id, node);
                     else articleNodeRefs.current.delete(entry.item.id);
                   }}
-                  className={`mx-auto ${prefs.marginSize} min-h-full flex flex-col ${
-                    index === 0 ? "pt-[calc(var(--kora-safe-top)+3.5rem)]" : "pt-8"
-                  } pb-[calc(var(--kora-safe-bottom)+5rem)]`}
+                  className="mx-auto w-full max-w-[1680px] min-h-full flex flex-col px-4 sm:px-6 lg:px-8"
                   style={{
                     scrollSnapAlign: "start",
                     scrollSnapStop: "always",
@@ -379,20 +395,41 @@ export default function FeedArticleReader({
                     }
                   }}
                 >
-                  <div className="mb-5 space-y-1">
-                    <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
-                      {entry.item.subscriptionTitle}
-                      {isTelegram ? " · Telegram" : ""}
-                    </p>
-                    <h1
-                      dir={titleDir}
-                      className={`text-xl md:text-2xl font-lexend font-bold leading-snug ${
-                        titleDir === "rtl" ? "font-thaana" : ""
-                      }`}
-                    >
-                      {entry.title || entry.item.title}
-                    </h1>
-                  </div>
+                      <div className={`grid min-h-full grid-cols-1 items-start gap-5 pb-[calc(var(--kora-safe-bottom)+5rem)] pt-4 sm:gap-7 lg:gap-10 ${leadImage ? "lg:grid-cols-[minmax(320px,0.92fr)_minmax(0,1.08fr)]" : ""}`}>
+                        <header className={`order-1 min-w-0 space-y-1 ${leadImage ? "lg:col-start-2 lg:row-start-1" : `mx-auto w-full ${prefs.marginSize}`}`}>
+                          <p className={`text-[9px] font-bold uppercase tracking-widest ${theme.muted}`}>
+                            {entry.item.subscriptionTitle}
+                            {isTelegram ? " · Telegram" : ""}
+                          </p>
+                          <h1
+                            dir={titleDir}
+                            className={`text-xl md:text-2xl font-lexend font-bold leading-snug ${
+                              titleDir === "rtl" ? "font-thaana" : ""
+                            }`}
+                          >
+                            {entry.title || entry.item.title}
+                          </h1>
+                        </header>
+
+                        {leadImage && (
+                          <figure className="order-2 min-w-0 lg:sticky lg:top-5 lg:col-start-1 lg:row-start-1 lg:row-span-2">
+                            <div className={`overflow-hidden rounded-2xl border ${theme.border} ${theme.header} grid h-[min(38vh,340px)] place-items-center p-2 sm:h-[min(48vh,480px)] lg:h-[min(72vh,780px)]`}>
+                              <img
+                                src={leadImage.src}
+                                alt={leadImage.alt}
+                                loading={index === 0 ? "eager" : "lazy"}
+                                decoding="async"
+                                fetchPriority={index === 0 ? "high" : "auto"}
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                            <figcaption className={`mt-2 line-clamp-2 text-[10px] ${theme.muted}`}>
+                              {leadImage.alt}
+                            </figcaption>
+                          </figure>
+                        )}
+
+                        <div className={`order-3 min-w-0 ${leadImage ? "lg:col-start-2 lg:row-start-2" : `mx-auto w-full ${prefs.marginSize}`}`}>
 
                   {!entry.ready ? (
                     <div className="space-y-4 py-4">
@@ -446,9 +483,11 @@ export default function FeedArticleReader({
                         lineHeight: prefs.lineSpacing,
                         ["--news-paragraph-gap" as string]: `${prefs.paragraphSpacing}em`,
                       }}
-                      dangerouslySetInnerHTML={{ __html: displayHtml }}
+                      dangerouslySetInnerHTML={{ __html: articleHtml }}
                     />
                   )}
+                        </div>
+                      </div>
                 </section>
               );
             })}

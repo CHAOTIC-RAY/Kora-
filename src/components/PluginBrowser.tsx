@@ -53,6 +53,7 @@ import toast from "react-hot-toast";
 import {
   DEFAULT_REPO,
   addRepo,
+  attachThemeStylesheetFromRegistry,
   fetchRegistry,
   fetchExtensionDefinition,
   getInstalledExtensions,
@@ -85,7 +86,6 @@ import type {
   SourcePlugin,
 } from "../lib/sources/types";
 import TrustRepoModal, { isKoraDefaultRepoUrl } from "./TrustRepoModal";
-import { CYBERUI_PLUGIN_URL, CYBERUI_THEME, cyberUiRegistryEntry } from "../lib/cyberUiTheme";
 
 export interface PluginBrowserProps {
   /**
@@ -142,10 +142,7 @@ export default function PluginBrowser({
   intro,
   onOpenInWorkshop,
 }: PluginBrowserProps) {
-  const [entries, setEntries] = useState<RepoEntry[]>(() => {
-    const builtinInstalled = getInstalledExtensions().some((p) => p.id === CYBERUI_THEME.id);
-    return [cyberUiRegistryEntry(builtinInstalled)];
-  });
+  const [entries, setEntries] = useState<RepoEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [repoInput, setRepoInput] = useState("");
@@ -175,19 +172,20 @@ export default function PluginBrowser({
     setLoading(true);
     setError(null);
     const all: RepoEntry[] = [];
-    const builtinInstalled = getInstalledExtensions().some((p) => p.id === CYBERUI_THEME.id);
-    all.push(cyberUiRegistryEntry(builtinInstalled));
-    // Render bundled plugins immediately. Registry requests can be slow or
-    // unreachable, but must never hold back themes shipped with Kora itself.
-    setEntries([...all]);
-    const seen = new Set<string>([CYBERUI_THEME.id]);
+    const seen = new Set<string>();
     const failed: string[] = [];
+    let attachedLegacyThemeStylesheet = false;
     for (const repo of getRepos()) {
       try {
         for (const e of await fetchRegistry(repo)) {
           // A user repo may list a source the default repo already has.
           if (seen.has(e.plugin.id)) continue;
           seen.add(e.plugin.id);
+          if (e.manifest?.category === "theme" && e.manifest.id && e.manifest.styleUrl) {
+            const existing = getInstalledExtensions().find((extension) => extension.id === e.manifest!.id);
+            attachedLegacyThemeStylesheet ||= !!existing && !existing.styleUrl;
+            attachThemeStylesheetFromRegistry(e.manifest.id, e.manifest.styleUrl);
+          }
           all.push(e);
         }
       } catch (err) {
@@ -199,13 +197,16 @@ export default function PluginBrowser({
         failed.push(`${repo} — ${err instanceof Error ? err.message : "unreachable"}`);
       }
     }
-    // `all` was already published above for immediate built-in rendering.
-    // Publish a fresh array so React and the memoized category groups see the
-    // registry entries appended during the fetch loop.
+    // Publish after registry fetch so extensions are always loaded from their
+    // plugin repository rather than being bundled into Kora.
     setEntries([...all]);
     setRepos(getRepos());
     setInstalled(getInstalledPlugins());
     setExtensions(getInstalledExtensions());
+    if (attachedLegacyThemeStylesheet && getActiveThemePluginId()) {
+      const applied = applyActiveThemePlugin(document);
+      syncThemePluginMarker(applied.applied);
+    }
     setError(failed.length ? failed.join(" · ") : null);
     setLoading(false);
   }, []);
@@ -298,9 +299,7 @@ export default function PluginBrowser({
     }
     setInstallingId(e.plugin.id);
     try {
-      const manifest = e.installUrl === CYBERUI_PLUGIN_URL
-        ? CYBERUI_THEME
-        : await fetchExtensionDefinition(e.installUrl);
+      const manifest = await fetchExtensionDefinition(e.installUrl);
       if (!manifest) throw new Error("empty response");
       if (manifest.id !== e.plugin.id) throw new Error("Plugin ID mismatch");
       if (!installExtension(manifest)) {

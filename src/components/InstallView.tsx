@@ -88,6 +88,8 @@ import FeatureDemosGrid from "./FeatureDemosGrid";
 import CassetteVisualizer from "./CassetteVisualizer";
 import InkSketchScribbleBackground from "./InkSketchScribbleBackground";
 
+const UnoGameDemo = React.lazy(() => import("./UnoGame"));
+
 /** Scroll-triggered reveal wrapper — fades, lifts, and scales into view with physical spring motion.
  *  Uses once:true for maximum stability and a refined, professional bento experience. */
 function Reveal({ 
@@ -377,11 +379,11 @@ function HeroGridContent({ apk, handleCopyLink, copiedLink, onTextMouseMove, onT
             </div>
 
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-serif font-extrabold text-kindle-text leading-[1.05] tracking-tight">
-              Read, Listen <span className="font-light italic text-kindle-accent font-serif">&amp;</span> Discover
+              Find Books. <span className="font-light italic text-kindle-accent font-serif">Read Here.</span>
             </h1>
 
             <p className="text-base sm:text-lg text-kindle-text-muted leading-relaxed font-medium">
-              The open E-Ink digital reader with integrated high-fidelity voice narration, federated mirror discovery, and a beautiful mind games lounge.
+              Search LibGen, Anna&apos;s Archive, Google Books, and other catalogs from one place. Compare editions, open book details, choose an available format, then save it straight into your Kora library—without jumping between sites and tabs.
             </p>
           </motion.div>
 
@@ -1064,6 +1066,7 @@ export default function InstallView() {
   
   // Game & Workshop Demo Modals State
   const [showScoreTrackerDemo, setShowScoreTrackerDemo] = useState(false);
+  const [showUnoDemo, setShowUnoDemo] = useState(false);
   const [showCrosswordDemo, setShowCrosswordDemo] = useState(false);
   const [showWordSearchDemo, setShowWordSearchDemo] = useState(false);
   const [showWikipediaDemo, setShowWikipediaDemo] = useState(false);
@@ -1162,6 +1165,7 @@ export default function InstallView() {
   // Lock background scroll whenever any fullscreen demo/popup is open.
   useScrollLock(
     showScoreTrackerDemo ||
+      showUnoDemo ||
       showCrosswordDemo ||
       showWordSearchDemo ||
       showWikipediaDemo ||
@@ -1370,8 +1374,8 @@ export default function InstallView() {
     },
     {
       icon: Compass,
-      title: "Federated Book Discovery",
-      description: "Search open digital catalogs across Rave Engine, LibGen, and Anna's Archive with direct file mirror downloads."
+      title: "One Search Across Book Sources",
+      description: "Search LibGen, Anna's Archive, Google Books, and more together. Compare editions and formats, inspect book details, then bring a chosen file into Kora without switching between sites."
     },
     {
       icon: Radio,
@@ -1381,7 +1385,12 @@ export default function InstallView() {
     {
       icon: Gamepad2,
       title: "Lounge & Workshop Suite",
-      description: "Relax between chapters with integrated mind games: Score Tracker with Competition Mode, Literary Crosswords, and Word Search Grids."
+      description: "Play Kora Uno, use the board-game score tracker, solve literary crosswords, and take a word-search break between chapters."
+    },
+    {
+      icon: Layers,
+      title: "Extensible Plugin System",
+      description: "Add source catalogs, themes, and integrations from the Kora plugin hub. Install what you use and manage extensions in one place."
     },
     {
       icon: ShieldCheck,
@@ -2038,13 +2047,13 @@ export default function InstallView() {
                     {/* Card Header */}
                     <div className="p-4 sm:p-5 space-y-1 border-b border-kindle-border bg-kindle-card shrink-0">
                       <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-500 dark:text-sky-400 uppercase tracking-wider">
-                        <Search className="w-4 h-4" /> Global Catalog &amp; Mirror Engine
+                        <Search className="w-4 h-4" /> Search across connected book sources
                       </div>
                       <h3 className="text-lg sm:text-xl font-serif font-bold text-kindle-text">
-                        Discover Tab &amp; Download Mirror Hub
+                        Find a book, compare editions, open it in Kora
                       </h3>
                       <p className="text-xs text-kindle-text-muted leading-relaxed">
-                        Explore global archives, federated catalog feeds, and trending best sellers with live book cover art, direct mirror links, and multi-source download options.
+                        Search LibGen, Anna&apos;s Archive, Google Books, and other connected catalogs together. Compare editions and formats in one results view, then open details and continue with the chosen book inside Kora.
                       </p>
                     </div>
 
@@ -2510,6 +2519,47 @@ export default function InstallView() {
           </div>
         </div>
 
+        {/* Book discovery and playable game bento */}
+        <div className="grid grid-cols-1 gap-6 border-t border-kindle-border/60 pt-6 lg:grid-cols-2">
+          <Reveal className="h-full">
+            <section className="flex h-full flex-col justify-between gap-5 overflow-hidden rounded-3xl border border-kindle-border bg-kindle-card p-5 sm:p-6 shadow-sm">
+              <div>
+                <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-kindle-accent"><Layers className="h-4 w-4" /> Kora plugin system</div>
+                <h3 className="mt-2 text-xl font-serif font-bold text-kindle-text">Bring more sources and styles into one reader</h3>
+                <p className="mt-2 max-w-xl text-xs leading-relaxed text-kindle-text-muted">Add community source catalogs, install themes, and connect tools from Kora&apos;s plugin hub. Manage your extensions inside Kora, then search supported catalogs in Discover.</p>
+              </div>
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2" aria-label="Plugin examples">
+                  {["BOOK SOURCES", "THEMES", "INTEGRATIONS", "COMMUNITY REPOS"].map((item) => <span key={item} className="rounded-full border border-kindle-border bg-kindle-bg px-3 py-1.5 text-[8px] font-bold tracking-widest text-kindle-text-muted">{item}</span>)}
+                </div>
+                <a href="https://github.com/CHAOTIC-RAY/Kora-Plugins" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-kindle-border px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-kindle-text transition hover:border-kindle-accent hover:text-kindle-accent">
+                  <Github className="h-3.5 w-3.5" /> Browse plugin registry <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            </section>
+          </Reveal>
+
+          <Reveal className="h-full">
+            <section className="flex h-full flex-col justify-between gap-5 overflow-hidden rounded-3xl border border-kindle-border bg-kindle-card p-5 sm:p-6 shadow-sm">
+              <div>
+                <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500"><Gamepad2 className="h-4 w-4" /> Play in Kora</div>
+                <h3 className="mt-2 text-xl font-serif font-bold text-kindle-text">Kora Uno</h3>
+                <p className="mt-2 max-w-xl text-xs leading-relaxed text-kindle-text-muted">Deal a hand and play a quick round with local bots, or join someone on your Wi-Fi network.</p>
+              </div>
+              <div className="flex min-h-28 items-center justify-center overflow-hidden rounded-2xl border border-kindle-border/60 bg-kindle-bg px-4 py-5">
+                {[{ color: "#f04452", value: "7", rotate: "-12deg", y: "8px" }, { color: "#2588ff", value: "↻", rotate: "-5deg", y: "0" }, { color: "#20b979", value: "+2", rotate: "5deg", y: "0" }, { color: "#f8c844", value: "✦", rotate: "13deg", y: "8px" }].map((card) => (
+                  <div key={card.color} className="relative -ml-4 grid h-24 w-16 shrink-0 place-items-center rounded-xl border-[3px] border-white bg-white p-1 shadow-xl first:ml-0 sm:h-28 sm:w-[4.5rem]" style={{ transform: `translateY(${card.y}) rotate(${card.rotate})`, zIndex: card.rotate === "-5deg" || card.rotate === "5deg" ? 2 : 1 }}>
+                    <div className="grid h-full w-full place-items-center rounded-lg text-2xl font-black text-white" style={{ background: card.color }}>{card.value}</div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setShowUnoDemo(true)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-kindle-text px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-kindle-bg transition hover:opacity-90">
+                <Play className="h-3.5 w-3.5 fill-current" /> Play a demo round
+              </button>
+            </section>
+          </Reveal>
+        </div>
+
         {/* Kora Workshop: Interactive Tools & Games Section (Unified) */}
         <div id="workshop" className="pt-4 border-t border-kindle-border/60 scroll-mt-20 space-y-6">
           <Reveal>
@@ -2963,6 +3013,9 @@ export default function InstallView() {
 
       {/* Game & Workshop Interactive Demo Modals */}
       <GameScoreTracker open={showScoreTrackerDemo} onClose={() => setShowScoreTrackerDemo(false)} />
+      <React.Suspense fallback={null}>
+        <UnoGameDemo open={showUnoDemo} onClose={() => setShowUnoDemo(false)} variant="popup" />
+      </React.Suspense>
       <CrosswordGame open={showCrosswordDemo} onClose={() => setShowCrosswordDemo(false)} />
       <WordSearchGame open={showWordSearchDemo} onClose={() => setShowWordSearchDemo(false)} />
       <LinguistGuardian open={showLinguistGuardianDemo} onClose={() => setShowLinguistGuardianDemo(false)} />

@@ -158,6 +158,7 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
   // Round Input Buffer
   const [roundScoresBuffer, setRoundScoresBuffer] = useState<Record<string, number>>({});
   const [roundCategoryBuffer, setRoundCategoryBuffer] = useState<Record<string, Record<string, number>>>({});
+  const [totemPickerPlayerId, setTotemPickerPlayerId] = useState<string | null>(null);
 
   // Navigation Tabs inside Tracker
   const [activeTab, setActiveTab] = useState<"game" | "history">("game");
@@ -689,11 +690,6 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
 
 
                         <section className="bg-kindle-card border border-kindle-border rounded-2xl p-4 space-y-3">
-                          <div className="flex items-center justify-between"><label className="text-[10px] font-bold uppercase tracking-wider text-kindle-text-muted">Scoring Categories</label><button type="button" aria-pressed={enableCategories} onClick={() => setEnableCategories(!enableCategories)} className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase ${enableCategories ? "bg-kindle-accent text-kindle-bg" : "bg-kindle-bg text-kindle-text-muted border border-kindle-border"}`}>{enableCategories ? "On" : "Off"}</button></div>
-                          {enableCategories && <>
-                            <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">{categories.map((category, index) => <span key={`${category}-${index}`} className="inline-flex items-center gap-1 rounded-lg border border-kindle-border bg-kindle-bg px-2 py-1 text-[9px] font-bold text-kindle-text">{category}<button type="button" aria-label={`Remove ${category}`} onClick={() => setCategories((current) => current.filter((_, i) => i !== index))} className="text-kindle-text-muted hover:text-red-400">×</button></span>)}</div>
-                            <div className="flex gap-2"><input type="text" value={customCategoryInput} onChange={(event) => setCustomCategoryInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && customCategoryInput.trim()) { setCategories((current) => current.includes(customCategoryInput.trim()) ? current : [...current, customCategoryInput.trim()]); setCustomCategoryInput(""); } }} placeholder="Add a scoring category" className="min-w-0 flex-1 px-2 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text" /><button type="button" onClick={() => { const value = customCategoryInput.trim(); if (value && !categories.some((item) => item.toLowerCase() === value.toLowerCase())) setCategories([...categories, value]); setCustomCategoryInput(""); }} className="px-3 py-2 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold"><Plus className="h-4 w-4" /></button></div>
-                          </>}
                           {selectedPreset.specialConditions?.length ? <div className="border-t border-kindle-border pt-2"><p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-kindle-text-muted">Preset rules</p><ul className="space-y-1 text-[9px] text-kindle-text-muted">{selectedPreset.specialConditions.map((condition) => <li key={condition.id}><strong className="text-kindle-text">{condition.label}:</strong> {condition.detail}</li>)}</ul></div> : null}
                           {selectedPreset.notes?.map((note, index) => <p key={index} className="text-[9px] leading-relaxed text-kindle-text-muted">{note}</p>)}
                         </section>
@@ -706,6 +702,22 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                       <div className="bg-kindle-card border border-kindle-border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3"><span className={`p-2.5 rounded-xl border ${competitionMode ? "bg-[#e0533c]/10 border-[#e0533c]/30 text-[#e0533c]" : "bg-kindle-bg border-kindle-border text-kindle-text-muted"}`}><Swords className="w-5 h-5" /></span><div><h4 className="text-xs font-bold text-kindle-text">Competition Mode</h4><p className="mt-1 text-[10px] text-kindle-text-muted">Track turn times and lock round scores during competitive matches.</p></div></div>
                         <button type="button" role="switch" aria-checked={competitionMode} onClick={() => setCompetitionMode(!competitionMode)} className={`w-12 h-6 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${competitionMode ? "bg-[#e0533c]" : "bg-neutral-700"}`}><motion.span layout className="w-5 h-5 rounded-full bg-white shadow-md" animate={{ x: competitionMode ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} /></button>
+                      </div>
+
+                      <div className="rounded-2xl border border-kindle-border bg-kindle-card p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <h4 className="text-xs font-bold text-kindle-text">Scoring categories</h4>
+                            <p className="mt-1 text-[10px] text-kindle-text-muted">Break each round into custom score types{enableCategories && categories.length ? ` · ${categories.length} categories` : ""}.</p>
+                          </div>
+                          <button type="button" role="switch" aria-checked={enableCategories} onClick={() => setEnableCategories(!enableCategories)} className={`w-12 h-6 rounded-full p-0.5 transition-colors flex items-center shrink-0 ${enableCategories ? "bg-[#e0533c]" : "bg-neutral-700"}`}><motion.span layout className="w-5 h-5 rounded-full bg-white shadow-md" animate={{ x: enableCategories ? 24 : 0 }} transition={{ type: "spring", stiffness: 500, damping: 30 }} /></button>
+                        </div>
+                        {enableCategories && (
+                          <div className="mt-3 space-y-3 border-t border-kindle-border pt-3">
+                            <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto">{categories.map((category, index) => <span key={`${category}-${index}`} className="inline-flex items-center gap-1 rounded-lg border border-kindle-border bg-kindle-bg px-2 py-1 text-[9px] font-bold text-kindle-text">{category}<button type="button" aria-label={`Remove ${category}`} onClick={() => setCategories((current) => current.filter((_, i) => i !== index))} className="text-kindle-text-muted hover:text-red-400">×</button></span>)}</div>
+                            <div className="flex gap-2"><input type="text" value={customCategoryInput} onChange={(event) => setCustomCategoryInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && customCategoryInput.trim()) { setCategories((current) => current.some((category) => category.toLowerCase() === customCategoryInput.trim().toLowerCase()) ? current : [...current, customCategoryInput.trim()]); setCustomCategoryInput(""); } }} placeholder="Add a scoring category" className="min-w-0 flex-1 px-3 py-2 bg-kindle-bg border border-kindle-border rounded-xl text-[10px] text-kindle-text" /><button type="button" aria-label="Add scoring category" onClick={() => { const value = customCategoryInput.trim(); if (value && !categories.some((item) => item.toLowerCase() === value.toLowerCase())) setCategories((current) => [...current, value]); setCustomCategoryInput(""); }} className="px-3 py-2 bg-kindle-text text-kindle-bg rounded-xl text-xs font-bold"><Plus className="h-4 w-4" /></button></div>
+                          </div>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(220px,.7fr)_minmax(0,1.3fr)]">
@@ -730,23 +742,33 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                             {players.map((player, playerIndex) => {
                               const totem = player.totem ?? PLAYER_TOTEMS[playerIndex % PLAYER_TOTEMS.length]!.emoji;
                               return (
-                                <div key={player.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-kindle-border bg-kindle-bg p-3">
+                                <div key={player.id} className="relative flex flex-wrap items-center justify-between gap-2 rounded-xl border border-kindle-border bg-kindle-bg p-3">
                                   <div className="flex min-w-0 items-center gap-2.5">
-                                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-kindle-border bg-kindle-card text-xl" aria-hidden="true">{totem}</span>
+                                    <button type="button" onClick={() => setTotemPickerPlayerId((current) => current === player.id ? null : player.id)} aria-label={`Change ${player.name}'s totem, currently ${PLAYER_TOTEMS.find((option) => option.emoji === totem)?.label ?? "custom"}`} aria-expanded={totemPickerPlayerId === player.id} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-kindle-border bg-kindle-card text-xl transition hover:border-kindle-accent hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-kindle-accent">{totem}</button>
                                     <div className="min-w-0">
                                       <span className="block truncate text-xs font-bold text-kindle-text">{player.name}{player.teamId ? ` · ${selectedPreset.teams?.find((team) => team.id === player.teamId)?.label ?? ""}` : ""}</span>
-                                      <label className="mt-1 flex items-center gap-1 text-[9px] text-kindle-text-muted">
-                                        Totem
-                                        <select value={totem} onChange={(event) => setPlayers((current) => current.map((entry) => entry.id === player.id ? { ...entry, totem: event.target.value } : entry))} className="max-w-32 rounded border border-kindle-border bg-kindle-card px-1.5 py-1 text-[10px] text-kindle-text" aria-label={`${player.name} totem`}>
-                                          {PLAYER_TOTEMS.map((option) => <option key={option.emoji} value={option.emoji}>{option.emoji} {option.label}</option>)}
-                                        </select>
-                                      </label>
+                                      <span className="mt-1 block text-[9px] text-kindle-text-muted">Tap icon to choose a totem</span>
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2">
                                     <label className="flex items-center gap-1 text-[9px] text-kindle-text-muted">Hdcp<input type="number" value={player.handicap ?? 0} onChange={(event) => { const handicap = Number.parseInt(event.target.value, 10) || 0; setPlayers((current) => current.map((entry) => entry.id === player.id ? { ...entry, handicap } : entry)); }} className="w-12 rounded border border-kindle-border bg-kindle-card px-1 py-1 text-center font-mono text-kindle-text" /></label>
                                     <button type="button" disabled={players.length <= selectedPreset.playerCount.min} onClick={() => handleRemovePlayer(player.id)} title="Remove player" className="p-1 text-kindle-text-muted hover:text-red-400 disabled:opacity-30"><Trash2 className="w-3.5 h-3.5" /></button>
                                   </div>
+                                  {totemPickerPlayerId === player.id && (
+                                    <div role="dialog" aria-label={`Choose ${player.name}'s totem`} className="absolute left-2 top-[calc(100%-0.25rem)] z-40 w-[min(320px,calc(100vw-4rem))] rounded-2xl border border-kindle-accent/60 bg-kindle-card p-3 shadow-2xl">
+                                      <div className="mb-2 flex items-center justify-between gap-2">
+                                        <span className="text-[9px] font-bold uppercase tracking-widest text-kindle-text-muted">Choose {player.name}&apos;s totem</span>
+                                        <button type="button" onClick={() => setTotemPickerPlayerId(null)} className="rounded-lg border border-kindle-border px-2 py-1 text-[9px] text-kindle-text-muted hover:text-kindle-text">Close</button>
+                                      </div>
+                                      <div className="grid grid-cols-5 gap-1.5">
+                                        {PLAYER_TOTEMS.map((option) => (
+                                          <button key={option.emoji} type="button" title={option.label} aria-label={option.label} aria-pressed={totem === option.emoji} onClick={() => { setPlayers((current) => current.map((entry) => entry.id === player.id ? { ...entry, totem: option.emoji } : entry)); setTotemPickerPlayerId(null); }} className={`flex min-h-12 flex-col items-center justify-center rounded-xl border text-lg transition ${totem === option.emoji ? "border-kindle-accent bg-kindle-accent/15" : "border-kindle-border bg-kindle-bg hover:border-kindle-accent/70"}`}>
+                                            {option.emoji}<span className="mt-0.5 max-w-full truncate px-0.5 text-[7px] font-bold text-kindle-text-muted">{option.label}</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -955,55 +977,39 @@ export default function GameScoreTracker({ open, onClose }: GameScoreTrackerProp
                           {players.map((p) => {
                             const val = roundScoresBuffer[p.id] || 0;
                             return (
-                              <div key={p.id} className="p-3 bg-kindle-bg border border-kindle-border rounded-xl space-y-2">
+                              <div key={p.id} className="p-3.5 bg-kindle-bg border border-kindle-border rounded-2xl space-y-3">
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-bold text-kindle-text flex items-center gap-2 truncate">
-                                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                                    <span className="grid h-8 w-8 place-items-center rounded-xl border border-kindle-border bg-kindle-card text-lg shrink-0">{p.totem ?? "🎲"}</span>
                                     {p.name}
                                   </span>
-                                  <span className="text-xs font-mono font-bold text-kindle-text-muted">
-                                    Total: {getPlayerTotal(p.id)}
+                                  <span className="text-right text-[9px] text-kindle-text-muted">
+                                    <span className="block uppercase tracking-wider">Current total</span>
+                                    <span className="font-mono text-xs font-bold text-kindle-text">{getPlayerTotal(p.id)}</span>
                                   </span>
                                 </div>
 
-                                <div className="flex items-center justify-between gap-2 bg-kindle-card border border-kindle-border rounded-xl p-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustBufferScore(p.id, -5)}
-                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
-                                  >
-                                    -5
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustBufferScore(p.id, -1)}
-                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
-                                  >
-                                    -1
-                                  </button>
-
+                                <label className="block rounded-xl border border-kindle-border bg-kindle-card px-3 py-2">
+                                  <span className="block text-[8px] font-bold uppercase tracking-widest text-kindle-text-muted">Round points</span>
                                   <input
                                     type="number"
+                                    inputMode="numeric"
+                                    step={1}
                                     value={val}
-                                    onChange={(e) => setRoundScoresBuffer({ ...roundScoresBuffer, [p.id]: parseInt(e.target.value, 10) || 0 })}
-                                    className="w-16 text-center font-mono font-extrabold text-sm text-kindle-text bg-transparent focus:outline-none"
+                                    aria-label={`${p.name} round points`}
+                                    onChange={(e) => setRoundScoresBuffer((current) => ({ ...current, [p.id]: e.target.value === "" ? 0 : Number.parseInt(e.target.value, 10) || 0 }))}
+                                    className="mt-0.5 w-full bg-transparent text-center font-mono text-2xl font-extrabold text-kindle-text focus:outline-none"
                                   />
+                                </label>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustBufferScore(p.id, 1)}
-                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
-                                  >
-                                    +1
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAdjustBufferScore(p.id, 5)}
-                                    className="px-2 py-1 bg-kindle-bg border border-kindle-border rounded-lg text-[10px] font-bold text-kindle-text hover:bg-kindle-border transition cursor-pointer"
-                                  >
-                                    +5
-                                  </button>
+                                <div className="grid grid-cols-4 gap-1.5" aria-label={`${p.name} quick score adjustments`}>
+                                  {([-5, -1, 1, 5] as const).map((delta) => (
+                                    <button key={delta} type="button" onClick={() => handleAdjustBufferScore(p.id, delta)} className="min-h-9 rounded-lg border border-kindle-border bg-kindle-card text-[10px] font-bold text-kindle-text hover:border-kindle-accent hover:bg-kindle-accent/10 active:scale-95 transition">
+                                      {delta > 0 ? `+${delta}` : delta}
+                                    </button>
+                                  ))}
                                 </div>
+                                <p className="text-right text-[9px] text-kindle-text-muted">After this round <strong className="font-mono text-kindle-text">{getPlayerTotal(p.id) + val}</strong></p>
                               </div>
                             );
                           })}

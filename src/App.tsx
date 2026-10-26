@@ -1615,7 +1615,7 @@ export default function App() {
     const activeSkin = isInstallView ? "kora" : appSkin;
     const activePluginTheme = resolveActiveThemePlugin();
     const appliedPluginTheme = applyActiveThemePlugin(document);
-    syncThemePluginMarker(appliedPluginTheme.applied);
+    syncThemePluginMarker(isInstallView ? null : appliedPluginTheme.applied);
 
     // Only the `theme-` prefixed token is applied to <body>. The bare theme
     // name (e.g. "sepia") collides with a Tailwind utility class of the same
@@ -1625,9 +1625,6 @@ export default function App() {
     // the page. The `theme-` prefixed class carries the theme CSS variables
     // without that side effect.
     const classes = [prefixedTheme, skinBodyClass(activeSkin)];
-    if (!isInstallView && activePluginTheme?.themeId === "cyberui-operator") {
-      classes.push("skin-cyberui");
-    }
     // Always attach the matching theme-* class so --theme-bg / --theme-text are
     // applied for EVERY known theme. Previously only dark/night/oled/light pushed a
     // theme-* class; themes like green/paper/sepia fell through, leaving <body>

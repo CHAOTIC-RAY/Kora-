@@ -58,6 +58,35 @@ export interface ThemePlugin extends PluginManifest {
   dark?: boolean;
 }
 
+const THEME_STYLESHEET_ID = "kora-active-theme-plugin-styles";
+
+function syncThemeStylesheet(theme: ThemePlugin | null, doc: Document): void {
+  const existing = doc.getElementById?.(THEME_STYLESHEET_ID) as HTMLLinkElement | null;
+  const href = theme?.styleUrl;
+  if (!href) {
+    existing?.remove();
+    return;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(href);
+  } catch {
+    existing?.remove();
+    return;
+  }
+  if (parsed.protocol !== "https:") {
+    existing?.remove();
+    return;
+  }
+  if (existing?.href === parsed.href) return;
+  if (!doc.head || !doc.createElement) return;
+  const link = existing ?? doc.createElement("link");
+  link.id = THEME_STYLESHEET_ID;
+  link.rel = "stylesheet";
+  link.href = parsed.href;
+  if (!existing) doc.head.appendChild(link);
+}
+
 export function isThemeManifest(m: PluginManifest): m is ThemePlugin {
   return m.category === "theme" && !!m.themeId;
 }
@@ -115,15 +144,18 @@ export function applyActiveThemePlugin(doc?: Document): ApplyResult {
 
   const theme = resolveActiveThemePlugin();
   if (!theme) {
+    syncThemeStylesheet(null, d);
     clearThemeTokens(targets);
     return { applied: null };
   }
   const { tokens } = validateThemeTokens(theme.tokens);
   if (!tokens) {
+    syncThemeStylesheet(null, d);
     clearThemeTokens(targets);
     return { applied: null, error: "Active theme has invalid tokens" };
   }
   applyThemeTokens(tokens, targets);
+  syncThemeStylesheet(theme, d);
   return { applied: theme.themeId };
 }
 

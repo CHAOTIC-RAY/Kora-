@@ -1410,354 +1410,6 @@ body:is(.theme-light, .theme-light-white, .theme-light-yellow, .theme-paper, .th
   color: var(--theme-text);
 }
 
-/* ── CyberUI Operator theme plugin ── */
-body.skin-cyberui {
-  --cyberui-line: color-mix(in srgb, var(--theme-border) 78%, transparent);
-  --cyberui-glow: color-mix(in srgb, var(--theme-border) 24%, transparent);
-  --cyberui-coral-glow: color-mix(in srgb, var(--theme-accent) 38%, transparent);
-  background-color: var(--theme-bg) !important;
-  background-image:
-    radial-gradient(ellipse at 50% -18%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 56%),
-    linear-gradient(color-mix(in srgb, var(--theme-border) 7%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--theme-border) 7%, transparent) 1px, transparent 1px) !important;
-  background-size: auto, 28px 28px, 28px 28px !important;
-  background-attachment: fixed !important;
-  font-family: "Rajdhani", "Share Tech Mono", sans-serif !important;
-  color: var(--theme-text) !important;
-  scrollbar-color: var(--theme-border) var(--theme-bg);
-}
-
-body.skin-cyberui :is(h1, h2, h3, h4, .font-display) {
-  font-family: "Orbitron", "Rajdhani", sans-serif !important;
-  letter-spacing: 0.04em !important;
-  text-wrap: balance;
-}
-
-/* Thin signal line ties the existing Kora header into the operator HUD. */
-body.skin-cyberui .kora-app-header {
-  position: relative;
-  isolation: isolate;
-}
-
-body.skin-cyberui .kora-app-header::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--theme-accent) 0 18%, var(--theme-border) 18% 82%, var(--theme-accent) 82%);
-  box-shadow: 0 0 12px var(--cyberui-glow);
-}
-
-body.skin-cyberui .kora-app-header,
-body.skin-cyberui .kora-desktop-nav,
-body.skin-cyberui .kora-mobile-footer {
-  background: color-mix(in srgb, var(--theme-bg) 94%, black) !important;
-  border-color: var(--theme-border) !important;
-  border-radius: 0.3rem !important;
-  box-shadow: 0 0 18px var(--cyberui-glow), inset 0 0 14px rgba(0, 0, 0, 0.16) !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-body.skin-cyberui .kora-app-header {
-  border-bottom-width: 2px !important;
-}
-
-body.skin-cyberui .kora-desktop-nav-item.is-active,
-body.skin-cyberui .kora-tab-pill {
-  color: #211417 !important;
-  background: var(--theme-accent) !important;
-  border: 1px solid var(--theme-accent) !important;
-  border-radius: 0.2rem !important;
-  box-shadow: 0 0 16px color-mix(in srgb, var(--theme-accent) 48%, transparent) !important;
-  font-weight: 800 !important;
-}
-
-body.skin-cyberui .kora-desktop-nav-item.is-active *,
-body.skin-cyberui .kora-tab-pill * {
-  color: #211417 !important;
-}
-
-body.skin-cyberui .kora-desktop-nav-item {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  border-radius: 0.2rem !important;
-}
-
-body.skin-cyberui .kora-desktop-nav-item:not(.is-active):hover,
-body.skin-cyberui .kora-tab-item:not(.is-active):hover {
-  color: var(--theme-text) !important;
-  background: color-mix(in srgb, var(--theme-border) 12%, transparent) !important;
-}
-
-/* The status rail makes every app surface feel like one coherent console. */
-body.skin-cyberui .kora-main-mobile::before {
-  content: "CYBR//DECK     PERSONAL ARCHIVE SYSTEM     OPERATOR ACCESS";
-  display: block;
-  width: 100%;
-  margin: 0 auto 1.25rem;
-  padding: 0.35rem 0.55rem;
-  color: var(--theme-border);
-  border-bottom: 1px solid var(--cyberui-line);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--theme-border) 10%, transparent), transparent 70%);
-  font: 600 0.58rem/1.2 "Share Tech Mono", monospace;
-  letter-spacing: 0.16em;
-  text-shadow: 0 0 8px var(--cyberui-glow);
-}
-
-body.skin-cyberui .cyberui-lounge > header {
-  padding: 0.9rem 1rem 1rem;
-  border: 1px solid var(--cyberui-line);
-  border-left: 3px solid var(--theme-accent);
-  background: linear-gradient(100deg, color-mix(in srgb, var(--theme-card) 94%, transparent), transparent);
-  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.14);
-}
-
-body.skin-cyberui .cyberui-lounge > header h2 {
-  max-width: 48rem;
-  color: var(--theme-border) !important;
-  font-style: normal !important;
-  font-size: clamp(1.35rem, 3.5vw, 2.35rem) !important;
-  line-height: 1.12 !important;
-  text-transform: uppercase;
-  text-shadow: 0 0 18px var(--cyberui-glow);
-}
-
-body.skin-cyberui .cyberui-lounge-hero {
-  border-radius: 0.35rem !important;
-  border: 1px solid var(--cyberui-line) !important;
-  border-left: 3px solid var(--theme-accent) !important;
-  box-shadow: 0 0 24px rgba(0, 0, 0, 0.32), inset 0 0 28px color-mix(in srgb, var(--theme-border) 5%, transparent) !important;
-}
-
-body.skin-cyberui .cyberui-lounge-hero img {
-  border-color: var(--theme-border) !important;
-  border-radius: 0.18rem !important;
-  box-shadow: 0 0 14px var(--cyberui-glow) !important;
-}
-
-body.skin-cyberui .cyberui-lounge-hero h4 {
-  font-family: "Orbitron", "Rajdhani", sans-serif !important;
-  letter-spacing: 0.035em;
-  text-transform: uppercase;
-}
-
-body.skin-cyberui .cyberui-lounge-hero .bg-kindle-accent {
-  box-shadow: 0 0 12px var(--cyberui-coral-glow);
-}
-
-/* E-ink keychain bezels for book art: retain the full cover, add a compact
-   hardware frame, scanline glass, clipped corners and tiny status contacts. */
-body.skin-cyberui .cyberui-cover-chip {
-  --cover-bezel: 5px;
-  position: relative;
-  isolation: isolate;
-  padding: var(--cover-bezel) var(--cover-bezel) 10px !important;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 84%, #c7dbda) !important;
-  border-radius: 0 !important;
-  background: linear-gradient(145deg, #536163, #252e32 24%, #141d21 68%, #667274) !important;
-  box-shadow: 2px 3px 0 #080d0f, 4px 5px 0 color-mix(in srgb, var(--theme-border) 34%, #101719), 0 9px 17px rgba(0, 0, 0, 0.48), inset 0 0 0 1px rgba(255, 255, 255, 0.16) !important;
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
-  transition: transform 180ms ease, filter 180ms ease, box-shadow 180ms ease;
-}
-
-body.skin-cyberui .cyberui-cover-chip > img,
-body.skin-cyberui .cyberui-cover-chip > div {
-  border-radius: 0 !important;
-  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
-}
-
-body.skin-cyberui .cyberui-cover-chip::before {
-  content: "";
-  position: absolute;
-  z-index: 4;
-  top: 2px;
-  right: 8px;
-  width: 27px;
-  height: 3px;
-  background: repeating-linear-gradient(90deg, var(--theme-border) 0 2px, transparent 2px 4px);
-  opacity: 0.9;
-  pointer-events: none;
-}
-
-body.skin-cyberui .cyberui-cover-chip::after {
-  content: "";
-  position: absolute;
-  z-index: 3;
-  inset: var(--cover-bezel);
-  border: 1px solid color-mix(in srgb, var(--theme-border) 58%, transparent);
-  box-shadow: inset 0 0 0 1px rgba(8, 13, 15, 0.52), inset 0 0 16px rgba(9, 15, 18, 0.18);
-  background: repeating-linear-gradient(0deg, transparent 0 6px, rgba(8, 13, 15, 0.12) 6px 7px);
-  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
-  pointer-events: none;
-}
-
-body.skin-cyberui .group:hover .cyberui-cover-chip,
-body.skin-cyberui .cyberui-cover-chip:hover {
-  transform: translateY(-3px) rotate(-0.7deg);
-  filter: brightness(1.08) drop-shadow(0 0 8px var(--cyberui-glow));
-  box-shadow: 2px 4px 0 #080d0f, 5px 7px 0 color-mix(in srgb, var(--theme-border) 46%, #101719), 0 14px 22px rgba(0, 0, 0, 0.55), 0 0 14px var(--cyberui-glow) !important;
-}
-
-/* Panels, chips and actions use related silhouettes with different bevels. */
-body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
-  border-radius: 0.12rem !important;
-  clip-path: polygon(0 10px, 10px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
-}
-
-body.skin-cyberui :is(.kora-app-header, .kora-desktop-nav, .kora-mobile-footer) {
-  border-radius: 0 !important;
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-}
-
-body.skin-cyberui button:not(.uno-hand-card) {
-  border-radius: 0 !important;
-  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
-  transition: color 150ms ease, background-color 150ms ease, filter 150ms ease, transform 150ms ease, box-shadow 150ms ease !important;
-}
-
-body.skin-cyberui :is(.kora-desktop-nav-item.is-active, .kora-tab-pill) {
-  clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%) !important;
-}
-
-body.skin-cyberui :is(button.bg-kindle-text, button.bg-neutral-900, button.bg-black) {
-  clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%) !important;
-}
-
-body.skin-cyberui button:hover:not(:disabled) {
-  filter: brightness(1.12) drop-shadow(0 0 7px var(--cyberui-glow));
-  transform: translateY(-1px);
-}
-
-body.skin-cyberui button:active:not(:disabled) {
-  transform: translateY(1px) scale(0.98);
-}
-
-body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--theme-card) 90%, white 3%), color-mix(in srgb, var(--theme-card) 84%, transparent) 58%, color-mix(in srgb, var(--theme-bg) 70%, var(--theme-card))) !important;
-  border: 1px solid var(--cyberui-line) !important;
-  border-radius: 0.4rem !important;
-  -webkit-backdrop-filter: blur(12px) saturate(1.16);
-  backdrop-filter: blur(12px) saturate(1.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 0 18px rgba(0, 0, 0, 0.12), 0 0 12px rgba(0, 0, 0, 0.16) !important;
-}
-
-body.skin-cyberui :is([class*="rounded-3xl"], [class*="rounded-2xl"]) {
-  border-radius: 0.45rem !important;
-}
-
-body.skin-cyberui :is(.kora-chrome-btn, button) {
-  border-radius: 0.22rem;
-  transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
-}
-
-body.skin-cyberui .kora-chrome-btn {
-  border: 1px solid var(--theme-border) !important;
-  background: var(--theme-card) !important;
-  box-shadow: 0 0 8px var(--cyberui-glow) !important;
-}
-
-body.skin-cyberui button:hover:not(:disabled) {
-  border-color: var(--theme-border);
-}
-
-body.skin-cyberui :is(button.bg-kindle-text, button.bg-neutral-900, button.bg-black) {
-  color: #211417 !important;
-  background: var(--theme-accent) !important;
-  border-color: var(--theme-accent) !important;
-  box-shadow: 0 0 14px var(--cyberui-coral-glow) !important;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-body.skin-cyberui :is(input, textarea, select) {
-  color: var(--theme-text) !important;
-  background: color-mix(in srgb, var(--theme-bg) 92%, black) !important;
-  border-color: var(--cyberui-line) !important;
-  border-radius: 0.25rem !important;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.18) !important;
-}
-
-body.skin-cyberui :is(.uppercase, [class*="tracking-widest"]) {
-  letter-spacing: 0.12em;
-}
-
-body.skin-cyberui :is(hr, .border-t, .border-b) {
-  border-color: var(--cyberui-line) !important;
-}
-
-body.skin-cyberui :is(.text-kindle-accent, .text-kindle-text-muted) {
-  text-shadow: 0 0 8px color-mix(in srgb, currentColor 20%, transparent);
-}
-
-body.skin-cyberui :focus-visible {
-  outline: 2px solid var(--theme-border) !important;
-  outline-offset: 3px;
-  box-shadow: 0 0 12px var(--cyberui-glow) !important;
-}
-
-body.skin-cyberui {
-  scrollbar-width: thin;
-  scrollbar-color: var(--theme-border) color-mix(in srgb, var(--theme-bg) 78%, transparent);
-}
-
-body.skin-cyberui ::-webkit-scrollbar { width: 11px; height: 11px; }
-body.skin-cyberui ::-webkit-scrollbar-track {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--theme-border) 8%, transparent), transparent 42%, color-mix(in srgb, var(--theme-border) 8%, transparent));
-  border: 1px solid color-mix(in srgb, var(--theme-border) 28%, transparent);
-}
-body.skin-cyberui ::-webkit-scrollbar-thumb {
-  min-height: 38px;
-  border: 2px solid var(--theme-bg);
-  background: linear-gradient(180deg, color-mix(in srgb, var(--theme-border) 86%, white), var(--theme-border) 48%, color-mix(in srgb, var(--theme-border) 75%, var(--theme-accent)));
-  box-shadow: inset 0 0 0 1px rgba(8, 12, 16, 0.48), 0 0 10px var(--cyberui-glow);
-}
-body.skin-cyberui ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--theme-border), color-mix(in srgb, var(--theme-border) 72%, var(--theme-accent)));
-  box-shadow: inset 0 0 0 1px rgba(8, 12, 16, 0.35), 0 0 16px var(--cyberui-glow);
-}
-body.skin-cyberui ::-webkit-scrollbar-corner { background: var(--theme-bg); }
-
-/* Glass HUD panels keep readable contrast while adding a subtle acrylic sheen. */
-body.skin-cyberui [role="dialog"] {
-  background-color: color-mix(in srgb, var(--theme-card) 84%, transparent) !important;
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.075), transparent 34%, color-mix(in srgb, var(--theme-border) 5%, transparent)) !important;
-  border-color: color-mix(in srgb, var(--theme-border) 72%, white 8%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(1.22);
-  backdrop-filter: blur(18px) saturate(1.22);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.025), 0 24px 70px rgba(0, 0, 0, 0.5), 0 0 28px var(--cyberui-glow) !important;
-}
-
-body.skin-cyberui [role="dialog"] > header {
-  background: linear-gradient(100deg, color-mix(in srgb, var(--theme-card) 76%, var(--theme-border)), color-mix(in srgb, var(--theme-card) 90%, transparent)) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  backdrop-filter: blur(16px) saturate(1.3);
-}
-
-@media (max-width: 640px) {
-  body.skin-cyberui .kora-main-mobile::before {
-    content: "CYBR//DECK      PERSONAL ARCHIVE";
-    font-size: 0.52rem;
-    letter-spacing: 0.12em;
-  }
-  body.skin-cyberui .kora-mobile-footer {
-    border-top: 2px solid var(--theme-border) !important;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  body.skin-cyberui .kora-desktop-nav-item.is-active,
-  body.skin-cyberui .kora-tab-pill {
-    animation: cyberui-signal 3.2s ease-in-out infinite;
-  }
-}
-
-@keyframes cyberui-signal {
-  0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--theme-accent) 24%, transparent); }
-  50% { box-shadow: 0 0 16px color-mix(in srgb, var(--theme-accent) 42%, transparent); }
-}
-
 /* UNO table: the cards sit in a real hand fan, with depth and a playable-card
    lift. This is scoped to the game overlay, independent of the active app skin. */
 .kora-game-theme .uno-game-arena {
@@ -1791,16 +1443,18 @@ body.skin-cyberui [role="dialog"] > header {
   gap: 0 !important;
   justify-content: safe center;
   align-items: flex-end;
-  min-height: 150px !important;
+  min-height: 184px !important;
   /* Reserve room for lifted cards and keep the end cards inside the horizontal
      scrollport so hover/focus effects do not get cropped at the felt edge. */
-  padding: 2.25rem 1.5rem 1.25rem !important;
+  padding: 1.75rem 1.75rem 1.8rem !important;
   perspective: 900px;
   isolation: isolate;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--theme-border) 60%, transparent) transparent;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
+  scroll-padding-inline: 1.5rem;
+  overflow-y: hidden !important;
 }
 
 .kora-game-theme .uno-hand-card {
@@ -1834,143 +1488,10 @@ body.skin-cyberui [role="dialog"] > header {
   filter: saturate(0.62) brightness(0.75) drop-shadow(1px 3px 2px rgba(0, 0, 0, 0.3));
 }
 
-body.skin-cyberui .kora-game-theme .uno-felt-table {
-  border-color: var(--theme-border) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--theme-border) 28%, transparent), inset 0 0 72px color-mix(in srgb, var(--theme-border) 9%, transparent), 0 0 28px color-mix(in srgb, var(--theme-border) 9%, transparent) !important;
-}
-
-body.skin-cyberui .kora-game-theme .uno-hand-panel {
-  border: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-/* Operator console finish for the whole UNO overlay: clipped hardware corners,
-   inset rails, sharp buttons, and restrained signal/glow motion. */
-body.skin-cyberui .kora-game-theme {
-  --game-cut: 9px;
-  --game-cut-small: 5px;
-}
-
-body.skin-cyberui .kora-game-theme > header {
-  position: relative;
-  border-bottom: 2px solid var(--theme-border) !important;
-  background: linear-gradient(100deg, color-mix(in srgb, var(--theme-card) 88%, var(--theme-border)), var(--theme-card) 48%, color-mix(in srgb, var(--theme-card) 92%, var(--theme-accent))) !important;
-  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.26), inset 0 1px 0 color-mix(in srgb, var(--theme-border) 28%, transparent);
-}
-
-body.skin-cyberui .kora-game-theme > header::after {
-  content: "";
-  position: absolute;
-  right: 1rem;
-  bottom: -2px;
-  width: 5.5rem;
-  height: 5px;
-  background: repeating-linear-gradient(90deg, var(--theme-border) 0 2px, transparent 2px 5px);
-  opacity: 0.85;
-}
-
-body.skin-cyberui .kora-game-theme button:not(.uno-hand-card) {
-  border-radius: 0 !important;
-  clip-path: polygon(0 0, calc(100% - var(--game-cut-small)) 0, 100% var(--game-cut-small), 100% 100%, var(--game-cut-small) 100%, 0 calc(100% - var(--game-cut-small)));
-  transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease, background-color 150ms ease !important;
-}
-
-body.skin-cyberui .kora-game-theme button:not(.uno-hand-card):hover:not(:disabled) {
-  filter: brightness(1.12) drop-shadow(0 0 7px var(--cyberui-glow));
-  transform: translateY(-1px);
-}
-
-body.skin-cyberui .kora-game-theme button:not(.uno-hand-card):active:not(:disabled) {
-  transform: translateY(1px) scale(0.98);
-  filter: brightness(0.94);
-}
-
-body.skin-cyberui .kora-game-theme button:disabled:not(.uno-hand-card) {
-  filter: saturate(0.55);
-  opacity: 0.62;
-}
-
-body.skin-cyberui .kora-game-theme :is(.uno-felt-table, .uno-hand-panel) {
-  position: relative;
-  isolation: isolate;
-}
-
-body.skin-cyberui .kora-game-theme .uno-felt-table::before {
-  content: "";
-  position: absolute;
-  inset: 0.65rem;
-  z-index: -1;
-  border: 1px solid color-mix(in srgb, var(--theme-border) 40%, transparent);
-  clip-path: polygon(0 0, 22px 0, 22px 1px, 1px 1px, 1px 22px, 0 22px, 0 calc(100% - 22px), 1px calc(100% - 22px), 1px calc(100% - 1px), 22px calc(100% - 1px), 22px 100%, 0 100%, 100% 100%, 100% calc(100% - 22px), calc(100% - 1px) calc(100% - 22px), calc(100% - 1px) 1px, calc(100% - 22px) 1px, calc(100% - 22px) 0);
-  pointer-events: none;
-}
-
-body.skin-cyberui .kora-game-theme .uno-card-face,
-body.skin-cyberui .kora-game-theme .uno-card-back-art {
-  border-radius: 0 !important;
-  border-width: 2px !important;
-  border-color: color-mix(in srgb, var(--theme-border) 78%, white) !important;
-  clip-path: polygon(0 0, calc(100% - var(--game-cut)) 0, 100% var(--game-cut), 100% 100%, var(--game-cut) 100%, 0 calc(100% - var(--game-cut)));
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.26), 3px 4px 0 color-mix(in srgb, var(--theme-card) 82%, black), 5px 7px 0 color-mix(in srgb, var(--theme-border) 40%, var(--theme-bg)), 0 12px 18px rgba(0, 0, 0, 0.38) !important;
-  transition: filter 180ms ease, box-shadow 180ms ease;
-}
-
-body.skin-cyberui .kora-game-theme .uno-card-face::after,
-body.skin-cyberui .kora-game-theme .uno-card-back-art::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  background: repeating-linear-gradient(0deg, transparent 0 5px, rgba(8, 12, 16, 0.11) 5px 6px);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), inset 0 0 15px rgba(0, 0, 0, 0.16);
-  pointer-events: none;
-}
-
-body.skin-cyberui .kora-game-theme .uno-card-back-art {
-  background-color: var(--theme-card) !important;
-  background-image: linear-gradient(135deg, color-mix(in srgb, var(--theme-card) 82%, var(--theme-border)), var(--theme-bg)) !important;
-}
-
-body.skin-cyberui .kora-game-theme .uno-card-back-art > div:nth-child(1) {
-  inset: 12% !important;
-  border: 2px solid var(--theme-border) !important;
-  border-radius: 0 !important;
-  background: linear-gradient(145deg, var(--theme-accent), color-mix(in srgb, var(--theme-accent) 55%, #f6bf45)) !important;
-  clip-path: polygon(0 0, 100% 0, 100% 82%, 82% 100%, 0 100%);
-  box-shadow: 0 0 20px var(--cyberui-coral-glow) !important;
-}
-
-body.skin-cyberui .kora-game-theme .uno-card-back-art > div:nth-child(2) > span {
-  border-radius: 0 !important;
-  border: 1px solid var(--theme-border) !important;
-  background: var(--theme-bg);
-  color: var(--theme-border) !important;
-  letter-spacing: 0.12em;
-  box-shadow: 0 0 12px var(--cyberui-glow) !important;
-}
-
-body.skin-cyberui .kora-game-theme .uno-hand-card:hover:not(:disabled) .uno-card-face,
-body.skin-cyberui .kora-game-theme .uno-hand-card:focus-visible:not(:disabled) .uno-card-face {
-  filter: brightness(1.12) saturate(1.15);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35), 0 0 0 1px var(--theme-border), 0 0 22px var(--cyberui-glow), 4px 6px 0 color-mix(in srgb, var(--theme-border) 48%, var(--theme-bg)), 0 18px 24px rgba(0, 0, 0, 0.5) !important;
-}
-
-body.skin-cyberui .kora-game-theme .uno-hand-card:not(:disabled) .uno-card-face {
-  animation: cyberui-card-signal 3.8s ease-in-out infinite;
-  animation-delay: calc(var(--uno-hand-angle, 0deg) * -0.08);
-}
-
-@keyframes cyberui-card-signal {
-  0%, 100% { filter: brightness(1); }
-  50% { filter: brightness(1.045) saturate(1.04); }
-}
-
 @media (max-width: 640px) {
   .kora-game-theme .uno-hand-fan {
-    min-height: 148px !important;
-    padding-inline: 1rem !important;
+    min-height: 184px !important;
+    padding: 1.75rem 1.5rem 1.8rem !important;
     scrollbar-width: none;
   }
 
@@ -1995,8 +1516,8 @@ body.skin-cyberui .kora-game-theme .uno-hand-card:not(:disabled) .uno-card-face 
   }
 
   .kora-game-theme .uno-hand-fan {
-    min-height: 122px !important;
-    padding: 2rem 0.8rem 1rem !important;
+    min-height: 144px !important;
+    padding: 1rem 1.1rem 1.25rem !important;
   }
 }
 
@@ -2011,10 +1532,6 @@ body.skin-cyberui .kora-game-theme .uno-hand-card:not(:disabled) .uno-card-face 
     filter: drop-shadow(2px 4px 2px rgba(0, 0, 0, 0.32));
   }
 
-  body.skin-cyberui .kora-game-theme .uno-hand-card:hover:not(:disabled) .uno-card-face,
-  body.skin-cyberui .kora-game-theme .uno-hand-card:focus-visible:not(:disabled) .uno-card-face {
-    filter: none;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2023,7 +1540,4 @@ body.skin-cyberui .kora-game-theme .uno-hand-card:not(:disabled) .uno-card-face 
     transition: none !important;
   }
 
-  body.skin-cyberui .kora-game-theme .uno-hand-card:not(:disabled) .uno-card-face {
-    animation: none !important;
-  }
 }

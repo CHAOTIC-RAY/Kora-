@@ -49,6 +49,15 @@ const CATEGORIES: readonly PluginCategory[] = ["source", "theme", "integration",
 const TARGETS: readonly IntegrationTarget[] = ["kindle", "calibre", "croc"];
 const REQUIREMENTS = ["permission", "device", "network"] as const;
 
+function isHttpsUrl(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function isRecord(v: unknown): v is Record<string, unknown> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
@@ -255,6 +264,13 @@ function validateTheme(manifest: Record<string, unknown>, findings: Finding[]): 
   }
   if (manifest.themeId !== undefined) {
     checkShortString(manifest.themeId, "themeId", findings);
+  }
+  if (manifest.styleUrl !== undefined && !isHttpsUrl(manifest.styleUrl)) {
+    findings.push({
+      severity: "error",
+      path: "styleUrl",
+      message: "must be an HTTPS stylesheet URL",
+    });
   }
   // Surface the token list in the error when it is empty, because "invalid
   // theme" with no field named is the least actionable message possible.

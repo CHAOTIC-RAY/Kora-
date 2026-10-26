@@ -73,6 +73,8 @@ function resolveInk(override?: string): string {
 export interface KoraWordmarkRevealProps {
   children?: React.ReactNode;
   replay?: boolean;
+  /** Repeat the reveal while visible. Respects the user's reduced-motion setting. */
+  loop?: boolean;
   onDone?: () => void;
   speed?: number;
   color?: string;
@@ -81,6 +83,7 @@ export interface KoraWordmarkRevealProps {
 export default function KoraWordmarkReveal({
   children,
   replay = false,
+  loop = false,
   onDone,
   speed = 1.5,
   color,
@@ -115,6 +118,7 @@ export default function KoraWordmarkReveal({
     let drops: Stroke[] = [];
     let ink = resolveInk(color);
     let raf = 0;
+    let loopTimer: number | undefined;
     let t0 = -1;
     let running = false;
     let finished = false;
@@ -266,6 +270,7 @@ export default function KoraWordmarkReveal({
         running = false;
         finished = true;
         markDone();
+        if (loop && !reduceMotion) loopTimer = window.setTimeout(start, 1200);
         return;
       }
       draw(t);
@@ -293,6 +298,8 @@ export default function KoraWordmarkReveal({
     const reset = () => {
       running = false;
       finished = false;
+      if (loopTimer !== undefined) window.clearTimeout(loopTimer);
+      loopTimer = undefined;
       cancelAnimationFrame(raf);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, W, H);
@@ -343,12 +350,13 @@ export default function KoraWordmarkReveal({
 
     return () => {
       cancelled = true;
+      if (loopTimer !== undefined) window.clearTimeout(loopTimer);
       cancelAnimationFrame(raf);
       io?.disconnect();
       ro?.disconnect();
       mo.disconnect();
     };
-  }, [replay, speed, color]);
+  }, [replay, loop, speed, color]);
 
   return (
     <div className="relative flex flex-col items-center gap-4">

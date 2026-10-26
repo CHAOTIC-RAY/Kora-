@@ -150,6 +150,26 @@ export function uninstallExtension(id: string): void {
 }
 
 /**
+ * Add a registry-hosted stylesheet to an already installed theme that predates
+ * external theme CSS support. Existing token palettes and active state stay
+ * intact; only a missing, HTTPS stylesheet reference is filled in.
+ */
+export function attachThemeStylesheetFromRegistry(id: string, styleUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(styleUrl);
+  } catch {
+    return;
+  }
+  if (parsed.protocol !== "https:") return;
+  const installed = getInstalledExtensions();
+  const index = installed.findIndex((entry) => entry.id === id && entry.category === "theme");
+  if (index < 0 || installed[index]?.styleUrl) return;
+  installed[index] = { ...installed[index]!, styleUrl: parsed.href };
+  writeJSON(LS_EXT, installed);
+}
+
+/**
  * Repository URLs that shipped in a build and must not survive it.
  *
  * A test registry was left in the configured list during development. The
@@ -623,6 +643,7 @@ export async function fetchRegistry(
                 target: (src as { target?: IntegrationTarget }).target,
                 themeId: (src as { themeId?: string }).themeId,
                 tokens: (src as { tokens?: ThemeTokens }).tokens,
+                styleUrl: (src as { styleUrl?: string }).styleUrl,
                 dark: (src as { dark?: boolean }).dark,
                 availability: (src as { availability?: PluginManifest["availability"] }).availability,
                 availabilityNote: (src as { availabilityNote?: string }).availabilityNote,

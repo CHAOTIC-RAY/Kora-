@@ -757,7 +757,7 @@ function FeedView({
             )}
           </div>
           <p className="hidden md:block text-[10px] text-kindle-text-muted uppercase tracking-wider font-semibold font-mono mt-0.5">
-            Maldives news and more — tap to read fullscreen.
+            Your news, ready to read — tap to open fullscreen.
           </p>
         </div>
         <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto justify-between sm:justify-end">
