@@ -2937,7 +2937,7 @@ function SettingsView({
           </div>
           
           <div className="space-y-4">
-            <div className="rounded-xl border border-kindle-border bg-kindle-bg/50 px-4 py-5 sm:py-6">
+            <div className="mx-auto w-full max-w-[280px]">
               <KoraWordmarkReveal replay loop speed={1.5} />
             </div>
 
@@ -2945,6 +2945,38 @@ function SettingsView({
               <span className="text-kindle-text-muted">Version</span>
               <span className="font-mono font-bold tracking-wide">{isAndroidApk ? apkLabel : `Kora ${APP_VERSION}`}</span>
             </div>
+
+            {isAndroidApk && (
+              <button
+                type="button"
+                disabled={apkChecking || apkInstalling}
+                onClick={async () => {
+                  setApkChecking(true);
+                  try {
+                    const result = await checkForApkUpdate();
+                    setApkLastCheck(result.checkedAt);
+                    if (result.update) {
+                      setApkAvailable(result.update);
+                      toast.success(`Update found: v${result.update.versionName}`);
+                      window.dispatchEvent(
+                        new CustomEvent("kora-apk-update", { detail: result.update })
+                      );
+                    } else {
+                      setApkAvailable(null);
+                      toast.success("You're on the latest APK");
+                    }
+                  } catch (err: any) {
+                    toast.error(err?.message || "Update check failed");
+                  } finally {
+                    setApkChecking(false);
+                  }
+                }}
+                className="w-full min-h-11 px-3 py-2.5 border border-kindle-border hover:bg-kindle-bg rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${apkChecking ? "animate-spin" : ""}`} />
+                {apkChecking ? "Checking APK updates…" : "Check for APK updates"}
+              </button>
+            )}
 
             <a
               href="https://chaotic-ray.github.io/Kora-/"
@@ -3072,44 +3104,6 @@ function SettingsView({
                   </div>
                 ) : null}
 
-                <button
-                  type="button"
-                  disabled={apkChecking || apkInstalling}
-                  onClick={async () => {
-                    setApkChecking(true);
-                    try {
-                      const result = await checkForApkUpdate();
-                      setApkLastCheck(result.checkedAt);
-                      if (result.update) {
-                        setApkAvailable(result.update);
-                        toast.success(`Update found: v${result.update.versionName}`);
-                        window.dispatchEvent(
-                          new CustomEvent("kora-apk-update", { detail: result.update })
-                        );
-                      } else {
-                        setApkAvailable(null);
-                        toast.success("You're on the latest APK");
-                      }
-                    } catch (err: any) {
-                      toast.error(err?.message || "Update check failed");
-                    } finally {
-                      setApkChecking(false);
-                    }
-                  }}
-                  className="w-full py-2.5 px-3 border border-kindle-border hover:bg-kindle-bg rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
-                >
-                  {apkChecking ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      Checking GitHub…
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      Check for updates
-                    </>
-                  )}
-                </button>
                 {apkLastCheck > 0 && (
                   <p className="text-[9px] text-kindle-text-muted text-center">
                     Last checked {new Date(apkLastCheck).toLocaleString()}
