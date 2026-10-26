@@ -53,6 +53,8 @@ import FeedTikTokScroll from "./FeedTikTokScroll";
 import DailyBriefTikTokView from "./DailyBriefTikTokView";
 
 interface FeedViewProps {
+  /** Whether the Read tab is currently visible (visited tabs remain mounted). */
+  isActive?: boolean;
   userId?: string;
   onRefreshLibrary?: () => void | Promise<void>;
   onOpenBook?: (book: BookMetadata) => void;
@@ -361,6 +363,7 @@ const FeedArticleCard = React.memo(function FeedArticleCard({
 
 
 function FeedView({
+  isActive = true,
   userId = "",
   onRefreshLibrary,
   onOpenBook,
@@ -625,19 +628,22 @@ function FeedView({
   }, [feedLayout, filter, selectedSubscriptionId, visibleItems.length]);
 
   useEffect(() => {
-    if (feedLayout === "scroll") {
-      const originalOverflow = document.body.style.overflow;
-      const originalHeight = document.body.style.height;
-      
-      document.body.style.overflow = "hidden";
-      document.body.style.height = "100%";
-      
-      return () => {
-        document.body.style.overflow = originalOverflow;
-        document.body.style.height = originalHeight;
-      };
-    }
-  }, [feedLayout]);
+    // The app keeps visited tabs mounted. Only lock document scrolling while
+    // the scroll-feed layout is actually visible; otherwise this hidden tab
+    // can leave every other tab unable to scroll.
+    if (feedLayout !== "scroll" || !isActive) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalHeight = document.body.style.height;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.height = "100%";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.height = originalHeight;
+    };
+  }, [feedLayout, isActive]);
 
   const localSourceUrls = useMemo(
     () => new Set(feedsForCountry(localNewsCountry).map((feed) => feed.feedUrl)),

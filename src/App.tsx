@@ -3343,6 +3343,7 @@ export default function App() {
 
           <Suspense fallback={<div className="fixed inset-0 z-50 bg-kindle-bg flex items-center justify-center"><KoraLoading context="app" /></div>}>
           <FeedView
+            isActive={activeTab === "feed"}
             userId={user?.uid || ""}
             onRefreshLibrary={refreshLibrary}
             onOpenBook={handleOpenBook}
