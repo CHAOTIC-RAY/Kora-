@@ -264,7 +264,7 @@ export default function KoraWordmarkReveal({
       onDoneRef.current?.();
     };
 
-    const loop = (now: number) => {
+    const tick = (now: number) => {
       if (cancelled || !running) return;
       if (t0 < 0) t0 = now;
       const t = ((now - t0) / 1000) * speed;
@@ -277,7 +277,7 @@ export default function KoraWordmarkReveal({
         return;
       }
       draw(t);
-      raf = requestAnimationFrame(loop);
+      raf = requestAnimationFrame(tick);
     };
 
     const start = () => {
@@ -295,7 +295,7 @@ export default function KoraWordmarkReveal({
       }
       t0 = -1;
       running = true;
-      raf = requestAnimationFrame(loop);
+      raf = requestAnimationFrame(tick);
     };
 
     const reset = () => {
