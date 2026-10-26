@@ -2938,7 +2938,7 @@ function SettingsView({
           
           <div className="space-y-4">
             <div className="mx-auto w-full max-w-[280px]">
-              <KoraWordmarkReveal replay loop speed={1.5} compact />
+              <KoraWordmarkReveal replay speed={0.75} compact />
             </div>
 
             <div className="flex items-center justify-between gap-4 border-b border-kindle-border/60 pb-3 text-[11px]">
