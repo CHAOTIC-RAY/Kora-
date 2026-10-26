@@ -71,7 +71,7 @@ function UnoCardArt({ card, compact = false }: { card: UnoCard; compact?: boolea
   const color = wild ? "#171923" : UNO_CARD_COLORS[card.color];
   return (
     <div
-      className={`relative h-full w-full overflow-hidden rounded-[0.8rem] border-[3px] border-white/95 shadow-[0_8px_18px_rgba(0,0,0,.28)] ${compact ? "rounded-[0.65rem]" : ""}`}
+      className={`uno-card-face relative h-full w-full overflow-hidden rounded-[0.8rem] border-[3px] border-white/95 shadow-[0_8px_18px_rgba(0,0,0,.28)] ${compact ? "rounded-[0.65rem]" : ""}`}
       style={{ background: color, boxShadow: "inset 0 0 0 1px rgba(0,0,0,.1), 0 8px 18px rgba(0,0,0,.28)" }}
     >
       {wild ? (
@@ -102,7 +102,7 @@ function UnoCardArt({ card, compact = false }: { card: UnoCard; compact?: boolea
 function UnoCardBack({ compact = false }: { compact?: boolean }) {
   return (
     <div
-      className={`relative h-full w-full overflow-hidden rounded-[0.8rem] border-[3px] border-white bg-[#171923] shadow-[0_8px_18px_rgba(0,0,0,.35)] ${compact ? "rounded-[0.65rem]" : ""}`}
+      className={`uno-card-back-art relative h-full w-full overflow-hidden rounded-[0.8rem] border-[3px] border-white bg-[#171923] shadow-[0_8px_18px_rgba(0,0,0,.35)] ${compact ? "rounded-[0.65rem]" : ""}`}
       style={{ backgroundImage: "radial-gradient(circle at 20% 20%, rgba(255,255,255,.12) 1px, transparent 1px), linear-gradient(135deg,#25283a,#11131d)", backgroundSize: "9px 9px, auto" }}
     >
       <div className="absolute inset-[9%] rotate-[-18deg] rounded-[50%] border-[3px] border-white bg-gradient-to-br from-rose-500 via-orange-400 to-yellow-300 shadow-xl" />
@@ -168,6 +168,7 @@ export default function UnoGame({
     setPublicState(null);
     setMyHand([]);
     setSelectedWildCard(null);
+    setScreen("menu");
   }, []);
 
   useEffect(() => {
