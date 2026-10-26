@@ -798,6 +798,13 @@ export default function App() {
   // Auth states
   const [user, setUser] = useState<User | null>(null);
   const [loadingAuth, setLoadingAuth] = useState<boolean>(true);
+  // Keep the initial loader visible long enough to finish its short brand loop.
+  // The optimized GIF completes one cycle in about 1.2s.
+  const [bootLoaderLoopComplete, setBootLoaderLoopComplete] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setBootLoaderLoopComplete(true), 1300);
+    return () => window.clearTimeout(timer);
+  }, []);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [authEmail, setAuthEmail] = useState<string>("");
   const [authPassword, setAuthPassword] = useState<string>("");
@@ -3111,7 +3118,7 @@ export default function App() {
     return <InstallView />;
   }
 
-  if (loadingAuth) {
+  if (loadingAuth || !bootLoaderLoopComplete) {
     return (
       <div className="min-h-screen bg-kindle-bg flex items-center justify-center">
         <KoraLoading context="app" />

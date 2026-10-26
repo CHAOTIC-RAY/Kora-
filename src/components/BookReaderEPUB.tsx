@@ -776,7 +776,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
   // Maps an EPUB internal href (normalized) -> spine chapter index, so in-book
   // Table-of-Contents links (e.g. <a href="chapter1.xhtml">) navigate correctly.
   const hrefToIndexRef = useRef<Map<string, number>>(new Map());
-  const pointerStartRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
+  const pointerStartRef = React.useRef<{ x: number; y: number; time: number; pointerId: number } | null>(null);
   /** Set when a selection is created so the same gesture's pointerup doesn't dismiss it. */
   const justSelectedAtRef = useRef<number>(0);
   const dragStartRef = useRef<{
@@ -1970,12 +1970,13 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
     pointerStartRef.current = {
       x: e.clientX,
       y: e.clientY,
-      time: Date.now()
+      time: Date.now(),
+      pointerId: e.pointerId,
     };
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!pointerStartRef.current) return;
+    if (!pointerStartRef.current || pointerStartRef.current.pointerId !== e.pointerId) return;
     const start = pointerStartRef.current;
     pointerStartRef.current = null;
 
@@ -2056,6 +2057,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
     if (Math.abs(diffX) < 15 && Math.abs(diffY) < 15) {
       handleContainerClick(e);
     }
+  };
+
+  const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (pointerStartRef.current?.pointerId === e.pointerId) pointerStartRef.current = null;
   };
 
   // Keyboard navigation: arrows and space flip pages, Esc closes.
@@ -4345,6 +4350,7 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                 ref={viewerRef}
                 onPointerDown={handlePointerDown}
                 onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerCancel}
                 onClick={() => {
                   if (showSettings) {
                     setShowSettings(false);
@@ -4582,7 +4588,10 @@ export default function BookReaderEPUB({ book, userId, onClose, onOpenCreator, o
                       WebkitUserSelect: annotateMode ? "text" : "none",
                       userSelect: annotateMode ? "text" : "none",
                       WebkitTouchCallout: annotateMode ? "default" : "none",
-                      touchAction: annotateMode ? "auto" : useScrollLayout ? "pan-y" : swipeToTurn ? "pan-x" : "manipulation",
+                      // Paged reading is driven by pointer gestures. Letting the browser
+                      // claim a vertical/horizontal pan can cancel pointerup on phones,
+                      // which makes page taps and swipe-to-turn feel intermittent.
+                      touchAction: annotateMode ? "auto" : useScrollLayout ? "pan-y" : "none",
                       visibility: "visible",
                       color: "inherit",
                       ...(useScrollLayout

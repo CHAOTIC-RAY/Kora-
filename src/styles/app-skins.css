@@ -1792,11 +1792,15 @@ body.skin-cyberui [role="dialog"] > header {
   justify-content: safe center;
   align-items: flex-end;
   min-height: 150px !important;
-  padding: 1rem 1.1rem 1rem !important;
+  /* Reserve room for lifted cards and keep the end cards inside the horizontal
+     scrollport so hover/focus effects do not get cropped at the felt edge. */
+  padding: 2.25rem 1.5rem 1.25rem !important;
   perspective: 900px;
   isolation: isolate;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--theme-border) 60%, transparent) transparent;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .kora-game-theme .uno-hand-card {
@@ -1965,12 +1969,29 @@ body.skin-cyberui .kora-game-theme .uno-hand-card:not(:disabled) .uno-card-face 
 
 @media (max-width: 640px) {
   .kora-game-theme .uno-hand-fan {
-    min-height: 132px !important;
-    padding-inline: 0.65rem !important;
+    min-height: 148px !important;
+    padding-inline: 1rem !important;
   }
 
   .kora-game-theme .uno-hand-card { margin-left: -1.45rem; }
   .kora-game-theme .uno-hand-card:first-child { margin-left: 0; }
+}
+
+/* Touch screens have no true hover. Suppress sticky hover/focus transforms so
+   a tapped card stays fully visible instead of appearing clipped in the hand. */
+@media (hover: none), (pointer: coarse) {
+  .kora-game-theme .uno-hand-card:hover:not(:disabled),
+  .kora-game-theme .uno-hand-card:focus-visible:not(:disabled) {
+    rotate: var(--uno-hand-angle, 0deg);
+    translate: 0 var(--uno-hand-drop, 0px);
+    scale: 1;
+    filter: drop-shadow(2px 4px 2px rgba(0, 0, 0, 0.32));
+  }
+
+  body.skin-cyberui .kora-game-theme .uno-hand-card:hover:not(:disabled) .uno-card-face,
+  body.skin-cyberui .kora-game-theme .uno-hand-card:focus-visible:not(:disabled) .uno-card-face {
+    filter: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
