@@ -9,7 +9,6 @@ import {
  X,
  Maximize2,
  Minimize2,
- Trophy,
 } from"lucide-react";
 import {
  countCorrectCells,
@@ -80,7 +79,6 @@ interface CrosswordGameProps {
  open: boolean;
  onClose: () => void;
  variant?:"fullscreen"|"popup";
- onOpenScores?: () => void;
 }
 
 type Screen ="menu"|"play";
@@ -231,7 +229,7 @@ function LetterWheel({
  );
 }
 
-export default function CrosswordGame({open, onClose, variant ="fullscreen", onOpenScores}: CrosswordGameProps) {
+export default function CrosswordGame({open, onClose, variant ="fullscreen"}: CrosswordGameProps) {
  const [v, setV] = useState<"fullscreen"|"popup">(variant);
  const [screen, setScreen] = useState<Screen>("menu");
  const [mode, setMode] = useState<PlayMode>("classic");
@@ -563,7 +561,7 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  aria-modal="true"
  aria-label="Kora Crossword"
  >
- <CrosswordInner onClose={onClose} v={effectiveV} setV={setV} onOpenScores={onOpenScores} isMobile={isMobile} />
+ <CrosswordInner onClose={onClose} v={effectiveV} setV={setV} isMobile={isMobile} />
  </motion.div>
  </motion.div>
  </AnimatePresence>
@@ -581,13 +579,13 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  aria-modal="true"
  aria-label="Kora Crossword"
  >
- <CrosswordInner onClose={onClose} v={effectiveV} setV={setV} onOpenScores={onOpenScores} isMobile={isMobile} />
+ <CrosswordInner onClose={onClose} v={effectiveV} setV={setV} isMobile={isMobile} />
  </motion.div>
  </AnimatePresence>
  );
 
 
- function CrosswordInner({onClose, v, setV, onOpenScores, isMobile}: {onClose: () => void; v:"fullscreen"|"popup"; setV: (x:"fullscreen"|"popup") => void; onOpenScores?: () => void; isMobile?: boolean}) {
+ function CrosswordInner({onClose, v, setV, isMobile}: {onClose: () => void; v:"fullscreen"|"popup"; setV: (x:"fullscreen"|"popup") => void; isMobile?: boolean}) {
  return (
  <>
  <div
@@ -618,17 +616,6 @@ export default function CrosswordGame({open, onClose, variant ="fullscreen", onO
  </div>
  </div>
  <div className="flex items-center gap-2">
- {onOpenScores && (
- <button
- type="button"
- onClick={onOpenScores}
- className="p-2 rounded-full border border-[var(--theme-border)] hover:bg-[var(--theme-card)] transition"
- aria-label="Open score tracker"
- title="Score Tracker"
- >
- <Trophy className="w-5 h-5"/>
- </button>
- )}
  {!isMobile && (
  <button
  type="button"

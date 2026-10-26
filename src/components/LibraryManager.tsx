@@ -1837,7 +1837,7 @@ function LibraryManager({
                     }}
                     className="kindle-card w-full min-w-0 min-h-[220px] overflow-hidden flex flex-col cursor-pointer transition duration-300 select-none group/card"
                   >
-                    <div className="relative w-full aspect-[2/3] bg-neutral-100 dark:bg-neutral-900 overflow-hidden border-b border-kindle-border">
+                    <div className="cyberui-cover-chip relative w-full aspect-[2/3] bg-neutral-100 dark:bg-neutral-900 overflow-hidden border-b border-kindle-border">
                       <img
                         src={resolveCoverImageSrc(group.representative.coverUrl)}
                         alt={group.title}
@@ -1971,7 +1971,7 @@ function LibraryManager({
                       : "hover:-translate-y-1"
                   }`}
                 >
-                  <div className="relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
+                  <div className="cyberui-cover-chip relative flex items-center justify-center p-0 border-b border-kindle-border overflow-hidden">
                     {/* Visual Checkbox Selector in Manage Mode */}
                     {isManageMode && (
                       <div className="absolute top-3 left-3 z-30 flex items-center justify-center">

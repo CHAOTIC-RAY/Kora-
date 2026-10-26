@@ -231,6 +231,45 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
+class ReaderErrorBoundary extends React.Component<
+  { children: React.ReactNode; onClose: () => void },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown, errorInfo: React.ErrorInfo) {
+    console.error("Book reader crashed:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-kindle-bg p-6 text-kindle-text">
+          <div className="max-w-md space-y-4 rounded-2xl border border-kindle-border bg-kindle-card p-6 text-center shadow-2xl">
+            <BookOpen className="mx-auto h-8 w-8 text-kindle-accent" />
+            <h2 className="text-lg font-bold">Reader couldn’t open this book</h2>
+            <p className="text-sm text-kindle-text-muted">
+              The reader encountered an error. Close it and try opening the book again.
+            </p>
+            <button
+              type="button"
+              onClick={this.props.onClose}
+              className="rounded-lg bg-kindle-text px-4 py-2 text-sm font-bold text-kindle-bg"
+            >
+              Return to library
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   // Navigation & view states
   const [loungeEnabled, setLoungeEnabledState] = useState<boolean>(() => isLoungeEnabled());
@@ -1996,6 +2035,7 @@ export default function App() {
           try {
             const book = JSON.parse(saved);
             if (book?.id) {
+              setActiveBookMode("read");
               setActiveBook(book);
               return;
             }
@@ -2191,6 +2231,7 @@ export default function App() {
         await syncBookToCloud(user?.uid || "", newBook);
         setSharingStatus("success");
         await refreshLibrary(user?.uid || "");
+        setActiveBookMode("read");
         setActiveBook(newBook);
         setTimeout(() => setSharingStatus("idle"), 5000);
       } catch (err: any) {
@@ -2247,6 +2288,7 @@ export default function App() {
       await refreshLibrary(user?.uid || "");
       
       // Instantly open the newly added webpage in reader
+      setActiveBookMode("read");
       setActiveBook(newBook);
 
       setTimeout(() => setSharingStatus("idle"), 5000);
@@ -3513,6 +3555,7 @@ export default function App() {
         </Suspense>
         )}
       {activeBook && activeBook.extension?.toLowerCase() !== "audiobook" && (
+        <ReaderErrorBoundary key={`${activeBook.id}:${activeBookMode}`} onClose={dismissReader}>
         <Suspense fallback={<div className="fixed inset-0 z-[100] bg-kindle-bg flex items-center justify-center"><KoraLoading context="reader" /></div>}>
         {activeBookMode === "create" ? (
           <CreateView
@@ -3622,6 +3665,7 @@ export default function App() {
           </div>
         )}
         </Suspense>
+        </ReaderErrorBoundary>
       )}
 
       {/* Settings Modal */}

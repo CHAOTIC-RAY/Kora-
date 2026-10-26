@@ -3140,12 +3140,12 @@ function SettingsView({
         )}
       </div>
 
-      <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
-      <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
+      <CrosswordGame open={showCrossword} onClose={() => setShowCrossword(false)} variant={gameViewVariant()} />
+      <WordSearchGame open={showWordSearch} onClose={() => setShowWordSearch(false)} variant={gameViewVariant()} />
       <GameScoreTracker open={showScoreTracker} onClose={() => setShowScoreTracker(false)} />
       <LinguistGuardian open={showGuardian} onClose={() => setShowGuardian(false)} onOpenScores={() => setShowScoreTracker(true)} />
       <OnlineScrabbleGame open={showScrabble} onClose={() => setShowScrabble(false)} />
-      <UnoGame open={showUno} onClose={() => setShowUno(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
+      <UnoGame open={showUno} onClose={() => setShowUno(false)} variant={gameViewVariant()} />
       <ChessGame open={showChess} onClose={() => setShowChess(false)} variant={gameViewVariant()} onOpenScores={() => setShowScoreTracker(true)} />
       <ReadingInsightsTool
         open={showInsights}

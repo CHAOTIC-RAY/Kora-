@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from"react";
 import {AnimatePresence, motion} from"motion/react";
-import {ChevronRight, Lightbulb, RefreshCw, Search, X, Maximize2, Minimize2, Trophy} from"lucide-react";
+import {ChevronRight, Lightbulb, RefreshCw, Search, X, Maximize2, Minimize2} from"lucide-react";
 import {
  cellsForWord,
  generateWordSearch,
@@ -61,12 +61,11 @@ interface WordSearchGameProps {
  open: boolean;
  onClose: () => void;
  variant?:"fullscreen"|"popup";
- onOpenScores?: () => void;
 }
 
 type Screen ="menu"|"play";
 
-export default function WordSearchGame({open, onClose, variant ="fullscreen", onOpenScores}: WordSearchGameProps) {
+export default function WordSearchGame({open, onClose, variant ="fullscreen"}: WordSearchGameProps) {
  const [v, setV] = useState<"fullscreen"|"popup">(variant);
  const [screen, setScreen] = useState<Screen>("menu");
  const [difficulty, setDifficulty] = useState<WordSearchDifficulty>("easy");
@@ -239,7 +238,7 @@ export default function WordSearchGame({open, onClose, variant ="fullscreen", on
  aria-modal="true"
  aria-label="Kora Word Search"
  >
- <WordSearchInner onClose={onClose} v={effectiveV} setV={setV} onOpenScores={onOpenScores} isMobile={isMobile} />
+ <WordSearchInner onClose={onClose} v={effectiveV} setV={setV} isMobile={isMobile} />
  </motion.div>
  </motion.div>
  </AnimatePresence>
@@ -257,13 +256,13 @@ export default function WordSearchGame({open, onClose, variant ="fullscreen", on
  aria-modal="true"
  aria-label="Kora Word Search"
  >
- <WordSearchInner onClose={onClose} v={effectiveV} setV={setV} onOpenScores={onOpenScores} isMobile={isMobile} />
+ <WordSearchInner onClose={onClose} v={effectiveV} setV={setV} isMobile={isMobile} />
  </motion.div>
  </AnimatePresence>
  );
 
 
- function WordSearchInner({onClose, v, setV, onOpenScores, isMobile}: {onClose: () => void; v:"fullscreen"|"popup"; setV: (x:"fullscreen"|"popup") => void; onOpenScores?: () => void; isMobile?: boolean}) {
+ function WordSearchInner({onClose, v, setV, isMobile}: {onClose: () => void; v:"fullscreen"|"popup"; setV: (x:"fullscreen"|"popup") => void; isMobile?: boolean}) {
  return (
  <>
  <div
@@ -292,17 +291,6 @@ export default function WordSearchGame({open, onClose, variant ="fullscreen", on
  </div>
  </div>
  <div className="flex items-center gap-2">
- {onOpenScores && (
- <button
- type="button"
- onClick={onOpenScores}
- className="p-2 rounded-full border border-[var(--theme-border)] hover:bg-[var(--theme-card)] transition"
- aria-label="Open score tracker"
- title="Score Tracker"
- >
- <Trophy className="w-5 h-5"/>
- </button>
- )}
  {!isMobile && (
  <button
  type="button"

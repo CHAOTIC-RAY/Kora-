@@ -1547,6 +1547,93 @@ body.skin-cyberui .cyberui-lounge-hero .bg-kindle-accent {
   box-shadow: 0 0 12px var(--cyberui-coral-glow);
 }
 
+/* E-ink keychain bezels for book art: retain the full cover, add a compact
+   hardware frame, scanline glass, clipped corners and tiny status contacts. */
+body.skin-cyberui .cyberui-cover-chip {
+  --cover-bezel: 5px;
+  position: relative;
+  isolation: isolate;
+  padding: var(--cover-bezel) var(--cover-bezel) 10px !important;
+  border: 1px solid color-mix(in srgb, var(--theme-border) 84%, #c7dbda) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(145deg, #536163, #252e32 24%, #141d21 68%, #667274) !important;
+  box-shadow: 2px 3px 0 #080d0f, 4px 5px 0 color-mix(in srgb, var(--theme-border) 34%, #101719), 0 9px 17px rgba(0, 0, 0, 0.48), inset 0 0 0 1px rgba(255, 255, 255, 0.16) !important;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+  transition: transform 180ms ease, filter 180ms ease, box-shadow 180ms ease;
+}
+
+body.skin-cyberui .cyberui-cover-chip > img,
+body.skin-cyberui .cyberui-cover-chip > div {
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
+}
+
+body.skin-cyberui .cyberui-cover-chip::before {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  top: 2px;
+  right: 8px;
+  width: 27px;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--theme-border) 0 2px, transparent 2px 4px);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+body.skin-cyberui .cyberui-cover-chip::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: var(--cover-bezel);
+  border: 1px solid color-mix(in srgb, var(--theme-border) 58%, transparent);
+  box-shadow: inset 0 0 0 1px rgba(8, 13, 15, 0.52), inset 0 0 16px rgba(9, 15, 18, 0.18);
+  background: repeating-linear-gradient(0deg, transparent 0 6px, rgba(8, 13, 15, 0.12) 6px 7px);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%);
+  pointer-events: none;
+}
+
+body.skin-cyberui .group:hover .cyberui-cover-chip,
+body.skin-cyberui .cyberui-cover-chip:hover {
+  transform: translateY(-3px) rotate(-0.7deg);
+  filter: brightness(1.08) drop-shadow(0 0 8px var(--cyberui-glow));
+  box-shadow: 2px 4px 0 #080d0f, 5px 7px 0 color-mix(in srgb, var(--theme-border) 46%, #101719), 0 14px 22px rgba(0, 0, 0, 0.55), 0 0 14px var(--cyberui-glow) !important;
+}
+
+/* Panels, chips and actions use related silhouettes with different bevels. */
+body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
+  border-radius: 0.12rem !important;
+  clip-path: polygon(0 10px, 10px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+}
+
+body.skin-cyberui :is(.kora-app-header, .kora-desktop-nav, .kora-mobile-footer) {
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+
+body.skin-cyberui button:not(.uno-hand-card) {
+  border-radius: 0 !important;
+  clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px));
+  transition: color 150ms ease, background-color 150ms ease, filter 150ms ease, transform 150ms ease, box-shadow 150ms ease !important;
+}
+
+body.skin-cyberui :is(.kora-desktop-nav-item.is-active, .kora-tab-pill) {
+  clip-path: polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%) !important;
+}
+
+body.skin-cyberui :is(button.bg-kindle-text, button.bg-neutral-900, button.bg-black) {
+  clip-path: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%) !important;
+}
+
+body.skin-cyberui button:hover:not(:disabled) {
+  filter: brightness(1.12) drop-shadow(0 0 7px var(--cyberui-glow));
+  transform: translateY(-1px);
+}
+
+body.skin-cyberui button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
 body.skin-cyberui :is(.kindle-card, .bg-kindle-card, section.bg-kindle-card) {
   background: color-mix(in srgb, var(--theme-card) 94%, black) !important;
   border: 1px solid var(--cyberui-line) !important;

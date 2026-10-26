@@ -46,7 +46,6 @@ export interface UnoGameProps {
   open: boolean;
   onClose: () => void;
   variant?: "fullscreen" | "popup";
-  onOpenScores?: () => void;
 }
 
 const UNO_CARD_COLORS: Record<Exclude<UnoColor, "wild">, string> = {
@@ -119,7 +118,6 @@ export default function UnoGame({
   open,
   onClose,
   variant = "fullscreen",
-  onOpenScores,
 }: UnoGameProps) {
   // Screens: "menu" | "lobby" | "playing" | "game_over"
   const [screen, setScreen] = useState<"menu" | "lobby" | "playing" | "game_over">("menu");
@@ -626,17 +624,6 @@ export default function UnoGame({
               >
                 {soundOn ? <Volume2 className="w-4 h-4 text-kindle-accent" /> : <VolumeX className="w-4 h-4" />}
               </button>
-
-              {onOpenScores && (
-                <button
-                  type="button"
-                  onClick={onOpenScores}
-                  title="Open Score Tracker"
-                  className="p-2 rounded-xl border border-kindle-border hover:bg-kindle-card text-kindle-text-muted transition cursor-pointer"
-                >
-                  <Trophy className="w-4 h-4" />
-                </button>
-              )}
 
               <button
                 type="button"
