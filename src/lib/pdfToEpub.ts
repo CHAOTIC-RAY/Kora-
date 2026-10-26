@@ -39,7 +39,122 @@ function pageToXhtml(text: string, page: number): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
 <head><title>Page ${page}</title><meta charset="utf-8"/><link rel="stylesheet" type="text/css" href="../styles/book.css"/></head>
-<body><section epub:type="chapter" id="page-${page}"><h1 class="page-heading">Page ${page}</h1>${body}</section></body></html>`;
+<body><section epub:type="chapter" id="page-${page}">${body}</section></body></html>`;
+}
+
+interface PositionedText {
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  fontSize: number;
+  hadTrailingSpace: boolean;
+}
+
+interface TextLine {
+  y: number;
+  fontSize: number;
+  parts: PositionedText[];
+}
+
+/** Rebuild words and paragraphs from PDF.js positioned text fragments. */
+function reconstructPageText(items: any[]): string {
+  const positioned: PositionedText[] = items
+    .filter((item) => typeof item.str === "string" && item.str.trim())
+    .map((item) => {
+      const transform = item.transform || [];
+      const a = Number(transform[0]) || 0;
+      const b = Number(transform[1]) || 0;
+      const c = Number(transform[2]) || 0;
+      const d = Number(transform[3]) || 0;
+      const fontSize = Math.max(1, Number(item.height) || Math.hypot(c, d) || Math.hypot(a, b) || 10);
+      return {
+        text: String(item.str).replace(/^\s+|\s+$/g, ""),
+        x: Number(transform[4]) || 0,
+        y: Number(transform[5]) || 0,
+        width: Math.abs(Number(item.width) || 0),
+        fontSize,
+        hadTrailingSpace: /\s$/.test(String(item.str)),
+      };
+    });
+  if (!positioned.length) return "";
+
+  // Cluster fragments on their baseline. A font-relative tolerance handles
+  // different PDF scales without merging superscripts into body lines.
+  const lines: TextLine[] = [];
+  for (const part of positioned) {
+    let closest: TextLine | undefined;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (const line of lines) {
+      const distance = Math.abs(line.y - part.y);
+      const tolerance = Math.max(1.5, Math.min(line.fontSize, part.fontSize) * 0.24);
+      if (distance <= tolerance && distance < closestDistance) {
+        closest = line;
+        closestDistance = distance;
+      }
+    }
+    if (!closest) {
+      lines.push({ y: part.y, fontSize: part.fontSize, parts: [part] });
+    } else {
+      closest.parts.push(part);
+      closest.y = closest.parts.reduce((sum, item) => sum + item.y, 0) / closest.parts.length;
+      closest.fontSize = Math.max(closest.fontSize, part.fontSize);
+    }
+  }
+
+  lines.sort((a, b) => b.y - a.y);
+  for (const line of lines) line.parts.sort((a, b) => a.x - b.x);
+
+  const maxTypicalGap = Math.max(lines[0]?.fontSize || 10, 1) * 4;
+  const lineGaps = lines.slice(1)
+    .map((line, index) => lines[index].y - line.y)
+    .filter((gap) => gap > 0.5 && gap < maxTypicalGap);
+  const typicalGap = lineGaps.length
+    ? [...lineGaps].sort((a, b) => a - b)[Math.floor(lineGaps.length / 2)]
+    : 0;
+
+  const renderedLines = lines.map((line) => {
+    let text = "";
+    let previous: PositionedText | undefined;
+    for (const part of line.parts) {
+      if (previous && text) {
+        const gap = part.x - (previous.x + previous.width);
+        // Character fragments normally touch or have a tiny tracking gap;
+        // word gaps are wider. Preserve explicit whitespace when present.
+        const wordGap = Math.max(1.25, Math.min(previous.fontSize, part.fontSize) * 0.2);
+        if (previous.hadTrailingSpace || /\s$/.test(text) || gap > wordGap) text += " ";
+      }
+      text += part.text;
+      previous = part;
+    }
+    return { text: text.replace(/\s+/g, " ").trim(), y: line.y, fontSize: line.fontSize, x: line.parts[0]?.x || 0 };
+  }).filter((line) => line.text);
+
+  const paragraphs: string[] = [];
+  let paragraph = "";
+  for (let index = 0; index < renderedLines.length; index++) {
+    const line = renderedLines[index];
+    const previous = renderedLines[index - 1];
+    const verticalGap = previous ? previous.y - line.y : 0;
+    const paragraphGap = previous && (
+      (typicalGap > 0 && verticalGap > typicalGap * 1.55) ||
+      verticalGap > Math.max(line.fontSize, previous.fontSize) * 1.65 ||
+      line.x - previous.x > Math.max(line.fontSize, previous.fontSize) * 0.9
+    );
+
+    if (paragraphGap && paragraph) {
+      paragraphs.push(paragraph.trim());
+      paragraph = "";
+    }
+
+    if (paragraph && /[-\u00ad]$/.test(paragraph) && /^[a-z]/.test(line.text)) {
+      paragraph = paragraph.replace(/[-\u00ad]$/, "") + line.text;
+    } else {
+      paragraph = paragraph ? `${paragraph} ${line.text}` : line.text;
+    }
+  }
+  if (paragraph.trim()) paragraphs.push(paragraph.trim());
+  return paragraphs.join("\n\n");
 }
 
 export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOptions = {}): Promise<PdfToEpubResult> {
@@ -71,17 +186,7 @@ export async function convertPdfToEpub(file: File | Blob, options: PdfToEpubOpti
     for (let pageNo = 1; pageNo <= pageCount; pageNo++) {
       const page = await pdf.getPage(pageNo);
       const content = await page.getTextContent();
-      const positioned = (content.items || [])
-        .filter((item: any) => typeof item.str === "string" && item.str.trim())
-        .map((item: any) => ({ text: item.str, x: Number(item.transform?.[4] || 0), y: Number(item.transform?.[5] || 0) }));
-      const lines: Array<{ y: number; parts: Array<{ x: number; text: string }> }> = [];
-      for (const item of positioned) {
-        let line = lines.find(candidate => Math.abs(candidate.y - item.y) < 3);
-        if (!line) { line = { y: item.y, parts: [] }; lines.push(line); }
-        line.parts.push({ x: item.x, text: item.text });
-      }
-      lines.sort((a, b) => b.y - a.y);
-      const text = lines.map(line => line.parts.sort((a, b) => a.x - b.x).map(p => p.text).join(" ").replace(/\s+/g, " ").trim()).filter(Boolean).join("\n");
+      const text = reconstructPageText(content.items || []);
       if (text.trim()) nonEmptyPages++;
       pages.push(text);
       page.cleanup?.();
