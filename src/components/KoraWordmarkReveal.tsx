@@ -316,9 +316,24 @@ export default function KoraWordmarkReveal({
     let visible = false;
     let replayArmed = true;
     const onScrollToTop = () => {
+      // Kora can scroll inside an app container instead of the window.
+      // Use the nearest genuinely scrollable ancestor when one exists.
+      let parent = wrap.parentElement;
+      let scrollTop = window.scrollY;
+      while (parent) {
+        const style = window.getComputedStyle(parent);
+        const canScroll = /(auto|scroll|overlay)/.test(
+          `${style.overflowY} ${style.overflow}`
+        ) && parent.scrollHeight > parent.clientHeight + 1;
+        if (canScroll) {
+          scrollTop = parent.scrollTop;
+          break;
+        }
+        parent = parent.parentElement;
+      }
       // Re-arm only after returning to the top; leaving the animation alone
       // keeps its completed frame visible.
-      if (window.scrollY <= 8) {
+      if (scrollTop <= 8) {
         replayArmed = true;
         reset();
       }
@@ -338,7 +353,7 @@ export default function KoraWordmarkReveal({
         }
       }, { threshold: 0.2 });
       io.observe(wrap);
-      window.addEventListener("scroll", onScrollToTop, { passive: true });
+      document.addEventListener("scroll", onScrollToTop, { passive: true, capture: true });
     } else {
       start();
     }
@@ -369,7 +384,7 @@ export default function KoraWordmarkReveal({
       if (loopTimer !== undefined) window.clearTimeout(loopTimer);
       cancelAnimationFrame(raf);
       io?.disconnect();
-      window.removeEventListener("scroll", onScrollToTop);
+      document.removeEventListener("scroll", onScrollToTop, true);
       ro?.disconnect();
       mo.disconnect();
     };
